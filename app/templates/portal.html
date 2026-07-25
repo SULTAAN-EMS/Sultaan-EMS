@@ -388,29 +388,8 @@
     </section>
   {% endif %}
 
-<<<<<<< HEAD
-  {% if result %}
-    {# Premium animated footer for Student Result page #}
-    {% if settings.get('show_footer', 'on') != 'off' %}
-      {% include 'partials/premium_footer.html' %}
-    {% endif %}
-  {% else %}
-  <footer class="premium-public-footer">
-    <div class="premium-footer-copy"><span class="portal-footer-text">{{ settings.search_footer_text }}</span></div>
-    <div class="social-links premium-social-links">
-      <a href="{{ settings.whatsapp_url or '#' }}" aria-label="WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>
-      <a href="{{ settings.facebook_url or '#' }}" aria-label="Facebook"><i class="fa-brands fa-facebook-f"></i></a>
-      <a href="{{ settings.telegram_url or '#' }}" aria-label="Telegram"><i class="fa-brands fa-telegram"></i></a>
-      <a href="{{ settings.school_website or '#' }}" aria-label="Website"><i class="fa-solid fa-globe"></i></a>
-      <a href="{{ settings.email_url or '#' }}" aria-label="Gmail"><i class="fa-solid fa-envelope"></i></a>
-      <a href="{{ settings.maps_url or '#' }}" aria-label="Map"><i class="fa-solid fa-map-location-dot"></i></a>
-    </div>
-  </footer>
-  {% endif %}
-=======
   {% set f_settings = settings %}
   {% include 'partials/sultan_footer.html' %}
->>>>>>> fad8a62 (Major update: Results Hub, Incident Management, UI enhancements, bug fixes, and security improvements)
   {% if result %}
     <script>
       (() => {

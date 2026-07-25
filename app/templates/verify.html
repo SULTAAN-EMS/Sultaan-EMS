@@ -124,7 +124,6 @@
         </div>
       </section>
 
-<<<<<<< HEAD
       <footer class="verification-footer-card" style="order: {{ [verify_order.index('footer') + 1, 5]|max if 'footer' in verify_order else 5 }}; display: grid !important;">
         <div class="verification-seal" style="display: grid !important;">
           {% if settings.school_stamp_path %}
@@ -141,9 +140,8 @@
           <small>{{ settings.verify_page_footer_text }}</small>
         </div>
       </footer>
-=======
+      {% set f_settings = settings %}
       {% include 'partials/sultan_footer.html' %}
->>>>>>> fad8a62 (Major update: Results Hub, Incident Management, UI enhancements, bug fixes, and security improvements)
     {% else %}
       <section class="verification-status-card invalid-state">
         <div class="verification-success-badge invalid-badge"><i class="fa-solid fa-xmark"></i><span></span></div>

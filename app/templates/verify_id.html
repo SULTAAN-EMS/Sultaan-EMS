@@ -339,7 +339,6 @@
         </div>
       </section>
 
-<<<<<<< HEAD
       <!-- Footer (kept for structural spacing; actual copyright in premium footer below) -->
       <footer class="verification-footer">
         <div class="verification-footer-content">
@@ -349,10 +348,6 @@
           <p>This student ID has been officially verified by {{ settings.school_name }}.</p>
         </div>
       </footer>
-=======
-      <!-- Footer -->
-      {% include 'partials/sultan_footer.html' %}
->>>>>>> fad8a62 (Major update: Results Hub, Incident Management, UI enhancements, bug fixes, and security improvements)
 
     {% else %}
       <!-- Invalid State -->
@@ -366,9 +361,7 @@
       </section>
     {% endif %}
   </div>
-  {# Premium animated footer for Student ID Verification page #}
-  {% if settings.get('verify_id_show_footer', 'on') != 'off' %}
-    {% include 'partials/premium_footer.html' %}
-  {% endif %}
+  {% set f_settings = settings %}
+  {% include 'partials/sultan_footer.html' %}
 </main>
 {% endblock %}
