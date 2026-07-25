@@ -1,0 +1,38 @@
+{#
+  Reusable Premium Footer Component
+  Usage: {% include 'partials/premium_footer.html' %}
+  Requires: settings (dict from get_settings()), asset_url() context function
+  All values fall back to safe defaults so the footer works without any manual setup.
+#}
+<style>
+  .sultan-premium-footer {
+    --bg-start: {{ settings.get('footer_bg_start', '#071931') }};
+    --bg-end:   {{ settings.get('footer_bg_end',   '#0c3366') }};
+    --gold:     {{ settings.get('footer_gold',     '#C9A227') }};
+    --teal:     {{ settings.get('footer_teal',     '#1B998B') }};
+  }
+</style>
+<footer class="sultan-premium-footer">
+  <!-- Rotating Gradient Ring with Logo -->
+  <div class="footer-logo-ring-container">
+    <div class="footer-logo-ring"></div>
+    <div class="footer-logo-inner">
+      {% set _fp = settings.get('footer_logo_path') or settings.get('logo_path') or '' %}
+      {% if _fp %}
+        <img id="premiumFooterLogo" src="{{ asset_url(_fp) }}" alt="Logo">
+      {% else %}
+        <span><i class="fa-solid fa-shield-halved"></i></span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Copyright Text with Shimmer Animation -->
+  <div class="footer-text-block">
+    <div class="copyright-wrapper">
+      {% set _shimmer_on = settings.get('footer_shimmer_enabled', 'true') != 'false' %}
+      {% set _copy = settings.get('footer_copyright_text') or '© SULTAAN EMS' %}
+      {% set _year = settings.get('footer_year') or '2026' %}
+      <span class="copyright-shimmer {% if _shimmer_on %}shimmer{% endif %}">{{ _copy }} | {{ _year }}</span>
+    </div>
+  </div>
+</footer>

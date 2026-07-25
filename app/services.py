@@ -383,6 +383,17 @@ DEFAULT_SETTINGS = {
     "verify_id_shadow_color": "#000000",
     "verify_id_template_style": "premium",
     "display_subject_names": "full",
+    # Premium shared footer settings (Student Result, Verification, ID Verification)
+    # These are auto-seeded on first run so no manual configuration is needed.
+    "show_footer": "on",
+    "footer_logo_path": "",
+    "footer_copyright_text": "© SULTAAN EMS",
+    "footer_year": "2026",
+    "footer_shimmer_enabled": "true",
+    "footer_bg_start": "#071931",
+    "footer_bg_end": "#0c3366",
+    "footer_gold": "#C9A227",
+    "footer_teal": "#1B998B",
 }
 
 DEFAULT_GRADE_SCALES = [
@@ -490,11 +501,15 @@ def grade_for(score, exam_id=None):
         # Preserve utility behavior for callers outside an application context.
         pass
 
+    # Regression fix: treat is_active=NULL as True for legacy production rows.
+    from sqlalchemy import or_ as _or
+    _active = _or(GradeScale.is_active.is_(True), GradeScale.is_active.is_(None))
+
     # First try to find exam-specific grade scale
     if exam_id:
         scale = (
             GradeScale.query.filter(
-                GradeScale.is_active.is_(True),
+                _active,
                 GradeScale.exam_id == exam_id,
                 GradeScale.min_score <= score,
                 GradeScale.max_score >= score,
@@ -508,8 +523,21 @@ def grade_for(score, exam_id=None):
     # Fall back to global grade scale (exam_id IS NULL)
     scale = (
         GradeScale.query.filter(
-            GradeScale.is_active.is_(True),
+            _active,
             GradeScale.exam_id.is_(None),
+            GradeScale.min_score <= score,
+            GradeScale.max_score >= score,
+        )
+        .order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc())
+        .first()
+    )
+    if scale:
+        return grade_scale_payload(scale)
+
+    # Last resort: any scale regardless of exam_id
+    scale = (
+        GradeScale.query.filter(
+            _active,
             GradeScale.min_score <= score,
             GradeScale.max_score >= score,
         )
@@ -523,12 +551,25 @@ def grade_for(score, exam_id=None):
 
 
 def load_grade_scale_cache(exam_id=None):
-    """Load active grade scales once for in-memory grade lookup."""
+    """Load active grade scales once for in-memory grade lookup.
+
+    Regression fix: legacy production rows may have is_active=NULL when the
+    column was added via ALTER TABLE after initial data was inserted. We treat
+    NULL as True (active) so that existing grade scales are always honoured.
+    """
+    from sqlalchemy import or_ as _or
+
+    # is_active IS TRUE  OR  is_active IS NULL (legacy rows without explicit value)
+    active_condition = _or(
+        GradeScale.is_active.is_(True),
+        GradeScale.is_active.is_(None),
+    )
+
     exam_scales = []
     if exam_id:
         exam_scales = (
             GradeScale.query.filter(
-                GradeScale.is_active.is_(True),
+                active_condition,
                 GradeScale.exam_id == exam_id,
             )
             .order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc())
@@ -537,12 +578,21 @@ def load_grade_scale_cache(exam_id=None):
 
     global_scales = (
         GradeScale.query.filter(
-            GradeScale.is_active.is_(True),
+            active_condition,
             GradeScale.exam_id.is_(None),
         )
         .order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc())
         .all()
     )
+
+    # Last-resort fallback: if no global scales found (e.g. every row has a
+    # non-NULL exam_id), load *all* active scales regardless of exam scope.
+    if not global_scales and not exam_scales:
+        global_scales = (
+            GradeScale.query.filter(active_condition)
+            .order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc())
+            .all()
+        )
 
     return {
         "exam": [grade_scale_cache_row(scale) for scale in exam_scales],
@@ -670,6 +720,10 @@ def seed_grade_scales():
 
     defaults = {item["grade"]: item for item in DEFAULT_GRADE_SCALES}
     for scale in GradeScale.query.all():
+        # Regression fix: ensure is_active is never NULL so grade lookups work.
+        # Rows inserted before the is_active column was added may have NULL.
+        if scale.is_active is None:
+            scale.is_active = True
         item = defaults.get(scale.grade)
         if not item:
             continue
@@ -745,15 +799,25 @@ def result_payload(student, exam=None, public_only=True):
                 rank = index
                 break
 
+    # Regression fix: treat is_active=NULL as True for legacy production rows.
+    from sqlalchemy import or_ as _or_rs
+    _active_rs = _or_rs(GradeScale.is_active.is_(True), GradeScale.is_active.is_(None))
+
     exam_grade_scales = (
-        GradeScale.query.filter_by(exam_id=exam.id, is_active=True)
+        GradeScale.query.filter(_active_rs, GradeScale.exam_id == exam.id)
         .order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
         if exam else []
     )
     result_grade_scales = exam_grade_scales or (
-        GradeScale.query.filter_by(exam_id=None, is_active=True)
+        GradeScale.query.filter(_active_rs, GradeScale.exam_id.is_(None))
         .order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
     )
+    # Final fallback: any active scale if the above queries return nothing
+    if not result_grade_scales:
+        result_grade_scales = (
+            GradeScale.query.filter(_active_rs)
+            .order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
+        )
 
     return {
         "student": student,
