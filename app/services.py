@@ -710,36 +710,48 @@ def active_exam_for_student(student, preferred_year_id=None):
 
 
 def seed_grade_scales():
-    """Create default grade rows, then backfill new metadata without replacing existing bands."""
+    """Create default grade rows ONLY when the table is completely empty.
+
+    If rows already exist, only backfill columns that are genuinely absent
+    (NULL / falsy).  Never overwrite colours, score ranges, is_pass, or any
+    other field the admin may have intentionally changed.
+    """
     from . import db
 
+    # Only seed defaults when the table is completely empty.
     if not GradeScale.query.first():
         for item in DEFAULT_GRADE_SCALES:
             db.session.add(GradeScale(**item))
         return
 
+    # Backfill: touch only columns that are genuinely NULL / missing.
+    # Do NOT overwrite colours, score ranges, is_pass, or grade_point —
+    # those are admin-managed fields and must survive every deployment.
     defaults = {item["grade"]: item for item in DEFAULT_GRADE_SCALES}
     for scale in GradeScale.query.all():
-        # Regression fix: ensure is_active is never NULL so grade lookups work.
-        # Rows inserted before the is_active column was added may have NULL.
+        # is_active NULL → default True so grade lookups never silently break.
         if scale.is_active is None:
             scale.is_active = True
+
         item = defaults.get(scale.grade)
         if not item:
             continue
-        if not scale.sort_order:
+
+        # sort_order NULL → fill from defaults so ordering works.
+        if scale.sort_order is None:
             scale.sort_order = item["sort_order"]
-        if not scale.grade_point and scale.grade != "F":
+
+        # grade_point NULL on non-F grades → fill from defaults.
+        if scale.grade_point is None and scale.grade != "F":
             scale.grade_point = item["grade_point"]
-        if scale.badge_color == "#10b981":
-            scale.badge_color = item["badge_color"]
-        if scale.text_color == "#ffffff":
-            scale.text_color = item["text_color"]
-        if scale.background_color == "#ecfdf5":
-            scale.background_color = item["background_color"]
-        if scale.border_color == "#10b981":
-            scale.border_color = item["border_color"]
-        scale.is_pass = item["is_pass"] if scale.grade in {"E", "F"} else scale.is_pass
+
+        # Intentionally NOT touching:
+        #   badge_color, text_color, background_color, border_color
+        #   → admin-saved; must never be reset by deployment.
+        #   is_pass
+        #   → admin-saved; must never be reset by deployment.
+        #   min_score, max_score
+        #   → admin-saved score ranges; must never be reset.
 
 
 def result_payload(student, exam=None, public_only=True):

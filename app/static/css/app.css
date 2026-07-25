@@ -2920,16 +2920,26 @@ tbody tr:hover td { background: #f8fbff; }
 /* Compact analytics dashboard refinement */
 .premium-homepage.has-result {
   --sis-dashboard-width: 1120px;
+  /* BUG FIX: removed the rgba(255,255,255,.84→.34) white overlay gradient that
+     was bleaching the administrator-selected background color. The admin's exact
+     HEX value (--sis-bg) is now rendered without modification. The optional
+     background-image (admin-uploaded image) is preserved as a second layer. */
   background-color: var(--sis-bg);
-  background-image:
-    linear-gradient(135deg, rgba(255,255,255,.84), rgba(255,255,255,.34)),
-    var(--sis-dashboard-bg-image);
+  background-image: var(--sis-dashboard-bg-image, none);
   background-size: cover;
   background-position: center;
   font-family: var(--sis-font-family);
   font-size: var(--sis-base-font-size);
   line-height: var(--sis-line-height);
   padding: var(--sis-page-margin);
+}
+
+/* BUG FIX: suppress the dark-navy ::before (circuit grid + animated drift) and
+   ::after (gold rule) pseudo-elements on the result page. They were designed
+   for the dark search-page background and tinted the light result page. */
+.premium-homepage.has-result::before,
+.premium-homepage.has-result::after {
+  display: none;
 }
 .reference-one-result {
   align-items: start;
@@ -5060,3 +5070,210 @@ tbody tr:hover td { background: #f8fbff; }
   .premium-public-footer { min-height: 54px; padding: 10px 12px; }
   .premium-social-links a { width: 34px; height: 34px; }
 }
+
+/* ============================================================
+   AMBIENT BACKGROUND PARTICLE SYSTEM
+   — dust layer, twinkle layer, festive burst layer —
+   All layers appended to document.body by JS (result page only).
+   z-index:1 — above background, below all foreground content.
+   Fully suppressed by prefers-reduced-motion.
+   ============================================================ */
+
+/* ---------- Shared layer scaffold ---------- */
+.ambient-dust-layer,
+.ambient-twinkle-layer,
+.festive-burst-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+
+/* ---------- Ambient dust particles (drifting specks) ---------- */
+.ambient-dust {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: dustFloat var(--dust-dur, 12s) ease-in-out infinite;
+}
+
+/* Size tiers */
+.ambient-dust.sz-xs { width: 1px;  height: 1px; }
+.ambient-dust.sz-sm { width: 2px;  height: 2px; }
+.ambient-dust.sz-md { width: 3px;  height: 3px; }
+.ambient-dust.sz-lg { width: 4.5px; height: 4.5px; }
+
+/* Colour palettes — semi-transparent dark/mid tones so they are visible on
+   both light (result page) and dark (search page) backgrounds. */
+.ambient-dust.col-cyan {
+  background: radial-gradient(circle, rgba(8,124,255,.55) 0%, rgba(0,191,255,.3) 45%, transparent 70%);
+  box-shadow: 0 0 5px 1px rgba(0,150,255,.2);
+}
+.ambient-dust.col-gold {
+  background: radial-gradient(circle, rgba(200,140,0,.65) 0%, rgba(255,180,0,.35) 45%, transparent 70%);
+  box-shadow: 0 0 5px 1px rgba(200,130,0,.18);
+}
+.ambient-dust.col-white {
+  background: radial-gradient(circle, rgba(80,120,200,.45) 0%, rgba(100,140,220,.25) 45%, transparent 70%);
+  box-shadow: 0 0 4px 1px rgba(80,120,200,.15);
+}
+.ambient-dust.col-blue {
+  background: radial-gradient(circle, rgba(8,36,106,.55) 0%, rgba(8,124,255,.3) 45%, transparent 70%);
+  box-shadow: 0 0 5px 1px rgba(8,36,106,.2);
+}
+
+@keyframes dustFloat {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4);
+  }
+  8% {
+    opacity: var(--dust-peak, 0.65);
+  }
+  48% {
+    opacity: var(--dust-peak, 0.65);
+    transform: translate(var(--drift-x, 28px), var(--drift-y, -48px)) scale(1);
+  }
+  88% {
+    opacity: 0.2;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--drift-x, 28px) * 1.9), calc(var(--drift-y, -48px) * 1.9)) scale(0.25);
+  }
+}
+
+/* ---------- Twinkle particles (stationary pulse) ---------- */
+.ambient-twinkle {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0;
+  will-change: opacity, transform;
+  animation: dustTwinkle var(--twinkle-dur, 5s) ease-in-out infinite;
+}
+
+.ambient-twinkle.sz-xs { width: 1px;  height: 1px; }
+.ambient-twinkle.sz-sm { width: 2px;  height: 2px; }
+.ambient-twinkle.sz-md { width: 3px;  height: 3px; }
+.ambient-twinkle.sz-lg { width: 5px;  height: 5px; }
+
+/* Twinkle colours — visible on light backgrounds */
+.ambient-twinkle.col-cyan  { background: rgba(0,150,255,.7);    box-shadow: 0 0 6px 2px rgba(0,150,255,.3); }
+.ambient-twinkle.col-gold  { background: rgba(180,120,0,.75);   box-shadow: 0 0 6px 2px rgba(200,140,0,.28); }
+.ambient-twinkle.col-white { background: rgba(60,90,180,.5);    box-shadow: 0 0 5px 2px rgba(60,90,180,.2); }
+.ambient-twinkle.col-blue  { background: rgba(8,36,106,.65);    box-shadow: 0 0 6px 2px rgba(8,36,106,.25); }
+
+@keyframes dustTwinkle {
+  0%, 100% { opacity: 0; transform: scale(0.4); }
+  30%       { opacity: var(--twinkle-peak, 0.75); transform: scale(1.1); }
+  55%       { opacity: var(--twinkle-peak, 0.75); transform: scale(0.9); }
+  80%       { opacity: 0.15; transform: scale(0.6); }
+}
+
+/* ---------- Festive burst rising dots ---------- */
+.festive-burst-layer { /* already scaffolded above */ }
+
+.festive-burst {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+/* Burst dot sizes */
+.festive-burst.dot-sm { width: 4px;  height: 4px; }
+.festive-burst.dot-md { width: 6px;  height: 6px; }
+.festive-burst.dot-lg { width: 9px;  height: 9px; }
+
+/* Colour variants — visible on light admin-selected background */
+.festive-burst.col-blue  { background: radial-gradient(circle, rgba(8,124,255,.8)  0%, rgba(8,36,106,.4)  55%, transparent 75%); box-shadow: 0 0 8px 2px rgba(8,124,255,.25); }
+.festive-burst.col-cyan  { background: radial-gradient(circle, rgba(0,180,255,.8)  0%, rgba(0,130,200,.4) 55%, transparent 75%); box-shadow: 0 0 8px 2px rgba(0,180,255,.22); }
+.festive-burst.col-gold  { background: radial-gradient(circle, rgba(200,130,0,.85) 0%, rgba(180,100,0,.4) 55%, transparent 75%); box-shadow: 0 0 8px 2px rgba(200,130,0,.22); }
+.festive-burst.col-white { background: radial-gradient(circle, rgba(60,90,190,.7)  0%, rgba(40,60,160,.3) 55%, transparent 75%); box-shadow: 0 0 7px 2px rgba(40,60,160,.18); }
+.festive-burst.col-teal  { background: radial-gradient(circle, rgba(0,160,140,.8)  0%, rgba(0,120,110,.4) 55%, transparent 75%); box-shadow: 0 0 7px 2px rgba(0,140,120,.22); }
+
+/* Rising animation */
+@keyframes festiveRise {
+  0% {
+    opacity: 0;
+    transform: translateY(var(--start-y, 60px)) scale(0.4);
+  }
+  12% {
+    opacity: 0.72;
+  }
+  65% {
+    opacity: 0.5;
+    transform: translateY(var(--rise-height, -38vh)) scale(1.05);
+  }
+  82% {
+    opacity: 0.22;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(calc(var(--rise-height, -38vh) * 1.25)) scale(0.15);
+  }
+}
+
+/* Sparkle ring scatter animation */
+@keyframes festiveSparkle {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0);
+  }
+  18% {
+    opacity: 0.92;
+    transform: translate(calc(var(--sparkle-x, 18px) * .25), calc(var(--sparkle-y, -18px) * .25)) scale(1.6);
+  }
+  45% {
+    opacity: 0.65;
+    transform: translate(var(--sparkle-x, 18px), var(--sparkle-y, -18px)) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--sparkle-x, 18px) * 2.2), calc(var(--sparkle-y, -18px) * 2.2)) scale(0);
+  }
+}
+
+/* Petal bloom animation (larger central burst dot) */
+@keyframes festivePetal {
+  0% {
+    opacity: 0;
+    transform: scale(0) rotate(0deg);
+  }
+  22% {
+    opacity: 0.85;
+    transform: scale(2.2) rotate(45deg);
+  }
+  60% {
+    opacity: 0.4;
+    transform: scale(1.4) rotate(90deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.1) rotate(180deg);
+  }
+}
+
+/* ============================================================
+   PREFERS-REDUCED-MOTION — disable all motion effects
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .ambient-dust,
+  .ambient-twinkle {
+    animation: none;
+    opacity: 0;
+  }
+  .festive-burst {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+  .premium-homepage::before {
+    animation: none;
+  }
+  .premium-school-logo {
+    animation: none;
+  }
+}
+

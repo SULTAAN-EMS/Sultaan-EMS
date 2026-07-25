@@ -980,35 +980,12 @@ def settings():
             setting = db.session.get(Setting, setting_key) or Setting(key=setting_key)
             setting.value = image_url
             db.session.add(setting)
-        for grade in GradeScale.query.all():
-            grade.grade = request.form.get(f"grade_{grade.id}", grade.grade).strip() or grade.grade
-            grade.min_score = request.form.get(f"min_{grade.id}", grade.min_score)
-            grade.max_score = request.form.get(f"max_{grade.id}", grade.max_score)
-            grade.grade_point = request.form.get(f"point_{grade.id}", grade.grade_point)
-            grade.comment = request.form.get(f"comment_{grade.id}", grade.comment).strip()
-            grade.is_pass = request.form.get(f"status_{grade.id}", "fail") == "pass"
-            grade.badge_color = request.form.get(f"badge_color_{grade.id}", grade.badge_color)
-            grade.text_color = request.form.get(f"text_color_{grade.id}", grade.text_color)
-            grade.background_color = request.form.get(f"background_color_{grade.id}", grade.background_color)
-            grade.border_color = request.form.get(f"border_color_{grade.id}", grade.border_color)
-            grade.sort_order = int(request.form.get(f"sort_order_{grade.id}") or grade.sort_order or 0)
-            grade.is_active = request.form.get(f"active_{grade.id}") == "on"
-        new_grade = request.form.get("new_grade", "").strip()
-        if new_grade:
-            db.session.add(GradeScale(
-                grade=new_grade,
-                min_score=request.form.get("new_min") or 0,
-                max_score=request.form.get("new_max") or 0,
-                grade_point=request.form.get("new_point") or 0,
-                comment=request.form.get("new_comment", "").strip() or "Custom grade",
-                is_pass=request.form.get("new_status", "pass") == "pass",
-                badge_color=request.form.get("new_badge_color") or "#2563eb",
-                text_color=request.form.get("new_text_color") or "#ffffff",
-                background_color=request.form.get("new_background_color") or "#eff6ff",
-                border_color=request.form.get("new_border_color") or "#93c5fd",
-                sort_order=int(request.form.get("new_sort_order") or 0),
-                is_active=request.form.get("new_active", "on") == "on",
-            ))
+        # NOTE: Grade Management (GradeScale) is saved by its own dedicated
+        # route. It must NEVER be written here — the settings form does not
+        # contain grade fields, so any attempt to read them from request.form
+        # would silently corrupt every grade record (is_pass → False,
+        # is_active → False, etc.) on every Admin Settings save.
+
         audit("Settings Changes", "Updated system settings")
         db.session.commit()
         flash("Settings saved.", "success")
