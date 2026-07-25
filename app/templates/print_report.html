@@ -113,7 +113,7 @@
               <td>{{ loop.index }}</td>
               <td>{{ row.subject }}</td>
               <td>{{ row.max_score }}</td>
-              <td>{{ row.score }}</td>
+              <td><strong class="print-grade-badge print-mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ "%.2f"|format(row.score) }}</strong></td>
               <td><strong class="print-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.grade.grade }}</strong></td>
               <td>{{ row.grade.comment }}</td>
             </tr>

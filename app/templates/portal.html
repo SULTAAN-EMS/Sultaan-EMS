@@ -305,7 +305,7 @@
                     <td data-label="No.">{{ loop.index }}</td>
                     <td data-label="Subject">{{ row.subject }}</td>
                     <td data-label="Full Mark">{{ row.max_score }}</td>
-                    <td data-label="Mark Obtained">{{ row.score }}</td>
+                    <td data-label="Mark Obtained"><span class="dynamic-grade-badge mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ "%.2f"|format(row.score) }}</b></span></td>
                     <td data-label="Grade"><span class="dynamic-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.grade.grade }}</b></span></td>
                     <td data-label="Grade Point">{{ row.grade.grade_point }}</td>
                   </tr>

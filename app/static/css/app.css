@@ -1729,9 +1729,9 @@ tbody tr:hover td { background: #f8fbff; }
   padding: 11px 14px;
   border: 1px solid #e0e7f2;
   text-align: center;
-  background: rgba(255,255,255,.82);
+  background: #ffffff;
 }
-.reference-result-table tbody tr:nth-child(even) td { background: rgba(247, 250, 255, .9); }
+.reference-result-table tbody tr:nth-child(even) td { background: #f7faff; }
 .reference-result-table td:first-child {
   color: #087cff;
   font-weight: 900;
@@ -2500,7 +2500,7 @@ tbody tr:hover td { background: #f8fbff; }
   --sis-accent: #f0447b;
   --sis-gold: #ffb22e;
   --sis-bg: #f5f8ff;
-  --sis-card: rgba(255,255,255,.94);
+  --sis-card: #ffffff;
   --sis-card-solid: #ffffff;
   --sis-border: #d8e2ef;
   --sis-border-soft: #e7edf7;
@@ -2723,7 +2723,7 @@ tbody tr:hover td { background: #f8fbff; }
 .reference-result-table td {
   padding: 7px 10px;
   color: var(--sis-text);
-  background: rgba(255,255,255,.88);
+  background: #ffffff;
 }
 .reference-result-table th:first-child,
 .reference-result-table td:first-child {
@@ -4703,8 +4703,7 @@ tbody tr:hover td { background: #f8fbff; }
   display: table-header-group;
   visibility: visible;
   opacity: 1;
-  background: linear-gradient(100deg, #0577ff, #8a43e8 45%, #fe8a23);
-  background-color: #073bc8;
+  background: var(--sis-table-header, #0577ff);
 }
 .reference-one-result .reference-result-table tbody {
   display: table-row-group;
@@ -4788,8 +4787,7 @@ tbody tr:hover td { background: #f8fbff; }
   }
   .reference-one-result .reference-result-table th {
     color: #ffffff;
-    background: linear-gradient(100deg, #0577ff, #8a43e8 45%, #fe8a23);
-    background-color: #073bc8;
+    background: linear-gradient(100deg, var(--sis-table-header, #0577ff), var(--sis-primary, #8a43e8));
     background-clip: padding-box;
     -webkit-text-fill-color: #ffffff;
     position: static;
@@ -4889,17 +4887,35 @@ tbody tr:hover td { background: #f8fbff; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 48px;
-  padding: 3px 7px;
+  min-width: 44px;
+  max-width: 100%;
+  padding: 2.5px 5px;
   border: 1px solid;
   border-radius: 999px;
   font-weight: 900;
+  box-sizing: border-box;
+  text-align: center;
+  vertical-align: middle;
 }
 .dynamic-grade-badge b {
   min-width: 30px;
   padding: 3px 8px;
   border-radius: 999px;
   line-height: 1;
+}
+/* Mark Obtained badge: same two-layer pill as Grade, but tuned for numbers */
+.dynamic-grade-badge.mark-badge {
+  min-width: 46px;
+  max-width: 100%;
+  padding: 2.5px 4px;
+}
+.dynamic-grade-badge.mark-badge b {
+  min-width: 0;
+  padding: 2.5px 6px;
+  font-size: .78em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+  white-space: nowrap;
 }
 
 .table-avatar {
