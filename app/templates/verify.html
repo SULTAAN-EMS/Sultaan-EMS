@@ -46,7 +46,25 @@
     </header>
 
     {% if verified %}
-      {% set verify_order = settings.verify_section_order.split(',') %}
+      {#
+        Regression fix: build a sanitised section order so the copyright/footer
+        card can never be rendered at the top of the page.  We normalise the
+        stored value and fall back to a safe default that always places the
+        footer card last (order ≥ 5).
+      #}
+      {% set _raw_order = (settings.verify_section_order or 'status,student,summary,details,footer').split(',') %}
+      {% set _known = ['status', 'student', 'summary', 'details', 'footer'] %}
+      {# Strip leading/trailing whitespace from each token and keep only known sections #}
+      {% set _clean = [] %}
+      {% for _s in _raw_order %}{% if _s.strip() in _known %}{% if _clean.append(_s.strip()) %}{% endif %}{% endif %}{% endfor %}
+      {# Ensure all sections are present; append any missing ones #}
+      {% for _s in _known %}{% if _s not in _clean %}{% if _clean.append(_s) %}{% endif %}{% endif %}{% endfor %}
+      {# Re-map so 'footer' is never at position 1; push it after all other sections if it appears first #}
+      {% if _clean[0] == 'footer' and _clean|length > 1 %}
+        {% set _footer_idx = _clean.index('footer') %}
+        {% set _clean = _clean[1:] + ['footer'] %}
+      {% endif %}
+      {% set verify_order = _clean %}
       <section class="verification-status-card" style="order: {{ verify_order.index('status') + 1 if 'status' in verify_order else 1 }}">
         <div class="verification-success-badge" aria-label="{{ settings.verify_badge_text }}">
           <i class="fa-solid {{ 'fa-certificate' if settings.verify_badge_style == 'classic' else 'fa-shield-halved' if settings.verify_badge_style == 'shield' else 'fa-check' if settings.verify_badge_style == 'modern' else 'fa-award' }}"></i>
@@ -104,8 +122,8 @@
         </div>
       </section>
 
-      <footer class="verification-footer-card" style="order: {{ verify_order.index('footer') + 1 if 'footer' in verify_order else 5 }}">
-        <div class="verification-seal">
+      <footer class="verification-footer-card" style="order: {{ [verify_order.index('footer') + 1, 5]|max if 'footer' in verify_order else 5 }}; display: grid !important;">
+        <div class="verification-seal" style="display: grid !important;">
           {% if settings.school_stamp_path %}
             <img src="{{ asset_url(settings.school_stamp_path) }}" alt="{{ settings.school_name }} official seal">
           {% else %}
@@ -128,6 +146,10 @@
       </section>
     {% endif %}
   </section>
+  {# Premium animated footer for Verification Result page #}
+  {% if settings.get('verify_show_footer', 'on') != 'off' %}
+    {% include 'partials/premium_footer.html' %}
+  {% endif %}
 </main>
 <style>{{ settings.verify_custom_css|safe }}</style>
 <script>

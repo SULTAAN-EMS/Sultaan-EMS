@@ -30,6 +30,14 @@ def ensure_schema_compatibility():
     add_column_if_missing("grade_scales", "sort_order", column_sql(dialect, "sort_order", "INTEGER NOT NULL DEFAULT 0"))
     add_column_if_missing("grade_scales", "is_active", column_sql(dialect, "is_active", "BOOLEAN NOT NULL DEFAULT TRUE"))
 
+    # Regression fix: rows inserted before is_active column was added may have
+    # is_active=NULL. Set them to TRUE so grade lookups always find results.
+    try:
+        db.session.execute(text("UPDATE grade_scales SET is_active = 1 WHERE is_active IS NULL"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
     # Per-exam grade scales (exam_id IS NULL is the global fallback)
     add_column_if_missing("grade_scales", "exam_id", column_sql(dialect, "exam_id", "INTEGER"))
     add_index_if_missing("grade_scales", "idx_grade_scales_exam_id", ["exam_id"])

@@ -388,24 +388,24 @@
     </section>
   {% endif %}
 
-  <footer class="premium-public-footer {% if result %}reference-result-footer{% endif %}">
-    <div class="premium-footer-copy">{% if result and settings.result_dashboard_footer_logo %}<img class="result-footer-logo" src="{{ asset_url(settings.result_dashboard_footer_logo) }}" alt="Footer logo">{% endif %}{% if result %}<em>&copy;</em><strong>{{ settings.result_footer_owner }}</strong><span>|</span><b>2026.</b><em>All Rights Reserved.</em>{% else %}<span class="portal-footer-text">{{ settings.search_footer_text }}</span>{% endif %}</div>
+  {% if result %}
+    {# Premium animated footer for Student Result page #}
+    {% if settings.get('show_footer', 'on') != 'off' %}
+      {% include 'partials/premium_footer.html' %}
+    {% endif %}
+  {% else %}
+  <footer class="premium-public-footer">
+    <div class="premium-footer-copy"><span class="portal-footer-text">{{ settings.search_footer_text }}</span></div>
     <div class="social-links premium-social-links">
-      {% if result %}
-      <a href="{{ settings.call_url or '#' }}" aria-label="Phone"><i class="fa-solid fa-phone"></i></a>
-      {% endif %}
       <a href="{{ settings.whatsapp_url or '#' }}" aria-label="WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>
       <a href="{{ settings.facebook_url or '#' }}" aria-label="Facebook"><i class="fa-brands fa-facebook-f"></i></a>
       <a href="{{ settings.telegram_url or '#' }}" aria-label="Telegram"><i class="fa-brands fa-telegram"></i></a>
-      {% if not result %}
       <a href="{{ settings.school_website or '#' }}" aria-label="Website"><i class="fa-solid fa-globe"></i></a>
-      {% endif %}
       <a href="{{ settings.email_url or '#' }}" aria-label="Gmail"><i class="fa-solid fa-envelope"></i></a>
-      {% if not result %}
       <a href="{{ settings.maps_url or '#' }}" aria-label="Map"><i class="fa-solid fa-map-location-dot"></i></a>
-      {% endif %}
     </div>
   </footer>
+  {% endif %}
   {% if result %}
     <script>
       (() => {

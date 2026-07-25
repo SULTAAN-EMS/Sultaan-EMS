@@ -338,17 +338,13 @@
         </div>
       </section>
 
-      <!-- Footer -->
+      <!-- Footer (kept for structural spacing; actual copyright in premium footer below) -->
       <footer class="verification-footer">
         <div class="verification-footer-content">
           <div class="verification-footer-icon">
             <i class="fa-solid fa-shield-check"></i>
           </div>
           <p>This student ID has been officially verified by {{ settings.school_name }}.</p>
-          <div class="footer-copyright">
-            <i class="fa-solid fa-copyright"></i>
-            <span>SULTAN | 2026</span>
-          </div>
         </div>
       </footer>
 
@@ -364,5 +360,9 @@
       </section>
     {% endif %}
   </div>
+  {# Premium animated footer for Student ID Verification page #}
+  {% if settings.get('verify_id_show_footer', 'on') != 'off' %}
+    {% include 'partials/premium_footer.html' %}
+  {% endif %}
 </main>
 {% endblock %}
