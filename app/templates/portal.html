@@ -388,6 +388,7 @@
     </section>
   {% endif %}
 
+<<<<<<< HEAD
   {% if result %}
     {# Premium animated footer for Student Result page #}
     {% if settings.get('show_footer', 'on') != 'off' %}
@@ -406,6 +407,10 @@
     </div>
   </footer>
   {% endif %}
+=======
+  {% set f_settings = settings %}
+  {% include 'partials/sultan_footer.html' %}
+>>>>>>> fad8a62 (Major update: Results Hub, Incident Management, UI enhancements, bug fixes, and security improvements)
   {% if result %}
     <script>
       (() => {

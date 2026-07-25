@@ -362,37 +362,7 @@
     </div>
   </form>
   
-  {% if incident_settings.get('show_footer') == 'true' %}
-  <style>
-    :root {
-      --bg-start: {{ incident_settings.get('footer_bg_start', '#071931') }};
-      --bg-end: {{ incident_settings.get('footer_bg_end', '#0c3366') }};
-      --gold: {{ incident_settings.get('footer_gold', '#C9A227') }};
-      --teal: {{ incident_settings.get('footer_teal', '#1B998B') }};
-    }
-  </style>
-  <footer class="sultan-premium-footer">
-    <!-- 2. Rotating Gradient Ring with Logo/Fallback -->
-    <div class="footer-logo-ring-container">
-      <div class="footer-logo-ring"></div>
-      <div class="footer-logo-inner">
-        {% if incident_settings.get('footer_logo_path') %}
-        <img id="footerLogo" src="{{ asset_url(incident_settings.get('footer_logo_path')) }}" alt="Logo">
-        {% else %}
-        <span id="footerFallback"><i class="fa-solid fa-shield-halved"></i></span>
-        <img id="footerLogo" src="" alt="Logo" style="display: none;">
-        {% endif %}
-      </div>
-    </div>
-
-    <!-- 3. Copyright Text & Subtitle -->
-    <div class="footer-text-block">
-      <div class="copyright-wrapper">
-        <span class="copyright-shimmer {% if incident_settings.get('footer_shimmer_enabled') == 'true' %}shimmer{% endif %}" id="customizable-copyright">{{ incident_settings.get('footer_copyright_text', '© SULTAAN EMS') }} | {{ incident_settings.get('footer_year', '2026') }}</span>
-      </div>
-    </div>
-  </footer>
-  {% endif %}
+  {% include 'partials/sultan_footer.html' %}
 </div>
 
 <div class="incident-submit-overlay" id="incidentSubmitOverlay" aria-hidden="true" role="status" aria-live="polite">

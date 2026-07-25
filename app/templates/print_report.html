@@ -150,10 +150,8 @@
       </div>
     </section>
 
-    <footer class="tis-print-footer">
-      {% if result.settings.print_footer_logo %}<img src="{{ asset_url(result.settings.print_footer_logo) }}" alt="Footer logo">{% endif %}
-      <span>{{ result.settings.report_footer_text or result.settings.school_footer }}</span>
-    </footer>
+    {% set f_settings = result.settings %}
+    {% include 'partials/sultan_footer.html' %}
   </article>
   <script>
     function prepareReportPrint() {

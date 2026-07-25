@@ -3,6 +3,7 @@
 {% block body_class %}public-body verification-id-body{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/verification-id.css') }}">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --verification-primary: {{ settings.verify_id_header_primary or '#2563eb' }};
@@ -338,6 +339,7 @@
         </div>
       </section>
 
+<<<<<<< HEAD
       <!-- Footer (kept for structural spacing; actual copyright in premium footer below) -->
       <footer class="verification-footer">
         <div class="verification-footer-content">
@@ -347,6 +349,10 @@
           <p>This student ID has been officially verified by {{ settings.school_name }}.</p>
         </div>
       </footer>
+=======
+      <!-- Footer -->
+      {% include 'partials/sultan_footer.html' %}
+>>>>>>> fad8a62 (Major update: Results Hub, Incident Management, UI enhancements, bug fixes, and security improvements)
 
     {% else %}
       <!-- Invalid State -->

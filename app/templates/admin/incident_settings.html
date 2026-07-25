@@ -39,6 +39,10 @@
       <i class="fa-solid fa-sliders"></i>
       <span>General</span>
     </button>
+    <button class="tab-btn" data-tab="master-data">
+      <i class="fa-solid fa-database"></i>
+      <span>Master Data</span>
+    </button>
     <button class="tab-btn active" data-tab="fields">
       <i class="fa-solid fa-eye"></i>
       <span>Fields</span>
@@ -492,354 +496,170 @@
           </div>
         </div>
 
-        <!-- Labels Tab -->
-        <div class="tab-content" id="tab-labels">
-          <div class="settings-card">
-            <div class="card-header">
-              <i class="fa-solid fa-font"></i>
-              <div class="header-text">
-                <h3>Field Labels</h3>
-                <p>Customize the labels for form fields</p>
-              </div>
-            </div>
-            <div class="card-body">
-              <div class="labels-grid">
-                {% for setting in grouped_settings.get('labels', []) %}
-                <div class="input-group">
-                  <label for="setting_{{ setting.setting_key }}">{{ setting.description }}</label>
-                  <div class="input-wrapper">
-                    <i class="fa-solid fa-tag input-icon"></i>
-                    <input type="text" id="setting_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" placeholder="Enter label text">
-                  </div>
-                </div>
-                {% endfor %}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Styling Tab -->
-        <div class="tab-content" id="tab-styling">
-          <!-- Colors Card -->
-          <div class="settings-card">
-            <div class="card-header">
-              <i class="fa-solid fa-palette"></i>
-              <div class="header-text">
-                <h3>Colors</h3>
-                <p>Customize the color scheme for incident reports</p>
-              </div>
-            </div>
-            <div class="card-body">
-              <div class="colors-grid">
-                {% for setting in grouped_settings.get('styling', []) %}
-                {% if 'color' in setting.setting_key.lower() or setting.setting_key in ['primary_color', 'secondary_color', 'background_color', 'card_background', 'success_color', 'warning_color', 'danger_color', 'info_color', 'text_color', 'border_color'] %}
-                <div class="color-item">
-                  <label for="setting_{{ setting.setting_key }}">{{ setting.description }}</label>
-                  <div class="color-picker-wrapper">
-                    <div class="color-preview" id="preview_{{ setting.setting_key }}" style="background-color: {{ setting.setting_value }};"></div>
-                    <input type="color" id="color_{{ setting.setting_key }}" value="{{ setting.setting_value }}" onchange="updateColor('{{ setting.setting_key }}', this.value)">
-                    <div class="color-input-wrapper">
-                      <i class="fa-solid fa-hashtag color-icon"></i>
-                      <input type="text" id="setting_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" onchange="updateColorFromHex('{{ setting.setting_key }}', this.value)">
-                    </div>
-                    <button type="button" class="btn-reset-color" onclick="resetColor('{{ setting.setting_key }}', '{{ setting.setting_value }}')">
-                      <i class="fa-solid fa-rotate-left"></i>
-                    </button>
-                  </div>
-                </div>
-                {% endif %}
-                {% endfor %}
-              </div>
-            </div>
-          </div>
-
-          <!-- Template Style Card -->
-          <div class="settings-card">
-            <div class="card-header">
-              <i class="fa-solid fa-wand-magic-sparkles"></i>
-              <div class="header-text">
-                <h3>Template Style</h3>
-                <p>Choose the visual template for incident reports</p>
-              </div>
-            </div>
-            <div class="card-body">
-              <div class="template-grid">
-                {% for setting in grouped_settings.get('styling', []) %}
-                {% if 'template' in setting.setting_key.lower() %}
-                <div class="template-option {% if setting.setting_value == 'modern' %}selected{% endif %}" data-template="modern" onclick="selectTemplate('modern')">
-                  <div class="template-preview modern"></div>
-                  <span class="template-name">Modern</span>
-                  <i class="fa-solid fa-check template-check"></i>
-                </div>
-                <div class="template-option {% if setting.setting_value == 'classic' %}selected{% endif %}" data-template="classic" onclick="selectTemplate('classic')">
-                  <div class="template-preview classic"></div>
-                  <span class="template-name">Classic</span>
-                  <i class="fa-solid fa-check template-check"></i>
-                </div>
-                <div class="template-option {% if setting.setting_value == 'premium' %}selected{% endif %}" data-template="premium" onclick="selectTemplate('premium')">
-                  <div class="template-preview premium"></div>
-                  <span class="template-name">Premium</span>
-                  <i class="fa-solid fa-check template-check"></i>
-                </div>
-                <div class="template-option {% if setting.setting_value == 'government' %}selected{% endif %}" data-template="government" onclick="selectTemplate('government')">
-                  <div class="template-preview government"></div>
-                  <span class="template-name">Government</span>
-                  <i class="fa-solid fa-check template-check"></i>
-                </div>
-                <div class="template-option {% if setting.setting_value == 'university' %}selected{% endif %}" data-template="university" onclick="selectTemplate('university')">
-                  <div class="template-preview university"></div>
-                  <span class="template-name">University</span>
-                  <i class="fa-solid fa-check template-check"></i>
-                </div>
-                <input type="hidden" id="setting_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}">
-                {% endif %}
-                {% endfor %}
-              </div>
-              <div class="template-note">
-                <i class="fa-solid fa-info-circle"></i>
-                Changes to colors and styling will be applied to the selected template immediately.
-              </div>
-            </div>
-          </div>
-
-          <!-- Typography Card -->
-          <div class="settings-card">
-            <div class="card-header">
-              <i class="fa-solid fa-text-height"></i>
-              <div class="header-text">
-                <h3>Typography Settings</h3>
-                <p>Configure font family and sizes</p>
-              </div>
-            </div>
-            <div class="card-body">
-              {% for setting in grouped_settings.get('styling', []) %}
-              {% if 'font' in setting.setting_key.lower() or 'size' in setting.setting_key.lower() or 'weight' in setting.setting_key.lower() %}
-              <div class="input-group">
-                <label for="setting_{{ setting.setting_key }}">{{ setting.description }}</label>
-                {% if 'family' in setting.setting_key.lower() %}
-                <div class="input-wrapper">
-                  <i class="fa-solid fa-font input-icon"></i>
-                  <select id="setting_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}">
-                    <option value="Inter" {% if setting.setting_value == 'Inter' %}selected{% endif %}>Inter</option>
-                    <option value="Roboto" {% if setting.setting_value == 'Roboto' %}selected{% endif %}>Roboto</option>
-                    <option value="Open Sans" {% if setting.setting_value == 'Open Sans' %}selected{% endif %}>Open Sans</option>
-                    <option value="Lato" {% if setting.setting_value == 'Lato' %}selected{% endif %}>Lato</option>
-                    <option value="Montserrat" {% if setting.setting_value == 'Montserrat' %}selected{% endif %}>Montserrat</option>
-                    <option value="Poppins" {% if setting.setting_value == 'Poppins' %}selected{% endif %}>Poppins</option>
-                  </select>
-                </div>
-                {% elif 'size' in setting.setting_key.lower() %}
-                <div class="slider-wrapper">
-                  <input type="range" id="slider_{{ setting.setting_key }}" min="12" max="24" value="{{ setting.setting_value|default(15) }}" oninput="updateFontSize('{{ setting.setting_key }}', this.value)">
-                  <span class="slider-value" id="value_{{ setting.setting_key }}">{{ setting.setting_value|default(15) }}px</span>
-                  <input type="hidden" id="setting_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value|default(15) }}">
-                </div>
-                {% else %}
-                <div class="input-wrapper">
-                  <i class="fa-solid fa-weight-hanging input-icon"></i>
-                  <select id="setting_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}">
-                    <option value="300" {% if setting.setting_value == '300' %}selected{% endif %}>300 (Light)</option>
-                    <option value="400" {% if setting.setting_value == '400' %}selected{% endif %}>400 (Regular)</option>
-                    <option value="500" {% if setting.setting_value == '500' %}selected{% endif %}>500 (Medium)</option>
-                    <option value="600" {% if setting.setting_value == '600' %}selected{% endif %}>600 (Semi Bold)</option>
-                    <option value="700" {% if setting.setting_value == '700' %}selected{% endif %}>700 (Bold)</option>
-                  </select>
-                </div>
-                {% endif %}
-              </div>
-              {% endif %}
-              {% endfor %}
-            </div>
-          </div>
-
-          <!-- Additional Options Card -->
-          <div class="settings-card">
-            <div class="card-header">
-              <i class="fa-solid fa-code"></i>
-              <div class="header-text">
-                <h3>Additional Options</h3>
-                <p>Advanced customization options</p>
-              </div>
-            </div>
-            <div class="card-body">
-              {% for setting in grouped_settings.get('styling', []) %}
-              {% if setting.setting_type == 'json' or 'css' in setting.setting_key.lower() %}
-              <div class="input-group">
-                <label for="setting_{{ setting.setting_key }}">Custom CSS (Advanced)</label>
-                <div class="textarea-wrapper">
-                  <i class="fa-solid fa-code textarea-icon"></i>
-                  <textarea id="setting_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}" rows="6" placeholder="Enter custom CSS rules (optional)...">{{ setting.setting_value }}</textarea>
-                </div>
-              </div>
-              {% endif %}
-              {% endfor %}
-            </div>
-          </div>
-        </div>
-
       </form>
 
-        <!-- Independent Lookup Architecture Modules -->
-        <section id="incident-management" class="lookup-management-panel">
-          <div class="lookup-management-hero">
-            <div class="lookup-management-icon">
-              <i class="fa-solid fa-layer-group"></i>
+        <!-- Master Data Tab -->
+        <div class="tab-content" id="tab-master-data">
+          <section id="incident-management" class="lookup-management-panel">
+            <div class="lookup-management-hero">
+              <div class="lookup-management-icon">
+                <i class="fa-solid fa-layer-group"></i>
+              </div>
+              <div>
+                <span class="lookup-eyebrow">Enterprise Master Data</span>
+                <h2>Incident Categories, Severity Levels & Action Tokens</h2>
+                <p>Single source of truth for managing examination incident lookup entities. System-wide instant synchronization.</p>
+              </div>
             </div>
-            <div>
-              <span class="lookup-eyebrow">Enterprise Administration</span>
-              <h2>Categories, Severity Levels & Action Tokens</h2>
-              <p>Independent architecture modules for managing examination incident entities and descriptions.</p>
-            </div>
-          </div>
-          <div id="lookupSaveStatus" class="lookup-save-status" role="status" aria-live="polite" hidden></div>
-          
-          <div class="lookup-management-grid">
+            <div id="lookupSaveStatus" class="lookup-save-status" role="status" aria-live="polite" hidden></div>
             
-            <!-- Category Management Module -->
-            <div id="module-category-management" class="settings-card category-card independent-module">
-              <div class="card-header">
-                <i class="fa-solid fa-tags"></i>
-                <div class="header-text">
-                  <h3>Category Management</h3>
-                  <p>Independent CRUD workflow and description architecture for incident categories</p>
+            <div class="lookup-management-grid">
+              
+              <!-- Category Management Module -->
+              <div id="module-category-management" class="settings-card category-card independent-module">
+                <div class="card-header">
+                  <i class="fa-solid fa-tags"></i>
+                  <div class="header-text">
+                    <h3>Incident Categories</h3>
+                    <p>Manage master categories for classifying examination incident reports</p>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <form method="POST" action="{{ url_for('admin.incident_lookup_create', kind='category') }}" class="lookup-add-row-vertical">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="module-input-row">
+                      <input type="text" name="name" placeholder="Category Name (e.g. Unauthorized Material)" required class="modern-input">
+                      <input type="number" name="sort_order" value="0" min="0" title="Sort order" class="modern-input sort-input">
+                      <label class="lookup-active"><input type="checkbox" name="is_active" checked> Active</label>
+                    </div>
+                    <div class="module-desc-row">
+                      <input type="text" name="description" placeholder="Category Description / Policy Details (optional)" class="modern-input desc-input">
+                      <button type="submit" class="btn-add-category"><i class="fa-solid fa-plus"></i> Add Category</button>
+                    </div>
+                  </form>
+                  <div class="categories-list">
+                    {% for row in categories %}
+                    <div class="category-item-card">
+                      <form method="POST" action="{{ url_for('admin.incident_lookup_update', kind='category', row_id=row.id) }}" class="lookup-edit-form-vertical">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="item-main-row">
+                          <i class="fa-solid fa-tag item-icon"></i>
+                          <input class="category-name-input modern-input" name="name" value="{{ row.name }}" required placeholder="Category Name">
+                          <input class="category-sort-input modern-input sort-input" type="number" name="sort_order" value="{{ row.sort_order }}" min="0" title="Sort order">
+                          <label class="lookup-active"><input type="checkbox" name="is_active" {% if row.is_active %}checked{% endif %}> Active</label>
+                          <button type="submit" class="btn-edit" title="Save Category"><i class="fa-solid fa-floppy-disk"></i></button>
+                        </div>
+                        <div class="item-desc-row">
+                          <input class="modern-input desc-input" name="description" value="{{ row.description or '' }}" placeholder="Category Description / Policy Details...">
+                        </div>
+                      </form>
+                      <form method="POST" action="{{ url_for('admin.incident_lookup_delete', kind='category', row_id=row.id) }}" class="lookup-delete-form" data-confirm="Delete category '{{ row.name }}'? Existing reports will remain protected.">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn-delete" title="Delete Category"><i class="fa-solid fa-trash"></i></button>
+                      </form>
+                    </div>
+                    {% endfor %}
+                  </div>
                 </div>
               </div>
-              <div class="card-body">
-                <form method="POST" action="{{ url_for('admin.incident_lookup_create', kind='category') }}" class="lookup-add-row-vertical">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <div class="module-input-row">
-                    <input type="text" name="name" placeholder="Category Name (e.g. Unauthorized Material)" required class="modern-input">
+
+              <!-- Severity Level Management Module -->
+              <div id="module-severity-management" class="settings-card severity-card independent-module">
+                <div class="card-header">
+                  <i class="fa-solid fa-circle-exclamation"></i>
+                  <div class="header-text">
+                    <h3>Severity Levels</h3>
+                    <p>Configure identity color mappings and thresholds for incident severities</p>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <form method="POST" action="{{ url_for('admin.incident_lookup_create', kind='severity') }}" class="lookup-add-row">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="text" name="name" placeholder="Severity Name (e.g. Minor, Critical)" required class="modern-input">
+                    <div class="color-picker-group">
+                      <input type="color" name="color" value="#10b981" title="Identity Color" class="color-input">
+                    </div>
                     <input type="number" name="sort_order" value="0" min="0" title="Sort order" class="modern-input sort-input">
                     <label class="lookup-active"><input type="checkbox" name="is_active" checked> Active</label>
+                    <button type="submit" class="btn-add-category"><i class="fa-solid fa-plus"></i> Add Severity</button>
+                  </form>
+                  <div class="categories-list">
+                    {% for row in severities %}
+                    <div class="category-item-card">
+                      <form method="POST" action="{{ url_for('admin.incident_lookup_update', kind='severity', row_id=row.id) }}" class="lookup-edit-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="category-info">
+                          <span class="severity-preview-pill" style="--pill-color: {{ row.color or '#64748b' }};"></span>
+                          <input class="category-name-input modern-input" name="name" value="{{ row.name }}" required>
+                          <input type="color" name="color" value="{{ row.color or '#64748b' }}" title="Identity Color" class="color-input">
+                          <input class="category-sort-input modern-input sort-input" type="number" name="sort_order" value="{{ row.sort_order }}" min="0" title="Sort order">
+                          <label class="lookup-active"><input type="checkbox" name="is_active" {% if row.is_active %}checked{% endif %}> Active</label>
+                        </div>
+                        <div class="category-actions">
+                          <button type="submit" class="btn-edit" title="Save Severity"><i class="fa-solid fa-floppy-disk"></i></button>
+                        </div>
+                      </form>
+                      <form method="POST" action="{{ url_for('admin.incident_lookup_delete', kind='severity', row_id=row.id) }}" class="lookup-delete-form" data-confirm="Delete severity level '{{ row.name }}'? Existing reports will remain protected.">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn-delete" title="Delete Severity"><i class="fa-solid fa-trash"></i></button>
+                      </form>
+                    </div>
+                    {% endfor %}
                   </div>
-                  <div class="module-desc-row">
-                    <input type="text" name="description" placeholder="Category Description / Policy Details (optional)" class="modern-input desc-input">
-                    <button type="submit" class="btn-add-category"><i class="fa-solid fa-plus"></i> Add Category</button>
-                  </div>
-                </form>
-                <div class="categories-list">
-                  {% for row in categories %}
-                  <div class="category-item-card">
-                    <form method="POST" action="{{ url_for('admin.incident_lookup_update', kind='category', row_id=row.id) }}" class="lookup-edit-form-vertical">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <div class="item-main-row">
-                        <i class="fa-solid fa-tag item-icon"></i>
-                        <input class="category-name-input modern-input" name="name" value="{{ row.name }}" required placeholder="Category Name">
-                        <input class="category-sort-input modern-input sort-input" type="number" name="sort_order" value="{{ row.sort_order }}" min="0" title="Sort order">
-                        <label class="lookup-active"><input type="checkbox" name="is_active" {% if row.is_active %}checked{% endif %}> Active</label>
-                        <button type="submit" class="btn-edit" title="Save Category"><i class="fa-solid fa-floppy-disk"></i></button>
-                      </div>
-                      <div class="item-desc-row">
-                        <input class="modern-input desc-input" name="description" value="{{ row.description or '' }}" placeholder="Category Description / Policy Details...">
-                      </div>
-                    </form>
-                    <form method="POST" action="{{ url_for('admin.incident_lookup_delete', kind='category', row_id=row.id) }}" class="lookup-delete-form" data-confirm="Delete category '{{ row.name }}'? Existing reports will remain protected.">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <button type="submit" class="btn-delete" title="Delete Category"><i class="fa-solid fa-trash"></i></button>
-                    </form>
-                  </div>
-                  {% endfor %}
                 </div>
               </div>
-            </div>
 
-            <!-- Severity Level Management Module -->
-            <div id="module-severity-management" class="settings-card severity-card independent-module">
-              <div class="card-header">
-                <i class="fa-solid fa-circle-exclamation"></i>
-                <div class="header-text">
-                  <h3>Severity Levels</h3>
-                  <p>Configure identity color mappings and thresholds for incident severities</p>
+              <!-- Action Token Management Module -->
+              <div id="module-action-management" class="settings-card action-card independent-module">
+                <div class="card-header">
+                  <i class="fa-solid fa-list-check"></i>
+                  <div class="header-text">
+                    <h3>Action Tokens</h3>
+                    <p>Manage invigilator action tokens and standard resolution protocols</p>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <form method="POST" action="{{ url_for('admin.incident_lookup_create', kind='action') }}" class="lookup-add-row-vertical">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="module-input-row">
+                      <input type="text" name="name" placeholder="Action Name (e.g. Paper Confiscated)" required class="modern-input">
+                      <input type="number" name="sort_order" value="0" min="0" title="Sort order" class="modern-input sort-input">
+                      <label class="lookup-active"><input type="checkbox" name="is_active" checked> Active</label>
+                    </div>
+                    <div class="module-desc-row">
+                      <input type="text" name="description" placeholder="Action Token Description / Standard Protocol (optional)" class="modern-input desc-input">
+                      <button type="submit" class="btn-add-category"><i class="fa-solid fa-plus"></i> Add Action Token</button>
+                    </div>
+                  </form>
+                  <div class="categories-list">
+                    {% for row in actions %}
+                    <div class="category-item-card">
+                      <form method="POST" action="{{ url_for('admin.incident_lookup_update', kind='action', row_id=row.id) }}" class="lookup-edit-form-vertical">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="item-main-row">
+                          <i class="fa-solid fa-check-to-slot item-icon"></i>
+                          <input class="category-name-input modern-input" name="name" value="{{ row.name }}" required placeholder="Action Token Name">
+                          <input class="category-sort-input modern-input sort-input" type="number" name="sort_order" value="{{ row.sort_order }}" min="0" title="Sort order">
+                          <label class="lookup-active"><input type="checkbox" name="is_active" {% if row.is_active %}checked{% endif %}> Active</label>
+                          <button type="submit" class="btn-edit" title="Save Action Token"><i class="fa-solid fa-floppy-disk"></i></button>
+                        </div>
+                        <div class="item-desc-row">
+                          <input class="modern-input desc-input" name="description" value="{{ row.description or '' }}" placeholder="Action Token Description / Protocol Details...">
+                        </div>
+                      </form>
+                      <form method="POST" action="{{ url_for('admin.incident_lookup_delete', kind='action', row_id=row.id) }}" class="lookup-delete-form" data-confirm="Delete action token '{{ row.name }}'? Existing reports will remain protected.">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn-delete" title="Delete Action Token"><i class="fa-solid fa-trash"></i></button>
+                      </form>
+                    </div>
+                    {% endfor %}
+                  </div>
                 </div>
               </div>
-              <div class="card-body">
-                <form method="POST" action="{{ url_for('admin.incident_lookup_create', kind='severity') }}" class="lookup-add-row">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <input type="text" name="name" placeholder="Severity Name (e.g. Minor, Critical)" required class="modern-input">
-                  <div class="color-picker-group">
-                    <input type="color" name="color" value="#10b981" title="Identity Color" class="color-input">
-                  </div>
-                  <input type="number" name="sort_order" value="0" min="0" title="Sort order" class="modern-input sort-input">
-                  <label class="lookup-active"><input type="checkbox" name="is_active" checked> Active</label>
-                  <button type="submit" class="btn-add-category"><i class="fa-solid fa-plus"></i> Add Severity</button>
-                </form>
-                <div class="categories-list">
-                  {% for row in severities %}
-                  <div class="category-item-card">
-                    <form method="POST" action="{{ url_for('admin.incident_lookup_update', kind='severity', row_id=row.id) }}" class="lookup-edit-form">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <div class="category-info">
-                        <span class="severity-preview-pill" style="--pill-color: {{ row.color or '#64748b' }};"></span>
-                        <input class="category-name-input modern-input" name="name" value="{{ row.name }}" required>
-                        <input type="color" name="color" value="{{ row.color or '#64748b' }}" title="Identity Color" class="color-input">
-                        <input class="category-sort-input modern-input sort-input" type="number" name="sort_order" value="{{ row.sort_order }}" min="0" title="Sort order">
-                        <label class="lookup-active"><input type="checkbox" name="is_active" {% if row.is_active %}checked{% endif %}> Active</label>
-                      </div>
-                      <div class="category-actions">
-                        <button type="submit" class="btn-edit" title="Save Severity"><i class="fa-solid fa-floppy-disk"></i></button>
-                      </div>
-                    </form>
-                    <form method="POST" action="{{ url_for('admin.incident_lookup_delete', kind='severity', row_id=row.id) }}" class="lookup-delete-form" data-confirm="Delete severity level '{{ row.name }}'? Existing reports will remain protected.">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <button type="submit" class="btn-delete" title="Delete Severity"><i class="fa-solid fa-trash"></i></button>
-                    </form>
-                  </div>
-                  {% endfor %}
-                </div>
-              </div>
-            </div>
 
-            <!-- Action Token Management Module -->
-            <div id="module-action-management" class="settings-card action-card independent-module">
-              <div class="card-header">
-                <i class="fa-solid fa-list-check"></i>
-                <div class="header-text">
-                  <h3>Action Tokens</h3>
-                  <p>Independent CRUD workflow and description architecture for invigilator action tokens</p>
-                </div>
-              </div>
-              <div class="card-body">
-                <form method="POST" action="{{ url_for('admin.incident_lookup_create', kind='action') }}" class="lookup-add-row-vertical">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <div class="module-input-row">
-                    <input type="text" name="name" placeholder="Action Name (e.g. Paper Confiscated)" required class="modern-input">
-                    <input type="number" name="sort_order" value="0" min="0" title="Sort order" class="modern-input sort-input">
-                    <label class="lookup-active"><input type="checkbox" name="is_active" checked> Active</label>
-                  </div>
-                  <div class="module-desc-row">
-                    <input type="text" name="description" placeholder="Action Token Description / Standard Protocol (optional)" class="modern-input desc-input">
-                    <button type="submit" class="btn-add-category"><i class="fa-solid fa-plus"></i> Add Action Token</button>
-                  </div>
-                </form>
-                <div class="categories-list">
-                  {% for row in actions %}
-                  <div class="category-item-card">
-                    <form method="POST" action="{{ url_for('admin.incident_lookup_update', kind='action', row_id=row.id) }}" class="lookup-edit-form-vertical">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <div class="item-main-row">
-                        <i class="fa-solid fa-check-to-slot item-icon"></i>
-                        <input class="category-name-input modern-input" name="name" value="{{ row.name }}" required placeholder="Action Token Name">
-                        <input class="category-sort-input modern-input sort-input" type="number" name="sort_order" value="{{ row.sort_order }}" min="0" title="Sort order">
-                        <label class="lookup-active"><input type="checkbox" name="is_active" {% if row.is_active %}checked{% endif %}> Active</label>
-                        <button type="submit" class="btn-edit" title="Save Action Token"><i class="fa-solid fa-floppy-disk"></i></button>
-                      </div>
-                      <div class="item-desc-row">
-                        <input class="modern-input desc-input" name="description" value="{{ row.description or '' }}" placeholder="Action Token Description / Protocol Details...">
-                      </div>
-                    </form>
-                    <form method="POST" action="{{ url_for('admin.incident_lookup_delete', kind='action', row_id=row.id) }}" class="lookup-delete-form" data-confirm="Delete action token '{{ row.name }}'? Existing reports will remain protected.">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <button type="submit" class="btn-delete" title="Delete Action Token"><i class="fa-solid fa-trash"></i></button>
-                    </form>
-                  </div>
-                  {% endfor %}
-                </div>
-              </div>
             </div>
-
-          </div>
-        </section>
-    </div>
+          </section>
+        </div></div>
 
   <!-- Footer Info -->
   <div class="settings-footer">
@@ -2264,11 +2084,11 @@ document.addEventListener('DOMContentLoaded', function() {
   updatePreview();
   const activeTab = document.querySelector('.tab-btn.active')?.getAttribute('data-tab') || 'fields';
   syncRelatedPanels(activeTab);
-  if (window.location.hash === '#incident-management') {
-    const labelsTab = document.querySelector('.tab-btn[data-tab="labels"]');
-    if (labelsTab) {
-      labelsTab.click();
-      document.getElementById('incident-management')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (window.location.hash === '#incident-management' || window.location.hash === '#master-data') {
+    const masterDataTab = document.querySelector('.tab-btn[data-tab="master-data"]');
+    if (masterDataTab) {
+      masterDataTab.click();
+      document.getElementById('tab-master-data')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }
 });

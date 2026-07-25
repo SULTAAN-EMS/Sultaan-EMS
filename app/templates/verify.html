@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ settings.verify_page_title if verified else _('Invalid Result') }}{% endblock %}
-{% block body_class %}public-body verification-public-body{% endblock %}
+{% block extra_head %}
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+{% endblock %}
 {% block content %}
 <main class="verification-page preset-{{ settings.verify_design_preset }} badge-style-{{ settings.verify_badge_style }} badge-theme-{{ settings.verify_theme }}"
   style="
@@ -122,6 +124,7 @@
         </div>
       </section>
 
+<<<<<<< HEAD
       <footer class="verification-footer-card" style="order: {{ [verify_order.index('footer') + 1, 5]|max if 'footer' in verify_order else 5 }}; display: grid !important;">
         <div class="verification-seal" style="display: grid !important;">
           {% if settings.school_stamp_path %}
@@ -138,6 +141,9 @@
           <small>{{ settings.verify_page_footer_text }}</small>
         </div>
       </footer>
+=======
+      {% include 'partials/sultan_footer.html' %}
+>>>>>>> fad8a62 (Major update: Results Hub, Incident Management, UI enhancements, bug fixes, and security improvements)
     {% else %}
       <section class="verification-status-card invalid-state">
         <div class="verification-success-badge invalid-badge"><i class="fa-solid fa-xmark"></i><span></span></div>
