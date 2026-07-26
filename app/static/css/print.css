@@ -518,20 +518,21 @@ body {
 }
 .print-grade-badge {
   display: inline-grid;
-  min-width: 9mm;
+  min-width: 7.5mm;
   max-width: 100%;
   place-items: center;
-  padding: .8mm 1.6mm;
+  padding: .6mm 1.2mm;
   border: .25mm solid;
   border-radius: 99mm;
   font-weight: 900;
+  font-size: 8pt;
   box-sizing: border-box;
 }
 /* Print Mark badge: same pill as Grade, sized for numeric values */
 .print-mark-badge {
   min-width: 0;
-  padding: .6mm 1.2mm;
-  font-size: 6.6pt;
+  padding: .5mm 1mm;
+  font-size: 7.4pt;
   font-variant-numeric: tabular-nums;
   letter-spacing: .01em;
   white-space: nowrap;

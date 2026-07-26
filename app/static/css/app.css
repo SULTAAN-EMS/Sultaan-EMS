@@ -4898,10 +4898,11 @@ tbody tr:hover td { background: #f8fbff; }
   vertical-align: middle;
 }
 .dynamic-grade-badge b {
-  min-width: 30px;
-  padding: 3px 8px;
+  min-width: 26px;
+  padding: 3px 7px;
   border-radius: 999px;
   line-height: 1;
+  font-size: .82em;
 }
 /* Mark Obtained badge: same two-layer pill as Grade, but tuned for numbers */
 .dynamic-grade-badge.mark-badge {
@@ -4912,7 +4913,7 @@ tbody tr:hover td { background: #f8fbff; }
 .dynamic-grade-badge.mark-badge b {
   min-width: 0;
   padding: 2.5px 6px;
-  font-size: .78em;
+  font-size: .92em;
   font-variant-numeric: tabular-nums;
   letter-spacing: .01em;
   white-space: nowrap;

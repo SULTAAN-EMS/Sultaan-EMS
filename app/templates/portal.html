@@ -167,6 +167,9 @@
         back.addEventListener('click', () => step(1));
         document.getElementById('selectionWizardForm').addEventListener('submit', event => { if (!selectedYear || !selectedExam) event.preventDefault(); });
         const initial = document.querySelector('.year-choice.is-selected'); if (initial) { selectedYear = initial.dataset.yearId; yearValue.value = selectedYear; loadExams(); step(1); }
+        /* Issue 1 fix: auto-scroll the selection card into viewport center */
+        const sheet = document.querySelector('.selection-bottom-sheet');
+        if (sheet) { setTimeout(() => sheet.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120); }
       })();
     </script>
     {% if false %}
