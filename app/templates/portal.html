@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{{ settings.school_name }} Result Portal{% endblock %}
 {% block body_class %}public-body premium-public-body{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/result-success-overlay.css') }}">
+{% endblock %}
 {% block content %}
 <style>
   .premium-homepage {
@@ -391,10 +394,114 @@
     </section>
   {% endif %}
 
+  {% if result_success_overlay is defined and result_success_overlay %}
+  {% set overlay_tier = result_success_overlay.tier %}
+  <div class="result-success-overlay" id="resultSuccessOverlay" aria-hidden="true" data-duration="{{ result_success_overlay.settings.duration_seconds }}" data-confetti-count="{{ overlay_tier.confetti_count }}" data-accent-a="{{ overlay_tier.accent_a }}" data-accent-b="{{ overlay_tier.accent_b }}">
+    <article class="ov-card" role="dialog" aria-modal="true" aria-label="Student result success" style="--tint1:{{ overlay_tier.tint1 }};--bgA:{{ overlay_tier.bg_a }};--bgB:{{ overlay_tier.bg_b }};--border:{{ overlay_tier.border }};--ring:{{ overlay_tier.ring }};--iconBg:{{ overlay_tier.icon_bg }};--glow:{{ overlay_tier.glow }};--titleColor:{{ overlay_tier.title_color }};--tierBg:{{ overlay_tier.tier_bg }};--tierColor:{{ overlay_tier.tier_color }};--tierBorder:{{ overlay_tier.tier_border }};--nameA:{{ overlay_tier.name_a }};--nameB:{{ overlay_tier.name_b }};">
+      {% if result_success_overlay.settings.allow_manual_close %}
+      <button type="button" class="result-overlay-close" id="resultSuccessOverlayClose" aria-label="Close success overlay"><i class="fa-solid fa-xmark"></i></button>
+      {% endif %}
+      <canvas class="result-overlay-confetti" id="resultSuccessOverlayConfetti" aria-hidden="true"></canvas>
+      <span class="tier-pill">{{ overlay_tier.pill_icon|safe }} {{ overlay_tier.pill }}</span>
+      <div class="icon-stage"><span class="icon-bg-circle"></span><span class="ring"></span><span class="ring r2"></span><span class="icon">{{ overlay_tier.icon|safe }}</span></div>
+      <h2 class="ov-title">{{ result_success_overlay.title }}</h2>
+      <p class="ov-sub">{{ result_success_overlay.subtitle }}</p>
+      <p class="ov-percent">{{ overlay_tier.placement }} &middot; {{ result_success_overlay.average }}% {{ result_success_overlay.labels.average_suffix }}</p>
+      <div class="name-wrap">
+        <div class="name-caption">{{ result_success_overlay.labels.name_caption }}</div>
+        <div class="name-stage"><span class="name-glow-bg"></span><span class="animated-name">{{ result.student.full_name }}</span><span class="name-sweep"></span><span class="name-sparkle left">&#x2726;</span><span class="name-sparkle right">&#x2726;</span></div>
+        <div class="name-underline"></div>
+      </div>
+      {% if result_success_overlay.settings.show_progress_bar %}
+      <div class="result-overlay-progress"><span class="result-overlay-progress-bar" id="resultSuccessOverlayProgress"></span></div>
+      {% endif %}
+    </article>
+  </div>
+  {% endif %}
+
   {% set f_settings = settings %}
   {% include 'partials/sultan_footer.html' %}
   {% if result %}
     <script>
+      (() => {
+        const overlay = document.getElementById("resultSuccessOverlay");
+        if (!overlay) return;
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const duration = Math.min(Math.max(Number(overlay.dataset.duration || 8), 3), 60);
+        const card = overlay.querySelector(".ov-card");
+        const progress = document.getElementById("resultSuccessOverlayProgress");
+        const closeButton = document.getElementById("resultSuccessOverlayClose");
+        let closeTimeout = null;
+        let animationFrame = null;
+        const closeOverlay = () => {
+          window.clearTimeout(closeTimeout);
+          window.cancelAnimationFrame(animationFrame);
+          overlay.classList.remove("is-open");
+          overlay.setAttribute("aria-hidden", "true");
+        };
+        const launchConfetti = () => {
+          const canvas = document.getElementById("resultSuccessOverlayConfetti");
+          const count = Number(overlay.dataset.confettiCount || 0);
+          if (!canvas || !count || reduceMotion) return;
+          const rect = card.getBoundingClientRect();
+          const ratio = Math.min(window.devicePixelRatio || 1, 2);
+          canvas.width = Math.round(rect.width * ratio);
+          canvas.height = Math.round(rect.height * ratio);
+          canvas.style.width = `${rect.width}px`;
+          canvas.style.height = `${rect.height}px`;
+          const context = canvas.getContext("2d");
+          context.scale(ratio, ratio);
+          const colors = [overlay.dataset.accentA, overlay.dataset.accentB, "#ffffff"];
+          const particles = Array.from({ length: count }, () => ({
+            x: rect.width * (.35 + Math.random() * .3),
+            y: rect.height * (.35 + Math.random() * .03),
+            vx: (Math.random() - .5) * 5.4,
+            vy: -1.8 - Math.random() * 4.6,
+            rotation: Math.random() * Math.PI,
+            velocityRotation: (Math.random() - .5) * .15,
+            width: 2 + Math.random() * 3,
+            height: 2 + Math.random() * 3,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            life: 80 + Math.random() * 30,
+          }));
+          let frame = 0;
+          const draw = () => {
+            context.clearRect(0, 0, rect.width, rect.height);
+            particles.forEach((particle) => {
+              particle.x += particle.vx;
+              particle.y += particle.vy;
+              particle.vy += .045 * ratio;
+              particle.rotation += particle.velocityRotation;
+              context.save();
+              context.globalAlpha = Math.max(0, 1 - frame / particle.life);
+              context.translate(particle.x, particle.y);
+              context.rotate(particle.rotation);
+              context.fillStyle = particle.color;
+              context.fillRect(-particle.width / 2, -particle.height / 2, particle.width, particle.height);
+              context.restore();
+            });
+            frame += 1;
+            if (frame < 112) animationFrame = window.requestAnimationFrame(draw);
+          };
+          draw();
+        };
+        const openOverlay = () => {
+          overlay.classList.add("is-open");
+          overlay.setAttribute("aria-hidden", "false");
+          if (progress) {
+            progress.style.transition = "none";
+            progress.style.transform = "scaleX(1)";
+            window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+              progress.style.transition = `transform ${duration}s linear`;
+              progress.style.transform = "scaleX(0)";
+            }));
+          }
+          launchConfetti();
+          closeTimeout = window.setTimeout(closeOverlay, duration * 1000);
+        };
+        closeButton?.addEventListener("click", closeOverlay);
+        window.setTimeout(openOverlay, reduceMotion ? 0 : 220);
+      })();
       (() => {
         const button = document.querySelector(".js-share-result");
         if (!button) return;

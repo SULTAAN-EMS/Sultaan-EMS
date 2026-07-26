@@ -1,0 +1,333 @@
+{% extends "admin/base.html" %}
+{% block page_title %}Result Success Overlay{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/result-success-overlay.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/result-success-overlay-admin.css') }}">
+{% endblock %}
+{% block admin_content %}
+<div class="overlay-admin-shell">
+  <section class="overlay-admin-hero">
+    <div>
+      <div class="overlay-admin-eyebrow"><i class="fa-solid fa-wand-magic-sparkles"></i> Student Portal</div>
+      <h2>Exam-aware success overlay</h2>
+      <p>Control the copy, current template, and timing used when a student opens a published result.</p>
+    </div>
+    <div class="overlay-active-indicator" id="activeTemplateIndicator">
+      <i class="fa-solid fa-circle-check"></i>
+      <span>Active: {{ template_defaults[overlay_settings.active_template].name }}</span>
+    </div>
+  </section>
+
+  <div class="overlay-admin-layout">
+    <section>
+      <div class="overlay-template-grid" id="overlayTemplateGrid">
+        {% for item in templates %}
+        <article class="overlay-template-card {{ 'is-active' if item.is_active else '' }}" data-template-key="{{ item.key }}">
+          <div class="template-card-top">
+            <span class="template-icon"><i class="fa-solid {{ 'fa-trophy' if item.key == 'final' else 'fa-calendar-check' }}"></i></span>
+            <div class="template-copy">
+              <strong>{{ item.name }}</strong>
+              <small class="template-status"><i class="fa-solid {{ 'fa-circle-check' if item.is_active else 'fa-circle' }}"></i><span>{{ 'Active - showing to students' if item.is_active else 'Inactive' }}</span></small>
+            </div>
+            <div class="template-actions">
+              <button type="button" class="edit-toggle" data-edit-toggle="{{ item.key }}" aria-expanded="false" aria-controls="edit-fields-{{ item.key }}" title="Edit overlay copy"><i class="fa-solid fa-pen"></i></button>
+              <label class="template-switch" title="Make {{ item.name }} active">
+                <input type="radio" name="active_template" value="{{ item.key }}" {{ 'checked' if item.is_active else '' }}>
+                <span></span>
+              </label>
+            </div>
+          </div>
+          <div class="edit-fields" id="edit-fields-{{ item.key }}">
+            <label for="overlay-title-{{ item.key }}">Title</label>
+            <input class="field-input overlay-copy-field" id="overlay-title-{{ item.key }}" data-template-key="{{ item.key }}" data-copy-field="title" value="{{ item.title }}" maxlength="180">
+            <label for="overlay-subtitle-{{ item.key }}">Subtitle</label>
+            <input class="field-input overlay-copy-field" id="overlay-subtitle-{{ item.key }}" data-template-key="{{ item.key }}" data-copy-field="subtitle" value="{{ item.subtitle }}" maxlength="280">
+            {% if item.key != 'final' %}<span class="field-help">Promotion language is reserved for the Final template.</span>{% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+
+      <section class="overlay-shared-labels" aria-labelledby="sharedOverlayLabelsTitle">
+        <div class="shared-labels-heading">
+          <div><i class="fa-solid fa-tags"></i></div>
+          <div><h3 id="sharedOverlayLabelsTitle">Shared overlay labels</h3><p>Customize every rank, tier, and supporting label displayed to students.</p></div>
+        </div>
+        <div class="shared-label-grid">
+          {% for key, default in shared_label_defaults.items() %}
+          <label>
+            <span>{{ key.replace('_', ' ').title() }}</span>
+            <input class="field-input shared-overlay-label" data-shared-label="{{ key }}" value="{{ shared_labels[key] }}" maxlength="90">
+          </label>
+          {% endfor %}
+        </div>
+      </section>
+    </section>
+
+    <aside>
+      <section class="overlay-preview-panel">
+        <h3>Live preview</h3>
+        <p>Preview the active template with any ranked position.</p>
+        <div class="preview-position-control">
+          <label for="overlayPreviewPosition">Class position</label>
+          <select id="overlayPreviewPosition">
+            {% for position in range(1, 11) %}<option value="{{ position }}">{{ position }}{% if position == 1 %}st{% elif position == 2 %}nd{% elif position == 3 %}rd{% else %}th{% endif %}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="admin-overlay-preview" id="overlayPreviewCard" aria-live="polite"></div>
+      </section>
+
+      <section class="overlay-timing-card">
+        <h3>Overlay timing</h3>
+        <p>These values are persisted and applied to the student-facing overlay.</p>
+        <div class="duration-row">
+          <input id="overlayDuration" type="range" min="3" max="60" value="{{ overlay_settings.duration_seconds }}" aria-label="Overlay duration in seconds">
+          <output class="duration-value" id="overlayDurationValue">{{ overlay_settings.duration_seconds }}s</output>
+        </div>
+        <div class="timing-switch-row">
+          <div class="timing-switch-copy"><strong>Show progress bar</strong><small>Displays the remaining overlay time.</small></div>
+          <label class="overlay-toggle"><input id="overlayShowProgress" type="checkbox" {{ 'checked' if overlay_settings.show_progress_bar else '' }}><span></span></label>
+        </div>
+        <div class="timing-switch-row">
+          <div class="timing-switch-copy"><strong>Allow manual close</strong><small>Shows a close control to students.</small></div>
+          <label class="overlay-toggle"><input id="overlayAllowClose" type="checkbox" {{ 'checked' if overlay_settings.allow_manual_close else '' }}><span></span></label>
+        </div>
+        <button type="button" class="preview-fullscreen-button" id="previewFullscreenOverlay"><i class="fa-solid fa-magnifying-glass"></i> Preview Full-Screen Overlay</button>
+        <p class="overlay-save-status" id="overlaySaveStatus" aria-live="polite">All overlay settings are saved.</p>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<div id="full-overlay" aria-hidden="true"></div>
+
+<script>
+(() => {
+  const csrfToken = {{ csrf_token()|tojson }};
+  const templateDefaults = {{ template_defaults|tojson }};
+  const previewTiers = {{ preview_tiers|tojson }};
+  const initialTemplates = {{ templates|tojson }};
+  const timingUrl = {{ url_for('admin.update_result_success_overlay_timing')|tojson }};
+  const activateUrl = {{ url_for('admin.activate_result_success_overlay_template')|tojson }};
+  const templateUrl = {{ url_for('admin.update_result_success_overlay_template', template_key='__template__')|tojson }};
+  const sharedLabelsUrl = {{ url_for('admin.update_result_success_overlay_labels')|tojson }};
+  const fullOverlay = document.getElementById('full-overlay');
+  const previewCard = document.getElementById('overlayPreviewCard');
+  const positionInput = document.getElementById('overlayPreviewPosition');
+  const durationInput = document.getElementById('overlayDuration');
+  const durationValue = document.getElementById('overlayDurationValue');
+  const showProgressInput = document.getElementById('overlayShowProgress');
+  const allowCloseInput = document.getElementById('overlayAllowClose');
+  const saveStatus = document.getElementById('overlaySaveStatus');
+  const labelOverrides = new Map(initialTemplates.map((item) => [item.key, { title: item.title, subtitle: item.subtitle }]));
+  const sharedLabels = {{ shared_labels|tojson }};
+  let activeTemplate = {{ overlay_settings.active_template|tojson }};
+  let fullOverlayTimeout = null;
+  let confettiFrame = null;
+
+  const escapeHtml = (value) => String(value || '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
+  const getLabel = (key) => {
+    const defaults = templateDefaults[key];
+    const override = labelOverrides.get(key) || {};
+    return {
+      title: String(override.title || '').trim() || defaults.title,
+      subtitle: String(override.subtitle || '').trim() || defaults.subtitle,
+      name: defaults.name,
+    };
+  };
+  const currentTiming = () => ({
+    duration: Number(durationInput.value || 8),
+    showProgress: showProgressInput.checked,
+    allowClose: allowCloseInput.checked,
+  });
+  const labelsForTier = (tier) => {
+    const position = Number(tier.position);
+    const placementKey = position >= 1 && position <= 10 ? `placement_${position}` : 'placement_result';
+    const pillKey = `pill_${tier.tier || 'result'}`;
+    return {
+      placement: String(sharedLabels[placementKey] || tier.placement),
+      pill: String(sharedLabels[pillKey] || tier.pill),
+      nameCaption: String(sharedLabels.name_caption || 'Student result'),
+      averageSuffix: String(sharedLabels.average_suffix || 'average'),
+    };
+  };
+  const styleForTier = (tier) => [
+    `--tint1:${tier.tint1}`, `--bgA:${tier.bg_a}`, `--bgB:${tier.bg_b}`, `--border:${tier.border}`,
+    `--ring:${tier.ring}`, `--iconBg:${tier.icon_bg}`, `--glow:${tier.glow}`, `--titleColor:${tier.title_color}`,
+    `--tierBg:${tier.tier_bg}`, `--tierColor:${tier.tier_color}`, `--tierBorder:${tier.tier_border}`,
+    `--nameA:${tier.name_a}`, `--nameB:${tier.name_b}`,
+  ].join(';');
+  const overlayMarkup = (templateKey, position, includeClose = false) => {
+    const tier = previewTiers[String(position)] || previewTiers['1'];
+    const label = getLabel(templateKey);
+    const timing = currentTiming();
+    const tierLabels = labelsForTier(tier);
+    return `<article class="ov-card" style="${styleForTier(tier)}" role="dialog" aria-label="Student result success overlay">
+      ${includeClose && timing.allowClose ? '<button type="button" class="result-overlay-close" data-close-overlay aria-label="Close success overlay"><i class="fa-solid fa-xmark"></i></button>' : ''}
+      <canvas class="result-overlay-confetti" aria-hidden="true"></canvas>
+      <span class="tier-pill">${tier.pill_icon} ${escapeHtml(tierLabels.pill)}</span>
+      <div class="icon-stage"><span class="icon-bg-circle"></span><span class="ring"></span><span class="ring r2"></span><span class="icon">${tier.icon}</span></div>
+      <h2 class="ov-title">${escapeHtml(label.title)}</h2>
+      <p class="ov-sub">${escapeHtml(label.subtitle.replace('{exam name}', label.name))}</p>
+      <p class="ov-percent">${escapeHtml(tierLabels.placement)} &middot; 78.45% ${escapeHtml(tierLabels.averageSuffix)}</p>
+      <div class="name-wrap"><div class="name-caption">${escapeHtml(tierLabels.nameCaption)}</div><div class="name-stage"><span class="name-glow-bg"></span><span class="animated-name">Student Name</span><span class="name-sweep"></span><span class="name-sparkle left">&#x2726;</span><span class="name-sparkle right">&#x2726;</span></div><div class="name-underline"></div></div>
+      ${timing.showProgress ? '<div class="result-overlay-progress"><span class="result-overlay-progress-bar"></span></div>' : ''}
+    </article>`;
+  };
+  const renderPreview = () => { previewCard.innerHTML = overlayMarkup(activeTemplate, positionInput.value, false); };
+  const setStatus = (message, state = '') => { saveStatus.textContent = message; saveStatus.className = `overlay-save-status ${state}`; };
+  const postForm = async (url, values) => {
+    const body = new FormData();
+    body.append('csrf_token', csrfToken);
+    Object.entries(values).forEach(([key, value]) => body.append(key, value));
+    const response = await fetch(url, { method: 'POST', body, credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.success) throw new Error(payload.message || 'Unable to save overlay settings.');
+    return payload;
+  };
+  const updateActiveCards = () => {
+    document.querySelectorAll('.overlay-template-card').forEach((card) => {
+      const active = card.dataset.templateKey === activeTemplate;
+      card.classList.toggle('is-active', active);
+      card.querySelector('input[type="radio"]').checked = active;
+      card.querySelector('.template-status').innerHTML = `<i class="fa-solid ${active ? 'fa-circle-check' : 'fa-circle'}"></i><span>${active ? 'Active - showing to students' : 'Inactive'}</span>`;
+    });
+    document.querySelector('#activeTemplateIndicator span').textContent = `Active: ${templateDefaults[activeTemplate].name}`;
+  };
+  const saveTiming = async () => {
+    setStatus('Saving timing...');
+    try {
+      await postForm(timingUrl, {
+        duration_seconds: durationInput.value,
+        show_progress_bar: showProgressInput.checked ? 'on' : 'off',
+        allow_manual_close: allowCloseInput.checked ? 'on' : 'off',
+      });
+      setStatus('Timing saved.', 'is-success');
+    } catch (error) { setStatus(error.message, 'is-error'); }
+  };
+  const saveTemplateCopy = async (templateKey) => {
+    const label = getLabel(templateKey);
+    setStatus(`Saving ${templateDefaults[templateKey].name} copy...`);
+    try {
+      await postForm(templateUrl.replace('__template__', templateKey), label);
+      setStatus('Template copy saved.', 'is-success');
+    } catch (error) { setStatus(error.message, 'is-error'); }
+  };
+  const saveSharedLabels = async () => {
+    setStatus('Saving shared labels...');
+    try {
+      const payload = await postForm(sharedLabelsUrl, sharedLabels);
+      Object.assign(sharedLabels, payload.labels || {});
+      setStatus('Shared labels saved.', 'is-success');
+    } catch (error) { setStatus(error.message, 'is-error'); }
+  };
+  document.querySelectorAll('[data-edit-toggle]').forEach((button) => button.addEventListener('click', () => {
+    const key = button.dataset.editToggle;
+    const panel = document.getElementById(`edit-fields-${key}`);
+    const open = panel.classList.toggle('open');
+    button.setAttribute('aria-expanded', String(open));
+  }));
+  document.querySelectorAll('.overlay-copy-field').forEach((input) => input.addEventListener('input', () => {
+    const key = input.dataset.templateKey;
+    const current = labelOverrides.get(key) || {};
+    current[input.dataset.copyField] = input.value;
+    labelOverrides.set(key, current);
+    renderPreview();
+    saveTemplateCopy(key);
+  }));
+  document.querySelectorAll('.shared-overlay-label').forEach((input) => input.addEventListener('input', () => {
+    sharedLabels[input.dataset.sharedLabel] = input.value;
+    renderPreview();
+    saveSharedLabels();
+  }));
+  document.querySelectorAll('input[name="active_template"]').forEach((input) => input.addEventListener('change', async () => {
+    if (!input.checked || input.value === activeTemplate) return;
+    setStatus('Activating template...');
+    try {
+      await postForm(activateUrl, { template_key: input.value });
+      activeTemplate = input.value;
+      updateActiveCards();
+      renderPreview();
+      setStatus('Active template updated.', 'is-success');
+    } catch (error) {
+      updateActiveCards();
+      setStatus(error.message, 'is-error');
+    }
+  }));
+  positionInput.addEventListener('change', renderPreview);
+  durationInput.addEventListener('input', () => { durationValue.textContent = `${durationInput.value}s`; renderPreview(); });
+  durationInput.addEventListener('change', saveTiming);
+  showProgressInput.addEventListener('change', () => { renderPreview(); saveTiming(); });
+  allowCloseInput.addEventListener('change', () => { renderPreview(); saveTiming(); });
+
+  const startConfetti = (canvas, tier) => {
+    if (!canvas || !tier.confetti_count || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const card = canvas.parentElement;
+    const rect = card.getBoundingClientRect();
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(rect.width * pixelRatio);
+    canvas.height = Math.round(rect.height * pixelRatio);
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = `${rect.height}px`;
+    const context = canvas.getContext('2d');
+    context.scale(pixelRatio, pixelRatio);
+    const colors = [tier.accent_a, tier.accent_b, '#ffffff'];
+    const particles = Array.from({ length: tier.confetti_count }, () => ({
+      x: rect.width * (.35 + Math.random() * .3), y: rect.height * (.35 + Math.random() * .03),
+      vx: (Math.random() - .5) * 5.4, vy: -1.8 - Math.random() * 4.6,
+      rotation: Math.random() * Math.PI, velocityRotation: (Math.random() - .5) * .15,
+      width: 2 + Math.random() * 3, height: 2 + Math.random() * 3,
+      color: colors[Math.floor(Math.random() * colors.length)], life: 80 + Math.random() * 30,
+    }));
+    let frame = 0;
+    const draw = () => {
+      context.clearRect(0, 0, rect.width, rect.height);
+      particles.forEach((particle) => {
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        particle.vy += .045 * pixelRatio;
+        particle.rotation += particle.velocityRotation;
+        const alpha = Math.max(0, 1 - frame / particle.life);
+        context.save();
+        context.globalAlpha = alpha;
+        context.translate(particle.x, particle.y);
+        context.rotate(particle.rotation);
+        context.fillStyle = particle.color;
+        context.fillRect(-particle.width / 2, -particle.height / 2, particle.width, particle.height);
+        context.restore();
+      });
+      frame += 1;
+      if (frame < 112) confettiFrame = requestAnimationFrame(draw);
+    };
+    draw();
+  };
+  const closeFullOverlay = () => {
+    window.clearTimeout(fullOverlayTimeout);
+    cancelAnimationFrame(confettiFrame);
+    fullOverlay.classList.remove('show');
+    fullOverlay.setAttribute('aria-hidden', 'true');
+    fullOverlay.innerHTML = '';
+  };
+  document.getElementById('previewFullscreenOverlay').addEventListener('click', () => {
+    const timing = currentTiming();
+    fullOverlay.innerHTML = overlayMarkup(activeTemplate, positionInput.value, true);
+    fullOverlay.classList.add('show');
+    fullOverlay.setAttribute('aria-hidden', 'false');
+    const progress = fullOverlay.querySelector('.result-overlay-progress-bar');
+    if (progress) {
+      progress.style.transition = 'none';
+      progress.style.transform = 'scaleX(1)';
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        progress.style.transition = `transform ${timing.duration}s linear`;
+        progress.style.transform = 'scaleX(0)';
+      }));
+    }
+    startConfetti(fullOverlay.querySelector('.result-overlay-confetti'), previewTiers[String(positionInput.value)]);
+    fullOverlay.querySelector('[data-close-overlay]')?.addEventListener('click', closeFullOverlay);
+    fullOverlayTimeout = window.setTimeout(closeFullOverlay, timing.duration * 1000);
+  });
+  fullOverlay.addEventListener('click', (event) => { if (event.target === fullOverlay && currentTiming().allowClose) closeFullOverlay(); });
+  renderPreview();
+})();
+</script>
+{% endblock %}

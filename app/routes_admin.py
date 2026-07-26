@@ -14,7 +14,21 @@ from .import_wizard import preview_results, preview_students, result_template, s
 from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings
 from .permissions import PERMISSIONS, can, enforce_endpoint_permission, permission_required
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
-from .services import get_settings, grade_for, result_payload, subject_icon, subject_short_name
+from .services import (
+    PROMOTION_COPY_MARKERS,
+    RESULT_SUCCESS_OVERLAY_LABEL_DEFAULTS,
+    RESULT_SUCCESS_TEMPLATE_DEFAULTS,
+    RESULT_SUCCESS_TEMPLATE_ORDER,
+    get_settings,
+    grade_for,
+    result_payload,
+    result_success_overlay_settings as get_result_success_overlay_settings,
+    result_success_overlay_labels,
+    result_success_position_tier,
+    result_success_template_copy,
+    subject_icon,
+    subject_short_name,
+)
 from .services import slug
 
 admin_bp = Blueprint("admin", __name__)
@@ -996,6 +1010,163 @@ def settings():
         scales=GradeScale.query.order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all(),
         subjects=Subject.query.order_by(Subject.name).all(),
         slug=slug,
+    )
+
+
+def _result_success_overlay_response(success, message, status=200, **payload):
+    body = {"success": success, "message": message, **payload}
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify(body), status
+    flash(message, "success" if success else "danger")
+    return redirect(url_for("admin.result_success_overlay_settings"))
+
+
+def _result_success_overlay_setting(key, value):
+    setting = db.session.get(Setting, key) or Setting(key=key)
+    setting.value = str(value)
+    db.session.add(setting)
+    return setting
+
+
+def _non_final_overlay_copy_is_safe(template_key, title, subtitle):
+    if template_key == "final":
+        return True
+    copy = f"{title} {subtitle}".casefold()
+    return not any(marker in copy for marker in PROMOTION_COPY_MARKERS)
+
+
+@admin_bp.route("/result-success-overlay")
+@permission_required("results")
+def result_success_overlay_settings():
+    """Manage persistent result-success overlay copy and behavior."""
+    settings = get_settings()
+    overlay_settings = get_result_success_overlay_settings(settings)
+    templates = []
+    for template_key in RESULT_SUCCESS_TEMPLATE_ORDER:
+        defaults = RESULT_SUCCESS_TEMPLATE_DEFAULTS[template_key]
+        copy = result_success_template_copy(template_key, settings)
+        templates.append({
+            "key": template_key,
+            "name": defaults["name"],
+            "title": copy["title"],
+            "subtitle": copy["subtitle"],
+            "title_override": str(settings.get(f"result_success_overlay_{template_key}_title") or "").strip(),
+            "subtitle_override": str(settings.get(f"result_success_overlay_{template_key}_subtitle") or "").strip(),
+            "is_active": overlay_settings["active_template"] == template_key,
+        })
+    return render_template(
+        "admin/result_success_overlay_settings.html",
+        templates=templates,
+        overlay_settings=overlay_settings,
+        template_defaults=RESULT_SUCCESS_TEMPLATE_DEFAULTS,
+        shared_labels=result_success_overlay_labels(settings),
+        shared_label_defaults=RESULT_SUCCESS_OVERLAY_LABEL_DEFAULTS,
+        preview_tiers={str(position): result_success_position_tier(position, settings) for position in range(1, 11)},
+    )
+
+
+@admin_bp.route("/result-success-overlay/template/<string:template_key>", methods=["POST"])
+@permission_required("results")
+def update_result_success_overlay_template(template_key):
+    if template_key not in RESULT_SUCCESS_TEMPLATE_DEFAULTS:
+        return _result_success_overlay_response(False, "Unknown exam template.", 404)
+
+    title = (request.form.get("title") or "").strip()
+    subtitle = (request.form.get("subtitle") or "").strip()
+    if len(title) > 180 or len(subtitle) > 280:
+        return _result_success_overlay_response(False, "Overlay title or subtitle is too long.", 400)
+    if not _non_final_overlay_copy_is_safe(template_key, title, subtitle):
+        return _result_success_overlay_response(
+            False,
+            "Promotion wording is reserved for the Final exam template.",
+            400,
+        )
+
+    settings = get_settings()
+    old_title = str(settings.get(f"result_success_overlay_{template_key}_title") or "")
+    old_subtitle = str(settings.get(f"result_success_overlay_{template_key}_subtitle") or "")
+    _result_success_overlay_setting(f"result_success_overlay_{template_key}_title", title)
+    _result_success_overlay_setting(f"result_success_overlay_{template_key}_subtitle", subtitle)
+    audit(
+        "Result Success Overlay Copy Updated",
+        f"Template {template_key}: title {old_title!r} -> {title!r}; subtitle {old_subtitle!r} -> {subtitle!r}",
+    )
+    db.session.commit()
+    resolved_copy = result_success_template_copy(template_key, get_settings())
+    return _result_success_overlay_response(True, "Template copy saved.", template_key=template_key, copy=resolved_copy)
+
+
+@admin_bp.route("/result-success-overlay/labels", methods=["POST"])
+@permission_required("results")
+def update_result_success_overlay_labels():
+    settings = get_settings()
+    changes = []
+    for key, default in RESULT_SUCCESS_OVERLAY_LABEL_DEFAULTS.items():
+        value = (request.form.get(key) or "").strip()
+        if len(value) > 90:
+            return _result_success_overlay_response(False, "Shared overlay labels must be 90 characters or fewer.", 400)
+        resolved_value = value or default
+        setting_key = f"result_success_overlay_label_{key}"
+        previous = str(settings.get(setting_key) or "")
+        if previous != resolved_value:
+            _result_success_overlay_setting(setting_key, resolved_value)
+            changes.append(f"{key}: {previous!r} -> {resolved_value!r}")
+    if changes:
+        audit("Result Success Overlay Labels Updated", "; ".join(changes))
+        db.session.commit()
+    return _result_success_overlay_response(
+        True,
+        "Shared overlay labels saved.",
+        labels=result_success_overlay_labels(get_settings()),
+    )
+
+
+@admin_bp.route("/result-success-overlay/activate", methods=["POST"])
+@permission_required("results")
+def activate_result_success_overlay_template():
+    template_key = (request.form.get("template_key") or "").strip().casefold()
+    if template_key not in RESULT_SUCCESS_TEMPLATE_DEFAULTS:
+        return _result_success_overlay_response(False, "Choose a valid exam template.", 400)
+
+    settings = get_settings()
+    old_template = str(settings.get("result_success_overlay_active_template") or "m1")
+    _result_success_overlay_setting("result_success_overlay_active_template", template_key)
+    audit(
+        "Result Success Overlay Template Activated",
+        f"Active template {old_template!r} -> {template_key!r}",
+    )
+    db.session.commit()
+    return _result_success_overlay_response(True, "Active exam template updated.", active_template=template_key)
+
+
+@admin_bp.route("/result-success-overlay/timing", methods=["POST"])
+@permission_required("results")
+def update_result_success_overlay_timing():
+    try:
+        duration = int(request.form.get("duration_seconds", 8))
+    except (TypeError, ValueError):
+        return _result_success_overlay_response(False, "Overlay duration must be a whole number.", 400)
+    if not 3 <= duration <= 60:
+        return _result_success_overlay_response(False, "Overlay duration must be between 3 and 60 seconds.", 400)
+
+    show_progress = "on" if request.form.get("show_progress_bar") in {"on", "true", "1"} else "off"
+    allow_close = "on" if request.form.get("allow_manual_close") in {"on", "true", "1"} else "off"
+    settings = get_settings()
+    previous = get_result_success_overlay_settings(settings)
+    _result_success_overlay_setting("result_success_overlay_duration_seconds", duration)
+    _result_success_overlay_setting("result_success_overlay_show_progress_bar", show_progress)
+    _result_success_overlay_setting("result_success_overlay_allow_manual_close", allow_close)
+    audit(
+        "Result Success Overlay Timing Updated",
+        "Timing "
+        f"{previous['duration_seconds']}s -> {duration}s; progress {previous['show_progress_bar']} -> {show_progress}; "
+        f"manual close {previous['allow_manual_close']} -> {allow_close}",
+    )
+    db.session.commit()
+    return _result_success_overlay_response(
+        True,
+        "Overlay timing saved.",
+        settings=get_result_success_overlay_settings(get_settings()),
     )
 
 

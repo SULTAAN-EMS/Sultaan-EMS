@@ -1,4 +1,6 @@
 from decimal import Decimal
+import re
+
 from flask import current_app, g
 from sqlalchemy import or_
 
@@ -383,6 +385,10 @@ DEFAULT_SETTINGS = {
     "verify_id_shadow_color": "#000000",
     "verify_id_template_style": "premium",
     "display_subject_names": "full",
+    "result_success_overlay_active_template": "m1",
+    "result_success_overlay_duration_seconds": "8",
+    "result_success_overlay_show_progress_bar": "on",
+    "result_success_overlay_allow_manual_close": "on",
     # Premium shared footer settings (Student Result, Verification, ID Verification)
     # These are auto-seeded on first run so no manual configuration is needed.
     "show_footer": "on",
@@ -395,6 +401,231 @@ DEFAULT_SETTINGS = {
     "footer_gold": "#C9A227",
     "footer_teal": "#1B998B",
 }
+
+
+RESULT_SUCCESS_TEMPLATE_ORDER = ("m1", "m2", "term", "m3", "m4", "final")
+
+RESULT_SUCCESS_TEMPLATE_DEFAULTS = {
+    "m1": {
+        "name": "Monthly Exam 1",
+        "title": "Excellent Start!",
+        "subtitle": "Strong result in {exam name}",
+    },
+    "m2": {
+        "name": "Monthly Exam 2",
+        "title": "Great Progress!",
+        "subtitle": "Solid performance in {exam name}",
+    },
+    "term": {
+        "name": "Term Exam",
+        "title": "Impressive Mid-Year Result!",
+        "subtitle": "Well done in the {exam name}",
+    },
+    "m3": {
+        "name": "Monthly Exam 3",
+        "title": "Momentum Building!",
+        "subtitle": "Great result in {exam name}",
+    },
+    "m4": {
+        "name": "Monthly Exam 4",
+        "title": "Almost at the Finish!",
+        "subtitle": "Excellent effort in {exam name}",
+    },
+    "final": {
+        "name": "Final Exam",
+        "title": "Congratulations! Promoted!",
+        "subtitle": "Final result: Promoted to Next Class",
+    },
+}
+
+RESULT_SUCCESS_OVERLAY_LABEL_DEFAULTS = {
+    "name_caption": "Student result",
+    "average_suffix": "average",
+    "pill_podium": "Podium Finish",
+    "pill_top5": "Top 5 Result",
+    "pill_top10": "Top 10 Result",
+    "pill_result": "Result Recorded",
+    "placement_1": "1st Place",
+    "placement_2": "2nd Place",
+    "placement_3": "3rd Place",
+    "placement_4": "Top 5 - 4th",
+    "placement_5": "Top 5 - 5th",
+    "placement_6": "6th",
+    "placement_7": "7th",
+    "placement_8": "8th",
+    "placement_9": "9th",
+    "placement_10": "10th",
+    "placement_result": "Class Result",
+}
+
+for _template_key, _template_copy in RESULT_SUCCESS_TEMPLATE_DEFAULTS.items():
+    DEFAULT_SETTINGS.setdefault(
+        f"result_success_overlay_{_template_key}_title",
+        _template_copy["title"],
+    )
+    DEFAULT_SETTINGS.setdefault(
+        f"result_success_overlay_{_template_key}_subtitle",
+        _template_copy["subtitle"],
+    )
+for _label_key, _label_value in RESULT_SUCCESS_OVERLAY_LABEL_DEFAULTS.items():
+    DEFAULT_SETTINGS.setdefault(
+        f"result_success_overlay_label_{_label_key}",
+        _label_value,
+    )
+
+
+PROMOTION_COPY_MARKERS = ("promot", "next class", "graduate", "graduat", "advance")
+
+
+def result_success_template_key(exam):
+    """Map the existing Results Hub exam record to one stable overlay template key."""
+    if not exam:
+        return "m1"
+
+    raw_value = " ".join(
+        value for value in (getattr(exam, "short_code", ""), getattr(exam, "name", "")) if value
+    ).casefold()
+    compact_value = re.sub(r"[^a-z0-9]+", " ", raw_value).strip()
+
+    if any(marker in compact_value for marker in ("final", "dhammaad", "dhamaad", "gunaanaad", "gunaaanad")):
+        return "final"
+    if any(marker in compact_value for marker in ("term", "mid year", "midyear", "teeram")):
+        return "term"
+
+    monthly_patterns = {
+        "m1": ("m1", "mt1", "monthly 1", "monthly exam 1", "bileedka 1", "bileed 1"),
+        "m2": ("m2", "mt2", "monthly 2", "monthly exam 2", "bileedka 2", "bileed 2"),
+        "m3": ("m3", "mt3", "monthly 3", "monthly exam 3", "bileedka 3", "bileed 3"),
+        "m4": ("m4", "mt4", "monthly 4", "monthly exam 4", "bileedka 4", "bileed 4"),
+    }
+    for template_key, markers in monthly_patterns.items():
+        if any(marker in compact_value for marker in markers):
+            return template_key
+
+    # Unknown legacy names must never receive promotion messaging.
+    return "m1"
+
+
+def result_success_template_copy(template_key, settings=None):
+    """Resolve editable overlay copy without allowing non-final promotion language."""
+    settings = settings or get_settings()
+    template_key = template_key if template_key in RESULT_SUCCESS_TEMPLATE_DEFAULTS else "m1"
+    defaults = RESULT_SUCCESS_TEMPLATE_DEFAULTS[template_key]
+
+    title = str(settings.get(f"result_success_overlay_{template_key}_title") or "").strip() or defaults["title"]
+    subtitle = str(settings.get(f"result_success_overlay_{template_key}_subtitle") or "").strip() or defaults["subtitle"]
+    if template_key != "final":
+        if any(marker in title.casefold() for marker in PROMOTION_COPY_MARKERS):
+            title = defaults["title"]
+        if any(marker in subtitle.casefold() for marker in PROMOTION_COPY_MARKERS):
+            subtitle = defaults["subtitle"]
+    return {"name": defaults["name"], "title": title, "subtitle": subtitle}
+
+
+def result_success_overlay_settings(settings=None):
+    settings = settings or get_settings()
+    try:
+        duration = int(settings.get("result_success_overlay_duration_seconds", 8))
+    except (TypeError, ValueError):
+        duration = 8
+    duration = min(max(duration, 3), 60)
+    active_template = str(settings.get("result_success_overlay_active_template") or "m1").strip().casefold()
+    if active_template not in RESULT_SUCCESS_TEMPLATE_DEFAULTS:
+        active_template = "m1"
+    return {
+        "active_template": active_template,
+        "duration_seconds": duration,
+        "show_progress_bar": str(settings.get("result_success_overlay_show_progress_bar", "on")).casefold() == "on",
+        "allow_manual_close": str(settings.get("result_success_overlay_allow_manual_close", "on")).casefold() == "on",
+    }
+
+
+def result_success_overlay_labels(settings=None):
+    """Resolve shared, student-visible overlay labels from persisted settings."""
+    settings = settings or get_settings()
+    return {
+        key: str(settings.get(f"result_success_overlay_label_{key}") or "").strip() or default
+        for key, default in RESULT_SUCCESS_OVERLAY_LABEL_DEFAULTS.items()
+    }
+
+
+def _blend_hex(foreground, background, ratio):
+    def parse(value):
+        value = str(value or "#000000").lstrip("#")
+        if len(value) == 3:
+            value = "".join(char * 2 for char in value)
+        return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4))
+
+    fg = parse(foreground)
+    bg = parse(background)
+    mixed = tuple(round((channel * ratio) + (base * (1 - ratio))) for channel, base in zip(fg, bg))
+    return "#{:02x}{:02x}{:02x}".format(*mixed)
+
+
+def result_success_position_tier(position, settings=None):
+    try:
+        position = int(position)
+    except (TypeError, ValueError):
+        position = None
+
+    labels = result_success_overlay_labels(settings)
+    tier_map = {
+        1: ("podium", "&#x1F947;", "placement_1", "pill_podium", "&#x1F3C6;", "#f5c451", "#f59e0b", 70),
+        2: ("podium", "&#x1F948;", "placement_2", "pill_podium", "&#x1F3C6;", "#cbd5e1", "#94a3b8", 70),
+        3: ("podium", "&#x1F949;", "placement_3", "pill_podium", "&#x1F3C6;", "#f0a875", "#c2703d", 70),
+        4: ("top5", "&#x1F3C5;", "placement_4", "pill_top5", "&#x1F3AF;", "#4ade80", "#22c55e", 45),
+        5: ("top5", "&#x1F396;&#xFE0F;", "placement_5", "pill_top5", "&#x1F3AF;", "#4ade80", "#16a34a", 45),
+        6: ("top10", "&#x2B50;", "placement_6", "pill_top10", "&#x1F4CC;", "#67e8f9", "#22d3ee", 30),
+        7: ("top10", "&#x1F31F;", "placement_7", "pill_top10", "&#x1F4CC;", "#67e8f9", "#0ea5e9", 28),
+        8: ("top10", "&#x2728;", "placement_8", "pill_top10", "&#x1F4CC;", "#93c5fd", "#3b82f6", 27),
+        9: ("top10", "&#x1F537;", "placement_9", "pill_top10", "&#x1F4CC;", "#93c5fd", "#6366f1", 26),
+        10: ("top10", "&#x1F539;", "placement_10", "pill_top10", "&#x1F4CC;", "#a5b4fc", "#818cf8", 25),
+    }
+    tier, icon, placement_key, pill_key, pill_icon, accent_a, accent_b, confetti_count = tier_map.get(
+        position,
+        ("result", "&#x1F4CC;", "placement_result", "pill_result", "&#x1F4CC;", "#67e8f9", "#38bdf8", 0),
+    )
+    return {
+        "position": position,
+        "tier": tier,
+        "icon": icon,
+        "placement": labels[placement_key],
+        "pill": labels[pill_key],
+        "pill_icon": pill_icon,
+        "accent_a": accent_a,
+        "accent_b": accent_b,
+        "confetti_count": confetti_count,
+        "tint1": _blend_hex(accent_a, "#071a37", 0.18),
+        "bg_a": _blend_hex(accent_a, "#0b1730", 0.17),
+        "bg_b": _blend_hex(accent_b, "#060d1d", 0.14),
+        "border": _blend_hex(accent_a, "#334155", 0.52),
+        "ring": accent_a,
+        "icon_bg": _blend_hex(accent_a, "#0f172a", 0.22),
+        "glow": accent_b,
+        "title_color": "#f8fafc",
+        "tier_bg": _blend_hex(accent_a, "#0f172a", 0.22),
+        "tier_color": "#f8fafc",
+        "tier_border": _blend_hex(accent_a, "#ffffff", 0.7),
+        "name_a": accent_a,
+        "name_b": accent_b,
+    }
+
+
+def result_success_overlay_config(exam, position, average, settings=None):
+    settings = settings or get_settings()
+    template_key = result_success_template_key(exam)
+    labels = result_success_template_copy(template_key, settings)
+    exam_name = getattr(exam, "name", None) or labels["name"]
+    return {
+        "exam_type": template_key,
+        "exam_name": exam_name,
+        "title": labels["title"].replace("{exam name}", exam_name),
+        "subtitle": labels["subtitle"].replace("{exam name}", exam_name),
+        "average": average,
+        "settings": result_success_overlay_settings(settings),
+        "labels": result_success_overlay_labels(settings),
+        "tier": result_success_position_tier(position, settings),
+    }
 
 DEFAULT_GRADE_SCALES = [
     {"grade": "A+", "min_score": 95, "max_score": 100, "grade_point": 4.0, "comment": "Outstanding", "is_pass": True, "badge_color": "#065f46", "text_color": "#ffffff", "background_color": "#d1fae5", "border_color": "#10b981", "sort_order": 1},

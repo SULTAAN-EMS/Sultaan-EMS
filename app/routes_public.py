@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from . import db
 from .i18n import language_redirect
 from .models import AcademicYear, Exam, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, ReportVerification, Result, SeverityLevel, Student, Subject
-from .services import active_exam_for_student, get_settings, result_payload
+from .services import active_exam_for_student, get_settings, result_payload, result_success_overlay_config
 from .verification import verification_payload
 
 public_bp = Blueprint("public", __name__)
@@ -164,7 +164,13 @@ def result():
         "portal.html",
         settings=get_settings(),
         result=payload,
-        generated_at=datetime.now()
+        generated_at=datetime.now(),
+        result_success_overlay=result_success_overlay_config(
+            exam,
+            payload.get("rank"),
+            payload.get("average"),
+            settings,
+        ),
     )
 
 

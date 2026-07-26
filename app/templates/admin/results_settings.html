@@ -12,6 +12,7 @@
     <h1 class="rh-title">{{ rh_label("settings.title", default="Results Settings") }}</h1>
     <p class="rh-desc">{{ rh_label("settings.subtitle", default="Halkan waxaad ka bedeli kartaa habka module-ka Results u shaqeeyo — gudaha Results-ka, ma aha Settings-ka guud.") }}</p>
 
+    <p style="margin:0 0 20px;"><a class="rh-btn" href="{{ url_for('admin.result_success_overlay_settings') }}"><i class="fa-solid fa-wand-magic-sparkles"></i> Result Success Overlay</a></p>
     <form method="POST" action="{{ url_for('admin_advanced_results.save_label_translations') }}" class="rh-table-card" style="padding: 0;">
       <div style="padding: 28px 30px; border-bottom:1px solid var(--paper-line);">
         <h2 style="font-family: var(--font-serif); color: var(--navy); margin:0 0 8px;">{{ rh_label("settings.labels_title", default="Label & Language Customization") }}</h2>
