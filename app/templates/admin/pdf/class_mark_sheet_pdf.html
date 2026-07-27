@@ -67,16 +67,18 @@
         .sheet {
             height: 100%;
             display: grid;
-            grid-template-rows: 25mm minmax(0, 1fr) 18mm;
-            gap: 1.6mm;
+            grid-template-rows: auto minmax(0, 1fr) auto;
+            gap: 4mm;
         }
 
         .top-header {
+            position: relative;
             display: grid;
             grid-template-columns: .92fr 1.08fr;
             gap: 5mm;
-            padding: 1.4mm 2mm 1.6mm;
+            padding: 1.4mm 2mm 2.5mm;
             border-bottom: 1px solid var(--line);
+            margin-bottom: 6mm;
         }
 
         .brand-block {
