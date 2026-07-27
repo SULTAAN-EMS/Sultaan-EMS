@@ -1037,11 +1037,6 @@ def result_payload(student, exam=None, public_only=True):
     if exam:
         query = query.filter_by(exam_id=exam.id)
     if public_only:
-result_payload(student, exam=None, public_only=True):
-    query = Result.query.filter_by(student_id=student.id)
-    if exam:
-        query = query.filter_by(exam_id=exam.id)
-    if public_only:
         query = query.join(Result.exam).filter(Result.is_published.is_(True))
     rows = query.join(Result.subject).order_by(Result.subject_id.asc()).all()
     total = sum(Decimal(row.score) for row in rows)
@@ -1065,6 +1060,8 @@ result_payload(student, exam=None, public_only=True):
     subject_rows = []
     for row in rows:
         percentage_raw = Decimal(row.score) / Decimal(row.subject.max_score) * 100 if row.subject.max_score else 0
+        percentage = round(float(percentage_raw), 2)
+        automatic_grade = grade_for_from_cache(percentage_raw, grade_cache)
         displayed_grade = dict(automatic_grade)
         displayed_grade["grade"] = row.grade_override or automatic_grade["grade"]
         displayed_grade["comment"] = row.comment or automatic_grade["comment"]
