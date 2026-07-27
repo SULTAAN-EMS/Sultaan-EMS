@@ -45,28 +45,28 @@
 </div>
 
 <nav class="rh-tabs">
-  <button class="rh-tab {{ 'active' if active_tab == 'dashboard' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.new_dashboard') }}?{{ rh_query }}'">
+  <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'dashboard' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.new_dashboard') }}?{{ rh_query }}'">
     <i class="fa-solid fa-chart-line"></i>{{ rh_label("hub.tab.dashboard", default="Dashboard") }}
   </button>
-  <button class="rh-tab {{ 'active' if active_tab == 'entry' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.result_entry') }}?{{ rh_query }}{% if rh_level and scope_info.level %}&level_id={{ scope_info.level.id }}{% endif %}{% if rh_class and scope_info.class %}&class_id={{ scope_info.class.id }}{% endif %}{% if rh_section and scope_info.section %}&section_id={{ scope_info.section.id }}{% endif %}'">
+  <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'entry' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.result_entry') }}?{{ rh_query }}{% if rh_level and scope_info.level %}&level_id={{ scope_info.level.id }}{% endif %}{% if rh_class and scope_info.class %}&class_id={{ scope_info.class.id }}{% endif %}{% if rh_section and scope_info.section %}&section_id={{ scope_info.section.id }}{% endif %}'">
     <i class="fa-solid fa-pen-to-square"></i>{{ rh_label("hub.tab.entry", default="Result Entry") }}
   </button>
-  <button class="rh-tab {{ 'active' if active_tab == 'roster' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.class_roster') }}?{{ rh_query }}{% if rh_level and scope_info.level %}&level_id={{ scope_info.level.id }}{% endif %}{% if rh_class and scope_info.class %}&class_id={{ scope_info.class.id }}{% endif %}{% if rh_section and scope_info.section %}&section_id={{ scope_info.section.id }}{% endif %}'">
+  <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'roster' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.class_roster') }}?{{ rh_query }}{% if rh_level and scope_info.level %}&level_id={{ scope_info.level.id }}{% endif %}{% if rh_class and scope_info.class %}&class_id={{ scope_info.class.id }}{% endif %}{% if rh_section and scope_info.section %}&section_id={{ scope_info.section.id }}{% endif %}'">
     <i class="fa-solid fa-table-list"></i>{{ rh_label("hub.tab.roster", default="Liiska Fasalka") }}
   </button>
-  <button class="rh-tab {{ 'active' if active_tab == 'analytics' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.analytics') }}?{{ rh_query }}{% if rh_level and scope_info.level %}&level_id={{ scope_info.level.id }}{% endif %}{% if rh_class and scope_info.class %}&class_id={{ scope_info.class.id }}{% endif %}{% if rh_section and scope_info.section %}&section_id={{ scope_info.section.id }}{% endif %}'">
+  <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'analytics' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.analytics') }}?{{ rh_query }}{% if rh_level and scope_info.level %}&level_id={{ scope_info.level.id }}{% endif %}{% if rh_class and scope_info.class %}&class_id={{ scope_info.class.id }}{% endif %}{% if rh_section and scope_info.section %}&section_id={{ scope_info.section.id }}{% endif %}'">
     <i class="fa-solid fa-chart-pie"></i>{{ rh_label("hub.tab.analytics", default="Analytics") }}
   </button>
-  <button class="rh-tab {{ 'active' if active_tab == 'setup' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.new_setup') }}'">
+  <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'setup' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.new_setup') }}'">
     <i class="fa-solid fa-sliders"></i>{{ rh_label("hub.tab.setup", default="Setup") }}
   </button>
-  <button class="rh-tab {{ 'active' if active_tab == 'students' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.students_management') }}?{{ rh_query }}'">
+  <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'students' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.students_management') }}?{{ rh_query }}'">
     <i class="fa-solid fa-user-graduate"></i>{{ rh_label("hub.tab.students", default="Students Mgmt") }}
   </button>
-  <button class="rh-tab {{ 'active' if active_tab == 'grades' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.grade_management') }}?{{ rh_query }}'">
+  <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'grades' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.grade_management') }}?{{ rh_query }}'">
     <i class="fa-solid fa-award"></i>{{ rh_label("hub.tab.grades", default="Grade Mgmt") }}
   </button>
-  <button class="rh-tab {{ 'active' if active_tab == 'settings' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.results_settings') }}'">
+  <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'settings' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.results_settings') }}'">
     <i class="fa-solid fa-gear"></i>{{ rh_label("hub.tab.settings", default="Settings") }}
   </button>
 </nav>

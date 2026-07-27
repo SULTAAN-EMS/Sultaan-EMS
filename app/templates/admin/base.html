@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block body_class %}admin-body {{ 'theme-dark' if ui_settings.dashboard_theme == 'dark' else 'theme-light' }}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin-loading-system.css') }}">
+{% endblock %}
 {% block content %}
 <aside class="sidebar">
   <div class="sidebar-fixed">
@@ -228,4 +231,5 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 });
 </script>
+<script src="{{ url_for('static', filename='js/admin-loading-system.js') }}"></script>
 {% endblock %}

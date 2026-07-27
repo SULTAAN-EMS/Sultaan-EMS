@@ -70,7 +70,7 @@
           <select name="class_id" id="classSelect">
             <option value="">Select class</option>
             {% for class_item in classes %}
-              <option value="{{ class_item.id }}" {% if scope_info and scope_info.class and scope_info.class.id == class_item.id %}selected{% endif %}>{{ class_item.name }}</option>
+              <option value="{{ class_item.id }}" data-level-id="{{ class_item.academic_level_id }}" {% if scope_info and scope_info.class and scope_info.class.id == class_item.id %}selected{% endif %}>{{ class_item.name }}</option>
             {% endfor %}
           </select>
           <select name="section_id" id="sectionSelect" class="rh-section-select">
@@ -80,6 +80,12 @@
             {% endfor %}
           </select>
         </span>
+      </div>
+
+      <div class="rh-entry-filter-card context-apply" style="display: flex; align-items: center; justify-content: center; min-height: 108px; background: none; border: none; box-shadow: none; padding: 0;">
+        <button type="submit" class="rh-btn primary" style="width: 100%; height: 52px; font-size: 0.95rem; font-weight: 700; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+          <i class="fa-solid fa-filter"></i> Apply Filters
+        </button>
       </div>
     </form>
 
@@ -161,11 +167,25 @@ function submitRosterFilters(resetFields = []) {
   rosterFilterForm.submit();
 }
 
-document.getElementById('yearSelect')?.addEventListener('change', () => submitRosterFilters(['examSelect', 'levelSelect', 'classSelect', 'sectionSelect']));
-document.getElementById('examSelect')?.addEventListener('change', () => submitRosterFilters([]));
-document.getElementById('levelSelect')?.addEventListener('change', () => submitRosterFilters(['classSelect', 'sectionSelect']));
-document.getElementById('classSelect')?.addEventListener('change', () => submitRosterFilters(['sectionSelect']));
-document.getElementById('sectionSelect')?.addEventListener('change', () => submitRosterFilters([]));
+function filterRosterClassesByLevel() {
+  const levelSelect = document.getElementById('levelSelect');
+  const classSelect = document.getElementById('classSelect');
+  if (!levelSelect || !classSelect) return;
+  const selectedLevelId = levelSelect.value;
+  Array.from(classSelect.options).forEach(opt => {
+    if (!opt.value) return;
+    const optLevel = opt.dataset.levelId;
+    if (!selectedLevelId || !optLevel || optLevel === selectedLevelId) {
+      opt.style.display = '';
+    } else {
+      opt.style.display = 'none';
+      if (opt.selected) opt.selected = false;
+    }
+  });
+}
+
+document.getElementById('levelSelect')?.addEventListener('change', filterRosterClassesByLevel);
+filterRosterClassesByLevel();
 
 function handleSearch(event) {
   if (event.key === 'Enter') {
