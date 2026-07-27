@@ -665,7 +665,7 @@
                                 <th class="col-name">Student Name<small>Mother's Name</small></th>
                                 <th class="col-class">Class</th>
                                 {% for subject in subjects %}
-                                    <th class="col-subject">{{ subject.name[:5]|upper }}<small>{{ subject.name }}</small></th>
+                                    <th class="col-subject">{{ subject.name|upper }}</th>
                                 {% endfor %}
                                 <th class="col-total">Total<small>({{ page_students[0].total_max|academic_number(settings) if page_students else 0 }})</small></th>
                                 <th class="col-percent">Percentage</th>
