@@ -26,7 +26,7 @@
       <tbody>
       {% for subject in subjects %}
         {% set row = existing.get(subject.id) %}
-        {% set percentage = ((row.score / subject.max_score) * 100) if row else 0 %}
+        {% set percentage = ((row.score / subject.max_score) * 100)|round(2) if row else 0 %}
         <tr>
           <td data-label="Subject">{{ subject.name }}<small>Max {{ subject.max_score }}</small></td>
           <td data-label="Score"><input type="number" step="{{ '1' if ui_settings.academic_decimal_precision == '0' else '0.1' if ui_settings.academic_decimal_precision == '1' else '0.001' if ui_settings.academic_decimal_precision == '3' else '0.01' }}" min="0" max="{{ subject.max_score }}" name="score_{{ subject.id }}" value="{{ row.score|academic_number(ui_settings) if row else '' }}"></td>

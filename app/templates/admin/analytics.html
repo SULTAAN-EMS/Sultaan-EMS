@@ -140,7 +140,7 @@
               {% set cumulative = 0 %}
               {% for label in labels %}
                 {% set value = counts[loop.index0] %}
-                {% set percentage = (value / total * 100) if total else 0 %}
+                {% set percentage = ((value / total * 100)|round(2)) if total else 0 %}
                 {% set start_angle = (cumulative / total * 360) if total else 0 %}
                 {% set end_angle = ((cumulative + value) / total * 360) if total else 0 %}
                 {% set color = colors[loop.index0] if colors|length > loop.index0 else '#C9A227' %}
@@ -163,7 +163,7 @@
           <div class="rh-doughnut-legend">
             {% for label in labels %}
               {% set value = counts[loop.index0] %}
-              {% set percentage = (value / total * 100)|round(1) if total else 0 %}
+              {% set percentage = (value / total * 100)|round(2) if total else 0 %}
               {% set color = colors[loop.index0] if colors|length > loop.index0 else '#C9A227' %}
               <div class="rh-legend-item" data-grade="{{ label }}">
                 <div class="rh-legend-color" style="background: {{ color }};"></div>

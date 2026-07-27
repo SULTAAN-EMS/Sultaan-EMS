@@ -406,7 +406,7 @@ def edit_result_set(student_id, exam_id):
     subject_previews = {}
     for subject in subjects:
         row = existing.get(subject.id)
-        percentage = float(row.score) / float(subject.max_score) * 100 if row and subject.max_score else 0
+        percentage = round(float(row.score) / float(subject.max_score) * 100, 2) if row and subject.max_score else 0
         subject_previews[subject.id] = grade_for(percentage)
     return render_template(
         "admin/result_edit.html",

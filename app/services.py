@@ -1041,7 +1041,7 @@ def result_payload(student, exam=None, public_only=True):
     rows = query.join(Result.subject).order_by(Result.subject_id.asc()).all()
     total = sum(Decimal(row.score) for row in rows)
     max_total = sum(Decimal(row.subject.max_score) for row in rows) or Decimal("0")
-    average = (total / max_total * 100) if max_total else Decimal("0")
+    average = round(float(total / max_total * 100), 2) if max_total else 0
     settings = get_settings()
     # Resolve every grade in this payload from one in-memory scale snapshot.
     # This keeps the public result, print report, and verification view aligned
@@ -1052,8 +1052,9 @@ def result_payload(student, exam=None, public_only=True):
 
     subject_rows = []
     for row in rows:
-        percentage = Decimal(row.score) / Decimal(row.subject.max_score) * 100 if row.subject.max_score else 0
-        automatic_grade = grade_for_from_cache(percentage, grade_cache)
+        percentage_raw = Decimal(row.score) / Decimal(row.subject.max_score) * 100 if row.subject.max_score else 0
+        percentage = round(float(percentage_raw), 2)
+        automatic_grade = grade_for_from_cache(percentage_raw, grade_cache)
         displayed_grade = dict(automatic_grade)
         displayed_grade["grade"] = row.grade_override or automatic_grade["grade"]
         displayed_grade["comment"] = row.comment or automatic_grade["comment"]
@@ -1066,7 +1067,7 @@ def result_payload(student, exam=None, public_only=True):
                 "grade": displayed_grade,
                 "automatic_grade": automatic_grade,
                 "status": "Pass" if displayed_grade.get("is_pass", automatic_grade.get("is_pass")) else "Needs Support",
-                "percentage": float(percentage),
+                "percentage": percentage,
                 "icon": subject_icon(row.subject.name, settings),
             }
         )
@@ -1080,7 +1081,7 @@ def result_payload(student, exam=None, public_only=True):
             peers[peer.student_id]["total"] += Decimal(peer.score)
             peers[peer.student_id]["max"] += Decimal(peer.subject.max_score)
         ordered = sorted(
-            ((sid, data["total"] / data["max"] * 100 if data["max"] else Decimal("0")) for sid, data in peers.items()),
+            ((sid, round(float(data["total"] / data["max"] * 100), 2) if data["max"] else 0) for sid, data in peers.items()),
             key=lambda item: item[1],
             reverse=True,
         )
@@ -1115,7 +1116,7 @@ def result_payload(student, exam=None, public_only=True):
         "subjects": subject_rows,
         "total": float(total),
         "max_total": float(max_total),
-        "average": float(average),
+        "average": average,
         "status": status,
         "overall_grade": overall,
         "grade_scales": result_grade_scales,

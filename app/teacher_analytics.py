@@ -11,7 +11,7 @@ from .services import grade_for
 def _pct(result):
     if not result.subject.max_score:
         return 0.0
-    return float(Decimal(result.score) / Decimal(result.subject.max_score) * 100)
+    return round(float(Decimal(result.score) / Decimal(result.subject.max_score) * 100), 2)
 
 
 def _safe_mean(values):

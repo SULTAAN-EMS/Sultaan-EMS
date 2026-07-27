@@ -272,7 +272,7 @@ def rank_student_in_scope(student, academic_year_id, exam, subjects, level_id=No
             result = student_results.get(subject.id)
             total_score += float(result.score) if result else 0
             total_max += float(subject.max_score)
-        percentage = (total_score / total_max * 100) if total_max > 0 else 0
+        percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
         ranked.append((scoped_student.id, percentage, total_score))
 
     ranked.sort(key=lambda item: (item[1], item[2]), reverse=True)
@@ -724,11 +724,11 @@ def class_roster():
                     "result": result,
                     "score": score,
                     "max_score": max_score,
-                    "percentage": percentage,
+                    "percentage": round(percentage, 2),
                     "grade": grade_info,
                 })
             
-            overall_percentage = (total_score / total_max * 100) if total_max > 0 else 0
+            overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
             overall_grade = cached_grade_for(overall_percentage)
             
             # Calculate GP (grade point average)
@@ -871,12 +871,12 @@ def student_view():
             "score": score,
             "max_score": max_score,
             "pass_mark": academic_round(max_score * 0.5, get_settings()),
-            "percentage": percentage,
+            "percentage": round(percentage, 2),
             "grade": grade_info,
             "remark": grade_info.get("comment") or ("Pass" if grade_info.get("is_pass") else "Needs Improvement"),
         })
     
-    overall_percentage = (total_score / total_max * 100) if total_max > 0 else 0
+    overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
     overall_grade = cached_grade_for(overall_percentage)
     
     # Calculate GP
@@ -1073,11 +1073,11 @@ def export_student_pdf():
             "subject": subject,
             "score": score,
             "max_score": max_score,
-            "percentage": percentage,
+            "percentage": round(percentage, 2),
             "grade": grade_info,
         })
     
-    overall_percentage = (total_score / total_max * 100) if total_max > 0 else 0
+    overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
     overall_grade = cached_grade_for(overall_percentage)
     
     total_points = sum(s["grade"]["grade_point"] for s in subject_data if s["grade"]["grade_point"])
@@ -1201,11 +1201,11 @@ def export_class_pdf():
             
             subject_data.append({
                 "score": score,
-                "percentage": percentage,
+                "percentage": round(percentage, 2),
                 "grade": grade_info,
             })
         
-        overall_percentage = (total_score / total_max * 100) if total_max > 0 else 0
+        overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
         overall_grade = cached_grade_for(overall_percentage)
         
         roster_data.append({
@@ -1392,21 +1392,21 @@ def export_class_excel():
             result = results_dict.get(subject.id)
             score = float(result.score) if result else 0
             max_score = float(subject.max_score)
-            percentage = (score / max_score * 100) if max_score > 0 else 0
+            percentage = round((score / max_score * 100), 2) if max_score > 0 else 0
             
             total_score += score
             total_max += max_score
             
             row_data.append(score)
         
-        overall_percentage = (total_score / total_max * 100) if total_max > 0 else 0
+        overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
         overall_grade = cached_grade_for(overall_percentage)
         
         total_points = 0
         for subject in subjects:
             result = results_dict.get(subject.id)
             if result:
-                percentage = (float(result.score) / float(subject.max_score) * 100) if subject.max_score else 0
+                percentage = round((float(result.score) / float(subject.max_score) * 100), 2) if subject.max_score else 0
                 grade_info = cached_grade_for(percentage)
                 # Apply grade_override if present
                 if result.grade_override:
@@ -1866,15 +1866,15 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5):
     percentages = []
     for result in results:
         if result.subject.max_score:
-            pct = float(result.score) / float(result.subject.max_score) * 100
+            pct = round(float(result.score) / float(result.subject.max_score) * 100, 2)
             percentages.append(pct)
     
     # Calculate overall average
-    overall_average = sum(percentages) / len(percentages) if percentages else 0
+    overall_average = round(sum(percentages) / len(percentages), 2) if percentages else 0
     
     # Calculate highest and lowest scores
-    highest_score = max(percentages) if percentages else 0
-    lowest_score = min(percentages) if percentages else 0
+    highest_score = round(max(percentages), 2) if percentages else 0
+    lowest_score = round(min(percentages), 2) if percentages else 0
     
     # Grade distribution using actual grade scales
     grade_counts = {}
@@ -1894,13 +1894,13 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5):
     subject_averages = {}
     for result in results:
         subject_name = result.subject.name
-        pct = float(result.score) / float(result.subject.max_score) * 100 if result.subject.max_score else 0
+        pct = round(float(result.score) / float(result.subject.max_score) * 100, 2) if result.subject.max_score else 0
         if subject_name not in subject_averages:
             subject_averages[subject_name] = []
         subject_averages[subject_name].append(pct)
     
     subject_labels = sorted(subject_averages.keys())
-    subject_values = [sum(subject_averages[s]) / len(subject_averages[s]) for s in subject_labels]
+    subject_values = [round(sum(subject_averages[s]) / len(subject_averages[s]), 2) for s in subject_labels]
     
     # Exam trend (compare with other exams in same year)
     year_exams = Exam.query.filter_by(academic_year_id=exam.academic_year_id).order_by(Exam.created_at).all()
@@ -1916,10 +1916,10 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5):
     for result in trend_results:
         if result.subject.max_score:
             trend_percentages.setdefault(result.exam_id, []).append(
-                float(result.score) / float(result.subject.max_score) * 100
+                round(float(result.score) / float(result.subject.max_score) * 100, 2)
             )
     exam_trend_values = [
-        sum(trend_percentages.get(year_exam.id, [])) / len(trend_percentages[year_exam.id])
+        round(sum(trend_percentages.get(year_exam.id, [])) / len(trend_percentages[year_exam.id]), 2)
         if trend_percentages.get(year_exam.id) else 0
         for year_exam in year_exams
     ]
@@ -1932,12 +1932,12 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5):
     student_averages = {}
     for result in results:
         student_id = result.student_id
-        pct = float(result.score) / float(result.subject.max_score) * 100 if result.subject.max_score else 0
+        pct = round(float(result.score) / float(result.subject.max_score) * 100, 2) if result.subject.max_score else 0
         if student_id not in student_averages:
             student_averages[student_id] = []
         student_averages[student_id].append(pct)
     
-    student_avg_list = [(sid, sum(pcts) / len(pcts)) for sid, pcts in student_averages.items()]
+    student_avg_list = [(sid, round(sum(pcts) / len(pcts), 2)) for sid, pcts in student_averages.items()]
     student_avg_list.sort(key=lambda x: x[1], reverse=True)
     
     top_performers = []
@@ -2651,7 +2651,7 @@ def build_stats(payloads, rows):
     pass_count = sum(1 for avg in averages if cached_grade_for(float(avg)).get("is_pass"))
     subject_totals = defaultdict(list)
     for row in rows:
-        subject_totals[row.subject.name].append(Decimal(row.score) / Decimal(row.subject.max_score) * 100 if row.subject.max_score else Decimal("0"))
+        subject_totals[row.subject.name].append(round(float(Decimal(row.score) / Decimal(row.subject.max_score) * 100), 2) if row.subject.max_score else 0)
     subject_averages = {name: round(sum(values) / len(values), 2) for name, values in subject_totals.items() if values}
     ranked = sorted(payloads, key=lambda item: item.get("average", 0), reverse=True)
     return {

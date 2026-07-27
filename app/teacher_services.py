@@ -310,7 +310,7 @@ def teacher_performance_data(teacher=None):
         )
         student_averages = {}
         for result in results:
-            percentage = Decimal(result.score) / Decimal(result.subject.max_score) * 100 if result.subject.max_score else Decimal("0")
+            percentage = round(float(Decimal(result.score) / Decimal(result.subject.max_score) * 100), 2) if result.subject.max_score else 0
             student_averages.setdefault(result.student_id, []).append(percentage)
         pass_count = 0
         fail_count = 0
@@ -323,7 +323,7 @@ def teacher_performance_data(teacher=None):
         subject_totals = defaultdict(list)
         class_totals = defaultdict(list)
         for result in results:
-            percentage = float(Decimal(result.score) / Decimal(result.subject.max_score) * 100) if result.subject.max_score else 0.0
+            percentage = round(float(Decimal(result.score) / Decimal(result.subject.max_score) * 100), 2) if result.subject.max_score else 0.0
             subject_totals[result.subject.name].append(percentage)
             class_totals[result.student.school_class.name].append(percentage)
         subject_averages = {name: round(sum(values) / len(values), 2) for name, values in subject_totals.items() if values}
