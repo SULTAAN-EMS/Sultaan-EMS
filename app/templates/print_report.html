@@ -79,7 +79,7 @@
 
     <section class="tis-exam-banner">
       <span></span>
-      <strong>{{ result.settings.print_exam_banner_text }}</strong>
+      <strong>{% if result.exam %}{% set ex_name = result.exam.name|upper %}{% if 'RESULT' in ex_name %}{{ ex_name }}{% else %}{{ ex_name }} RESULT{% endif %}{% else %}{{ (result.settings.print_exam_banner_text or 'FINAL EXAMINATION RESULT')|upper }}{% endif %}</strong>
       <span></span>
     </section>
 

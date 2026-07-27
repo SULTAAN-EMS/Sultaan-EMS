@@ -1037,24 +1037,34 @@ def result_payload(student, exam=None, public_only=True):
     if exam:
         query = query.filter_by(exam_id=exam.id)
     if public_only:
+result_payload(student, exam=None, public_only=True):
+    query = Result.query.filter_by(student_id=student.id)
+    if exam:
+        query = query.filter_by(exam_id=exam.id)
+    if public_only:
         query = query.join(Result.exam).filter(Result.is_published.is_(True))
     rows = query.join(Result.subject).order_by(Result.subject_id.asc()).all()
     total = sum(Decimal(row.score) for row in rows)
     max_total = sum(Decimal(row.subject.max_score) for row in rows) or Decimal("0")
     average = round(float(total / max_total * 100), 2) if max_total else 0
-    settings = get_settings()
+    settings = dict(get_settings())
+    active_exam = exam or (rows[0].exam if rows else None)
+    if active_exam:
+        ex_title = active_exam.name.strip().upper()
+        if "RESULT" not in ex_title:
+            ex_title += " RESULT"
+        settings["print_exam_banner_text"] = ex_title
+
     # Resolve every grade in this payload from one in-memory scale snapshot.
     # This keeps the public result, print report, and verification view aligned
     # with the selected exam's Grade Management configuration.
-    grade_cache = load_grade_scale_cache(exam.id if exam else None)
+    grade_cache = load_grade_scale_cache(active_exam.id if active_exam else None)
     overall = grade_for_from_cache(average, grade_cache)
     status = "Gudbay" if overall.get("is_pass") else "Haray"
 
     subject_rows = []
     for row in rows:
         percentage_raw = Decimal(row.score) / Decimal(row.subject.max_score) * 100 if row.subject.max_score else 0
-        percentage = round(float(percentage_raw), 2)
-        automatic_grade = grade_for_from_cache(percentage_raw, grade_cache)
         displayed_grade = dict(automatic_grade)
         displayed_grade["grade"] = row.grade_override or automatic_grade["grade"]
         displayed_grade["comment"] = row.comment or automatic_grade["comment"]
