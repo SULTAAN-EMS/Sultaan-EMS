@@ -71,7 +71,7 @@
         <div class="preview-position-control">
           <label for="overlayPreviewPosition">Class position</label>
           <select id="overlayPreviewPosition">
-            {% for position in range(1, 11) %}<option value="{{ position }}">{{ position }}{% if position == 1 %}st{% elif position == 2 %}nd{% elif position == 3 %}rd{% else %}th{% endif %}</option>{% endfor %}
+            {% for position in range(1, 22) %}<option value="{{ position }}">{% if position == 21 %}21+{% else %}{{ position }}{% if position == 1 %}st{% elif position == 2 %}nd{% elif position == 3 %}rd{% else %}th{% endif %}{% endif %}</option>{% endfor %}
           </select>
         </div>
         <div class="admin-overlay-preview" id="overlayPreviewCard" aria-live="polite"></div>
@@ -166,10 +166,10 @@
       ${includeClose && timing.allowClose ? '<button type="button" class="result-overlay-close" data-close-overlay aria-label="Close success overlay"><i class="fa-solid fa-xmark"></i></button>' : ''}
       <canvas class="result-overlay-confetti" aria-hidden="true"></canvas>
       <span class="tier-pill">${tier.pill_icon} ${escapeHtml(tierLabels.pill)}</span>
-      <div class="icon-stage"><span class="icon-bg-circle"></span><span class="ring"></span><span class="ring r2"></span><span class="icon">${tier.icon}</span></div>
+      <div class="icon-stage ring-${tier.ring_style}"><span class="icon-bg-circle"></span><span class="ring"></span><span class="ring r2"></span>${tier.show_metric ? '<span class="ring r3"></span>' : ''}${tier.ring_style === 'orbit-dot' ? '<span class="orbit-dot"></span>' : ''}<span class="icon">${tier.icon}</span></div>
       <h2 class="ov-title">${escapeHtml(label.title)}</h2>
       <p class="ov-sub">${escapeHtml(label.subtitle.replace('{exam name}', label.name))}</p>
-      <p class="ov-percent">${escapeHtml(tierLabels.placement)} &middot; 78.45% ${escapeHtml(tierLabels.averageSuffix)}</p>
+      <p class="ov-percent">${tier.show_position ? escapeHtml(tierLabels.placement) : `Average: 78.45% · Grade: B`}</p>
       <div class="name-wrap"><div class="name-caption">${escapeHtml(tierLabels.nameCaption)}</div><div class="name-stage"><span class="name-glow-bg"></span><span class="animated-name">Student Name</span><span class="name-sweep"></span><span class="name-sparkle left">&#x2726;</span><span class="name-sparkle right">&#x2726;</span></div><div class="name-underline"></div></div>
       ${timing.showProgress ? '<div class="result-overlay-progress"><span class="result-overlay-progress-bar"></span></div>' : ''}
     </article>`;

@@ -537,7 +537,7 @@
                                 {% for subject in subjects %}
                                     <th class="col-subject">{{ subject.name[:5]|upper }}<small>{{ subject.name }}</small></th>
                                 {% endfor %}
-                                <th class="col-total">Total<small>({{ page_students[0].total_max|round(0) if page_students else 0 }})</small></th>
+                                <th class="col-total">Total<small>({{ page_students[0].total_max|academic_number(settings) if page_students else 0 }})</small></th>
                                 <th class="col-percent">Percentage</th>
                                 <th class="col-grade">Grade<br>Letter</th>
                                 <th class="col-rank">Rank</th>
@@ -567,10 +567,10 @@
                                     </td>
                                     <td class="class-code">{{ scope_info.class.name if scope_info.class else "-" }}</td>
                                     {% for subject_data in row.subject_data %}
-                                        <td>{{ subject_data.score|round(0) }}</td>
+                                        <td>{{ subject_data.score|academic_number(settings) }}</td>
                                     {% endfor %}
-                                    <td class="total-score">{{ row.total_score|round(0) }}</td>
-                                    <td><span class="badge percent-badge pct-{{ grade_class }}">{{ row.percentage|round(2) }}%</span></td>
+                                    <td class="total-score">{{ row.total_score|academic_number(settings) }}</td>
+                                    <td><span class="badge percent-badge pct-{{ grade_class }}">{{ row.percentage|academic_number(settings) }}%</span></td>
                                     <td><span class="badge grade-{{ grade_class }}">{{ grade_text }}</span></td>
                                     <td>
                                         <span class="badge rank-badge rank-{{ row.rank }}">
@@ -582,9 +582,9 @@
                             <tr class="summary-row">
                                 <td class="summary-label" colspan="4" rowspan="3"><span><span class="summary-icon">📊</span>CLASS SUMMARY</span></td>
                                 {% for stat in subject_stats %}
-                                    <td>{{ stat.highest|round(0) }}</td>
+                                    <td>{{ stat.highest|academic_number(settings) }}</td>
                                 {% endfor %}
-                                <td>{{ highest_total|round(0) }}</td>
+                                <td>{{ highest_total|academic_number(settings) }}</td>
                                 <td>{{ highest_score }}%</td>
                                 <td colspan="2" rowspan="3" class="pass-card">
                                     <span class="pass-title">Class Pass Rate</span>
@@ -594,9 +594,9 @@
                             </tr>
                             <tr class="summary-row">
                                 {% for stat in subject_stats %}
-                                    <td>{{ stat.lowest|round(0) }}</td>
+                                    <td>{{ stat.lowest|academic_number(settings) }}</td>
                                 {% endfor %}
-                                <td>{{ lowest_total|round(0) }}</td>
+                                <td>{{ lowest_total|academic_number(settings) }}</td>
                                 <td>{{ lowest_score }}%</td>
                             </tr>
                             <tr class="summary-row">

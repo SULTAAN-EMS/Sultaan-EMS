@@ -18,7 +18,7 @@ from .import_wizard import preview_students, student_template
 from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, Exam, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, Subject, LabelTranslation
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
-from .services import get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, result_payload, subject_display_name, subject_short_name
+from .services import academic_decimal_precision, academic_round, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, result_payload, subject_display_name, subject_short_name
 
 advanced_results_bp = Blueprint("admin_advanced_results", __name__)
 
@@ -642,7 +642,7 @@ def class_roster():
             """Get grade for a score using cached grade scales"""
             # Try exam-specific scales first
             for scale in exam_scales:
-                if scale.min_score <= score <= scale.max_score:
+                if scale.min_score <= Decimal(str(score)) <= scale.max_score:
                     return {
                         "grade": scale.grade,
                         "comment": scale.comment,
@@ -655,7 +655,7 @@ def class_roster():
                     }
             # Fall back to global scales
             for scale in global_scales:
-                if scale.min_score <= score <= scale.max_score:
+                if scale.min_score <= Decimal(str(score)) <= scale.max_score:
                     return {
                         "grade": scale.grade,
                         "comment": scale.comment,
@@ -733,7 +733,7 @@ def class_roster():
             
             # Calculate GP (grade point average)
             total_points = sum(s["grade"]["grade_point"] for s in subject_data if s["grade"]["grade_point"])
-            gp = round(total_points / len(subject_data), 2) if subject_data else 0
+            gp = academic_round(total_points / len(subject_data), get_settings()) if subject_data else 0
             
             roster_data.append({
                 "student": student,
@@ -814,7 +814,7 @@ def student_view():
         """Get grade for a score using cached grade scales"""
         # Try exam-specific scales first
         for scale in exam_scales:
-            if scale.min_score <= score <= scale.max_score:
+            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
                 return {
                     "grade": scale.grade,
                     "comment": scale.comment,
@@ -827,7 +827,7 @@ def student_view():
                 }
         # Fall back to global scales
         for scale in global_scales:
-            if scale.min_score <= score <= scale.max_score:
+            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
                 return {
                     "grade": scale.grade,
                     "comment": scale.comment,
@@ -870,7 +870,7 @@ def student_view():
             "result": result,
             "score": score,
             "max_score": max_score,
-            "pass_mark": round(max_score * 0.5, 2),
+            "pass_mark": academic_round(max_score * 0.5, get_settings()),
             "percentage": percentage,
             "grade": grade_info,
             "remark": grade_info.get("comment") or ("Pass" if grade_info.get("is_pass") else "Needs Improvement"),
@@ -881,7 +881,7 @@ def student_view():
     
     # Calculate GP
     total_points = sum(s["grade"]["grade_point"] for s in subject_data if s["grade"]["grade_point"])
-    gp = round(total_points / len(subject_data), 2) if subject_data else 0
+    gp = academic_round(total_points / len(subject_data), get_settings()) if subject_data else 0
     status = "Passed" if overall_grade.get("is_pass") else "Failed"
     rank = rank_student_in_scope(
         student,
@@ -893,6 +893,9 @@ def student_view():
         section_id=student.academic_section_id,
     )
     
+    student_view_settings = get_settings()
+    student_view_precision = academic_decimal_precision(student_view_settings)
+    student_view_step = {0: "1", 1: "0.1", 2: "0.01", 3: "0.001"}[student_view_precision]
     return render_template(
         "admin/student_view.html",
         years=AcademicYear.query.order_by(AcademicYear.name.desc()).all(),
@@ -909,7 +912,8 @@ def student_view():
         rank=rank,
         status=status,
         grade_distribution=grade_distribution,
-        settings=get_settings(),
+        settings=student_view_settings,
+        decimal_step=student_view_step,
     )
 
 
@@ -1017,7 +1021,7 @@ def export_student_pdf():
         """Get grade for a score using cached grade scales"""
         # Try exam-specific scales first
         for scale in exam_scales:
-            if scale.min_score <= score <= scale.max_score:
+            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
                 return {
                     "grade": scale.grade,
                     "comment": scale.comment,
@@ -1030,7 +1034,7 @@ def export_student_pdf():
                 }
         # Fall back to global scales
         for scale in global_scales:
-            if scale.min_score <= score <= scale.max_score:
+            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
                 return {
                     "grade": scale.grade,
                     "comment": scale.comment,
@@ -1142,7 +1146,7 @@ def export_class_pdf():
         """Get grade for a score using cached grade scales"""
         # Try exam-specific scales first
         for scale in exam_scales:
-            if scale.min_score <= score <= scale.max_score:
+            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
                 return {
                     "grade": scale.grade,
                     "comment": scale.comment,
@@ -1155,7 +1159,7 @@ def export_class_pdf():
                 }
         # Fall back to global scales
         for scale in global_scales:
-            if scale.min_score <= score <= scale.max_score:
+            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
                 return {
                     "grade": scale.grade,
                     "comment": scale.comment,
@@ -1220,10 +1224,10 @@ def export_class_pdf():
         row["rank_label"] = ordinal(row["rank"]) if row["rank"] else "-"
     
     # Calculate class stats
-    class_average = round(sum(r["percentage"] for r in roster_data) / len(roster_data), 2) if roster_data else 0
-    highest_total = round(max((row["total_score"] for row in roster_data), default=0), 2)
-    lowest_total = round(min((row["total_score"] for row in roster_data), default=0), 2)
-    average_total = round(sum(row["total_score"] for row in roster_data) / len(roster_data), 2) if roster_data else 0
+    class_average = sum(r["percentage"] for r in roster_data) / len(roster_data) if roster_data else 0
+    highest_total = max((row["total_score"] for row in roster_data), default=0)
+    lowest_total = min((row["total_score"] for row in roster_data), default=0)
+    average_total = sum(row["total_score"] for row in roster_data) / len(roster_data) if roster_data else 0
     passed_count = sum(1 for row in roster_data if row["grade"].get("is_pass"))
     failed_count = len(roster_data) - passed_count
     pass_rate = round((passed_count / len(roster_data) * 100), 2) if roster_data else 0
@@ -1234,9 +1238,9 @@ def export_class_pdf():
         scores = [float(row["subject_data"][index]["score"]) for row in roster_data if index < len(row["subject_data"])]
         subject_stats.append({
             "subject": subject,
-            "highest": round(max(scores), 2) if scores else 0,
-            "lowest": round(min(scores), 2) if scores else 0,
-            "average": round(sum(scores) / len(scores), 2) if scores else 0,
+            "highest": max(scores) if scores else 0,
+            "lowest": min(scores) if scores else 0,
+            "average": sum(scores) / len(scores) if scores else 0,
         })
     students_per_page = 15
     total_pages = max(1, math.ceil(len(roster_data) / students_per_page))
@@ -1267,8 +1271,8 @@ def export_class_pdf():
         passed_count=passed_count,
         failed_count=failed_count,
         pass_rate=pass_rate,
-        highest_score=round(highest_score, 2),
-        lowest_score=round(lowest_score, 2),
+        highest_score=highest_score,
+        lowest_score=lowest_score,
         completed_count=len(roster_data),
         students_per_page=students_per_page,
         total_pages=total_pages,
@@ -1323,7 +1327,7 @@ def export_class_excel():
         """Get grade for a score using cached grade scales"""
         # Try exam-specific scales first
         for scale in exam_scales:
-            if scale.min_score <= score <= scale.max_score:
+            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
                 return {
                     "grade": scale.grade,
                     "comment": scale.comment,
@@ -1336,7 +1340,7 @@ def export_class_excel():
                 }
         # Fall back to global scales
         for scale in global_scales:
-            if scale.min_score <= score <= scale.max_score:
+            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
                 return {
                     "grade": scale.grade,
                     "comment": scale.comment,
@@ -1410,7 +1414,7 @@ def export_class_excel():
                     grade_info["grade"] = result.grade_override
                 total_points += grade_info["grade_point"]
         
-        gp = round(total_points / len(subjects), 2) if subjects else 0
+        gp = academic_round(total_points / len(subjects), get_settings()) if subjects else 0
         
         row_data.extend([total_score, overall_percentage, overall_grade["grade"], gp])
         ws.append(row_data)
@@ -1866,11 +1870,11 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5):
             percentages.append(pct)
     
     # Calculate overall average
-    overall_average = round(sum(percentages) / len(percentages), 1) if percentages else 0
+    overall_average = sum(percentages) / len(percentages) if percentages else 0
     
     # Calculate highest and lowest scores
-    highest_score = round(max(percentages), 1) if percentages else 0
-    lowest_score = round(min(percentages), 1) if percentages else 0
+    highest_score = max(percentages) if percentages else 0
+    lowest_score = min(percentages) if percentages else 0
     
     # Grade distribution using actual grade scales
     grade_counts = {}
@@ -1896,7 +1900,7 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5):
         subject_averages[subject_name].append(pct)
     
     subject_labels = sorted(subject_averages.keys())
-    subject_values = [round(sum(subject_averages[s]) / len(subject_averages[s]), 1) for s in subject_labels]
+    subject_values = [sum(subject_averages[s]) / len(subject_averages[s]) for s in subject_labels]
     
     # Exam trend (compare with other exams in same year)
     year_exams = Exam.query.filter_by(academic_year_id=exam.academic_year_id).order_by(Exam.created_at).all()
@@ -1915,7 +1919,7 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5):
                 float(result.score) / float(result.subject.max_score) * 100
             )
     exam_trend_values = [
-        round(sum(trend_percentages.get(year_exam.id, [])) / len(trend_percentages[year_exam.id]), 1)
+        sum(trend_percentages.get(year_exam.id, [])) / len(trend_percentages[year_exam.id])
         if trend_percentages.get(year_exam.id) else 0
         for year_exam in year_exams
     ]
@@ -1933,7 +1937,7 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5):
             student_averages[student_id] = []
         student_averages[student_id].append(pct)
     
-    student_avg_list = [(sid, round(sum(pcts) / len(pcts), 1)) for sid, pcts in student_averages.items()]
+    student_avg_list = [(sid, sum(pcts) / len(pcts)) for sid, pcts in student_averages.items()]
     student_avg_list.sort(key=lambda x: x[1], reverse=True)
     
     top_performers = []
@@ -2034,6 +2038,8 @@ def grade_management():
         subjects = Subject.query.filter_by(academic_level_id=selected_exam.academic_level_id).all()
         total_points = sum(float(s.max_score) for s in subjects)
     
+    decimal_precision = academic_decimal_precision(get_settings())
+    decimal_step = {0: "1", 1: "0.1", 2: "0.01", 3: "0.001"}[decimal_precision]
     return render_template(
         "admin/grade_management.html",
         years=years,
@@ -2044,6 +2050,8 @@ def grade_management():
         using_global=using_global,
         exam_status=exam_status,
         total_points=total_points,
+        decimal_precision=decimal_precision,
+        decimal_step=decimal_step,
         settings=get_settings(),
     )
 
@@ -2053,6 +2061,13 @@ def save_grade_scales():
     """Save grade scales for an exam"""
     exam_id = int_or_none(request.form.get("exam_id"))
     selected_exam = db.session.get(Exam, exam_id) if exam_id else None
+    try:
+        decimal_precision = int(request.form.get("academic_decimal_precision", "2"))
+    except (TypeError, ValueError):
+        decimal_precision = 2
+    if decimal_precision not in (0, 1, 2, 3):
+        flash("Decimal precision must be between 0 and 3 places.", "danger")
+        return redirect(url_for("admin_advanced_results.grade_management", year_id=request.form.get("year_id"), exam_id=exam_id) if exam_id else url_for("admin_advanced_results.grade_management"))
     posted_grade_ids = []
     for key in request.form:
         if key.startswith("grade_"):
@@ -2064,6 +2079,9 @@ def save_grade_scales():
     clone_global_for_exam = bool(exam_id and posted_grade_ids and existing_custom == 0)
 
     try:
+        precision_setting = db.session.get(Setting, "academic_decimal_precision") or Setting(key="academic_decimal_precision")
+        precision_setting.value = str(decimal_precision)
+        db.session.add(precision_setting)
         target_rows = []
         if clone_global_for_exam:
             source_rows = GradeScale.query.filter(GradeScale.id.in_(posted_grade_ids)).order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
@@ -2615,7 +2633,7 @@ def build_stats(payloads, rows):
     def cached_grade_for(score):
         """Get grade for a score using cached global grade scales"""
         for scale in global_scales:
-            if scale.min_score <= score <= scale.max_score:
+            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
                 return {
                     "grade": scale.grade,
                     "comment": scale.comment,

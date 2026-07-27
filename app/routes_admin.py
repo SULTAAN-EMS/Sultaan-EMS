@@ -1061,7 +1061,7 @@ def result_success_overlay_settings():
         template_defaults=RESULT_SUCCESS_TEMPLATE_DEFAULTS,
         shared_labels=result_success_overlay_labels(settings),
         shared_label_defaults=RESULT_SUCCESS_OVERLAY_LABEL_DEFAULTS,
-        preview_tiers={str(position): result_success_position_tier(position, settings) for position in range(1, 11)},
+        preview_tiers={str(position): result_success_position_tier(position, settings) for position in range(1, 22)},
     )
 
 

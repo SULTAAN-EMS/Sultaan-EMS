@@ -170,6 +170,7 @@ def result():
             payload.get("rank"),
             payload.get("average"),
             settings,
+            letter_grade=(payload.get("overall_grade") or {}).get("grade") if isinstance(payload.get("overall_grade"), dict) else None,
         ),
     )
 

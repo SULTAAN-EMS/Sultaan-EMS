@@ -284,7 +284,7 @@
           <div class="side-student-class"><span><i class="fa-solid fa-people-roof"></i></span><small>{{ settings.result_label_student_class }}</small><strong>{{ result.student.school_class.name }}</strong></div>
           <div class="side-exam"><span><i class="fa-solid fa-file-lines"></i></span><small>{{ settings.result_label_exam_type }}</small><strong>{{ result.exam.name if result.exam else 'Final Examination' }}</strong></div>
           <div class="side-download-date"><span><i class="fa-solid fa-calendar-check"></i></span><small>{{ settings.result_label_date_issued }}</small><strong>{{ download_date_text }}</strong></div>
-          <div class="side-percentage"><span><i class="fa-solid fa-percent"></i></span><small>{{ settings.result_label_subject_percentage }}</small><strong>{{ result.average }}%</strong></div>
+          <div class="side-percentage"><span><i class="fa-solid fa-percent"></i></span><small>{{ settings.result_label_subject_percentage }}</small><strong>{{ result.average|academic_number(settings) }}%</strong></div>
         </div>
         <div class="reference-school-mark">
           {% if settings.logo_path %}<img src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">{% else %}<i class="fa-solid fa-school"></i>{% endif %}
@@ -310,10 +310,10 @@
                   <tr>
                     <td data-label="No.">{{ loop.index }}</td>
                     <td data-label="Subject">{{ row.subject }}</td>
-                    <td data-label="Full Mark">{{ row.max_score }}</td>
-                    <td data-label="Mark Obtained"><span class="dynamic-grade-badge mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ "%.2f"|format(row.score) }}</b></span></td>
+                    <td data-label="Full Mark">{{ row.max_score|academic_number(settings) }}</td>
+                    <td data-label="Mark Obtained"><span class="dynamic-grade-badge mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.score|academic_number(settings) }}</b></span></td>
                     <td data-label="Grade"><span class="dynamic-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.grade.grade }}</b></span></td>
-                    <td data-label="Grade Point">{{ row.grade.grade_point }}</td>
+                    <td data-label="Grade Point">{{ row.grade.grade_point|academic_number(settings) }}</td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -324,9 +324,9 @@
             <section class="reference-academic-summary">
               <h3>{{ settings.result_academic_summary_title if settings.result_academic_summary_title != 'Academic Summary' else 'SOO KOOBID' }}</h3>
               <div><span><i class="fa-solid fa-book-open"></i> Total Subjects</span><strong>{{ result.subjects|length }}</strong></div>
-              <div><span><i class="fa-solid fa-list-check"></i> Total Marks</span><strong>{{ result.max_total }}</strong></div>
-              <div><span><i class="fa-solid fa-chart-line"></i> Total Obtained Marks</span><strong>{{ result.total }}</strong></div>
-              <div><span><i class="fa-solid fa-chart-pie"></i> Average Percentage</span><strong>{{ result.average }}%</strong></div>
+              <div><span><i class="fa-solid fa-list-check"></i> Total Marks</span><strong>{{ result.max_total|academic_number(settings) }}</strong></div>
+              <div><span><i class="fa-solid fa-chart-line"></i> Total Obtained Marks</span><strong>{{ result.total|academic_number(settings) }}</strong></div>
+              <div><span><i class="fa-solid fa-chart-pie"></i> Average Percentage</span><strong>{{ result.average|academic_number(settings) }}%</strong></div>
               <div><span><i class="fa-solid fa-star"></i> Overall Grade</span><strong class="pill" style="background: {{ result.overall_grade.badge_color }}; color: {{ result.overall_grade.text_color }};">{{ result.overall_grade.grade }}</strong></div>
               <div><span><i class="fa-solid fa-ranking-star"></i> Position in Class</span><strong>{{ result.rank or '-' }}</strong></div>
               <div><span><i class="fa-solid fa-arrow-up-right-dots"></i> Final Status</span><strong class="final-status-value">{{ 'PROMOTED' if result.overall_grade.is_pass else 'NOT PROMOTED' }}</strong></div>
@@ -365,13 +365,13 @@
             <table>
               <tr><th>Percentage</th><th>Grade</th><th>Point</th></tr>
               {% for scale in result.grade_scales %}
-              <tr><td>{{ scale.min_score }} - {{ scale.max_score }}</td><td>{{ scale.grade }}</td><td>{{ scale.grade_point }}</td></tr>
+              <tr><td>{{ scale.min_score|academic_number(settings) }} - {{ scale.max_score|academic_number(settings) }}</td><td>{{ scale.grade }}</td><td>{{ scale.grade_point|academic_number(settings) }}</td></tr>
               {% endfor %}
             </table>
           </div>
-          <div class="reference-performance">
+            <div class="reference-performance">
             <h3>Performance Overview</h3>
-            <div class="reference-sunburst" data-average="{{ result.average }}" data-subjects='[
+            <div class="reference-sunburst" data-average="{{ result.average }}" data-precision="{{ settings.academic_decimal_precision|int }}" data-subjects='[
               {% for row in result.subjects %}
                 {"subject": {{ row.subject|tojson }}, "score": {{ row.score|float }}, "max_score": {{ row.max_score|float }}, "grade": {{ row.grade.grade|tojson }}, "percentage": {{ row.percentage|float }}}{% if not loop.last %},{% endif %}
               {% endfor %}
@@ -403,10 +403,10 @@
       {% endif %}
       <canvas class="result-overlay-confetti" id="resultSuccessOverlayConfetti" aria-hidden="true"></canvas>
       <span class="tier-pill">{{ overlay_tier.pill_icon|safe }} {{ overlay_tier.pill }}</span>
-      <div class="icon-stage"><span class="icon-bg-circle"></span><span class="ring"></span><span class="ring r2"></span><span class="icon">{{ overlay_tier.icon|safe }}</span></div>
+      <div class="icon-stage ring-{{ overlay_tier.ring_style }}"><span class="icon-bg-circle"></span><span class="ring"></span><span class="ring r2"></span>{% if overlay_tier.show_metric %}<span class="ring r3"></span>{% if overlay_tier.ring_style == 'orbit-dot' %}<span class="orbit-dot"></span>{% endif %}{% endif %}<span class="icon">{{ overlay_tier.icon|safe }}</span></div>
       <h2 class="ov-title">{{ result_success_overlay.title }}</h2>
       <p class="ov-sub">{{ result_success_overlay.subtitle }}</p>
-      <p class="ov-percent">{{ overlay_tier.placement }} &middot; {{ result_success_overlay.average }}% {{ result_success_overlay.labels.average_suffix }}</p>
+      <p class="ov-percent">{% if overlay_tier.show_position %}{{ overlay_tier.placement }}{% else %}Average: {{ result_success_overlay.average }}%{% if result_success_overlay.letter_grade %} &middot; Grade: {{ result_success_overlay.letter_grade }}{% endif %}{% endif %}</p>
       <div class="name-wrap">
         <div class="name-caption">{{ result_success_overlay.labels.name_caption }}</div>
         <div class="name-stage"><span class="name-glow-bg"></span><span class="animated-name">{{ result.student.full_name }}</span><span class="name-sweep"></span><span class="name-sparkle left">&#x2726;</span><span class="name-sparkle right">&#x2726;</span></div>
@@ -559,7 +559,8 @@
           ].join(" ");
         };
         const setActive = (item, index) => {
-          const percent = Number(item.percentage).toFixed(1);
+          const precision = Number(chart.dataset.precision || 2);
+          const percent = Number(item.percentage).toFixed(precision);
           tooltip.innerHTML = `<strong>${item.subject}</strong><span>${item.score}/${item.max_score} marks</span><span>Grade ${item.grade} - ${percent}%</span>`;
           center.innerHTML = `<strong>${percent}%</strong><span>${item.grade}</span>`;
           chart.querySelectorAll(".sunburst-segment").forEach((segment) => segment.classList.toggle("is-active", Number(segment.dataset.index) === index));
@@ -573,7 +574,7 @@
           path.setAttribute("fill", palette[index % palette.length]);
           path.setAttribute("tabindex", "0");
           path.setAttribute("role", "button");
-          path.setAttribute("aria-label", `${item.subject} ${Number(item.percentage).toFixed(1)} percent`);
+          path.setAttribute("aria-label", `${item.subject} ${Number(item.percentage).toFixed(precision)} percent`);
           path.classList.add("sunburst-segment");
           path.dataset.index = String(index);
           path.addEventListener("mouseenter", () => setActive(item, index));

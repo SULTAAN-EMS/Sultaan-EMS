@@ -112,8 +112,8 @@
             <tr>
               <td>{{ loop.index }}</td>
               <td>{{ row.subject }}</td>
-              <td>{{ row.max_score }}</td>
-              <td><strong class="print-grade-badge print-mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ "%.2f"|format(row.score) }}</strong></td>
+              <td>{{ row.max_score|academic_number(settings) }}</td>
+              <td><strong class="print-grade-badge print-mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.score|academic_number(settings) }}</strong></td>
               <td><strong class="print-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.grade.grade }}</strong></td>
               <td>{{ row.grade.comment }}</td>
             </tr>
@@ -123,8 +123,8 @@
     </section>
 
     <section class="tis-print-summary">
-      <div><i class="fa-solid fa-clipboard-check"></i><span>Total Marks</span><strong>{{ result.max_total }}</strong><small>Out of {{ result.max_total }}</small></div>
-      <div><i class="fa-solid fa-chart-line"></i><span>Marks Obtained</span><strong>{{ result.total }}</strong><small>Out of {{ result.max_total }}</small></div>
+      <div><i class="fa-solid fa-clipboard-check"></i><span>Total Marks</span><strong>{{ result.max_total|academic_number(settings) }}</strong><small>Out of {{ result.max_total|academic_number(settings) }}</small></div>
+      <div><i class="fa-solid fa-chart-line"></i><span>Marks Obtained</span><strong>{{ result.total|academic_number(settings) }}</strong><small>Out of {{ result.max_total|academic_number(settings) }}</small></div>
       <div><i class="fa-solid fa-chart-pie"></i><span>Percentage</span><strong>{{ result.average }}%</strong></div>
       <div><i class="fa-solid fa-award"></i><span>Grade</span><strong style="color: {{ result.overall_grade.badge_color }};">{{ result.overall_grade.grade }}</strong><small>{{ result.overall_grade.comment }}</small></div>
       <div><i class="fa-solid fa-trophy"></i><span>Rank</span><strong>{{ result.rank or '-' }}</strong><small>In Class</small></div>

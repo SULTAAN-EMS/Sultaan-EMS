@@ -13,8 +13,8 @@
             <td>{{ row.student.student_code }} — {{ row.student.full_name }}</td>
             <td>{{ row.exam.name }}</td>
             <td>{{ row.subject.name }}</td>
-            <td>{{ row.score }} / {{ row.max_score }}</td>
-            <td>{{ row.percentage }}%</td>
+            <td>{{ row.score|academic_number(ui_settings) }} / {{ row.max_score|academic_number(ui_settings) }}</td>
+            <td>{{ row.percentage|academic_number(ui_settings) }}%</td>
             <td>{{ row.grade }}</td>
             <td><span class="status-pill {{ 'ok' if row.is_published else 'warn' }}">{{ 'Yes' if row.is_published else 'No' }}</span></td>
           </tr>

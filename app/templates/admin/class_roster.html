@@ -127,16 +127,16 @@
                   {% if student_data.student.mother_name %}<span class="mother-name">({{ student_data.student.mother_name }})</span>{% endif %}
                 </td>
                 {% for subject_data in student_data.subject_data %}
-                  <td class="rh-mono">{{ subject_data.score|round(1) }}</td>
+                  <td class="rh-mono">{{ subject_data.score|academic_number(settings) }}</td>
                 {% endfor %}
-                <td class="rh-mono"><strong>{{ student_data.total_score|round(1) }}/{{ student_data.total_max|round(0) }}</strong></td>
-                <td class="rh-mono">{{ student_data.percentage|round(1) }}%</td>
+                  <td class="rh-mono"><strong>{{ student_data.total_score|academic_number(settings) }}/{{ student_data.total_max|academic_number(settings) }}</strong></td>
+                  <td class="rh-mono">{{ student_data.percentage|academic_number(settings) }}%</td>
                 <td>
                   <span class="rh-grade-preview" style="background: {{ student_data.grade.background_color }}; color: {{ student_data.grade.text_color }}; border: 1px solid {{ student_data.grade.border_color }};">
                     {{ student_data.grade.grade }}
                   </span>
                 </td>
-                <td class="rh-mono">{{ student_data.gp }}</td>
+                <td class="rh-mono">{{ student_data.gp|academic_number(settings) }}</td>
               </tr>
             {% else %}
               <tr>

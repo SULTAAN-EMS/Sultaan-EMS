@@ -106,7 +106,7 @@
         <div class="verification-section-title"><i class="fa-solid fa-chart-simple"></i><strong>Result Summary</strong></div>
         <div class="verification-summary-grid">
           {% if settings.verify_fields_total_marks == 'on' %}
-            <div><span>Total Marks</span><strong>{{ result.total }} / {{ result.max_total }}</strong></div>
+            <div><span>Total Marks</span><strong>{{ result.total|academic_number(settings) }} / {{ result.max_total|academic_number(settings) }}</strong></div>
           {% endif %}
           {% if settings.verify_fields_percentage == 'on' %}
             <div><span>Percentage</span><strong>{{ result.average }}%</strong></div>

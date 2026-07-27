@@ -115,7 +115,7 @@ class Subject(TimestampMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
     academic_level_id = db.Column(db.Integer, db.ForeignKey("academic_levels.id"), nullable=True)
-    max_score = db.Column(db.Numeric(6, 2), default=100, nullable=False)
+    max_score = db.Column(db.Numeric(8, 3), default=100, nullable=False)
     sort_order = db.Column(db.Integer, default=0, nullable=False)
 
     academic_level = db.relationship("AcademicLevel", backref=db.backref("subjects", lazy="dynamic"))
@@ -206,7 +206,7 @@ class Result(TimestampMixin, db.Model):
     exam_id = db.Column(db.Integer, db.ForeignKey("exams.id", ondelete="CASCADE"), nullable=False)
     subject_id = db.Column(db.Integer, db.ForeignKey("subjects.id"), nullable=False)
 
-    score = db.Column(db.Numeric(6, 2), nullable=False)
+    score = db.Column(db.Numeric(8, 3), nullable=False)
     grade_override = db.Column(db.String(20))
     comment = db.Column(db.String(255))
     is_published = db.Column(db.Boolean, default=True, nullable=False)
@@ -232,10 +232,10 @@ class GradeScale(TimestampMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     grade = db.Column(db.String(20), nullable=False)
-    min_score = db.Column(db.Numeric(6, 2), nullable=False)
-    max_score = db.Column(db.Numeric(6, 2), nullable=False)
+    min_score = db.Column(db.Numeric(8, 3), nullable=False)
+    max_score = db.Column(db.Numeric(8, 3), nullable=False)
     comment = db.Column(db.String(120), nullable=False)
-    grade_point = db.Column(db.Numeric(4, 2), default=0, nullable=False)
+    grade_point = db.Column(db.Numeric(6, 3), default=0, nullable=False)
     is_pass = db.Column(db.Boolean, default=True, nullable=False)
     badge_color = db.Column(db.String(20), default="#10b981", nullable=False)
     text_color = db.Column(db.String(20), default="#ffffff", nullable=False)

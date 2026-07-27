@@ -330,15 +330,15 @@
         <!-- Stats -->
         <div class="stats-row">
             <div class="stat-item">
-                <div class="stat-value">{{ total_score }}</div>
+                <div class="stat-value">{{ total_score|academic_number(settings) }}</div>
                 <div class="stat-label">Total Score</div>
             </div>
             <div class="stat-item">
-                <div class="stat-value">{{ percentage }}%</div>
+                <div class="stat-value">{{ percentage|academic_number(settings) }}%</div>
                 <div class="stat-label">Percentage</div>
             </div>
             <div class="stat-item">
-                <div class="stat-value">{{ gp }}</div>
+                <div class="stat-value">{{ gp|academic_number(settings) }}</div>
                 <div class="stat-label">Grade Point</div>
             </div>
         </div>
@@ -362,7 +362,7 @@
                         </td>
                         <td class="mono">{{ subject_data.score }}</td>
                         <td class="mono">{{ subject_data.max_score }}</td>
-                        <td class="mono">{{ subject_data.percentage }}%</td>
+                        <td class="mono">{{ subject_data.percentage|academic_number(settings) }}%</td>
                         <td>
                             <span class="grade-pill grade-{{ subject_data.grade.grade|lower }}">
                                 {{ subject_data.grade.grade }}

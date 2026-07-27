@@ -32,7 +32,11 @@ def create_app(config_class=Config):
 
     from .models import User, Setting
     from .permissions import can
-    from .services import DEFAULT_SETTINGS, seed_grade_scales
+    from .services import DEFAULT_SETTINGS, format_academic_number, seed_grade_scales
+
+    @app.template_filter("academic_number")
+    def academic_number_filter(value, settings=None):
+        return format_academic_number(value, settings=settings)
 
     @login_manager.user_loader
     def load_user(user_id):

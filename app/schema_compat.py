@@ -21,7 +21,12 @@ def ensure_schema_compatibility():
     add_column_if_missing("exam_invigilators", "signature_data", column_sql(dialect, "signature_data", "TEXT"))
     widen_varchar_if_needed("results", "grade_override", 20)
     widen_varchar_if_needed("grade_scales", "grade", 20, nullable=False)
-    add_column_if_missing("grade_scales", "grade_point", column_sql(dialect, "grade_point", "DECIMAL(4,2) NOT NULL DEFAULT 0"))
+    add_column_if_missing("grade_scales", "grade_point", column_sql(dialect, "grade_point", "DECIMAL(6,3) NOT NULL DEFAULT 0"))
+    widen_decimal_if_needed("results", "score", 8, 3)
+    widen_decimal_if_needed("subjects", "max_score", 8, 3)
+    widen_decimal_if_needed("grade_scales", "min_score", 8, 3)
+    widen_decimal_if_needed("grade_scales", "max_score", 8, 3)
+    widen_decimal_if_needed("grade_scales", "grade_point", 6, 3)
     add_column_if_missing("grade_scales", "is_pass", column_sql(dialect, "is_pass", "BOOLEAN NOT NULL DEFAULT TRUE"))
     add_column_if_missing("grade_scales", "badge_color", column_sql(dialect, "badge_color", "VARCHAR(20) NOT NULL DEFAULT '#10b981'"))
     add_column_if_missing("grade_scales", "text_color", column_sql(dialect, "text_color", "VARCHAR(20) NOT NULL DEFAULT '#ffffff'"))
@@ -228,3 +233,28 @@ def widen_varchar_if_needed(table, column, length, nullable=True):
         null_sql = "NULL" if nullable else "NOT NULL"
         db.session.execute(text(f"ALTER TABLE {table} MODIFY COLUMN {column} VARCHAR({length}) {null_sql}"))
         db.session.commit()
+
+
+def widen_decimal_if_needed(table, column, precision, scale):
+    """Widen numeric columns in-place without changing existing values.
+
+    MySQL supports this metadata-only change for these decimal columns. SQLite
+    keeps its existing affinity; new databases receive the model definition.
+    """
+    if db.engine.dialect.name != "mysql":
+        return
+    inspector = inspect(db.engine)
+    row = {item["name"]: item for item in inspector.get_columns(table)}.get(column)
+    if not row:
+        return
+    current = row.get("type")
+    current_precision = getattr(current, "precision", None)
+    current_scale = getattr(current, "scale", None)
+    if current_precision and current_scale is not None and current_precision >= precision and current_scale >= scale:
+        return
+    nullable_sql = "NULL" if row.get("nullable", True) else "NOT NULL"
+    try:
+        db.session.execute(text(f"ALTER TABLE {table} MODIFY COLUMN {column} DECIMAL({precision},{scale}) {nullable_sql}"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()

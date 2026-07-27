@@ -145,7 +145,7 @@
                       value="{{ cell_data.score if cell_data.score is not none else '' }}"
                       min="0"
                       max="{{ subject.max_score }}"
-                      step="0.01"
+                      step="{{ '1' if ui_settings.academic_decimal_precision == '0' else '0.1' if ui_settings.academic_decimal_precision == '1' else '0.001' if ui_settings.academic_decimal_precision == '3' else '0.01' }}"
                       inputmode="decimal"
                       data-max="{{ subject.max_score }}"
                       data-student-id="{{ row.student.id }}"

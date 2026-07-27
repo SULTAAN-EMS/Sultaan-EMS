@@ -110,11 +110,59 @@
 }
 
 .icon-stage .ring.r2 { animation-delay: .5s; opacity: .6; }
+.icon-stage .ring.r3 { animation-delay: 1s; opacity: .4; }
 
 @keyframes result-overlay-ring-expand {
   0% { opacity: 1; transform: scale(.82); }
   100% { opacity: 0; transform: scale(1.3); }
 }
+
+/* Position 11-20 and 21+ ring variants. The default ring remains the sonar pulse. */
+.icon-stage.ring-dashed-rotate .ring {
+  border-style: dashed;
+  animation: result-overlay-dash-spin 8s linear infinite;
+}
+
+.icon-stage.ring-halo-breathe .ring {
+  inset: -14px;
+  border: 0;
+  background: radial-gradient(circle, var(--ring) 0%, transparent 70%);
+  animation: result-overlay-halo-breathe 2.6s ease-in-out infinite;
+}
+
+.icon-stage.ring-conic-spin .ring {
+  inset: -4px;
+  border: 0;
+  background: conic-gradient(var(--ring), transparent 40%, var(--ring));
+  animation: result-overlay-dash-spin 4s linear infinite;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
+}
+
+.icon-stage.ring-orbit-dot .ring { border-width: 1.5px; border-color: var(--ringFaint, var(--ring)); }
+.icon-stage.ring-orbit-dot .ring.r2,
+.icon-stage.ring-orbit-dot .ring.r3 { display: none; }
+.icon-stage.ring-orbit-dot .orbit-dot {
+  position: absolute;
+  inset: 0;
+  animation: result-overlay-orbit-spin 3s linear infinite;
+}
+.icon-stage.ring-orbit-dot .orbit-dot::after {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  content: "";
+  border-radius: 50%;
+  background: var(--ring);
+  box-shadow: 0 0 12px var(--ring);
+}
+
+@keyframes result-overlay-dash-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+@keyframes result-overlay-halo-breathe { 0%, 100% { transform: scale(.9); opacity: .35; } 50% { transform: scale(1.15); opacity: .6; } }
+@keyframes result-overlay-orbit-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 
 .ov-title { margin-bottom: 5px; color: var(--titleColor); font-size: 21px; font-weight: 800; }
 .ov-sub { margin-bottom: 3px; color: #94a3c4; font-size: 12.5px; }

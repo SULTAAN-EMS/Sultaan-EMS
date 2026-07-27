@@ -29,7 +29,7 @@
         {% set percentage = ((row.score / subject.max_score) * 100) if row else 0 %}
         <tr>
           <td data-label="Subject">{{ subject.name }}<small>Max {{ subject.max_score }}</small></td>
-          <td data-label="Score"><input type="number" step="0.01" min="0" max="{{ subject.max_score }}" name="score_{{ subject.id }}" value="{{ row.score if row else '' }}"></td>
+          <td data-label="Score"><input type="number" step="{{ '1' if ui_settings.academic_decimal_precision == '0' else '0.1' if ui_settings.academic_decimal_precision == '1' else '0.001' if ui_settings.academic_decimal_precision == '3' else '0.01' }}" min="0" max="{{ subject.max_score }}" name="score_{{ subject.id }}" value="{{ row.score|academic_number(ui_settings) if row else '' }}"></td>
           <td data-label="Auto Grade">{{ subject_previews[subject.id].grade if row else '-' }}</td>
           <td data-label="Grade Override"><input name="grade_{{ subject.id }}" value="{{ row.grade_override if row else '' }}" placeholder="Optional"></td>
           <td data-label="Subject Remark"><input name="comment_{{ subject.id }}" value="{{ row.comment if row else '' }}" placeholder="Optional subject remark"></td>

@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
 
 from flask import current_app, g
@@ -389,6 +389,7 @@ DEFAULT_SETTINGS = {
     "result_success_overlay_duration_seconds": "8",
     "result_success_overlay_show_progress_bar": "on",
     "result_success_overlay_allow_manual_close": "on",
+    "academic_decimal_precision": "2",
     # Premium shared footer settings (Student Result, Verification, ID Verification)
     # These are auto-seeded on first run so no manual configuration is needed.
     "show_footer": "on",
@@ -444,7 +445,7 @@ RESULT_SUCCESS_OVERLAY_LABEL_DEFAULTS = {
     "pill_podium": "Podium Finish",
     "pill_top5": "Top 5 Result",
     "pill_top10": "Top 10 Result",
-    "pill_result": "Result Recorded",
+    "pill_result": "Result: Passed",
     "placement_1": "1st Place",
     "placement_2": "2nd Place",
     "placement_3": "3rd Place",
@@ -526,7 +527,7 @@ def result_success_overlay_settings(settings=None):
     settings = settings or get_settings()
     try:
         duration = int(settings.get("result_success_overlay_duration_seconds", 8))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, InvalidOperation):
         duration = 8
     duration = min(max(duration, 3), 60)
     active_template = str(settings.get("result_success_overlay_active_template") or "m1").strip().casefold()
@@ -565,25 +566,38 @@ def _blend_hex(foreground, background, ratio):
 def result_success_position_tier(position, settings=None):
     try:
         position = int(position)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, InvalidOperation):
         position = None
 
     labels = result_success_overlay_labels(settings)
     tier_map = {
-        1: ("podium", "&#x1F947;", "placement_1", "pill_podium", "&#x1F3C6;", "#f5c451", "#f59e0b", 70),
-        2: ("podium", "&#x1F948;", "placement_2", "pill_podium", "&#x1F3C6;", "#cbd5e1", "#94a3b8", 70),
-        3: ("podium", "&#x1F949;", "placement_3", "pill_podium", "&#x1F3C6;", "#f0a875", "#c2703d", 70),
-        4: ("top5", "&#x1F3C5;", "placement_4", "pill_top5", "&#x1F3AF;", "#4ade80", "#22c55e", 45),
-        5: ("top5", "&#x1F396;&#xFE0F;", "placement_5", "pill_top5", "&#x1F3AF;", "#4ade80", "#16a34a", 45),
-        6: ("top10", "&#x2B50;", "placement_6", "pill_top10", "&#x1F4CC;", "#67e8f9", "#22d3ee", 30),
-        7: ("top10", "&#x1F31F;", "placement_7", "pill_top10", "&#x1F4CC;", "#67e8f9", "#0ea5e9", 28),
-        8: ("top10", "&#x2728;", "placement_8", "pill_top10", "&#x1F4CC;", "#93c5fd", "#3b82f6", 27),
-        9: ("top10", "&#x1F537;", "placement_9", "pill_top10", "&#x1F4CC;", "#93c5fd", "#6366f1", 26),
-        10: ("top10", "&#x1F539;", "placement_10", "pill_top10", "&#x1F4CC;", "#a5b4fc", "#818cf8", 25),
+        1: ("podium", "&#x1F947;", "placement_1", "pill_podium", "&#x1F3C6;", "#f5c451", "#f59e0b", 70, "sonar-triple"),
+        2: ("podium", "&#x1F948;", "placement_2", "pill_podium", "&#x1F3C6;", "#cbd5e1", "#94a3b8", 70, "sonar-triple"),
+        3: ("podium", "&#x1F949;", "placement_3", "pill_podium", "&#x1F3C6;", "#f0a875", "#c2703d", 70, "sonar-triple"),
+        4: ("top5", "&#x1F3C5;", "placement_4", "pill_top5", "&#x1F3AF;", "#4ade80", "#22c55e", 45, "sonar-triple"),
+        5: ("top5", "&#x1F396;&#xFE0F;", "placement_5", "pill_top5", "&#x1F3AF;", "#4ade80", "#16a34a", 45, "sonar-triple"),
+        6: ("top10", "&#x2B50;", "placement_6", "pill_top10", "&#x1F4CC;", "#67e8f9", "#22d3ee", 30, "sonar-triple"),
+        7: ("top10", "&#x1F31F;", "placement_7", "pill_top10", "&#x1F4CC;", "#67e8f9", "#0ea5e9", 28, "sonar-triple"),
+        8: ("top10", "&#x2728;", "placement_8", "pill_top10", "&#x1F4CC;", "#93c5fd", "#3b82f6", 27, "sonar-triple"),
+        9: ("top10", "&#x1F537;", "placement_9", "pill_top10", "&#x1F4CC;", "#93c5fd", "#6366f1", 26, "sonar-triple"),
+        10: ("top10", "&#x1F539;", "placement_10", "pill_top10", "&#x1F4CC;", "#a5b4fc", "#818cf8", 25, "sonar-triple"),
+        # Positions 11-20 use a fixed, static sequence. Each ring style is paired
+        # with the icon meaning intentionally: target/diamond/celebration pulse,
+        # compass/sun sweep, books/handshake breathe, and leaf orbits.
+        11: ("slot_1", "&#x1F3AF;", "placement_result", "pill_result", "&#x2705;", "#4ade80", "#16a34a", 22, "sonar-triple"),
+        12: ("slot_2", "&#x1F9ED;", "placement_result", "pill_result", "&#x2705;", "#60a5fa", "#2563eb", 22, "conic-spin"),
+        13: ("slot_3", "&#x1F4DA;", "placement_result", "pill_result", "&#x2705;", "#a78bfa", "#7c3aed", 22, "halo-breathe"),
+        14: ("slot_4", "&#x1F48E;", "placement_result", "pill_result", "&#x2705;", "#22d3ee", "#0891b2", 22, "sonar-triple"),
+        15: ("slot_5", "&#x1F4C8;", "placement_result", "pill_result", "&#x2705;", "#4ade80", "#22c55e", 22, "dashed-rotate"),
+        16: ("slot_6", "&#x1F389;", "placement_result", "pill_result", "&#x2705;", "#f472b6", "#db2777", 22, "sonar-triple"),
+        17: ("slot_7", "&#x1F91D;", "placement_result", "pill_result", "&#x2705;", "#fb923c", "#ea580c", 22, "halo-breathe"),
+        18: ("slot_8", "&#x2600;&#xFE0F;", "placement_result", "pill_result", "&#x2705;", "#fde047", "#f59e0b", 22, "conic-spin"),
+        19: ("slot_9", "&#x1F343;", "placement_result", "pill_result", "&#x2705;", "#86efac", "#16a34a", 22, "orbit-dot"),
+        20: ("slot_10", "&#x1F4D6;", "placement_result", "pill_result", "&#x2705;", "#5eead4", "#0d9488", 22, "dashed-rotate"),
     }
-    tier, icon, placement_key, pill_key, pill_icon, accent_a, accent_b, confetti_count = tier_map.get(
+    tier, icon, placement_key, pill_key, pill_icon, accent_a, accent_b, confetti_count, ring_style = tier_map.get(
         position,
-        ("result", "&#x1F4CC;", "placement_result", "pill_result", "&#x1F4CC;", "#67e8f9", "#38bdf8", 0),
+        ("fallback", "&#x1F451;", "placement_result", "pill_result", "&#x2705;", "#c4b5fd", "#7c3aed", 24, "sonar-triple"),
     )
     return {
         "position": position,
@@ -595,6 +609,9 @@ def result_success_position_tier(position, settings=None):
         "accent_a": accent_a,
         "accent_b": accent_b,
         "confetti_count": confetti_count,
+        "ring_style": ring_style,
+        "show_position": position is not None and 1 <= position <= 10,
+        "show_metric": position is not None and position >= 11,
         "tint1": _blend_hex(accent_a, "#071a37", 0.18),
         "bg_a": _blend_hex(accent_a, "#0b1730", 0.17),
         "bg_b": _blend_hex(accent_b, "#060d1d", 0.14),
@@ -611,7 +628,7 @@ def result_success_position_tier(position, settings=None):
     }
 
 
-def result_success_overlay_config(exam, position, average, settings=None):
+def result_success_overlay_config(exam, position, average, settings=None, letter_grade=None):
     settings = settings or get_settings()
     template_key = result_success_template_key(exam)
     labels = result_success_template_copy(template_key, settings)
@@ -622,6 +639,7 @@ def result_success_overlay_config(exam, position, average, settings=None):
         "title": labels["title"].replace("{exam name}", exam_name),
         "subtitle": labels["subtitle"].replace("{exam name}", exam_name),
         "average": average,
+        "letter_grade": letter_grade,
         "settings": result_success_overlay_settings(settings),
         "labels": result_success_overlay_labels(settings),
         "tier": result_success_position_tier(position, settings),
@@ -648,6 +666,35 @@ def get_settings():
     settings = DEFAULT_SETTINGS.copy()
     settings.update({row.key: row.value for row in rows})
     return settings
+
+
+def academic_decimal_precision(settings=None):
+    """Return the global mark/grade-point display precision (0 through 3)."""
+    try:
+        if settings is None or not hasattr(settings, "get"):
+            settings = get_settings()
+        precision = int(settings.get("academic_decimal_precision", "2"))
+    except Exception:
+        precision = 2
+    return min(max(precision, 0), 3)
+
+
+def format_academic_number(value, settings=None, precision=None):
+    """Format marks and grade points consistently without changing calculations."""
+    if value in (None, ""):
+        value = 0
+    try:
+        decimal_value = Decimal(str(value))
+    except Exception:
+        decimal_value = Decimal("0")
+    places = academic_decimal_precision(settings) if precision is None else min(max(int(precision), 0), 3)
+    quantum = Decimal("1").scaleb(-places)
+    return f"{decimal_value.quantize(quantum, rounding=ROUND_HALF_UP):.{places}f}"
+
+
+def academic_round(value, settings=None):
+    """Return a numeric value rounded with the configured academic precision."""
+    return float(format_academic_number(value, settings=settings))
 
 
 SUBJECT_ICON_DEFAULTS = {
@@ -713,9 +760,9 @@ def slug(value):
 def grade_for(score, exam_id=None):
     """Get grade for a given score, optionally scoped to a specific exam"""
     try:
-        score = float(score or 0)
+        score = Decimal(str(score or 0))
     except (TypeError, ValueError):
-        score = 0.0
+        score = Decimal("0")
 
     # Keep all callers on one request-scoped scale snapshot. This prevents
     # analytics and result pages from issuing one SQL query per percentage.
@@ -835,9 +882,9 @@ def load_grade_scale_cache(exam_id=None):
 def grade_for_from_cache(score, scale_cache):
     """Resolve a grade using preloaded scale rows without database access."""
     try:
-        score_value = float(score or 0)
+        score_value = Decimal(str(score or 0))
     except (TypeError, ValueError):
-        score_value = 0.0
+        score_value = Decimal("0")
 
     for bucket in ("exam", "global", "fallback"):
         for row in scale_cache.get(bucket, []):
@@ -849,8 +896,8 @@ def grade_for_from_cache(score, scale_cache):
 
 def grade_scale_cache_row(scale):
     return {
-        "min_score": float(scale.min_score or 0),
-        "max_score": float(scale.max_score or 0),
+        "min_score": Decimal(str(scale.min_score or 0)),
+        "max_score": Decimal(str(scale.max_score or 0)),
         "payload": grade_scale_payload(scale),
     }
 
@@ -1019,7 +1066,7 @@ def result_payload(student, exam=None, public_only=True):
                 "grade": displayed_grade,
                 "automatic_grade": automatic_grade,
                 "status": "Pass" if displayed_grade.get("is_pass", automatic_grade.get("is_pass")) else "Needs Support",
-                "percentage": float(round(percentage, 2)),
+                "percentage": float(percentage),
                 "icon": subject_icon(row.subject.name, settings),
             }
         )
@@ -1068,7 +1115,7 @@ def result_payload(student, exam=None, public_only=True):
         "subjects": subject_rows,
         "total": float(total),
         "max_total": float(max_total),
-        "average": float(round(average, 2)),
+        "average": float(average),
         "status": status,
         "overall_grade": overall,
         "grade_scales": result_grade_scales,

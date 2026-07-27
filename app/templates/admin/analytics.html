@@ -150,7 +150,7 @@
                   class="rh-doughnut-segment"
                   data-grade="{{ label }}"
                   data-count="{{ value }}"
-                  data-percent="{{ percentage|round(1) }}">
+                  data-percent="{{ percentage|academic_number(ui_settings) }}">
                 </circle>
                 {% set cumulative = cumulative + value %}
               {% endfor %}
@@ -169,7 +169,7 @@
                 <div class="rh-legend-color" style="background: {{ color }};"></div>
                 <div class="rh-legend-info">
                   <div class="rh-legend-grade">{{ label }}</div>
-                  <div class="rh-legend-stats">{{ value }} students ({{ percentage }}%)</div>
+                  <div class="rh-legend-stats">{{ value }} students ({{ percentage|academic_number(ui_settings) }}%)</div>
                 </div>
               </div>
             {% else %}

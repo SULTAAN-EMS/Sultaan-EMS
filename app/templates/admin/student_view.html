@@ -136,10 +136,10 @@
                   <td class="rh-mono">{{ loop.index }}</td>
                   <td>
                     <span class="student-name">{{ item.subject.name }}</span>
-                    <span class="mother-name">Max score: {{ item.max_score|round(2) }}</span>
+                    <span class="mother-name">Max score: {{ item.max_score|academic_number(settings) }}</span>
                   </td>
-                  <td class="rh-mono">{{ item.max_score|round(2) }}</td>
-                  <td class="rh-mono">{{ item.pass_mark|round(2) }}</td>
+                  <td class="rh-mono">{{ item.max_score|academic_number(settings) }}</td>
+                  <td class="rh-mono">{{ item.pass_mark|academic_number(settings) }}</td>
                   <td>
                     <input
                       class="rh-input rh-score rh-single-score"
@@ -147,7 +147,7 @@
                       value="{{ item.score if item.score else '' }}"
                       min="0"
                       max="{{ item.max_score }}"
-                      step="0.01"
+                      step="{{ decimal_step if decimal_step is defined else '0.01' }}"
                       inputmode="decimal"
                       data-max="{{ item.max_score }}"
                       data-student-id="{{ student.id }}"
@@ -164,10 +164,10 @@
         </section>
 
         <div class="rh-bottom-summary-grid">
-          <div class="rh-bottom-summary-card kpi-total"><i class="fa-solid fa-layer-group"></i><span>Total Marks</span><strong>{{ total_max|round(2) }}</strong></div>
-          <div class="rh-bottom-summary-card kpi-obtained"><i class="fa-solid fa-arrow-trend-up"></i><span>Marks Obtained</span><strong>{{ total_score|round(2) }}</strong></div>
-          <div class="rh-bottom-summary-card kpi-average"><i class="fa-solid fa-chart-pie"></i><span>Average</span><strong>{{ percentage|round(2) }}%</strong></div>
-          <div class="rh-bottom-summary-card kpi-gpa"><i class="fa-solid fa-star-half-stroke"></i><span>Grade Point</span><strong>{{ gp }}</strong></div>
+          <div class="rh-bottom-summary-card kpi-total"><i class="fa-solid fa-layer-group"></i><span>Total Marks</span><strong>{{ total_max|academic_number(settings) }}</strong></div>
+          <div class="rh-bottom-summary-card kpi-obtained"><i class="fa-solid fa-arrow-trend-up"></i><span>Marks Obtained</span><strong>{{ total_score|academic_number(settings) }}</strong></div>
+          <div class="rh-bottom-summary-card kpi-average"><i class="fa-solid fa-chart-pie"></i><span>Average</span><strong>{{ percentage|academic_number(settings) }}%</strong></div>
+          <div class="rh-bottom-summary-card kpi-gpa"><i class="fa-solid fa-star-half-stroke"></i><span>Grade Point</span><strong>{{ gp|academic_number(settings) }}</strong></div>
           <div class="rh-bottom-summary-card kpi-grade"><i class="fa-solid fa-award"></i><span>Overall Grade</span><strong>{{ grade.grade }}</strong></div>
           <div class="rh-bottom-summary-card kpi-status {{ 'pass' if status == 'Passed' else 'fail' }}"><i class="fa-solid fa-circle-check"></i><span>Status</span><strong>{{ status }}</strong></div>
         </div>
