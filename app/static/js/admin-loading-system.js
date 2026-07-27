@@ -1,7 +1,9 @@
 /* ============================================================
    ADMIN GLOBAL ANIMATED LOADING SYSTEM — JS ENGINE
-   Guarantees: One loading event = One fixed design from 0% -> 100%
-   Next loading event = Randomly picks again
+   - One loading event = One fixed design (0% -> 100%)
+   - Continuous asymptotic live progress (never stalls)
+   - Smooth graceful completion with fade-out (never jarring)
+   - Back-navigation / bfcache safe (never freezes at 99%)
    ============================================================ */
 
 (function () {
@@ -10,15 +12,15 @@
   let activeOverlay = null;
   let currentPct = 0;
   let animFrame = null;
+  let liveProgressTimer = null;
   let activeDesignId = null;
-  let isEventActive = false;
+  let isHiding = false;
 
-  // Segmented bars heights array for Design 6
   const SEG_BAR_HEIGHTS = [24, 38, 48, 32, 52, 42, 48, 30, 44, 28];
 
   function buildLoaderHTML(designId) {
     switch (designId) {
-      case 1: // Circular Ring
+      case 1:
         return `
           <div class="loader-card circular-ring-card">
             <div class="circular-ring-wrap">
@@ -35,10 +37,9 @@
               <div class="ring-pct"><span class="pct-val" id="loaderPctText">0</span>%</div>
             </div>
             <div class="loader-subtitle">Loading workspace...</div>
-          </div>
-        `;
+          </div>`;
 
-      case 2: // Glow Bar
+      case 2:
         return `
           <div class="loader-card glow-bar-card">
             <div class="loader-subtitle">Processing Request</div>
@@ -46,10 +47,9 @@
               <div class="glow-bar-fill" id="glowBarFill" style="width: 0%;"></div>
             </div>
             <div class="glow-bar-pct"><span class="pct-val" id="loaderPctText">0</span>%</div>
-          </div>
-        `;
+          </div>`;
 
-      case 3: // Dual Ring Spinner
+      case 3:
         return `
           <div class="loader-card dual-ring-card">
             <div class="dual-ring-stage">
@@ -58,10 +58,9 @@
               <div class="dual-ring-pct"><span class="pct-val" id="loaderPctText">0</span>%</div>
             </div>
             <div class="loader-subtitle">Loading...</div>
-          </div>
-        `;
+          </div>`;
 
-      case 4: // Dot Pulse
+      case 4:
         return `
           <div class="loader-card dot-pulse-card">
             <div class="dot-pulse-stage">
@@ -71,10 +70,9 @@
             </div>
             <div class="dot-pulse-pct"><span class="pct-val" id="loaderPctText">0</span>%</div>
             <div class="loader-subtitle">Please wait...</div>
-          </div>
-        `;
+          </div>`;
 
-      case 5: // Liquid Fill
+      case 5:
         return `
           <div class="loader-card liquid-fill-card">
             <div class="liquid-circle">
@@ -82,10 +80,9 @@
               <div class="liquid-pct"><span class="pct-val" id="loaderPctText">0</span>%</div>
             </div>
             <div class="loader-subtitle">Loading Data</div>
-          </div>
-        `;
+          </div>`;
 
-      case 6: // Segmented Bars
+      case 6:
         return `
           <div class="loader-card segmented-bars-card">
             <div class="seg-bars-row" id="segBarsRow">
@@ -93,10 +90,9 @@
             </div>
             <div class="seg-pct"><span class="pct-val" id="loaderPctText">0</span>%</div>
             <div class="loader-subtitle">Gathering Information</div>
-          </div>
-        `;
+          </div>`;
 
-      case 7: // Minimal Badge
+      case 7:
         return `
           <div class="minimal-top-line" id="minimalTopLine" style="width: 0%;"></div>
           <div class="loader-card minimal-badge-card">
@@ -105,10 +101,9 @@
               <span>Loading</span>
               <strong class="minimal-pct"><span class="pct-val" id="loaderPctText">0</span>%</strong>
             </div>
-          </div>
-        `;
+          </div>`;
 
-      case 8: // Skeleton Pulse
+      case 8:
         return `
           <div class="loader-card skeleton-card">
             <div class="skel-line skel-title"></div>
@@ -116,10 +111,9 @@
             <div class="skel-line skel-body2"></div>
             <div class="skel-pct"><span class="pct-val" id="loaderPctText">0</span>%</div>
             <div class="loader-subtitle">Preparing View</div>
-          </div>
-        `;
+          </div>`;
 
-      case 9: // Orbit Loader
+      case 9:
         return `
           <div class="loader-card orbit-card">
             <div class="orbit-stage">
@@ -130,10 +124,9 @@
             </div>
             <div class="orbit-pct"><span class="pct-val" id="loaderPctText">0</span>%</div>
             <div class="loader-subtitle">Syncing Data</div>
-          </div>
-        `;
+          </div>`;
 
-      case 10: // Wave Bars
+      case 10:
       default:
         return `
           <div class="loader-card wave-bars-card">
@@ -146,8 +139,7 @@
             </div>
             <div class="wave-pct"><span class="pct-val" id="loaderPctText">0</span>%</div>
             <div class="loader-subtitle">Processing...</div>
-          </div>
-        `;
+          </div>`;
     }
   }
 
@@ -177,125 +169,216 @@
       }
       case 2: {
         const fill = document.getElementById('glowBarFill');
-        if (fill) fill.style.width = `${pct}%`;
+        if (fill) fill.style.width = pct + '%';
         break;
       }
       case 5: {
         const wave = document.getElementById('liquidWave');
-        if (wave) wave.style.top = `${100 - pct}%`;
+        if (wave) wave.style.top = (100 - pct) + '%';
         break;
       }
       case 6: {
         const litCount = Math.floor((pct / 100) * 10);
         for (let i = 0; i < 10; i++) {
-          const bar = document.getElementById(`segBar_${i}`);
+          const bar = document.getElementById('segBar_' + i);
           if (bar) bar.classList.toggle('lit', i < litCount);
         }
         break;
       }
       case 7: {
         const line = document.getElementById('minimalTopLine');
-        if (line) line.style.width = `${pct}%`;
+        if (line) line.style.width = pct + '%';
         break;
       }
     }
   }
 
   function getOrPickDesignId(explicitDesignId) {
-    if (explicitDesignId) {
-      return explicitDesignId;
-    }
-    // Check if an event is currently active in session
-    const storedDesign = sessionStorage.getItem('admin_loader_design');
-    const isStoredActive = sessionStorage.getItem('admin_loader_active') === 'true';
+    if (explicitDesignId) return explicitDesignId;
+
+    var storedDesign = sessionStorage.getItem('admin_loader_design');
+    var isStoredActive = sessionStorage.getItem('admin_loader_active') === 'true';
 
     if (isStoredActive && storedDesign) {
       return parseInt(storedDesign, 10);
     }
 
-    // New event -> pick a brand new random design 1..10
-    const newDesignId = Math.floor(Math.random() * 10) + 1;
+    var newDesignId = Math.floor(Math.random() * 10) + 1;
     sessionStorage.setItem('admin_loader_design', newDesignId.toString());
     sessionStorage.setItem('admin_loader_active', 'true');
     return newDesignId;
   }
 
-  function showLoader(specifiedDesignId, initialPct = 0) {
-    const overlay = createOverlay();
+  /* ----------------------------------------------------------
+     LIVE PROGRESS ENGINE
+     Smooth continuous asymptotic curve that never freezes.
+     Runs at 50ms intervals. Always creeping forward.
+     ---------------------------------------------------------- */
+  function startLiveProgress(initialPct) {
+    stopLiveProgress();
+    currentPct = initialPct || 0;
+    updatePctVisuals(currentPct);
+
+    liveProgressTimer = setInterval(function () {
+      if (currentPct < 55) {
+        currentPct += Math.random() * 2.8 + 1.2;          // Fast ramp 0-55
+      } else if (currentPct < 78) {
+        currentPct += Math.random() * 1.2 + 0.6;          // Steady 55-78
+      } else if (currentPct < 92) {
+        currentPct += (93 - currentPct) * 0.06;            // Decelerating 78-92
+      } else if (currentPct < 97) {
+        currentPct += (98 - currentPct) * 0.03;            // Slow creep 92-97
+      } else {
+        currentPct += 0.04;                                 // Micro-crawl 97+
+      }
+      if (currentPct > 98.6) currentPct = 98.6;
+      updatePctVisuals(currentPct);
+    }, 50);
+  }
+
+  function stopLiveProgress() {
+    if (liveProgressTimer) {
+      clearInterval(liveProgressTimer);
+      liveProgressTimer = null;
+    }
+    if (animFrame) {
+      cancelAnimationFrame(animFrame);
+      animFrame = null;
+    }
+  }
+
+  /* ----------------------------------------------------------
+     FORCE-CLEAR: Immediately nuke all loader state.
+     Used on back-navigation / bfcache restore to guarantee
+     the page is never left frozen.
+     ---------------------------------------------------------- */
+  function forceClear() {
+    stopLiveProgress();
+    isHiding = false;
+    currentPct = 0;
+    activeDesignId = null;
+    sessionStorage.removeItem('admin_loader_active');
+    sessionStorage.removeItem('admin_loader_design');
+
+    var overlay = document.getElementById('admin-global-loader');
+    if (overlay) {
+      overlay.classList.remove('active', 'fade-out');
+      overlay.innerHTML = '';
+    }
+    var topLine = document.getElementById('minimalTopLine');
+    if (topLine) topLine.remove();
+    activeOverlay = null;
+  }
+
+  /* ----------------------------------------------------------
+     SHOW / HIDE
+     ---------------------------------------------------------- */
+  function showLoader(specifiedDesignId, initialPct) {
+    if (isHiding) return;  // Don't start new loader while fade-out is running
+    var overlay = createOverlay();
     activeDesignId = getOrPickDesignId(specifiedDesignId);
-    isEventActive = true;
 
     overlay.innerHTML = buildLoaderHTML(activeDesignId);
+    overlay.classList.remove('fade-out');
     overlay.classList.add('active');
     activeOverlay = overlay;
-    currentPct = initialPct;
-    updatePctVisuals(initialPct);
+
+    startLiveProgress(initialPct || 0);
   }
 
   function hideLoader() {
-    if (!activeOverlay) return;
-    updatePctVisuals(100);
-    setTimeout(() => {
-      if (activeOverlay) {
-        activeOverlay.classList.remove('active');
-      }
-      const topLine = document.getElementById('minimalTopLine');
-      if (topLine) topLine.remove();
+    if (!activeOverlay || isHiding) return;
+    isHiding = true;
+    stopLiveProgress();
 
-      // Complete current loading event -> clear session storage so NEXT event picks a new design
-      isEventActive = false;
-      activeDesignId = null;
-      sessionStorage.removeItem('admin_loader_active');
-      sessionStorage.removeItem('admin_loader_design');
-    }, 220);
-  }
+    // Smooth final glide: current% -> 100% over 400ms with ease-out curve
+    var startPct = currentPct;
+    var startTime = performance.now();
+    var glideDuration = 400;
 
-  function animatePctTo(targetPct, durationMs, onComplete) {
-    if (animFrame) cancelAnimationFrame(animFrame);
-    const startPct = currentPct;
-    const startTime = performance.now();
-
-    function step(now) {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / durationMs, 1);
-      currentPct = startPct + (targetPct - startPct) * progress;
+    function glideStep(now) {
+      var elapsed = now - startTime;
+      var t = Math.min(elapsed / glideDuration, 1);
+      // Ease-out cubic for smooth deceleration into 100%
+      var eased = 1 - Math.pow(1 - t, 3);
+      currentPct = startPct + (100 - startPct) * eased;
       updatePctVisuals(currentPct);
 
-      if (progress < 1) {
-        animFrame = requestAnimationFrame(step);
-      } else if (onComplete) {
-        onComplete();
+      if (t < 1) {
+        animFrame = requestAnimationFrame(glideStep);
+      } else {
+        // 100% reached — now trigger gentle fade-out
+        if (activeOverlay) {
+          activeOverlay.classList.add('fade-out');
+        }
+        // Wait for CSS fade-out transition (350ms) then fully remove
+        setTimeout(function () {
+          if (activeOverlay) {
+            activeOverlay.classList.remove('active', 'fade-out');
+            activeOverlay.innerHTML = '';
+          }
+          var topLine = document.getElementById('minimalTopLine');
+          if (topLine) topLine.remove();
+
+          activeDesignId = null;
+          activeOverlay = null;
+          isHiding = false;
+          sessionStorage.removeItem('admin_loader_active');
+          sessionStorage.removeItem('admin_loader_design');
+        }, 380);
       }
     }
-    animFrame = requestAnimationFrame(step);
+    animFrame = requestAnimationFrame(glideStep);
   }
 
-  // Intercept navigation & page loads
-  document.addEventListener('DOMContentLoaded', () => {
-    const isStoredActive = sessionStorage.getItem('admin_loader_active') === 'true';
 
-    // If page load is the continuation of an ongoing loading event:
-    if (isStoredActive) {
-      showLoader(null, 75); // Use same fixed design, continue from 75% -> 100%
-      animatePctTo(100, 350, hideLoader);
+  /* ----------------------------------------------------------
+     BACK-NAVIGATION / BFCACHE SAFETY
+     pageshow fires on back/forward navigation (including
+     bfcache restores where DOMContentLoaded does NOT re-fire).
+     ---------------------------------------------------------- */
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) {
+      // Page was restored from bfcache (swipe-back / browser back)
+      forceClear();
+    } else {
+      // Normal navigation arrival — check for stale loader state
+      var isStoredActive = sessionStorage.getItem('admin_loader_active') === 'true';
+      if (isStoredActive) {
+        // Continuation of a forward navigation — show briefly then complete
+        showLoader(null, 80);
+        setTimeout(function () { hideLoader(); }, 80);
+      }
     }
+  });
+
+  // Also listen for popstate (history back/forward without full page reload)
+  window.addEventListener('popstate', function () {
+    forceClear();
+  });
+
+
+  /* ----------------------------------------------------------
+     EVENT INTERCEPTION — DOMContentLoaded
+     ---------------------------------------------------------- */
+  document.addEventListener('DOMContentLoaded', function () {
 
     // Intercept form submissions
-    document.addEventListener('submit', (e) => {
-      const form = e.target;
+    document.addEventListener('submit', function (e) {
+      var form = e.target;
       if (form && !form.dataset.noLoader) {
-        showLoader(); // Fixes design for this event
-        animatePctTo(90, 800);
+        sessionStorage.removeItem('admin_loader_active');
+        showLoader();
       }
     });
 
     // Intercept links and Result Hub navigation tabs
-    document.addEventListener('click', (e) => {
-      const link = e.target.closest('a[href]');
-      const navBtn = e.target.closest('.rh-tab, button[onclick*="location"], [data-nav-loader]');
+    document.addEventListener('click', function (e) {
+      var link = e.target.closest('a[href]');
+      var navBtn = e.target.closest('.rh-tab, button[onclick*="location"], [data-nav-loader]');
 
       if (link) {
-        const href = link.getAttribute('href');
+        var href = link.getAttribute('href');
         if (
           href &&
           !href.startsWith('#') &&
@@ -304,52 +387,91 @@
           !link.dataset.noLoader
         ) {
           sessionStorage.removeItem('admin_loader_active');
-          showLoader(); // Fixes random design for this event (0% -> 100%)
-          animatePctTo(90, 800);
+          showLoader();
         }
       } else if (navBtn && !navBtn.dataset.noLoader) {
         sessionStorage.removeItem('admin_loader_active');
-        showLoader(); // Fixes random design for this navigation event
-        animatePctTo(90, 800);
+        showLoader();
       }
     });
   });
 
-  // Intercept fetch requests
-  const originalFetch = window.fetch;
+
+  /* ----------------------------------------------------------
+     FETCH INTERCEPTION
+     ---------------------------------------------------------- */
+  var originalFetch = window.fetch;
   if (originalFetch) {
-    window.fetch = async function (...args) {
-      const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url);
-      const isAutosave = url && url.includes('autosave');
+    window.fetch = function () {
+      var args = arguments;
+      var url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url);
+      var isAutosave = url && url.indexOf('autosave') !== -1;
+
       if (!isAutosave) {
+        sessionStorage.removeItem('admin_loader_active');
         showLoader();
-        animatePctTo(75, 400);
       }
-      try {
-        const response = await originalFetch.apply(this, args);
-        if (!isAutosave) {
-          animatePctTo(100, 180, hideLoader);
-        }
+
+      return originalFetch.apply(this, args).then(function (response) {
+        if (!isAutosave) hideLoader();
         return response;
-      } catch (err) {
+      }).catch(function (err) {
         if (!isAutosave) hideLoader();
         throw err;
-      }
+      });
     };
   }
 
-  // Expose API
+
+  /* ----------------------------------------------------------
+     XHR INTERCEPTION — real progress for uploads/downloads
+     ---------------------------------------------------------- */
+  var originalOpen = XMLHttpRequest.prototype.open;
+  var originalSend = XMLHttpRequest.prototype.send;
+
+  XMLHttpRequest.prototype.open = function () {
+    this._loaderUrl = arguments[1];
+    return originalOpen.apply(this, arguments);
+  };
+
+  XMLHttpRequest.prototype.send = function () {
+    var isAutosave = this._loaderUrl && this._loaderUrl.indexOf('autosave') !== -1;
+    if (!isAutosave) {
+      sessionStorage.removeItem('admin_loader_active');
+      showLoader();
+
+      this.addEventListener('progress', function (ev) {
+        if (ev.lengthComputable && ev.total > 0) {
+          var realPct = Math.round((ev.loaded / ev.total) * 97);
+          if (realPct > currentPct) {
+            currentPct = realPct;
+            updatePctVisuals(currentPct);
+          }
+        }
+      });
+
+      this.addEventListener('load', function () { hideLoader(); });
+      this.addEventListener('error', function () { forceClear(); });
+      this.addEventListener('abort', function () { forceClear(); });
+    }
+    return originalSend.apply(this, arguments);
+  };
+
+
+  /* ----------------------------------------------------------
+     GLOBAL API
+     ---------------------------------------------------------- */
   window.AdminLoader = {
     show: function (designId) {
+      sessionStorage.removeItem('admin_loader_active');
       showLoader(designId);
-      animatePctTo(90, 600);
     },
     setProgress: function (pct) {
       currentPct = pct;
       updatePctVisuals(pct);
     },
     hide: function () {
-      animatePctTo(100, 180, hideLoader);
+      hideLoader();
     }
   };
 

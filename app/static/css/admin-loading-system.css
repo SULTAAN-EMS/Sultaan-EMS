@@ -15,13 +15,19 @@
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.25s ease, visibility 0.25s ease;
+  transition: opacity 0.35s ease, visibility 0.35s ease;
 }
 
 .admin-loader-overlay.active {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
+}
+
+.admin-loader-overlay.fade-out .loader-card {
+  transform: scale(0.92);
+  opacity: 0;
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s ease;
 }
 
 .loader-card {
