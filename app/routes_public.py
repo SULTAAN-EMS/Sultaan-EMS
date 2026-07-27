@@ -181,6 +181,7 @@ def result():
 @public_bp.route("/print/<student_code>")
 def print_report(student_code):
     student_code = student_code.strip()
+    settings = get_settings()
 
     student = Student.query.filter(
         func.trim(Student.student_code) == student_code
@@ -189,7 +190,7 @@ def print_report(student_code):
     if student.is_result_locked:
         return render_template(
             "locked_result.html",
-            settings=get_settings(),
+            settings=settings,
             student=student
         ), 403
 
@@ -212,7 +213,7 @@ def print_report(student_code):
     payload["generated_at"] = datetime.now()
     db.session.commit()
 
-    return render_template("print_report.html", result=payload)
+    return render_template("print_report.html", result=payload, settings=settings)
 
 
 # =========================

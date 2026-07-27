@@ -67,6 +67,7 @@ def create_app(config_class=Config):
 
         return {
             "ui_settings": settings,
+            "settings": settings,
             "_": translate,
             "active_translations": active_translations(),
             "current_language": lang,
