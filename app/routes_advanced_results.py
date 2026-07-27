@@ -1219,28 +1219,30 @@ def export_class_pdf():
 
     ranked_data = sorted(roster_data, key=lambda row: (row["percentage"], row["total_score"]), reverse=True)
     rank_lookup = {row["student"].id: index for index, row in enumerate(ranked_data, start=1)}
-    for row in roster_data:
+    for row in ranked_data:
         row["rank"] = rank_lookup.get(row["student"].id, 0)
         row["rank_label"] = ordinal(row["rank"]) if row["rank"] else "-"
     
+    roster_data = ranked_data
+    
     # Calculate class stats
-    class_average = sum(r["percentage"] for r in roster_data) / len(roster_data) if roster_data else 0
-    highest_total = max((row["total_score"] for row in roster_data), default=0)
-    lowest_total = min((row["total_score"] for row in roster_data), default=0)
-    average_total = sum(row["total_score"] for row in roster_data) / len(roster_data) if roster_data else 0
+    class_average = round(sum(r["percentage"] for r in roster_data) / len(roster_data), 2) if roster_data else 0
+    highest_total = round(max((row["total_score"] for row in roster_data), default=0), 2)
+    lowest_total = round(min((row["total_score"] for row in roster_data), default=0), 2)
+    average_total = round(sum(row["total_score"] for row in roster_data) / len(roster_data), 2) if roster_data else 0
     passed_count = sum(1 for row in roster_data if row["grade"].get("is_pass"))
     failed_count = len(roster_data) - passed_count
     pass_rate = round((passed_count / len(roster_data) * 100), 2) if roster_data else 0
-    highest_score = max((row["percentage"] for row in roster_data), default=0)
-    lowest_score = min((row["percentage"] for row in roster_data), default=0)
+    highest_score = round(max((row["percentage"] for row in roster_data), default=0), 2)
+    lowest_score = round(min((row["percentage"] for row in roster_data), default=0), 2)
     subject_stats = []
     for index, subject in enumerate(subjects):
         scores = [float(row["subject_data"][index]["score"]) for row in roster_data if index < len(row["subject_data"])]
         subject_stats.append({
             "subject": subject,
-            "highest": max(scores) if scores else 0,
-            "lowest": min(scores) if scores else 0,
-            "average": sum(scores) / len(scores) if scores else 0,
+            "highest": round(max(scores), 2) if scores else 0,
+            "lowest": round(min(scores), 2) if scores else 0,
+            "average": round(sum(scores) / len(scores), 2) if scores else 0,
         })
     students_per_page = 15
     total_pages = max(1, math.ceil(len(roster_data) / students_per_page))
@@ -1261,7 +1263,7 @@ def export_class_pdf():
         selected_year=selected_year,
         selected_exam=selected_exam,
         scope_info=scope_info,
-        students=roster_data,
+        students=ranked_data,
         subjects=subjects,
         subject_stats=subject_stats,
         class_average=class_average,

@@ -94,21 +94,21 @@
             display: grid;
             place-items: center;
             padding: 1.6mm;
-            background: linear-gradient(145deg, var(--navy), var(--navy-deep));
+            background: #ffffff;
             border: 1.2mm solid var(--gold);
             border-radius: 8px 8px 13px 13px;
-            box-shadow: 0 5px 14px rgba(8, 28, 61, .24);
+            box-shadow: 0 3px 10px rgba(8, 28, 61, .15);
         }
 
         .brand-emblem img {
             width: 100%;
             height: 100%;
             object-fit: contain;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,.18));
+            filter: drop-shadow(0 1px 3px rgba(0,0,0,.12));
         }
 
         .brand-emblem span {
-            color: #fff;
+            color: var(--navy-deep);
             font-weight: 900;
             font-size: 13pt;
             letter-spacing: .04em;
@@ -145,26 +145,86 @@
 
         .meta-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 1.3mm 6mm;
-            margin-top: 3.2mm;
-            color: var(--navy-deep);
-            font-size: 7pt;
-            font-weight: 800;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.4mm 2.5mm;
+            margin-top: 2.2mm;
         }
 
-        .meta-row {
-            display: grid;
-            grid-template-columns: 24mm minmax(0, 1fr);
-            gap: 1.6mm;
+        .meta-card {
+            display: flex;
             align-items: center;
+            gap: 1.8mm;
+            padding: 1mm 1.8mm;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            min-height: 8mm;
         }
 
-        .meta-row label {
-            color: #b05f00;
-            font-size: 6.5pt;
-            font-weight: 900;
+        .meta-card-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 5mm;
+            height: 5mm;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .meta-card-icon svg {
+            width: 3mm;
+            height: 3mm;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        /* Card 1 – Academic Year: indigo */
+        .mc-year         { background: #eef2ff; border-color: #c7d2fe; }
+        .mc-year .meta-card-icon { background: #c7d2fe; color: #4338ca; }
+        /* Card 2 – Date Generated: amber */
+        .mc-date         { background: #fffbeb; border-color: #fde68a; }
+        .mc-date .meta-card-icon { background: #fde68a; color: #b45309; }
+        /* Card 3 – Exam Type: rose */
+        .mc-exam         { background: #fff1f2; border-color: #fecdd3; }
+        .mc-exam .meta-card-icon { background: #fecdd3; color: #be123c; }
+        /* Card 4 – Total Students: sky */
+        .mc-students     { background: #f0f9ff; border-color: #bae6fd; }
+        .mc-students .meta-card-icon { background: #bae6fd; color: #0369a1; }
+        /* Card 5 – Class: emerald */
+        .mc-class        { background: #ecfdf5; border-color: #a7f3d0; }
+        .mc-class .meta-card-icon { background: #a7f3d0; color: #047857; }
+        /* Card 6 – Section: violet */
+        .mc-section      { background: #f5f3ff; border-color: #ddd6fe; }
+        .mc-section .meta-card-icon { background: #ddd6fe; color: #6d28d9; }
+
+        .meta-card-body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-width: 0;
+        }
+
+        .meta-card-label {
+            color: #475569;
+            font-size: 5pt;
+            font-weight: 700;
             text-transform: uppercase;
+            letter-spacing: 0.03em;
+            line-height: 1;
+            white-space: nowrap;
+        }
+
+        .meta-card-value {
+            color: var(--navy-deep);
+            font-size: 6.8pt;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-top: .3mm;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .results-table {
@@ -347,48 +407,68 @@
             line-height: 1;
         }
 
-        .summary-icon {
-            display: inline-flex;
-            width: 5mm;
-            height: 5mm;
-            align-items: center;
-            justify-content: center;
-            border-radius: 999px;
-            background: rgba(255, 255, 255, .14);
-            border: 1px solid rgba(255, 255, 255, .32);
-            color: #fff;
-            font-size: 6pt;
-            font-weight: 900;
-            line-height: 1;
-        }
-
         .summary-row td {
-            background: #f9fbff !important;
+            background: #ffffff !important;
+            border: 1px solid #d1d5db !important;
             padding: .62mm .55mm;
-            font-size: 5.9pt;
+            font-size: 6.2pt;
+            text-align: center;
+            vertical-align: middle;
+            color: #1e293b !important;
+            font-weight: 800 !important;
         }
 
-        .summary-label {
+        .summary-main-label {
             background: var(--navy) !important;
-            color: #fff !important;
-            font-size: 7.4pt !important;
+            color: #ffffff !important;
+            font-size: 7.2pt !important;
             font-weight: 900 !important;
             text-transform: uppercase;
             letter-spacing: .02em;
+            text-align: center !important;
+            vertical-align: middle !important;
         }
 
-        .summary-label span {
-            display: inline-flex;
-            align-items: center;
-            gap: 1.3mm;
+        .stat-row-label {
+            color: #1e293b !important;
+            font-size: 6pt !important;
+            font-weight: 800 !important;
+            text-align: left !important;
+            padding-left: 1.2mm !important;
+            vertical-align: middle !important;
             white-space: nowrap;
         }
 
-        .summary-name {
-            text-align: left !important;
-            color: var(--navy-deep);
-            font-weight: 900 !important;
+        .stat-row-label.srl-highest { background: #ecfdf5 !important; }
+        .stat-row-label.srl-lowest  { background: #fff1f2 !important; }
+        .stat-row-label.srl-average { background: #eff6ff !important; }
+
+        .stat-icon-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 4mm;
+            height: 4mm;
+            border-radius: 50%;
+            margin-right: .8mm;
+            vertical-align: middle;
         }
+        .stat-icon-wrap svg {
+            width: 2.8mm;
+            height: 2.8mm;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .stat-icon-wrap.si-highest { background: #a7f3d0; color: #047857; }
+        .stat-icon-wrap.si-lowest  { background: #fecdd3; color: #be123c; }
+        .stat-icon-wrap.si-average { background: #bfdbfe; color: #1d4ed8; }
+
+        .highest-cell { color: #047857 !important; background: #ecfdf5 !important; }
+        .lowest-cell  { color: #be123c !important; background: #fff1f2 !important; }
+        .average-cell  { color: #1d4ed8 !important; background: #eff6ff !important; }
 
         .pass-card {
             background: #fff !important;
@@ -515,12 +595,60 @@
                     <section class="title-block">
                         <h2 class="main-title">Whole Class Results</h2>
                         <div class="meta-grid">
-                            <div class="meta-row"><label>Academic Year:</label><strong>{{ selected_year.name }}</strong></div>
-                            <div class="meta-row"><label>Date Generated:</label><strong>{{ date.strftime('%d %B %Y') }}</strong></div>
-                            <div class="meta-row"><label>Exam Type:</label><strong>{{ selected_exam.name }}</strong></div>
-                            <div class="meta-row"><label>Total Students:</label><strong>{{ students|length }}</strong></div>
-                            <div class="meta-row"><label>Class:</label><strong>{{ scope_info.class.name if scope_info.class else "-" }}</strong></div>
-                            <div class="meta-row"><label>Section:</label><strong>{{ scope_info.section.name if scope_info.section else "All" }}</strong></div>
+                            <div class="meta-card mc-year">
+                                <div class="meta-card-icon">
+                                    <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                                </div>
+                                <div class="meta-card-body">
+                                    <span class="meta-card-label">Academic Year</span>
+                                    <span class="meta-card-value">{{ selected_year.name }}</span>
+                                </div>
+                            </div>
+                            <div class="meta-card mc-date">
+                                <div class="meta-card-icon">
+                                    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                </div>
+                                <div class="meta-card-body">
+                                    <span class="meta-card-label">Date Generated</span>
+                                    <span class="meta-card-value">{{ date.strftime('%d %B %Y') }}</span>
+                                </div>
+                            </div>
+                            <div class="meta-card mc-exam">
+                                <div class="meta-card-icon">
+                                    <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                </div>
+                                <div class="meta-card-body">
+                                    <span class="meta-card-label">Exam Type</span>
+                                    <span class="meta-card-value">{{ selected_exam.name }}</span>
+                                </div>
+                            </div>
+                            <div class="meta-card mc-students">
+                                <div class="meta-card-icon">
+                                    <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                </div>
+                                <div class="meta-card-body">
+                                    <span class="meta-card-label">Total Students</span>
+                                    <span class="meta-card-value">{{ students|length }}</span>
+                                </div>
+                            </div>
+                            <div class="meta-card mc-class">
+                                <div class="meta-card-icon">
+                                    <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                                </div>
+                                <div class="meta-card-body">
+                                    <span class="meta-card-label">Class</span>
+                                    <span class="meta-card-value">{{ scope_info.class.name if scope_info.class else "-" }}</span>
+                                </div>
+                            </div>
+                            <div class="meta-card mc-section">
+                                <div class="meta-card-icon">
+                                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                                </div>
+                                <div class="meta-card-body">
+                                    <span class="meta-card-label">Section</span>
+                                    <span class="meta-card-value">{{ scope_info.section.name if scope_info.section else "All" }}</span>
+                                </div>
+                            </div>
                         </div>
                     </section>
 
@@ -579,33 +707,38 @@
                                     </td>
                                 </tr>
                             {% endfor %}
-                            <tr class="summary-row">
-                                <td class="summary-label" colspan="4" rowspan="3"><span><span class="summary-icon">📊</span>CLASS SUMMARY</span></td>
-                                {% for stat in subject_stats %}
-                                    <td>{{ stat.highest|academic_number(settings) }}</td>
-                                {% endfor %}
-                                <td>{{ highest_total|academic_number(settings) }}</td>
-                                <td>{{ highest_score }}%</td>
-                                <td colspan="2" rowspan="3" class="pass-card">
-                                    <span class="pass-title">Class Pass Rate</span>
-                                    <span class="pass-value">{{ pass_rate }}%</span>
-                                    <span class="pass-sub">{{ passed_count }} / {{ students|length }} Students Passed</span>
-                                </td>
-                            </tr>
-                            <tr class="summary-row">
-                                {% for stat in subject_stats %}
-                                    <td>{{ stat.lowest|academic_number(settings) }}</td>
-                                {% endfor %}
-                                <td>{{ lowest_total|academic_number(settings) }}</td>
-                                <td>{{ lowest_score }}%</td>
-                            </tr>
-                            <tr class="summary-row">
-                                {% for stat in subject_stats %}
-                                    <td>{{ stat.average }}</td>
-                                {% endfor %}
-                                <td>{{ average_total }}</td>
-                                <td>{{ class_average }}%</td>
-                            </tr>
+                            {% if page_num == total_pages %}
+                                <tr class="summary-row">
+                                    <td class="summary-main-label" colspan="2" rowspan="3"><span>CLASS SUMMARY</span></td>
+                                    <td class="stat-row-label srl-highest" colspan="2"><span class="stat-icon-wrap si-highest"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span><strong>Highest Score</strong></td>
+                                    {% for stat in subject_stats %}
+                                        <td class="highest-cell">{{ stat.highest|academic_number(settings) }}</td>
+                                    {% endfor %}
+                                    <td class="highest-cell">{{ highest_total|academic_number(settings) }}</td>
+                                    <td class="highest-cell">{{ highest_score|academic_number(settings) }}%</td>
+                                    <td colspan="2" rowspan="3" class="pass-card">
+                                        <span class="pass-title">Class Pass Rate</span>
+                                        <span class="pass-value">{{ pass_rate|academic_number(settings) }}%</span>
+                                        <span class="pass-sub">{{ passed_count }} / {{ students|length }} Students Passed</span>
+                                    </td>
+                                </tr>
+                                <tr class="summary-row">
+                                    <td class="stat-row-label srl-lowest" colspan="2"><span class="stat-icon-wrap si-lowest"><svg viewBox="0 0 24 24"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg></span><strong>Lowest Score</strong></td>
+                                    {% for stat in subject_stats %}
+                                        <td class="lowest-cell">{{ stat.lowest|academic_number(settings) }}</td>
+                                    {% endfor %}
+                                    <td class="lowest-cell">{{ lowest_total|academic_number(settings) }}</td>
+                                    <td class="lowest-cell">{{ lowest_score|academic_number(settings) }}%</td>
+                                </tr>
+                                <tr class="summary-row">
+                                    <td class="stat-row-label srl-average" colspan="2"><span class="stat-icon-wrap si-average"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span><strong>Class Average</strong></td>
+                                    {% for stat in subject_stats %}
+                                        <td class="average-cell">{{ stat.average|academic_number(settings) }}</td>
+                                    {% endfor %}
+                                    <td class="average-cell">{{ average_total|academic_number(settings) }}</td>
+                                    <td class="average-cell">{{ class_average|academic_number(settings) }}%</td>
+                                </tr>
+                            {% endif %}
                         </tbody>
                     </table>
                 </main>
