@@ -348,20 +348,21 @@ def process_result_import(file):
     valid_row_entries = []
 
     for row_idx, row_cells in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        if not row_cells or all(c is None or str(c).strip() == "" for c in row_cells):
-            continue
+        try:
+            if not row_cells or all(c is None or str(c).strip() == "" for c in row_cells):
+                continue
 
-        row_map = {}
-        for col_idx, val in enumerate(row_cells):
-            if col_idx < len(headers_lower) and headers_lower[col_idx]:
-                row_map[headers_lower[col_idx]] = clean_str(val)
+            row_map = {}
+            for col_idx, val in enumerate(row_cells):
+                if col_idx < len(headers_lower) and headers_lower[col_idx]:
+                    row_map[headers_lower[col_idx]] = clean_str(val)
 
-        student_id = row_map.get("student_id", "")
-        provided_class = row_map.get("class", "")
-        exam_type = row_map.get("exam_type", "")
-        academic_year = row_map.get("academic_year", "")
+            student_id = row_map.get("student_id", "")
+            provided_class = row_map.get("class", "")
+            exam_type = row_map.get("exam_type", "")
+            academic_year = row_map.get("academic_year", "")
 
-        row_errors = []
+            row_errors = []
 
         # 1. student_id check
         student_obj = None
@@ -419,70 +420,78 @@ def process_result_import(file):
             except (TypeError, ValueError):
                 row_errors.append(f"Row {row_idx}: mark for '{subj_obj.name}' must be numeric (got '{cell_val}').")
 
-        if row_errors:
+            if row_errors:
+                failed_count += 1
+                failed_errors.extend(row_errors)
+            else:
+                valid_row_entries.append({
+                    "row_idx": row_idx,
+                    "student": student_obj,
+                    "exam_name": exam_type,
+                    "year": year_obj,
+                    "marks": row_subject_marks
+                })
+        except Exception as e:
             failed_count += 1
-            failed_errors.extend(row_errors)
-        else:
-            success_count += 1
-            valid_row_entries.append({
-                "student": student_obj,
-                "exam_name": exam_type,
-                "year": year_obj,
-                "marks": row_subject_marks
-            })
+            failed_errors.append(f"Row {row_idx}: Unhandled error parsing row ({str(e)})")
 
     if valid_row_entries:
-        try:
-            for entry in valid_row_entries:
-                st = entry["student"]
-                ex_name = entry["exam_name"]
-                yr = entry["year"]
-                marks = entry["marks"]
+        for entry in valid_row_entries:
+            row_idx = entry["row_idx"]
+            st = entry["student"]
+            ex_name = entry["exam_name"]
+            yr = entry["year"]
+            marks = entry["marks"]
 
-                exam_key = (ex_name.lower(), yr.id)
-                exam_obj = existing_exams.get(exam_key)
-                if not exam_obj:
-                    exam_obj = Exam(
-                        name=ex_name,
-                        academic_year_id=yr.id,
-                        is_active=True,
-                        is_published=True
-                    )
-                    if st.academic_level_id:
-                        exam_obj.academic_level_id = st.academic_level_id
-                    if st.academic_class_id:
-                        exam_obj.academic_class_id = st.academic_class_id
-                    db.session.add(exam_obj)
-                    db.session.flush()
-                    existing_exams[exam_key] = exam_obj
+            exam_key = (ex_name.lower(), yr.id)
+            exam_obj = existing_exams.get(exam_key)
 
-                for subj_obj, score_num in marks:
-                    res = Result.query.filter_by(
-                        student_id=st.id,
-                        exam_id=exam_obj.id,
-                        subject_id=subj_obj.id
-                    ).first()
-                    if not res:
-                        res = Result(
-                            student_id=st.id,
-                            exam_id=exam_obj.id,
-                            subject_id=subj_obj.id,
-                            score=score_num,
+            try:
+                with db.session.begin_nested():
+                    if not exam_obj:
+                        exam_obj = Exam(
+                            name=ex_name,
+                            academic_year_id=yr.id,
+                            is_active=True,
                             is_published=True
                         )
-                        db.session.add(res)
-                    else:
-                        res.score = score_num
-                        res.is_published = True
+                        # Omit binding the exam to a specific class/level if it's a global import
+                        db.session.add(exam_obj)
+                        db.session.flush()
+                        existing_exams[exam_key] = exam_obj
 
+                    for subj_obj, score_num in marks:
+                        res = Result.query.filter_by(
+                            student_id=st.id,
+                            exam_id=exam_obj.id,
+                            subject_id=subj_obj.id
+                        ).first()
+                        if not res:
+                            res = Result(
+                                student_id=st.id,
+                                exam_id=exam_obj.id,
+                                subject_id=subj_obj.id,
+                                score=score_num,
+                                is_published=True
+                            )
+                            db.session.add(res)
+                        else:
+                            res.score = score_num
+                            res.is_published=True
+                            
+                success_count += 1
+            except Exception as ex:
+                failed_count += 1
+                failed_errors.append(f"Row {row_idx}: Database error saving results - {str(ex)}")
+
+        try:
             db.session.commit()
         except Exception as ex:
             db.session.rollback()
-            failed_errors.append(f"Database error saving results: {str(ex)}")
             return {
                 "success_count": 0,
                 "failed_count": success_count + failed_count,
-                "errors": failed_errors,
+                "errors": [f"Fatal database error during commit: {str(ex)}"],
                 "kind": "Results"
             }
 

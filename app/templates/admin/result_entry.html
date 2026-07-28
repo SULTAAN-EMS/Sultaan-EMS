@@ -41,7 +41,7 @@
           <input type="hidden" name="section_id" value="{{ scope_info.section.id if scope_info and scope_info.section else '' }}">
           <label class="rh-btn primary" style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 600; border-radius: 10px; background: #0f172a; color: white;">
             <i class="fa-solid fa-file-import"></i> Import Results
-            <input type="file" name="file" accept=".xlsx" required style="display: none;" onchange="this.form.submit()">
+            <input type="file" name="file" accept=".xlsx" required style="display: none;" onchange="handleResultImport(this)">
           </label>
         </form>
       </div>
@@ -491,6 +491,78 @@ function downloadClassTemplate() {
   const downloadUrl = "{{ url_for('admin_advanced_results.result_import_template') }}?" + params.toString();
   window.location.href = downloadUrl;
   closeTemplateModal();
+}
+
+async function handleResultImport(inputElement) {
+  if (!inputElement.files || inputElement.files.length === 0) return;
+  const form = inputElement.form;
+  const formData = new FormData(form);
+  
+  // Show loading state
+  Swal.fire({
+    title: 'Importing Results...',
+    text: 'Please wait while the file is processed.',
+    allowOutsideClick: false,
+    didOpen: () => Swal.showLoading()
+  });
+
+  try {
+    const response = await fetch(form.action, {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: formData
+    });
+    
+    inputElement.value = ''; // Reset file input
+    const data = await response.json();
+    
+    if (response.ok && data.success) {
+      const summary = data.summary;
+      if (summary.failed_count === 0 && summary.success_count > 0) {
+        Swal.fire({
+          icon: 'success',
+          title: 'Import Successful',
+          text: `✅ ${summary.success_count} result rows imported successfully.`
+        }).then(() => window.location.reload());
+      } else if (summary.success_count > 0) {
+        let errorList = summary.errors.slice(0, 10).map(e => `<li>${e}</li>`).join('');
+        if (summary.errors.length > 10) errorList += `<li>...and ${summary.errors.length - 10} more.</li>`;
+        
+        Swal.fire({
+          icon: 'warning',
+          title: 'Partial Success',
+          html: `<p>✅ ${summary.success_count} rows imported.</p>
+                 <p>❌ ${summary.failed_count} rows failed validation:</p>
+                 <ul style="text-align: left; font-size: 0.85em; max-height: 200px; overflow-y: auto;">${errorList}</ul>`
+        }).then(() => window.location.reload());
+      } else {
+        let errorList = summary.errors.slice(0, 10).map(e => `<li>${e}</li>`).join('');
+        if (summary.errors.length > 10) errorList += `<li>...and ${summary.errors.length - 10} more.</li>`;
+        
+        Swal.fire({
+          icon: 'error',
+          title: 'Import Failed',
+          html: `<p>❌ ${summary.failed_count} rows failed validation.</p>
+                 <ul style="text-align: left; font-size: 0.85em; max-height: 200px; overflow-y: auto;">${errorList}</ul>`
+        });
+      }
+    } else {
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: data.error || data.details || 'An internal server error occurred during import.'
+      });
+    }
+  } catch (err) {
+    inputElement.value = '';
+    Swal.fire({
+      icon: 'error',
+      title: 'Network Error',
+      text: err.message
+    });
+  }
 }
 </script>
 {% endblock %}
