@@ -450,14 +450,21 @@ def process_result_import(file):
             yr = entry["year"]
             marks = entry["marks"]
 
-            exam_key = (ex_name.lower(), yr.id)
-            exam_obj = existing_exams.get(exam_key)
-
             try:
                 with db.session.begin_nested():
+                    if not yr:
+                        raise ValueError("Academic year object is missing or not found in system.")
+                    if not st:
+                        raise ValueError("Student object is missing or not found in system.")
+                    if not ex_name:
+                        raise ValueError("Exam type name is missing.")
+
+                    exam_key = (ex_name.lower().strip(), yr.id)
+                    exam_obj = existing_exams.get(exam_key)
+
                     if not exam_obj:
                         exam_obj = Exam(
-                            name=ex_name,
+                            name=ex_name.strip(),
                             academic_year_id=yr.id,
                             is_active=True,
                             is_published=True
@@ -484,12 +491,12 @@ def process_result_import(file):
                             db.session.add(res)
                         else:
                             res.score = score_num
-                            res.is_published=True
+                            res.is_published = True
                             
                 success_count += 1
             except Exception as ex:
                 failed_count += 1
-                failed_errors.append(f"Row {row_idx}: Database error saving results - {str(ex)}")
+                failed_errors.append(f"Row {row_idx}: Error saving results - {str(ex)}")
 
         try:
             db.session.commit()

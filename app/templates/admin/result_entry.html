@@ -565,7 +565,8 @@ async function handleResultImport(inputElement) {
         displayAlert('error', 'Import Blocked', `<p style="font-weight:700; color:#ef4444;">❌ No rows were saved due to the following errors:</p><ul style="text-align: left; font-size: 0.85em; max-height: 220px; overflow-y: auto; background: #fff1f2; padding: 10px 20px; border-radius: 8px;">${errorList}</ul>`, false);
       }
     } else {
-      displayAlert('error', 'Error', data.error || data.details || 'An internal server error occurred during import.', false);
+      const detailMsg = data.details ? `<p><b>${data.error || 'Import Error'}</b></p><p style="font-size:0.85em; color:#ef4444; margin-top:8px;">${data.details}</p>` : (data.error || 'An internal server error occurred during import.');
+      displayAlert('error', 'Import Error', detailMsg, false);
     }
   } catch (err) {
     inputElement.value = '';
