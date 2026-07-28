@@ -501,6 +501,9 @@ async function handleResultImport(inputElement) {
   
   // Safe showAlert helper
   function displayAlert(icon, title, textOrHtml, reloadOnClose = false) {
+    if (window.AdminLoader && typeof window.AdminLoader.hide === 'function') {
+      window.AdminLoader.hide();
+    }
     if (window.Swal) {
       const opts = { icon, title, allowOutsideClick: false };
       if (textOrHtml.includes('<')) {
@@ -517,8 +520,10 @@ async function handleResultImport(inputElement) {
     }
   }
 
-  // Show loading state
-  if (window.Swal) {
+  // Show system loading animation
+  if (window.AdminLoader && typeof window.AdminLoader.show === 'function') {
+    window.AdminLoader.show(42); // Sultan Royal / Math Loading Badge
+  } else if (window.Swal) {
     Swal.fire({
       title: 'Importing Results...',
       text: 'Please wait while the file is processed.',
@@ -530,19 +535,17 @@ async function handleResultImport(inputElement) {
   try {
     const response = await fetch(form.action, {
       method: 'POST',
-      headers: {
-        'X-Requested-With': 'XMLHttpRequest'
-      },
       body: formData
     });
     
     inputElement.value = ''; // Reset file input
     
+    const responseText = await response.text();
     let data;
     try {
-      data = await response.json();
+      data = JSON.parse(responseText);
     } catch(e) {
-      displayAlert('error', 'Error', 'Failed to parse server response.');
+      displayAlert('error', 'Server Error', 'Server returned unexpected output: ' + responseText.substring(0, 300));
       return;
     }
     
@@ -551,15 +554,15 @@ async function handleResultImport(inputElement) {
       if (summary.failed_count === 0 && summary.success_count > 0) {
         displayAlert('success', 'Import Successful', `✅ ${summary.success_count} result rows imported successfully.`, true);
       } else if (summary.success_count > 0) {
-        let errorList = summary.errors.slice(0, 10).map(e => `<li>${e}</li>`).join('');
-        if (summary.errors.length > 10) errorList += `<li>...and ${summary.errors.length - 10} more.</li>`;
+        let errorList = summary.errors.slice(0, 12).map(e => `<li>${e}</li>`).join('');
+        if (summary.errors.length > 12) errorList += `<li>...and ${summary.errors.length - 12} more.</li>`;
         
-        displayAlert('warning', 'Partial Success', `<p>✅ ${summary.success_count} rows imported.</p><p>❌ ${summary.failed_count} rows failed validation:</p><ul style="text-align: left; font-size: 0.85em; max-height: 200px; overflow-y: auto;">${errorList}</ul>`, true);
+        displayAlert('warning', 'Partial Success', `<p style="font-weight:700; color:#10b981;">✅ ${summary.success_count} rows imported successfully.</p><p style="font-weight:700; color:#ef4444; margin-top:8px;">❌ ${summary.failed_count} errors/warnings reported:</p><ul style="text-align: left; font-size: 0.85em; max-height: 220px; overflow-y: auto; background: #f8fafc; padding: 10px 20px; border-radius: 8px;">${errorList}</ul>`, true);
       } else {
-        let errorList = summary.errors.slice(0, 10).map(e => `<li>${e}</li>`).join('');
-        if (summary.errors.length > 10) errorList += `<li>...and ${summary.errors.length - 10} more.</li>`;
+        let errorList = summary.errors.slice(0, 12).map(e => `<li>${e}</li>`).join('');
+        if (summary.errors.length > 12) errorList += `<li>...and ${summary.errors.length - 12} more.</li>`;
         
-        displayAlert('error', 'Import Failed', `<p>❌ ${summary.failed_count} rows failed validation.</p><ul style="text-align: left; font-size: 0.85em; max-height: 200px; overflow-y: auto;">${errorList}</ul>`, false);
+        displayAlert('error', 'Import Blocked', `<p style="font-weight:700; color:#ef4444;">❌ No rows were saved due to the following errors:</p><ul style="text-align: left; font-size: 0.85em; max-height: 220px; overflow-y: auto; background: #fff1f2; padding: 10px 20px; border-radius: 8px;">${errorList}</ul>`, false);
       }
     } else {
       displayAlert('error', 'Error', data.error || data.details || 'An internal server error occurred during import.', false);

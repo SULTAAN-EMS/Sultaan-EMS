@@ -2785,10 +2785,7 @@ def import_results():
     )
 
     if not file or not allowed_file(file.filename, ALLOWED_SHEETS):
-        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"success": False, "error": "Upload a valid .xlsx file."}), 400
-        flash("Upload a valid .xlsx file.", "danger")
-        return redirect(redirect_url)
+        return jsonify({"success": False, "error": "Upload a valid .xlsx file."}), 400
 
     try:
         summary = process_result_import(file)
@@ -2796,30 +2793,18 @@ def import_results():
         audit("Import Operations", f"Result import: {summary['success_count']} rows saved, {summary['failed_count']} failed")
         db.session.commit()
 
-        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({
-                "success": True,
-                "summary": summary
-            })
-
-        if summary["failed_count"] == 0 and summary["success_count"] > 0:
-            flash(f"✅ {summary['success_count']} result rows imported successfully.", "success")
-        elif summary["success_count"] > 0:
-            flash(f"✅ {summary['success_count']} result rows imported successfully. ❌ {summary['failed_count']} rows failed validation.", "warning")
-        else:
-            flash(f"❌ Result import failed. {summary['failed_count']} rows failed validation.", "danger")
+        return jsonify({
+            "success": True,
+            "summary": summary
+        })
     except Exception as ex:
         db.session.rollback()
         current_app.logger.error("Result import failed with exception", exc_info=True)
-        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({
-                "success": False,
-                "error": "Internal Server Error during import",
-                "details": str(ex)
-            }), 500
-        flash(f"Error processing result import: {str(ex)}", "danger")
-
-    return redirect(redirect_url)
+        return jsonify({
+            "success": False,
+            "error": "Internal Server Error during import",
+            "details": str(ex)
+        }), 500
 
 
 @advanced_results_bp.route("/result-entry/import/template")

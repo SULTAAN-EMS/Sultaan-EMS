@@ -317,26 +317,30 @@ def process_result_import(file):
         }
 
     fixed_header_set = {"#", "student_id", "full_name", "mother_name", "class", "exam_type", "academic_year"}
-    db_subjects = {s.name.lower(): s for s in Subject.query.all()}
+    db_subjects = {}
+    for s in Subject.query.all():
+        db_subjects[s.name.lower().strip()] = s
+        if s.code:
+            db_subjects[s.code.lower().strip()] = s
 
     subject_cols = {}
-    header_errors = []
+    unmapped_subject_warnings = []
     for col_idx, h_name in enumerate(raw_headers):
         if not h_name or h_name.lower() in fixed_header_set:
             continue
-        subj_obj = db_subjects.get(h_name.lower())
+        clean_h = h_name.lower().strip()
+        subj_obj = db_subjects.get(clean_h)
+        
+        # Fallback partial matching (e.g., 'English Filming' -> 'english')
+        if not subj_obj:
+            first_word = clean_h.split()[0] if clean_h.split() else ""
+            if first_word and len(first_word) > 2 and first_word in db_subjects:
+                subj_obj = db_subjects[first_word]
+
         if subj_obj:
             subject_cols[col_idx] = subj_obj
         else:
-            header_errors.append(f"Subject '{h_name}' in column {col_idx + 1} does not exist in system.")
-
-    if header_errors:
-        return {
-            "success_count": 0,
-            "failed_count": 0,
-            "errors": header_errors,
-            "kind": "Results"
-        }
+            unmapped_subject_warnings.append(f"Column {col_idx + 1} ('{h_name}'): Subject not found in system (column skipped).")
 
     existing_students = {s.student_code: s for s in Student.query.all()}
     existing_years = {y.name: y for y in AcademicYear.query.all()}
@@ -344,7 +348,7 @@ def process_result_import(file):
 
     success_count = 0
     failed_count = 0
-    failed_errors = []
+    failed_errors = list(unmapped_subject_warnings)
     valid_row_entries = []
 
     for row_idx, row_cells in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
@@ -383,8 +387,11 @@ def process_result_import(file):
 
                 if not provided_class:
                     row_errors.append(f"Row {row_idx}: class is required.")
-                elif provided_class.lower() != student_actual_class.lower():
-                    row_errors.append(f"Row {row_idx}: class '{provided_class}' does not match student's class '{student_actual_class}'.")
+                else:
+                    p_cls = provided_class.strip().lower()
+                    a_cls = student_actual_class.strip().lower()
+                    if p_cls != a_cls and p_cls not in a_cls and a_cls not in p_cls:
+                        row_errors.append(f"Row {row_idx}: class '{provided_class}' does not match student's class '{student_actual_class}'.")
 
             # 3. exam_type check
             if not exam_type:
