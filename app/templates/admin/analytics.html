@@ -95,9 +95,9 @@
           <i class="fa-solid fa-clipboard-check"></i>
         </div>
         <div class="rh-kpi-content">
-          <div class="rh-kpi-value">{{ analytics.pass_fail_ratio.total }}</div>
-          <div class="rh-kpi-label">{{ rh_label("analytics.total_results", default="Total Results") }}</div>
-          <div class="rh-kpi-trend text-muted">Recorded grades</div>
+          <div class="rh-kpi-value">{{ analytics.completion_rate.percentage }}%</div>
+          <div class="rh-kpi-label">{{ rh_label("analytics.completion_rate", default="Completion Rate") }}</div>
+          <div class="rh-kpi-trend text-muted">{{ analytics.completion_rate.actual }} / {{ analytics.completion_rate.expected }} results entered</div>
         </div>
       </div>
       <div class="rh-kpi-card">
@@ -115,9 +115,16 @@
           <i class="fa-solid fa-check-circle"></i>
         </div>
         <div class="rh-kpi-content">
-          <div class="rh-kpi-value">{{ (analytics.pass_fail_ratio.pass / analytics.pass_fail_ratio.total * 100)|round(1) if analytics.pass_fail_ratio.total else 0 }}%</div>
+          <div class="rh-kpi-value" id="pass-rate-headline"
+               data-student-val="{{ analytics.student_pass_fail.pass_pct }}"
+               data-subject-val="{{ (analytics.pass_fail_ratio.pass / analytics.pass_fail_ratio.total * 100)|round(1) if analytics.pass_fail_ratio.total else 0 }}">{{ analytics.student_pass_fail.pass_pct }}%</div>
           <div class="rh-kpi-label">{{ rh_label("analytics.pass_rate", default="Pass Rate") }}</div>
-          <div class="rh-kpi-trend text-muted">{{ analytics.pass_fail_ratio.pass }} passed</div>
+          <div class="rh-kpi-trend text-muted">
+            <a href="javascript:void(0)" onclick="switchPassFailView('pass','subject'); scrollToSubjectPerformance()" style="color: #2e7d32; font-weight: 600; text-decoration: underline; margin-right: 6px;">Subjects</a>
+            ·
+            <a href="javascript:void(0)" onclick="switchPassFailView('pass','student')" style="color: #2e7d32; font-weight: 600; text-decoration: underline; margin-left: 6px;">Students</a>
+          </div>
+          <div class="rh-kpi-trend text-muted" style="margin-top: 2px;">{{ analytics.student_pass_fail.pass_count }} / {{ analytics.student_pass_fail.total_students }} students passed</div>
         </div>
       </div>
       <div class="rh-kpi-card">
@@ -125,9 +132,16 @@
           <i class="fa-solid fa-times-circle"></i>
         </div>
         <div class="rh-kpi-content">
-          <div class="rh-kpi-value">{{ (analytics.pass_fail_ratio.fail / analytics.pass_fail_ratio.total * 100)|round(1) if analytics.pass_fail_ratio.total else 0 }}%</div>
+          <div class="rh-kpi-value" id="fail-rate-headline"
+               data-student-val="{{ analytics.student_pass_fail.fail_pct }}"
+               data-subject-val="{{ (analytics.pass_fail_ratio.fail / analytics.pass_fail_ratio.total * 100)|round(1) if analytics.pass_fail_ratio.total else 0 }}">{{ analytics.student_pass_fail.fail_pct }}%</div>
           <div class="rh-kpi-label">{{ rh_label("analytics.fail_rate", default="Fail Rate") }}</div>
-          <div class="rh-kpi-trend text-muted">{{ analytics.pass_fail_ratio.fail }} failed</div>
+          <div class="rh-kpi-trend text-muted">
+            <a href="javascript:void(0)" onclick="switchPassFailView('fail','subject'); scrollToSubjectPerformance()" style="color: #c62828; font-weight: 600; text-decoration: underline; margin-right: 6px;">Subjects</a>
+            ·
+            <a href="javascript:void(0)" onclick="switchPassFailView('fail','student')" style="color: #c62828; font-weight: 600; text-decoration: underline; margin-left: 6px;">Students</a>
+          </div>
+          <div class="rh-kpi-trend text-muted" style="margin-top: 2px;">{{ analytics.student_pass_fail.fail_count }} / {{ analytics.student_pass_fail.total_students }} students failed</div>
         </div>
       </div>
     </section>
@@ -184,12 +198,23 @@
         </div>
       </article>
 
-      <article class="rh-analytics-card">
-        <h2>{{ rh_label("analytics.subject_performance", default="Subject-wise Performance") }}</h2>
-        <div class="rh-subject-scroll">
+      <article class="rh-analytics-card" id="subjectPerformancePanel" style="transition: box-shadow 0.4s ease, border-color 0.4s ease;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+          <h2 style="margin: 0;">{{ rh_label("analytics.subject_performance", default="Subject-wise Performance") }}</h2>
+          <select class="rh-select-small" id="subject-filter-selector" onchange="filterSubjectPerformance()" style="padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; border: 1px solid #cbd5e1; background: #ffffff;">
+            <option value="all">All Subjects</option>
+            <option value="top_5">Top 5</option>
+            <option value="top_10">Top 10</option>
+            <option value="top_20">Top 20</option>
+            <option value="bottom_5">Bottom 5</option>
+            <option value="bottom_10">Bottom 10</option>
+            <option value="bottom_20">Bottom 20</option>
+          </select>
+        </div>
+        <div class="rh-subject-scroll" id="subject-performance-list">
           {% for label in analytics.subject_performance.labels %}
             {% set pct = analytics.subject_performance.scores[loop.index0] %}
-            <div class="rh-bar-row">
+            <div class="rh-bar-row subject-bar-row" data-score="{{ pct }}" data-subject="{{ label }}">
               <span>{{ label }}</span>
               <div class="rh-bar-track"><div class="rh-bar-fill" style="width: {{ pct }}%"></div></div>
               <span class="rh-mono">{{ pct }}%</span>
@@ -339,6 +364,61 @@ function changeBottomLimit() {
   const url = new URL(window.location.href);
   url.searchParams.set('bottom_limit', bottomLimit);
   window.location.href = url.toString();
+}
+
+function scrollToSubjectPerformance() {
+  const panel = document.getElementById('subjectPerformancePanel');
+  if (panel) {
+    panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    panel.style.boxShadow = '0 0 0 3px rgba(201, 162, 39, 0.6), 0 10px 25px rgba(0, 0, 0, 0.1)';
+    panel.style.borderColor = '#c9a227';
+    setTimeout(() => {
+      panel.style.boxShadow = '';
+      panel.style.borderColor = '';
+    }, 2000);
+  }
+}
+
+function switchPassFailView(card, view) {
+  const el = document.getElementById(card + '-rate-headline');
+  if (!el) return;
+  const val = view === 'subject' ? el.dataset.subjectVal : el.dataset.studentVal;
+  el.textContent = val + '%';
+}
+
+function filterSubjectPerformance() {
+  const selector = document.getElementById('subject-filter-selector');
+  if (!selector) return;
+  const val = selector.value;
+  const rows = Array.from(document.querySelectorAll('.subject-bar-row'));
+  if (!rows.length) return;
+
+  if (val === 'all') {
+    rows.forEach(r => r.style.display = '');
+    return;
+  }
+
+  // Sort rows by numeric score descending
+  const sorted = [...rows].sort((a, b) => {
+    const scoreA = parseFloat(a.dataset.score) || 0;
+    const scoreB = parseFloat(b.dataset.score) || 0;
+    return scoreB - scoreA;
+  });
+
+  const parts = val.split('_');
+  const mode = parts[0];
+  const limit = parseInt(parts[1], 10) || 5;
+
+  let visibleSet = new Set();
+  if (mode === 'top') {
+    visibleSet = new Set(sorted.slice(0, limit));
+  } else if (mode === 'bottom') {
+    visibleSet = new Set(sorted.slice(-limit));
+  }
+
+  rows.forEach(r => {
+    r.style.display = visibleSet.has(r) ? '' : 'none';
+  });
 }
 </script>
 {% endblock %}

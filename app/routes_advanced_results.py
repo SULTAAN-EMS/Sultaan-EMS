@@ -1817,8 +1817,11 @@ def analytics():
         results_query = results_query.filter_by(subject_id=scope_info["subject"].id)
     results = results_query.all()
     
+    # Scoped subjects for completion rate calculation
+    scoped_subjects = [scope_info["subject"]] if scope_info["subject"] else subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
+
     # Calculate analytics data with ranking limits
-    analytics_data = build_analytics_data(results, students, selected_exam, top_limit, bottom_limit)
+    analytics_data = build_analytics_data(results, students, selected_exam, top_limit, bottom_limit, scoped_subjects=scoped_subjects)
     
     return render_template(
         "admin/analytics.html",
@@ -1842,18 +1845,24 @@ def analytics():
     )
 
 
-def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5):
+def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, scoped_subjects=None):
     """Build analytics data for charts using existing grade_for logic"""
+    total_students_count = len(students) if students else 0
+    num_scoped_subjects = len(scoped_subjects) if scoped_subjects else 0
+    expected_results = total_students_count * num_scoped_subjects
+
     if not results:
         return {
-            "grade_distribution": {"labels": [], "values": [], "colors": []},
-            "subject_performance": {"labels": [], "values": []},
+            "grade_distribution": {"labels": [], "counts": [], "colors": [], "total": 0},
+            "subject_performance": {"labels": [], "scores": []},
             "exam_trend": {"labels": [], "scores": []},
             "pass_fail_ratio": {"pass": 0, "fail": 0, "total": 0},
+            "completion_rate": {"percentage": 0.0, "actual": 0, "expected": expected_results},
+            "student_pass_fail": {"pass_count": 0, "fail_count": 0, "total_students": total_students_count, "pass_pct": 0.0, "fail_pct": 0.0},
             "overall_average": 0,
             "top_performers": [],
             "bottom_performers": [],
-            "total_students": len(students) if students else 0,
+            "total_students": total_students_count,
             "highest_score": 0,
             "lowest_score": 0,
         }
@@ -1926,11 +1935,15 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5):
         for year_exam in year_exams
     ]
     
-    # Pass/fail ratio
+    # Pass/fail ratio (entry-based)
     pass_count = sum(1 for pct in percentages if cached_grade_for(pct).get("is_pass"))
     fail_count = len(percentages) - pass_count
     
-    # Student averages for top/bottom performers
+    # Completion Rate calculation
+    actual_results = len(results)
+    completion_rate_pct = round((actual_results / expected_results * 100), 1) if expected_results > 0 else 0.0
+
+    # Student overall averages for top/bottom performers and student-based pass/fail
     student_averages = {}
     for result in results:
         student_id = result.student_id
@@ -1941,7 +1954,13 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5):
     
     student_avg_list = [(sid, round(sum(pcts) / len(pcts), 2)) for sid, pcts in student_averages.items()]
     student_avg_list.sort(key=lambda x: x[1], reverse=True)
-    
+
+    # Student-based pass/fail ratio (overall average per student)
+    student_pass_count = sum(1 for sid, avg in student_avg_list if cached_grade_for(avg).get("is_pass"))
+    student_fail_count = total_students_count - student_pass_count
+    student_pass_pct = round((student_pass_count / total_students_count * 100), 1) if total_students_count > 0 else 0.0
+    student_fail_pct = round((student_fail_count / total_students_count * 100), 1) if total_students_count > 0 else 0.0
+
     top_performers = []
     bottom_performers = []
     
@@ -1991,10 +2010,22 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5):
             "fail": fail_count,
             "total": len(percentages),
         },
+        "completion_rate": {
+            "percentage": completion_rate_pct,
+            "actual": actual_results,
+            "expected": expected_results,
+        },
+        "student_pass_fail": {
+            "pass_count": student_pass_count,
+            "fail_count": student_fail_count,
+            "total_students": total_students_count,
+            "pass_pct": student_pass_pct,
+            "fail_pct": student_fail_pct,
+        },
         "overall_average": overall_average,
         "top_performers": top_performers,
         "bottom_performers": bottom_performers,
-        "total_students": len(students) if students else 0,
+        "total_students": total_students_count,
         "highest_score": highest_score,
         "lowest_score": lowest_score,
     }
