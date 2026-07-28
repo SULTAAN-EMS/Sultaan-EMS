@@ -3,6 +3,7 @@
 {% block page_title %}{{ rh_label("entry.title", default="Whole-Class Result Entry") }}{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/results_module.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <div class="results-hub">
   {% include "admin/_results_hub_header.html" %}
@@ -498,13 +499,33 @@ async function handleResultImport(inputElement) {
   const form = inputElement.form;
   const formData = new FormData(form);
   
+  // Safe showAlert helper
+  function displayAlert(icon, title, textOrHtml, reloadOnClose = false) {
+    if (window.Swal) {
+      const opts = { icon, title, allowOutsideClick: false };
+      if (textOrHtml.includes('<')) {
+        opts.html = textOrHtml;
+      } else {
+        opts.text = textOrHtml;
+      }
+      Swal.fire(opts).then(() => {
+        if (reloadOnClose) window.location.reload();
+      });
+    } else {
+      alert(`${title}\n\n${textOrHtml.replace(/<[^>]*>/g, '')}`);
+      if (reloadOnClose) window.location.reload();
+    }
+  }
+
   // Show loading state
-  Swal.fire({
-    title: 'Importing Results...',
-    text: 'Please wait while the file is processed.',
-    allowOutsideClick: false,
-    didOpen: () => Swal.showLoading()
-  });
+  if (window.Swal) {
+    Swal.fire({
+      title: 'Importing Results...',
+      text: 'Please wait while the file is processed.',
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading()
+    });
+  }
 
   try {
     const response = await fetch(form.action, {
@@ -516,52 +537,36 @@ async function handleResultImport(inputElement) {
     });
     
     inputElement.value = ''; // Reset file input
-    const data = await response.json();
+    
+    let data;
+    try {
+      data = await response.json();
+    } catch(e) {
+      displayAlert('error', 'Error', 'Failed to parse server response.');
+      return;
+    }
     
     if (response.ok && data.success) {
       const summary = data.summary;
       if (summary.failed_count === 0 && summary.success_count > 0) {
-        Swal.fire({
-          icon: 'success',
-          title: 'Import Successful',
-          text: `✅ ${summary.success_count} result rows imported successfully.`
-        }).then(() => window.location.reload());
+        displayAlert('success', 'Import Successful', `✅ ${summary.success_count} result rows imported successfully.`, true);
       } else if (summary.success_count > 0) {
         let errorList = summary.errors.slice(0, 10).map(e => `<li>${e}</li>`).join('');
         if (summary.errors.length > 10) errorList += `<li>...and ${summary.errors.length - 10} more.</li>`;
         
-        Swal.fire({
-          icon: 'warning',
-          title: 'Partial Success',
-          html: `<p>✅ ${summary.success_count} rows imported.</p>
-                 <p>❌ ${summary.failed_count} rows failed validation:</p>
-                 <ul style="text-align: left; font-size: 0.85em; max-height: 200px; overflow-y: auto;">${errorList}</ul>`
-        }).then(() => window.location.reload());
+        displayAlert('warning', 'Partial Success', `<p>✅ ${summary.success_count} rows imported.</p><p>❌ ${summary.failed_count} rows failed validation:</p><ul style="text-align: left; font-size: 0.85em; max-height: 200px; overflow-y: auto;">${errorList}</ul>`, true);
       } else {
         let errorList = summary.errors.slice(0, 10).map(e => `<li>${e}</li>`).join('');
         if (summary.errors.length > 10) errorList += `<li>...and ${summary.errors.length - 10} more.</li>`;
         
-        Swal.fire({
-          icon: 'error',
-          title: 'Import Failed',
-          html: `<p>❌ ${summary.failed_count} rows failed validation.</p>
-                 <ul style="text-align: left; font-size: 0.85em; max-height: 200px; overflow-y: auto;">${errorList}</ul>`
-        });
+        displayAlert('error', 'Import Failed', `<p>❌ ${summary.failed_count} rows failed validation.</p><ul style="text-align: left; font-size: 0.85em; max-height: 200px; overflow-y: auto;">${errorList}</ul>`, false);
       }
     } else {
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: data.error || data.details || 'An internal server error occurred during import.'
-      });
+      displayAlert('error', 'Error', data.error || data.details || 'An internal server error occurred during import.', false);
     }
   } catch (err) {
     inputElement.value = '';
-    Swal.fire({
-      icon: 'error',
-      title: 'Network Error',
-      text: err.message
-    });
+    displayAlert('error', 'Network Error', err.message, false);
   }
 }
 </script>
