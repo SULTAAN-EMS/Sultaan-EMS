@@ -2799,11 +2799,11 @@ def import_results():
         })
     except Exception as ex:
         db.session.rollback()
-        current_app.logger.error("Result import failed with exception", exc_info=True)
+        current_app.logger.error("Result import failed with exception [%s]: %s", type(ex).__name__, str(ex), exc_info=True)
         return jsonify({
             "success": False,
-            "error": "Internal Server Error during import",
-            "details": str(ex)
+            "error": f"Import Error ({type(ex).__name__}): {str(ex)}",
+            "details": f"{type(ex).__name__}: {str(ex)}"
         }), 500
 
 

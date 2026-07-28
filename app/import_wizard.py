@@ -299,8 +299,18 @@ def process_student_import(file):
     }
 
 
+import io
+
 def process_result_import(file):
-    wb = load_workbook(file, data_only=True)
+    if hasattr(file, "read"):
+        file_content = file.read()
+        file_obj = io.BytesIO(file_content)
+        if hasattr(file, "seek"):
+            file.seek(0)
+    else:
+        file_obj = file
+
+    wb = load_workbook(file_obj, data_only=True)
     ws = wb.active
 
     raw_headers = [clean_str(cell.value) for cell in ws[1]]
