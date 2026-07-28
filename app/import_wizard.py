@@ -140,21 +140,95 @@ def result_entry_import_template(year_id=None, exam_id=None, level_id=None, clas
     return wb
 
 
+HEADER_ALIASES = {
+    "student_id": {"student_id", "student_code", "student_number", "id"},
+    "class": {"class", "class_name", "school_class", "grade"},
+    "exam_type": {"exam_type", "exam_name", "exam", "exam_title"},
+    "academic_year": {"academic_year", "year_name", "academic_year_name", "year"},
+    "full_name": {"full_name", "student_name", "name"},
+    "mother_name": {"mother_name", "mother_s_name", "mothers_name"},
+    "phone": {"phone", "phone_number", "mobile"},
+}
+
+
 def clean_str(val):
     if val is None:
         return ""
     if isinstance(val, float) and val.is_integer():
         return str(int(val))
-    return str(val).strip()
+    val_str = str(val)
+    val_str = val_str.replace("\ufeff", "").replace("\u200b", "").replace("\xa0", " ").strip()
+    return val_str
+
+
+def normalize_header_key(raw_header):
+    cleaned = clean_str(raw_header).lower()
+    if not cleaned:
+        return ""
+    slug = re.sub(r"[\s\-]+", "_", cleaned)
+    slug = re.sub(r"[^\w]+", "", slug)
+    slug = slug.strip("_")
+
+    for canonical_key, aliases in HEADER_ALIASES.items():
+        if slug in aliases:
+            return canonical_key
+    return slug
+
+
+def get_import_worksheet(wb, target_name="Result Entry"):
+    target_lower = target_name.lower().strip()
+    for sheet in wb.worksheets:
+        if sheet.title.lower().strip() == target_lower:
+            return sheet
+
+    for sheet in wb.worksheets:
+        for row in sheet.iter_rows(max_row=10, values_only=True):
+            if not row:
+                continue
+            row_keys = {normalize_header_key(c) for c in row if c is not None}
+            if "student_id" in row_keys:
+                return sheet
+
+    return wb.active
+
+
+def detect_header_row(ws, required_canonical_keys, max_scan_rows=10):
+    best_row_idx = 1
+    max_r = getattr(ws, "max_row", 1) or 1
+    best_raw_headers = [clean_str(cell.value) for cell in ws[1]] if max_r >= 1 else []
+    best_norm_headers = [normalize_header_key(h) for h in best_raw_headers]
+    best_match_count = -1
+
+    scan_limit = min(max_r, max_scan_rows)
+    if scan_limit < 1:
+        scan_limit = 1
+
+    for row_idx in range(1, scan_limit + 1):
+        row_cells = ws[row_idx]
+        raw = [clean_str(cell.value) for cell in row_cells]
+        norm = [normalize_header_key(h) for h in raw]
+        match_count = sum(1 for req in required_canonical_keys if req in norm)
+
+        if match_count > best_match_count:
+            best_match_count = match_count
+            best_row_idx = row_idx
+            best_raw_headers = raw
+            best_norm_headers = norm
+
+        if match_count == len(required_canonical_keys):
+            break
+
+    return best_row_idx, best_raw_headers, best_norm_headers
 
 
 def process_student_import(file):
     wb = load_workbook(file, data_only=True)
-    ws = wb.active
+    ws = get_import_worksheet(wb, target_name="Students")
 
-    headers = [clean_str(cell.value).lower() for cell in ws[1]]
     required_headers = ["student_id", "full_name", "mother_name", "phone", "class", "academic_year"]
-    missing = [h for h in required_headers if h not in headers]
+    header_row_idx, raw_headers, headers_norm = detect_header_row(ws, required_headers, max_scan_rows=10)
+
+    missing = [h for h in required_headers if h not in headers_norm]
     if missing:
         return {
             "success_count": 0,
@@ -179,11 +253,14 @@ def process_student_import(file):
     success_count = 0
     failed_count = 0
 
-    for row_idx, row_cells in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+    for row_idx, row_cells in enumerate(ws.iter_rows(min_row=header_row_idx + 1, values_only=True), start=header_row_idx + 1):
         if not row_cells or all(c is None or str(c).strip() == "" for c in row_cells):
             continue
 
-        data = {headers[i]: clean_str(val) for i, val in enumerate(row_cells) if i < len(headers)}
+        data = {}
+        for col_i, val in enumerate(row_cells):
+            if col_i < len(headers_norm) and headers_norm[col_i]:
+                data[headers_norm[col_i]] = clean_str(val)
 
         student_id = data.get("student_id", "")
         full_name = data.get("full_name", "")
@@ -311,13 +388,12 @@ def process_result_import(file):
         file_obj = file
 
     wb = load_workbook(file_obj, data_only=True)
-    ws = wb.active
-
-    raw_headers = [clean_str(cell.value) for cell in ws[1]]
-    headers_lower = [h.lower() for h in raw_headers]
+    ws = get_import_worksheet(wb, target_name="Result Entry")
 
     required_fields = ["student_id", "class", "exam_type", "academic_year"]
-    missing = [f for f in required_fields if f not in headers_lower]
+    header_row_idx, raw_headers, headers_norm = detect_header_row(ws, required_fields, max_scan_rows=10)
+
+    missing = [f for f in required_fields if f not in headers_norm]
     if missing:
         return {
             "success_count": 0,
@@ -331,17 +407,20 @@ def process_result_import(file):
     for s in Subject.query.all():
         if s.name:
             db_subjects[s.name.lower().strip()] = s
+            db_subjects[normalize_header_key(s.name)] = s
         subj_code = getattr(s, "code", None)
         if subj_code:
             db_subjects[str(subj_code).lower().strip()] = s
+            db_subjects[normalize_header_key(str(subj_code))] = s
 
     subject_cols = {}
     unmapped_subject_warnings = []
     for col_idx, h_name in enumerate(raw_headers):
-        if not h_name or h_name.lower() in fixed_header_set:
+        norm_h = headers_norm[col_idx] if col_idx < len(headers_norm) else ""
+        if not h_name or norm_h in fixed_header_set or h_name.lower().strip() in fixed_header_set:
             continue
         clean_h = h_name.lower().strip()
-        subj_obj = db_subjects.get(clean_h)
+        subj_obj = db_subjects.get(norm_h) or db_subjects.get(clean_h)
         
         # Fallback partial matching (e.g., 'English Filming' -> 'english')
         if not subj_obj:
@@ -363,15 +442,15 @@ def process_result_import(file):
     failed_errors = list(unmapped_subject_warnings)
     valid_row_entries = []
 
-    for row_idx, row_cells in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+    for row_idx, row_cells in enumerate(ws.iter_rows(min_row=header_row_idx + 1, values_only=True), start=header_row_idx + 1):
         try:
             if not row_cells or all(c is None or str(c).strip() == "" for c in row_cells):
                 continue
 
             row_map = {}
             for col_idx, val in enumerate(row_cells):
-                if col_idx < len(headers_lower) and headers_lower[col_idx]:
-                    row_map[headers_lower[col_idx]] = clean_str(val)
+                if col_idx < len(headers_norm) and headers_norm[col_idx]:
+                    row_map[headers_norm[col_idx]] = clean_str(val)
 
             student_id = row_map.get("student_id", "")
             provided_class = row_map.get("class", "")
