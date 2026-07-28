@@ -4,6 +4,7 @@
 {% block page_title %}{{ rh_label("grades.title", default="Grade Management — Simplified") }}{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/results_module.css') }}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
 <div class="results-hub">
   {% include "admin/_results_hub_header.html" %}
@@ -13,29 +14,50 @@
     <h1 class="rh-title">{{ rh_label("grades.title", default="Grade Management — Simplified") }}</h1>
     <p class="rh-desc">{{ rh_label("grades.subtitle", default="Academic Year → Exam Type → hal scale oo si toos ah loogu dabaqo dhammaan fasallada imtixaankan qaaday.") }}</p>
 
-    <form method="GET" action="{{ url_for('admin_advanced_results.grade_management') }}" class="rh-selector-row">
-      <div class="rh-selector">
-        <label for="year-selector">{{ rh_label("dashboard.year", default="Sanad Dugsiyeedka") }}</label>
-        <select id="year-selector" name="year_id" onchange="changeYear()">
+    <form method="GET" action="{{ url_for('admin_advanced_results.grade_management') }}" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; align-items: stretch; margin-bottom: 24px;">
+      <div style="background: #ffffff; border: 1px solid var(--paper-line); border-radius: 14px; padding: 14px 18px; box-shadow: 0 2px 8px rgba(27, 42, 74, 0.04); display: flex; flex-direction: column; justify-content: center;">
+        <label for="year-selector" style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--slate); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+          <i class="fa-solid fa-calendar-days" style="color: var(--navy);"></i> {{ rh_label("dashboard.year", default="Academic Year") }}
+        </label>
+        <select id="year-selector" name="year_id" onchange="changeYear()" style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 10px; font-weight: 600; color: var(--navy); background: #ffffff;">
           {% for year in years %}
             <option value="{{ year.id }}" {% if selected_year and selected_year.id == year.id %}selected{% endif %}>{{ year.name }}</option>
           {% endfor %}
         </select>
       </div>
-      <div class="rh-selector">
-        <label for="exam-selector">{{ rh_label("dashboard.exam_type", default="Exam Type") }}</label>
-        <select id="exam-selector" name="exam_id" onchange="changeExam()">
-          <option value="">Global</option>
+
+      <div style="background: #ffffff; border: 1px solid var(--paper-line); border-radius: 14px; padding: 14px 18px; box-shadow: 0 2px 8px rgba(27, 42, 74, 0.04); display: flex; flex-direction: column; justify-content: center;">
+        <label for="exam-selector" style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--slate); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+          <i class="fa-solid fa-file-pen" style="color: var(--navy);"></i> {{ rh_label("dashboard.exam_type", default="Exam Type") }}
+        </label>
+        <select id="exam-selector" name="exam_id" onchange="changeExam()" style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 10px; font-weight: 600; color: var(--navy); background: #ffffff;">
+          <option value="">Global Scale</option>
           {% for exam in exams %}
             <option value="{{ exam.id }}" {% if selected_exam and selected_exam.id == exam.id %}selected{% endif %}>{{ exam.name }}</option>
           {% endfor %}
         </select>
       </div>
-      <div style="background: var(--navy); color: var(--gold); border-radius: 12px; padding: 18px 30px; min-width: 300px;">
-        <div style="color:#b8c0d4; text-transform:uppercase; letter-spacing:.1em; font-size:.85rem;">{{ rh_label("grades.applies_to", default="Applies To") }}</div>
-        <div style="font-family: var(--font-serif); font-size: 1.65rem; font-weight: 800;">{{ rh_label("grades.all_classes", default="All Classes") }} · {{ total_points|academic_number(settings) }} pts</div>
+
+      <div style="background: #ffffff; border: 1px solid var(--paper-line); border-radius: 14px; padding: 14px 18px; box-shadow: 0 2px 8px rgba(27, 42, 74, 0.04); display: flex; flex-direction: column; justify-content: center;">
+        <label for="level-selector" style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--slate); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+          <i class="fa-solid fa-graduation-cap" style="color: var(--navy);"></i> Academic Level
+        </label>
+        <select id="level-selector" name="level_id" onchange="changeLevel()" style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 10px; font-weight: 600; color: var(--navy); background: #ffffff;">
+          <option value="">All Levels</option>
+          {% for level in levels %}
+            <option value="{{ level.id }}" {% if selected_level_id and selected_level_id == level.id %}selected{% endif %}>{{ level.name }}</option>
+          {% endfor %}
+        </select>
       </div>
-      <button type="button" class="rh-btn" onclick="configureCustom()">⚙ {{ rh_label("grades.generate", default="Generate Scale") }}</button>
+
+      <div style="background: #ffffff; border: 1px solid var(--paper-line); border-radius: 14px; padding: 14px 18px; box-shadow: 0 2px 8px rgba(27, 42, 74, 0.04); display: flex; flex-direction: column; justify-content: center;">
+        <span style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--slate); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+          <i class="fa-solid fa-wand-magic-sparkles" style="color: var(--gold);"></i> Quick Action
+        </span>
+        <button type="button" class="rh-btn primary" onclick="generateScaleAction()" style="width: 100%; height: 34px; font-size: 0.85rem; font-weight: 700; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Scale
+        </button>
+      </div>
     </form>
 
     {% if using_global %}
@@ -127,6 +149,116 @@
         <button class="rh-btn" type="submit">{{ rh_label("grades.save", default="Save Grade Scales") }}</button>
       </div>
     </form>
+
+    <form method="POST" action="{{ url_for('admin_advanced_results.save_report_tiers') }}" class="rh-table-card" style="padding: 24px; margin-top: 24px; border-radius: 16px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="year_id" value="{{ selected_year.id if selected_year else '' }}">
+      <input type="hidden" name="exam_id" value="{{ selected_exam.id if selected_exam else '' }}">
+      <input type="hidden" name="level_id" value="{{ selected_level_id if selected_level_id else '' }}">
+      
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; border-bottom: 2px solid var(--paper-line); padding-bottom: 14px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 38px; height: 38px; border-radius: 10px; background: rgba(16, 42, 92, 0.08); display: flex; align-items: center; justify-content: center; color: var(--navy); font-size: 1.1rem;">
+            <i class="fa-solid fa-sliders"></i>
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--navy);">Whole-Class Report — Grade Tier Configurations</h3>
+            <p style="margin: 2px 0 0; font-size: 0.82rem; color: var(--slate);">Configure Weak and Fail ranges plus background & text colors exclusively for the Whole-Class Result Report PDF/Print sheet.</p>
+          </div>
+        </div>
+        <span style="background: var(--navy); color: #ffffff; padding: 5px 12px; border-radius: 8px; font-weight: 700; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 6px;">
+          <i class="fa-solid fa-print"></i> Whole-Class Report Only
+        </span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+        <!-- Weak Tier Configuration Box -->
+        <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 12px; padding: 18px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px;">
+            <i class="fa-solid fa-triangle-exclamation" style="color: #d97706; font-size: 1.1rem;"></i>
+            <h4 style="margin: 0; font-size: 0.98rem; font-weight: 700; color: #92400e;">"Weak" Tier Settings</h4>
+          </div>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+            <div>
+              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #92400e; margin-bottom: 4px;">Range From (%)</label>
+              <input type="number" step="{{ decimal_step }}" name="weak_min" class="rh-input" value="{{ weak_tier_config.min }}" style="width: 100%; background: #ffffff;" required>
+            </div>
+            <div>
+              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #92400e; margin-bottom: 4px;">Range To (%)</label>
+              <input type="number" step="{{ decimal_step }}" name="weak_max" class="rh-input" value="{{ weak_tier_config.max }}" style="width: 100%; background: #ffffff;" required>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div>
+              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #92400e; margin-bottom: 4px;">
+                <i class="fa-solid fa-palette"></i> Highlight Color
+              </label>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="color" name="weak_bg_color" value="{{ weak_tier_config.bg_color }}" onchange="document.getElementById('weak_bg_hex').value = this.value" style="height: 36px; width: 44px; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer;">
+                <input type="text" id="weak_bg_hex" name="weak_bg_hex" value="{{ weak_tier_config.bg_color }}" class="rh-input" style="flex: 1; background: #ffffff;" placeholder="#F5A400">
+              </div>
+            </div>
+            <div>
+              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #92400e; margin-bottom: 4px;">
+                <i class="fa-solid fa-font"></i> Text Color
+              </label>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="color" name="weak_text_color" value="{{ weak_tier_config.text_color }}" onchange="document.getElementById('weak_text_hex').value = this.value" style="height: 36px; width: 44px; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer;">
+                <input type="text" id="weak_text_hex" name="weak_text_hex" value="{{ weak_tier_config.text_color }}" class="rh-input" style="flex: 1; background: #ffffff;" placeholder="#ffffff">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fail Tier Configuration Box -->
+        <div style="background: #fef2f2; border: 1px solid #fee2e2; border-radius: 12px; padding: 18px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px;">
+            <i class="fa-solid fa-circle-exclamation" style="color: #dc2626; font-size: 1.1rem;"></i>
+            <h4 style="margin: 0; font-size: 0.98rem; font-weight: 700; color: #991b1b;">"Fail" Tier Settings</h4>
+          </div>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+            <div>
+              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #991b1b; margin-bottom: 4px;">Range From (%)</label>
+              <input type="number" step="{{ decimal_step }}" name="fail_min" class="rh-input" value="{{ fail_tier_config.min }}" style="width: 100%; background: #ffffff;" required>
+            </div>
+            <div>
+              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #991b1b; margin-bottom: 4px;">Range To (%)</label>
+              <input type="number" step="{{ decimal_step }}" name="fail_max" class="rh-input" value="{{ fail_tier_config.max }}" style="width: 100%; background: #ffffff;" required>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div>
+              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #991b1b; margin-bottom: 4px;">
+                <i class="fa-solid fa-palette"></i> Highlight Color
+              </label>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="color" name="fail_bg_color" value="{{ fail_tier_config.bg_color }}" onchange="document.getElementById('fail_bg_hex').value = this.value" style="height: 36px; width: 44px; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer;">
+                <input type="text" id="fail_bg_hex" name="fail_bg_hex" value="{{ fail_tier_config.bg_color }}" class="rh-input" style="flex: 1; background: #ffffff;" placeholder="#DC2626">
+              </div>
+            </div>
+            <div>
+              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #991b1b; margin-bottom: 4px;">
+                <i class="fa-solid fa-font"></i> Text Color
+              </label>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="color" name="fail_text_color" value="{{ fail_tier_config.text_color }}" onchange="document.getElementById('fail_text_hex').value = this.value" style="height: 36px; width: 44px; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer;">
+                <input type="text" id="fail_text_hex" name="fail_text_hex" value="{{ fail_tier_config.text_color }}" class="rh-input" style="flex: 1; background: #ffffff;" placeholder="#ffffff">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top: 20px; text-align: right;">
+        <button type="submit" class="rh-btn primary" style="padding: 10px 24px; font-weight: 700; border-radius: 10px;">
+          <i class="fa-solid fa-floppy-disk"></i> Save Report Tier Settings
+        </button>
+      </div>
+    </form>
   </main>
 </div>
 
@@ -140,8 +272,47 @@ function changeExam() {
   const examId = document.getElementById('exam-selector').value;
   window.location.href = `{{ url_for('admin_advanced_results.grade_management') }}?year_id=${yearId}&exam_id=${examId}`;
 }
-function configureCustom() {
-  changeExam();
+function changeLevel() {
+  const yearId = document.getElementById('year-selector').value;
+  const examId = document.getElementById('exam-selector').value;
+  const levelId = document.getElementById('level-selector').value;
+  window.location.href = `{{ url_for('admin_advanced_results.grade_management') }}?year_id=${yearId}&exam_id=${examId}&level_id=${levelId}`;
+}
+function generateScaleAction() {
+  const yearId = document.getElementById('year-selector').value;
+  const examId = document.getElementById('exam-selector').value;
+  const levelId = document.getElementById('level-selector').value;
+  
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = "{{ url_for('admin_advanced_results.generate_scale') }}";
+  
+  const csrfInput = document.createElement('input');
+  csrfInput.type = 'hidden';
+  csrfInput.name = 'csrf_token';
+  csrfInput.value = "{{ csrf_token() }}";
+  form.appendChild(csrfInput);
+
+  const yearInput = document.createElement('input');
+  yearInput.type = 'hidden';
+  yearInput.name = 'year_id';
+  yearInput.value = yearId;
+  form.appendChild(yearInput);
+
+  const examInput = document.createElement('input');
+  examInput.type = 'hidden';
+  examInput.name = 'exam_id';
+  examInput.value = examId;
+  form.appendChild(examInput);
+
+  const levelInput = document.createElement('input');
+  levelInput.type = 'hidden';
+  levelInput.name = 'level_id';
+  levelInput.value = levelId;
+  form.appendChild(levelInput);
+
+  document.body.appendChild(form);
+  form.submit();
 }
 </script>
 {% endblock %}

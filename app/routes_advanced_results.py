@@ -1,6 +1,7 @@
 from collections import defaultdict
 from decimal import Decimal
 import math
+import json
 from tempfile import NamedTemporaryFile
 from datetime import date
 
@@ -1101,9 +1102,88 @@ def export_student_pdf():
     )
 
 
+def get_report_tier_configs(year_id=None, exam_id=None, level_id=None):
+    """Retrieve Weak and Fail Tier configurations for Whole-Class Report."""
+    weak_key = f"weak_tier_{year_id or 0}_{exam_id or 0}_{level_id or 0}"
+    fail_key = f"fail_tier_{year_id or 0}_{exam_id or 0}_{level_id or 0}"
+
+    def _load_setting(key, default_dict):
+        setting = db.session.get(Setting, key)
+        if setting and setting.value:
+            try:
+                res = json.loads(setting.value)
+                if "text_color" not in res:
+                    res["text_color"] = default_dict.get("text_color", "#ffffff")
+                if "bg_color" not in res:
+                    res["bg_color"] = res.get("color", default_dict.get("bg_color", "#F5A400"))
+                res["color"] = res["bg_color"]
+                return res
+            except Exception:
+                pass
+        return None
+
+    default_weak = {"min": 50.0, "max": 59.99, "bg_color": "#F5A400", "color": "#F5A400", "text_color": "#ffffff"}
+    default_fail = {"min": 0.0, "max": 49.99, "bg_color": "#DC2626", "color": "#DC2626", "text_color": "#ffffff"}
+
+    weak_cfg = _load_setting(weak_key, default_weak)
+    if not weak_cfg and level_id:
+        weak_cfg = _load_setting(f"weak_tier_{year_id or 0}_{exam_id or 0}_0", default_weak)
+    if not weak_cfg:
+        weak_cfg = _load_setting("weak_tier_global", default_weak) or default_weak
+
+    fail_cfg = _load_setting(fail_key, default_fail)
+    if not fail_cfg and level_id:
+        fail_cfg = _load_setting(f"fail_tier_{year_id or 0}_{exam_id or 0}_0", default_fail)
+    if not fail_cfg:
+        fail_cfg = _load_setting("fail_tier_global", default_fail) or default_fail
+
+    return {
+        "weak": weak_cfg,
+        "fail": fail_cfg,
+    }
+
+
+def save_report_tier_configs(year_id, exam_id, level_id, weak_min, weak_max, weak_bg, weak_text, fail_min, fail_max, fail_bg, fail_text):
+    """Save Weak and Fail tier configurations for a scope."""
+    weak_key = f"weak_tier_{year_id or 0}_{exam_id or 0}_{level_id or 0}"
+    fail_key = f"fail_tier_{year_id or 0}_{exam_id or 0}_{level_id or 0}"
+
+    s_weak = db.session.get(Setting, weak_key) or Setting(key=weak_key)
+    s_weak.value = json.dumps({
+        "min": float(weak_min),
+        "max": float(weak_max),
+        "bg_color": str(weak_bg).strip(),
+        "color": str(weak_bg).strip(),
+        "text_color": str(weak_text).strip(),
+    })
+    db.session.add(s_weak)
+
+    s_fail = db.session.get(Setting, fail_key) or Setting(key=fail_key)
+    s_fail.value = json.dumps({
+        "min": float(fail_min),
+        "max": float(fail_max),
+        "bg_color": str(fail_bg).strip(),
+        "color": str(fail_bg).strip(),
+        "text_color": str(fail_text).strip(),
+    })
+    db.session.add(s_fail)
+
+    db.session.commit()
+
+
+def get_weak_tier_config(year_id=None, exam_id=None, level_id=None):
+    return get_report_tier_configs(year_id, exam_id, level_id)["weak"]
+
+
+def save_weak_tier_config(year_id, exam_id, level_id, min_score, max_score, color):
+    cfgs = get_report_tier_configs(year_id, exam_id, level_id)
+    fail_c = cfgs["fail"]
+    save_report_tier_configs(year_id, exam_id, level_id, min_score, max_score, color, "#ffffff", fail_c["min"], fail_c["max"], fail_c["bg_color"], fail_c["text_color"])
+
+
 @advanced_results_bp.route("/export-class-pdf")
 def export_class_pdf():
-    """Export class results as PDF mark sheet"""
+    """Export class results as PDF mark sheet (Whole-Class Result Report)"""
     year_id = int_or_none(request.args.get("year_id"))
     exam_id = int_or_none(request.args.get("exam_id"))
     level_id = int_or_none(request.args.get("level_id"))
@@ -1173,6 +1253,10 @@ def export_class_pdf():
         # Final fallback
         return {"grade": "-", "comment": "", "grade_point": 0.0, "is_pass": False, "badge_color": "#64748b", "text_color": "#ffffff", "background_color": "#f1f5f9", "border_color": "#cbd5e1"}
     
+    report_tiers = get_report_tier_configs(year_id=year_id, exam_id=exam_id, level_id=level_id)
+    weak_config = report_tiers["weak"]
+    fail_config = report_tiers["fail"]
+
     # Build roster data
     roster_data = []
     for student in students:
@@ -1198,16 +1282,23 @@ def export_class_pdf():
             if result and result.grade_override:
                 grade_info = dict(grade_info)
                 grade_info["grade"] = result.grade_override
-            
+
+            is_fail = (not grade_info.get("is_pass", True)) or (fail_config["min"] <= percentage <= fail_config["max"])
+            is_weak = not is_fail and (weak_config["min"] <= percentage <= weak_config["max"])
+
             subject_data.append({
                 "score": score,
                 "percentage": round(percentage, 2),
                 "grade": grade_info,
+                "is_fail": is_fail,
+                "is_weak": is_weak,
             })
         
         overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
         overall_grade = cached_grade_for(overall_percentage)
-        
+        overall_fail = (not overall_grade.get("is_pass", True)) or (fail_config["min"] <= overall_percentage <= fail_config["max"])
+        overall_weak = not overall_fail and (weak_config["min"] <= overall_percentage <= weak_config["max"])
+
         roster_data.append({
             "student": student,
             "subject_data": subject_data,
@@ -1215,6 +1306,8 @@ def export_class_pdf():
             "total_max": total_max,
             "percentage": overall_percentage,
             "grade": overall_grade,
+            "is_fail": overall_fail,
+            "is_weak": overall_weak,
         })
 
     ranked_data = sorted(roster_data, key=lambda row: (row["percentage"], row["total_score"]), reverse=True)
@@ -1279,6 +1372,9 @@ def export_class_pdf():
         students_per_page=students_per_page,
         total_pages=total_pages,
         settings=settings,
+        weak_config=weak_config,
+        fail_config=fail_config,
+        report_tiers=report_tiers,
         generated_by=current_user.full_name or current_user.username,
         date=date.today(),
     )
@@ -1845,6 +1941,96 @@ def analytics():
     )
 
 
+@advanced_results_bp.route("/analytics/grade-drill-down")
+def analytics_grade_drill_down():
+    """Return JSON list of students who achieved a given grade, matching current filter scope."""
+    year_id    = int_or_none(request.args.get("year_id"))
+    exam_id    = int_or_none(request.args.get("exam_id"))
+    level_id   = int_or_none(request.args.get("level_id"))
+    class_id   = int_or_none(request.args.get("class_id"))
+    section_id = int_or_none(request.args.get("section_id"))
+    subject_id = int_or_none(request.args.get("subject_id"))
+    grade_letter = (request.args.get("grade") or "").strip()
+
+    if not year_id or not exam_id or not grade_letter:
+        return jsonify({"error": "Missing required params: year_id, exam_id, grade"}), 400
+
+    selected_year = db.session.get(AcademicYear, year_id)
+    selected_exam = db.session.get(Exam, exam_id)
+    if not selected_year or not selected_exam:
+        return jsonify({"error": "Invalid year or exam"}), 404
+
+    grade_cache = load_grade_scale_cache(selected_exam.id)
+
+    students = (
+        students_for_scope_query(
+            selected_year.id,
+            level_id=level_id,
+            class_id=class_id,
+            section_id=section_id,
+        )
+        .options(
+            selectinload(Student.academic_class),
+            selectinload(Student.academic_section),
+        )
+        .order_by(Student.full_name)
+        .all()
+    )
+    student_ids = [s.id for s in students]
+
+    results_query = (
+        Result.query.options(selectinload(Result.subject))
+        .filter(
+            Result.student_id.in_(student_ids),
+            Result.exam_id == selected_exam.id,
+            Result.is_published.is_(True),
+        )
+    )
+    if subject_id:
+        results_query = results_query.filter_by(subject_id=subject_id)
+    results = results_query.all()
+
+    by_student = {}
+    for r in results:
+        if not r.subject or not r.subject.max_score:
+            continue
+        by_student.setdefault(r.student_id, []).append(r)
+
+    student_map = {s.id: s for s in students}
+
+    rows = []
+    for sid, res_list in by_student.items():
+        student = student_map.get(sid)
+        if not student:
+            continue
+        total_score = sum(float(r.score or 0) for r in res_list)
+        total_max   = sum(float(r.subject.max_score) for r in res_list if r.subject and r.subject.max_score)
+        avg_pct     = round(total_score / total_max * 100, 2) if total_max else 0
+        grade_info  = grade_for_from_cache(avg_pct, grade_cache)
+
+        if grade_info.get("grade") != grade_letter:
+            continue
+
+        rows.append({
+            "student_id":    student.student_code or str(student.id),
+            "full_name":     student.full_name or "",
+            "mother_name":   student.mother_name or "",
+            "class_name":    student.academic_class.name if student.academic_class else "",
+            "academic_year": selected_year.name,
+            "exam_type":     selected_exam.name,
+            "total":         round(total_score, 2),
+            "percentage":    avg_pct,
+            "grade":         grade_info.get("grade", "-"),
+            "grade_point":   grade_info.get("grade_point", 0.0),
+        })
+
+    rows.sort(key=lambda x: x["percentage"], reverse=True)
+    for i, row in enumerate(rows, 1):
+        row["row_num"] = i
+
+    return jsonify(rows)
+
+
 def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, scoped_subjects=None):
     """Build analytics data for charts using existing grade_for logic"""
     total_students_count = len(students) if students else 0
@@ -2036,14 +2222,16 @@ def grade_management():
     """Grade Management page scoped per exam"""
     year_id = int_or_none(request.args.get("year_id"))
     exam_id = int_or_none(request.args.get("exam_id"))
+    level_id = int_or_none(request.args.get("level_id"))
     
     # Get selected year and exam
     selected_year = db.session.get(AcademicYear, year_id) if year_id else AcademicYear.query.filter_by(is_current=True).first()
     selected_exam = db.session.get(Exam, exam_id) if exam_id else None
     
-    # Get all years and exams for selectors
+    # Get all years, exams, and levels for selectors
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
     exams = Exam.query.filter_by(academic_year_id=selected_year.id).order_by(Exam.id.desc()).all() if selected_year else []
+    levels = AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
     
     # Get grade scales for the selected exam (or global if no exam selected)
     if selected_exam:
@@ -2070,6 +2258,12 @@ def grade_management():
     if selected_exam and selected_exam.academic_level_id:
         subjects = Subject.query.filter_by(academic_level_id=selected_exam.academic_level_id).all()
         total_points = sum(float(s.max_score) for s in subjects)
+
+    report_tiers = get_report_tier_configs(
+        year_id=selected_year.id if selected_year else None,
+        exam_id=selected_exam.id if selected_exam else None,
+        level_id=level_id,
+    )
     
     decimal_precision = academic_decimal_precision(get_settings())
     decimal_step = {0: "1", 1: "0.1", 2: "0.01", 3: "0.001"}[decimal_precision]
@@ -2077,16 +2271,107 @@ def grade_management():
         "admin/grade_management.html",
         years=years,
         exams=exams,
+        levels=levels,
         selected_year=selected_year,
         selected_exam=selected_exam,
+        selected_level_id=level_id,
         grade_scales=grade_scales,
         using_global=using_global,
         exam_status=exam_status,
         total_points=total_points,
         decimal_precision=decimal_precision,
         decimal_step=decimal_step,
+        weak_tier_config=report_tiers["weak"],
+        fail_tier_config=report_tiers["fail"],
+        report_tiers=report_tiers,
         settings=get_settings(),
     )
+
+
+@advanced_results_bp.route("/grade-management/save-report-tiers", methods=["POST"])
+def save_report_tiers():
+    """Save Weak and Fail Tier configurations for Whole-Class Report."""
+    year_id = int_or_none(request.form.get("year_id"))
+    exam_id = int_or_none(request.form.get("exam_id"))
+    level_id = int_or_none(request.form.get("level_id"))
+
+    weak_min = request.form.get("weak_min", "50.0")
+    weak_max = request.form.get("weak_max", "59.99")
+    weak_bg = request.form.get("weak_bg_hex") or request.form.get("weak_bg_color") or "#F5A400"
+    weak_text = request.form.get("weak_text_hex") or request.form.get("weak_text_color") or "#ffffff"
+
+    fail_min = request.form.get("fail_min", "0.0")
+    fail_max = request.form.get("fail_max", "49.99")
+    fail_bg = request.form.get("fail_bg_hex") or request.form.get("fail_bg_color") or "#DC2626"
+    fail_text = request.form.get("fail_text_hex") or request.form.get("fail_text_color") or "#ffffff"
+
+    try:
+        min_w = float(weak_min)
+        max_w = float(weak_max)
+        min_f = float(fail_min)
+        max_f = float(fail_max)
+        if min_w > max_w or min_f > max_f:
+            flash("Minimum percentage cannot be greater than maximum percentage.", "danger")
+            return redirect(url_for("admin_advanced_results.grade_management", year_id=year_id, exam_id=exam_id, level_id=level_id))
+
+        save_report_tier_configs(
+            year_id, exam_id, level_id,
+            weak_min, weak_max, weak_bg, weak_text,
+            fail_min, fail_max, fail_bg, fail_text
+        )
+        flash("Whole-Class Report Tier configurations (Weak & Fail) saved successfully.", "success")
+    except Exception as exc:
+        flash(f"Could not save Whole-Class Report tier settings: {exc}", "danger")
+
+    return redirect(url_for("admin_advanced_results.grade_management", year_id=year_id, exam_id=exam_id, level_id=level_id))
+
+
+@advanced_results_bp.route("/grade-management/generate-scale", methods=["POST", "GET"])
+def generate_scale():
+    """Generate Scale: automatically set all grade items to active together and save."""
+    year_id = int_or_none(request.form.get("year_id") or request.args.get("year_id"))
+    exam_id = int_or_none(request.form.get("exam_id") or request.args.get("exam_id"))
+    level_id = int_or_none(request.form.get("level_id") or request.args.get("level_id"))
+
+    try:
+        if exam_id:
+            existing = GradeScale.query.filter_by(exam_id=exam_id).all()
+            if not existing:
+                global_scales = GradeScale.query.filter_by(exam_id=None).order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
+                for source in global_scales:
+                    clone = GradeScale(
+                        exam_id=exam_id,
+                        grade=source.grade,
+                        min_score=source.min_score,
+                        max_score=source.max_score,
+                        comment=source.comment,
+                        grade_point=source.grade_point,
+                        is_pass=source.is_pass,
+                        badge_color=source.badge_color,
+                        text_color=source.text_color,
+                        background_color=source.background_color,
+                        border_color=source.border_color,
+                        sort_order=source.sort_order,
+                        is_active=True
+                    )
+                    db.session.add(clone)
+            else:
+                for scale in existing:
+                    scale.is_active = True
+        else:
+            global_scales = GradeScale.query.filter_by(exam_id=None).all()
+            for scale in global_scales:
+                scale.is_active = True
+
+        db.session.commit()
+        flash("Generated and activated all grade scales successfully.", "success")
+    except Exception as exc:
+        db.session.rollback()
+        flash(f"Could not generate scale: {exc}", "danger")
+
+    return redirect(url_for("admin_advanced_results.grade_management", year_id=year_id, exam_id=exam_id, level_id=level_id))
+
+
 
 
 @advanced_results_bp.route("/grade-management/save", methods=["POST"])

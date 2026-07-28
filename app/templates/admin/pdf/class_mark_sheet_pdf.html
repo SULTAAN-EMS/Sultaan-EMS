@@ -701,11 +701,33 @@
                                     </td>
                                     <td class="class-code">{{ scope_info.class.name if scope_info.class else "-" }}</td>
                                     {% for subject_data in row.subject_data %}
-                                        <td>{{ subject_data.score|academic_number(settings) }}</td>
+                                        {% if subject_data.is_fail %}
+                                            <td style="background-color: {{ fail_config.bg_color if fail_config and fail_config.bg_color else '#fee2e2' }}; color: {{ fail_config.text_color if fail_config and fail_config.text_color else '#991b1b' }}; font-weight: 700;">{{ subject_data.score|academic_number(settings) }}</td>
+                                        {% elif subject_data.is_weak %}
+                                            <td style="background-color: {{ weak_config.bg_color if weak_config and weak_config.bg_color else '#f59e0b' }}; color: {{ weak_config.text_color if weak_config and weak_config.text_color else '#ffffff' }}; font-weight: 700;">{{ subject_data.score|academic_number(settings) }}</td>
+                                        {% else %}
+                                            <td>{{ subject_data.score|academic_number(settings) }}</td>
+                                        {% endif %}
                                     {% endfor %}
                                     <td class="total-score">{{ row.total_score|academic_number(settings) }}</td>
-                                    <td><span class="badge percent-badge pct-{{ grade_class }}">{{ row.percentage|academic_number(settings) }}%</span></td>
-                                    <td><span class="badge grade-{{ grade_class }}">{{ grade_text }}</span></td>
+                                    <td>
+                                        {% if row.is_fail %}
+                                            <span class="badge" style="background-color: {{ fail_config.bg_color if fail_config and fail_config.bg_color else 'var(--red)' }}; color: {{ fail_config.text_color if fail_config and fail_config.text_color else '#ffffff' }} !important;">{{ row.percentage|academic_number(settings) }}%</span>
+                                        {% elif row.is_weak %}
+                                            <span class="badge" style="background-color: {{ weak_config.bg_color if weak_config and weak_config.bg_color else '#f59e0b' }}; color: {{ weak_config.text_color if weak_config and weak_config.text_color else '#ffffff' }} !important;">{{ row.percentage|academic_number(settings) }}%</span>
+                                        {% else %}
+                                            <span class="badge percent-badge pct-{{ grade_class }}">{{ row.percentage|academic_number(settings) }}%</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if row.is_fail %}
+                                            <span class="badge" style="background-color: {{ fail_config.bg_color if fail_config and fail_config.bg_color else 'var(--red)' }}; color: {{ fail_config.text_color if fail_config and fail_config.text_color else '#ffffff' }} !important;">{{ grade_text }}</span>
+                                        {% elif row.is_weak %}
+                                            <span class="badge" style="background-color: {{ weak_config.bg_color if weak_config and weak_config.bg_color else '#f59e0b' }}; color: {{ weak_config.text_color if weak_config and weak_config.text_color else '#ffffff' }} !important;">{{ grade_text }}</span>
+                                        {% else %}
+                                            <span class="badge grade-{{ grade_class }}">{{ grade_text }}</span>
+                                        {% endif %}
+                                    </td>
                                     <td>
                                         <span class="badge rank-badge rank-{{ row.rank }}">
                                             {% if row.rank == 1 %}<span class="rank-medal">🥇</span>{% elif row.rank == 2 %}<span class="rank-medal">🥈</span>{% elif row.rank == 3 %}<span class="rank-medal">🥉</span>{% endif %}{{ row.rank_label }}
