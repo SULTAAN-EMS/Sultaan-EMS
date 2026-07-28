@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
-from .import_wizard import preview_students, student_template
+from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
 from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, Exam, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, Subject, LabelTranslation
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
@@ -2424,46 +2424,89 @@ def toggle_student_lock(student_id):
 def import_students():
     file = request.files.get("file")
     if not file or not allowed_file(file.filename, ALLOWED_SHEETS):
-        flash("Upload an .xlsx file.", "danger")
-        return redirect(url_for("admin_advanced_results.students_management"))
-    rows, errors = preview_students(file)
-    if not errors:
-        session["student_import_rows"] = rows
-    audit("Import Operations", f"Previewed student import: {len(rows)} rows, {len(errors)} errors")
-    db.session.commit()
-    return render_template("admin/import_wizard.html", kind="students", rows=rows, errors=errors, confirm_url=url_for("admin_advanced_results.confirm_student_import"))
-
-
-@advanced_results_bp.route("/students/import/confirm", methods=["POST"])
-def confirm_student_import():
-    rows = session.pop("student_import_rows", [])
-    if not rows:
-        flash("No validated student import is waiting for confirmation.", "warning")
+        flash("Upload a valid .xlsx file.", "danger")
         return redirect(url_for("admin_advanced_results.students_management"))
     try:
-        for data in rows:
-            year = AcademicYear.query.filter_by(name=data["academic_year"]).one()
-            student = Student.query.filter_by(student_code=data["student_id"]).first() or Student(student_code=data["student_id"])
-            student.full_name = data["full_name"]
-            student.mother_name = data.get("mother_name", "")
-            student.phone = data.get("phone", "")
-            student.academic_year = year
-            map_imported_student_class(student, data["class"])
-            student.is_active = True
-            db.session.add(student)
-        audit("Import Operations", f"Confirmed student import: {len(rows)} rows")
+        summary = process_student_import(file)
+        session["import_summary"] = summary
+        audit("Import Operations", f"Student import: {summary['success_count']} saved, {summary['failed_count']} failed")
         db.session.commit()
-    except Exception:
+
+        if summary["failed_count"] == 0 and summary["success_count"] > 0:
+            flash(f"✅ {summary['success_count']} students imported successfully.", "success")
+        elif summary["success_count"] > 0:
+            flash(f"✅ {summary['success_count']} students imported successfully. ❌ {summary['failed_count']} rows failed validation.", "warning")
+        else:
+            flash(f"❌ Student import failed. {summary['failed_count']} rows failed validation.", "danger")
+    except Exception as ex:
         db.session.rollback()
-        flash("Import failed. No records were saved.", "danger")
-        return redirect(url_for("admin_advanced_results.students_management"))
-    flash(f"Imported {len(rows)} students.", "success")
+        flash(f"Error processing student import: {str(ex)}", "danger")
+
     return redirect(url_for("admin_advanced_results.students_management"))
 
 
 @advanced_results_bp.route("/students/import/template")
 def student_import_template():
     return workbook_response(student_template(), "student_import_template.xlsx")
+
+
+@advanced_results_bp.route("/result-entry/import", methods=["POST"])
+def import_results():
+    file = request.files.get("file")
+    year_id = request.form.get("year_id") or request.args.get("year_id") or ""
+    exam_id = request.form.get("exam_id") or request.args.get("exam_id") or ""
+    level_id = request.form.get("level_id") or request.args.get("level_id") or ""
+    class_id = request.form.get("class_id") or request.args.get("class_id") or ""
+    section_id = request.form.get("section_id") or request.args.get("section_id") or ""
+
+    redirect_url = url_for(
+        "admin_advanced_results.result_entry",
+        year_id=year_id,
+        exam_id=exam_id,
+        level_id=level_id,
+        class_id=class_id,
+        section_id=section_id
+    )
+
+    if not file or not allowed_file(file.filename, ALLOWED_SHEETS):
+        flash("Upload a valid .xlsx file.", "danger")
+        return redirect(redirect_url)
+
+    try:
+        summary = process_result_import(file)
+        session["import_summary"] = summary
+        audit("Import Operations", f"Result import: {summary['success_count']} rows saved, {summary['failed_count']} failed")
+        db.session.commit()
+
+        if summary["failed_count"] == 0 and summary["success_count"] > 0:
+            flash(f"✅ {summary['success_count']} result rows imported successfully.", "success")
+        elif summary["success_count"] > 0:
+            flash(f"✅ {summary['success_count']} result rows imported successfully. ❌ {summary['failed_count']} rows failed validation.", "warning")
+        else:
+            flash(f"❌ Result import failed. {summary['failed_count']} rows failed validation.", "danger")
+    except Exception as ex:
+        db.session.rollback()
+        flash(f"Error processing result import: {str(ex)}", "danger")
+
+    return redirect(redirect_url)
+
+
+@advanced_results_bp.route("/result-entry/import/template")
+def result_import_template():
+    year_id = int_or_none(request.args.get("year_id"))
+    exam_id = int_or_none(request.args.get("exam_id"))
+    level_id = int_or_none(request.args.get("level_id"))
+    class_id = int_or_none(request.args.get("class_id"))
+    section_id = int_or_none(request.args.get("section_id"))
+    wb = result_entry_import_template(
+        year_id=year_id,
+        exam_id=exam_id,
+        level_id=level_id,
+        class_id=class_id,
+        section_id=section_id,
+    )
+    return workbook_response(wb, "result_entry_import_template.xlsx")
+
 
 
 @advanced_results_bp.route("/students/export")

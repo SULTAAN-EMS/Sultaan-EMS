@@ -15,15 +15,153 @@
     </div>
 
     <div class="rh-toolbar rh-entry-toolbar">
-      <div>
+      <div class="rh-entry-toolbar-info">
         <h1 class="rh-title">{{ rh_label("entry.title", default="Whole-Class Result Entry") }}</h1>
         <p class="rh-desc">{{ rh_label("entry.subtitle", default="Select the academic context first, then enter marks. Scores save automatically.") }}</p>
       </div>
-      <div class="rh-save-status" id="saveStatus" data-state="idle">
-        <i class="fa-solid fa-circle-check"></i>
-        <span>Ready</span>
+      <div class="rh-entry-toolbar-actions">
+        <!-- Status Card (shifted left for clean alignment) -->
+        <div class="rh-save-status" id="saveStatus" data-state="idle">
+          <i class="fa-solid fa-circle-check"></i>
+          <span>Ready</span>
+        </div>
+
+        <!-- ACTION 1: Get Template (Selection Flow + Download) -->
+        <button type="button" onclick="openTemplateModal()" class="rh-btn outline" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 600; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; color: #334155;">
+          <i class="fa-solid fa-file-arrow-down"></i> Get Template
+        </button>
+
+        <!-- ACTION 2: Import Results (Plain Upload) -->
+        <form method="post" action="{{ url_for('admin_advanced_results.import_results') }}" enctype="multipart/form-data" style="display: inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="year_id" value="{{ selected_year.id if selected_year else '' }}">
+          <input type="hidden" name="exam_id" value="{{ selected_exam.id if selected_exam else '' }}">
+          <input type="hidden" name="level_id" value="{{ scope_info.level.id if scope_info and scope_info.level else '' }}">
+          <input type="hidden" name="class_id" value="{{ scope_info.class.id if scope_info and scope_info.class else '' }}">
+          <input type="hidden" name="section_id" value="{{ scope_info.section.id if scope_info and scope_info.section else '' }}">
+          <label class="rh-btn primary" style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 600; border-radius: 10px; background: #0f172a; color: white;">
+            <i class="fa-solid fa-file-import"></i> Import Results
+            <input type="file" name="file" accept=".xlsx" required style="display: none;" onchange="this.form.submit()">
+          </label>
+        </form>
       </div>
     </div>
+
+    <!-- Get Template Selection Modal -->
+    <div class="modal fade" id="getTemplateModal" tabindex="-1" style="display: none; background: rgba(0,0,0,0.5); z-index: 9999;" aria-modal="true" role="dialog">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 16px; overflow: hidden; border: none; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
+          <div class="modal-header" style="background: #0f172a; color: white; padding: 18px 24px;">
+            <h5 class="modal-title" style="font-weight: 700; display: flex; align-items: center; gap: 10px; margin: 0;">
+              <i class="fa-solid fa-file-excel"></i> Get Auto-Generated Result Template
+            </h5>
+            <button type="button" class="btn-close btn-close-white" style="filter: invert(1);" onclick="closeTemplateModal()"></button>
+          </div>
+          <div class="modal-body" style="padding: 24px;">
+            <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 20px;">
+              Select the academic context below. The system will pre-fill all enrolled students, metadata, and dynamic subject columns for that class into a ready-to-fill Excel sheet.
+            </p>
+            <form id="templateSelectionForm" onsubmit="event.preventDefault(); downloadClassTemplate();">
+              <div style="margin-bottom: 16px;">
+                <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.88rem; color: #334155;">1. Academic Year</label>
+                <select id="tmplYearSelect" class="form-select" style="border-radius: 8px; padding: 10px 12px; font-size: 0.9rem;">
+                  {% for year in years %}
+                    <option value="{{ year.id }}" {% if selected_year and selected_year.id == year.id %}selected{% endif %}>{{ year.name }}{% if year.is_current %} ✓{% endif %}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div style="margin-bottom: 16px;">
+                <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.88rem; color: #334155;">2. Exam Type</label>
+                <select id="tmplExamSelect" class="form-select" style="border-radius: 8px; padding: 10px 12px; font-size: 0.9rem;">
+                  {% for exam in exams %}
+                    <option value="{{ exam.id }}" {% if selected_exam and selected_exam.id == exam.id %}selected{% endif %}>{{ exam.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div style="margin-bottom: 16px;">
+                <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.88rem; color: #334155;">3. Academic Level</label>
+                <select id="tmplLevelSelect" class="form-select" style="border-radius: 8px; padding: 10px 12px; font-size: 0.9rem;" onchange="updateTemplateModalClasses()">
+                  <option value="">Select level...</option>
+                  {% for level in levels %}
+                    <option value="{{ level.id }}" {% if scope_info and scope_info.level and scope_info.level.id == level.id %}selected{% endif %}>{{ level.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div style="margin-bottom: 20px;">
+                <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.88rem; color: #334155;">4. Class / Section</label>
+                <div style="display: flex; gap: 10px;">
+                  <select id="tmplClassSelect" class="form-select" style="flex: 1; border-radius: 8px; padding: 10px 12px; font-size: 0.9rem;" onchange="updateTemplateModalSections()">
+                    <option value="">Select class...</option>
+                    {% for class_item in classes %}
+                      <option value="{{ class_item.id }}" data-level-id="{{ class_item.academic_level_id }}" {% if scope_info and scope_info.class and scope_info.class.id == class_item.id %}selected{% endif %}>{{ class_item.name }}</option>
+                    {% endfor %}
+                  </select>
+                  <select id="tmplSectionSelect" class="form-select" style="flex: 1; border-radius: 8px; padding: 10px 12px; font-size: 0.9rem;">
+                    <option value="">All sections</option>
+                    {% for section in sections %}
+                      <option value="{{ section.id }}" {% if scope_info and scope_info.section and scope_info.section.id == section.id %}selected{% endif %}>{{ section.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer" style="background: #f8fafc; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center;">
+            <button type="button" class="btn btn-secondary" style="border-radius: 10px; font-weight: 600;" onclick="closeTemplateModal()">Cancel</button>
+            <button type="button" onclick="downloadClassTemplate()" class="rh-btn primary" style="background: #0f172a; color: white; border-radius: 10px; font-weight: 700; padding: 10px 20px; display: inline-flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-download"></i> Download Class Template
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% set import_summary = session.pop('import_summary', None) %}
+    {% if import_summary %}
+      <div class="modal fade show" id="importSummaryModal" tabindex="-1" style="display: block; background: rgba(0,0,0,0.5); z-index: 9999;" aria-modal="true" role="dialog">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+          <div class="modal-content" style="border-radius: 16px; overflow: hidden; border: none; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
+            <div class="modal-header" style="background: #0f172a; color: white; padding: 18px 24px;">
+              <h5 class="modal-title" style="font-weight: 700; display: flex; align-items: center; gap: 10px; margin: 0;">
+                <i class="fa-solid fa-file-import"></i> {{ import_summary.kind }} Import Result Summary
+              </h5>
+              <button type="button" class="btn-close btn-close-white" style="filter: invert(1);" onclick="document.getElementById('importSummaryModal').remove()"></button>
+            </div>
+            <div class="modal-body" style="padding: 24px; max-height: 70vh; overflow-y: auto;">
+              <div style="display: flex; gap: 16px; margin-bottom: 20px;">
+                <div style="flex: 1; padding: 16px; background: #ecfdf5; border: 1px solid #10b981; border-radius: 12px; color: #065f46;">
+                  <div style="font-size: 1.6rem; font-weight: 800;">✅ {{ import_summary.success_count }}</div>
+                  <div style="font-size: 0.85rem; font-weight: 600;">Imported / Saved Successfully</div>
+                </div>
+                <div style="flex: 1; padding: 16px; background: {{ '#fef2f2' if import_summary.failed_count > 0 else '#f8fafc' }}; border: 1px solid {{ '#ef4444' if import_summary.failed_count > 0 else '#e2e8f0' }}; border-radius: 12px; color: {{ '#991b1b' if import_summary.failed_count > 0 else '#64748b' }};">
+                  <div style="font-size: 1.6rem; font-weight: 800;">❌ {{ import_summary.failed_count }}</div>
+                  <div style="font-size: 0.85rem; font-weight: 600;">Rows Rejected (Failed Validation)</div>
+                </div>
+              </div>
+
+              {% if import_summary.errors %}
+                <div style="margin-top: 16px;">
+                  <h6 style="font-weight: 700; color: #991b1b; margin-bottom: 12px;">Validation Errors & Detailed Reasons:</h6>
+                  <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: 12px; padding: 16px;">
+                    <ul style="margin: 0; padding-left: 20px; color: #9f1239; font-family: monospace; font-size: 0.88rem; line-height: 1.7;">
+                      {% for err in import_summary.errors %}
+                        <li>{{ err }}</li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                </div>
+              {% endif %}
+            </div>
+            <div class="modal-footer" style="background: #f8fafc; padding: 14px 24px; display: flex; justify-content: flex-end;">
+              <button type="button" class="btn btn-secondary" style="border-radius: 10px; font-weight: 600; padding: 8px 20px;" onclick="document.getElementById('importSummaryModal').remove()">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endif %}
 
     <form class="rh-entry-filter-grid" id="entryFilterForm" method="GET" action="{{ url_for('admin_advanced_results.result_entry') }}">
       <label class="rh-entry-filter-card context-year">
@@ -301,5 +439,58 @@ window.addEventListener('beforeunload', event => {
     event.returnValue = '';
   }
 });
+
+function openTemplateModal() {
+  const modal = document.getElementById('getTemplateModal');
+  if (modal) {
+    modal.style.display = 'block';
+    modal.classList.add('show');
+    updateTemplateModalClasses();
+  }
+}
+
+function closeTemplateModal() {
+  const modal = document.getElementById('getTemplateModal');
+  if (modal) {
+    modal.style.display = 'none';
+    modal.classList.remove('show');
+  }
+}
+
+function updateTemplateModalClasses() {
+  const levelSelect = document.getElementById('tmplLevelSelect');
+  const classSelect = document.getElementById('tmplClassSelect');
+  if (!levelSelect || !classSelect) return;
+  const selectedLevelId = levelSelect.value;
+  Array.from(classSelect.options).forEach(opt => {
+    if (!opt.value) return;
+    const optLevel = opt.dataset.levelId;
+    if (!selectedLevelId || !optLevel || optLevel === selectedLevelId) {
+      opt.style.display = '';
+    } else {
+      opt.style.display = 'none';
+      if (opt.selected) opt.selected = false;
+    }
+  });
+}
+
+function downloadClassTemplate() {
+  const yearId = document.getElementById('tmplYearSelect')?.value || '';
+  const examId = document.getElementById('tmplExamSelect')?.value || '';
+  const levelId = document.getElementById('tmplLevelSelect')?.value || '';
+  const classId = document.getElementById('tmplClassSelect')?.value || '';
+  const sectionId = document.getElementById('tmplSectionSelect')?.value || '';
+
+  const params = new URLSearchParams();
+  if (yearId) params.append('year_id', yearId);
+  if (examId) params.append('exam_id', examId);
+  if (levelId) params.append('level_id', levelId);
+  if (classId) params.append('class_id', classId);
+  if (sectionId) params.append('section_id', sectionId);
+
+  const downloadUrl = "{{ url_for('admin_advanced_results.result_import_template') }}?" + params.toString();
+  window.location.href = downloadUrl;
+  closeTemplateModal();
+}
 </script>
 {% endblock %}

@@ -117,6 +117,7 @@ class Subject(TimestampMixin, db.Model):
     academic_level_id = db.Column(db.Integer, db.ForeignKey("academic_levels.id"), nullable=True)
     max_score = db.Column(db.Numeric(8, 3), default=100, nullable=False)
     sort_order = db.Column(db.Integer, default=0, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
 
     academic_level = db.relationship("AcademicLevel", backref=db.backref("subjects", lazy="dynamic"))
 

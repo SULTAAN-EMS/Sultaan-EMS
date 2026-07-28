@@ -164,7 +164,7 @@
         <label class="btn btn-outline" style="cursor: pointer;">
           <i class="fa-solid fa-file-import"></i>
           {{ rh_label("students.import_excel", default="Excel Import") }}
-          <input type="file" name="file" accept=".xlsx" required style="display: none;">
+          <input type="file" name="file" accept=".xlsx" required style="display: none;" onchange="this.form.submit()">
         </label>
       </form>
       <a href="{{ url_for('admin_advanced_results.export_students') }}" class="btn btn-outline">
@@ -172,6 +172,50 @@
         {{ rh_label("students.export_excel", default="Excel Export") }}
       </a>
     </div>
+
+    {% set import_summary = session.pop('import_summary', None) %}
+    {% if import_summary %}
+      <div class="modal fade show" id="importSummaryModal" tabindex="-1" style="display: block; background: rgba(0,0,0,0.5); z-index: 9999;" aria-modal="true" role="dialog">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+          <div class="modal-content" style="border-radius: 16px; overflow: hidden; border: none; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
+            <div class="modal-header" style="background: #0f172a; color: white; padding: 18px 24px;">
+              <h5 class="modal-title" style="font-weight: 700; display: flex; align-items: center; gap: 10px; margin: 0;">
+                <i class="fa-solid fa-file-import"></i> {{ import_summary.kind }} Import Result Summary
+              </h5>
+              <button type="button" class="btn-close btn-close-white" style="filter: invert(1);" onclick="document.getElementById('importSummaryModal').remove()"></button>
+            </div>
+            <div class="modal-body" style="padding: 24px; max-height: 70vh; overflow-y: auto;">
+              <div style="display: flex; gap: 16px; margin-bottom: 20px;">
+                <div style="flex: 1; padding: 16px; background: #ecfdf5; border: 1px solid #10b981; border-radius: 12px; color: #065f46;">
+                  <div style="font-size: 1.6rem; font-weight: 800;">✅ {{ import_summary.success_count }}</div>
+                  <div style="font-size: 0.85rem; font-weight: 600;">Imported / Saved Successfully</div>
+                </div>
+                <div style="flex: 1; padding: 16px; background: {{ '#fef2f2' if import_summary.failed_count > 0 else '#f8fafc' }}; border: 1px solid {{ '#ef4444' if import_summary.failed_count > 0 else '#e2e8f0' }}; border-radius: 12px; color: {{ '#991b1b' if import_summary.failed_count > 0 else '#64748b' }};">
+                  <div style="font-size: 1.6rem; font-weight: 800;">❌ {{ import_summary.failed_count }}</div>
+                  <div style="font-size: 0.85rem; font-weight: 600;">Rows Rejected (Failed Validation)</div>
+                </div>
+              </div>
+
+              {% if import_summary.errors %}
+                <div style="margin-top: 16px;">
+                  <h6 style="font-weight: 700; color: #991b1b; margin-bottom: 12px;">Validation Errors & Detailed Reasons:</h6>
+                  <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: 12px; padding: 16px;">
+                    <ul style="margin: 0; padding-left: 20px; color: #9f1239; font-family: monospace; font-size: 0.88rem; line-height: 1.7;">
+                      {% for err in import_summary.errors %}
+                        <li>{{ err }}</li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                </div>
+              {% endif %}
+            </div>
+            <div class="modal-footer" style="background: #f8fafc; padding: 14px 24px; display: flex; justify-content: flex-end;">
+              <button type="button" class="btn btn-secondary" style="border-radius: 10px; font-weight: 600; padding: 8px 20px;" onclick="document.getElementById('importSummaryModal').remove()">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endif %}
 
     <div class="sm-grid">
       <div class="sm-list">

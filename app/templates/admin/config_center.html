@@ -25,7 +25,12 @@
       <button class="config-action-item" onclick="restoreItem('{{ item_type }}', {{ item_id }})"><i class="fas fa-undo"></i> Restore</button>
       <button class="config-action-item danger" onclick="deleteItem('{{ item_type }}', {{ item_id }})"><i class="fas fa-trash"></i> Delete Permanently</button>
     {% elif subject_mode %}
-      <button class="config-action-item danger" onclick="deleteItem('{{ item_type }}', {{ item_id }})"><i class="fas fa-trash"></i> Delete if Unused</button>
+      {% if is_active %}
+      <button class="config-action-item" onclick="deactivateItem('{{ item_type }}', {{ item_id }})"><i class="fas fa-pause"></i> Deactivate (Archive)</button>
+      {% else %}
+      <button class="config-action-item" onclick="activateItem('{{ item_type }}', {{ item_id }})"><i class="fas fa-play"></i> Re-activate</button>
+      {% endif %}
+      <button class="config-action-item danger" onclick="deleteItem('{{ item_type }}', {{ item_id }})"><i class="fas fa-trash"></i> Delete Permanently</button>
     {% elif is_active %}
       <button class="config-action-item" onclick="deactivateItem('{{ item_type }}', {{ item_id }})"><i class="fas fa-pause"></i> Deactivate</button>
     {% else %}
@@ -215,7 +220,7 @@
             {% for item in items %}
             {% set assigned_classes = subject_class_map.get(item.id, []) %}
             {% set icon = subject_icons.get(item.id, {"type": "fa", "value": "fa-book"}) %}
-            <tr data-id="{{ item.id }}" data-item-type="subjects" data-status="active" data-name="{{ item.name }}" data-short-name="{{ subject_short_names.get(item.id, '') }}" data-academic-level-id="{{ item.academic_level_id or '' }}" data-sort-order="{{ item.sort_order }}">
+            <tr data-id="{{ item.id }}" data-item-type="subjects" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-short-name="{{ subject_short_names.get(item.id, '') }}" data-academic-level-id="{{ item.academic_level_id or '' }}" data-sort-order="{{ item.sort_order }}">
               <td>
                 <div class="config-subject-cell subject-theme-{{ item.name|lower|replace(' ', '-')|replace('/', '-') }}">
                   <span class="config-subject-icon">
@@ -226,9 +231,10 @@
                     {% endif %}
                   </span>
                   <strong>{{ item.name }}</strong>
+                  {% if not item.is_active %}<span class="config-badge config-badge-neutral" style="margin-left:6px;font-size:0.75rem;">Archived</span>{% endif %}
                 </div>
               </td>
-              <td><span class="config-badge config-badge-success">Configured</span></td>
+              <td><span class="config-badge {{ 'config-badge-success' if item.is_active else 'config-badge-neutral' }}">{{ 'Active' if item.is_active else 'Archived' }}</span></td>
               <td>{{ subject_short_names.get(item.id, '-') }}</td>
               <td>{{ item.academic_level.name if item.academic_level else 'All Levels' }}</td>
               <td>
@@ -239,7 +245,7 @@
                 {% endif %}
               </td>
               <td>{{ current_user.username }}</td>
-              <td>{{ action_menu("subjects", item.id, false, true, false, true) }}</td>
+              <td>{{ action_menu("subjects", item.id, item.is_active, true, false, true) }}</td>
             </tr>
             {% endfor %}
           {% elif section == 'audit-logs' %}
@@ -375,6 +381,7 @@
     <div class="config-modal-body" id="dependencyContent"></div>
     <div class="config-modal-footer">
       <button class="config-btn config-btn-secondary" onclick="closeDependencyModal()">Close</button>
+      <button class="config-btn config-btn-danger" id="dependencyForceDeleteBtn" onclick="triggerForceDelete()" style="display: none;">Delete Anyway</button>
       <button class="config-btn config-btn-danger" id="dependencyProceedBtn" onclick="openPasswordForPendingAction()">Continue</button>
     </div>
   </div>
@@ -501,6 +508,8 @@ function prepareProtectedAction(itemType, itemId, action) {
   openPasswordModal(`Enter your password to ${action.replace('-', ' ')} this configuration item.`);
 }
 
+let currentDependencies = [];
+
 function checkDependencies(itemType, itemId, action) {
   fetch(`/admin/config-center/api/${itemType}/${itemId}/dependencies`)
     .then(response => response.json())
@@ -510,6 +519,7 @@ function checkDependencies(itemType, itemId, action) {
         return;
       }
       const dependencies = data.dependencies || [];
+      currentDependencies = dependencies;
       const isDelete = action === 'delete';
       const isActive = data.is_active;
       let content = '';
@@ -527,9 +537,25 @@ function checkDependencies(itemType, itemId, action) {
       }
       document.getElementById('dependencyContent').innerHTML = content;
       document.getElementById('dependencyProceedBtn').style.display = canContinue ? '' : 'none';
+      document.getElementById('dependencyForceDeleteBtn').style.display = (isDelete && !canContinue) ? '' : 'none';
       document.getElementById('dependencyModal').classList.add('show');
     })
     .catch(() => showNotification('error', 'Error', 'Could not check dependencies.'));
+}
+
+function triggerForceDelete() {
+  let depListText = '';
+  if (currentDependencies && currentDependencies.length > 0) {
+    depListText = '\n\nThis will also permanently delete all linked records:\n' + currentDependencies.map(d => ' - ' + d).join('\n');
+  }
+  const confirmMsg = `WARNING: Are you sure you want to force delete this item?${depListText}\n\nThis action cannot be undone. Continue?`;
+  if (confirm(confirmMsg)) {
+    closeDependencyModal();
+    if (pendingAction) {
+      pendingAction.force = true;
+      openPasswordModal('Enter your password to force delete this configuration item.');
+    }
+  }
 }
 
 function closeDependencyModal() {
@@ -578,8 +604,9 @@ function confirmPasswordAction() {
 
 function executeAction() {
   if (!pendingAction) return;
-  const { itemType, itemId, action } = pendingAction;
-  fetch(`/admin/config-center/api/${itemType}/${itemId}/${action}`, {
+  const { itemType, itemId, action, force } = pendingAction;
+  const url = `/admin/config-center/api/${itemType}/${itemId}/${action}` + (force ? '?force=true' : '');
+  fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' }
   })

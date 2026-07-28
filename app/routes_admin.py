@@ -10,8 +10,8 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
-from .import_wizard import preview_results, preview_students, result_template, student_template
-from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings
+from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
+from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
 from .permissions import PERMISSIONS, can, enforce_endpoint_permission, permission_required
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import (
@@ -422,47 +422,12 @@ def edit_result_set(student_id, exam_id):
 
 @admin_bp.route("/results/import", methods=["POST"])
 def import_results():
-    file = request.files.get("file")
-    exam_id = request.form.get("exam_id")
-    if not file or not allowed_file(file.filename, ALLOWED_SHEETS) or not exam_id:
-        flash("Choose an exam and upload an .xlsx file.", "danger")
-        return redirect(url_for("admin_advanced_results.new_dashboard"))
-    rows, errors = preview_results(file, int(exam_id))
-    if not errors:
-        session["result_import_rows"] = rows
-    audit("Import Operations", f"Previewed result import: {len(rows)} rows, {len(errors)} errors")
-    db.session.commit()
-    return render_template("admin/import_wizard.html", kind="results", rows=rows, errors=errors, confirm_url=url_for("admin.confirm_result_import"))
-
-
-@admin_bp.route("/results/import/confirm", methods=["POST"])
-def confirm_result_import():
-    rows = session.pop("result_import_rows", [])
-    if not rows:
-        flash("No validated result import is waiting for confirmation.", "warning")
-        return redirect(url_for("admin_advanced_results.new_dashboard"))
-    try:
-        for data in rows:
-            student = Student.query.filter_by(student_code=data["student_id"]).one()
-            subject = Subject.query.filter_by(name=data["subject"]).one()
-            exam = db.session.get(Exam, int(data["exam_id"]))
-            result = Result.query.filter_by(student_id=student.id, exam_id=exam.id, subject_id=subject.id).first() or Result(student=student, exam=exam, subject=subject)
-            result.score = float(data["score"])
-            result.is_published = True
-            db.session.add(result)
-        audit("Import Operations", f"Confirmed result import: {len(rows)} rows")
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-        flash("Import failed. No records were saved.", "danger")
-        return redirect(url_for("admin_advanced_results.new_dashboard"))
-    flash(f"Imported {len(rows)} result rows.", "success")
-    return redirect(url_for("admin_advanced_results.new_dashboard"))
+    return redirect(url_for("admin_advanced_results.import_results"), code=307)
 
 
 @admin_bp.route("/results/import/template")
 def result_import_template():
-    return workbook_response(result_template(), "result_import_template.xlsx")
+    return redirect(url_for("admin_advanced_results.result_import_template"))
 
 
 @admin_bp.route("/results/export")
@@ -1786,8 +1751,6 @@ def _config_item_is_active(item_type, item):
         return bool(getattr(item, 'is_current', False))
     if hasattr(item, 'is_active'):
         return bool(item.is_active)
-    if item_type == 'subjects':
-        return True
     return bool(getattr(item, 'status', 'active') == 'active')
 
 
@@ -1848,6 +1811,75 @@ def _config_dependencies(item_type, item_id):
 
 def _config_model(item_type):
     return CONFIG_CENTER_MODEL_MAP.get(item_type)
+
+
+def _cascade_delete_config_item(item_type, item_id):
+    """Recursively delete dependent records for force delete override"""
+    if item_type == 'academic-years':
+        # AttendanceRecords
+        AttendanceRecord.query.filter_by(academic_year_id=item_id).delete()
+        # IdCardIssues
+        IdCardIssue.query.filter_by(academic_year_id=item_id).delete()
+        # Exams and their dependencies (Result, ReportVerification, IncidentReport, GradeScale)
+        exams = Exam.query.filter_by(academic_year_id=item_id).all()
+        for exam in exams:
+            _cascade_delete_config_item('exam-types', exam.id)
+            db.session.delete(exam)
+        # Students and their dependencies (Results, etc.)
+        students = Student.query.filter_by(academic_year_id=item_id).all()
+        for student in students:
+            Result.query.filter_by(student_id=student.id).delete()
+            AttendanceRecord.query.filter_by(student_id=student.id).delete()
+            IdCardIssue.query.filter_by(student_id=student.id).delete()
+            IncidentReport.query.filter_by(student_id=student.id).delete()
+            db.session.delete(student)
+
+    elif item_type == 'exam-types':
+        Result.query.filter_by(exam_id=item_id).delete()
+        ReportVerification.query.filter_by(exam_id=item_id).delete()
+        IncidentReport.query.filter_by(exam_id=item_id).delete()
+        GradeScale.query.filter_by(exam_id=item_id).delete()
+
+    elif item_type == 'levels':
+        # Classes
+        classes = AcademicClass.query.filter_by(academic_level_id=item_id).all()
+        for cls in classes:
+            _cascade_delete_config_item('classes', cls.id)
+            db.session.delete(cls)
+        # Subjects
+        subjects = Subject.query.filter_by(academic_level_id=item_id).all()
+        for subj in subjects:
+            _cascade_delete_config_item('subjects', subj.id)
+            db.session.delete(subj)
+        # Students
+        students = Student.query.filter_by(academic_level_id=item_id).all()
+        for student in students:
+            Result.query.filter_by(student_id=student.id).delete()
+            AttendanceRecord.query.filter_by(student_id=student.id).delete()
+            IdCardIssue.query.filter_by(student_id=student.id).delete()
+            IncidentReport.query.filter_by(student_id=student.id).delete()
+            db.session.delete(student)
+
+    elif item_type == 'classes':
+        # Sections
+        AcademicSection.query.filter_by(academic_class_id=item_id).delete()
+        # Students
+        students = Student.query.filter_by(academic_class_id=item_id).all()
+        for student in students:
+            Result.query.filter_by(student_id=student.id).delete()
+            AttendanceRecord.query.filter_by(student_id=student.id).delete()
+            IdCardIssue.query.filter_by(student_id=student.id).delete()
+            IncidentReport.query.filter_by(student_id=student.id).delete()
+            db.session.delete(student)
+        # Exams
+        exams = Exam.query.filter_by(academic_class_id=item_id).all()
+        for exam in exams:
+            _cascade_delete_config_item('exam-types', exam.id)
+            db.session.delete(exam)
+
+    elif item_type == 'subjects':
+        Result.query.filter_by(subject_id=item_id).delete()
+        IncidentReport.query.filter_by(subject_id=item_id).delete()
 
 
 def _config_status(item_type, item):
@@ -2536,6 +2568,34 @@ def config_deactivate_class(class_id):
         return jsonify({'success': False, 'message': str(e)})
 
 
+@admin_bp.route("/config-center/api/subjects/<int:subject_id>/activate", methods=["POST"])
+@login_required
+def config_activate_subject(subject_id):
+    subject = Subject.query.get_or_404(subject_id)
+    try:
+        subject.is_active = True
+        db.session.commit()
+        _audit_config_change("Configuration Center Activated", "subjects", subject)
+        return jsonify({'success': True, 'message': 'Subject activated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@admin_bp.route("/config-center/api/subjects/<int:subject_id>/deactivate", methods=["POST"])
+@login_required
+def config_deactivate_subject(subject_id):
+    subject = Subject.query.get_or_404(subject_id)
+    try:
+        subject.is_active = False
+        db.session.commit()
+        _audit_config_change("Configuration Center Deactivated", "subjects", subject)
+        return jsonify({'success': True, 'message': 'Subject deactivated (archived) successfully. You can now delete it permanently if needed.'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)})
+
+
 @admin_bp.route("/config-center/api/subjects", methods=["POST"])
 @login_required
 def config_create_subject():
@@ -2628,27 +2688,43 @@ def config_delete_item(item_type, item_id):
         return jsonify({'success': False, 'message': 'Invalid item type'})
 
     item = Model.query.get_or_404(item_id)
-    if item_type != 'subjects' and _config_item_is_active(item_type, item):
-        return jsonify({'success': False, 'message': 'Active configuration cannot be deleted. Deactivate it first.'})
+    force = request.args.get('force') == 'true'
 
-    dependencies = _config_dependencies(item_type, item_id)
-    if dependencies:
-        return jsonify({
-            'success': False,
-            'message': 'Cannot delete item with dependencies',
-            'dependencies': dependencies
-        })
+    if not force:
+        if _config_item_is_active(item_type, item):
+            return jsonify({'success': False, 'message': 'Active item protected. Deactivate this item before archive or permanent delete.'})
+
+        dependencies = _config_dependencies(item_type, item_id)
+        if dependencies:
+            return jsonify({
+                'success': False,
+                'message': 'Cannot delete item with dependencies',
+                'dependencies': dependencies
+            })
 
     try:
         item_name = _item_display_name(item)
-        db.session.delete(item)
+        if force:
+            # First recursively delete all child dependencies
+            _cascade_delete_config_item(item_type, item_id)
+            
+        # Re-fetch item to ensure it's in the current session transaction scope and delete it
+        item = Model.query.get(item_id)
+        if item:
+            db.session.delete(item)
         db.session.commit()
 
-        audit("Configuration Center", f"Deleted {item_type}: {item_name}")
+        audit("Configuration Center", f"Deleted {item_type}: {item_name} (Force={force})")
         return jsonify({'success': True, 'message': 'Item deleted successfully'})
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'message': str(e)})
+        # Log full stack trace server-side for developer reference
+        current_app.logger.exception(f"Force delete error for {item_type} ID {item_id}: {str(e)}")
+        # Return a clean, non-technical message to the user
+        return jsonify({
+            'success': False,
+            'message': 'Deletion blocked by database constraints. Some active dependencies could not be safely cleared.'
+        })
 
 
 @admin_bp.route("/config-center/api/<string:item_type>/<int:item_id>/archive", methods=["POST"])
