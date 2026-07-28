@@ -364,61 +364,61 @@ def process_result_import(file):
 
             row_errors = []
 
-        # 1. student_id check
-        student_obj = None
-        if not student_id:
-            row_errors.append(f"Row {row_idx}: student_id is required.")
-        else:
-            student_obj = existing_students.get(student_id)
-            if not student_obj:
-                row_errors.append(f"Row {row_idx}: student_id '{student_id}' not found in system.")
+            # 1. student_id check
+            student_obj = None
+            if not student_id:
+                row_errors.append(f"Row {row_idx}: student_id is required.")
+            else:
+                student_obj = existing_students.get(student_id)
+                if not student_obj:
+                    row_errors.append(f"Row {row_idx}: student_id '{student_id}' not found in system.")
 
-        # 2. class check (must match student's actual class)
-        if student_obj:
-            student_actual_class = ""
-            if student_obj.academic_class:
-                student_actual_class = student_obj.academic_class.name
-            elif student_obj.school_class:
-                student_actual_class = student_obj.school_class.name
+            # 2. class check (must match student's actual class)
+            if student_obj:
+                student_actual_class = ""
+                if student_obj.academic_class:
+                    student_actual_class = student_obj.academic_class.name
+                elif student_obj.school_class:
+                    student_actual_class = student_obj.school_class.name
 
-            if not provided_class:
-                row_errors.append(f"Row {row_idx}: class is required.")
-            elif provided_class.lower() != student_actual_class.lower():
-                row_errors.append(f"Row {row_idx}: class '{provided_class}' does not match student's class '{student_actual_class}'.")
+                if not provided_class:
+                    row_errors.append(f"Row {row_idx}: class is required.")
+                elif provided_class.lower() != student_actual_class.lower():
+                    row_errors.append(f"Row {row_idx}: class '{provided_class}' does not match student's class '{student_actual_class}'.")
 
-        # 3. exam_type check
-        if not exam_type:
-            row_errors.append(f"Row {row_idx}: exam_type is required.")
+            # 3. exam_type check
+            if not exam_type:
+                row_errors.append(f"Row {row_idx}: exam_type is required.")
 
-        # 4. academic_year check
-        year_obj = None
-        if not academic_year:
-            row_errors.append(f"Row {row_idx}: academic_year is required.")
-        elif not YEAR_REGEX.match(academic_year):
-            row_errors.append(f"Row {row_idx}: academic_year format invalid (must be YYYY-YYYY).")
-        else:
-            year_obj = existing_years.get(academic_year)
-            if not year_obj:
-                row_errors.append(f"Row {row_idx}: academic_year '{academic_year}' does not exist in system.")
+            # 4. academic_year check
+            year_obj = None
+            if not academic_year:
+                row_errors.append(f"Row {row_idx}: academic_year is required.")
+            elif not YEAR_REGEX.match(academic_year):
+                row_errors.append(f"Row {row_idx}: academic_year format invalid (must be YYYY-YYYY).")
+            else:
+                year_obj = existing_years.get(academic_year)
+                if not year_obj:
+                    row_errors.append(f"Row {row_idx}: academic_year '{academic_year}' does not exist in system.")
 
-        # 5. subject mark checks
-        row_subject_marks = []
-        for col_idx, subj_obj in subject_cols.items():
-            if col_idx >= len(row_cells):
-                continue
-            cell_val = row_cells[col_idx]
-            if cell_val is None or str(cell_val).strip() == "":
-                continue
+            # 5. subject mark checks
+            row_subject_marks = []
+            for col_idx, subj_obj in subject_cols.items():
+                if col_idx >= len(row_cells):
+                    continue
+                cell_val = row_cells[col_idx]
+                if cell_val is None or str(cell_val).strip() == "":
+                    continue
 
-            try:
-                score_num = float(cell_val)
-                max_score = float(subj_obj.max_score or 100)
-                if score_num < 0 or score_num > max_score:
-                    row_errors.append(f"Row {row_idx}: mark for '{subj_obj.name}' ({score_num:g}) must be between 0 and {max_score:g}.")
-                else:
-                    row_subject_marks.append((subj_obj, score_num))
-            except (TypeError, ValueError):
-                row_errors.append(f"Row {row_idx}: mark for '{subj_obj.name}' must be numeric (got '{cell_val}').")
+                try:
+                    score_num = float(cell_val)
+                    max_score = float(subj_obj.max_score or 100)
+                    if score_num < 0 or score_num > max_score:
+                        row_errors.append(f"Row {row_idx}: mark for '{subj_obj.name}' ({score_num:g}) must be between 0 and {max_score:g}.")
+                    else:
+                        row_subject_marks.append((subj_obj, score_num))
+                except (TypeError, ValueError):
+                    row_errors.append(f"Row {row_idx}: mark for '{subj_obj.name}' must be numeric (got '{cell_val}').")
 
             if row_errors:
                 failed_count += 1
