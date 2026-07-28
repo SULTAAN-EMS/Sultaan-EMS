@@ -319,9 +319,11 @@ def process_result_import(file):
     fixed_header_set = {"#", "student_id", "full_name", "mother_name", "class", "exam_type", "academic_year"}
     db_subjects = {}
     for s in Subject.query.all():
-        db_subjects[s.name.lower().strip()] = s
-        if s.code:
-            db_subjects[s.code.lower().strip()] = s
+        if s.name:
+            db_subjects[s.name.lower().strip()] = s
+        subj_code = getattr(s, "code", None)
+        if subj_code:
+            db_subjects[str(subj_code).lower().strip()] = s
 
     subject_cols = {}
     unmapped_subject_warnings = []
