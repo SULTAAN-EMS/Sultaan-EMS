@@ -42,12 +42,33 @@ def create_app(config_class=Config):
     def load_user(user_id):
         return db.session.get(User, int(user_id))
 
+    @app.errorhandler(Exception)
+    def handle_unhandled_exception(error):
+        from flask import jsonify, request
+        app.logger.error("UNHANDLED SERVER EXCEPTION [%s %s]: %s", request.method, request.path, str(error), exc_info=True)
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or \
+           "application/json" in request.headers.get("Accept", "") or \
+           request.is_json:
+            return jsonify({
+                "success": False,
+                "error": "Internal Server Error",
+                "details": str(error)
+            }), 500
+        return f"<h1>Internal Server Error</h1><p>{str(error)}</p>", 500
+
     @app.after_request
     def secure_headers(response):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         return response
+
+    with app.app_context():
+        try:
+            from .schema_compat import ensure_schema_compatibility
+            ensure_schema_compatibility()
+        except Exception as ex:
+            app.logger.error("Automatic schema compatibility sync failed on startup: %s", str(ex), exc_info=True)
 
     @app.context_processor
     def inject_ui_settings():
