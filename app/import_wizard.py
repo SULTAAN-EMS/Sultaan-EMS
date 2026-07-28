@@ -433,7 +433,14 @@ def process_result_import(file):
         else:
             unmapped_subject_warnings.append(f"Column {col_idx + 1} ('{h_name}'): Subject not found in system (column skipped).")
 
-    existing_students = {s.student_code: s for s in Student.query.all()}
+    from sqlalchemy.orm import joinedload
+    existing_students = {
+        s.student_code: s
+        for s in Student.query.options(
+            joinedload(Student.academic_class),
+            joinedload(Student.school_class)
+        ).all()
+    }
     existing_years = {y.name: y for y in AcademicYear.query.all()}
     existing_exams = {(e.name.lower(), e.academic_year_id): e for e in Exam.query.all()}
 
@@ -534,6 +541,37 @@ def process_result_import(file):
             failed_errors.append(f"Row {row_idx}: Unhandled error parsing row ({str(e)})")
 
     if valid_row_entries:
+        # Pre-create any missing Exam records upfront
+        for entry in valid_row_entries:
+            ex_name = entry["exam_name"]
+            yr = entry["year"]
+            if yr and ex_name:
+                exam_key = (ex_name.lower().strip(), yr.id)
+                if exam_key not in existing_exams:
+                    exam_obj = Exam(
+                        name=ex_name.strip(),
+                        academic_year_id=yr.id,
+                        is_active=True,
+                        is_published=True
+                    )
+                    db.session.add(exam_obj)
+                    db.session.flush()
+                    existing_exams[exam_key] = exam_obj
+
+        # Bulk fetch existing Result records for all valid students and exams
+        student_ids = list({entry["student"].id for entry in valid_row_entries if entry.get("student")})
+        exam_ids = list({existing_exams[(entry["exam_name"].lower().strip(), entry["year"].id)].id for entry in valid_row_entries if entry.get("year") and entry.get("exam_name")})
+
+        existing_results_map = {}
+        if student_ids and exam_ids:
+            existing_results = Result.query.filter(
+                Result.student_id.in_(student_ids),
+                Result.exam_id.in_(exam_ids)
+            ).all()
+            for r in existing_results:
+                existing_results_map[(r.student_id, r.exam_id, r.subject_id)] = r
+
+        results_to_add = []
         for entry in valid_row_entries:
             row_idx = entry["row_idx"]
             st = entry["student"]
@@ -542,52 +580,36 @@ def process_result_import(file):
             marks = entry["marks"]
 
             try:
-                with db.session.begin_nested():
-                    if not yr:
-                        raise ValueError("Academic year object is missing or not found in system.")
-                    if not st:
-                        raise ValueError("Student object is missing or not found in system.")
-                    if not ex_name:
-                        raise ValueError("Exam type name is missing.")
+                if not yr or not st or not ex_name:
+                    raise ValueError("Missing required objects.")
 
-                    exam_key = (ex_name.lower().strip(), yr.id)
-                    exam_obj = existing_exams.get(exam_key)
+                exam_key = (ex_name.lower().strip(), yr.id)
+                exam_obj = existing_exams[exam_key]
 
-                    if not exam_obj:
-                        exam_obj = Exam(
-                            name=ex_name.strip(),
-                            academic_year_id=yr.id,
-                            is_active=True,
-                            is_published=True
-                        )
-                        # Omit binding the exam to a specific class/level if it's a global import
-                        db.session.add(exam_obj)
-                        db.session.flush()
-                        existing_exams[exam_key] = exam_obj
-
-                    for subj_obj, score_num in marks:
-                        res = Result.query.filter_by(
+                for subj_obj, score_num in marks:
+                    res_key = (st.id, exam_obj.id, subj_obj.id)
+                    res = existing_results_map.get(res_key)
+                    if not res:
+                        res = Result(
                             student_id=st.id,
                             exam_id=exam_obj.id,
-                            subject_id=subj_obj.id
-                        ).first()
-                        if not res:
-                            res = Result(
-                                student_id=st.id,
-                                exam_id=exam_obj.id,
-                                subject_id=subj_obj.id,
-                                score=score_num,
-                                is_published=True
-                            )
-                            db.session.add(res)
-                        else:
-                            res.score = score_num
-                            res.is_published = True
-                            
+                            subject_id=subj_obj.id,
+                            score=score_num,
+                            is_published=True
+                        )
+                        results_to_add.append(res)
+                        existing_results_map[res_key] = res
+                    else:
+                        res.score = score_num
+                        res.is_published = True
+
                 success_count += 1
             except Exception as ex:
                 failed_count += 1
                 failed_errors.append(f"Row {row_idx}: Error saving results - {str(ex)}")
+
+        if results_to_add:
+            db.session.add_all(results_to_add)
 
         try:
             db.session.commit()
