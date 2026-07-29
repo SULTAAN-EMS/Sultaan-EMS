@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="so">
+<head>
+<meta charset="UTF-8">
+<title>Warbixinta Natiijooyinka Ardayda</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700;9..144,900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1C2541; --ink-soft:#5A648A; --paper:#FFFFFF; --wash:#F4F6FB; --line:#E1E5F0;
+    --male:#2E6E8E; --male-soft:#DCEAF1; --female:#B5486B; --female-soft:#F6DFE7;
+    --risk-hi:#C0392B; --risk-hi-soft:#FBE1DE; --risk-mid:#C77A1F; --risk-mid-soft:#FBEBD6;
+    --risk-lo:#1E7D53; --risk-lo-soft:#DDF0E6;
+    --lvl-sec:#3B3F8E; --lvl-up:#0E7C7B; --lvl-low:#A2447A;
+    --gold:#C99A2E; --sky:#2470B3;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{ font-family:'Inter',sans-serif; background:#DEE2ED; color:var(--ink); font-feature-settings:"tnum" 1; padding:32px 0 80px; }
+  .toolbar{ max-width:920px; margin:0 auto 22px; padding:0 20px; display:flex; justify-content:space-between; align-items:center; color:var(--ink-soft); font-size:13px; }
+  .toolbar button{ font-family:'Inter',sans-serif; font-weight:700; font-size:13px; background:var(--ink); color:#fff; border:none; padding:10px 18px; border-radius:7px; cursor:pointer; }
+  .toolbar button:hover{ background:var(--lvl-sec); }
+
+  .page{ width:210mm; min-height:297mm; background:var(--paper); margin:0 auto 28px; box-shadow:0 8px 30px rgba(28,37,65,.18); position:relative; padding:12mm 12mm 14mm; border-top:8px solid var(--accent); }
+  .page.sec{ --accent:var(--lvl-sec); } .page.up{ --accent:var(--lvl-up); } .page.low{ --accent:var(--lvl-low); }
+
+  .tab{ position:absolute; top:2mm; right:0; background:var(--accent); color:#fff; font-family:'Fraunces',serif; font-weight:700; font-size:12px; padding:5px 10px 5px 12px; border-radius:6px 0 0 6px; }
+
+  .head{ display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); column-gap:12px; align-items:flex-end; border-bottom:2px solid var(--ink); padding-bottom:9px; margin-bottom:12px; }
+  .head-left .eyebrow{ font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); font-weight:700; margin-bottom:3px; }
+  .head-left h1{ font-family:'Fraunces',serif; font-weight:700; font-size:24px; color:var(--ink); line-height:1.1; }
+  .head-left .sub{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; }
+  .head-right{ text-align:right; font-size:10.5px; color:var(--ink-soft); line-height:1.6; }
+  .head-right b{ color:var(--ink); }
+  .report-brand{ min-width:144px; max-width:184px; align-self:end; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:4px; padding:0 8px 1px; text-align:center; }
+  .report-brand-mark{ width:46px; height:46px; flex:0 0 46px; display:flex; align-items:center; justify-content:center; border:1px solid var(--line); border-radius:50%; background:#fff; overflow:hidden; }
+  .report-brand-mark img{ width:100%; height:100%; object-fit:contain; }
+  .report-brand-mark span{ font-family:'Fraunces',serif; color:var(--accent); font-weight:900; font-size:14px; }
+  .report-brand-name{ font-family:'Fraunces',serif; font-size:10.5px; font-weight:700; line-height:1.15; color:var(--ink); }
+
+  .kpis{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:14px; }
+  .kpi{ background:var(--wash); border:1px solid var(--line); border-left:4px solid var(--kc,var(--accent)); border-radius:8px; padding:7px 8px; }
+  .kpi .lbl{ font-size:8.2px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); font-weight:700; margin-bottom:3px; }
+  .kpi .val{ font-family:'Fraunces',serif; font-size:16.5px; font-weight:700; color:var(--ink); line-height:1; }
+  .kpi .val small{ font-size:9.5px; font-weight:600; color:var(--ink-soft); }
+  .kpi.pass{ --kc:var(--risk-lo); } .kpi.pass .val{ color:var(--risk-lo); }
+  .kpi.fail{ --kc:var(--risk-hi); } .kpi.fail .val{ color:var(--risk-hi); }
+  .kpi.mrisk{ --kc:var(--risk-hi); } .kpi.mrisk .val{ color:var(--risk-hi); }
+
+  .stitle{ display:flex; align-items:center; gap:8px; margin:14px 0 7px; }
+  .stitle .num{ width:25px; height:20px; display:inline-flex; align-items:center; justify-content:center; color:#fff; background:var(--accent); border-radius:5px; }
+  .stitle .num svg{ width:11px; height:11px; display:block; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .stitle h2{ font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--ink); }
+  .stitle .rule{ flex:1; height:1px; background:var(--line); }
+
+  .charts{ display:grid; grid-template-columns:1.5fr 1fr 1fr; gap:10px; margin-bottom:6px; }
+  .chart-card{ background:var(--wash); border:1px solid var(--line); border-radius:10px; padding:9px 10px 6px; }
+  .chart-card .ct{ font-size:9.5px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.03em; margin-bottom:2px; }
+  .legend-row{ display:flex; gap:12px; justify-content:center; margin-top:2px; font-size:9px; font-weight:700; color:var(--ink-soft); }
+  .legend-row .dot{ display:inline-block; width:8px; height:8px; border-radius:2px; margin-inline-end:4px; }
+
+  .tblwrap{ overflow-x:auto; }
+  table{ width:100%; border-collapse:collapse; font-size:9.4px; }
+  thead th{ background:var(--ink); color:#fff; font-weight:700; text-align:center; padding:5px 4px; font-size:8.4px; text-transform:uppercase; letter-spacing:.02em; border:1px solid #2C3663; }
+  thead tr.grp th.gm{ background:var(--male); } thead tr.grp th.gf{ background:var(--female); }
+  thead tr.sub th{ background:#2C3663; font-size:7.8px; }
+  tbody td{ padding:4px 4px; border:1px solid var(--line); text-align:center; }
+  tbody td.name{ text-align:start; font-weight:700; }
+  tbody tr:nth-child(even){ background:var(--wash); }
+  tbody tr.total td{ background:#EDEFF7; font-weight:800; border-top:2px solid var(--ink); }
+  .mcell{ color:var(--male); } .fcell{ color:var(--female); }
+  .badge{ display:inline-block; padding:2px 7px; border-radius:20px; font-size:8.4px; font-weight:800; white-space:nowrap; }
+  .badge.hi{ background:var(--risk-hi-soft); color:var(--risk-hi); }
+  .badge.mid{ background:var(--risk-mid-soft); color:var(--risk-mid); }
+  .badge.lo{ background:var(--risk-lo-soft); color:var(--risk-lo); }
+
+  .subject-cols{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+
+  .grades{ display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:4px; margin-bottom:4px; }
+  .gcard{ border-radius:7px; padding:5px 3px 4px; text-align:center; color:#fff; min-width:0; }
+  .gcard-top{ display:flex; align-items:baseline; justify-content:center; gap:4px; white-space:nowrap; }
+  .gcard .letter{ font-family:'Fraunces',serif; font-weight:900; font-size:13px; }
+  .gcard .n{ font-size:10px; font-weight:800; }
+  .gcard .p{ font-size:7.5px; line-height:1.1; margin-top:2px; opacity:.92; }
+
+  .spotlight{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px; }
+  .spot-card{ border-radius:10px; padding:10px 12px; background:linear-gradient(135deg,#FBE1DE,#FBEBD6); border:1px solid #F3C9C0; }
+  .spot-card .st-lbl{ font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--risk-hi); margin-bottom:4px; }
+  .spot-card .st-name{ font-family:'Fraunces',serif; font-size:16px; font-weight:700; color:var(--ink); }
+  .spot-card .st-detail{ font-size:9.5px; color:var(--ink-soft); margin-top:3px; }
+
+  .footer{ margin-top:14px; padding-top:8px; border-top:1px solid var(--line); display:flex; justify-content:space-between; font-size:8.5px; color:var(--ink-soft); }
+  .footer b{ color:var(--ink); }
+
+  @page{ size:A4 portrait; margin:0; }
+  @media print{
+    html, body, .page, .page *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; color-adjust:exact !important; }
+    body{ background:#fff; padding:0; } .toolbar{ display:none; } .page{ box-shadow:none; margin:0; page-break-after:always; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <span>{{ levels_data|length }} warqadood (A4) - mid heer kasta, xog faahfaahsan</span>
+  <button onclick="window.print()">&#128438; Daabac / Print PDF</button>
+</div>
+
+<div id="pages-root"></div>
+
+<script>
+/* ===================== XOGTA (live) ===================== */
+const LEVELS = {{ levels_data | tojson }};
+
+const GBANDS = {{ grade_bands | tojson }};
+const REPORT_SCHOOL = {{ report_school | tojson }};
+
+/* ===================== HELPERS ===================== */
+function gradeDist(level){
+  const total = Number(level.grade_total || 0);
+  return GBANDS.map(b=>{
+    const count = Number((level.grade_counts || {})[b.g] || 0);
+    return {...b, count, pct:pct(count,total)};
+  });
+}
+function riskOf(pass){ if(pass<60) return {cls:"hi",label:"Khatar Sare"}; if(pass<75) return {cls:"mid",label:"Khatar Dhexe"}; return {cls:"lo",label:"Fiican"}; }
+function pct(n,d){ return d? Math.round(n/d*1000)/10 : 0; }
+function n1(x){ return (Math.round(x*10)/10).toFixed(1); }
+
+function reportBrandHTML(){
+  const visual = REPORT_SCHOOL.logo_url
+    ? `<img src="${REPORT_SCHOOL.logo_url}" alt="${REPORT_SCHOOL.name} logo">`
+    : `<span>${(REPORT_SCHOOL.name || "S").slice(0,1)}</span>`;
+  return `<div class="report-brand"><div class="report-brand-mark">${visual}</div><div class="report-brand-name">${REPORT_SCHOOL.name || "School"}</div></div>`;
+}
+
+function sectionIcon(name){
+  const icons = {
+    overview:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9"/><path d="M10 19V5"/><path d="M16 19v-7"/><path d="M22 19H2"/></svg>',
+    classes:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16M15 9v11"/></svg>',
+    subjects:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5v16M8 7h8"/></svg>',
+    grades:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="m9 12-2 9 5-3 5 3-2-9"/></svg>',
+    risk:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 10 18H2z"/><path d="M12 9v4M12 17h.01"/></svg>'
+  };
+  return icons[name];
+}
+
+function enrich(level){
+  level.classes.forEach(c=>{
+    c.total = c.m+c.f; c.appTotal = c.mApp+c.fApp;
+    c.passedTotal = c.mPassed+c.fPassed; c.failedTotal = c.fFailed+c.mFailed;
+    c.classPass = pct(c.passedTotal, c.appTotal);
+  });
+  level.totalStudents = level.classes.reduce((s,c)=>s+c.total,0);
+  level.totalM = level.classes.reduce((s,c)=>s+c.m,0);
+  level.totalF = level.classes.reduce((s,c)=>s+c.f,0);
+  level.appTotal = level.classes.reduce((s,c)=>s+c.appTotal,0);
+  level.passedTotal = level.classes.reduce((s,c)=>s+c.passedTotal,0);
+  level.failedTotal = level.classes.reduce((s,c)=>s+c.failedTotal,0);
+  level.overallPass = pct(level.passedTotal, level.appTotal);
+  level.overallAvg = Number(level.overall_avg || 0);
+  level.mPassedT = level.classes.reduce((s,c)=>s+c.mPassed,0);
+  level.mAppT = level.classes.reduce((s,c)=>s+c.mApp,0);
+  level.fPassedT = level.classes.reduce((s,c)=>s+c.fPassed,0);
+  level.fAppT = level.classes.reduce((s,c)=>s+c.fApp,0);
+  level.mPassRate = pct(level.mPassedT, level.mAppT);
+  level.fPassRate = pct(level.fPassedT, level.fAppT);
+
+  const worstClass = [...level.classes].sort((a,b)=>a.classPass-b.classPass)[0];
+  const worstSubj = [...level.subjects].sort((a,b)=>a.pass-b.pass)[0];
+  level.worstClass = worstClass; level.worstSubj = worstSubj;
+  level.hiRiskClasses = level.classes.filter(c=>riskOf(c.classPass).cls==="hi").length;
+  level.hiRiskSubjects = level.subjects.filter(s=>riskOf(s.pass).cls==="hi").length;
+}
+LEVELS.forEach(enrich);
+
+/* ===================== SVG CHARTS ===================== */
+function groupedBarSVG(labels, seriesM, seriesF){
+  const W=430,H=150,padL=26,padB=20,padT=10, chartW=W-padL-10, chartH=H-padT-padB;
+  const n=labels.length, groupW=chartW/n, barW=Math.min(16,groupW/3.2);
+  let bars="", axisLabels="", grid="";
+  [0,25,50,75,100].forEach(v=>{
+    const y = padT + chartH - (v/100)*chartH;
+    grid += `<line x1="${padL}" y1="${y}" x2="${W-6}" y2="${y}" stroke="#E1E5F0" stroke-width="1"/>
+      <text x="${padL-4}" y="${y+3}" font-size="7" fill="#5A648A" text-anchor="end">${v}</text>`;
+  });
+  labels.forEach((lb,i)=>{
+    const cx = padL + groupW*i + groupW/2;
+    const hM = (seriesM[i]/100)*chartH, hF=(seriesF[i]/100)*chartH;
+    const xM = cx-barW-2, xF = cx+2;
+    bars += `<rect x="${xM}" y="${padT+chartH-hM}" width="${barW}" height="${hM}" rx="2" fill="#2E6E8E"/>
+      <text x="${xM+barW/2}" y="${padT+chartH-hM-3}" font-size="7" fill="#2E6E8E" text-anchor="middle" font-weight="700">${seriesM[i]}%</text>
+      <rect x="${xF}" y="${padT+chartH-hF}" width="${barW}" height="${hF}" rx="2" fill="#B5486B"/>
+      <text x="${xF+barW/2}" y="${padT+chartH-hF-3}" font-size="7" fill="#B5486B" text-anchor="middle" font-weight="700">${seriesF[i]}%</text>`;
+    axisLabels += `<text x="${cx}" y="${H-5}" font-size="7.5" fill="#1C2541" text-anchor="middle" font-weight="700">${lb}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${grid}${bars}${axisLabels}</svg>`;
+}
+
+function donutSVG(passPct, passLabel){
+  const size=140, r=48, cx=size/2, cy=size/2, circ=2*Math.PI*r;
+  const passLen = circ*(passPct/100);
+  return `<svg viewBox="0 0 ${size} ${size}" style="width:100%;max-width:150px;display:block;margin:0 auto;">
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#FBE1DE" stroke-width="16"/>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#1E7D53" stroke-width="16"
+      stroke-dasharray="${passLen} ${circ-passLen}" stroke-linecap="round"
+      transform="rotate(-90 ${cx} ${cy})"/>
+    <text x="${cx}" y="${cy-2}" text-anchor="middle" font-size="22" font-weight="800" fill="#1C2541" font-family="Fraunces,serif">${Math.round(passPct)}%</text>
+    <text x="${cx}" y="${cy+13}" text-anchor="middle" font-size="8" fill="#5A648A" font-weight="700">${passLabel}</text>
+  </svg>`;
+}
+
+function compareBarsSVG(mPct,fPct){
+  const W=200,H=110,barH=20,gap=34;
+  const scale = v => (v/100)*(W-70);
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">
+    <text x="0" y="14" font-size="9" font-weight="800" fill="#2E6E8E">Wiilal</text>
+    <rect x="0" y="20" width="${W-10}" height="${barH}" rx="5" fill="#DCEAF1"/>
+    <rect x="0" y="20" width="${scale(mPct)}" height="${barH}" rx="5" fill="#2E6E8E"/>
+    <text x="${W-6}" y="34" font-size="11" font-weight="800" fill="#2E6E8E" text-anchor="end">${mPct}%</text>
+    <text x="0" y="${20+barH+gap-20}" font-size="9" font-weight="800" fill="#B5486B">Gabdho</text>
+    <rect x="0" y="${20+barH+gap-14}" width="${W-10}" height="${barH}" rx="5" fill="#F6DFE7"/>
+    <rect x="0" y="${20+barH+gap-14}" width="${scale(fPct)}" height="${barH}" rx="5" fill="#B5486B"/>
+    <text x="${W-6}" y="${20+barH+gap}" font-size="11" font-weight="800" fill="#B5486B" text-anchor="end">${fPct}%</text>
+  </svg>`;
+}
+
+/* ===================== PAGE BUILDER ===================== */
+function classRowsHTML(level){
+  return level.classes.map(c=>{
+    const r = riskOf(c.classPass);
+    return `<tr>
+      <td class="name">${c.name}</td>
+      <td>${c.total}</td>
+      <td class="mcell">${c.m} <small>(${pct(c.m,c.total)}%)</small></td>
+      <td class="mcell">${c.mApp}</td>
+      <td class="mcell">${c.mPassed} <small>(${c.mPass}%)</small></td>
+      <td class="mcell">${c.mFailed} <small>(${100-c.mPass}%)</small></td>
+      <td class="fcell">${c.f} <small>(${pct(c.f,c.total)}%)</small></td>
+      <td class="fcell">${c.fApp}</td>
+      <td class="fcell">${c.fPassed} <small>(${c.fPass}%)</small></td>
+      <td class="fcell">${c.fFailed} <small>(${100-c.fPass}%)</small></td>
+      <td><b>${n1(c.avg)}</b></td>
+      <td><span class="badge ${r.cls}">${r.label}</span></td>
+    </tr>`;
+  }).join("") + `<tr class="total">
+      <td class="name">Wadarta Guud</td>
+      <td>${level.totalStudents}</td>
+      <td class="mcell">${level.totalM}</td>
+      <td class="mcell">${level.mAppT}</td>
+      <td class="mcell">${level.mPassedT} <small>(${level.mPassRate}%)</small></td>
+      <td class="mcell">${level.mAppT-level.mPassedT}</td>
+      <td class="fcell">${level.totalF}</td>
+      <td class="fcell">${level.fAppT}</td>
+      <td class="fcell">${level.fPassedT} <small>(${level.fPassRate}%)</small></td>
+      <td class="fcell">${level.fAppT-level.fPassedT}</td>
+      <td><b>${n1(level.overallAvg)}</b></td>
+      <td><span class="badge ${riskOf(level.overallPass).cls}">${riskOf(level.overallPass).label}</span></td>
+    </tr>`;
+}
+
+function subjectTableHTML(arr){
+  return `<div class="tblwrap"><table>
+    <thead><tr><th style="text-align:start">Maadada</th><th>Fadhiistay</th><th>Gudbay</th><th>Fail</th><th>Celcelis</th><th>Khatar</th></tr></thead>
+    <tbody>${arr.map(s=>{ const r=riskOf(s.pass);
+      return `<tr><td class="name">${s.name}</td><td>${s.appeared}</td>
+        <td>${s.passed} <small>(${s.pass}%)</small></td>
+        <td>${s.failed} <small>(${100-s.pass}%)</small></td>
+        <td><b>${s.avg}</b></td>
+        <td><span class="badge ${r.cls}">${r.label}</span></td></tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
+function buildPage(level){
+  const dist = gradeDist(level);
+  const half = Math.ceil(level.subjects.length/2);
+
+  return `
+  <div class="page ${level.cls}">
+    <div class="tab">${level.index}</div>
+    <div class="head">
+      <div class="head-left">
+        <div class="eyebrow">${level.name} &middot; Warbixin Falanqeyn ah</div>
+        <h1>${level.title}</h1>
+        <div class="sub">${level.subtitle}</div>
+      </div>
+      ${reportBrandHTML()}
+      <div class="head-right">
+        Sanad Waxbarasho: <b>${level.year}</b><br>
+        Nooca Imtixaanka: <b>${level.exam}</b><br>
+        Taariikhda: <b id="today-${level.key}"></b>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="lbl">Wadarta Ardayda</div><div class="val">${level.totalStudents}</div></div>
+      <div class="kpi"><div class="lbl">Wiilal</div><div class="val">${level.totalM}<small> (${pct(level.totalM,level.totalStudents)}%)</small></div></div>
+      <div class="kpi"><div class="lbl">Gabdho</div><div class="val">${level.totalF}<small> (${pct(level.totalF,level.totalStudents)}%)</small></div></div>
+      <div class="kpi pass"><div class="lbl">Guulaystay</div><div class="val">${level.passedTotal}<small> (${level.overallPass}%)</small></div></div>
+      <div class="kpi fail"><div class="lbl">Fashilmay</div><div class="val">${level.failedTotal}<small> (${n1(100-level.overallPass)}%)</small></div></div>
+      <div class="kpi"><div class="lbl">Celceliska Guud</div><div class="val">${n1(level.overallAvg)}<small>/100</small></div></div>
+      <div class="kpi mrisk"><div class="lbl">Fasal/Maado Khatar Sare</div><div class="val">${level.hiRiskClasses}<small>+${level.hiRiskSubjects}</small></div></div>
+    </div>
+
+    <div class="stitle"><span class="num">${sectionIcon("overview")}</span><h2>Waxqabadka Guud</h2><span class="rule"></span></div>
+    <div class="charts">
+      <div class="chart-card">
+        <div class="ct">Heerka Guusha Fasal kasta - Wiilal vs Gabdho</div>
+        ${groupedBarSVG(level.classes.map(c=>c.name), level.classes.map(c=>c.mPass), level.classes.map(c=>c.fPass))}
+        <div class="legend-row"><span><i class="dot" style="background:#2E6E8E"></i>Wiilal</span><span><i class="dot" style="background:#B5486B"></i>Gabdho</span></div>
+      </div>
+      <div class="chart-card">
+        <div class="ct">Guusha Guud ee Heerka</div>
+        ${donutSVG(level.overallPass, "Guusha Guud")}
+      </div>
+      <div class="chart-card">
+        <div class="ct">Wiilal vs Gabdho - Guusha</div>
+        ${compareBarsSVG(level.mPassRate, level.fPassRate)}
+      </div>
+    </div>
+
+    <div class="stitle"><span class="num">${sectionIcon("classes")}</span><h2>Faahfaahinta Fasallada</h2><span class="rule"></span></div>
+    <div class="tblwrap">
+    <table>
+      <thead>
+        <tr class="grp">
+          <th rowspan="2" style="text-align:start">Fasalka</th><th rowspan="2">Wadarta</th>
+          <th colspan="4" class="gm">WIILAL</th><th colspan="4" class="gf">GABDHO</th>
+          <th rowspan="2">Celcelis</th><th rowspan="2">Khatarta</th>
+        </tr>
+        <tr class="sub">
+          <th>Diiwaan</th><th>Fadhiistay</th><th>Gudbay</th><th>Fail</th>
+          <th>Diiwaan</th><th>Fadhiistay</th><th>Gudbay</th><th>Fail</th>
+        </tr>
+      </thead>
+      <tbody>${classRowsHTML(level)}</tbody>
+    </table>
+    </div>
+
+    <div class="stitle"><span class="num">${sectionIcon("subjects")}</span><h2>Waxqabadka Maadooyinka (${level.subjects.length})</h2><span class="rule"></span></div>
+    <div class="subject-cols">
+      ${subjectTableHTML(level.subjects.slice(0,half))}
+      ${subjectTableHTML(level.subjects.slice(half))}
+    </div>
+
+    <div class="stitle"><span class="num">${sectionIcon("grades")}</span><h2>Qaybinta Darajooyinka (Grades)</h2><span class="rule"></span></div>
+    <div class="grades">
+      ${dist.map(b=>`<div class="gcard" style="background:${b.color}">
+        <div class="gcard-top"><div class="letter">${b.g}</div><div class="n">${b.count}</div></div>
+        <div class="p">${b.pct}%</div>
+      </div>`).join("")}
+    </div>
+
+    <div class="stitle"><span class="num">${sectionIcon("risk")}</span><h2>U Baahan Dib-u-Eegis (At-Risk)</h2><span class="rule"></span></div>
+    <div class="spotlight">
+      <div class="spot-card">
+        <div class="st-lbl">&#9888; Fasalka ugu Liita</div>
+        <div class="st-name">${level.worstClass.name}</div>
+        <div class="st-detail">Heerka guusha ${n1(level.worstClass.classPass)}% - ${level.worstClass.failedTotal} arday oo fashilmay. Waxay u baahan tahay barnaamij dheeraad ah (remedial).</div>
+      </div>
+      <div class="spot-card">
+        <div class="st-lbl">&#9888; Maadada ugu Liita</div>
+        <div class="st-name">${level.worstSubj.name}</div>
+        <div class="st-detail">Heerka guusha ${level.worstSubj.pass}% - ${level.worstSubj.failedN} arday oo fashilmay. Waxaa lagula talinayaa dib-u-eegis manhaj iyo tababar macallimiinta.</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span>Warbixin la soo saaray si automatic ah - Nidaamka Falanqaynta Natiijooyinka</span>
+      <span><b>Bogga ${level.index}</b> &middot; Qarsoodi - Maamulka Dugsiga oo kaliya</span>
+    </div>
+  </div>`;
+}
+
+document.getElementById("pages-root").innerHTML = LEVELS.map(buildPage).join("");
+const today = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+LEVELS.forEach(l=>{ document.getElementById(`today-${l.key}`).textContent = today; });
+</script>
+</body>
+</html>

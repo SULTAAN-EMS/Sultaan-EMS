@@ -167,6 +167,8 @@ class Student(TimestampMixin, db.Model):
     full_name = db.Column(db.String(180), nullable=False)
     mother_name = db.Column(db.String(180))
     phone = db.Column(db.String(40))
+    # Used exclusively by the per-level results analytics report.
+    gender = db.Column(db.String(10), nullable=True)
 
     # Legacy fields for backward compatibility during migration
     class_id = db.Column(db.Integer, db.ForeignKey("school_classes.id"), nullable=True)

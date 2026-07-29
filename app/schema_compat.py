@@ -11,6 +11,7 @@ def ensure_schema_compatibility():
     add_column_if_missing("users", "permissions", column_sql(dialect, "permissions", "TEXT"))
     add_column_if_missing("users", "photo_path", column_sql(dialect, "photo_path", "VARCHAR(255)"))
     add_column_if_missing("students", "phone", column_sql(dialect, "phone", "VARCHAR(40)"))
+    add_column_if_missing("students", "gender", column_sql(dialect, "gender", "VARCHAR(10)"))
     add_column_if_missing("students", "level", column_sql(dialect, "level", "VARCHAR(80)"))
     add_column_if_missing("students", "section", column_sql(dialect, "section", "VARCHAR(80)"))
     add_column_if_missing("results", "grade_override", column_sql(dialect, "grade_override", "VARCHAR(10)"))
@@ -77,6 +78,29 @@ def ensure_schema_compatibility():
     # This covers any column not hand-listed above (e.g. exams.short_code) so a
     # legacy production DB self-heals instead of raising "Unknown column ...".
     sync_all_model_columns()
+    seed_legacy_student_genders()
+
+
+def seed_legacy_student_genders():
+    """Seed the existing demonstration students once without altering recorded values."""
+    from .models import Setting, Student
+
+    marker_key = "student_gender_backfill_v1"
+    if db.session.get(Setting, marker_key):
+        return
+
+    missing_gender_students = (
+        Student.query.filter(Student.gender.is_(None))
+        .order_by(Student.id)
+        .all()
+    )
+    for index, student in enumerate(missing_gender_students):
+        # Existing records are sample data. A deterministic split makes the
+        # local report preview meaningful without overwriting later choices.
+        student.gender = "Male" if index % 2 == 0 else "Female"
+
+    db.session.add(Setting(key=marker_key, value="completed"))
+    db.session.commit()
 
 
 def sync_all_model_columns():

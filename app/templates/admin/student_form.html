@@ -8,6 +8,11 @@
   <label class="span-2"><i class="fa-solid fa-user-graduate"></i> Full Name<input name="full_name" value="{{ student.full_name or '' }}" required></label>
   <label class="span-2"><i class="fa-solid fa-person-dress"></i> Mother Name<input name="mother_name" value="{{ student.mother_name or '' }}"></label>
   <label><i class="fa-solid fa-phone"></i> Phone Number<input name="phone" value="{{ student.phone or '' }}"></label>
+  <label><i class="fa-solid fa-venus-mars"></i> Gender<select name="gender" required>
+    <option value="">Select Gender</option>
+    <option value="Male" {% if student.gender == 'Male' %}selected{% endif %}>Male</option>
+    <option value="Female" {% if student.gender == 'Female' %}selected{% endif %}>Female</option>
+  </select></label>
   
   <!-- Academic Hierarchy from Setup -->
   <label><i class="fa-solid fa-calendar-days"></i> Academic Year<select name="academic_year_id" id="academic_year_id" required>

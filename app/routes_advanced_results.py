@@ -16,10 +16,10 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, Exam, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, Subject, LabelTranslation
+from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AttendanceRecord, Exam, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, Subject, LabelTranslation
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
-from .services import academic_decimal_precision, academic_round, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, result_payload, subject_display_name, subject_short_name
+from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, result_payload, subject_display_name, subject_short_name
 
 advanced_results_bp = Blueprint("admin_advanced_results", __name__)
 
@@ -1941,6 +1941,330 @@ def analytics():
     )
 
 
+def _analytics_report_student_level_id(student, classes_by_id, levels_by_name, legacy_class_matches):
+    """Resolve a student's Results Hub level, retaining the legacy enrollment fallback."""
+    if student.academic_level_id:
+        return student.academic_level_id
+
+    academic_class = classes_by_id.get(student.academic_class_id)
+    if academic_class:
+        return academic_class.academic_level_id
+
+    if student.level:
+        return levels_by_name.get(student.level.strip().lower())
+
+    legacy_name = student.school_class.name if student.school_class else None
+    matches = legacy_class_matches.get((legacy_name or "").strip().lower(), [])
+    return matches[0].academic_level_id if len(matches) == 1 else None
+
+
+def _analytics_report_student_class_id(student, classes_by_id, legacy_class_matches, level_id):
+    """Resolve a student's Results Hub class, retaining the legacy enrollment fallback."""
+    if student.academic_class_id:
+        return student.academic_class_id
+
+    legacy_name = student.school_class.name if student.school_class else None
+    matches = legacy_class_matches.get((legacy_name or "").strip().lower(), [])
+    for academic_class in matches:
+        if academic_class.academic_level_id == level_id:
+            return academic_class.id
+    return matches[0].id if len(matches) == 1 else None
+
+
+def build_analytics_results_report_data(academic_year, exam):
+    """Build the reference report's LEVELS payload using published Results Hub data only."""
+    levels = (
+        AcademicLevel.query.filter_by(is_active=True)
+        .order_by(AcademicLevel.sort_order, AcademicLevel.name)
+        .all()
+    )
+    classes = (
+        AcademicClass.query.filter_by(is_active=True)
+        .order_by(AcademicClass.academic_level_id, AcademicClass.sort_order, AcademicClass.name)
+        .all()
+    )
+    classes_by_id = {academic_class.id: academic_class for academic_class in classes}
+    levels_by_name = {level.name.strip().lower(): level.id for level in levels if level.name}
+    classes_by_level = defaultdict(list)
+    legacy_class_matches = defaultdict(list)
+    for academic_class in classes:
+        classes_by_level[academic_class.academic_level_id].append(academic_class)
+        legacy_class_matches[academic_class.name.strip().lower()].append(academic_class)
+
+    students = (
+        Student.query.filter_by(academic_year_id=academic_year.id)
+        .options(
+            selectinload(Student.academic_level),
+            selectinload(Student.academic_class),
+            selectinload(Student.school_class),
+        )
+        .order_by(Student.full_name)
+        .all()
+    )
+    students_by_level_class = defaultdict(list)
+    for student in students:
+        level_id = _analytics_report_student_level_id(
+            student, classes_by_id, levels_by_name, legacy_class_matches
+        )
+        class_id = _analytics_report_student_class_id(
+            student, classes_by_id, legacy_class_matches, level_id
+        )
+        if level_id and class_id:
+            students_by_level_class[(level_id, class_id)].append(student)
+
+    included_levels = [
+        level for level in levels
+        if any(students_by_level_class.get((level.id, academic_class.id)) for academic_class in classes_by_level[level.id])
+    ]
+    student_ids = [student.id for student in students]
+    if not student_ids:
+        return []
+
+    results = (
+        Result.query.options(selectinload(Result.subject))
+        .filter(
+            Result.exam_id == exam.id,
+            Result.is_published.is_(True),
+            Result.student_id.in_(student_ids),
+        )
+        .all()
+    )
+    results_by_student = defaultdict(list)
+    results_by_level_subject = defaultdict(lambda: defaultdict(list))
+    for result in results:
+        if not result.subject or not result.subject.max_score:
+            continue
+        score_pct = round(float(result.score or 0) / float(result.subject.max_score) * 100, 4)
+        results_by_student[result.student_id].append(score_pct)
+
+    absent_student_ids = {
+        row.student_id
+        for row in AttendanceRecord.query.filter(
+            AttendanceRecord.academic_year_id == academic_year.id,
+            AttendanceRecord.exam_id == exam.id,
+            AttendanceRecord.student_id.in_(student_ids),
+            AttendanceRecord.status == "Absent",
+        ).all()
+    }
+    grade_cache = load_grade_scale_cache(exam.id)
+
+    def is_pass(score):
+        return bool(grade_for_from_cache(score, grade_cache).get("is_pass"))
+
+    def gender_bucket(student):
+        gender = str(student.gender or "").strip().lower()
+        return "f" if gender == "female" else "m"
+
+    student_averages = {
+        student_id: round(sum(scores) / len(scores), 4)
+        for student_id, scores in results_by_student.items()
+        if scores
+    }
+    student_level_lookup = {}
+    for (level_id, _class_id), grouped_students in students_by_level_class.items():
+        for student in grouped_students:
+            student_level_lookup[student.id] = level_id
+    for result in results:
+        level_id = student_level_lookup.get(result.student_id)
+        if not level_id or result.student_id in absent_student_ids or not result.subject or not result.subject.max_score:
+            continue
+        result_pct = round(float(result.score or 0) / float(result.subject.max_score) * 100, 4)
+        results_by_level_subject[level_id][result.subject_id].append((result.subject, result_pct))
+
+    level_styles = ("sec", "up", "low")
+    level_titles = {
+        "secondary": "Dugsiga Sare",
+        "upper primary": "Dugsiga Dhexe",
+        "lower primary": "Dugsiga Hoose",
+    }
+    levels_data = []
+    for position, level in enumerate(included_levels, start=1):
+        class_rows = []
+        for academic_class in classes_by_level[level.id]:
+            class_students = students_by_level_class.get((level.id, academic_class.id), [])
+            if not class_students:
+                continue
+
+            row = {
+                "name": academic_class.name,
+                "m": 0,
+                "mAbsent": 0,
+                "mApp": 0,
+                "mPassed": 0,
+                "mFailed": 0,
+                "mPass": 0,
+                "f": 0,
+                "fAbsent": 0,
+                "fApp": 0,
+                "fPassed": 0,
+                "fFailed": 0,
+                "fPass": 0,
+                "avg": 0,
+            }
+            bucket_sitting_counts = {"m": 0, "f": 0}
+            bucket_pass_counts = {"m": 0, "f": 0}
+            class_scores = []
+            for student in class_students:
+                bucket = gender_bucket(student)
+                row[bucket] += 1
+                if student.id in absent_student_ids:
+                    row[f"{bucket}Absent"] += 1
+                    continue
+                bucket_sitting_counts[bucket] += 1
+                student_average = student_averages.get(student.id)
+                if student_average is not None:
+                    class_scores.extend(results_by_student.get(student.id, []))
+                    if is_pass(student_average):
+                        bucket_pass_counts[bucket] += 1
+
+            row["mApp"] = bucket_sitting_counts["m"]
+            row["mPassed"] = bucket_pass_counts["m"]
+            row["mFailed"] = row["mApp"] - row["mPassed"]
+            row["mPass"] = round(row["mPassed"] / row["mApp"] * 100, 1) if row["mApp"] else 0
+            row["fApp"] = bucket_sitting_counts["f"]
+            row["fPassed"] = bucket_pass_counts["f"]
+            row["fFailed"] = row["fApp"] - row["fPassed"]
+            row["fPass"] = round(row["fPassed"] / row["fApp"] * 100, 1) if row["fApp"] else 0
+            row["avg"] = round(sum(class_scores) / len(class_scores), 1) if class_scores else 0
+            class_rows.append(row)
+
+        subject_rows = []
+        level_subjects = {subject.id: subject for subject in subjects_for_scope(exam, level_id=level.id)}
+        level_subjects.update({subject_id: records[0][0] for subject_id, records in results_by_level_subject[level.id].items() if records})
+        for subject in sorted(level_subjects.values(), key=lambda item: (item.sort_order, item.name)):
+            scores = [score for _subject, score in results_by_level_subject[level.id].get(subject.id, [])]
+            passed_count = sum(1 for score in scores if is_pass(score))
+            subject_rows.append({
+                "name": subject_display_name(subject),
+                "avg": round(sum(scores) / len(scores), 1) if scores else 0,
+                "appeared": len(scores),
+                "passed": passed_count,
+                "failed": len(scores) - passed_count,
+                "pass": round(passed_count / len(scores) * 100, 1) if scores else 0,
+            })
+
+        if not class_rows or not subject_rows:
+            continue
+        level_name = level.name or "Level"
+        class_names = " - ".join(item.name for item in classes_by_level[level.id])
+        level_students = [
+            student
+            for academic_class in classes_by_level[level.id]
+            for student in students_by_level_class.get((level.id, academic_class.id), [])
+        ]
+        grade_counts = defaultdict(int)
+        for student in level_students:
+            if student.id in absent_student_ids:
+                continue
+            student_average = student_averages.get(student.id)
+            if student_average is not None:
+                grade_counts[grade_for_from_cache(student_average, grade_cache).get("grade", "-")] += 1
+        level_scores = [
+            score
+            for subject_records in results_by_level_subject[level.id].values()
+            for _subject, score in subject_records
+        ]
+        levels_data.append({
+            "key": f"level-{level.id}",
+            "cls": level_styles[(position - 1) % len(level_styles)],
+            "index": f"{position:02d} / {len(included_levels):02d}",
+            "name": level_name,
+            "title": level_titles.get(level_name.strip().lower(), level_name),
+            "subtitle": f"{level_name} - {class_names}",
+            "year": academic_year.name,
+            "exam": exam.name,
+            "classes": class_rows,
+            "subjects": subject_rows,
+            "overall_avg": round(sum(level_scores) / len(level_scores), 1) if level_scores else 0,
+            "grade_counts": dict(grade_counts),
+            "grade_total": sum(grade_counts.values()),
+        })
+    return levels_data
+
+
+def analytics_report_grade_bands(exam):
+    """Return the twelve report slots, populated from the live Grade Management scale."""
+    active_rows = GradeScale.query.filter(
+        db_or(GradeScale.is_active.is_(True), GradeScale.is_active.is_(None))
+    )
+    exam_scales = (
+        active_rows.filter(GradeScale.exam_id == exam.id)
+        .order_by(GradeScale.sort_order, GradeScale.min_score.desc())
+        .all()
+    )
+    global_scales = (
+        active_rows.filter(GradeScale.exam_id.is_(None))
+        .order_by(GradeScale.sort_order, GradeScale.min_score.desc())
+        .all()
+    )
+
+    # Grade resolution gives an exam-specific row priority, then falls back to the
+    # global scale. Mirror that display behaviour here so a partially customised
+    # exam still shows the complete, live Grade Management scale in the report.
+    exam_grade_keys = {(scale.grade or "").strip().casefold() for scale in exam_scales}
+    scales = exam_scales + [
+        scale
+        for scale in global_scales
+        if (scale.grade or "").strip().casefold() not in exam_grade_keys
+    ]
+    scale_by_grade = {
+        (scale.grade or "").strip().casefold(): scale
+        for scale in scales
+    }
+
+    # The report has a fixed twelve-card visual grid.  Its labels and fallback
+    # colours reuse the system's canonical Grade Management defaults; a slot
+    # without a configured scale remains visibly empty and never affects the
+    # grade engine or any calculation.
+    bands = []
+    for default in DEFAULT_GRADE_SCALES:
+        scale = scale_by_grade.get(default["grade"].casefold())
+        if scale:
+            bands.append({
+                "g": scale.grade,
+                "lo": float(scale.min_score),
+                "hi": float(scale.max_score),
+                "color": scale.badge_color or default["badge_color"],
+                "configured": True,
+            })
+        else:
+            bands.append({
+                "g": default["grade"],
+                "lo": None,
+                "hi": None,
+                "color": default["badge_color"],
+                "configured": False,
+            })
+    return bands
+
+
+@advanced_results_bp.route("/analytics/results-report")
+def analytics_results_report():
+    """Render the printable, per-level exam analytics report from live Results Hub data."""
+    year_id = int_or_none(request.args.get("year_id"))
+    exam_id = int_or_none(request.args.get("exam_id"))
+    selected_year = get_default_academic_year(year_id)
+    if not selected_year:
+        flash("Please select an academic year before opening the results report.", "warning")
+        return redirect(url_for("admin_advanced_results.analytics"))
+
+    selected_exam = db.session.get(Exam, exam_id) if exam_id else get_latest_exam_for_year(selected_year)
+    if not selected_exam or selected_exam.academic_year_id != selected_year.id:
+        flash("Please select a valid exam for the selected academic year.", "warning")
+        return redirect(url_for("admin_advanced_results.analytics", year_id=selected_year.id))
+
+    settings = get_settings()
+    return render_template(
+        "admin/analytics_results_report.html",
+        levels_data=build_analytics_results_report_data(selected_year, selected_exam),
+        grade_bands=analytics_report_grade_bands(selected_exam),
+        report_school={
+            "name": settings.get("school_name") or "",
+            "logo_url": stored_asset_url(settings.get("logo_path")),
+        },
+    )
+
+
 @advanced_results_bp.route("/analytics/grade-drill-down")
 def analytics_grade_drill_down():
     """Return JSON list of students who achieved a given grade, matching current filter scope."""
@@ -2849,6 +3173,10 @@ def save_student_from_form(student):
     student.full_name = request.form["full_name"].strip()
     student.mother_name = request.form.get("mother_name", "").strip()
     student.phone = request.form.get("phone", "").strip()
+    gender = request.form.get("gender", "").strip()
+    if gender not in {"Male", "Female"}:
+        raise ValueError("Please select Male or Female for the results report.")
+    student.gender = gender
     student.academic_year_id = int_or_none(request.form.get("academic_year_id"))
     student.academic_level_id = int_or_none(request.form.get("academic_level_id"))
     student.academic_class_id = int_or_none(request.form.get("academic_class_id"))

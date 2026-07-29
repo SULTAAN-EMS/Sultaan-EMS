@@ -28,6 +28,11 @@
             <option value="{{ exam.id }}" {% if selected_exam and selected_exam.id == exam.id %}selected{% endif %}>{{ exam.name }}</option>
           {% endfor %}
         </select>
+        {% if selected_year and selected_exam %}
+        <a href="{{ url_for('admin_advanced_results.analytics_results_report', year_id=selected_year.id, exam_id=selected_exam.id) }}" target="_blank" rel="noopener" class="rh-btn primary" style="height: 36px; white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; text-decoration: none;">
+          <i class="fa-solid fa-file-pdf"></i> Warbixinta Natiijooyinka (PDF)
+        </a>
+        {% endif %}
       </div>
     </div>
 
