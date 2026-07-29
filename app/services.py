@@ -3,6 +3,7 @@ import re
 
 from flask import current_app, g
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 
 from . import db
 from .models import (
@@ -35,6 +36,9 @@ DEFAULT_SETTINGS = {
     "primary_color": "#002060",
     "secondary_color": "#007bff",
     "sidebar_color": "#001a4d",
+    "admin_password_composition": "letters_numbers",
+    "admin_password_min_length": "8",
+    "admin_session_timeout_minutes": "60",
     "dashboard_background": "",
     "visible_cards": "students,classes,exams,published,subjects,locked",
     "homepage_widgets": "search,quick_links,social",
@@ -666,6 +670,45 @@ def get_settings():
     settings = DEFAULT_SETTINGS.copy()
     settings.update({row.key: row.value for row in rows})
     return settings
+
+
+def seed_missing_settings():
+    """Insert absent defaults without overwriting configured values.
+
+    App startup can overlap briefly while a development reloader or multiple
+    production workers start.  A nested transaction makes a concurrent insert
+    harmless instead of allowing a duplicate settings key to abort startup.
+    """
+    for key, value in DEFAULT_SETTINGS.items():
+        if db.session.get(Setting, key):
+            continue
+        try:
+            with db.session.begin_nested():
+                db.session.add(Setting(key=key, value=value))
+                db.session.flush()
+        except IntegrityError:
+            # Another worker created the same default after our lookup.
+            continue
+
+
+def validate_admin_password(password, settings=None):
+    """Validate administrator passwords against the centrally managed policy."""
+    settings = settings or get_settings()
+    value = str(password or "")
+    try:
+        minimum = max(6, min(32, int(settings.get("admin_password_min_length", "8"))))
+    except (TypeError, ValueError):
+        minimum = 8
+    policy = str(settings.get("admin_password_composition", "letters_numbers"))
+    if len(value) < minimum:
+        return False, f"Password must be at least {minimum} characters."
+    if policy == "numbers" and not value.isdigit():
+        return False, "Password must contain numbers only."
+    if policy == "letters" and not value.isalpha():
+        return False, "Password must contain letters only."
+    if policy == "letters_numbers" and not (any(char.isalpha() for char in value) and any(char.isdigit() for char in value)):
+        return False, "Password must contain both letters and numbers."
+    return True, ""
 
 
 def academic_decimal_precision(settings=None):

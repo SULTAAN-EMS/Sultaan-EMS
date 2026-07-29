@@ -1,0 +1,50 @@
+{% extends "admin/base.html" %}
+{% block page_title %}Security{% endblock %}
+{% block admin_content %}
+<main class="security-workspace">
+  <header class="security-hero">
+    <div class="security-hero__mark"><i class="fa-solid fa-shield-halved"></i></div>
+    <div><span class="eyebrow"><i class="fa-solid fa-lock"></i> Protected administration</span><h1>Security</h1><p>Manage your account, password policy, and secure session duration from one protected workspace.</p></div>
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="security-flash {{ category }}"><i class="fa-solid {{ 'fa-circle-exclamation' if category == 'danger' else 'fa-circle-check' }}"></i>{{ message }}</div>{% endfor %}{% endwith %}
+
+  <div class="security-grid">
+    <section class="security-card security-card--password">
+      <div class="security-card__title"><span><i class="fa-solid fa-key"></i></span><div><h2>Change Password</h2><p>Update your own administrator password securely.</p></div></div>
+      <form method="post" action="{{ url_for('auth.change_password') }}" class="security-password-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Current password<input type="password" name="current_password" autocomplete="current-password" required></label>
+        <label>New password<input type="password" name="new_password" autocomplete="new-password" required></label>
+        <label>Confirm new password<input type="password" name="confirm_password" autocomplete="new-password" required></label>
+        <button class="btn" type="submit"><i class="fa-solid fa-shield-check"></i> Update password</button>
+      </form>
+    </section>
+
+    {% if can_manage_security %}
+    <form class="security-settings" id="securitySettingsForm" data-security-settings>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <section class="security-card security-card--policy">
+        <div class="security-card__title"><span><i class="fa-solid fa-fingerprint"></i></span><div><h2>Password Rules</h2><p>Applied to new and reset administrator passwords.</p></div></div>
+        <label>Password composition<select name="admin_password_composition"><option value="letters" {% if security_settings.admin_password_composition == 'letters' %}selected{% endif %}>Letters only</option><option value="numbers" {% if security_settings.admin_password_composition == 'numbers' %}selected{% endif %}>Numbers only</option><option value="letters_numbers" {% if security_settings.admin_password_composition == 'letters_numbers' %}selected{% endif %}>Letters + numbers</option></select></label>
+        <label>Minimum password length<input name="admin_password_min_length" type="number" min="6" max="32" value="{{ security_settings.admin_password_min_length }}"></label>
+      </section>
+      <section class="security-card security-card--session">
+        <div class="security-card__title"><span><i class="fa-solid fa-clock-rotate-left"></i></span><div><h2>Session Timeout</h2><p>Inactive administrators are required to sign in again.</p></div></div>
+        <label>Idle timeout (minutes)<input name="admin_session_timeout_minutes" type="number" min="5" max="1440" value="{{ security_settings.admin_session_timeout_minutes }}"></label>
+        <p class="security-note"><i class="fa-solid fa-circle-info"></i> New timeouts apply on the next request for every signed-in administrator.</p>
+      </section>
+    </form>
+    {% else %}
+      <section class="security-card security-card--restricted"><i class="fa-solid fa-user-lock"></i><div><h2>Policy managed by the owner</h2><p>Only the system owner can change global password rules and session duration.</p></div></section>
+    {% endif %}
+  </div>
+</main>
+{% if can_manage_security %}<div class="autosave-status" id="adminAutosaveStatus" aria-live="polite"><i class="fa-solid fa-cloud"></i><span>All changes saved</span></div>{% endif %}
+<style>
+  .security-workspace{width:min(1120px,100%);margin:0 auto;display:grid;gap:18px}.security-hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:18px;padding:28px;background:radial-gradient(circle at 86% 14%,rgba(129,140,248,.28),transparent 28%),linear-gradient(135deg,#0f172a,#1e3a8a 60%,#312e81);border-radius:24px;color:#fff;box-shadow:0 22px 46px rgba(30,41,99,.24)}.security-hero::after{content:"";position:absolute;inset:-70% auto auto 60%;width:230px;height:230px;border:1px solid rgba(255,255,255,.14);border-radius:50%;animation:securityOrbit 8s linear infinite}.security-hero .eyebrow{color:#c7d2fe}.security-hero h1{margin:5px 0;font-size:clamp(1.7rem,3vw,2.4rem)}.security-hero p{max-width:680px;margin:0;color:#cbd5e1}.security-hero__mark{width:66px;height:66px;display:grid;place-items:center;flex:0 0 auto;border:1px solid rgba(255,255,255,.25);border-radius:20px;background:rgba(255,255,255,.14);font-size:1.7rem;box-shadow:inset 0 1px rgba(255,255,255,.2)}@keyframes securityOrbit{to{transform:rotate(360deg)}}.security-grid{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(320px,.92fr);gap:18px;align-items:start}.security-settings{display:grid;gap:18px}.security-card{padding:23px;border:1px solid #dbeafe;border-radius:20px;background:rgba(255,255,255,.93);box-shadow:0 14px 28px rgba(15,23,42,.08);display:grid;gap:17px}.security-card--password{border-top:4px solid #2563eb}.security-card--policy{border-top:4px solid #7c3aed}.security-card--session{border-top:4px solid #0891b2}.security-card__title{display:flex;gap:12px;align-items:flex-start}.security-card__title>span{width:42px;height:42px;display:grid;place-items:center;flex:0 0 auto;border-radius:13px;color:#fff;background:linear-gradient(135deg,#2563eb,#6366f1);box-shadow:0 8px 16px rgba(79,70,229,.2)}.security-card--policy .security-card__title>span{background:linear-gradient(135deg,#7c3aed,#c026d3)}.security-card--session .security-card__title>span{background:linear-gradient(135deg,#0891b2,#06b6d4)}.security-card h2{margin:0;color:#172554;font-size:1.08rem}.security-card p{margin:4px 0 0;color:#64748b;font-size:.86rem;line-height:1.45}.security-card label{gap:7px;color:#334155;font-size:.84rem}.security-password-form{display:grid;gap:14px}.security-password-form .btn{margin-top:4px;min-height:44px}.security-note{display:flex;gap:8px;align-items:flex-start;padding:11px 12px;background:#ecfeff;border:1px solid #bae6fd;border-radius:12px;color:#155e75!important}.security-flash{display:flex;gap:9px;align-items:center;padding:13px 15px;border-radius:14px;font-weight:700}.security-flash.success{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0}.security-flash.danger{background:#fff1f2;color:#be123c;border:1px solid #fecdd3}.security-card--restricted{grid-template-columns:auto 1fr;align-items:center}.security-card--restricted>i{font-size:1.8rem;color:#7c3aed}@media(max-width:850px){.security-grid{grid-template-columns:1fr}.security-hero{align-items:flex-start}.security-hero__mark{width:54px;height:54px;border-radius:17px}}@media(prefers-reduced-motion:reduce){.security-hero::after{animation:none}}
+</style>
+{% if can_manage_security %}<script>
+(() => {const form=document.getElementById('securitySettingsForm'), indicator=document.getElementById('adminAutosaveStatus'), token=form.querySelector('[name=csrf_token]').value;let timer;const set=(state,message)=>{indicator.className=`autosave-status ${state?`is-${state}`:''}`;indicator.querySelector('i').className=state==='saving'?'fa-solid fa-arrows-rotate':state==='saved'?'fa-solid fa-circle-check':state==='error'?'fa-solid fa-circle-exclamation':'fa-solid fa-cloud';indicator.querySelector('span').textContent=message};const save=async()=>{set('saving','Saving security settings…');try{const request=window.__rawFetch||window.fetch,res=await request({{ url_for('auth.save_security_settings')|tojson }},{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':token,'X-Requested-With':'XMLHttpRequest','X-No-Loader':'1'},body:JSON.stringify(Object.fromEntries(new FormData(form)))}),body=await res.json();if(!res.ok||!body.success)throw new Error(body.message||'Save failed');set('saved','Saved');setTimeout(()=>set('','All changes saved'),2200)}catch(error){set('error',error.message||'Save failed')}};form.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(save,550)});form.addEventListener('change',()=>{clearTimeout(timer);timer=setTimeout(save,100)});})();
+</script>{% endif %}
+{% endblock %}

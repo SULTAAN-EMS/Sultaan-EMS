@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, date, timedelta
 from functools import wraps
 
@@ -28,6 +29,7 @@ from .services import (
     result_success_template_copy,
     subject_icon,
     subject_short_name,
+    validate_admin_password,
 )
 from .services import slug
 
@@ -554,6 +556,10 @@ def users():
             user.photo_path = photo_url
         password = request.form.get("password", "")
         if password:
+            valid_password, password_error = validate_admin_password(password)
+            if not valid_password:
+                flash(password_error, "danger")
+                return redirect(url_for("admin.users"))
             user.set_password(password)
         elif not user.id:
             flash("Password is required for new users.", "danger")
@@ -574,8 +580,9 @@ def users():
 def reset_user_password(row_id):
     user = db.session.get(User, row_id) or abort_404()
     password = request.form.get("password", "")
-    if len(password) < 8:
-        flash("New password must be at least 8 characters.", "danger")
+    valid_password, password_error = validate_admin_password(password)
+    if not valid_password:
+        flash(password_error, "danger")
     else:
         user.set_password(password)
         audit("Admin Updates", f"Reset password for {user.username}")
@@ -603,6 +610,9 @@ def settings():
             "secondary_color",
             "sidebar_color",
             "admin_loader_design",
+            "admin_loader_rotation_enabled",
+            "admin_loader_rotation_pool",
+            "admin_loader_deleted_designs",
             "visible_cards",
             "homepage_widgets",
             "search_footer_text",
@@ -941,6 +951,8 @@ def settings():
             if not upload or not upload.filename:
                 continue
             if not allowed_file(upload.filename, ALLOWED_PHOTOS):
+                if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                    return jsonify({"success": False, "message": "Uploaded images must be JPG, PNG, or WEBP."}), 400
                 flash("Uploaded images must be JPG, PNG, or WEBP.", "danger")
                 return redirect(url_for("admin.settings"))
             image_url = upload_image(upload, "school/settings")
@@ -953,6 +965,8 @@ def settings():
             if not upload or not upload.filename:
                 continue
             if not allowed_file(upload.filename, ALLOWED_PHOTOS):
+                if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                    return jsonify({"success": False, "message": "Uploaded subject icons must be JPG, PNG, or WEBP."}), 400
                 flash("Uploaded subject icons must be JPG, PNG, or WEBP.", "danger")
                 return redirect(url_for("admin.settings"))
             image_url = upload_image(upload, "school/subjects")
@@ -968,6 +982,8 @@ def settings():
 
         audit("Settings Changes", "Updated system settings")
         db.session.commit()
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": True, "message": "Settings saved."})
         flash("Settings saved.", "success")
         return redirect(url_for("admin.settings"))
     return render_template(
@@ -977,6 +993,74 @@ def settings():
         subjects=Subject.query.order_by(Subject.name).all(),
         slug=slug,
     )
+
+
+@admin_bp.route("/loading-animations")
+@permission_required("settings")
+def loading_animations():
+    """Manage the global loader without coupling it to the general Settings form."""
+    settings = get_settings()
+    try:
+        deleted_designs = [int(item) for item in json.loads(settings.get("admin_loader_deleted_designs") or "[]")]
+    except (TypeError, ValueError):
+        deleted_designs = []
+    try:
+        rotation_pool = [int(item) for item in json.loads(settings.get("admin_loader_rotation_pool") or "[]")]
+    except (TypeError, ValueError):
+        rotation_pool = []
+    available_designs = [design_id for design_id in range(1, 43) if design_id not in deleted_designs]
+    active_design = str(settings.get("admin_loader_design") or (available_designs[0] if available_designs else ""))
+    return render_template(
+        "admin/loading_animations.html",
+        available_designs=available_designs,
+        active_design=active_design,
+        rotation_enabled=settings.get("admin_loader_rotation_enabled") == "on",
+        rotation_pool=rotation_pool,
+        deleted_designs=deleted_designs,
+    )
+
+
+@admin_bp.route("/loading-animations/autosave", methods=["POST"])
+@permission_required("settings")
+def autosave_loading_animations():
+    """Persist loader selection, rotation pool and removals atomically."""
+    payload = request.get_json(silent=True) or request.form
+    try:
+        deleted = sorted({int(item) for item in payload.get("deleted_designs", [])}) if isinstance(payload.get("deleted_designs"), list) else sorted({int(item) for item in json.loads(payload.get("deleted_designs", "[]"))})
+        pool = sorted({int(item) for item in payload.get("rotation_pool", [])}) if isinstance(payload.get("rotation_pool"), list) else sorted({int(item) for item in json.loads(payload.get("rotation_pool", "[]"))})
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return jsonify({"success": False, "message": "Invalid loading animation selection."}), 400
+
+    valid = set(range(1, 43))
+    if not set(deleted).issubset(valid) or not set(pool).issubset(valid):
+        return jsonify({"success": False, "message": "Invalid loading animation design."}), 400
+
+    available = valid - set(deleted)
+    if not available:
+        return jsonify({"success": False, "message": "At least one loading animation must remain available."}), 400
+
+    rotation_enabled = str(payload.get("rotation_enabled", "off")) == "on"
+    pool = [design_id for design_id in pool if design_id in available]
+    requested_active = str(payload.get("active_design", "")).strip()
+    active_design = int(requested_active) if requested_active.isdigit() else min(available)
+    if active_design not in available:
+        active_design = min(available)
+    if rotation_enabled and not pool:
+        pool = [active_design]
+
+    values = {
+        "admin_loader_design": str(active_design),
+        "admin_loader_rotation_enabled": "on" if rotation_enabled else "off",
+        "admin_loader_rotation_pool": json.dumps(pool),
+        "admin_loader_deleted_designs": json.dumps(deleted),
+    }
+    for key, value in values.items():
+        setting = db.session.get(Setting, key) or Setting(key=key)
+        setting.value = value
+        db.session.add(setting)
+    audit("Loading Animation Settings", "Updated global loading animation configuration")
+    db.session.commit()
+    return jsonify({"success": True, "message": "Loading animation saved.", "config": values})
 
 
 def _result_success_overlay_response(success, message, status=200, **payload):

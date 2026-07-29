@@ -1,0 +1,141 @@
+{% extends "admin/base.html" %}
+{% block page_title %}Loading Animations{% endblock %}
+{% block admin_content %}
+<section class="loader-manager">
+  <header class="loader-manager__hero">
+    <div>
+      <span class="eyebrow"><i class="fa-solid fa-wand-magic-sparkles"></i> System experience</span>
+      <h1>Loading Animations</h1>
+      <p>Choose the animation that appears during real page transitions, filters, and background requests.</p>
+    </div>
+    <div class="loader-manager__active" id="activeLoaderSummary"><i class="fa-solid fa-circle"></i><span>Active: loading…</span></div>
+  </header>
+
+  <section class="loader-toolbar" aria-label="Loading animation controls">
+    <div>
+      <strong>Enable random rotation</strong>
+      <span>Rotate through selected designs for each new page session.</span>
+    </div>
+    <label class="loader-switch"><input id="rotationToggle" type="checkbox" {% if rotation_enabled %}checked{% endif %}><span aria-hidden="true"></span></label>
+    <button type="button" class="btn ghost" id="testLoaderButton"><i class="fa-solid fa-play"></i> Test active loader</button>
+  </section>
+
+  <div class="loader-design-grid" id="loaderDesignGrid"></div>
+</section>
+
+<dialog class="loader-delete-dialog" id="loaderDeleteDialog">
+  <form method="dialog">
+    <span class="loader-delete-dialog__icon"><i class="fa-solid fa-trash-can"></i></span>
+    <h2>Remove loading animation?</h2>
+    <p id="loaderDeleteText">This animation will no longer be available anywhere in the application.</p>
+    <div>
+      <button value="cancel" class="btn ghost">Cancel</button>
+      <button value="confirm" class="btn loader-delete-confirm" id="loaderDeleteConfirm">Remove permanently</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="autosave-status" id="adminAutosaveStatus" aria-live="polite" aria-atomic="true"><i class="fa-solid fa-cloud"></i><span>All changes saved</span></div>
+
+<style>
+  .loader-manager { width:min(1460px,100%); margin:0 auto; display:grid; gap:18px; }
+  .loader-manager__hero, .loader-toolbar { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:24px 26px; background:linear-gradient(135deg,rgba(255,255,255,.96),rgba(239,246,255,.9)); border:1px solid #dbeafe; border-radius:22px; box-shadow:0 18px 42px rgba(30,64,175,.09); }
+  .loader-manager__hero h1 { margin:6px 0; color:#172554; font-size:clamp(1.65rem,3vw,2.35rem); }
+  .loader-manager__hero p, .loader-toolbar span { margin:0; color:#64748b; }
+  .loader-manager__active { display:inline-flex; align-items:center; gap:9px; color:#047857; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:999px; padding:10px 14px; font-weight:800; white-space:nowrap; }
+  .loader-manager__active i { font-size:.72rem; }
+  .loader-toolbar { padding:16px 20px; background:#fff; }
+  .loader-toolbar > div { display:grid; gap:3px; margin-right:auto; }
+  .loader-switch { position:relative; width:52px; height:30px; cursor:pointer; }
+  .loader-switch input { position:absolute; opacity:0; inset:0; cursor:pointer; }
+  .loader-switch span { display:block; width:100%; height:100%; border-radius:99px; background:#cbd5e1; transition:.2s ease; }
+  .loader-switch span::after { content:""; position:absolute; top:4px; left:4px; width:22px; height:22px; border-radius:50%; background:#fff; box-shadow:0 3px 8px rgba(15,23,42,.24); transition:.2s ease; }
+  .loader-switch input:checked + span { background:linear-gradient(135deg,#2563eb,#7c3aed); }
+  .loader-switch input:checked + span::after { transform:translateX(22px); }
+  .loader-design-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:16px; }
+  .loader-design { display:grid; grid-template-rows:auto 128px auto; gap:14px; min-width:0; padding:16px; border:1px solid #dbe3ef; border-radius:18px; background:#fff; box-shadow:0 10px 24px rgba(15,23,42,.055); transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+  .loader-design:hover { transform:translateY(-3px); border-color:#93c5fd; box-shadow:0 18px 32px rgba(37,99,235,.13); }
+  .loader-design.is-active { border-color:#34d399; box-shadow:0 0 0 2px rgba(16,185,129,.16),0 18px 32px rgba(16,185,129,.12); }
+  .loader-design__head { display:flex; align-items:flex-start; gap:10px; }
+  .loader-design__head > div { min-width:0; flex:1; }
+  .loader-design__head h2 { margin:0; color:#172554; font-size:.95rem; }
+  .loader-design__head p { margin:4px 0 0; min-height:32px; color:#64748b; font-size:.78rem; line-height:1.35; }
+  .loader-active-badge { display:inline-flex; align-items:center; gap:5px; padding:4px 8px; color:#047857; background:#ecfdf5; border-radius:999px; font-size:.68rem; font-weight:800; }
+  .loader-delete { width:32px; height:32px; padding:0; background:#fff1f2; color:#e11d48; border:1px solid #fecdd3; box-shadow:none; border-radius:9px; }
+  .loader-preview { position:relative; display:grid; place-items:center; overflow:hidden; background:radial-gradient(circle at 50% 0,#193a73,#071429 72%); border-radius:13px; isolation:isolate; }
+  .loader-preview > * { transform:scale(.5); transform-origin:center; min-width:180px; }
+  .loader-preview .loader-card { box-shadow:none; }
+  .loader-design__actions { display:flex; gap:9px; align-items:center; }
+  .loader-design__actions .btn { flex:1; min-height:38px; padding:8px 10px; font-size:.8rem; }
+  .loader-pool-check { display:inline-flex; align-items:center; justify-content:center; width:40px; min-width:40px; height:38px; border:1px solid #cbd5e1; border-radius:10px; color:#475569; cursor:pointer; }
+  .loader-pool-check input { width:16px; height:16px; accent-color:#2563eb; }
+  .loader-delete-dialog { width:min(410px,calc(100% - 30px)); padding:0; border:0; border-radius:20px; box-shadow:0 24px 60px rgba(15,23,42,.3); }
+  .loader-delete-dialog::backdrop { background:rgba(15,23,42,.62); backdrop-filter:blur(4px); }
+  .loader-delete-dialog form { padding:28px; text-align:center; }
+  .loader-delete-dialog h2 { margin:12px 0 7px; color:#172554; }
+  .loader-delete-dialog p { margin:0 0 20px; color:#64748b; line-height:1.5; }
+  .loader-delete-dialog form > div { display:flex; gap:10px; }
+  .loader-delete-dialog form > div button { flex:1; }
+  .loader-delete-dialog__icon { display:inline-grid; place-items:center; width:52px; height:52px; border-radius:50%; color:#e11d48; background:#fff1f2; }
+  .loader-delete-confirm { background:linear-gradient(135deg,#e11d48,#f43f5e); }
+  @media (max-width:720px) { .loader-manager__hero,.loader-toolbar { align-items:flex-start; flex-direction:column; } .loader-toolbar .btn { width:100%; } .loader-toolbar > div { margin-right:0; } .loader-switch { align-self:flex-end; margin-top:-50px; } }
+</style>
+<script>
+(() => {
+  const catalog = {
+    1:['Circular Ring','Pulsing circular progress ring'],2:['Glow Bar','Neumorphic glowing progress bar'],3:['Dual Ring Spinner','Counter-rotating concentric rings'],4:['Dot Pulse','Triple pulsing dot wave'],5:['Liquid Fill','Gradient fluid wave progress'],6:['Segmented Bars','Digital audio equalizer bars'],7:['Minimal Badge','Compact glassmorphism status pill'],8:['Skeleton Pulse','Shimmering skeleton wireframe'],9:['Orbit Loader','Orbital satellite rotation'],10:['Wave Bars','Rhythmic bar pulse'],11:['Ocean Liquid','Deep ocean blue fluid'],12:['Emerald Liquid','Emerald green fluid fill'],13:['Purple Liquid','Royal purple wave'],14:['Golden Liquid','Luxurious golden fluid'],15:['Lava Liquid','Vibrant crimson lava fill'],16:['Fire Rings','Fiery amber ring'],17:['Cyber Rings','Neon cyan spinner'],18:['Forest Rings','Lush emerald ring'],19:['Solar Rings','Solar flare spinner'],20:['Royal Rings','Royal navy spinner'],21:['Gradient Ring','Soft halo ring glow'],22:['Neumorphic Bar','Soft-shadow progress indicator'],23:['Hexagon Spinner','Geometric honeycomb'],24:['Orbiting Particles','Particle swarm orbit'],25:['Morphing Blob','Fluid morphing shape'],26:['Split Ring','Refined split-ring gauge'],27:['Pulse Ripple','Radiating ripple animation'],28:['Rising Bars','Ascending progress bars'],29:['Infinity Loop','Continuous infinity loop'],30:['DNA Helix','Academic helix animation'],31:['Rotating Squares','Geometric rotation'],32:['Glass Card','Glassmorphism status card'],33:['Triangle Rotate','Minimal geometric spinner'],34:['Wave Circle','Gradient wave circle'],35:['Progress Necklace','Orbiting progress dots'],36:['Equalizer','Animated equalizer bars'],37:['Spiral Loader','Continuous spiral'],38:['Flip Card','3D card rotation'],39:['Half-Circle Gauge','Precision gauge'],40:['Constellation','Interconnected node network'],41:['Pi Symbol','Academic Pi pulse'],42:['Sultan Royal Badge','Flagship school crest loader']
+  };
+  const state = { available: {{ available_designs|tojson }}, active: Number({{ active_design|tojson }}), rotation: {{ rotation_enabled|tojson }}, pool: new Set({{ rotation_pool|tojson }}), deleted: {{ deleted_designs|tojson }} };
+  const csrfToken = {{ csrf_token()|tojson }};
+  const grid = document.getElementById('loaderDesignGrid');
+  const rotationToggle = document.getElementById('rotationToggle');
+  const summary = document.getElementById('activeLoaderSummary');
+  const dialog = document.getElementById('loaderDeleteDialog');
+  const deleteText = document.getElementById('loaderDeleteText');
+  const deleteConfirm = document.getElementById('loaderDeleteConfirm');
+  const indicator = document.getElementById('adminAutosaveStatus');
+  let pendingDelete = null;
+  let saveTimer;
+  const status = (type, message) => { indicator.className = `autosave-status ${type ? `is-${type}` : ''}`; indicator.querySelector('i').className = type === 'saving' ? 'fa-solid fa-arrows-rotate' : type === 'saved' ? 'fa-solid fa-circle-check' : type === 'error' ? 'fa-solid fa-circle-exclamation' : 'fa-solid fa-cloud'; indicator.querySelector('span').textContent = message; };
+  const nameFor = (id) => `Design ${id} — ${(catalog[id] || ['Loading animation'])[0]}`;
+  const descriptionFor = (id) => (catalog[id] || ['', 'Premium loading animation'])[1];
+  const render = () => {
+    summary.innerHTML = `<i class="fa-solid fa-circle"></i><span>Active: ${nameFor(state.active)}</span>`;
+    grid.innerHTML = state.available.map((id) => {
+      const active = id === state.active;
+      const selected = state.pool.has(id);
+      return `<article class="loader-design ${active ? 'is-active' : ''}">
+        <header class="loader-design__head"><div><h2>${nameFor(id)}</h2><p>${descriptionFor(id)}</p>${active ? '<span class="loader-active-badge"><i class="fa-solid fa-circle"></i> Active</span>' : ''}</div><button class="loader-delete" type="button" data-delete="${id}" title="Remove this animation"><i class="fa-solid fa-trash-can"></i></button></header>
+        <div class="loader-preview" data-preview="${id}"></div>
+        <div class="loader-design__actions">${state.rotation ? `<label class="loader-pool-check" title="Include in random rotation"><input type="checkbox" data-pool="${id}" ${selected ? 'checked' : ''}></label>` : ''}<button class="btn ${active ? 'ghost' : ''}" type="button" data-active="${id}" ${active ? 'disabled' : ''}><i class="fa-solid ${active ? 'fa-circle-check' : 'fa-bullseye'}"></i>${active ? 'Active' : 'Set as active'}</button></div>
+      </article>`;
+    }).join('');
+    grid.querySelectorAll('[data-preview]').forEach((preview) => { const id = Number(preview.dataset.preview); preview.innerHTML = window.AdminLoader && window.AdminLoader.buildLoaderHTML ? window.AdminLoader.buildLoaderHTML(id) : '<i class="fa-solid fa-spinner fa-spin" style="font-size:32px;color:#93c5fd"></i>'; });
+  };
+  const persist = async () => {
+    status('saving', 'Saving changes…');
+    const request = window.__rawFetch || window.fetch;
+    try {
+      const response = await request({{ url_for('admin.autosave_loading_animations')|tojson }}, { method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken,'X-Requested-With':'XMLHttpRequest','X-No-Loader':'1'}, body:JSON.stringify({active_design:state.active, rotation_enabled:state.rotation ? 'on' : 'off', rotation_pool:[...state.pool], deleted_designs:state.deleted}) });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) throw new Error(payload.message || 'Unable to save.');
+      window.SYSTEM_LOADER_CONFIG = { design:String(state.active), rotationEnabled:state.rotation, rotationPool:[...state.pool], deletedDesigns:[...state.deleted] };
+      window.SYSTEM_LOADER_DESIGN = state.active;
+      status('saved', 'Saved');
+      window.setTimeout(() => status('', 'All changes saved'), 2200);
+    } catch (error) { status('error', error.message || 'Save failed'); }
+  };
+  const scheduleSave = () => { window.clearTimeout(saveTimer); saveTimer = window.setTimeout(persist, 260); };
+  rotationToggle.addEventListener('change', () => { state.rotation = rotationToggle.checked; if (state.rotation && !state.pool.size) state.pool.add(state.active); render(); scheduleSave(); });
+  grid.addEventListener('click', (event) => { const button = event.target.closest('[data-active],[data-delete]'); if (!button) return; if (button.dataset.active) { state.active = Number(button.dataset.active); if (!state.rotation) state.pool.clear(); render(); scheduleSave(); } else { if (state.available.length === 1) { status('error', 'At least one loading animation must remain available'); return; } pendingDelete = Number(button.dataset.delete); deleteText.textContent = `${nameFor(pendingDelete)} will be permanently removed from the available loader pool.`; dialog.showModal(); } });
+  grid.addEventListener('change', (event) => { if (!event.target.matches('[data-pool]')) return; const id = Number(event.target.dataset.pool); if (event.target.checked) state.pool.add(id); else state.pool.delete(id); if (!state.pool.size) { state.pool.add(id); event.target.checked = true; } scheduleSave(); });
+  deleteConfirm.addEventListener('click', (event) => { event.preventDefault(); if (!pendingDelete) return; state.deleted.push(pendingDelete); state.available = state.available.filter((id) => id !== pendingDelete); state.pool.delete(pendingDelete); if (state.active === pendingDelete) state.active = state.available[0]; if (state.rotation && !state.pool.size) state.pool.add(state.active); pendingDelete = null; dialog.close(); render(); scheduleSave(); });
+  document.getElementById('testLoaderButton').addEventListener('click', () => { if (!window.AdminLoader) return; window.AdminLoader.show(state.active); window.setTimeout(() => window.AdminLoader.hide(), 2200); });
+  render();
+  // This template is parsed before the global loader script in the base layout.
+  // Re-render once that script declares its public preview builder.
+  document.addEventListener('admin-loader-ready', render);
+  window.addEventListener('load', render, { once: true });
+})();
+</script>
+{% endblock %}

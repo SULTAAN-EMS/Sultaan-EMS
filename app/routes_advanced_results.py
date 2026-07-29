@@ -2684,10 +2684,16 @@ def student_form(student_id=None):
 @advanced_results_bp.route("/students/<int:student_id>/delete", methods=["POST"])
 def delete_student(student_id):
     student = db.session.get(Student, student_id) or abort(404)
+    deleted_student = {
+        "name": student.full_name,
+        "code": student.student_code,
+    }
     db.session.delete(student)
     audit("Student Updates", f"Deleted student {student.student_code}")
     db.session.commit()
-    flash("Student deleted.", "success")
+    # Keep the successful result specific to this destructive action instead of
+    # relying on a generic toast that can be missed after the list reloads.
+    session["student_deleted_notice"] = deleted_student
     return redirect(url_for("admin_advanced_results.students_management"))
 
 

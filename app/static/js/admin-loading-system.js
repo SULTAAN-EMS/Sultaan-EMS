@@ -534,8 +534,25 @@
   function getOrPickDesignId(explicitDesignId) {
     if (explicitDesignId) return explicitDesignId;
 
-    var savedConfig = window.SYSTEM_LOADER_DESIGN || localStorage.getItem('admin_loader_design');
-    if (savedConfig && !isNaN(parseInt(savedConfig, 10)) && parseInt(savedConfig, 10) > 0) {
+    var config = window.SYSTEM_LOADER_CONFIG || {};
+    var deleted = config.deletedDesigns;
+    var rotationPool = config.rotationPool;
+    try { if (typeof deleted === 'string') deleted = JSON.parse(deleted); } catch (_) { deleted = []; }
+    try { if (typeof rotationPool === 'string') rotationPool = JSON.parse(rotationPool); } catch (_) { rotationPool = []; }
+    deleted = Array.isArray(deleted) ? deleted.map(Number) : [];
+    rotationPool = Array.isArray(rotationPool) ? rotationPool.map(Number).filter(function (id) { return id >= 1 && id <= 42 && deleted.indexOf(id) === -1; }) : [];
+
+    // Rotation chooses once for this page load, so every genuine loading state
+    // within that visit uses the same intentional design while a new load rotates.
+    if (config.rotationEnabled && rotationPool.length) {
+      if (!window.__adminLoaderPageDesign) {
+        window.__adminLoaderPageDesign = rotationPool[Math.floor(Math.random() * rotationPool.length)];
+      }
+      return window.__adminLoaderPageDesign;
+    }
+
+    var savedConfig = config.design || window.SYSTEM_LOADER_DESIGN || localStorage.getItem('admin_loader_design');
+    if (savedConfig && !isNaN(parseInt(savedConfig, 10)) && parseInt(savedConfig, 10) > 0 && deleted.indexOf(parseInt(savedConfig, 10)) === -1) {
       return parseInt(savedConfig, 10);
     }
 
@@ -546,8 +563,12 @@
       return parseInt(storedDesign, 10);
     }
 
-    // Pick a brand new random design from full combined pool (1 to 42)
-    var newDesignId = Math.floor(Math.random() * 42) + 1;
+    // No configured design: choose from the remaining built-in designs only.
+    var availableDesigns = [];
+    for (var candidate = 1; candidate <= 42; candidate += 1) {
+      if (deleted.indexOf(candidate) === -1) availableDesigns.push(candidate);
+    }
+    var newDesignId = availableDesigns[Math.floor(Math.random() * availableDesigns.length)] || 42;
     sessionStorage.setItem('admin_loader_design', newDesignId.toString());
     sessionStorage.setItem('admin_loader_active', 'true');
     return newDesignId;
@@ -586,8 +607,18 @@
     }
   }
 
+  var safetyTimeoutTimer = null;
+
+  function resetSafetyTimer() {
+    if (safetyTimeoutTimer) {
+      clearTimeout(safetyTimeoutTimer);
+      safetyTimeoutTimer = null;
+    }
+  }
+
   function forceClear() {
     stopLiveProgress();
+    resetSafetyTimer();
     isHiding = false;
     currentPct = 0;
     activeDesignId = null;
@@ -615,12 +646,19 @@
     activeOverlay = overlay;
 
     startLiveProgress(initialPct || 0);
+
+    // Hard safety timeout: auto-dismiss after 6s to prevent stuck overlay
+    resetSafetyTimer();
+    safetyTimeoutTimer = setTimeout(function () {
+      forceClear();
+    }, 6000);
   }
 
   function hideLoader() {
     if (!activeOverlay || isHiding) return;
     isHiding = true;
     stopLiveProgress();
+    resetSafetyTimer();
 
     var startPct = currentPct;
     var startTime = performance.now();
@@ -648,83 +686,103 @@
           if (topLine) topLine.remove();
 
           activeDesignId = null;
-          activeOverlay = null;
           isHiding = false;
+          activeOverlay = null;
           sessionStorage.removeItem('admin_loader_active');
           sessionStorage.removeItem('admin_loader_design');
-        }, 380);
+        }, 300);
       }
     }
+
     animFrame = requestAnimationFrame(glideStep);
   }
 
-  // Intercept navigation & page loads
-  window.addEventListener('pageshow', function (e) {
-    if (e.persisted) {
+  function isBackgroundUrl(url, options) {
+    if (!url || typeof url !== 'string') return false;
+    var lower = url.toLowerCase();
+    if (lower.indexOf('autosave') !== -1) return true;
+    if (lower.indexOf('ping') !== -1) return true;
+    if (lower.indexOf('favicon') !== -1) return true;
+    if (lower.indexOf('status') !== -1) return true;
+    if (options && (options.noLoader || (options.headers && (options.headers['X-No-Loader'] || options.headers['x-no-loader'])))) return true;
+    return false;
+  }
+
+  function showForNavigation() {
+    // Keep the selected design alive while the browser replaces this document.
+    // The destination page consumes this marker and gives the transition a
+    // clean final beat instead of dropping the loader during navigation.
+    sessionStorage.setItem('admin_loader_active', 'true');
+    showLoader();
+  }
+
+  // Preserve a visible transition across normal navigation and form submits.
+  // Fetch/XHR are handled below; these cover full page requests.
+  window.addEventListener('pageshow', function (event) {
+    if (event.persisted) {
       forceClear();
-    } else {
-      var isStoredActive = sessionStorage.getItem('admin_loader_active') === 'true';
-      if (isStoredActive) {
-        showLoader(null, 80);
-        setTimeout(function () { hideLoader(); }, 80);
-      }
+      return;
+    }
+    if (sessionStorage.getItem('admin_loader_active') === 'true') {
+      showLoader(null, 84);
+      setTimeout(hideLoader, 180);
     }
   });
-
-  window.addEventListener('popstate', function () {
-    forceClear();
-  });
-
+  window.addEventListener('popstate', forceClear);
   document.addEventListener('DOMContentLoaded', function () {
-    document.addEventListener('submit', function (e) {
-      var form = e.target;
-      if (form && !form.dataset.noLoader) {
-        sessionStorage.removeItem('admin_loader_active');
-        showLoader();
+    document.addEventListener('submit', function (event) {
+      var form = event.target;
+      if (form && !form.dataset.noLoader && !form.matches('[data-autosave-form], [data-security-settings]')) {
+        showForNavigation();
+      }
+    });
+    document.addEventListener('click', function (event) {
+      var loaderButton = event.target.closest('[data-nav-loader]');
+      if (loaderButton) {
+        showForNavigation();
+        return;
+      }
+      var link = event.target.closest('a[href]');
+      if (!link || link.dataset.noLoader || link.target) return;
+      var href = link.getAttribute('href') || '';
+      if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
+        showForNavigation();
       }
     });
 
-    document.addEventListener('click', function (e) {
-      var link = e.target.closest('a[href]');
-      var navBtn = e.target.closest('.rh-tab, button[onclick*="location"], [data-nav-loader]');
-
-      if (link) {
-        var href = link.getAttribute('href');
-        if (
-          href &&
-          !href.startsWith('#') &&
-          !href.startsWith('javascript:') &&
-          !link.getAttribute('target') &&
-          !link.dataset.noLoader
-        ) {
-          sessionStorage.removeItem('admin_loader_active');
-          showLoader();
-        }
-      } else if (navBtn && !navBtn.dataset.noLoader) {
-        sessionStorage.removeItem('admin_loader_active');
-        showLoader();
+    // A refresh is also a real loading transition. Show the same configured
+    // animation on the fresh document, even when the browser performs a hard
+    // reload instead of a link click.
+    setTimeout(function () {
+      if (!document.getElementById('admin-global-loader')) {
+        showLoader(null, 72);
+        setTimeout(hideLoader, 180);
       }
-    });
+    }, 0);
   });
+
+  // Export raw un-intercepted fetch
+  var originalFetch = window.fetch;
+  window.__rawFetch = originalFetch;
 
   // Intercept fetch
-  var originalFetch = window.fetch;
   if (originalFetch) {
     window.fetch = function () {
       var args = arguments;
       var url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url);
-      var isAutosave = url && url.indexOf('autosave') !== -1;
+      var opts = args[1];
+      var isBypass = isBackgroundUrl(url, opts);
 
-      if (!isAutosave) {
+      if (!isBypass) {
         sessionStorage.removeItem('admin_loader_active');
         showLoader();
       }
 
       return originalFetch.apply(this, args).then(function (response) {
-        if (!isAutosave) hideLoader();
+        if (!isBypass) hideLoader();
         return response;
       }).catch(function (err) {
-        if (!isAutosave) hideLoader();
+        if (!isBypass) hideLoader();
         throw err;
       });
     };
@@ -740,8 +798,8 @@
   };
 
   XMLHttpRequest.prototype.send = function () {
-    var isAutosave = this._loaderUrl && this._loaderUrl.indexOf('autosave') !== -1;
-    if (!isAutosave) {
+    var isBypass = isBackgroundUrl(this._loaderUrl);
+    if (!isBypass) {
       sessionStorage.removeItem('admin_loader_active');
       showLoader();
 
@@ -774,7 +832,11 @@
     },
     hide: function () {
       hideLoader();
+    },
+    buildLoaderHTML: function (designId) {
+      return buildLoaderHTML(Number(designId) || 42);
     }
   };
+  document.dispatchEvent(new CustomEvent('admin-loader-ready'));
 
 })();

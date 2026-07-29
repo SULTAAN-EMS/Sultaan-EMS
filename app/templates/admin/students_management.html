@@ -93,60 +93,50 @@
       </div>
     </div>
 
-    <div class="sm-filters-section">
-      <div class="sm-filter-group">
-        <div class="sm-filter-item sm-filter-year">
-          <label for="year-selector">
-            <i class="fa-solid fa-calendar"></i>
-            {{ rh_label("students.year", default="Sanad Dugsiyeedka") }}
-          </label>
-          <select id="year-selector" onchange="changeYear()">
-            {% for year in years %}
-              <option value="{{ year.id }}" {% if selected_year and selected_year.id == year.id %}selected{% endif %}>{{ year.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="sm-filter-item sm-filter-level">
-          <label for="level-selector">
-            <i class="fa-solid fa-layer-group"></i>
-            {{ rh_label("students.level", default="Level") }}
-          </label>
-          <select id="level-selector" onchange="changeLevel()">
-            <option value="">{{ rh_label("students.all_levels", default="Dhammaan") }}</option>
-            {% for level in levels %}
-              <option value="{{ level.id }}" {% if selected_level_id and selected_level_id == level.id %}selected{% endif %}>{{ level.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="sm-filter-item sm-filter-class">
-          <label for="class-selector">
-            <i class="fa-solid fa-chalkboard-user"></i>
-            {{ rh_label("students.class", default="Fasalka") }}
-          </label>
-          <select id="class-selector" onchange="changeClass()">
-            <option value="">{{ rh_label("students.all_classes", default="Dhammaan") }}</option>
-            {% for cls in classes %}
-              <option value="{{ cls.id }}" {% if selected_class_id and selected_class_id == cls.id %}selected{% endif %}>{{ cls.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="sm-filter-item sm-filter-status">
-          <label for="status-filter">
-            <i class="fa-solid fa-filter"></i>
-            {{ rh_label("students.status", default="Xaalada") }}
-          </label>
-          <select id="status-filter" class="sm-filter" onchange="handleFilter()">
-            <option value="">{{ rh_label("students.status_all", default="Dhammaan") }}</option>
-            <option value="active" {% if status_filter == 'active' %}selected{% endif %}>{{ rh_label("students.status_active", default="Active") }}</option>
-            <option value="locked" {% if status_filter == 'locked' %}selected{% endif %}>{{ rh_label("students.status_locked", default="Locked") }}</option>
-          </select>
-        </div>
+    <div class="sm-filters-row">
+      <div class="sm-filter-item">
+        <label for="year-selector"><i class="fa-solid fa-calendar"></i> {{ rh_label("students.year", default="Sanad") }}</label>
+        <select id="year-selector">
+          {% for year in years %}
+            <option value="{{ year.id }}" {% if selected_year and selected_year.id == year.id %}selected{% endif %}>{{ year.name }}</option>
+          {% endfor %}
+        </select>
       </div>
-      <div class="sm-search-group">
-        <div class="sm-search-wrapper">
-          <i class="fa-solid fa-search"></i>
-          <input type="text" class="sm-search" placeholder="{{ rh_label("students.search_placeholder", default="Raadi arday (magac, ID)...") }}" value="{{ q }}" onkeyup="handleSearch(event)">
-        </div>
+      <div class="sm-filter-item">
+        <label for="level-selector"><i class="fa-solid fa-layer-group"></i> {{ rh_label("students.level", default="Level") }}</label>
+        <select id="level-selector">
+          <option value="">{{ rh_label("students.all_levels", default="Dhammaan") }}</option>
+          {% for level in levels %}
+            <option value="{{ level.id }}" {% if selected_level_id and selected_level_id == level.id %}selected{% endif %}>{{ level.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="sm-filter-item">
+        <label for="class-selector"><i class="fa-solid fa-chalkboard-user"></i> {{ rh_label("students.class", default="Fasalka") }}</label>
+        <select id="class-selector">
+          <option value="">{{ rh_label("students.all_classes", default="Dhammaan") }}</option>
+          {% for cls in classes %}
+            <option value="{{ cls.id }}" {% if selected_class_id and selected_class_id == cls.id %}selected{% endif %}>{{ cls.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="sm-filter-item">
+        <label for="status-filter"><i class="fa-solid fa-filter"></i> {{ rh_label("students.status", default="Xaalada") }}</label>
+        <select id="status-filter" class="sm-filter">
+          <option value="">{{ rh_label("students.status_all", default="Dhammaan") }}</option>
+          <option value="active" {% if status_filter == 'active' %}selected{% endif %}>{{ rh_label("students.status_active", default="Active") }}</option>
+          <option value="locked" {% if status_filter == 'locked' %}selected{% endif %}>{{ rh_label("students.status_locked", default="Locked") }}</option>
+        </select>
+      </div>
+      <div class="sm-filter-item sm-filter-search">
+        <label><i class="fa-solid fa-search"></i> {{ rh_label("students.search", default="Raadi") }}</label>
+        <input type="text" id="sm-search-input" class="sm-search" placeholder="{{ rh_label("students.search_placeholder", default="Raadi arday...") }}" value="{{ q }}">
+      </div>
+      <div class="sm-filter-item sm-filter-apply">
+        <label style="visibility:hidden;">_</label>
+        <button type="button" id="applyStudentFilters" class="btn btn-gold" style="width:100%;height:38px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:0.85rem;font-weight:700;">
+          <i class="fa-solid fa-magnifying-glass"></i> Apply
+        </button>
       </div>
     </div>
 
@@ -366,7 +356,7 @@
 <!-- Student Delete Confirmation Modal -->
 <div class="modal fade" id="deleteStudentModal" tabindex="-1" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center;" role="dialog" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered" style="max-width: 480px; width: 90%; margin: 0 auto;">
-    <div class="modal-content" style="background: #ffffff; border-radius: 20px; overflow: hidden; border: 1px solid rgba(239, 68, 68, 0.2); box-shadow: 0 25px 50px -12px rgba(220, 38, 38, 0.3); position: relative; animation: modalPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);">
+    <div class="modal-content" style="background: linear-gradient(145deg, #ffffff 0%, #fff7f7 100%); border-radius: 20px; overflow: hidden; border: 1px solid rgba(239, 68, 68, 0.2); box-shadow: 0 25px 50px -12px rgba(220, 38, 38, 0.3); position: relative; animation: modalPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);">
       <div style="height: 5px; background: linear-gradient(90deg, #ef4444, #f97316, #dc2626);"></div>
       <div style="padding: 28px 28px 22px; text-align: center;">
         <div style="width: 64px; height: 64px; border-radius: 50%; background: #fef2f2; border: 2px solid #fecdd3; color: #dc2626; display: inline-flex; align-items: center; justify-content: center; font-size: 1.75rem; margin: 0 auto 16px; box-shadow: 0 0 20px rgba(239, 68, 68, 0.18);">
@@ -396,66 +386,111 @@
   </div>
 </div>
 
+{% set deleted_student_notice = session.pop('student_deleted_notice', None) %}
+{% if deleted_student_notice %}
+<div class="student-delete-success" id="studentDeleteSuccess" role="status" aria-live="polite">
+  <div class="student-delete-success__spark student-delete-success__spark--one"></div>
+  <div class="student-delete-success__spark student-delete-success__spark--two"></div>
+  <span class="student-delete-success__icon"><i class="fa-solid fa-circle-check"></i></span>
+  <div>
+    <strong>Student deleted successfully</strong>
+    <p><b>{{ deleted_student_notice.name }}</b>{% if deleted_student_notice.code %} ({{ deleted_student_notice.code }}){% endif %} was removed safely.</p>
+  </div>
+  <button type="button" class="student-delete-success__close" aria-label="Dismiss confirmation"><i class="fa-solid fa-xmark"></i></button>
+</div>
+{% endif %}
+
 <script>
+{# Build the delete URL base by using a real student id of 0 — Flask resolves 0 as a valid int,
+   then we replace the trailing /0/delete with the real id at click time #}
+var _deleteStudentBaseUrl = "{{ url_for('admin_advanced_results.students_management') }}".replace(/\/students-management.*/, '');
+function _makeDeleteUrl(id) {
+  return _deleteStudentBaseUrl + '/students/' + encodeURIComponent(id) + '/delete';
+}
+
 function openDeleteStudentModal(studentId, studentName, studentCode) {
-  const modal = document.getElementById('deleteStudentModal');
-  const form = document.getElementById('deleteStudentForm');
+  var modal = document.getElementById('deleteStudentModal');
+  var form = document.getElementById('deleteStudentForm');
   document.getElementById('deleteStudentName').textContent = studentName;
   document.getElementById('deleteStudentCode').textContent = studentCode;
-  form.action = `{{ url_for('admin_advanced_results.delete_student', student_id=0) }}`.replace('0', studentId);
+  form.action = _makeDeleteUrl(studentId);
   modal.style.display = 'flex';
+  modal.removeAttribute('aria-hidden');
+  requestAnimationFrame(function() { modal.classList.add('is-open'); });
 }
 
 function closeDeleteStudentModal() {
-  const modal = document.getElementById('deleteStudentModal');
-  if (modal) modal.style.display = 'none';
+  var modal = document.getElementById('deleteStudentModal');
+  if (modal) {
+    modal.setAttribute('aria-hidden', 'true');
+    modal.classList.remove('is-open');
+    setTimeout(function() { modal.style.display = 'none'; }, 180);
+  }
 }
 
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') closeDeleteStudentModal();
 });
 document.addEventListener('click', function(e) {
-  const modal = document.getElementById('deleteStudentModal');
+  var modal = document.getElementById('deleteStudentModal');
   if (e.target === modal) closeDeleteStudentModal();
 });
+
+(function () {
+  var notice = document.getElementById('studentDeleteSuccess');
+  if (!notice) return;
+  var dismiss = function () { notice.classList.add('is-leaving'); window.setTimeout(function () { notice.remove(); }, 220); };
+  notice.querySelector('.student-delete-success__close').addEventListener('click', dismiss);
+  window.setTimeout(dismiss, 6200);
+})();
 </script>
 
 <script>
-function changeYear() {
-  const yearId = document.getElementById('year-selector').value;
-  window.location.href = `{{ url_for('admin_advanced_results.students_management') }}?year_id=${yearId}&page=1`;
-}
+// ── Apply-only filter: fires once on button click ──
+document.addEventListener('DOMContentLoaded', function() {
+  var applyBtn = document.getElementById('applyStudentFilters');
+  if (applyBtn) {
+    applyBtn.addEventListener('click', function() {
+      var yearId     = (document.getElementById('year-selector')   || {}).value || '';
+      var levelId    = (document.getElementById('level-selector')  || {}).value || '';
+      var classId    = (document.getElementById('class-selector')  || {}).value || '';
+      var statusVal  = (document.getElementById('status-filter')   || {}).value || '';
+      var query      = (document.getElementById('sm-search-input') || {}).value || '';
 
-function changeLevel() {
-  const yearId = document.getElementById('year-selector').value;
-  const levelId = document.getElementById('level-selector').value;
-  window.location.href = `{{ url_for('admin_advanced_results.students_management') }}?year_id=${yearId}&level_id=${levelId}&page=1`;
-}
+      var url = new URL(window.location.href);
+      url.searchParams.set('page', '1');
+      if (yearId)   url.searchParams.set('year_id',      yearId);
+      if (levelId)  url.searchParams.set('level_id',     levelId);
+      else          url.searchParams.delete('level_id');
+      if (classId)  url.searchParams.set('class_id',     classId);
+      else          url.searchParams.delete('class_id');
+      if (statusVal) url.searchParams.set('status_filter', statusVal);
+      else           url.searchParams.delete('status_filter');
+      if (query)    url.searchParams.set('q', query);
+      else          url.searchParams.delete('q');
 
-function changeClass() {
-  const yearId = document.getElementById('year-selector').value;
-  const levelId = document.getElementById('level-selector').value;
-  const classId = document.getElementById('class-selector').value;
-  window.location.href = `{{ url_for('admin_advanced_results.students_management') }}?year_id=${yearId}&level_id=${levelId}&class_id=${classId}&page=1`;
-}
-
-function handleSearch(event) {
-  if (event.key === 'Enter') {
-    const query = event.target.value;
-    const url = new URL(window.location.href);
-    url.searchParams.set('q', query);
-    url.searchParams.set('page', '1'); // Reset to page 1 on search
-    window.location.href = url.toString();
+      if (window.AdminLoader) window.AdminLoader.show();
+      window.location.href = url.toString();
+    });
   }
-}
 
-function handleFilter() {
-  const statusFilter = document.querySelector('.sm-filter').value;
-  const url = new URL(window.location.href);
-  url.searchParams.set('status_filter', statusFilter);
-  url.searchParams.set('page', '1'); // Reset to page 1 on filter change
-  window.location.href = url.toString();
-}
+  // Also allow Enter key on the search input to trigger apply
+  var searchInput = document.getElementById('sm-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('applyStudentFilters').click();
+      }
+    });
+  }
+});
+
+function changeYear() { /* no-op: handled by Apply */ }
+function changeLevel() { /* no-op: handled by Apply */ }
+function changeClass() { /* no-op: handled by Apply */ }
+function handleSearch(event) { /* no-op: handled by Apply */ }
+function handleFilter() { /* no-op: handled by Apply */ }
 
 function goToPage(pageNum) {
   const url = new URL(window.location.href);
@@ -582,6 +617,48 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <style>
+/* Single row filter bar */
+.sm-filters-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(120px, 1fr) minmax(110px, 1fr) minmax(180px, 2fr) 110px;
+  gap: 12px;
+  align-items: flex-end;
+  background: #ffffff;
+  padding: 14px 18px;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 32, 96, 0.06);
+  border: 1px solid var(--paper-line, #e2e8f0);
+  margin-bottom: 20px;
+}
+
+.sm-filters-row .sm-filter-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sm-filters-row .sm-filter-item label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted, #64748b);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.sm-filters-row .sm-filter-item select,
+.sm-filters-row .sm-filter-item input {
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  padding: 0 10px;
+  font-size: 0.85rem;
+  background: #ffffff;
+  color: #0f172a;
+  width: 100%;
+}
+
 /* Summary Cards */
 .sm-summary-cards {
   display: grid;
@@ -1085,5 +1162,28 @@ document.addEventListener('DOMContentLoaded', function() {
   color: #fff;
   filter: drop-shadow(0 1px 2px rgba(127, 29, 29, .28));
 }
+
+/* Delete confirmation is deliberately attention-grabbing but never abrupt. */
+#deleteStudentModal { opacity: 0; transition: opacity .18s ease; }
+#deleteStudentModal.is-open { opacity: 1; }
+#deleteStudentModal .modal-content { transform: scale(.94) translateY(10px); transition: transform .2s cubic-bezier(.22,.61,.36,1), box-shadow .2s ease; }
+#deleteStudentModal.is-open .modal-content { transform: scale(1) translateY(0); box-shadow: 0 28px 62px -18px rgba(225,29,72,.48), 0 0 0 1px rgba(251,113,133,.42); }
+#deleteStudentModal.is-open .modal-content::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 1px rgba(251,146,60,.24); animation: deleteModalPulse 1.8s ease-in-out infinite; }
+@keyframes deleteModalPulse { 50% { box-shadow: inset 0 0 0 1px rgba(244,63,94,.6), 0 0 28px rgba(244,63,94,.18); } }
+.student-delete-success { position:fixed; right:26px; bottom:26px; z-index:10010; width:min(430px,calc(100vw - 34px)); display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:14px; padding:16px 16px 16px 18px; overflow:hidden; color:#ecfdf5; background:linear-gradient(135deg,#065f46 0%,#047857 52%,#0f766e 100%); border:1px solid rgba(167,243,208,.72); border-radius:18px; box-shadow:0 22px 52px rgba(6,95,70,.35),0 0 0 5px rgba(16,185,129,.09); animation:studentDeleteSuccessIn .42s cubic-bezier(.22,.61,.36,1) both; }
+.student-delete-success::before { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.16) 48%,transparent 72%); transform:translateX(-120%); animation:studentDeleteSheen 1.8s .25s ease both; }
+.student-delete-success__icon { width:46px; height:46px; display:grid; place-items:center; border-radius:15px; color:#047857; background:linear-gradient(145deg,#f0fdf4,#d1fae5); box-shadow:0 8px 18px rgba(0,0,0,.16); font-size:1.4rem; }
+.student-delete-success strong { display:block; margin-bottom:3px; color:#fff; font-size:.98rem; letter-spacing:.01em; }
+.student-delete-success p { margin:0; color:#d1fae5; font-size:.82rem; line-height:1.45; }
+.student-delete-success p b { color:#fff; }
+.student-delete-success__close { position:relative; width:30px; height:30px; padding:0; color:#d1fae5; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.2); border-radius:9px; cursor:pointer; transition:background .18s ease,transform .18s ease; }
+.student-delete-success__close:hover { background:rgba(255,255,255,.22); transform:translateY(-1px); }
+.student-delete-success__spark { position:absolute; width:8px; height:8px; border-radius:50%; background:#a7f3d0; opacity:.45; animation:studentDeleteSpark 2.3s ease-in-out infinite; }
+.student-delete-success__spark--one { top:9px; right:54px; }.student-delete-success__spark--two { bottom:9px; left:55px; animation-delay:.8s; }
+.student-delete-success.is-leaving { animation:studentDeleteSuccessOut .22s ease forwards; }
+@keyframes studentDeleteSuccessIn { from { opacity:0; transform:translateY(18px) scale(.95); } to { opacity:1; transform:translateY(0) scale(1); } }
+@keyframes studentDeleteSuccessOut { to { opacity:0; transform:translateY(12px) scale(.96); } }
+@keyframes studentDeleteSheen { to { transform:translateX(135%); } }
+@keyframes studentDeleteSpark { 50% { opacity:1; transform:translateY(-5px) scale(1.25); } }
 </style>
 {% endblock %}

@@ -4,161 +4,280 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-loading-system.css') }}">
 {% endblock %}
 {% block content %}
-<script>
-  (function() {
-    if (localStorage.getItem('sidebar_collapsed') === 'true') {
-      document.documentElement.classList.add('sidebar-collapsed-init');
-    }
-  })();
-</script>
 <style>
-.sidebar-collapsed-init .admin-body,
-.admin-body.sidebar-collapsed {
-  grid-template-columns: 78px minmax(0, 1fr) !important;
+/* Hover navigation: collapsed by default and expanded only while engaged. */
+.admin-body { grid-template-columns: 64px minmax(0, 1fr) !important; }
+.sidebar {
+  width: 64px;
+  min-width: 64px;
+  padding: 14px;
+  transition: width 180ms ease, min-width 180ms ease, box-shadow 180ms ease;
+  overflow: visible;
+  z-index: 40;
 }
+.sidebar:hover,
+.sidebar:focus-within {
+  width: 280px;
+  min-width: 280px;
+  box-shadow: 18px 0 38px rgba(0, 23, 70, .22);
+}
+.sidebar:not(:hover):not(:focus-within) .admin-brand,
+.sidebar:not(:hover):not(:focus-within) .admin-profile,
+.sidebar:not(:hover):not(:focus-within) .sidebar-logout {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.sidebar:not(:hover):not(:focus-within) .admin-brand { display: none; }
+.sidebar:not(:hover):not(:focus-within) .sidebar-fixed > div { justify-content: center; }
+.sidebar:not(:hover):not(:focus-within) .side-nav {
+  display: none;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+/* The collapsed rail deliberately exposes only the centred three-line menu.
+   Navigation never leaks through before the administrator hovers the rail. */
+.sidebar:not(:hover):not(:focus-within) .sidebar-fixed {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.sidebar:not(:hover):not(:focus-within) .sidebar-fixed > div {
+  width: 100%;
+  justify-content: center;
+}
+.sidebar:not(:hover):not(:focus-within) .sidebar-toggle-btn {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto;
+  border-radius: 13px;
+  box-shadow: 0 8px 18px rgba(1, 19, 55, .26);
+}
+
+/* Toggle button */
 .sidebar-toggle-btn {
-  background: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.2);
   color: #fff;
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
-  transition: all 0.2s ease;
-  margin-bottom: 8px;
+  font-size: 1rem;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
 }
-.sidebar-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.28);
-  transform: scale(1.05);
-}
-.sidebar-collapsed-init .admin-brand span:not(.brand-logo),
-.admin-body.sidebar-collapsed .admin-brand span:not(.brand-logo),
-.sidebar-collapsed-init .admin-profile span:not(.admin-avatar),
-.admin-body.sidebar-collapsed .admin-profile span:not(.admin-avatar),
-.sidebar-collapsed-init .side-nav a span,
-.admin-body.sidebar-collapsed .side-nav a span,
-.sidebar-collapsed-init .nav-group-header,
-.admin-body.sidebar-collapsed .nav-group-header,
-.sidebar-collapsed-init .logout-text,
-.admin-body.sidebar-collapsed .logout-text {
-  display: none !important;
-}
-.sidebar-collapsed-init .admin-brand,
-.admin-body.sidebar-collapsed .admin-brand {
-  justify-content: center;
-}
-.sidebar-collapsed-init .admin-profile,
-.admin-body.sidebar-collapsed .admin-profile {
-  padding: 8px;
-  justify-content: center;
-  grid-template-columns: auto;
-}
-.sidebar-collapsed-init .side-nav a,
-.admin-body.sidebar-collapsed .side-nav a {
-  justify-content: center;
-  padding: 12px 0;
-}
-.sidebar-collapsed-init .side-nav .nav-group a,
-.admin-body.sidebar-collapsed .side-nav .nav-group a {
-  padding-left: 0;
-}
-.sidebar-collapsed-init .side-nav i,
-.admin-body.sidebar-collapsed .side-nav i {
-  font-size: 1.25rem;
-  margin: 0;
-}
-.sidebar-collapsed-init .logout,
-.admin-body.sidebar-collapsed .logout {
-  padding: 12px 0;
+.sidebar-toggle-btn:hover { background: rgba(255,255,255,0.28); }
+
+/* Brand area */
+.admin-brand {
   display: flex;
-  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  text-decoration: none;
+  flex: 1;
+  overflow: hidden;
 }
+.admin-brand .brand-text-wrap {
+  overflow: hidden;
+  white-space: nowrap;
+  transition: opacity 0.2s ease, max-width 0.28s ease;
+  max-width: 200px;
+}
+
+/* Profile */
+.admin-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 16px;
+  background: rgba(255,255,255,.1);
+  overflow: hidden;
+}
+.admin-profile-text {
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+  transition: opacity 0.2s ease, max-width 0.28s ease;
+  max-width: 200px;
+}
+
+/* Nav content is intentionally hidden when the rail is collapsed. */
+.side-nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #dbeafe;
+  padding: 11px 12px;
+  border-radius: 12px;
+  transition: background .18s ease, color .18s ease;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.side-nav a:hover { background: rgba(255,255,255,.12); color: #fff; }
+.side-nav a span.nav-label {
+  overflow: hidden;
+  white-space: nowrap;
+  transition: opacity 0.2s ease, max-width 0.28s ease;
+  max-width: 180px;
+}
+
+/* Logout btn */
+.logout {
+  width: 100%;
+  background: rgba(255,255,255,.14);
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.logout-text {
+  transition: opacity 0.2s ease, max-width 0.28s ease;
+  max-width: 180px;
+  overflow: hidden;
+}
+
+/* Compact header for non-dashboard pages */
 .admin-top-compact {
-  padding: 8px 12px;
+  padding: 10px 18px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 14px;
+  gap: 12px;
+  background: transparent;
+}
+
+/* Status indicator in sidebar profile */
+.admin-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+}
+.admin-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  position: relative;
+  flex-shrink: 0;
+}
+.admin-status-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: rgba(16,185,129,0.35);
+  animation: statusPulse 2s infinite ease-out;
+}
+@keyframes statusPulse {
+  0% { transform: scale(0.8); opacity: 0.8; }
+  70% { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(0.8); opacity: 0; }
+}
+.admin-status-dot.yellow { background: #f59e0b; }
+.admin-status-dot.yellow::after { background: rgba(245,158,11,0.35); }
+.admin-status-dot.red { background: #ef4444; }
+.admin-status-dot.red::after { background: rgba(239,68,68,0.35); }
+.admin-status-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #86efac;
+  letter-spacing: 0.04em;
+}
+.admin-status-dot.yellow ~ .admin-status-label { color: #fcd34d; }
+.admin-status-dot.red ~ .admin-status-label { color: #fca5a5; }
+
+/* Modal pop animation */
+@keyframes modalPop {
+  0% { opacity: 0; transform: scale(0.9) translateY(-10px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
 }
 </style>
 <aside class="sidebar">
   <div class="sidebar-fixed">
-    <div style="display: flex; align-items: center; justify-content: space-between;">
+    <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
       <a class="admin-brand" href="{{ url_for('admin.dashboard') }}">
-        <span class="brand-logo">
+        <span class="brand-logo" style="flex-shrink:0; width:36px; height:36px; border-radius:10px; display:grid; place-items:center; background:rgba(255,255,255,0.15); overflow:hidden;">
           {% if ui_settings.admin_logo_path or ui_settings.logo_path %}
-            <img src="{{ asset_url(ui_settings.admin_logo_path or ui_settings.logo_path) }}" alt="Admin logo">
+            <img src="{{ asset_url(ui_settings.admin_logo_path or ui_settings.logo_path) }}" alt="Admin logo" style="width:100%;height:100%;object-fit:cover;">
           {% else %}
-            <i class="fa-solid fa-graduation-cap"></i>
+            <i class="fa-solid fa-graduation-cap" style="font-size:1rem;"></i>
           {% endif %}
         </span>
-        <span><strong>{{ ui_settings.dashboard_title }}</strong><small>Administration</small></span>
+        <span class="brand-text-wrap"><strong style="color:#fff;display:block;font-size:0.9rem;line-height:1.1;">{{ ui_settings.dashboard_title }}</strong><small style="color:#bfdbfe;font-size:0.72rem;">Administration</small></span>
       </a>
-      <button type="button" class="sidebar-toggle-btn" id="sidebarToggleBtn" title="Toggle Sidebar">
+      <span class="sidebar-toggle-btn" aria-label="Navigation menu" title="Hover to open navigation" style="flex-shrink:0;">
         <i class="fa-solid fa-bars"></i>
-      </button>
+      </span>
     </div>
     <div class="admin-profile">
-      <span class="admin-avatar">
+      <span class="admin-avatar" style="flex-shrink:0;">
         {% if current_user.photo_path %}<img src="{{ asset_url(current_user.photo_path) }}" alt="{{ current_user.full_name }} photo">{% else %}<i class="fa-solid fa-user-shield"></i>{% endif %}
       </span>
-      <span><strong>{{ current_user.full_name }}</strong><small>{{ current_user.role|replace('_', ' ')|title }}</small></span>
+      <div class="admin-profile-text">
+        <strong style="display:block;color:#fff;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ current_user.full_name }}</strong>
+        <div class="admin-status-indicator">
+          <span class="admin-status-dot" id="adminStatusDot"></span>
+          <span class="admin-status-label" id="adminStatusLabel">Active</span>
+        </div>
+      </div>
     </div>
   </div>
   <nav class="side-nav">
-    {% if can('dashboard') %}<a href="{{ url_for('admin.dashboard') }}"><i class="fa-solid fa-chart-pie"></i><span>{{ _('Dashboard') }}</span></a>{% endif %}
+    {% if can('dashboard') %}<a href="{{ url_for('admin.dashboard') }}"><i class="fa-solid fa-chart-pie" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">{{ _('Dashboard') }}</span></a>{% endif %}
     
     <!-- Academic & Results Group -->
     <div class="nav-group">
-      <div class="nav-group-header">Academic & Results</div>
-      {% if can('results') %}<a href="{{ url_for('admin_advanced_results.new_dashboard') }}"><i class="fa-solid fa-square-poll-vertical"></i><span>{{ _('Results') }}</span></a>{% endif %}
+      <div class="nav-group-header">Academic &amp; Results</div>
+      {% if can('results') %}<a href="{{ url_for('admin_advanced_results.new_dashboard') }}"><i class="fa-solid fa-square-poll-vertical" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">{{ _('Results') }}</span></a>{% endif %}
     </div>
     
-    {% if can('teachers') %}<a href="{{ url_for('admin_teachers.dashboard') }}"><i class="fa-solid fa-chalkboard-user"></i><span>Teacher Department</span></a>{% endif %}
-    
-    <!-- Operations -->
-    {% if can('attendance') %}<a href="{{ url_for('admin_attendance.dashboard') }}"><i class="fa-solid fa-user-check"></i><span>Attendance</span></a>{% endif %}
-    {% if can('id_cards') %}<a href="{{ url_for('admin_id_cards.dashboard') }}"><i class="fa-solid fa-id-card-clip"></i><span>ID Cards</span></a>{% endif %}
-    <a href="{{ url_for('admin.invigilators') }}"><i class="fa-solid fa-user-shield"></i><span>Exam Invigilators</span></a>
-    
-    <!-- Safety & Compliance -->
-    <a href="{{ url_for('admin.incidents') }}"><i class="fa-solid fa-triangle-exclamation"></i><span>Incident Reports</span></a>
-    <a href="{{ url_for('admin.incident_settings') }}"><i class="fa-solid fa-sliders"></i><span>Incident Settings</span></a>
-    
-    <!-- System -->
-    {% if can('users') %}<a href="{{ url_for('admin.users') }}"><i class="fa-solid fa-users-gear"></i><span>{{ _('Users') }}</span></a>{% endif %}
-    {% if can('settings') or can('system_settings') %}<a href="{{ url_for('admin.settings') }}"><i class="fa-solid fa-sliders"></i><span>{{ _('Settings') }}</span></a>{% endif %}
-    {% if can('system_settings') %}<a href="{{ url_for('admin.audit_logs') }}"><i class="fa-solid fa-clipboard-list"></i><span>Audit Log</span></a>{% endif %}
+    {% if can('teachers') %}<a href="{{ url_for('admin_teachers.dashboard') }}"><i class="fa-solid fa-chalkboard-user" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Teacher Department</span></a>{% endif %}
+    {% if can('attendance') %}<a href="{{ url_for('admin_attendance.dashboard') }}"><i class="fa-solid fa-user-check" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Attendance</span></a>{% endif %}
+    {% if can('id_cards') %}<a href="{{ url_for('admin_id_cards.dashboard') }}"><i class="fa-solid fa-id-card-clip" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">ID Cards</span></a>{% endif %}
+    <a href="{{ url_for('admin.invigilators') }}"><i class="fa-solid fa-user-shield" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Exam Invigilators</span></a>
+    <a href="{{ url_for('admin.incidents') }}"><i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Incident Reports</span></a>
+    <a href="{{ url_for('admin.incident_settings') }}"><i class="fa-solid fa-sliders" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Incident Settings</span></a>
+    {% if can('users') %}<a href="{{ url_for('admin.users') }}"><i class="fa-solid fa-users-gear" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">{{ _('Users') }}</span></a>{% endif %}
+    {% if can('settings') or can('system_settings') %}<a href="{{ url_for('admin.settings') }}"><i class="fa-solid fa-sliders" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">{{ _('Settings') }}</span></a>{% endif %}
+    {% if can('settings') or can('system_settings') %}<a href="{{ url_for('admin.loading_animations') }}"><i class="fa-solid fa-spinner" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Loading Animations</span></a>{% endif %}
+    {% if can('system_settings') %}<a href="{{ url_for('admin.audit_logs') }}"><i class="fa-solid fa-clipboard-list" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Audit Log</span></a>{% endif %}
+    <a href="{{ url_for('auth.change_password') }}"><i class="fa-solid fa-shield-halved" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Security</span></a>
   </nav>
   <form method="post" action="{{ url_for('auth.logout') }}" class="sidebar-logout">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="logout"><i class="fa-solid fa-right-from-bracket"></i> <span class="logout-text">Logout</span></button>
+    <button class="logout"><i class="fa-solid fa-right-from-bracket" style="flex-shrink:0;"></i><span class="logout-text">Logout</span></button>
   </form>
 </aside>
 <style>
 .nav-group {
-  margin: 16px 0;
-  border-top: 1px solid #E7E2D4;
-  padding-top: 12px;
+  margin: 12px 0 4px;
+  border-top: 1px solid rgba(255,255,255,0.12);
+  padding-top: 10px;
 }
-
 .nav-group-header {
-  padding: 8px 16px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #5B6472;
+  padding: 4px 12px 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: rgba(191,219,254,0.7);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  letter-spacing: 0.08em;
+  transition: opacity 0.2s, height 0.28s;
 }
-
-.side-nav .nav-group a {
-  padding-left: 32px;
-}
+.side-nav .nav-group a { padding-left: 28px; }
 </style>
 <main class="admin-main" {% if ui_settings.dashboard_background %}style="background-image: linear-gradient(135deg, #f6f9ffdd, #eef4ffef), url('{{ asset_url(ui_settings.dashboard_background) }}');"{% endif %}>
   {% if request.endpoint == 'admin.dashboard' %}
@@ -181,41 +300,67 @@
   </header>
   {% else %}
   <header class="admin-top-compact">
-    <div class="top-actions">
-      <select class="language-switcher" aria-label="Language" onchange="window.location.href='{{ url_for('public.set_language', lang='__LANG__') }}'.replace('__LANG__', this.value)">
-        <option value="so" {% if current_language == 'so' %}selected{% endif %}>Somali</option>
-        <option value="en" {% if current_language == 'en' %}selected{% endif %}>English</option>
-        <option value="ar" {% if current_language == 'ar' %}selected{% endif %}>Arabic</option>
-        <option value="tr" {% if current_language == 'tr' %}selected{% endif %}>Turkish</option>
-      </select>
-      <a class="icon-btn" href="{{ url_for('auth.change_password') }}" title="Change password"><i class="fa-solid fa-key"></i></a>
-      <a class="icon-btn" href="{{ url_for('public.portal') }}" title="Public portal" target="_blank"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
-    </div>
+    {# Non-dashboard pages: no redundant header controls — navigation is via sidebar #}
   </header>
   {% endif %}
+
   {% block admin_content %}{% endblock %}
 </main>
 
 <script>
+window.SYSTEM_LOADER_CONFIG = {{ {
+  'design': ui_settings.admin_loader_design or '',
+  'rotationEnabled': ui_settings.admin_loader_rotation_enabled == 'on',
+  'rotationPool': (ui_settings.admin_loader_rotation_pool or '[]'),
+  'deletedDesigns': (ui_settings.admin_loader_deleted_designs or '[]')
+}|tojson }};
+window.SYSTEM_LOADER_DESIGN = window.SYSTEM_LOADER_CONFIG.design || null;
 document.addEventListener("DOMContentLoaded", function() {
-  const toggleBtn = document.getElementById('sidebarToggleBtn');
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', function() {
-      const body = document.body;
-      const html = document.documentElement;
-      const isCollapsed = body.classList.contains('sidebar-collapsed') || html.classList.contains('sidebar-collapsed-init');
-      
-      if (isCollapsed) {
-        body.classList.remove('sidebar-collapsed');
-        html.classList.remove('sidebar-collapsed-init');
-        localStorage.setItem('sidebar_collapsed', 'false');
-      } else {
-        body.classList.add('sidebar-collapsed');
-        html.classList.add('sidebar-collapsed-init');
-        localStorage.setItem('sidebar_collapsed', 'true');
-      }
-    });
-  }
+
+  // ── Live admin status indicator ──
+  (function startStatusMonitor() {
+    const dot = document.getElementById('adminStatusDot');
+    const label = document.getElementById('adminStatusLabel');
+    if (!dot || !label) return;
+
+    function updateStatus(color, text) {
+      dot.className = 'admin-status-dot' + (color !== 'green' ? ' ' + color : '');
+      label.textContent = text;
+    }
+
+    function measureLatency() {
+      const start = Date.now();
+      const rawFetch = window.__rawFetch || window.fetch;
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timeoutId = controller ? setTimeout(() => controller.abort(), 3500) : null;
+
+      rawFetch('/api/ping?_=' + start, {
+        method: 'GET',
+        cache: 'no-store',
+        signal: controller ? controller.signal : undefined,
+        headers: { 'X-No-Loader': 'true' }
+      })
+      .then(res => {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (res.ok) {
+          const ms = Date.now() - start;
+          if (ms < 250) updateStatus('green', 'Active');
+          else if (ms < 700) updateStatus('yellow', 'Active');
+          else updateStatus('red', 'Active');
+        } else {
+          updateStatus('yellow', 'Active');
+        }
+      })
+      .catch(() => {
+        if (timeoutId) clearTimeout(timeoutId);
+        updateStatus('red', 'Poor Conn');
+      });
+    }
+
+    measureLatency();
+    setInterval(measureLatency, 30000);
+  })();
+
 
   // Identify settings and configuration forms
   const settingsForms = [];

@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 {% block page_title %}Settings{% endblock %}
 {% block admin_content %}
-<form method="post" enctype="multipart/form-data" class="settings-stack">
+<form method="post" enctype="multipart/form-data" class="settings-stack" data-autosave-form>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <section class="panel form-grid premium-form">
     <div class="section-heading wide"><span><i class="fa-solid fa-school"></i></span><div><h2>School Branding</h2><p>These values update the public portal, admin area, and printable reports.</p></div></div>
@@ -72,69 +72,6 @@
     <label><i class="fa-solid fa-sun"></i> Light Mode<select name="ui_light_mode"><option value="on" {% if settings.ui_light_mode != 'off' %}selected{% endif %}>ON</option><option value="off" {% if settings.ui_light_mode == 'off' %}selected{% endif %}>OFF</option></select></label>
     <label><i class="fa-solid fa-compress"></i> Compact Mode<select name="ui_compact_mode"><option value="off" {% if settings.ui_compact_mode != 'on' %}selected{% endif %}>OFF</option><option value="on" {% if settings.ui_compact_mode == 'on' %}selected{% endif %}>ON</option></select></label>
     <label><i class="fa-solid fa-expand"></i> Comfortable Mode<select name="ui_comfortable_mode"><option value="on" {% if settings.ui_comfortable_mode != 'off' %}selected{% endif %}>ON</option><option value="off" {% if settings.ui_comfortable_mode == 'off' %}selected{% endif %}>OFF</option></select></label>
-  </section>
-
-  <section class="panel form-grid premium-form" id="loader-animation-settings">
-    <div class="section-heading wide"><span><i class="fa-solid fa-spinner"></i></span><div><h2>Customize Loading Animation</h2><p>Select, preview, and test system-wide animated spinners and page transition loaders.</p></div></div>
-    
-    <label class="span-2"><i class="fa-solid fa-wand-magic-sparkles"></i> Active Default Loader Design
-      <select name="admin_loader_design" id="admin_loader_design_select" onchange="previewSelectedLoader(this.value)">
-        <option value="" {% if not settings.admin_loader_design %}selected{% endif %}>🎲 Dynamic Random (Choose every session)</option>
-        <option value="1" {% if settings.admin_loader_design == '1' %}selected{% endif %}>Design 1 — Circular Ring</option>
-        <option value="2" {% if settings.admin_loader_design == '2' %}selected{% endif %}>Design 2 — Glow Bar</option>
-        <option value="3" {% if settings.admin_loader_design == '3' %}selected{% endif %}>Design 3 — Dual Ring Spinner</option>
-        <option value="4" {% if settings.admin_loader_design == '4' %}selected{% endif %}>Design 4 — Dot Pulse</option>
-        <option value="5" {% if settings.admin_loader_design == '5' %}selected{% endif %}>Design 5 — Liquid Fill</option>
-        <option value="6" {% if settings.admin_loader_design == '6' %}selected{% endif %}>Design 6 — Segmented Bars</option>
-        <option value="7" {% if settings.admin_loader_design == '7' %}selected{% endif %}>Design 7 — Minimal Badge</option>
-        <option value="8" {% if settings.admin_loader_design == '8' %}selected{% endif %}>Design 8 — Skeleton Pulse</option>
-        <option value="9" {% if settings.admin_loader_design == '9' %}selected{% endif %}>Design 9 — Orbit Loader</option>
-        <option value="10" {% if settings.admin_loader_design == '10' %}selected{% endif %}>Design 10 — Wave Bars</option>
-        <option value="11" {% if settings.admin_loader_design == '11' %}selected{% endif %}>Design 11 — Liquid Fill (Ocean Blue)</option>
-        <option value="12" {% if settings.admin_loader_design == '12' %}selected{% endif %}>Design 12 — Liquid Fill (Emerald)</option>
-        <option value="13" {% if settings.admin_loader_design == '13' %}selected{% endif %}>Design 13 — Liquid Fill (Purple)</option>
-        <option value="14" {% if settings.admin_loader_design == '14' %}selected{% endif %}>Design 14 — Liquid Fill (Golden)</option>
-        <option value="15" {% if settings.admin_loader_design == '15' %}selected{% endif %}>Design 15 — Liquid Fill (Lava Red)</option>
-        <option value="16" {% if settings.admin_loader_design == '16' %}selected{% endif %}>Design 16 — Dual Ring (Fire)</option>
-        <option value="17" {% if settings.admin_loader_design == '17' %}selected{% endif %}>Design 17 — Dual Ring (Cyber)</option>
-        <option value="18" {% if settings.admin_loader_design == '18' %}selected{% endif %}>Design 18 — Dual Ring (Forest)</option>
-        <option value="19" {% if settings.admin_loader_design == '19' %}selected{% endif %}>Design 19 — Dual Ring (Solar)</option>
-        <option value="20" {% if settings.admin_loader_design == '20' %}selected{% endif %}>Design 20 — Dual Ring (Royal)</option>
-        <option value="21" {% if settings.admin_loader_design == '21' %}selected{% endif %}>Design 21 — Gradient Ring Glow</option>
-        <option value="22" {% if settings.admin_loader_design == '22' %}selected{% endif %}>Design 22 — Neumorphic Bar</option>
-        <option value="23" {% if settings.admin_loader_design == '23' %}selected{% endif %}>Design 23 — Hexagon Spinner</option>
-        <option value="24" {% if settings.admin_loader_design == '24' %}selected{% endif %}>Design 24 — Orbiting Particles</option>
-        <option value="39" {% if settings.admin_loader_design == '39' %}selected{% endif %}>Design 39 — Half-Circle Gauge</option>
-        <option value="40" {% if settings.admin_loader_design == '40' %}selected{% endif %}>Design 40 — Constellation Loader</option>
-        <option value="41" {% if settings.admin_loader_design == '41' %}selected{% endif %}>Design 41 — Mathematical Symbol (Pi π)</option>
-        <option value="42" {% if settings.admin_loader_design == '42' %}selected{% endif %}>Design 42 — Sultan Royal Loading Badge</option>
-      </select>
-    </label>
-
-    <div class="span-2" style="display: flex; gap: 12px; align-items: center; margin-top: 8px;">
-      <button type="button" class="btn btn-outline" style="padding: 10px 20px; font-weight: 600;" onclick="testSelectedLoader()">
-        <i class="fa-solid fa-play" style="margin-right: 6px;"></i> Test Selected Animation (3 sec)
-      </button>
-      <script>
-        function previewSelectedLoader(val) {
-          if (val) {
-            window.SYSTEM_LOADER_DESIGN = parseInt(val, 10);
-            localStorage.setItem('admin_loader_design', val);
-          } else {
-            window.SYSTEM_LOADER_DESIGN = null;
-            localStorage.removeItem('admin_loader_design');
-          }
-        }
-        function testSelectedLoader() {
-          const select = document.getElementById('admin_loader_design_select');
-          const val = select ? parseInt(select.value, 10) : 42;
-          if (window.AdminLoader) {
-            window.AdminLoader.show(val || 42);
-            setTimeout(() => window.AdminLoader.hide(), 3000);
-          }
-        }
-      </script>
-    </div>
   </section>
 
   <section class="panel form-grid premium-form">
@@ -581,11 +518,14 @@
     <label><i class="fa-solid fa-copyright"></i> Print Footer Owner<input name="print_footer_owner" value="{{ settings.print_footer_owner }}"></label>
   </section>
 
-  <button class="floating-save premium"><i class="fa-solid fa-floppy-disk"></i> Save All Settings</button>
 </form>
 <p style="text-align: center; padding: 20px; color: var(--slate);">
   <i class="fa-solid fa-info-circle"></i> Grade Scale Management has been moved to <a href="{{ url_for('admin_advanced_results.grade_management') }}" style="color: var(--gold);">Results → Grade Management</a>
 </p>
+<div class="autosave-status" id="adminAutosaveStatus" aria-live="polite" aria-atomic="true">
+  <i class="fa-solid fa-cloud"></i><span>All changes saved</span>
+</div>
+<script src="{{ url_for('static', filename='js/admin-autosave.js') }}"></script>
 <script>
   (() => {
     const preview = document.getElementById("resultDashboardPreview");

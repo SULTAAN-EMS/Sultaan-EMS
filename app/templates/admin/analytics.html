@@ -358,6 +358,7 @@ function applyAnalyticsFilters() {
   if (sectionId) params.set('section_id', sectionId);
   if (subjectId) params.set('subject_id', subjectId);
 
+  if (window.AdminLoader) window.AdminLoader.show();
   window.location.href = `{{ url_for('admin_advanced_results.analytics') }}?${params.toString()}`;
 }
 

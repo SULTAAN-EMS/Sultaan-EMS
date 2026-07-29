@@ -1,9 +1,12 @@
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from datetime import datetime
+
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 
-from .models import User
+from .models import Setting, User
 from .audit import audit
 from . import db
+from .services import get_settings, validate_admin_password
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -30,6 +33,13 @@ def login():
                 flash("Teachers must use the dedicated Teacher Portal login.", "warning")
                 return redirect(url_for("teacher_portal.login"))
             login_user(user)
+            session_timeout = get_settings().get("admin_session_timeout_minutes", "60")
+            try:
+                session_timeout = max(5, min(1440, int(session_timeout)))
+            except (TypeError, ValueError):
+                session_timeout = 60
+            session["admin_last_activity"] = datetime.utcnow().isoformat()
+            session["admin_session_timeout_minutes"] = session_timeout
             audit("Login", f"User {username} logged in")
             db.session.commit()
             return redirect(request.args.get("next") or url_for("admin.dashboard"))
@@ -65,13 +75,48 @@ def change_password():
         confirm = request.form.get("confirm_password", "")
         if not current_user.check_password(current):
             flash("Current password is incorrect.", "danger")
-        elif len(new_password) < 8:
-            flash("Password must be at least 8 characters.", "danger")
-        elif new_password != confirm:
-            flash("Passwords do not match.", "danger")
         else:
-            current_user.set_password(new_password)
-            db.session.commit()
-            flash("Password changed successfully.", "success")
-            return redirect(url_for("admin.dashboard"))
-    return render_template("admin/change_password.html")
+            valid_password, password_error = validate_admin_password(new_password)
+            if not valid_password:
+                flash(password_error, "danger")
+            elif new_password != confirm:
+                flash("Passwords do not match.", "danger")
+            else:
+                current_user.set_password(new_password)
+                audit("Security", f"Changed password for {current_user.username}")
+                db.session.commit()
+                flash("Password changed successfully.", "success")
+                return redirect(url_for("auth.change_password"))
+    return render_template(
+        "admin/security.html",
+        security_settings=get_settings(),
+        can_manage_security=current_user.can_manage_users(),
+    )
+
+
+@auth_bp.route("/admin/security/settings", methods=["POST"])
+@login_required
+def save_security_settings():
+    if not current_user.can_manage_users():
+        abort(403)
+    payload = request.get_json(silent=True) or request.form
+    composition = str(payload.get("admin_password_composition", "letters_numbers"))
+    if composition not in {"letters", "numbers", "letters_numbers"}:
+        return jsonify({"success": False, "message": "Choose a valid password composition rule."}), 400
+    try:
+        minimum = max(6, min(32, int(payload.get("admin_password_min_length", 8))))
+        timeout = max(5, min(1440, int(payload.get("admin_session_timeout_minutes", 60))))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Enter valid security limits."}), 400
+    values = {
+        "admin_password_composition": composition,
+        "admin_password_min_length": str(minimum),
+        "admin_session_timeout_minutes": str(timeout),
+    }
+    for key, value in values.items():
+        setting = db.session.get(Setting, key) or Setting(key=key)
+        setting.value = value
+        db.session.add(setting)
+    audit("Security Settings", "Updated administrator password policy and session timeout")
+    db.session.commit()
+    return jsonify({"success": True, "message": "Security settings saved.", "settings": values})

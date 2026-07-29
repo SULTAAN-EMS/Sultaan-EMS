@@ -14,6 +14,16 @@ from .verification import verification_payload
 public_bp = Blueprint("public", __name__)
 
 
+@public_bp.route("/api/ping", methods=["GET", "HEAD"])
+def ping():
+    return jsonify(status="ok", timestamp=datetime.utcnow().isoformat()), 200
+
+
+@public_bp.route("/favicon.ico", methods=["GET", "HEAD"])
+def favicon():
+    return ("", 204)
+
+
 def incident_bool_setting(settings_dict, key, default=False):
     return str(settings_dict.get(key, "true" if default else "false")).lower() == "true"
 

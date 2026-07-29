@@ -1,5 +1,7 @@
-from flask import Flask, url_for
-from flask_login import LoginManager
+from datetime import datetime, timedelta
+
+from flask import Flask, flash, redirect, request, session, url_for
+from flask_login import LoginManager, current_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect
 
@@ -32,7 +34,7 @@ def create_app(config_class=Config):
 
     from .models import User, Setting
     from .permissions import can
-    from .services import DEFAULT_SETTINGS, format_academic_number, seed_grade_scales
+    from .services import format_academic_number, seed_grade_scales, seed_missing_settings
 
     @app.template_filter("academic_number")
     def academic_number_filter(value, settings=None):
@@ -62,6 +64,32 @@ def create_app(config_class=Config):
         response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         return response
+
+    @app.before_request
+    def enforce_admin_session_timeout():
+        """Enforce the owner-configured idle timeout for authenticated admin sessions."""
+        if request.endpoint in {"static", "auth.login", "auth.logout"} or not current_user.is_authenticated:
+            return None
+        timeout_setting = db.session.get(Setting, "admin_session_timeout_minutes")
+        try:
+            timeout_minutes = max(5, min(1440, int(timeout_setting.value if timeout_setting else 60)))
+        except (TypeError, ValueError):
+            timeout_minutes = 60
+        now = datetime.utcnow()
+        previous = session.get("admin_last_activity")
+        try:
+            last_activity = datetime.fromisoformat(previous) if previous else now
+        except (TypeError, ValueError):
+            last_activity = now
+        if now - last_activity > timedelta(minutes=timeout_minutes):
+            username = current_user.username
+            logout_user()
+            session.clear()
+            flash("Your security session expired. Please sign in again.", "warning")
+            app.logger.info("Admin session expired for %s", username)
+            return redirect(url_for("auth.login", next=request.url))
+        session["admin_last_activity"] = now.isoformat()
+        return None
 
     with app.app_context():
         try:
@@ -131,10 +159,8 @@ def create_app(config_class=Config):
         ensure_schema_compatibility()
 
         # seed missing settings only; never overwrite production values
-        if DEFAULT_SETTINGS:
-            for key, value in DEFAULT_SETTINGS.items():
-                if not db.session.get(Setting, key):
-                    db.session.add(Setting(key=key, value=value))
+        if seed_missing_settings:
+            seed_missing_settings()
             seed_grade_scales()
             from .teacher_services import seed_teacher_settings
 
@@ -274,7 +300,7 @@ def register_cli(app):
     import click
 
     from .models import AcademicYear, GradeScale, Setting, User
-    from .services import DEFAULT_SETTINGS, seed_grade_scales
+    from .services import seed_grade_scales, seed_missing_settings
 
     @app.cli.command("init-db")
     def init_db_command():
@@ -283,9 +309,7 @@ def register_cli(app):
 
         ensure_schema_compatibility()
 
-        for key, value in DEFAULT_SETTINGS.items():
-            if not db.session.get(Setting, key):
-                db.session.add(Setting(key=key, value=value))
+        seed_missing_settings()
 
         seed_grade_scales()
         from .teacher_services import seed_teacher_settings
