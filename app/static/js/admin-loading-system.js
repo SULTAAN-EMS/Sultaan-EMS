@@ -534,6 +534,11 @@
   function getOrPickDesignId(explicitDesignId) {
     if (explicitDesignId) return explicitDesignId;
 
+    var savedConfig = window.SYSTEM_LOADER_DESIGN || localStorage.getItem('admin_loader_design');
+    if (savedConfig && !isNaN(parseInt(savedConfig, 10)) && parseInt(savedConfig, 10) > 0) {
+      return parseInt(savedConfig, 10);
+    }
+
     var storedDesign = sessionStorage.getItem('admin_loader_design');
     var isStoredActive = sessionStorage.getItem('admin_loader_active') === 'true';
 

@@ -32,7 +32,13 @@
       <div class="rh-sub">{{ rh_school_motto }}</div>
     </div>
   </div>
-  <div class="rh-user"><span></span>{{ current_user.full_name or rh_label("hub.user.role", default="Maamule - Super Admin") }}</div>
+  <div style="display: flex; align-items: center; gap: 14px;">
+    <a href="{{ url_for('public.portal') }}" target="_blank" title="Single Student Result Portal" style="background: rgba(255, 255, 255, 0.15); color: #fff; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 10px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-size: 0.85rem; font-weight: 600; transition: all 0.2s ease;">
+      <i class="fa-solid fa-graduation-cap"></i>
+      <span>Single Student Portal</span>
+    </a>
+    <div class="rh-user"><span></span>{{ current_user.full_name or rh_label("hub.user.role", default="Maamule - Super Admin") }}</div>
+  </div>
 </div>
 
 <div class="rh-context">

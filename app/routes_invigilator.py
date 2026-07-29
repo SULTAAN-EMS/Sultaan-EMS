@@ -244,9 +244,7 @@ def login():
             next_url = session.pop("invigilator_next", None)
             if next_url:
                 return redirect(next_url)
-            flash("Please scan a student QR code to continue to an incident workflow.", "info")
-            logout_invigilator()
-            return redirect(url_for("invigilator.login"))
+            return redirect(url_for("public.qr_landing"))
         else:
             flash("Invalid username or password.", "danger")
             record_login_history(invigilator, "Failed", failure_reason="Invalid password")

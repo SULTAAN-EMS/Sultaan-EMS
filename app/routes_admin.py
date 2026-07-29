@@ -602,6 +602,7 @@ def settings():
             "primary_color",
             "secondary_color",
             "sidebar_color",
+            "admin_loader_design",
             "visible_cards",
             "homepage_widgets",
             "search_footer_text",
