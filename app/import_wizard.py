@@ -1,7 +1,9 @@
 import re
 from collections import Counter
+from datetime import datetime
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from sqlalchemy.dialects.mysql import insert as mysql_insert
 from . import db
 from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, Exam, Result, SchoolClass, Student, Subject
 
@@ -558,20 +560,11 @@ def process_result_import(file):
                     db.session.flush()
                     existing_exams[exam_key] = exam_obj
 
-        # Bulk fetch existing Result records for all valid students and exams
-        student_ids = list({entry["student"].id for entry in valid_row_entries if entry.get("student")})
-        exam_ids = list({existing_exams[(entry["exam_name"].lower().strip(), entry["year"].id)].id for entry in valid_row_entries if entry.get("year") and entry.get("exam_name")})
-
-        existing_results_map = {}
-        if student_ids and exam_ids:
-            existing_results = Result.query.filter(
-                Result.student_id.in_(student_ids),
-                Result.exam_id.in_(exam_ids)
-            ).all()
-            for r in existing_results:
-                existing_results_map[(r.student_id, r.exam_id, r.subject_id)] = r
-
-        results_to_add = []
+        # A class template can contain hundreds of marks.  Sending one ORM write
+        # per mark is too slow for a remote MySQL instance and can exceed
+        # Gunicorn's request timeout.  The unique result key lets MySQL apply the
+        # full import atomically as one upsert statement instead.
+        result_rows = []
         for entry in valid_row_entries:
             row_idx = entry["row_idx"]
             st = entry["student"]
@@ -586,30 +579,56 @@ def process_result_import(file):
                 exam_key = (ex_name.lower().strip(), yr.id)
                 exam_obj = existing_exams[exam_key]
 
+                now = datetime.utcnow()
                 for subj_obj, score_num in marks:
-                    res_key = (st.id, exam_obj.id, subj_obj.id)
-                    res = existing_results_map.get(res_key)
-                    if not res:
-                        res = Result(
-                            student_id=st.id,
-                            exam_id=exam_obj.id,
-                            subject_id=subj_obj.id,
-                            score=score_num,
-                            is_published=True
-                        )
-                        results_to_add.append(res)
-                        existing_results_map[res_key] = res
-                    else:
-                        res.score = score_num
-                        res.is_published = True
+                    result_rows.append({
+                        "student_id": st.id,
+                        "exam_id": exam_obj.id,
+                        "subject_id": subj_obj.id,
+                        "score": score_num,
+                        "is_published": True,
+                        "created_at": now,
+                        "updated_at": now,
+                    })
 
                 success_count += 1
             except Exception as ex:
                 failed_count += 1
                 failed_errors.append(f"Row {row_idx}: Error saving results - {str(ex)}")
 
-        if results_to_add:
-            db.session.add_all(results_to_add)
+        if result_rows:
+            if db.session.get_bind().dialect.name == "mysql":
+                statement = mysql_insert(Result.__table__).values(result_rows)
+                db.session.execute(statement.on_duplicate_key_update(
+                    score=statement.inserted.score,
+                    is_published=statement.inserted.is_published,
+                    updated_at=statement.inserted.updated_at,
+                ))
+            else:
+                # Keep local and non-MySQL deployments compatible while retaining
+                # a bounded number of reads and writes.
+                student_ids = list({row["student_id"] for row in result_rows})
+                exam_ids = list({row["exam_id"] for row in result_rows})
+                existing_results = Result.query.filter(
+                    Result.student_id.in_(student_ids),
+                    Result.exam_id.in_(exam_ids),
+                ).all()
+                existing_results_map = {
+                    (result.student_id, result.exam_id, result.subject_id): result
+                    for result in existing_results
+                }
+                new_results = []
+                for row in result_rows:
+                    result_key = (row["student_id"], row["exam_id"], row["subject_id"])
+                    result = existing_results_map.get(result_key)
+                    if result:
+                        result.score = row["score"]
+                        result.is_published = True
+                        result.updated_at = row["updated_at"]
+                    else:
+                        new_results.append(Result(**row))
+                if new_results:
+                    db.session.add_all(new_results)
 
         try:
             db.session.commit()
