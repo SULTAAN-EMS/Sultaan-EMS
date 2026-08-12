@@ -76,6 +76,26 @@ def _safe_database_diagnostic(raw_url, normalised_url):
     print(message, file=sys.stderr, flush=True)
 
 
+def _validate_database_uri(database_url):
+    """Reject local-file database URLs in a deployed process.
+
+    A configured ``DATABASE_URL`` must not be allowed to disguise a SQLite
+    fallback in production. This also produces an actionable, credential-free
+    message when a dashboard variable was accidentally saved with a local URL.
+    """
+    if not database_url or not _is_production_environment():
+        return database_url
+
+    scheme = urlsplit(database_url).scheme.lower()
+    dialect = scheme.split("+", 1)[0]
+    if dialect not in {"postgresql", "mysql"}:
+        raise RuntimeError(
+            "CRITICAL CONFIGURATION ERROR: DATABASE_URL in production must use a PostgreSQL or MySQL URL "
+            "(postgresql://, postgres://, or mysql://). Local SQLite URLs are not permitted on Render/Railway."
+        )
+    return database_url
+
+
 def _get_database_uri():
     # Read the current process environment after dotenv has loaded local-only
     # values. Render/Railway values win because load_dotenv does not override.
@@ -83,7 +103,7 @@ def _get_database_uri():
     database_url = _normalise_database_url(raw_url)
     _safe_database_diagnostic(raw_url.strip(), database_url)
     if database_url:
-        return database_url
+        return _validate_database_uri(database_url)
 
     if _is_production_environment():
         raise RuntimeError(
