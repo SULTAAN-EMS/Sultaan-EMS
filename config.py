@@ -15,9 +15,18 @@ def _is_production_environment():
     explicit = (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or os.getenv("FLASK_ENV") or os.getenv("ENV") or "").strip().lower()
     if explicit in {"production", "prod"}:
         return True
-    # Render/Railway set these process markers in deployed services. They are
-    # only a fallback signal; DATABASE_URL itself remains the source of truth.
-    if os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_ID"):
+    # Render/Railway set service identifiers in deployed processes. These are
+    # only deployment markers; DATABASE_URL itself remains the source of truth.
+    # `RENDER_SERVICE_ID` is Render's stable service-level marker. The shorter
+    # `RENDER` flag is not guaranteed to be present on every Render runtime.
+    if any(os.getenv(marker) for marker in (
+        "RENDER",
+        "RENDER_SERVICE_ID",
+        "RENDER_SERVICE_NAME",
+        "RENDER_EXTERNAL_URL",
+        "RAILWAY_ENVIRONMENT",
+        "RAILWAY_SERVICE_ID",
+    )):
         return True
     # Render's service does not guarantee a RENDER marker. Gunicorn is the
     # production WSGI entrypoint in this project, while local development is
@@ -50,15 +59,21 @@ def _normalise_database_url(raw_url):
 def _safe_database_diagnostic(raw_url, normalised_url):
     """Log database configuration without ever logging credentials."""
     if not raw_url:
-        logger.error("DATABASE_URL detected: no; database configuration is absent")
+        message = "DATABASE_URL detected: no; database configuration is absent"
+        logger.error(message)
+        # Config is imported before Flask/Gunicorn configures application
+        # logging, so also write this safe, credential-free diagnostic to
+        # stderr for the provider's startup log.
+        print(message, file=sys.stderr, flush=True)
         return
     parsed = urlsplit(normalised_url)
     scheme = parsed.scheme or "unknown"
     dialect = scheme.split("+", 1)[0]
-    logger.info(
-        "DATABASE_URL detected: yes; scheme: %s; host: configured; password: hidden",
-        dialect,
-    )
+    message = "DATABASE_URL detected: yes; scheme: %s; host: configured; password: hidden" % dialect
+    logger.info(message)
+    # Do not print parsed host/user/query values. The message intentionally
+    # confirms only presence and the selected SQLAlchemy dialect.
+    print(message, file=sys.stderr, flush=True)
 
 
 def _get_database_uri():
