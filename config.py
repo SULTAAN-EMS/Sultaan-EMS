@@ -1,10 +1,13 @@
 import os
+import logging
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
+logger = logging.getLogger(__name__)
 
 def _is_production_environment():
     """Return True only for an explicitly production-like process."""
@@ -37,10 +40,26 @@ def _normalise_database_url(raw_url):
     return raw_url
 
 
+def _safe_database_diagnostic(raw_url, normalised_url):
+    """Log database configuration without ever logging credentials."""
+    if not raw_url:
+        logger.error("DATABASE_URL detected: no; database configuration is absent")
+        return
+    parsed = urlsplit(normalised_url)
+    scheme = parsed.scheme or "unknown"
+    dialect = scheme.split("+", 1)[0]
+    logger.info(
+        "DATABASE_URL detected: yes; scheme: %s; host: configured; password: hidden",
+        dialect,
+    )
+
+
 def _get_database_uri():
     # Read the current process environment after dotenv has loaded local-only
     # values. Render/Railway values win because load_dotenv does not override.
-    database_url = _normalise_database_url(os.getenv("DATABASE_URL"))
+    raw_url = os.getenv("DATABASE_URL", "")
+    database_url = _normalise_database_url(raw_url)
+    _safe_database_diagnostic(raw_url.strip(), database_url)
     if database_url:
         return database_url
 
