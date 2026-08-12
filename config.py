@@ -6,43 +6,45 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# Local dev only (Render ignores .env anyway)
-load_dotenv(BASE_DIR / ".env")
+def _is_production_environment():
+    """Return True only for an explicitly production-like process."""
+    explicit = (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or os.getenv("FLASK_ENV") or os.getenv("ENV") or "").strip().lower()
+    if explicit in {"production", "prod"}:
+        return True
+    # Render/Railway set these process markers in deployed services. They are
+    # only a fallback signal; DATABASE_URL itself remains the source of truth.
+    return bool(os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_ID"))
 
 
-def _get_database_uri():
-    raw_url = os.getenv("DATABASE_URL", "").strip()
+# `.env` is strictly a local-development convenience. A production process
+# must never obtain its database configuration from a checked-out local file.
+if not _is_production_environment():
+    load_dotenv(BASE_DIR / ".env")
+
+
+def _normalise_database_url(raw_url):
+    """Convert supported provider URLs to installed SQLAlchemy drivers."""
+    raw_url = (raw_url or "").strip()
     if (raw_url.startswith('"') and raw_url.endswith('"')) or (raw_url.startswith("'") and raw_url.endswith("'")):
         raw_url = raw_url[1:-1].strip()
 
-    if raw_url:
-        if raw_url.startswith("postgres://"):
-            raw_url = raw_url.replace("postgres://", "postgresql://", 1)
+    if raw_url.startswith("postgres://"):
+        return raw_url.replace("postgres://", "postgresql+psycopg://", 1)
+    if raw_url.startswith("postgresql://"):
+        return raw_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    if raw_url.startswith("mysql://"):
+        return raw_url.replace("mysql://", "mysql+pymysql://", 1)
+    return raw_url
 
-        if raw_url.startswith("postgresql://") and not raw_url.startswith("postgresql+"):
-            try:
-                import psycopg  # noqa: F401
-                try:
-                    import psycopg2  # noqa: F401
-                except ImportError:
-                    raw_url = raw_url.replace("postgresql://", "postgresql+psycopg://", 1)
-            except ImportError:
-                pass
-        elif raw_url.startswith("mysql://"):
-            raw_url = raw_url.replace("mysql://", "mysql+pymysql://", 1)
 
-        return raw_url
+def _get_database_uri():
+    # Read the current process environment after dotenv has loaded local-only
+    # values. Render/Railway values win because load_dotenv does not override.
+    database_url = _normalise_database_url(os.getenv("DATABASE_URL"))
+    if database_url:
+        return database_url
 
-    is_production = any([
-        os.getenv("RENDER"),
-        os.getenv("RAILWAY_ENVIRONMENT"),
-        os.getenv("RAILWAY_SERVICE_ID"),
-        os.getenv("FLASK_ENV") == "production",
-        os.getenv("ENVIRONMENT") == "production",
-        os.getenv("ENV") == "production",
-    ])
-
-    if is_production:
+    if _is_production_environment():
         raise RuntimeError(
             "CRITICAL CONFIGURATION ERROR: DATABASE_URL environment variable is missing in production. "
             "Production deployments (Render / Railway) require a valid PostgreSQL or MySQL DATABASE_URL. "
