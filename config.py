@@ -14,24 +14,31 @@ class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-change-me")
 
     # IMPORTANT: must come ONLY from environment, with SQLite fallback for local dev
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
+    _db_url = os.environ.get(
         "DATABASE_URL",
         f"sqlite:///{BASE_DIR / 'instance' / 'visual_review.db'}"
     )
+    if _db_url:
+        if _db_url.startswith("postgres://"):
+            _db_url = _db_url.replace("postgres://", "postgresql://", 1)
+        elif _db_url.startswith("mysql://"):
+            _db_url = _db_url.replace("mysql://", "mysql+pymysql://", 1)
+
+    SQLALCHEMY_DATABASE_URI = _db_url
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
-    # Default SQLite options for local development
+    # Default SQLite / MySQL / PostgreSQL options for production (Railway + Render)
     if SQLALCHEMY_DATABASE_URI.startswith("sqlite"):
         SQLALCHEMY_ENGINE_OPTIONS = {
             "pool_pre_ping": True,
             "pool_recycle": 1800,
         }
-    else:
-        # MySQL/PostgreSQL options for production (Render + Railway)
+    elif SQLALCHEMY_DATABASE_URI.startswith("mysql"):
+        # MySQL options for production (Render + Railway)
         SQLALCHEMY_ENGINE_OPTIONS = {
             "pool_pre_ping": True,
-            "pool_recycle": 600,  # Recycle connections every 10 minutes to handle Railway MySQL timeouts (Railway has ~10 min idle timeout)
+            "pool_recycle": 600,  # Recycle connections every 10 minutes to handle Railway MySQL timeouts
             "pool_use_lifo": True,
             "pool_size": 5,
             "max_overflow": 10,
@@ -43,6 +50,16 @@ class Config:
                 "write_timeout": 30,
                 "charset": "utf8mb4",
             },
+        }
+    else:
+        # PostgreSQL / default options
+        SQLALCHEMY_ENGINE_OPTIONS = {
+            "pool_pre_ping": True,
+            "pool_recycle": 600,
+            "pool_use_lifo": True,
+            "pool_size": 5,
+            "max_overflow": 10,
+            "pool_timeout": 30,
         }
 
     WTF_CSRF_TIME_LIMIT = None
