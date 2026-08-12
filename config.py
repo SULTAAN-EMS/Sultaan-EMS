@@ -10,23 +10,54 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 
+def _get_database_uri():
+    raw_url = os.getenv("DATABASE_URL", "").strip()
+    if (raw_url.startswith('"') and raw_url.endswith('"')) or (raw_url.startswith("'") and raw_url.endswith("'")):
+        raw_url = raw_url[1:-1].strip()
+
+    if raw_url:
+        if raw_url.startswith("postgres://"):
+            raw_url = raw_url.replace("postgres://", "postgresql://", 1)
+
+        if raw_url.startswith("postgresql://") and not raw_url.startswith("postgresql+"):
+            try:
+                import psycopg  # noqa: F401
+                try:
+                    import psycopg2  # noqa: F401
+                except ImportError:
+                    raw_url = raw_url.replace("postgresql://", "postgresql+psycopg://", 1)
+            except ImportError:
+                pass
+        elif raw_url.startswith("mysql://"):
+            raw_url = raw_url.replace("mysql://", "mysql+pymysql://", 1)
+
+        return raw_url
+
+    is_production = any([
+        os.getenv("RENDER"),
+        os.getenv("RAILWAY_ENVIRONMENT"),
+        os.getenv("RAILWAY_SERVICE_ID"),
+        os.getenv("FLASK_ENV") == "production",
+        os.getenv("ENVIRONMENT") == "production",
+        os.getenv("ENV") == "production",
+    ])
+
+    if is_production:
+        raise RuntimeError(
+            "CRITICAL CONFIGURATION ERROR: DATABASE_URL environment variable is missing in production. "
+            "Production deployments (Render / Railway) require a valid PostgreSQL or MySQL DATABASE_URL. "
+            "Fallback to local SQLite is disabled in production to prevent read-only filesystem errors."
+        )
+
+    instance_dir = BASE_DIR / "instance"
+    instance_dir.mkdir(parents=True, exist_ok=True)
+    return f"sqlite:///{instance_dir / 'visual_review.db'}"
+
+
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-change-me")
 
-    # IMPORTANT: must come ONLY from environment, with SQLite fallback for local dev
-    _db_url = os.environ.get(
-        "DATABASE_URL",
-        f"sqlite:///{BASE_DIR / 'instance' / 'visual_review.db'}"
-    )
-    if _db_url:
-        if _db_url.startswith("postgres://"):
-            _db_url = _db_url.replace("postgres://", "postgresql+psycopg://", 1)
-        elif _db_url.startswith("postgresql://"):
-            _db_url = _db_url.replace("postgresql://", "postgresql+psycopg://", 1)
-        elif _db_url.startswith("mysql://"):
-            _db_url = _db_url.replace("mysql://", "mysql+pymysql://", 1)
-
-    SQLALCHEMY_DATABASE_URI = _db_url
+    SQLALCHEMY_DATABASE_URI = _get_database_uri()
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
