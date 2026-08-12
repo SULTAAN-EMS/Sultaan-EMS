@@ -20,7 +20,11 @@ class User(UserMixin, TimestampMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False, index=True)
     full_name = db.Column(db.String(150), nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.Enum("super_admin", "admin", "staff"), default="admin", nullable=False)
+    role = db.Column(
+        db.Enum("super_admin", "admin", "staff", name="user_role_enum"),
+        default="admin",
+        nullable=False,
+    )
     permissions = db.Column(db.Text)
     photo_path = db.Column(db.String(255))
     is_active = db.Column(db.Boolean, default=True, nullable=False)
@@ -340,7 +344,12 @@ class IdCardIssue(TimestampMixin, db.Model):
     academic_year_id = db.Column(db.Integer, db.ForeignKey("academic_years.id"), nullable=False, index=True)
     issue_date = db.Column(db.Date, nullable=False)
     expiry_date = db.Column(db.Date)
-    status = db.Column(db.Enum("Active", "Inactive", "Expired", "Blocked"), default="Active", nullable=False, index=True)
+    status = db.Column(
+        db.Enum("Active", "Inactive", "Expired", "Blocked", name="id_card_issue_status_enum"),
+        default="Active",
+        nullable=False,
+        index=True,
+    )
     template_name = db.Column(db.String(80), default="default", nullable=False)
 
     student = db.relationship("Student")
@@ -390,18 +399,29 @@ class Teacher(TimestampMixin, db.Model):
     teacher_id = db.Column(db.String(50), unique=True, nullable=False, index=True)
     teacher_code = db.Column(db.String(50), unique=True, nullable=False, index=True)
     full_name = db.Column(db.String(180), nullable=False)
-    gender = db.Column(db.Enum("Male", "Female", "Other"), nullable=True)
+    gender = db.Column(db.Enum("Male", "Female", "Other", name="teacher_gender_enum"), nullable=True)
     phone = db.Column(db.String(40))
     email = db.Column(db.String(120))
     address = db.Column(db.Text)
     emergency_contact = db.Column(db.String(180))
     employment_date = db.Column(db.Date)
-    employment_type = db.Column(db.Enum("Full Time", "Part Time", "Contract"), default="Full Time", nullable=False)
+    employment_type = db.Column(
+        db.Enum("Full Time", "Part Time", "Contract", name="teacher_employment_type_enum"),
+        default="Full Time",
+        nullable=False,
+    )
     qualification = db.Column(db.String(255))
     years_experience = db.Column(db.Integer, default=0, nullable=False)
     department = db.Column(db.String(120))
-    employment_status = db.Column(db.Enum("Active", "Inactive"), default="Active", nullable=False)
-    school_level = db.Column(db.Enum("Primary", "Middle", "Secondary", "High School"), nullable=True)
+    employment_status = db.Column(
+        db.Enum("Active", "Inactive", name="teacher_employment_status_enum"),
+        default="Active",
+        nullable=False,
+    )
+    school_level = db.Column(
+        db.Enum("Primary", "Middle", "Secondary", "High School", name="teacher_school_level_enum"),
+        nullable=True,
+    )
     photo_path = db.Column(db.String(255))
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), unique=True)
     force_password_change = db.Column(db.Boolean, default=False, nullable=False)
@@ -513,7 +533,13 @@ class IncidentReport(TimestampMixin, db.Model):
     signature_data = db.Column(db.Text)
     
     status = db.Column(
-        db.Enum("Pending Review", "Under Investigation", "Resolved", "Rejected"),
+        db.Enum(
+            "Pending Review",
+            "Under Investigation",
+            "Resolved",
+            "Rejected",
+            name="incident_report_status_enum",
+        ),
         default="Pending Review",
         nullable=False,
         index=True
@@ -561,14 +587,20 @@ class ExamInvigilator(TimestampMixin, db.Model):
     mobile_number = db.Column(db.String(40))
     signature_data = db.Column(db.Text)
     role = db.Column(
-        db.Enum("Invigilator", "Supervisor", "Chief Invigilator", "Administrator"),
+        db.Enum(
+            "Invigilator",
+            "Supervisor",
+            "Chief Invigilator",
+            "Administrator",
+            name="exam_invigilator_role_enum",
+        ),
         default="Invigilator",
         nullable=False
     )
     school = db.Column(db.String(180))
     notes = db.Column(db.Text)
     status = db.Column(
-        db.Enum("Active", "Inactive", "Locked"),
+        db.Enum("Active", "Inactive", "Locked", name="exam_invigilator_status_enum"),
         default="Active",
         nullable=False,
         index=True
@@ -609,7 +641,7 @@ class InvigilatorLoginHistory(TimestampMixin, db.Model):
     ip_address = db.Column(db.String(45))
     user_agent = db.Column(db.String(255))
     login_status = db.Column(
-        db.Enum("Success", "Failed", "Locked", "Expired"),
+        db.Enum("Success", "Failed", "Locked", "Expired", name="invigilator_login_status_enum"),
        default="Success",
         nullable=False
     )
@@ -625,7 +657,7 @@ class IncidentReportSettings(TimestampMixin, db.Model):
     setting_key = db.Column(db.String(100), unique=True, nullable=False, index=True)
     setting_value = db.Column(db.Text)
     setting_type = db.Column(
-        db.Enum("boolean", "string", "integer", "json"),
+        db.Enum("boolean", "string", "integer", "json", name="incident_setting_type_enum"),
         default="string",
         nullable=False
     )
