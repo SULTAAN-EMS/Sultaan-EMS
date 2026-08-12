@@ -1,5 +1,6 @@
 import os
 import logging
+import sys
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -16,7 +17,13 @@ def _is_production_environment():
         return True
     # Render/Railway set these process markers in deployed services. They are
     # only a fallback signal; DATABASE_URL itself remains the source of truth.
-    return bool(os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_ID"))
+    if os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_ID"):
+        return True
+    # Render's service does not guarantee a RENDER marker. Gunicorn is the
+    # production WSGI entrypoint in this project, while local development is
+    # started through `python run.py` or the Flask CLI.
+    executable = Path(sys.argv[0]).name.lower()
+    return executable.startswith("gunicorn")
 
 
 # `.env` is strictly a local-development convenience. A production process
