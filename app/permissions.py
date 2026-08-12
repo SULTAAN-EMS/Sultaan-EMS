@@ -30,6 +30,7 @@ PERMISSIONS = [
     ("backup", "Backup"),
     ("restore", "Restore"),
     ("manage_academic_structure", "System Setup"),
+    ("seat_arrangement", "Seat Arrangement"),
 ]
 
 ENDPOINT_PERMISSIONS = {
@@ -120,6 +121,29 @@ ENDPOINT_PERMISSIONS = {
     "academic_structure.academic_sections": "manage_academic_structure",
     "academic_structure.academic_section_form": "manage_academic_structure",
     "academic_structure.delete_academic_section": "manage_academic_structure",
+    "seat_arrangement.index": "seat_arrangement",
+    "seat_arrangement.hall_list": "seat_arrangement",
+    "seat_arrangement.hall_form": "seat_arrangement",
+    "seat_arrangement.delete_hall": "seat_arrangement",
+    "seat_arrangement.builder": "seat_arrangement",
+    "seat_arrangement.generate": "seat_arrangement",
+    "seat_arrangement.optimize": "seat_arrangement",
+    "seat_arrangement.save": "seat_arrangement",
+    "seat_arrangement.replace_seat": "seat_arrangement",
+    "seat_arrangement.print": ("seat_arrangement", "print"),
+    "seat_mixer.index": "seat_arrangement",
+    "seat_mixer.api_create_hall": "seat_arrangement",
+    "seat_mixer.api_add_version": "seat_arrangement",
+    "seat_mixer.api_versions": "seat_arrangement",
+    "seat_mixer.api_students": "seat_arrangement",
+    "seat_mixer.api_version_data": "seat_arrangement",
+    "seat_mixer.api_save": "seat_arrangement",
+    "seat_mixer.api_version_history": "seat_arrangement",
+    "seat_mixer.api_history_snapshot": "seat_arrangement",
+    "seat_mixer.api_restore_history_snapshot": "seat_arrangement",
+    "seat_mixer.api_delete_history_snapshot": "seat_arrangement",
+    "seat_mixer.api_class_students": "seat_arrangement",
+    "seat_mixer.print_arrangement": ("seat_arrangement", "print"),
 }
 
 

@@ -280,19 +280,26 @@ class AttendanceRecord(TimestampMixin, db.Model):
     student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     academic_year_id = db.Column(db.Integer, db.ForeignKey("academic_years.id"), nullable=False, index=True)
     
-    # Legacy field for backward compatibility
+    # Hall Exam Attendance fields
+    exam_hall_id = db.Column(db.Integer, db.ForeignKey("exam_halls.id", ondelete="CASCADE"), nullable=True, index=True)
+    subject_id = db.Column(db.Integer, db.ForeignKey("subjects.id", ondelete="CASCADE"), nullable=True, index=True)
+    # New attendance is scoped to the scheduled exam sitting.  This remains
+    # nullable so historical records created before timetable support stay valid.
+    exam_session_id = db.Column(db.Integer, db.ForeignKey("exam_sessions.id", ondelete="CASCADE"), nullable=True, index=True)
+    exam_type_id = db.Column(db.Integer, db.ForeignKey("exam_types.id", ondelete="SET NULL"), nullable=True, index=True)
+    recorded_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    # Legacy fields for backward compatibility
     class_id = db.Column(db.Integer, db.ForeignKey("school_classes.id"), nullable=True, index=True)
-    
-    # New academic hierarchy fields
     academic_level_id = db.Column(db.Integer, db.ForeignKey("academic_levels.id"), nullable=True)
     academic_class_id = db.Column(db.Integer, db.ForeignKey("academic_classes.id"), nullable=True)
     academic_section_id = db.Column(db.Integer, db.ForeignKey("academic_sections.id"), nullable=True)
-    
     exam_id = db.Column(db.Integer, db.ForeignKey("exams.id", ondelete="SET NULL"), index=True)
-    attendance_date = db.Column(db.Date, nullable=False, index=True)
+    attendance_date = db.Column(db.Date, default=datetime.utcnow, nullable=False, index=True)
+    
     status = db.Column(
-        db.Enum("Present", "Absent", "Late", "Excused", "Medical Leave", "Blocked"),
-        default="Present",
+        db.String(50),
+        default="present",
         nullable=False,
         index=True,
     )
@@ -307,6 +314,21 @@ class AttendanceRecord(TimestampMixin, db.Model):
     academic_section = db.relationship("AcademicSection")
     exam = db.relationship("Exam")
     marked_by = db.relationship("User")
+    
+    exam_hall = db.relationship("ExamHall")
+    subject = db.relationship("Subject")
+    exam_session = db.relationship("ExamSession")
+    exam_type = db.relationship("ExamType")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "student_id",
+            "exam_hall_id",
+            "subject_id",
+            "exam_session_id",
+            name="uq_student_hall_subject_session_attendance",
+        ),
+    )
 
 
 class IdCardIssue(TimestampMixin, db.Model):
@@ -623,4 +645,258 @@ class LabelTranslation(TimestampMixin, db.Model):
     
     __table_args__ = (
         db.UniqueConstraint('label_key', 'language_code', name='uq_label_language'),
+    )
+
+
+class ExamType(TimestampMixin, db.Model):
+    """Exam types (e.g. 1st Exam, 2nd Exam, Final Exam) per academic year"""
+    __tablename__ = "exam_types"
+
+    id = db.Column(db.Integer, primary_key=True)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey("academic_years.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    academic_year = db.relationship("AcademicYear", backref=db.backref("exam_types", cascade="all, delete-orphan"))
+
+    __table_args__ = (
+        UniqueConstraint("academic_year_id", "name", name="uq_exam_type_year_name"),
+    )
+
+
+class ExamSession(TimestampMixin, db.Model):
+    """One scheduled sitting within an academic-year examination."""
+    __tablename__ = "exam_sessions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    academic_year_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_years.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Results Hub's Exam is authoritative for new configurations.  The
+    # legacy ExamType link keeps older halls and records compatible.
+    exam_id = db.Column(db.Integer, db.ForeignKey("exams.id", ondelete="CASCADE"), nullable=True, index=True)
+    exam_type_id = db.Column(db.Integer, db.ForeignKey("exam_types.id", ondelete="CASCADE"), nullable=True, index=True)
+    session_date = db.Column("date", db.Date, nullable=False, index=True)
+    sitting_label = db.Column(db.String(120), nullable=False)
+    session_time = db.Column("time", db.Time, nullable=True)
+
+    academic_year = db.relationship("AcademicYear")
+    exam = db.relationship("Exam")
+    exam_type = db.relationship("ExamType")
+    subject_assignments = db.relationship(
+        "ExamSessionSubject",
+        back_populates="exam_session",
+        cascade="all, delete-orphan",
+        order_by="ExamSessionSubject.id",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "academic_year_id",
+            "exam_id",
+            "exam_type_id",
+            "date",
+            "sitting_label",
+            "time",
+            name="uq_exam_session_scope_sitting",
+        ),
+    )
+
+
+class ExamSessionSubject(TimestampMixin, db.Model):
+    """A level-specific subject scheduled inside one exam sitting."""
+    __tablename__ = "exam_session_subjects"
+
+    id = db.Column(db.Integer, primary_key=True)
+    exam_session_id = db.Column(
+        db.Integer,
+        db.ForeignKey("exam_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    academic_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_levels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    subject_id = db.Column(
+        db.Integer,
+        db.ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    exam_session = db.relationship("ExamSession", back_populates="subject_assignments")
+    academic_level = db.relationship("AcademicLevel")
+    subject = db.relationship("Subject")
+
+    __table_args__ = (
+        UniqueConstraint("exam_session_id", "subject_id", name="uq_exam_session_subject"),
+    )
+
+
+class ExamHall(TimestampMixin, db.Model):
+    """Model for exam halls/rooms where seating arrangements and hall exams are held"""
+    __tablename__ = "exam_halls"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    code = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    description = db.Column(db.String(255))
+    capacity = db.Column(db.Integer, default=0)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+
+    # Scoping for Hall Exams
+    # Canonical Results Hub Setup exam relationship. ``exam_type_id`` remains
+    # for backward compatibility with older hall records.
+    exam_id = db.Column(db.Integer, db.ForeignKey("exams.id", ondelete="SET NULL"), nullable=True, index=True)
+    exam_type_id = db.Column(db.Integer, db.ForeignKey("exam_types.id", ondelete="SET NULL"), nullable=True, index=True)
+    academic_class_id = db.Column(db.Integer, db.ForeignKey("academic_classes.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Seat Mixer v2: time window for active/expired status
+    start_time = db.Column(db.DateTime, nullable=True)
+    end_time = db.Column(db.DateTime, nullable=True)
+
+    exam = db.relationship("Exam", backref=db.backref("hall_exams", lazy="dynamic"))
+    exam_type = db.relationship("ExamType", backref=db.backref("legacy_halls", lazy="dynamic"))
+    academic_class = db.relationship("AcademicClass", backref=db.backref("halls", lazy="dynamic"))
+
+    versions = db.relationship(
+        "ExamHallVersion",
+        backref="hall",
+        cascade="all, delete-orphan",
+        order_by="ExamHallVersion.version_number",
+    )
+
+
+class ExamHallSubject(TimestampMixin, db.Model):
+    """Subjects belonging to a given exam hall's exam"""
+    __tablename__ = "exam_hall_subjects"
+
+    id = db.Column(db.Integer, primary_key=True)
+    exam_hall_id = db.Column(db.Integer, db.ForeignKey("exam_halls.id", ondelete="CASCADE"), nullable=False, index=True)
+    subject_id = db.Column(db.Integer, db.ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    exam_hall = db.relationship("ExamHall", backref=db.backref("hall_subjects", cascade="all, delete-orphan"))
+    subject = db.relationship("Subject")
+
+    __table_args__ = (
+        UniqueConstraint("exam_hall_id", "subject_id", name="uq_hall_subject"),
+    )
+
+
+class ExamHallEnrollment(TimestampMixin, db.Model):
+    """Students assigned to a specific hall exam"""
+    __tablename__ = "exam_hall_enrollments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    exam_hall_id = db.Column(db.Integer, db.ForeignKey("exam_halls.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    exam_hall = db.relationship("ExamHall", backref=db.backref("enrollments", cascade="all, delete-orphan"))
+    student = db.relationship("Student", backref=db.backref("hall_enrollments", cascade="all, delete-orphan"))
+
+    __table_args__ = (
+        UniqueConstraint("exam_hall_id", "student_id", name="uq_hall_student_enrollment"),
+    )
+
+
+class ExamHallVersion(TimestampMixin, db.Model):
+    """Independent version of an Exam Hall — each has its own config, classes, and seat assignments."""
+    __tablename__ = "exam_hall_versions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    exam_hall_id = db.Column(db.Integer, db.ForeignKey("exam_halls.id", ondelete="CASCADE"), nullable=False, index=True)
+    version_number = db.Column(db.Integer, nullable=False)
+    label = db.Column(db.String(100), nullable=False)
+
+
+class SeatMixerAssignment(TimestampMixin, db.Model):
+    """Seat assignments scoped to an Exam Hall Version (Seat Mixer v2)."""
+    __tablename__ = "seat_mixer_assignments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    version_id = db.Column(db.Integer, db.ForeignKey("exam_hall_versions.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    row_number = db.Column(db.Integer, nullable=False)
+    table_number = db.Column(db.Integer, nullable=False)
+    seat_number = db.Column(db.Integer, nullable=False)
+
+    rows_config = db.Column(db.Integer, default=3)
+    tables_per_row_config = db.Column(db.Integer, default=5)
+    seats_per_table_config = db.Column(db.Integer, default=2)
+
+    version = db.relationship("ExamHallVersion", backref=db.backref("assignments", cascade="all, delete-orphan"))
+    student = db.relationship("Student")
+
+    __table_args__ = (
+        db.UniqueConstraint('version_id', 'student_id', name='uq_smixer_version_student'),
+        db.UniqueConstraint('version_id', 'row_number', 'table_number', 'seat_number', name='uq_smixer_version_seat_position'),
+    )
+
+
+class SeatMixerSaveSnapshot(TimestampMixin, db.Model):
+    """Immutable Seat Mixer save revision retained for one layout version."""
+    __tablename__ = "seat_mixer_save_snapshots"
+
+    id = db.Column(db.Integer, primary_key=True)
+    version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("exam_hall_versions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    snapshot_json = db.Column(db.Text, nullable=False)
+    integrity_score = db.Column(db.Integer, nullable=False, default=0)
+    near_adjacency_count = db.Column(db.Integer, nullable=False, default=0)
+    placed_count = db.Column(db.Integer, nullable=False, default=0)
+
+    version = db.relationship(
+        "ExamHallVersion",
+        backref=db.backref(
+            "save_snapshots",
+            cascade="all, delete-orphan",
+            order_by="SeatMixerSaveSnapshot.created_at.desc()",
+        ),
+    )
+
+    __table_args__ = (
+        db.Index("idx_smixer_snapshot_version_created", "version_id", "created_at"),
+    )
+
+
+class SeatAssignment(TimestampMixin, db.Model):
+    """Model for seat assignments scoped to Exam + Hall combination"""
+    __tablename__ = "seat_assignments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    exam_id = db.Column(db.Integer, db.ForeignKey("exams.id", ondelete="CASCADE"), nullable=False, index=True)
+    exam_hall_id = db.Column(db.Integer, db.ForeignKey("exam_halls.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Seat position details
+    row_number = db.Column(db.Integer, nullable=False)
+    table_number = db.Column(db.Integer, nullable=False)
+    seat_number = db.Column(db.Integer, nullable=False)  # Seat within table (1, 2, etc.)
+    
+    # Configuration snapshot (to preserve arrangement even if hall config changes)
+    rows_config = db.Column(db.Integer, default=3)
+    tables_per_row_config = db.Column(db.Integer, default=5)
+    seats_per_table_config = db.Column(db.Integer, default=2)
+    
+    exam = db.relationship("Exam", backref=db.backref("seat_assignments", cascade="all, delete-orphan"))
+    exam_hall = db.relationship("ExamHall", backref=db.backref("seat_assignments", cascade="all, delete-orphan"))
+    student = db.relationship("Student", backref=db.backref("seat_assignments", cascade="all, delete-orphan"))
+
+    __table_args__ = (
+        db.UniqueConstraint('exam_id', 'exam_hall_id', 'student_id', name='uq_exam_hall_student'),
+        db.UniqueConstraint('exam_id', 'exam_hall_id', 'row_number', 'table_number', 'seat_number', name='uq_exam_hall_seat_position'),
+        db.Index('idx_exam_hall_combo', 'exam_id', 'exam_hall_id'),
     )

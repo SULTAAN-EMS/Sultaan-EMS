@@ -135,6 +135,8 @@ def create_app(config_class=Config):
     from .routes_teachers import teachers_bp
     from .routes_academic_structure import academic_bp
     from .routes_invigilator import invigilator_bp
+    from .routes_seat_arrangement import seat_arrangement_bp
+    from .routes_seat_mixer import seat_mixer_bp
 
     app.register_blueprint(public_bp)
     app.register_blueprint(auth_bp)
@@ -146,6 +148,8 @@ def create_app(config_class=Config):
     app.register_blueprint(teacher_portal_bp, url_prefix="/teacher")
     app.register_blueprint(academic_bp, url_prefix="/admin/academic-structure")
     app.register_blueprint(invigilator_bp, url_prefix="/invigilator")
+    app.register_blueprint(seat_arrangement_bp, url_prefix="/admin/seat-arrangement")
+    app.register_blueprint(seat_mixer_bp, url_prefix="/admin/seat-mixer")
 
     register_cli(app)
 

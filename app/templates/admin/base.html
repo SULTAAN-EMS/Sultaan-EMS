@@ -243,6 +243,7 @@
     <div class="nav-group">
       <div class="nav-group-header">Academic &amp; Results</div>
       {% if can('results') %}<a href="{{ url_for('admin_advanced_results.new_dashboard') }}"><i class="fa-solid fa-square-poll-vertical" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">{{ _('Results') }}</span></a>{% endif %}
+      {% if can('seat_arrangement') %}<a href="{{ url_for('seat_mixer.index') }}"><i class="fa-solid fa-shuffle" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Seat Mixer</span></a>{% endif %}
     </div>
     
     {% if can('teachers') %}<a href="{{ url_for('admin_teachers.dashboard') }}"><i class="fa-solid fa-chalkboard-user" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Teacher Department</span></a>{% endif %}

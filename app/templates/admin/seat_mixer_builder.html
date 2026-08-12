@@ -1,0 +1,103 @@
+{% extends "admin/base.html" %}
+{% block title %}Seat Mixer — {{ exam.name }} / {{ hall.name }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/seat_mixer.css') }}">
+{% endblock %}
+
+{% block admin_content %}
+<div class="sm-wrapper">
+  <div class="sm-bg-fx">
+    <div class="sm-blob b1"></div>
+    <div class="sm-blob b2"></div>
+  </div>
+  <div class="sm-grid-fx"></div>
+
+  <div class="sm-shell">
+    <div class="sm-crumb-bar">
+      <div class="sm-crumb">
+        <button class="sm-link-btn" id="smBackBtn">&larr; Back to selection</button>
+        <span class="sep">/</span>
+        <span>{{ exam.academic_year.name if exam.academic_year else '' }}</span>
+        <span class="sep">/</span>
+        <b>{{ exam.name }}</b>
+        <span class="sep">/</span>
+        <b>{{ hall.name }}</b>
+      </div>
+      <span class="sm-save-badge unsaved" id="smSaveBadge">Unsaved</span>
+    </div>
+
+    <div class="sm-grid-2">
+      <div class="sm-card">
+        <h2><span class="ico">H</span>Hall configuration</h2>
+        <div class="sm-field sm-row-inline">
+          <div><label>Rows</label><input type="number" id="smRows" min="1" max="8" value="{{ config.rows }}"></div>
+          <div><label>Tables / row</label><input type="number" id="smTablesPerRow" min="1" max="12" value="{{ config.tables_per_row }}"></div>
+          <div><label>Seats / table</label><input type="number" id="smSeatsPerTable" min="1" max="4" value="{{ config.seats_per_table }}"></div>
+        </div>
+        <p class="sm-hint">Example: {{ config.rows }} rows &times; {{ config.tables_per_row }} tables &times; {{ config.seats_per_table }} seats = {{ config.rows * config.tables_per_row }} tables, {{ config.rows * config.tables_per_row * config.seats_per_table }} chairs.</p>
+      </div>
+
+      <div class="sm-card">
+        <h2><span class="ico">C</span>Classes to mix</h2>
+        <div class="sm-class-row" style="background:transparent; border:none; padding:0 8px;">
+          <div></div>
+          <div class="sm-colhead">Name</div>
+          <div class="sm-colhead">Level</div>
+          <div class="sm-colhead">Count</div>
+          <div class="sm-colhead">Select</div>
+        </div>
+        <div id="smClassList"></div>
+      </div>
+    </div>
+
+    <div class="sm-actions">
+      <button class="sm-btn primary" id="smGenerateBtn">Quick generate</button>
+      <button class="sm-btn strict" id="smOptimizeBtn">Strict optimizer</button>
+      <button class="sm-btn save" id="smSaveBtn">Save Seat Arrangement</button>
+      <button class="sm-btn ghost" id="smPrintBtn">Print / Export</button>
+    </div>
+
+    <div class="sm-card" id="smBuilderMapCard">
+      <h2><span class="ico">M</span>Live seating map <span style="font-weight:400; font-size:11px; color:#8A93A6;">(click a chair to replace)</span></h2>
+      <div class="sm-summary" id="smSummary"></div>
+      <div class="sm-hall" id="smHall"></div>
+      <div class="sm-legend" id="smLegend"></div>
+      <div class="sm-note" id="smExplain"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Manual replacement modal -->
+<div class="sm-modal-overlay hidden" id="smModalOverlay">
+  <div class="sm-modal-box">
+    <button class="sm-modal-close" id="smModalClose">&times;</button>
+    <h2 style="font-weight:700; font-size:15px; margin:0 0 14px;">Replace Seat</h2>
+    <div class="sm-cur-seat" id="smCurSeatInfo"></div>
+    <p class="sm-hint" style="border:none; padding:0; margin:0 0 8px;">Other students in the same class:</p>
+    <div class="sm-candidate-list" id="smCandidateList"></div>
+    <div class="sm-warn-box" id="smHardWarn">
+      <b>Warning:</b> This replacement will create a <b>hard violation</b> — two students from the same class at one table. Are you sure you want to proceed?
+      <div class="wbtns">
+        <button class="confirm" id="smWarnConfirm">Yes, proceed</button>
+        <button class="cancel" id="smWarnCancel">No, cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/seat_mixer.js') }}"></script>
+<script>
+window.SM_init({
+  examId: {{ exam.id }},
+  hallId: {{ hall.id }},
+  examName: {{ exam.name|tojson }},
+  hallName: {{ hall.name|tojson }},
+  yearName: {{ (exam.academic_year.name if exam.academic_year else '')|tojson }},
+  csrfToken: {{ csrf_token()|tojson }},
+  config: {{ config|tojson }},
+  classes: {{ class_data|tojson }},
+  savedData: {{ saved_data|tojson }}
+});
+</script>
+{% endblock %}

@@ -2120,11 +2120,11 @@ def build_analytics_results_report_data(academic_year, exam):
             row["mApp"] = bucket_sitting_counts["m"]
             row["mPassed"] = bucket_pass_counts["m"]
             row["mFailed"] = row["mApp"] - row["mPassed"]
-            row["mPass"] = round(row["mPassed"] / row["mApp"] * 100, 1) if row["mApp"] else 0
+            row["mPass"] = round(row["mPassed"] / row["mApp"] * 100, 2) if row["mApp"] else 0
             row["fApp"] = bucket_sitting_counts["f"]
             row["fPassed"] = bucket_pass_counts["f"]
             row["fFailed"] = row["fApp"] - row["fPassed"]
-            row["fPass"] = round(row["fPassed"] / row["fApp"] * 100, 1) if row["fApp"] else 0
+            row["fPass"] = round(row["fPassed"] / row["fApp"] * 100, 2) if row["fApp"] else 0
             row["avg"] = round(sum(class_scores) / len(class_scores), 1) if class_scores else 0
             class_rows.append(row)
 
@@ -2140,7 +2140,7 @@ def build_analytics_results_report_data(academic_year, exam):
                 "appeared": len(scores),
                 "passed": passed_count,
                 "failed": len(scores) - passed_count,
-                "pass": round(passed_count / len(scores) * 100, 1) if scores else 0,
+                "pass": round(passed_count / len(scores) * 100, 2) if scores else 0,
             })
 
         if not class_rows or not subject_rows:

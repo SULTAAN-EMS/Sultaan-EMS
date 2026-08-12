@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Seating Plan - {{ hall.name }} - {{ version.label }}</title>
+  <style>
+    :root { --ink:#10244a; --blue:#2867c7; --line:#d8e1ef; --muted:#63738b; --paper:#fff; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#edf2f8; color:var(--ink); font:13px/1.4 Arial,sans-serif; }
+    .sheet { width:min(1180px,calc(100% - 36px)); margin:24px auto; background:var(--paper); padding:30px; box-shadow:0 16px 40px rgba(18,38,74,.14); }
+    .head { display:flex; justify-content:space-between; gap:22px; border-bottom:3px solid var(--blue); padding-bottom:16px; margin-bottom:22px; }
+    .school { font-size:20px; font-weight:800; letter-spacing:.02em; }.meta { color:var(--muted); margin-top:4px; }.version { text-align:right; font-weight:700; }
+    .legend { display:flex; flex-wrap:wrap; gap:10px; margin:0 0 20px; }.legend span { display:inline-flex; gap:6px; align-items:center; color:var(--muted); font-size:11px; }.dot { width:11px; height:11px; border-radius:4px; display:inline-block; }
+    .row-pair { display:grid; gap:14px; grid-template-columns:repeat(2,minmax(0,1fr)); margin:0 0 17px; }
+    .row-column { min-width:0; }
+    .row-title { text-transform:uppercase; color:var(--muted); letter-spacing:.11em; font-weight:700; font-size:10px; padding-bottom:4px; margin-bottom:8px; border-bottom:1px solid var(--line); }
+    .table { border:1px solid var(--line); border-radius:9px; margin-bottom:8px; background:#fbfcff; overflow:hidden; page-break-inside:avoid; }
+    .table-title { font-size:10px; font-weight:800; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; margin:0; padding:7px 8px; background:#f4f7fb; border-bottom:1px solid var(--line); }
+    .chairs { display:grid; gap:0; grid-template-columns:1fr; }
+    .student { display:grid; grid-template-columns:30px minmax(0,1fr) auto; column-gap:7px; align-items:center; border-left:4px solid var(--class-color,#9aa8bd); border-radius:0; background:#fff; border-top:0; border-right:0; border-bottom:1px solid #edf1f6; padding:6px 7px; min-width:0; }
+    .student-top { display:flex; align-items:center; gap:6px; }.photo,.avatar { width:27px; height:27px; border-radius:50%; object-fit:cover; flex:none; }.avatar { background:var(--class-color,#9aa8bd); color:#fff; display:grid; place-items:center; font-weight:700; font-size:10px; }
+    .student-top { display:contents; }.photo,.avatar { grid-row:span 2; width:27px; height:27px; }.name { font-size:10px; font-weight:800; overflow-wrap:anywhere; white-space:normal; }.detail { margin-top:2px; color:var(--muted); font-size:8.5px; }.seat { grid-column:3; grid-row:1 / span 2; margin:0; color:var(--blue); font-weight:700; white-space:nowrap; }
+    .empty { min-height:58px; border:1px dashed #d4ddeb; border-radius:7px; color:#a7b3c5; display:grid; place-items:center; font-size:10px; }
+    .foot { display:flex; justify-content:space-between; gap:12px; border-top:1px solid var(--line); padding-top:14px; margin-top:22px; color:var(--muted); font-size:10px; }
+    .actions { position:fixed; right:18px; bottom:18px; display:flex; gap:8px; }.actions button { border:0; border-radius:8px; padding:10px 14px; color:#fff; background:var(--blue); font-weight:700; cursor:pointer; }.actions button:last-child { background:#516174; }
+    @page { size:{{ orientation|default('landscape') }}; margin:10mm; }
+    {% if orientation == 'portrait' %}
+    .sheet { width:min(820px,calc(100% - 28px)); padding:20px; }
+    .row-pair { gap:8px; }
+    .table { margin-bottom:6px; }
+    .student { padding:5px; }
+    {% endif %}
+    @media print { body { background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; } .sheet { width:auto; margin:0; padding:0; box-shadow:none; } .actions { display:none; } }
+  </style>
+</head>
+<body>
+  <main class="sheet">
+    <header class="head">
+      <div><div class="school">{{ school_name }}</div><div class="meta">Examination Seating Plan · {{ hall.name }}</div></div>
+      <div class="version">{{ version.label }}<div class="meta">Generated {{ version.updated_at.strftime('%d %b %Y, %H:%M') if version.updated_at else '' }}</div></div>
+    </header>
+
+    <div class="legend">
+      {% for class_id, class_name in print_classes %}
+      <span><i class="dot" style="background:{{ class_color(class_id) }}"></i>{{ class_name }}</span>
+      {% endfor %}
+    </div>
+
+    {% for row_pair in print_rows|batch(2, none) %}
+    {% set first_row_index = loop.index0 * 2 %}
+    <section class="row-pair">
+      {% for row in row_pair if row %}
+      <section class="row-column">
+      <div class="row-title">Row {{ first_row_index + loop.index }}</div>
+      {% for table in row %}
+      <article class="table">
+        <div class="table-title">Table {{ table.table + 1 }}</div>
+        <div class="chairs">
+          {% for assignment in table.seats %}
+          {% if assignment and assignment.student %}
+          {% set student = assignment.student %}
+          {% set color = class_color(student.academic_class_id or student.id) %}
+          <div class="student" style="--class-color:{{ color }}">
+            <div class="student-top">
+              {% if photo_url(student.photo_path) %}<img class="photo" src="{{ photo_url(student.photo_path) }}" alt="{{ student.full_name }}">{% else %}<span class="avatar" style="--class-color:{{ color }}">{{ student.full_name[:1] }}</span>{% endif %}
+              <div class="name">{{ student.full_name }}</div>
+            </div>
+            <div class="detail">{{ student.academic_class.name if student.academic_class else '' }} · {{ student.gender or 'Not recorded' }}</div>
+            <div class="detail seat">Seat {{ assignment.seat_number + 1 }}</div>
+          </div>
+          {% else %}<div class="empty">Empty seat</div>{% endif %}
+          {% endfor %}
+        </div>
+      </article>
+      {% endfor %}
+      </section>
+      {% endfor %}
+    </section>
+    {% endfor %}
+    <footer class="foot"><span>Official seating layout · Keep visible at the examination hall.</span><span>{{ assignments|length }} students placed</span></footer>
+  </main>
+  <div class="actions"><button type="button" onclick="window.print()">Print / Save PDF</button><button type="button" onclick="window.close()">Close</button></div>
+</body>
+</html>

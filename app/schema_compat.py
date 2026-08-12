@@ -70,7 +70,33 @@ def ensure_schema_compatibility():
     add_column_if_missing("attendance_records", "academic_level_id", column_sql(dialect, "academic_level_id", "INTEGER"))
     add_column_if_missing("attendance_records", "academic_class_id", column_sql(dialect, "academic_class_id", "INTEGER"))
     add_column_if_missing("attendance_records", "academic_section_id", column_sql(dialect, "academic_section_id", "INTEGER"))
-    
+
+    # Hall-roster / attendance phase columns
+    add_column_if_missing("exam_halls", "exam_id", column_sql(dialect, "exam_id", "INTEGER"))
+    add_column_if_missing("exam_halls", "exam_type_id", column_sql(dialect, "exam_type_id", "INTEGER"))
+    add_column_if_missing("exam_halls", "academic_class_id", column_sql(dialect, "academic_class_id", "INTEGER"))
+    add_column_if_missing("attendance_records", "exam_hall_id", column_sql(dialect, "exam_hall_id", "INTEGER"))
+    add_column_if_missing("attendance_records", "subject_id", column_sql(dialect, "subject_id", "INTEGER"))
+    add_column_if_missing("attendance_records", "exam_session_id", column_sql(dialect, "exam_session_id", "INTEGER"))
+    add_column_if_missing("attendance_records", "exam_type_id", column_sql(dialect, "exam_type_id", "INTEGER"))
+    add_column_if_missing("attendance_records", "status", column_sql(dialect, "status", "VARCHAR(50)"))
+    add_column_if_missing("attendance_records", "recorded_at", column_sql(dialect, "recorded_at", "DATETIME"))
+    add_index_if_missing("attendance_records", "idx_attendance_records_exam_session", ["exam_session_id"])
+    add_index_if_missing(
+        "attendance_records",
+        "idx_attendance_records_session_hall_subject",
+        ["exam_session_id", "exam_hall_id", "subject_id"],
+    )
+    add_foreign_key_if_missing(
+        "attendance_records",
+        "fk_attendance_records_exam_session_id",
+        ["exam_session_id"],
+        "exam_sessions",
+        ["id"],
+        ondelete="CASCADE",
+    )
+    migrate_attendance_session_unique_constraint()
+
     # Update teacher_classes foreign key to reference academic_classes instead of school_classes
     # This requires manual migration for existing data
 
@@ -85,22 +111,25 @@ def seed_legacy_student_genders():
     """Seed the existing demonstration students once without altering recorded values."""
     from .models import Setting, Student
 
-    marker_key = "student_gender_backfill_v1"
-    if db.session.get(Setting, marker_key):
-        return
+    try:
+        marker_key = "student_gender_backfill_v1"
+        if db.session.get(Setting, marker_key):
+            return
 
-    missing_gender_students = (
-        Student.query.filter(Student.gender.is_(None))
-        .order_by(Student.id)
-        .all()
-    )
-    for index, student in enumerate(missing_gender_students):
-        # Existing records are sample data. A deterministic split makes the
-        # local report preview meaningful without overwriting later choices.
-        student.gender = "Male" if index % 2 == 0 else "Female"
+        missing_gender_students = (
+            Student.query.filter(Student.gender.is_(None))
+            .order_by(Student.id)
+            .all()
+        )
+        for index, student in enumerate(missing_gender_students):
+            # Existing records are sample data. A deterministic split makes the
+            # local report preview meaningful without overwriting later choices.
+            student.gender = "Male" if index % 2 == 0 else "Female"
 
-    db.session.add(Setting(key=marker_key, value="completed"))
-    db.session.commit()
+        db.session.add(Setting(key=marker_key, value="completed"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def sync_all_model_columns():
@@ -183,15 +212,22 @@ def _model_column_default_sql(column):
 
 def add_column_if_missing(table, column, ddl):
     inspector = inspect(db.engine)
+    if not inspector.has_table(table):
+        return
     existing = {row["name"] for row in inspector.get_columns(table)}
     if column in existing:
         return
-    db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
-    db.session.commit()
+    try:
+        db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def add_index_if_missing(table, index_name, columns):
     inspector = inspect(db.engine)
+    if not inspector.has_table(table):
+        return
     indexes = inspector.get_indexes(table)
     names = {idx.get("name") for idx in indexes}
     covered = {tuple(idx.get("column_names") or []) for idx in indexes}
@@ -204,6 +240,60 @@ def add_index_if_missing(table, index_name, columns):
     try:
         db.session.execute(text(f"CREATE INDEX {index_name} ON {table} ({cols})"))
         db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def migrate_attendance_session_unique_constraint():
+    """Scope new attendance rows by scheduled sitting on MySQL deployments.
+
+    Older installs used a unique key without ``exam_session_id``.  That key
+    prevents the same student from sitting the same subject in two different
+    scheduled sittings, which is no longer correct.  SQLite development DBs
+    receive the current model definition on creation; existing SQLite files
+    are intentionally left untouched because SQLite cannot safely alter a
+    table-level unique constraint in place.
+    """
+    if db.engine.dialect.name != "mysql":
+        return
+
+    inspector = inspect(db.engine)
+    if not inspector.has_table("attendance_records"):
+        return
+
+    try:
+        unique_names = {
+            item.get("name")
+            for item in inspector.get_unique_constraints("attendance_records")
+            if item.get("name")
+        }
+        index_names = {
+            item.get("name")
+            for item in inspector.get_indexes("attendance_records")
+            if item.get("name") and item.get("unique")
+        }
+        legacy_name = "uq_student_hall_subject_attendance"
+        if legacy_name in unique_names or legacy_name in index_names:
+            db.session.execute(text(f"DROP INDEX {legacy_name} ON attendance_records"))
+            db.session.commit()
+
+        inspector = inspect(db.engine)
+        names = {
+            item.get("name")
+            for item in inspector.get_unique_constraints("attendance_records")
+            if item.get("name")
+        }
+        names.update(
+            item.get("name")
+            for item in inspector.get_indexes("attendance_records")
+            if item.get("name") and item.get("unique")
+        )
+        if "uq_student_hall_subject_session_attendance" not in names:
+            db.session.execute(text(
+                "CREATE UNIQUE INDEX uq_student_hall_subject_session_attendance "
+                "ON attendance_records (student_id, exam_hall_id, subject_id, exam_session_id)"
+            ))
+            db.session.commit()
     except Exception:
         db.session.rollback()
 
@@ -245,6 +335,8 @@ def column_sql(dialect, name, type_sql):
 
 def widen_varchar_if_needed(table, column, length, nullable=True):
     inspector = inspect(db.engine)
+    if not inspector.has_table(table):
+        return
     existing = {row["name"]: row for row in inspector.get_columns(table)}
     row = existing.get(column)
     if not row:
@@ -268,6 +360,8 @@ def widen_decimal_if_needed(table, column, precision, scale):
     if db.engine.dialect.name != "mysql":
         return
     inspector = inspect(db.engine)
+    if not inspector.has_table(table):
+        return
     row = {item["name"]: item for item in inspector.get_columns(table)}.get(column)
     if not row:
         return

@@ -1,0 +1,116 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Print Seat Arrangement{% endblock %}
+
+{% block extra_css %}
+<style>
+.print-view {
+  background: #fff;
+  color: #000;
+  border-radius: 14px;
+  padding: 26px;
+  margin-bottom: 20px;
+}
+
+.print-head {
+  text-align: center;
+  border-bottom: 2px solid #000;
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+}
+
+.print-head .pschool {
+  font-weight: 800;
+  font-size: 17px;
+}
+
+.print-head .pmeta {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.print-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.print-table th,
+.print-table td {
+  border: 1px solid #000;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.print-table th {
+  background: #eee;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-view, .print-view * {
+    visibility: visible;
+  }
+  .print-view {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    border-radius: 0;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="no-print mb-4">
+  <a href="{{ url_for('seat_arrangement.builder', exam_id=exam.id, hall_id=hall.id) }}" class="btn btn-outline-secondary">
+    ← Back to Builder
+  </a>
+  <button class="btn btn-primary" onclick="window.print()">🖨 Print Now</button>
+</div>
+
+<div class="print-view">
+  <div class="print-head">
+    <div class="pschool">Taysir International School</div>
+    <div class="pmeta">{{ exam.academic_year.name if exam.academic_year else '' }} · {{ exam.name }} · {{ hall.name }}</div>
+  </div>
+  
+  <table class="print-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>ID No.</th>
+        <th>Student Full Name</th>
+        <th>Class</th>
+        <th>Row/Table (Seat Assignment)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for assignment in assignments %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ assignment.student.student_code }}</td>
+        <td>{{ assignment.student.full_name }}</td>
+        <td>
+          {{ assignment.student.academic_class.name if assignment.student.academic_class else '' }}
+          {% if assignment.student.academic_section %}
+          - {{ assignment.student.academic_section.name }}
+          {% endif %}
+        </td>
+        <td>Row {{ assignment.row_number + 1 }} / Table {{ assignment.table_number + 1 }} (Seat {{ assignment.seat_number + 1 }})</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5" style="text-align: center;">Ma jiro fadhi la kaydiyay</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>{% endblock %}

@@ -1,0 +1,821 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Seat Arrangement Builder{% endblock %}
+
+{% block extra_css %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-deep:#060A1A; --bg-mid:#0B1230;
+    --glass:rgba(255,255,255,.055); --glass-2:rgba(255,255,255,.02);
+    --border:rgba(255,255,255,.12); --border-hi:rgba(96,165,250,.45);
+    --text:#EAF0FF; --muted:#93A0C2;
+    --blue:#3B82F6; --blue2:#60A5FA; --violet:#8B7CF6; --cyan:#22D3EE;
+    --good:#34D399; --good-soft:rgba(52,211,153,.15);
+    --warn:#FBBF24; --warn-soft:rgba(251,191,36,.15);
+    --bad:#FB7185; --bad-soft:rgba(251,113,133,.15);
+    --radius:20px;
+  }
+  
+  .seat-mixer-wrapper {
+    background:var(--bg-deep);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    padding:32px 20px 70px;
+    position:relative;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+    min-height: calc(100vh - 200px);
+  }
+
+  /* animated motion-graphic background */
+  .bg-fx{position:fixed; inset:0; z-index:-2; overflow:hidden; background:
+      radial-gradient(ellipse at 50% -10%, #101B4A 0%, var(--bg-deep) 55%);}
+  .blob{position:absolute; border-radius:50%; filter:blur(90px); opacity:.55; will-change:transform;}
+  .blob.b1{width:560px; height:560px; left:-120px; top:-100px; background:radial-gradient(circle,var(--blue) 0%,transparent 70%); animation:float1 22s ease-in-out infinite;}
+  .blob.b2{width:620px; height:620px; right:-180px; top:120px; background:radial-gradient(circle,var(--violet) 0%,transparent 70%); animation:float2 26s ease-in-out infinite;}
+  .blob.b3{width:480px; height:480px; left:20%; bottom:-220px; background:radial-gradient(circle,var(--cyan) 0%,transparent 70%); animation:float3 30s ease-in-out infinite;}
+  @keyframes float1{0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(60px,80px) scale(1.15);}}
+  @keyframes float2{0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(-70px,-40px) scale(1.1);}}
+  @keyframes float3{0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(40px,-60px) scale(1.2);}}
+  .grid-fx{
+    position:fixed; inset:0; z-index:-1; opacity:.35;
+    background-image:
+      linear-gradient(rgba(96,165,250,.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(96,165,250,.08) 1px, transparent 1px);
+    background-size:42px 42px;
+    animation:gridshift 18s linear infinite;
+    mask-image:radial-gradient(ellipse at 50% 20%, #000 0%, transparent 75%);
+  }
+  @keyframes gridshift{0%{background-position:0 0,0 0;}100%{background-position:42px 84px, 84px 42px;}}
+
+  .shell{max-width:1180px; margin:0 auto; position:relative;}
+
+  /* glass cards */
+  .card{
+    position:relative; background:linear-gradient(155deg,#ffffff,#f4f6fb);
+    border:1px solid rgba(15,23,42,.08); border-radius:var(--radius);
+    box-shadow:0 12px 40px rgba(0,0,0,.35);
+    padding:22px 22px 24px; margin-bottom:20px; overflow:hidden;
+    color:#1B2333;
+  }
+  .card::before{
+    content:""; position:absolute; inset:-1px; border-radius:var(--radius); padding:1px;
+    background:linear-gradient(120deg, var(--blue), var(--violet), var(--cyan));
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude;
+    opacity:.3; animation:cardglow 6s ease-in-out infinite; pointer-events:none;
+  }
+  @keyframes cardglow{0%,100%{opacity:.18;}50%{opacity:.4;}}
+  .card h2{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:15px; margin:0 0 16px;
+    display:flex; align-items:center; gap:10px; color:#0F1830;
+  }
+  .card h2 .ico{
+    width:30px;height:30px;border-radius:10px; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(135deg,var(--blue),var(--violet)); font-size:15px; flex:none;
+    box-shadow:0 4px 14px -4px rgba(59,130,246,.6);
+  }
+  .card h2::after{content:"";flex:1; height:1px; background:linear-gradient(90deg,rgba(15,23,42,.15),transparent);}
+
+  .grid-2{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+  @media (max-width:760px){.grid-2{grid-template-columns:1fr;}}
+
+  label{font-size:11px; font-weight:600; color:#6B7385; text-transform:uppercase; letter-spacing:.05em; display:block; margin-bottom:6px;}
+  input[type=number], input[type=text]{
+    width:100%; background:#EEF1F7; border:1px solid rgba(15,23,42,.14); border-radius:10px;
+    padding:9px 11px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#111827; outline:none;
+    transition:border-color .15s ease, box-shadow .15s ease;
+  }
+  input[type=text]{font-family:'Inter',sans-serif;}
+  input:focus{border-color:var(--blue2); box-shadow:0 0 0 3px rgba(96,165,250,.25);}
+  .field{margin-bottom:12px;}
+  .row-inline{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;}
+  .hint{font-size:11.5px; color:#6B7385; margin-top:4px; padding-top:10px; border-top:1px dashed rgba(15,23,42,.14);}
+
+  .class-row{
+    display:grid; grid-template-columns:34px 1fr 58px 64px 68px 32px; gap:8px; align-items:center; margin-bottom:9px;
+    background:rgba(15,23,42,.03); border:1px solid rgba(15,23,42,.1); border-radius:12px; padding:6px 8px;
+  }
+  .swatch{width:22px; height:22px; border-radius:7px; flex:none; box-shadow:0 0 10px -2px currentColor;}
+  .colhead{font-size:9.5px; color:#8A93A6; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; text-align:center;}
+  .icon-btn{
+    border:1px solid rgba(15,23,42,.14); background:#EEF1F7; border-radius:9px; width:30px; height:30px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; color:#6B7385; transition:all .15s ease;
+  }
+  .icon-btn:hover{border-color:var(--blue2); color:#0F1830; background:rgba(96,165,250,.15);}
+
+  .btn{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13.5px; color:#fff;
+    border:none; border-radius:12px; padding:12px 20px; cursor:pointer; position:relative; overflow:hidden;
+    transition:transform .15s ease;
+  }
+  .btn:active{transform:scale(.97);}
+  .btn.primary{background:linear-gradient(135deg,var(--blue),#2563EB); box-shadow:0 8px 24px -8px rgba(59,130,246,.7);}
+  .btn.strict{background:linear-gradient(135deg,var(--violet),#5B21B6,var(--cyan)); background-size:200% auto; box-shadow:0 8px 24px -8px rgba(139,124,246,.7); animation:btnshine 4s linear infinite;}
+  @keyframes btnshine{to{background-position:200% center;}}
+  .btn.save{background:linear-gradient(135deg,var(--good),#0F9D6B); box-shadow:0 8px 24px -8px rgba(52,211,153,.6);}
+  .btn.ghost{background:rgba(255,255,255,.08); color:var(--text); border:1px solid var(--border); box-shadow:none;}
+  .actions{display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap; align-items:center;}
+  .spin{width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .7s linear infinite;display:inline-block;vertical-align:-2px;margin-right:7px;}
+  @keyframes spin{to{transform:rotate(1turn);}}
+
+  .summary{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px;}
+  .pill{
+    font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:700;
+    padding:8px 13px; border-radius:999px; display:flex; align-items:center; gap:6px; border:1px solid transparent;
+  }
+  .pill.ok{background:var(--good-soft); color:var(--good); border-color:rgba(52,211,153,.3);}
+  .pill.warn{background:var(--warn-soft); color:var(--warn); border-color:rgba(251,191,36,.3);}
+  .pill.bad{background:var(--bad-soft); color:var(--bad); border-color:rgba(251,113,133,.3);}
+  .pill.neutral{background:rgba(96,165,250,.12); color:var(--blue2); border-color:rgba(96,165,250,.3);}
+
+  /* hall: columns of tables, each table = plate + chairs */
+  .hall{display:flex; gap:22px; overflow-x:auto; padding:8px 4px 14px;}
+  .col{display:flex; flex-direction:column; gap:14px; flex:none;}
+  .col-label{
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#0891B2; text-align:center;
+    letter-spacing:.08em; text-transform:uppercase; padding-bottom:6px; border-bottom:1px dashed rgba(15,23,42,.14);
+  }
+  .table-unit{
+    position:relative; border-radius:14px; padding:8px;
+    background:linear-gradient(155deg, rgba(15,23,42,.05), rgba(15,23,42,.02));
+    border:1.5px solid rgba(15,23,42,.12);
+    display:grid; gap:6px; transition:border-color .25s ease, box-shadow .25s ease;
+  }
+  .table-unit.violation{border-color:var(--bad); box-shadow:0 0 0 3px rgba(251,113,133,.25), 0 0 24px -4px rgba(251,113,133,.5);}
+  .chair{
+    width:92px; min-height:118px; border-radius:13px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:4px; padding:10px 6px; position:relative; animation:pop .35s ease backwards;
+    box-shadow:0 4px 14px -6px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .chair::before{content:""; position:absolute; top:-4px; left:10px; right:10px; height:4px; border-radius:3px 3px 0 0; background:rgba(255,255,255,.35);}
+  @keyframes pop{from{opacity:0; transform:scale(.6);} to{opacity:1; transform:scale(1);}}
+  .chair .photo{
+    width:46px; height:46px; border-radius:50%; object-fit:cover; flex:none;
+    border:2px solid rgba(255,255,255,.75); box-shadow:0 2px 8px rgba(0,0,0,.35); background:rgba(255,255,255,.25);
+  }
+  .chair .sname{font-family:'Inter',sans-serif; font-size:12.5px; font-weight:800; color:#fff; text-align:center; line-height:1.2; max-width:84px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .chair .code{font-family:'IBM Plex Mono',monospace; font-size:9.5px; font-weight:700; color:rgba(255,255,255,.85); background:rgba(0,0,0,.2); padding:2px 7px; border-radius:6px; max-width:84px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .chair.empty{background:rgba(15,23,42,.04); border:1.5px dashed rgba(15,23,42,.18); box-shadow:none;}
+  .chair.empty::before{display:none;}
+  .chair.empty .sname{color:rgba(15,23,42,.3); font-weight:500;}
+
+  .legend{display:flex; gap:14px; flex-wrap:wrap; margin-top:16px;}
+  .legend-item{display:flex; align-items:center; gap:7px; font-size:12.5px; color:#5B6478;}
+  .legend-item .swatch{width:13px; height:13px; border-radius:5px;}
+  .legend-item .lvl{font-size:13px;}
+
+  .note{font-size:12.5px; color:#5B6478; line-height:1.7; margin-top:14px; padding-top:14px; border-top:1px dashed rgba(15,23,42,.14);}
+  .note b{color:#0F1830;}
+
+  ::-webkit-scrollbar{height:8px;}
+  ::-webkit-scrollbar-thumb{background:rgba(96,165,250,.35); border-radius:8px;}
+
+  /* breadcrumb bar shown once inside a hall */
+  .crumb-bar{
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;
+    background:var(--glass); border:1px solid var(--border); border-radius:14px; padding:10px 16px; margin-bottom:18px;
+  }
+  .crumb{font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--muted); display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .crumb b{color:var(--text); font-weight:700;}
+  .crumb .sep{opacity:.4;}
+  .link-btn{
+    background:none; border:none; color:var(--cyan); font-family:'IBM Plex Mono',monospace; font-size:11.5px;
+    cursor:pointer; text-decoration:underline; padding:0;
+  }
+  .save-badge{
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; padding:4px 10px; border-radius:999px;
+    background:var(--good-soft); color:var(--good); border:1px solid rgba(52,211,153,.3);
+  }
+  .save-badge.unsaved{background:var(--warn-soft); color:var(--warn); border-color:rgba(251,191,36,.3);}
+
+  /* chair now clickable */
+  .chair.assigned{cursor:pointer;}
+  .chair.assigned:hover{filter:brightness(1.12); transform:translateY(-2px);}
+
+  /* modal */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(4,7,20,.72); backdrop-filter:blur(4px); z-index:100;
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .modal-overlay.hidden{display:none;}
+  .modal-box{
+    background:#fff; color:#1B2333; border-radius:20px; max-width:560px; width:100%; max-height:86vh; overflow-y:auto;
+    padding:22px 22px 24px; position:relative; box-shadow:0 30px 80px -20px rgba(0,0,0,.6);
+  }
+  .modal-close{position:absolute; top:14px; right:14px; border:none; background:rgba(15,23,42,.06); width:30px; height:30px; border-radius:9px; cursor:pointer; font-size:15px; color:#6B7385;}
+  .cur-seat{display:flex; gap:14px; align-items:center; background:rgba(15,23,42,.04); border-radius:14px; padding:12px 14px; margin-bottom:16px;}
+  .cur-seat img{width:56px;height:56px;border-radius:50%; object-fit:cover; border:2px solid rgba(15,23,42,.1);}
+  .cur-seat .ci-name{font-weight:800; font-size:15px;}
+  .cur-seat .ci-meta{font-size:11.5px; color:#6B7385; font-family:'IBM Plex Mono',monospace; margin-top:2px;}
+  .candidate-list{display:flex; flex-direction:column; gap:8px; max-height:280px; overflow-y:auto;}
+  .cand-row{
+    display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:12px;
+    border:1.5px solid rgba(15,23,42,.1); cursor:pointer; transition:all .12s ease;
+  }
+  .cand-row:hover{border-color:var(--blue2); background:rgba(96,165,250,.08);}
+  .cand-row img{width:34px;height:34px;border-radius:50%;object-fit:cover; flex:none;}
+  .cand-row .cn-name{font-weight:700; font-size:12.5px;}
+  .cand-row .cn-meta{font-size:10.5px; color:#8A93A6; font-family:'IBM Plex Mono',monospace;}
+  .cand-row .cn-place{margin-left:auto; font-size:10px; font-family:'IBM Plex Mono',monospace; padding:3px 8px; border-radius:999px; background:rgba(15,23,42,.06); color:#6B7385; text-align:right;}
+  .cand-row.self{border-color:var(--blue2); background:rgba(96,165,250,.1);}
+  .warn-box{background:var(--bad-soft); border:1px solid rgba(251,113,133,.35); color:#B5253F; border-radius:12px; padding:12px 14px; font-size:12.5px; margin-top:14px; display:none;}
+  .warn-box.show{display:block;}
+  .warn-box .wbtns{display:flex; gap:8px; margin-top:10px;}
+  .warn-box button{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12px; border:none; border-radius:8px; padding:7px 14px; cursor:pointer;}
+  .warn-box .confirm{background:var(--bad); color:#fff;}
+  .warn-box .cancel{background:rgba(15,23,42,.08); color:#1B2333;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="seat-mixer-wrapper">
+  <div class="bg-fx"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+  <div class="grid-fx"></div>
+
+  <div class="shell">
+
+    <div class="crumb-bar">
+      <div class="crumb">
+        <button class="link-btn" id="backBtn">← Dib u dooro</button>
+        <span class="sep">/</span>
+        <span>{{ exam.academic_year.name if exam.academic_year else '' }}</span>
+        <span class="sep">/</span>
+        <b>{{ exam.name }}</b>
+        <span class="sep">/</span>
+        <b>{{ hall.name }}</b>
+      </div>
+      <span class="save-badge unsaved" id="saveBadge">● Lama kaydin</span>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h2><span class="ico">🏛</span>Hall configuration</h2>
+        <div class="field row-inline">
+          <div><label>Rows</label><input type="number" id="rows" min="1" max="8" value="{{ config.rows }}"></div>
+          <div><label>Tables / row</label><input type="number" id="tablesPerRow" min="1" max="12" value="{{ config.tables_per_row }}"></div>
+          <div><label>Seats / table</label><input type="number" id="seatsPerTable" min="1" max="4" value="{{ config.seats_per_table }}"></div>
+        </div>
+        <p class="hint">Tusaale: 3 rows × 5 tables × 2 seats = 15 miis, 30 kuraas.</p>
+      </div>
+
+      <div class="card">
+        <h2><span class="ico">👥</span>Classes to mix</h2>
+        <div class="class-row" style="background:transparent; border:none; padding:0 8px;">
+          <div></div><div class="colhead">Magaca</div><div class="colhead">Code</div><div class="colhead">Level</div><div class="colhead">Tirada</div><div></div>
+        </div>
+        <div id="classList">
+          {% for cls in class_data %}
+          <div class="class-row" data-class-id="{{ cls.id }}">
+            <div class="swatch" style="background:{{ cls.color }}; color:{{ cls.color }};"></div>
+            <input type="text" class="cname" value="{{ cls.name }}" readonly>
+            <input type="text" class="ccode" maxlength="4" value="{{ cls.code }}" readonly>
+            <input type="text" class="clevel" value="{{ cls.level }}" readonly>
+            <input type="number" class="ccount" min="0" value="{{ cls.count }}" readonly>
+            <input type="checkbox" class="class-checkbox" value="{{ cls.id }}" checked>
+          </div>
+          {% else %}
+          <p style="color:#8A93A6; font-size:13px;">No classes found for this academic year.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn primary" id="generateBtn">⚡ Quick generate</button>
+      <button class="btn strict" id="optimizeBtn">🧠 Strict optimizer</button>
+      <button class="btn save" id="saveBtn">💾 Save Seat Arrangement</button>
+      <button class="btn ghost" id="printBtn">🖨️ Print / Export</button>
+    </div>
+
+    <div class="card" id="builderMapCard">
+      <h2><span class="ico">🗺️</span>Live seating map <span style="font-weight:400; font-size:11px; color:#8A93A6;">(riix kursi si aad u bedesho)</span></h2>
+      <div class="summary" id="summary"></div>
+      <div class="hall" id="hall">
+        <p style="color:#8A93A6; text-align:center; padding:40px 20px;">Riix <b>"⚡ Quick generate"</b> ama <b>"🧠 Strict optimizer"</b> si aad u sameyso fadhi.</p>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="note" id="explain"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Modal for seat replacement -->
+<div class="modal-overlay hidden" id="modalOverlay">
+  <div class="modal-box">
+    <button class="modal-close" id="modalClose">✕</button>
+    <h2 style="font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:15px; margin:0 0 14px;">Bedel Fadhiga</h2>
+    <div class="cur-seat" id="curSeatInfo"></div>
+    <p class="hint" style="border:none; padding:0; margin:0 0 8px;">Ardayda kale ee isla fasalka (Class/Section):</p>
+    <div class="candidate-list" id="candidateList"></div>
+    <div class="warn-box" id="hardWarn">
+      ⚠ Bedelkan wuxuu keeni doonaa <b>hard violation</b> — laba arday oo isku fasal ah oo hal miis wada fadhiya. Ma hubtaa inaad sii wadi doonto?
+      <div class="wbtns">
+        <button class="confirm" id="warnConfirm">Haa, sii wad</button>
+        <button class="cancel" id="warnCancel">Maya, jooji</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const EXAM_ID = {{ exam.id }};
+const HALL_ID = {{ hall.id }};
+const CLASS_DATA = {{ class_data | tojson }};
+const EXISTING_ASSIGNMENTS = {{ existing_assignments | tojson if existing_assignments else '[]' }};
+
+let currentAssignments = [];
+let isDirty = false;
+
+// Color palette
+const CLASS_PALETTE = [
+    '#60A5FA', '#F472B6', '#34D399', '#FBBF24', '#A78BFA', '#22D3EE',
+    '#FB923C', '#818CF8', '#F87171', '#4ADE80', '#FB7185', '#38BDF8'
+];
+
+function getClassColor(classId) {
+    return CLASS_PALETTE[classId % CLASS_PALETTE.length];
+}
+
+function getPhotoUrl(photoPath) {
+    if (photoPath) {
+        return photoPath.startsWith('http') ? photoPath : `/static/uploads/${photoPath}`;
+    }
+    return `https://ui-avatars.com/api/?name=Student&background=random&color=fff&size=92&bold=true`;
+}
+
+function getConfig() {
+    return {
+        rows: parseInt(document.getElementById('rows').value) || 3,
+        tables_per_row: parseInt(document.getElementById('tablesPerRow').value) || 5,
+        seats_per_table: parseInt(document.getElementById('seatsPerTable').value) || 2
+    };
+}
+
+function getSelectedClassIds() {
+    return Array.from(document.querySelectorAll('.class-checkbox:checked')).map(cb => parseInt(cb.value));
+}
+
+function updateSummary(assignments, config) {
+    const totalSeats = config.rows * config.tables_per_row * config.seats_per_table;
+    const totalStudents = assignments.length;
+    const filled = assignments.length;
+    
+    // Calculate violations
+    const metrics = computeMetrics(assignments, config.rows, config.tables_per_row);
+    
+    document.getElementById('summary').innerHTML = `
+        <span class="pill neutral">🪑 ${totalSeats} seats</span>
+        <span class="pill neutral">👤 ${totalStudents} students</span>
+        <span class="pill ${filled < totalStudents ? 'bad' : 'ok'}">${filled}/${totalSeats} assigned</span>
+        <span class="pill ${metrics.hard_count === 0 ? 'ok' : 'bad'}">${metrics.hard_count === 0 ? '✓ 0 hard violations' : '⚠ ' + metrics.hard_count + ' hard violations'}</span>
+        <span class="pill ${metrics.soft_count === 0 ? 'ok' : 'warn'}">${metrics.soft_count === 0 ? '✓ 0 near-adjacency' : '⚠ ' + metrics.soft_count + ' near-adjacency'}</span>
+    `;
+}
+
+function computeMetrics(assignments, rows, tablesPerRow) {
+    const tableClasses = {};
+    const tableCounts = {};
+    
+    assignments.forEach(a => {
+        const tableId = `${a.row}-${a.table}`;
+        if (!tableClasses[tableId]) tableClasses[tableId] = new Set();
+        if (!tableCounts[tableId]) tableCounts[tableId] = {};
+        
+        tableClasses[tableId].add(a.class_id);
+        tableCounts[tableId][a.class_id] = (tableCounts[tableId][a.class_id] || 0) + 1;
+    });
+    
+    let hardCount = 0;
+    Object.values(tableCounts).forEach(counts => {
+        Object.values(counts).forEach(count => {
+            if (count > 1) hardCount += (count - 1);
+        });
+    });
+    
+    let softCount = 0;
+    for (let row = 0; row < rows; row++) {
+        for (let table = 0; table < tablesPerRow - 1; table++) {
+            const tableA = `${row}-${table}`;
+            const tableB = `${row}-${table + 1}`;
+            if (tableClasses[tableA] && tableClasses[tableB]) {
+                const shared = [...tableClasses[tableA]].filter(c => tableClasses[tableB].has(c));
+                softCount += shared.length;
+            }
+        }
+    }
+    
+    return { hard_count: hardCount, soft_count: softCount };
+}
+
+function renderHall(assignments, config) {
+    const hall = document.getElementById('hall');
+    let html = '';
+    
+    for (let row = 0; row < config.rows; row++) {
+        html += `<div class="col"><div class="col-label">Row ${row + 1}</div>`;
+        
+        for (let table = 0; table < config.tables_per_row; table++) {
+            const tableSeats = assignments.filter(a => a.row === row && a.table === table);
+            const cols = config.seats_per_table <= 2 ? config.seats_per_table : 2;
+            html += `<div class="table-unit" style="grid-template-columns: repeat(${cols}, 92px);">`;
+            
+            for (let seat = 0; seat < config.seats_per_table; seat++) {
+                const assignment = tableSeats.find(a => a.seat === seat);
+                
+                if (assignment) {
+                    const color = getClassColor(assignment.class_id);
+                    html += `<div class="chair assigned" data-row="${row}" data-table="${table}" data-seat="${seat}" data-student-id="${assignment.student_id}" style="background: linear-gradient(155deg, ${color}, ${color}CC); animation-delay: ${seat * 35}ms;">
+                        <img class="photo" src="${getPhotoUrl(assignment.photo_path)}" alt="${assignment.full_name}">
+                        <span class="sname">${assignment.full_name}</span>
+                        <span class="code">${assignment.student_code}</span>
+                    </div>`;
+                } else {
+                    html += `<div class="chair empty" data-row="${row}" data-table="${table}" data-seat="${seat}"><span class="sname">Empty</span></div>`;
+                }
+            }
+            
+            html += `</div>`;
+        }
+        
+        html += `</div>`;
+    }
+    
+    hall.innerHTML = html;
+    
+    // Render legend
+    const selectedClasses = CLASS_DATA.filter(c => getSelectedClassIds().includes(c.id));
+    document.getElementById('legend').innerHTML = selectedClasses.map(c => `
+        <div class="legend-item">
+            <div class="swatch" style="background: ${c.color}"></div>
+            ${c.name}
+        </div>
+    `).join('');
+}
+
+async function generate() {
+    const config = getConfig();
+    const classIds = getSelectedClassIds();
+    
+    if (classIds.length === 0) {
+        alert('Please select at least one class');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/admin/seat-arrangement/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                exam_id: EXAM_ID,
+                hall_id: HALL_ID,
+                config: config,
+                class_ids: classIds
+            })
+        });
+        
+        const data = await response.json();
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+        
+        currentAssignments = data.assignments;
+        isDirty = true;
+        updateSaveBadge();
+        renderHall(currentAssignments, config);
+        updateSummary(currentAssignments, config);
+        document.getElementById('explain').innerHTML = '<b>Quick generate:</b> ilaaliyay xeerka ugu muhiimsan (hal miis) degdeg ahaan.';
+    } catch (error) {
+        console.error('Generate error:', error);
+        alert('Failed to generate seating arrangement');
+    }
+}
+
+async function save() {
+    if (currentAssignments.length === 0) {
+        alert('No arrangement to save');
+        return;
+    }
+    
+    const config = getConfig();
+    
+    try {
+        const response = await fetch('/admin/seat-arrangement/api/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                exam_id: EXAM_ID,
+                hall_id: HALL_ID,
+                assignments: currentAssignments,
+                config: config
+            })
+        });
+        
+        const data = await response.json();
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+        
+        isDirty = false;
+        updateSaveBadge();
+        alert('✅ Seat Arrangement saved successfully');
+    } catch (error) {
+        console.error('Save error:', error);
+        alert('Failed to save seating arrangement');
+    }
+}
+
+function updateSaveBadge() {
+    const badge = document.getElementById('saveBadge');
+    if (isDirty) {
+        badge.textContent = '● Lama kaydin';
+        badge.classList.add('unsaved');
+    } else {
+        badge.textContent = '✅ La kaydiyay';
+        badge.classList.remove('unsaved');
+    }
+}
+
+// Event listeners
+document.getElementById('backBtn').addEventListener('click', () => {
+    if (isDirty && !confirm('You have unsaved changes. Are you sure you want to leave?')) {
+        return;
+    }
+    window.location.href = '/admin/seat-arrangement/';
+});
+
+document.getElementById('generateBtn').addEventListener('click', generate);
+
+document.getElementById('optimizeBtn').addEventListener('click', async () => {
+    const config = getConfig();
+    const classIds = getSelectedClassIds();
+    
+    if (classIds.length === 0) {
+        alert('Please select at least one class');
+        return;
+    }
+    
+    const btn = document.getElementById('optimizeBtn');
+    const oldLabel = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Optimizing...';
+    btn.disabled = true;
+    
+    try {
+        const response = await fetch('/admin/seat-arrangement/api/optimize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                exam_id: EXAM_ID,
+                hall_id: HALL_ID,
+                config: config,
+                class_ids: classIds,
+                iterations: 6000
+            })
+        });
+        
+        const data = await response.json();
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+        
+        currentAssignments = data.assignments;
+        isDirty = true;
+        updateSaveBadge();
+        renderHall(currentAssignments, config);
+        updateSummary(currentAssignments, config);
+        document.getElementById('explain').innerHTML = `<b>Strict optimizer:</b> simulated-annealing (${data.iterations} swap trials) si adag loogu yareeyo hard iyo near-adjacency violations ilaa heerka ugu hooseeya ee macquulka ah.`;
+    } catch (error) {
+        console.error('Optimize error:', error);
+        alert('Failed to optimize seating arrangement');
+    } finally {
+        btn.innerHTML = oldLabel;
+        btn.disabled = false;
+    }
+});
+
+document.getElementById('saveBtn').addEventListener('click', save);
+
+document.getElementById('printBtn').addEventListener('click', () => {
+    if (isDirty) {
+        alert('Please save the arrangement before printing');
+        return;
+    }
+    window.location.href = `/admin/seat-arrangement/print?exam_id=${EXAM_ID}&hall_id=${HALL_ID}`;
+});
+
+// Seat replacement modal functionality
+let pendingReplace = null;
+
+function openModal(studentId, row, table, seat) {
+    const assignment = currentAssignments.find(a => a.student_id === studentId && a.row === row && a.table === table && a.seat === seat);
+    if (!assignment) return;
+    
+    const classId = assignment.class_id;
+    const classData = CLASS_DATA.find(c => c.id === classId);
+    
+    document.getElementById('curSeatInfo').innerHTML = `
+        <img src="${getPhotoUrl(assignment.photo_path)}">
+        <div>
+            <div class="ci-name">${assignment.full_name}</div>
+            <div class="ci-meta">${assignment.student_code} · ${classData ? classData.name : ''}</div>
+            <div class="ci-meta">Row ${row + 1} · Table ${table + 1} · Seat ${seat + 1}</div>
+        </div>
+    `;
+    
+    // Load students from same class
+    loadClassStudents(classId, studentId, row, table, seat);
+    
+    document.getElementById('hardWarn').classList.remove('show');
+    pendingReplace = null;
+    document.getElementById('modalOverlay').classList.remove('hidden');
+}
+
+async function loadClassStudents(classId, currentStudentId, row, table, seat) {
+    try {
+        const response = await fetch(`/admin/seat-arrangement/api/class-students?class_id=${classId}&exam_id=${EXAM_ID}&hall_id=${HALL_ID}&current_student_id=${currentStudentId}`);
+        const data = await response.json();
+        
+        if (data.error) {
+            console.error('Error loading class students:', data.error);
+            return;
+        }
+        
+        document.getElementById('candidateList').innerHTML = data.students.map(st => {
+            const placementLabel = st.position.row !== null 
+                ? `Row ${st.position.row + 1} · Table ${st.position.table + 1} · Seat ${st.position.seat + 1}`
+                : 'Not Assigned';
+            
+            return `<div class="cand-row ${st.is_current ? 'self' : ''}" data-student-id="${st.id}" data-row="${row}" data-table="${table}" data-seat="${seat}">
+                <img src="${getPhotoUrl(st.photo_path)}">
+                <div><div class="cn-name">${st.full_name}</div><div class="cn-meta">${st.student_code}</div></div>
+                <div class="cn-place">${placementLabel}</div>
+            </div>`;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading class students:', error);
+    }
+}
+
+function closeModal() {
+    document.getElementById('modalOverlay').classList.add('hidden');
+    document.getElementById('hardWarn').classList.remove('show');
+    pendingReplace = null;
+}
+
+async function attemptReplace(targetStudentId, row, table, seat) {
+    const currentAssignment = currentAssignments.find(a => a.row === row && a.table === table && a.seat === seat);
+    if (!currentAssignment || targetStudentId === currentAssignment.student_id) {
+        closeModal();
+        return;
+    }
+    
+    const targetAssignment = currentAssignments.find(a => a.student_id === targetStudentId);
+    
+    // Calculate metrics before swap
+    const config = getConfig();
+    const beforeMetrics = computeMetrics(currentAssignments, config.rows, config.tables_per_row);
+    
+    // Perform swap
+    if (targetAssignment) {
+        // Swap positions
+        const tempRow = currentAssignment.row;
+        const tempTable = currentAssignment.table;
+        const tempSeat = currentAssignment.seat;
+        
+        currentAssignment.row = targetAssignment.row;
+        currentAssignment.table = targetAssignment.table;
+        currentAssignment.seat = targetAssignment.seat;
+        
+        targetAssignment.row = tempRow;
+        targetAssignment.table = tempTable;
+        targetAssignment.seat = tempSeat;
+    } else {
+        // Target is unassigned, move current to unassigned
+        currentAssignment.row = null;
+        currentAssignment.table = null;
+        currentAssignment.seat = null;
+        
+        // Create new assignment for target at current position
+        const targetStudent = CLASS_DATA.find(c => c.id === currentAssignment.class_id);
+        // Need to fetch student details - for now, skip
+    }
+    
+    // Calculate metrics after swap
+    const afterMetrics = computeMetrics(currentAssignments, config.rows, config.tables_per_row);
+    
+    if (afterMetrics.hard_count > beforeMetrics.hard_count) {
+        // Revert swap
+        if (targetAssignment) {
+            const tempRow = currentAssignment.row;
+            const tempTable = currentAssignment.table;
+            const tempSeat = currentAssignment.seat;
+            
+            currentAssignment.row = targetAssignment.row;
+            currentAssignment.table = targetAssignment.table;
+            currentAssignment.seat = targetAssignment.seat;
+            
+            targetAssignment.row = tempRow;
+            targetAssignment.table = tempTable;
+            targetAssignment.seat = tempSeat;
+        } else {
+            currentAssignment.row = row;
+            currentAssignment.table = table;
+            currentAssignment.seat = seat;
+        }
+        
+        pendingReplace = { currentAssignment, targetAssignment, targetStudentId, row, table, seat };
+        document.getElementById('hardWarn').classList.add('show');
+        return;
+    }
+    
+    isDirty = true;
+    updateSaveBadge();
+    renderHall(currentAssignments, config);
+    updateSummary(currentAssignments, config);
+    closeModal();
+}
+
+// Modal event listeners
+document.getElementById('modalClose').addEventListener('click', closeModal);
+document.getElementById('modalOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'modalOverlay') closeModal();
+});
+
+document.getElementById('candidateList').addEventListener('click', (e) => {
+    const row = e.target.closest('.cand-row');
+    if (!row) return;
+    attemptReplace(parseInt(row.dataset.student_id), parseInt(row.dataset.row), parseInt(row.dataset.table), parseInt(row.dataset.seat));
+});
+
+document.getElementById('warnConfirm').addEventListener('click', () => {
+    if (!pendingReplace) return;
+    
+    // Apply the swap despite hard violation
+    const { currentAssignment, targetAssignment } = pendingReplace;
+    
+    if (targetAssignment) {
+        const tempRow = currentAssignment.row;
+        const tempTable = currentAssignment.table;
+        const tempSeat = currentAssignment.seat;
+        
+        currentAssignment.row = targetAssignment.row;
+        currentAssignment.table = targetAssignment.table;
+        currentAssignment.seat = targetAssignment.seat;
+        
+        targetAssignment.row = tempRow;
+        targetAssignment.table = tempTable;
+        targetAssignment.seat = tempSeat;
+    }
+    
+    isDirty = true;
+    document.getElementById('hardWarn').classList.remove('show');
+    updateSaveBadge();
+    renderHall(currentAssignments, getConfig());
+    updateSummary(currentAssignments, getConfig());
+    closeModal();
+});
+
+document.getElementById('warnCancel').addEventListener('click', () => {
+    document.getElementById('hardWarn').classList.remove('show');
+    pendingReplace = null;
+});
+
+// Hall click handler for seat replacement
+document.getElementById('hall').addEventListener('click', (e) => {
+    const chair = e.target.closest('.chair.assigned');
+    if (!chair) return;
+    
+    const row = parseInt(chair.dataset.row);
+    const table = parseInt(chair.dataset.table);
+    const seat = parseInt(chair.dataset.seat);
+    const studentId = parseInt(chair.dataset.student_id);
+    
+    openModal(studentId, row, table, seat);
+});
+
+// Load existing assignments if any
+if (EXISTING_ASSIGNMENTS.length > 0) {
+    currentAssignments = EXISTING_ASSIGNMENTS.map(sa => ({
+        student_id: sa.student_id,
+        student_code: sa.student.student_code,
+        full_name: sa.student.full_name,
+        class_id: sa.student.academic_class_id,
+        photo_path: sa.student.photo_path,
+        row: sa.row_number,
+        table: sa.table_number,
+        seat: sa.seat_number
+    }));
+    isDirty = false;
+    updateSaveBadge();
+    renderHall(currentAssignments, getConfig());
+    updateSummary(currentAssignments, getConfig());
+    document.getElementById('explain').innerHTML = 'Loaded previously saved arrangement.';
+}
+</script>
+{% endblock %}

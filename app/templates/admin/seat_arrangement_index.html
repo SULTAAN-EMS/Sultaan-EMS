@@ -1,0 +1,220 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Seat Arrangement{% endblock %}
+
+{% block extra_css %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-deep:#060A1A; --bg-mid:#0B1230;
+    --glass:rgba(255,255,255,.055); --glass-2:rgba(255,255,255,.02);
+    --border:rgba(255,255,255,.12); --border-hi:rgba(96,165,250,.45);
+    --text:#EAF0FF; --muted:#93A0C2;
+    --blue:#3B82F6; --blue2:#60A5FA; --violet:#8B7CF6; --cyan:#22D3EE;
+    --good:#34D399; --good-soft:rgba(52,211,153,.15);
+    --warn:#FBBF24; --warn-soft:rgba(251,191,36,.15);
+    --bad:#FB7185; --bad-soft:rgba(251,113,133,.15);
+    --radius:20px;
+  }
+  
+  .seat-mixer-wrapper {
+    background:var(--bg-deep);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    padding:32px 20px 70px;
+    position:relative;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+    min-height: calc(100vh - 200px);
+  }
+
+  /* animated motion-graphic background */
+  .bg-fx{position:fixed; inset:0; z-index:-2; overflow:hidden; background:
+      radial-gradient(ellipse at 50% -10%, #101B4A 0%, var(--bg-deep) 55%);}
+  .blob{position:absolute; border-radius:50%; filter:blur(90px); opacity:.55; will-change:transform;}
+  .blob.b1{width:560px; height:560px; left:-120px; top:-100px; background:radial-gradient(circle,var(--blue) 0%,transparent 70%); animation:float1 22s ease-in-out infinite;}
+  .blob.b2{width:620px; height:620px; right:-180px; top:120px; background:radial-gradient(circle,var(--violet) 0%,transparent 70%); animation:float2 26s ease-in-out infinite;}
+  .blob.b3{width:480px; height:480px; left:20%; bottom:-220px; background:radial-gradient(circle,var(--cyan) 0%,transparent 70%); animation:float3 30s ease-in-out infinite;}
+  @keyframes float1{0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(60px,80px) scale(1.15);}}
+  @keyframes float2{0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(-70px,-40px) scale(1.1);}}
+  @keyframes float3{0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(40px,-60px) scale(1.2);}}
+  .grid-fx{
+    position:fixed; inset:0; z-index:-1; opacity:.35;
+    background-image:
+      linear-gradient(rgba(96,165,250,.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(96,165,250,.08) 1px, transparent 1px);
+    background-size:42px 42px;
+    animation:gridshift 18s linear infinite;
+    mask-image:radial-gradient(ellipse at 50% 20%, #000 0%, transparent 75%);
+  }
+  @keyframes gridshift{0%{background-position:0 0,0 0;}100%{background-position:42px 84px, 84px 42px;}}
+
+  .shell{max-width:1180px; margin:0 auto; position:relative;}
+
+  .masthead{margin-bottom:26px; text-align:center;}
+  .kicker{
+    display:inline-flex; align-items:center; gap:7px; font-family:'IBM Plex Mono',monospace;
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--cyan);
+    background:rgba(34,211,238,.1); border:1px solid rgba(34,211,238,.3); padding:5px 12px; border-radius:999px;
+    margin-bottom:14px;
+  }
+  .kicker .dot{width:6px;height:6px;border-radius:50%; background:var(--cyan); box-shadow:0 0 8px var(--cyan); animation:pulse 1.6s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+  h1{
+    font-family:'Space Grotesk',sans-serif; font-weight:800; font-size:34px; margin:0 0 8px;
+    background:linear-gradient(90deg,#fff 10%,var(--blue2) 45%,var(--cyan) 65%,#fff 90%);
+    background-size:200% auto; -webkit-background-clip:text; background-clip:text; color:transparent;
+    animation:shine 6s linear infinite;
+  }
+  @keyframes shine{to{background-position:200% center;}}
+  .lede{color:var(--muted); font-size:14px; max-width:620px; margin:0 auto;}
+
+  /* glass cards */
+  .card{
+    position:relative; background:linear-gradient(155deg,#ffffff,#f4f6fb);
+    border:1px solid rgba(15,23,42,.08); border-radius:var(--radius);
+    box-shadow:0 12px 40px rgba(0,0,0,.35);
+    padding:22px 22px 24px; margin-bottom:20px; overflow:hidden;
+    color:#1B2333;
+  }
+  .card::before{
+    content:""; position:absolute; inset:-1px; border-radius:var(--radius); padding:1px;
+    background:linear-gradient(120deg, var(--blue), var(--violet), var(--cyan));
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude;
+    opacity:.3; animation:cardglow 6s ease-in-out infinite; pointer-events:none;
+  }
+  @keyframes cardglow{0%,100%{opacity:.18;}50%{opacity:.4;}}
+  .card h2{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:15px; margin:0 0 16px;
+    display:flex; align-items:center; gap:10px; color:#0F1830;
+  }
+  .card h2 .ico{
+    width:30px;height:30px;border-radius:10px; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(135deg,var(--blue),var(--violet)); font-size:15px; flex:none;
+    box-shadow:0 4px 14px -4px rgba(59,130,246,.6);
+  }
+  .card h2::after{content:"";flex:1; height:1px; background:linear-gradient(90deg,rgba(15,23,42,.15),transparent);}
+
+  .grid-2{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+  @media (max-width:760px){.grid-2{grid-template-columns:1fr;}}
+
+  .select-grid{display:grid; grid-template-columns:1fr; gap:10px; margin-top:4px;}
+  .opt-card{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:rgba(15,23,42,.03); border:1.5px solid rgba(15,23,42,.1); border-radius:12px;
+    padding:12px 14px; cursor:pointer; transition:all .15s ease;
+  }
+  .opt-card:hover{border-color:var(--blue2); background:rgba(96,165,250,.08);}
+  .opt-card.active{border-color:var(--blue2); background:rgba(96,165,250,.14); box-shadow:0 0 0 3px rgba(96,165,250,.15);}
+  .opt-card .oname{font-weight:700; font-size:13.5px; color:#0F1830;}
+  .opt-card .osub{font-size:11px; color:#8A93A6;}
+  .opt-card .check{width:20px;height:20px;border-radius:50%;border:2px solid rgba(15,23,42,.18); flex:none;}
+  .opt-card.active .check{border-color:var(--blue2); background:var(--blue2); box-shadow:inset 0 0 0 3px #fff;}
+  .opt-card.locked{opacity:.4; cursor:not-allowed; pointer-events:none;}
+  .cta-open{display:flex; justify-content:center; margin-top:22px;}
+  .btn{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13.5px; color:#fff;
+    border:none; border-radius:12px; padding:12px 20px; cursor:pointer; position:relative; overflow:hidden;
+    transition:transform .15s ease;
+  }
+  .btn:active{transform:scale(.97);}
+  .btn.primary{background:linear-gradient(135deg,var(--blue),#2563EB); box-shadow:0 8px 24px -8px rgba(59,130,246,.7);}
+  .btn.big{padding:15px 34px; font-size:15px;}
+  .btn:disabled{opacity:.4; cursor:not-allowed;}
+
+  ::-webkit-scrollbar{height:8px;}
+  ::-webkit-scrollbar-thumb{background:rgba(96,165,250,.35); border-radius:8px;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="seat-mixer-wrapper">
+  <div class="bg-fx"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+  <div class="grid-fx"></div>
+
+  <div class="shell">
+    <div class="masthead">
+      <div class="kicker"><span class="dot"></span>SULTAN EMS · Anti-Adjacency Engine</div>
+      <h1>Seat Mixer — Exam Hall Command Center</h1>
+      <p class="lede">Isku dhafid casri ah oo ardayda fasallada kala duwan si ammaan ah loogu kala fadhiisiyo, iyadoo la ilaalinayo in isku-fasal aysan hal miis wada fadhiisan ama isku ag noqon.</p>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h2><span class="ico">📚</span>1. Dooro Exam Type</h2>
+        <div class="select-grid" id="examTypeList">
+          {% for exam in exams %}
+          <div class="opt-card" data-exam-id="{{ exam.id }}" data-exam-name="{{ exam.name }}">
+            <div>
+              <div class="oname">{{ exam.name }}</div>
+              <div class="osub">{{ exam.academic_year.name if exam.academic_year else '' }}</div>
+            </div>
+            <div class="check"></div>
+          </div>
+          {% else %}
+          <p style="color:#8A93A6; font-size:13px;">No active exams found. Please create exams first.</p>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="card">
+        <h2><span class="ico">🏛</span>2. Dooro Exam Hall/Room</h2>
+        <div class="select-grid" id="hallList">
+          {% for hall in halls %}
+          <div class="opt-card locked" data-hall-id="{{ hall.id }}" data-hall-name="{{ hall.name }}">
+            <div>
+              <div class="oname">{{ hall.name }}</div>
+              <div class="osub">Capacity: {{ hall.capacity }} students</div>
+            </div>
+            <div class="check"></div>
+          </div>
+          {% else %}
+          <p style="color:#8A93A6; font-size:13px;">No exam halls found. Please create halls first.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="cta-open">
+      <button class="btn primary big" id="openBtn" disabled>Fur Seat Arrangement-ka →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let selectedExamId = null;
+let selectedHallId = null;
+
+document.querySelectorAll('#examTypeList .opt-card').forEach(card => {
+    card.addEventListener('click', () => {
+        document.querySelectorAll('#examTypeList .opt-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        selectedExamId = card.dataset.examId;
+        
+        document.querySelectorAll('#hallList .opt-card').forEach(h => h.classList.remove('locked'));
+        updateOpenButton();
+    });
+});
+
+document.querySelectorAll('#hallList .opt-card').forEach(card => {
+    card.addEventListener('click', () => {
+        if (card.classList.contains('locked')) return;
+        document.querySelectorAll('#hallList .opt-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        selectedHallId = card.dataset.hallId;
+        updateOpenButton();
+    });
+});
+
+function updateOpenButton() {
+    const btn = document.getElementById('openBtn');
+    btn.disabled = !(selectedExamId && selectedHallId);
+}
+
+document.getElementById('openBtn').addEventListener('click', () => {
+    if (selectedExamId && selectedHallId) {
+        window.location.href = `{{ url_for('seat_arrangement.builder') }}?exam_id=${selectedExamId}&hall_id=${selectedHallId}`;
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,218 @@
+{% extends "admin/base.html" %}
+{% block title %}Seat Mixer — Exam Hall Command Center{% endblock %}
+
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/seat_mixer.css') }}">
+{% endblock %}
+
+{% block admin_content %}
+<div class="sm-wrapper">
+  <div class="sm-bg-fx">
+    <div class="sm-blob b1"></div>
+    <div class="sm-blob b2"></div>
+    <div class="sm-blob b3"></div>
+  </div>
+  <div class="sm-grid-fx"></div>
+
+  <div class="sm-shell">
+    <div class="sm-masthead">
+      <div class="sm-kicker"><span class="dot"></span>SEAT MIXER · Anti-Adjacency Engine</div>
+      <h1>Seat Mixer — Exam Hall Command Center</h1>
+      <p class="sm-lede">Create Exam Halls, mix classes from different levels, and automatically or manually arrange student seating to prevent same-class students from sharing tables.</p>
+    </div>
+
+    <!-- ============ SCREEN 1: Exam Halls list + Create ============ -->
+    <div class="sm-screen active" id="smHallsScreen">
+      <div class="sm-card">
+        <h2><span class="ico"><i class="fa-solid fa-building-columns"></i></span>Exam Halls</h2>
+        <div class="sm-hall-list" id="smHallList"></div>
+        <div class="sm-actions" style="margin:14px 0 0;">
+          <button class="sm-btn primary" id="smShowCreateBtn"><i class="fa-solid fa-plus"></i> Create New Exam Hall</button>
+        </div>
+        <div class="sm-create-box" id="smCreateBox">
+          <div class="sm-field">
+            <label>Hall Name</label>
+            <input type="text" id="smNewHallName" placeholder="Hall A — Main Block">
+          </div>
+          <div class="sm-row-inline">
+            <div class="sm-field"><label>Start</label><input type="datetime-local" id="smNewHallStart"></div>
+            <div class="sm-field"><label>End</label><input type="datetime-local" id="smNewHallEnd"></div>
+            <div class="sm-field" style="display:flex; align-items:flex-end;">
+              <button class="sm-btn save" id="smConfirmCreateBtn" style="width:100%;"><i class="fa-solid fa-check"></i> Create Hall</button>
+            </div>
+          </div>
+          <p class="sm-hint">After the end time passes, this hall will automatically become <b>expired</b> and will not add ongoing load to the system.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ SCREEN 2: Versions of one Hall ============ -->
+    <div class="sm-screen" id="smVersionsScreen">
+      <div class="sm-crumb-bar">
+        <div class="sm-crumb">
+          <button class="sm-link-btn" id="smBackToHallsBtn"><i class="fa-solid fa-arrow-left"></i> Back to Exam Halls</button>
+          <span class="sep">/</span><b id="smCrumbHallV"></b>
+          <span class="sep">/</span><span id="smHallStatusBadge"></span>
+        </div>
+      </div>
+      <div class="sm-card">
+        <h2><span class="ico"><i class="fa-solid fa-layer-group"></i></span>Versions</h2>
+        <div class="sm-version-list" id="smVersionList"></div>
+        <div class="sm-actions" style="margin:14px 0 0;">
+          <button class="sm-btn primary" id="smAddVersionBtn"><i class="fa-solid fa-plus"></i> New Version</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ SCREEN 3: Builder (per Hall + Version) ============ -->
+    <div class="sm-screen" id="smBuilderScreen">
+      <div class="sm-crumb-bar">
+        <div class="sm-crumb">
+          <button class="sm-link-btn" id="smBackToVersionsBtn"><i class="fa-solid fa-arrow-left"></i> Back to Versions</button>
+          <span class="sep">/</span><b id="smCrumbHallB"></b>
+          <span class="sep">/</span><b id="smCrumbVersionB"></b>
+          <span class="sep">/</span><span id="smHallStatusBadge2"></span>
+        </div>
+        <span class="sm-save-badge unsaved" id="smSaveBadge">● Unsaved</span>
+      </div>
+
+      <!-- Hall layout configuration -->
+      <div class="sm-config-title"><i class="fa-solid fa-table-cells-large"></i><span>Examination Hall Layout Configuration</span><small>Define the physical seating capacity for this saved layout.</small></div>
+      <div class="sm-hall-config-strip">
+        <div class="sm-hcs-item"><label>Rows</label><input type="number" id="smRows" min="1" max="8" value="3"></div>
+        <div class="sm-hcs-item"><label>Tables / row</label><input type="number" id="smTablesPerRow" min="1" max="12" value="5"></div>
+        <div class="sm-hcs-item"><label>Seats / table</label><input type="number" id="smSeatsPerTable" min="1" max="4" value="2"></div>
+        <div class="sm-hcs-hint" id="smHallCfgHint">3 rows × 5 tables × 2 seats = 15 tables, 30 chairs.</div>
+      </div>
+
+      <!-- Classes to Mix -->
+      <div class="sm-card">
+        <h2><span class="ico"><i class="fa-solid fa-users"></i></span>Classes to Mix</h2>
+        <div class="sm-level-block-title">1. Levels (pulled automatically from the system)</div>
+        <div class="sm-level-row" id="smLevelRow"></div>
+        <div id="smClassesArea" class="sm-classes-scroll"></div>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="sm-actions">
+        <button class="sm-btn primary" id="smGenerateBtn"><i class="fa-solid fa-bolt"></i> Quick Generate</button>
+        <button class="sm-btn strict" id="smOptimizeBtn"><i class="fa-solid fa-brain"></i> Strict Optimizer</button>
+        <button class="sm-btn ghost" id="smScatterBtn"><i class="fa-solid fa-shuffle"></i> Scatter Students</button>
+        <button class="sm-btn save" id="smSaveBtn"><i class="fa-solid fa-floppy-disk"></i> Save Seat Arrangement</button>
+        <button class="sm-btn ghost" id="smPrintBtn"><i class="fa-solid fa-print"></i> Print / Export</button>
+        <button class="sm-btn ghost" id="smAppearanceBtn"><i class="fa-solid fa-sliders"></i> Seat Mixer Settings</button>
+      </div>
+
+      <!-- Live seating map -->
+      <div class="sm-card" id="smBuilderMapCard">
+        <h2><span class="ico"><i class="fa-solid fa-map-location-dot"></i></span>Live Seating Map <span style="font-weight:400; font-size:11px; color:var(--sm-muted);">(click a chair to replace)</span></h2>
+        <div class="sm-summary" id="smSummary"></div>
+        <div class="sm-hall" id="smHall"></div>
+        <div class="sm-legend" id="smLegend"></div>
+        <div class="sm-note" id="smExplain"></div>
+      </div>
+
+      <div class="sm-card sm-save-history-card" id="smSaveHistoryCard">
+        <div class="sm-save-history-head">
+          <span class="sm-history-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
+          <div class="sm-history-copy">
+            <h2>Save History</h2>
+            <p>Last saves for this version — restore any of them</p>
+          </div>
+          <span class="sm-history-count" id="smHistoryCount">0 / 10</span>
+          <button class="sm-history-return hidden" id="smHistoryReturn" type="button" aria-label="Return to current saved layout"><i class="fa-solid fa-arrow-rotate-left"></i></button>
+        </div>
+        <div class="sm-save-history-list" id="smSaveHistory"></div>
+        <div class="sm-save-history-footer"><i class="fa-solid fa-shield-halved"></i> The latest 10 saved layouts are retained for this version.</div>
+      </div>
+
+      <!-- Print view (inline, shown when Print is clicked) -->
+      <div class="sm-print-view" id="smPrintView" style="display:none;"></div>
+    </div>
+
+  </div><!-- /sm-shell -->
+</div><!-- /sm-wrapper -->
+
+<!-- Manual replacement modal -->
+<div class="sm-modal-overlay hidden" id="smModalOverlay">
+  <div class="sm-modal-box sm-replace-modal" role="dialog" aria-modal="true" aria-labelledby="smReplaceTitle">
+    <div class="sm-replace-header">
+      <div>
+        <div class="sm-replace-eyebrow">Replace seat</div>
+        <h2 id="smReplaceTitle">Choose a replacement</h2>
+      </div>
+      <button class="sm-modal-close" id="smModalClose" aria-label="Close replacement dialog"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="sm-cur-seat" id="smCurSeatInfo"></div>
+    <div class="sm-replace-divider">
+      <span>Other students in <b id="smReplaceClassTitle">this class</b></span>
+      <i></i>
+    </div>
+    <div class="sm-candidate-list" id="smCandidateList"></div>
+    <div class="sm-warn-box" id="smHardWarn">
+      <i class="fa-solid fa-triangle-exclamation"></i> This replacement will create a <b>hard violation</b> — two students from the same class at one table. Are you sure you want to proceed?
+      <div class="wbtns">
+        <button class="confirm" id="smWarnConfirm">Yes, proceed</button>
+        <button class="cancel" id="smWarnCancel">No, cancel</button>
+      </div>
+    </div>
+    <div class="sm-replace-footer"><i class="fa-solid fa-arrow-right-arrow-left"></i> Click any student to swap seats instantly</div>
+  </div>
+</div>
+
+<!-- Shared management confirmation / edit dialog. It is deliberately separate
+     from the seating replacement modal so destructive hall actions stay clear. -->
+<div class="sm-modal-overlay hidden" id="smManageOverlay" role="dialog" aria-modal="true" aria-labelledby="smManageTitle">
+  <div class="sm-modal-box sm-manage-box">
+    <button class="sm-modal-close" id="smManageClose" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+    <div class="sm-manage-icon" id="smManageIcon"><i class="fa-solid fa-gear"></i></div>
+    <h2 id="smManageTitle"></h2>
+    <p class="sm-manage-copy" id="smManageCopy"></p>
+    <div id="smManageFields"></div>
+    <div class="sm-manage-actions">
+      <button class="sm-btn ghost" id="smManageCancel">Cancel</button>
+      <button class="sm-btn save" id="smManageConfirm">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="sm-modal-overlay hidden" id="smPrintOverlay" role="dialog" aria-modal="true" aria-labelledby="smPrintTitle">
+  <div class="sm-modal-box sm-manage-box">
+    <button class="sm-modal-close" id="smPrintClose" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+    <div class="sm-manage-icon"><i class="fa-solid fa-print"></i></div>
+    <h2 id="smPrintTitle">Print seating layout</h2>
+    <p class="sm-manage-copy">Choose the paper orientation. The opened view is the exact browser print preview.</p>
+    <div class="sm-orientation-choice">
+      <label><input type="radio" name="smPrintOrientation" value="landscape" checked><i class="fa-solid fa-table-columns"></i> Landscape</label>
+      <label><input type="radio" name="smPrintOrientation" value="portrait"><i class="fa-solid fa-rectangle-portrait"></i> Portrait</label>
+    </div>
+    <div class="sm-manage-actions"><button class="sm-btn ghost" id="smPrintCancel">Cancel</button><button class="sm-btn save" id="smPrintConfirm">Open print preview</button></div>
+  </div>
+</div>
+
+<div class="sm-modal-overlay hidden" id="smAppearanceOverlay" role="dialog" aria-modal="true" aria-labelledby="smAppearanceTitle">
+  <div class="sm-modal-box sm-appearance-box">
+    <button class="sm-modal-close" id="smAppearanceClose" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+    <div class="sm-manage-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+    <h2 id="smAppearanceTitle">Seat Mixer Settings</h2>
+    <p class="sm-manage-copy">Visual changes apply immediately and are saved for every administrator.</p>
+    <div class="sm-appearance-grid" id="smAppearanceFields"></div>
+    <div class="sm-settings-status" id="smAppearanceStatus">Saved</div>
+  </div>
+</div>
+
+<div class="sm-toast-region" id="smToastRegion" aria-live="polite" aria-atomic="true"></div>
+
+<script src="{{ url_for('static', filename='js/seat_mixer.js') }}"></script>
+<script>
+window.SM_init({
+  halls: {{ halls|tojson }},
+  levels: {{ levels|tojson }},
+  classPalette: {{ class_palette|tojson }},
+  schoolName: {{ school_name|tojson }},
+  csrfToken: {{ csrf_token()|tojson }}
+});
+</script>
+{% endblock %}

@@ -1,0 +1,522 @@
+{% extends "admin/base.html" %}
+{% block title %}Diiwaan-gelinta Hall Exam | SULTAN EMS{% endblock %}
+
+{% block extra_head %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  .hr-scope {
+    --ink:#16223B; --navy:#1B2A4A; --paper:#FBFAF7; --paper-2:#F1EEE5; --line:#DCD6C6;
+    --gold:#B8862F; --gold-soft:#EADFC2; --green:#2F6B4F; --rust:#A6402F; --slate:#5B6478;
+    --font-clean:'HP Simplified','Aptos','Inter','Segoe UI',sans-serif;
+    font-family:'Inter',sans-serif; color:var(--ink); -webkit-font-smoothing:antialiased;
+  }
+  .hr-scope{width:100%;min-width:0;box-sizing:border-box;}
+  .hr-scope .nav-strip{display:flex;gap:0;background:#fff;border-bottom:1px solid var(--line);padding:0 24px;margin-bottom:28px;border-radius:8px 8px 0 0;}
+  .hr-scope .nav-strip a{padding:13px 16px;font-size:13px;font-weight:600;color:var(--slate);text-decoration:none;border-bottom:2px solid transparent;display:inline-flex;align-items:center;gap:7px;}
+  .hr-scope .nav-strip a.active{color:var(--navy);border-bottom-color:var(--gold);}
+  .hr-scope .wrap{width:100%;max-width:none;margin:0;padding-bottom:70px;box-sizing:border-box;}
+  .hr-scope h1.pagetitle{font-family:'Newsreader',serif;font-size:24px;font-weight:600;margin:0 0 4px;color:var(--ink);}
+  .hr-scope .lede{color:var(--slate);font-size:13.5px;margin:0 0 22px;max-width:700px;line-height:1.55;}
+  .hr-scope .filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:10px;}
+  .hr-scope .step{position:relative;border:1px solid rgba(220,226,238,.9);border-radius:18px;padding:12px 42px 12px 15px;display:flex;align-items:center;gap:12px;box-shadow:0 18px 42px -34px rgba(22,34,59,.46),inset 0 1px 0 rgba(255,255,255,.9);overflow:hidden;min-height:72px;}
+  .hr-scope .step::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;border-radius:18px 0 0 18px;background:var(--card-accent);}
+  .hr-scope .step::after{content:"\f078";font-family:"Font Awesome 6 Free";font-weight:900;position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:11px;color:#1F2A44;width:24px;height:24px;border-radius:999px;background:rgba(255,255,255,.62);display:flex;align-items:center;justify-content:center;pointer-events:none;box-shadow:0 8px 18px -16px rgba(22,34,59,.55);}
+  .hr-scope .step .icon{font-size:15px;color:var(--card-accent);flex-shrink:0;width:40px;height:40px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;text-align:center;background:color-mix(in srgb,var(--card-accent) 12%,#fff);border:1px solid color-mix(in srgb,var(--card-accent) 16%,#fff);box-shadow:0 12px 24px -20px color-mix(in srgb,var(--card-accent) 45%,transparent);}
+  .hr-scope .step:nth-child(1){--card-accent:#2563EB;background:radial-gradient(circle at 96% 110%,rgba(37,99,235,.12),transparent 36%),linear-gradient(135deg,#FFFFFF,#F3F7FF);}
+  .hr-scope .step:nth-child(2){--card-accent:#7C3AED;background:radial-gradient(circle at 96% 110%,rgba(124,58,237,.14),transparent 36%),linear-gradient(135deg,#FFFFFF,#F8F4FF);}
+  .hr-scope .step:nth-child(3){--card-accent:#EA580C;background:radial-gradient(circle at 96% 110%,rgba(234,88,12,.14),transparent 36%),linear-gradient(135deg,#FFFFFF,#FFF7ED);}
+  .hr-scope .step .field{flex:1;min-width:0;}
+  .hr-scope .step label{display:block;font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--card-accent);margin-bottom:4px;font-weight:900;}
+  .hr-scope .step select{width:100%;border:none;background:transparent;font-family:var(--font-clean);font-size:15px;font-weight:900;color:#16223B;appearance:none;cursor:pointer;padding:0;outline:none;}
+  .hr-scope .step select option{color:#16223B;background:#fff;}
+  .hr-scope .newhall{display:flex;gap:10px;align-items:center;margin:14px 0 26px;flex-wrap:wrap;}
+  .hr-scope .newhall input{border:1px solid var(--line);border-radius:6px;padding:9px 12px;font-size:13.5px;font-family:'Inter',sans-serif;flex:1;min-width:200px;outline:none;}
+  .hr-scope .newhall input:focus{border-color:var(--gold);}
+  .hr-scope .form-message{font-size:12px;font-weight:600;color:var(--rust);min-height:18px;flex-basis:100%;}
+  .hr-scope .form-message.success{color:var(--green);}
+  .hr-scope .btn{border:none;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:7px;transition:.15s ease;}
+  .hr-scope .btn-outline{background:#fff;border:1px solid var(--line);color:var(--ink);}
+  .hr-scope .btn-outline:hover{background:var(--paper-2);}
+  .hr-scope .btn-danger{background:#FFF5F4;border:1px solid #F0C3BB;color:var(--rust);}
+  .hr-scope .btn-danger:hover{background:#FBE7E3;border-color:#E5A69B;}
+  .hr-scope .split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
+  .hr-scope .panel{background:#fff;border:1px solid rgba(220,214,198,.9);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;min-width:0;box-shadow:0 18px 50px -36px rgba(22,34,59,.55);}
+  .hr-scope .panel-head{padding:14px 18px;border-bottom:1px solid var(--line);background:linear-gradient(135deg,#F8F5EB,#FFFFFF);display:flex;justify-content:space-between;align-items:center;}
+  .hr-scope .panel-head h3{font-family:'Newsreader',serif;font-size:15px;margin:0;font-weight:700;color:var(--ink);background:linear-gradient(135deg,#F7F1DF,#fff);border:1px solid rgba(184,134,47,.18);border-radius:14px;padding:7px 11px;box-shadow:inset 0 1px 0 rgba(255,255,255,.9);}
+  .hr-scope .panel-head .count{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate);}
+  .hr-scope .poolfilters{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 14px 0;}
+  .hr-scope .pool-select{display:flex;align-items:center;gap:8px;border:1px solid rgba(220,214,198,.95);border-radius:14px;background:linear-gradient(180deg,#fff,#FFFEFB);padding:7px 9px;box-shadow:0 10px 24px -22px rgba(22,34,59,.45);}
+  .hr-scope .pool-select i{width:28px;height:28px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:12px;flex-shrink:0;}
+  .hr-scope .pool-select.level i{background:linear-gradient(135deg,#059669,#6EE7B7);}
+  .hr-scope .pool-select.class i{background:linear-gradient(135deg,#D97706,#FDBA74);}
+  .hr-scope .poolfilters select{width:100%;border:none;border-radius:0;padding:0;font-size:12.5px;font-family:var(--font-clean);font-weight:800;color:var(--ink);background:transparent;outline:none;appearance:none;cursor:pointer;min-width:0;}
+  .hr-scope .search{padding:10px 14px;border-bottom:1px solid var(--line);position:relative;}
+  .hr-scope .search i{position:absolute;left:25px;top:50%;transform:translateY(-50%);color:#8892a4;font-size:12px;}
+  .hr-scope .search input{width:100%;border:1px solid var(--line);border-radius:6px;padding:7px 10px 7px 30px;font-size:13px;font-family:'Inter',sans-serif;outline:none;}
+  .hr-scope .search input:focus{border-color:var(--gold);}
+  .hr-scope .list{max-height:480px;overflow-y:auto;flex:1;}
+  .hr-scope .row{display:grid;grid-template-columns:30px 82px minmax(0,1fr) auto auto 42px;align-items:center;gap:10px;padding:9px 14px;min-height:50px;border-bottom:1px solid #EFEBDF;cursor:pointer;transition:background .1s ease, opacity .12s ease;}
+  .hr-scope .row:last-child{border-bottom:none;}
+  .hr-scope .row:hover{background:#FAF8F1;}
+  .hr-scope .avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;overflow:hidden;background-size:cover;background-position:center;}
+  .hr-scope .rid{font-family:var(--font-clean);font-size:11.5px;color:#293653;white-space:nowrap;width:82px;flex-shrink:0;font-weight:800;letter-spacing:.01em;}
+  .hr-scope .rname{font-family:var(--font-clean);font-weight:800;font-size:13.5px;min-width:0;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .hr-scope .rclass{font-size:11px;color:#fff;background:var(--navy);padding:3px 8px;border-radius:999px;flex-shrink:0;font-weight:800;box-shadow:0 8px 18px -16px rgba(22,34,59,.7);}
+  .hr-scope .hall-note{display:inline-flex;align-items:center;gap:5px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;font-weight:800;color:#7C2D12;background:#FFF1D6;border:1px solid rgba(245,158,11,.28);border-radius:999px;padding:3px 8px;}
+  .hr-scope .row.busy{opacity:.6;pointer-events:none;}
+  .hr-scope .move{font-size:16px;color:var(--gold);flex-shrink:0;font-weight:800;border:0;background:transparent;cursor:pointer;padding:0;text-align:center;}
+  .hr-scope .move.remove{color:var(--rust);}
+  .hr-scope .move.transfer{width:auto;font-size:11px;color:#fff;background:linear-gradient(135deg,#0F766E,#14B8A6);border-radius:999px;padding:5px 9px;box-shadow:0 10px 20px -16px rgba(15,118,110,.8);}
+  .hr-scope .empty{padding:30px 20px;text-align:center;color:var(--slate);font-size:13px;font-style:italic;}
+  .hr-scope .foot-note{margin-top:20px;font-size:12px;color:var(--slate);line-height:1.6;}
+  .hr-scope .foot-note b{color:var(--ink);}
+  .hr-scope .toast{position:fixed;right:26px;bottom:26px;z-index:80;min-width:260px;max-width:360px;padding:14px 16px;border-radius:18px;background:linear-gradient(135deg,#FFFFFF,#F8F5EB);border:1px solid rgba(220,214,198,.9);box-shadow:0 24px 60px -28px rgba(22,34,59,.55);display:none;align-items:center;gap:12px;font-size:13px;font-weight:800;color:var(--ink);}
+  .hr-scope .toast.show{display:flex;animation:toastIn .22s ease-out;}
+  .hr-scope .toast i{width:34px;height:34px;border-radius:13px;display:inline-flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(135deg,#2F6B4F,#5DBB89);}
+  .hr-scope .toast.error i{background:linear-gradient(135deg,#A6402F,#E56A59);}
+  @keyframes toastIn{from{opacity:0;transform:translateY(10px) scale(.98);}to{opacity:1;transform:translateY(0) scale(1);}}
+  .hr-scope .modal-backdrop{position:fixed;inset:0;background:rgba(12,20,36,.46);backdrop-filter:blur(7px);z-index:90;display:none;align-items:center;justify-content:center;padding:20px;}
+  .hr-scope .modal-backdrop.show{display:flex;}
+  .hr-scope .confirm-modal{width:min(430px,100%);border-radius:24px;background:linear-gradient(145deg,#FFFFFF,#FBF7EE);border:1px solid rgba(255,255,255,.75);box-shadow:0 30px 100px -35px rgba(22,34,59,.75);padding:24px;animation:modalPop .2s ease-out;}
+  .hr-scope .confirm-icon{width:52px;height:52px;border-radius:18px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#FBE7E3,#FFE8C2);color:var(--rust);font-size:21px;box-shadow:0 14px 34px -22px rgba(166,64,47,.8);margin-bottom:14px;}
+  .hr-scope .confirm-modal h3{margin:0 0 8px;font-family:'Newsreader',serif;font-size:22px;color:var(--ink);}
+  .hr-scope .confirm-modal p{margin:0;color:var(--slate);font-size:13.5px;line-height:1.55;font-weight:600;}
+  .hr-scope .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px;}
+  .hr-scope .btn-confirm-delete{background:linear-gradient(135deg,#A6402F,#D94D3D);color:#fff;border:none;}
+  .hr-scope .btn-confirm-delete:hover{filter:brightness(.96);}
+  @keyframes modalPop{from{opacity:0;transform:scale(.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);}}
+  @media (max-width:800px){.hr-scope .filters{grid-template-columns:1fr;}.hr-scope .split{grid-template-columns:1fr;}.hr-scope .row{grid-template-columns:30px 72px minmax(0,1fr) auto auto 36px;gap:7px;padding-inline:10px;}.hr-scope .rid{width:auto;font-size:10px;}.hr-scope .rname{font-size:12.5px;}.hr-scope .rclass,.hr-scope .hall-note{font-size:10px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.hr-scope .move.transfer{font-size:0;width:28px;height:28px;padding:0;}.hr-scope .move.transfer::before{content:"\f362";font-family:"Font Awesome 6 Free";font-weight:900;font-size:12px;}}
+</style>
+{% endblock %}
+
+{% block admin_content %}
+<div class="hr-scope">
+<div class="wrap">
+
+  <div class="nav-strip">
+    <a href="{{ url_for('admin_attendance.hall_roster') }}" class="active">
+      <i class="fa-solid fa-list-check"></i> Diiwaan-gelinta Hall Exam
+    </a>
+    <a href="{{ url_for('admin_attendance.dashboard') }}">
+      <i class="fa-solid fa-clipboard-user"></i> Xaadiriinta
+    </a>
+  </div>
+
+  <h1 class="pagetitle">Diiwaan-gelinta Hall Exam / Fasal Imtixaan</h1>
+  <p class="lede">Dooro sanad-dugsiyeedka iyo nooca imtixaanka, kadibna samee ama dooro hall/fasal-imtixaan. Ardeyda geli tan uu doonayo pool-ka bidix — waa liiska ardeyda saxda ah ee <b>hore loogu diiwaan-geliyey system-ka</b> (fasalkooda dhabta ah), si aan loo isticmaalin xog qalad ah.</p>
+
+  <div class="filters">
+    <div class="step">
+      <i class="fa-solid fa-calendar-days icon"></i>
+      <div class="field">
+        <label>Sanad-dugsiyeedka</label>
+        <select id="selYear">
+          {% for y in years %}
+            <option value="{{ y.id }}" {% if y.is_current %}selected{% endif %}>{{ y.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="step">
+      <i class="fa-solid fa-file-pen icon"></i>
+      <div class="field">
+        <label>Nooca Imtixaanka</label>
+        <select id="selExamType"></select>
+      </div>
+    </div>
+    <div class="step">
+      <i class="fa-solid fa-school icon"></i>
+      <div class="field">
+        <label>Hall / Fasal Imtixaan</label>
+        <select id="selHall"></select>
+      </div>
+    </div>
+  </div>
+
+  <div class="newhall">
+    <input id="newHallName" type="text" placeholder="Magaca hall cusub, tusaale: Form Two — Hall B" />
+    <button class="btn btn-outline" id="btnAddHall">
+      <i class="fa-solid fa-plus"></i> Samee Hall Cusub
+    </button>
+    <button class="btn btn-danger" id="btnDeleteHall" type="button">
+      <i class="fa-solid fa-trash-can"></i> Delete Hall
+    </button>
+    <span class="form-message" id="hallCreateMessage" role="status" aria-live="polite"></span>
+  </div>
+
+  <div class="split">
+    <div class="panel">
+      <div class="panel-head">
+        <h3>Ardeyda System-ka (fasalkooda dhabta ah)</h3>
+        <span class="count" id="poolCount">0 ardey</span>
+      </div>
+      <div class="poolfilters">
+        <div class="pool-select level">
+          <i class="fa-solid fa-layer-group"></i>
+          <select id="selLevel"><option value="">Heer...</option></select>
+        </div>
+        <div class="pool-select class">
+          <i class="fa-solid fa-users-rectangle"></i>
+          <select id="selClass"><option value="">Fasal...</option></select>
+        </div>
+      </div>
+      <div class="search">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input id="poolSearch" placeholder="Raadi magac ama ID..." />
+      </div>
+      <div class="list" id="poolList">
+        <div class="empty">Dooro sanad iyo exam type si ardeyda loo raro.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h3 id="hallListTitle">Ardeyda Hall-kan</h3>
+        <span class="count" id="hallCount">0 ardey</span>
+      </div>
+      <div class="search">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input id="hallSearch" placeholder="Raadi magac ama ID..." />
+      </div>
+      <div class="list" id="hallList">
+        <div class="empty">Wali ardey lagama darin hall-kan. Riix &ldquo;+&rdquo; bidix ka.</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="foot-note">
+    <i class="fa-solid fa-circle-info"></i>
+    <b>Xusuusin:</b> Ardeyda halkan lagu diiwaan-geliyo Hall Exam-ka ayaa noqonaya liiska laga xaadiriyo bogga Xaadiriinta — marka la dooro sanad-dugsiyeedka, nooca imtixaanka, iyo hall-kan isla kan ah.
+  </p>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <i class="fa-solid fa-check"></i>
+    <span id="toastText"></span>
+  </div>
+
+  <div class="modal-backdrop" id="deleteHallModal" aria-hidden="true">
+    <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="deleteHallTitle">
+      <div class="confirm-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <h3 id="deleteHallTitle">Ma hubtaa inaad tirtirayso hall-kan?</h3>
+      <p id="deleteHallText">Hall-kan waa laga saari doonaa liiska hall-yada firfircoon. Tallaabadan si fudud looma celin karo.</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="btnCancelDeleteHall" type="button">Cancel</button>
+        <button class="btn btn-confirm-delete" id="btnConfirmDeleteHall" type="button">
+          <i class="fa-solid fa-trash-can"></i> Confirm Delete
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="transferHallModal" aria-hidden="true">
+    <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="transferHallTitle">
+      <div class="confirm-icon" style="color:#0F766E;background:linear-gradient(135deg,#DDFCF4,#E0F2FE);"><i class="fa-solid fa-right-left"></i></div>
+      <h3 id="transferHallTitle">Ardayga ma la wareejinayaa?</h3>
+      <p id="transferHallText">Ardaygan waxaa laga wareejin doonaa hall-kii hore, waxaana lagu qori doonaa hall-kan.</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="btnCancelTransferHall" type="button">Cancel</button>
+        <button class="btn btn-confirm-delete" id="btnConfirmTransferHall" type="button" style="background:linear-gradient(135deg,#0F766E,#14B8A6);">
+          <i class="fa-solid fa-right-left"></i> Transfer
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+const COLORS=['#24406B','#B8863E','#2F6B4F','#A6402F','#6C4E9E','#2C6C87','#96355E','#0F766E','#7C3AED','#BE123C'];
+function hash(str){let h=0;for(let i=0;i<str.length;i++){h=(h*31+str.charCodeAt(i))>>>0;}return h;}
+function initials(name){return (name||'').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();}
+function colorFor(id){return COLORS[hash(String(id))%COLORS.length];}
+function classColor(s){return colorFor('class:'+(s.class_name||s.academic_class_id||s.id));}
+function selectedExamScope(){
+  const select=document.getElementById('selExamType');
+  const option=select.options[select.selectedIndex];
+  const key=option?.dataset.source==='legacy'?'exam_type_id':'exam_id';
+  return `${key}=${encodeURIComponent(select.value||'')}`;
+}
+function selectedExamPayload(){
+  const select=document.getElementById('selExamType');
+  const option=select.options[select.selectedIndex];
+  return option?.dataset.source==='legacy'
+    ? {exam_type_id:select.value}
+    : {exam_id:select.value};
+}
+
+let levelsData=[];
+const csrfToken=document.querySelector('meta[name="csrf-token"]')?.content||'';
+let toastTimer=null;
+let pendingTransferStudent=null;
+
+async function rosterPost(url,payload){
+  const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken},body:JSON.stringify(payload)});
+  const data=await res.json();
+  if(!res.ok||!data.success) throw new Error(data.error||'Isbeddelka hall roster-ka ma kaydsamin.');
+  return data;
+}
+
+function showToast(message,isError=false){
+  let toast=document.getElementById('toast');
+  if(!toast){
+    toast=document.createElement('div');
+    toast.id='toast';
+    toast.className='toast';
+    toast.innerHTML='<i class="fa-solid fa-check"></i><span id="toastText"></span>';
+    document.querySelector('.hr-scope')?.appendChild(toast);
+  }
+  const text=document.getElementById('toastText');
+  if(!text) return;
+  text.textContent=message;
+  toast.classList.toggle('error',Boolean(isError));
+  toast.querySelector('i').className=isError?'fa-solid fa-xmark':'fa-solid fa-check';
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>toast.classList.remove('show'),3200);
+}
+
+async function loadExamTypes(){
+  const yearId=document.getElementById('selYear').value;
+  const res=await fetch(`/admin/attendance/api/exam-types?academic_year_id=${yearId}`);
+  const data=await res.json();
+  document.getElementById('selExamType').innerHTML=(data.exam_types||[]).map(et=>`<option value="${et.id}" data-source="${et.source||'exam'}">${et.name}</option>`).join('');
+  await loadHalls();
+}
+
+async function loadHalls(preferredHallId=null){
+  const yearId=document.getElementById('selYear').value;
+  const examTypeId=document.getElementById('selExamType').value;
+  const res=await fetch(`/admin/attendance/api/halls?academic_year_id=${yearId}&${selectedExamScope()}`);
+  const data=await res.json();
+  const halls=data.halls||[];
+  document.getElementById('selHall').innerHTML=halls.length
+    ? halls.map(h=>`<option value="${h.id}" data-class-id="${h.academic_class_id||''}" data-level-id="${h.academic_level_id||''}">${h.name}</option>`).join('')
+    : '<option value="">(Ma jiro hall — mid cusub samee)</option>';
+  if(preferredHallId&&halls.some(h=>String(h.id)===String(preferredHallId))){
+    document.getElementById('selHall').value=preferredHallId;
+  }
+  document.getElementById('btnDeleteHall').disabled=!halls.length;
+  trySyncFilterToHall();
+  await loadRosterData();
+}
+
+async function loadLevelsAndClasses(){
+  const res=await fetch('/admin/attendance/api/levels-and-classes');
+  const data=await res.json();
+  levelsData=data.levels||[];
+  document.getElementById('selLevel').innerHTML=levelsData.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+  refreshClasses();
+  document.getElementById('selLevel').addEventListener('change',()=>{refreshClasses();loadRosterData();});
+  document.getElementById('selClass').addEventListener('change',loadRosterData);
+}
+
+function refreshClasses(){
+  const levelId=document.getElementById('selLevel').value;
+  const levelObj=levelsData.find(l=>String(l.id)===String(levelId));
+  const sel=document.getElementById('selClass');
+  sel.innerHTML=(levelObj&&levelObj.classes&&levelObj.classes.length)
+    ? levelObj.classes.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')
+    : '<option value="">(Kuma jiraan fasallo)</option>';
+}
+
+function trySyncFilterToHall(){
+  const selHall=document.getElementById('selHall');
+  const opt=selHall.options[selHall.selectedIndex];
+  if(!opt) return;
+  const classId=opt.dataset.classId;
+  const levelId=opt.dataset.levelId;
+  if(levelId&&classId){
+    document.getElementById('selLevel').value=levelId;
+    refreshClasses();
+    document.getElementById('selClass').value=classId;
+  }
+}
+
+async function loadRosterData(){
+  const hallId=document.getElementById('selHall').value;
+  const levelId=document.getElementById('selLevel').value;
+  const classId=document.getElementById('selClass').value;
+  const qPool=document.getElementById('poolSearch').value;
+  if(!hallId){
+    document.getElementById('poolList').innerHTML='<div class="empty">Fadlan dooro ama samee Hall Imtixaan munaasib ah.</div>';
+    document.getElementById('hallList').innerHTML='<div class="empty">Fadlan dooro Hall Imtixaan.</div>';
+    document.getElementById('poolCount').textContent='0 ardey';
+    document.getElementById('hallCount').textContent='0 ardey';
+    return;
+  }
+  const hallName=document.getElementById('selHall').options[document.getElementById('selHall').selectedIndex]?.text||'';
+  document.getElementById('hallListTitle').textContent=`Ardeyda: ${hallName}`;
+  const res=await fetch(`/admin/attendance/api/hall-roster-data?exam_hall_id=${hallId}&academic_level_id=${levelId}&academic_class_id=${classId}&q=${encodeURIComponent(qPool)}`);
+  const data=await res.json();
+  if(!data.success){
+    document.getElementById('poolList').innerHTML=`<div class="empty">${data.error||'Lama soo qaadi karo ardeyda.'}</div>`;
+    document.getElementById('hallList').innerHTML='';
+    return;
+  }
+  renderPoolList(data.available_students||[]);
+  renderHallList(data.assigned_students||[],document.getElementById('hallSearch').value);
+}
+
+function makeRow(s,isAssigned){
+  const row=document.createElement('div');
+  row.className='row';
+  const bgStyle=s.photo_url?`background-image:url('${s.photo_url}')`:`background-color:${colorFor(s.id)}`;
+  const av=s.photo_url?'':initials(s.full_name);
+  const cColor=classColor(s);
+  const assignedElsewhere=!isAssigned&&s.assigned_hall_id;
+  const hallNote=assignedElsewhere?`<span class="hall-note" title="Ardeygan ${s.assigned_hall_name} ayuu ku qoran yahay"><i class="fa-solid fa-school"></i>${s.assigned_hall_name}</span>`:'<span></span>';
+  const moveIcon=isAssigned
+    ?'<button class="move remove" type="button" title="Ka saar">\u2715</button>'
+    : assignedElsewhere
+      ?'<button class="move transfer" type="button" title="Transfer garee">Transfer</button>'
+      :'<button class="move" type="button" title="Geli Hall-kan">\uff0b</button>';
+  row.innerHTML=`<span class="avatar" style="${bgStyle}">${av}</span><span class="rid">${s.student_code}</span><span class="rname">${s.full_name}</span><span class="rclass" style="background:${cColor};">${s.class_name||''}</span>${hallNote}${moveIcon}`;
+  row.addEventListener('click',async()=>{
+    const hallId=document.getElementById('selHall').value;
+    if(!hallId||row.classList.contains('busy')) return;
+    if(assignedElsewhere){
+      openTransferHallModal(s);
+      return;
+    }
+    const ep=isAssigned?'/admin/attendance/api/hall-roster/remove':'/admin/attendance/api/hall-roster/assign';
+    row.classList.add('busy');
+    try{
+      await rosterPost(ep,{exam_hall_id:hallId,student_id:s.id});
+      showToast(isAssigned?'Ardayga hall-ka waa laga saaray.':'Ardayga hall-ka si sax ah ayaa loogu daray.');
+      await loadRosterData();
+    }catch(error){
+      showToast(error.message,true);
+      console.error(error);
+    }finally{
+      row.classList.remove('busy');
+    }
+  });
+  return row;
+}
+
+function renderPoolList(items){
+  const list=document.getElementById('poolList');
+  document.getElementById('poolCount').textContent=`${items.length} ardey`;
+  list.innerHTML=items.length?'':`<div class="empty">Ma jiro ardey hadhay fasalkan.</div>`;
+  items.forEach(s=>list.appendChild(makeRow(s,false)));
+}
+
+function renderHallList(items,q){
+  const filt=q?(items.filter(s=>s.full_name.toLowerCase().includes(q.toLowerCase())||s.student_code.toLowerCase().includes(q.toLowerCase()))):items;
+  const list=document.getElementById('hallList');
+  document.getElementById('hallCount').textContent=`${filt.length} ardey`;
+  list.innerHTML=filt.length?'':`<div class="empty">Wali ardey lagama darin hall-kan. Riix "+" bidix ka.</div>`;
+  filt.forEach(s=>list.appendChild(makeRow(s,true)));
+}
+
+document.getElementById('btnAddHall').addEventListener('click',async()=>{
+  const nameInput=document.getElementById('newHallName');
+  const message=document.getElementById('hallCreateMessage');
+  const button=document.getElementById('btnAddHall');
+  const val=nameInput.value.trim();
+  if(message){message.className='form-message';message.textContent='';}
+  if(!val){if(message)message.textContent='Geli magaca hall-ka cusub.';return;}
+  button.disabled=true;
+  try{
+    const data=await rosterPost('/admin/attendance/api/halls/create',{name:val,academic_year_id:document.getElementById('selYear').value,...selectedExamPayload(),academic_class_id:document.getElementById('selClass').value});
+    nameInput.value='';
+    if(message){
+      message.className='form-message success';
+      message.textContent=`Fasal imtixaanka ${data.hall.name} si sax ah ayaa loo abuuray.`;
+    }
+    showToast(`Fasal imtixaanka ${data.hall.name} si sax ah ayaa loo abuuray.`);
+    await loadHalls(data.hall.id);
+  }catch(error){
+    if(message)message.textContent=error.message;
+    showToast(error.message,true);
+    console.error(error);
+  }finally{
+    button.disabled=false;
+  }
+});
+
+function selectedHallDetails(){
+  const sel=document.getElementById('selHall');
+  const opt=sel.options[sel.selectedIndex];
+  return {id:sel.value,name:opt?.text||''};
+}
+function openDeleteHallModal(){
+  const hall=selectedHallDetails();
+  if(!hall.id) return;
+  document.getElementById('deleteHallText').innerHTML=`Ma hubtaa inaad tirtirayso <b>${hall.name}</b>? Hall-kan waa laga saari doonaa liiska hall-yada firfircoon.`;
+  const modal=document.getElementById('deleteHallModal');
+  modal.classList.add('show');
+  modal.setAttribute('aria-hidden','false');
+}
+function closeDeleteHallModal(){
+  const modal=document.getElementById('deleteHallModal');
+  modal.classList.remove('show');
+  modal.setAttribute('aria-hidden','true');
+}
+function openTransferHallModal(student){
+  const hall=selectedHallDetails();
+  pendingTransferStudent=student;
+  document.getElementById('transferHallText').innerHTML=`<b>${student.full_name}</b> wuxuu hadda ku qoran yahay <b>${student.assigned_hall_name}</b>. Ma u wareejinaa <b>${hall.name}</b>?`;
+  const modal=document.getElementById('transferHallModal');
+  modal.classList.add('show');
+  modal.setAttribute('aria-hidden','false');
+}
+function closeTransferHallModal(){
+  const modal=document.getElementById('transferHallModal');
+  modal.classList.remove('show');
+  modal.setAttribute('aria-hidden','true');
+  pendingTransferStudent=null;
+}
+document.getElementById('btnDeleteHall').addEventListener('click',openDeleteHallModal);
+document.getElementById('btnCancelDeleteHall').addEventListener('click',closeDeleteHallModal);
+document.getElementById('deleteHallModal').addEventListener('click',event=>{if(event.target.id==='deleteHallModal')closeDeleteHallModal();});
+document.getElementById('btnCancelTransferHall').addEventListener('click',closeTransferHallModal);
+document.getElementById('transferHallModal').addEventListener('click',event=>{if(event.target.id==='transferHallModal')closeTransferHallModal();});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeDeleteHallModal();closeTransferHallModal();}});
+document.getElementById('btnConfirmDeleteHall').addEventListener('click',async()=>{
+  const hall=selectedHallDetails();
+  if(!hall.id) return;
+  const btn=document.getElementById('btnConfirmDeleteHall');
+  btn.disabled=true;
+  try{
+    const data=await rosterPost('/admin/attendance/api/halls/delete',{exam_hall_id:hall.id});
+    closeDeleteHallModal();
+    showToast(`${data.hall?.name||hall.name} si sax ah ayaa loo tirtiray.`);
+    await loadHalls();
+  }catch(error){
+    showToast(error.message,true);
+    console.error(error);
+  }finally{
+    btn.disabled=false;
+  }
+});
+document.getElementById('btnConfirmTransferHall').addEventListener('click',async()=>{
+  const hall=selectedHallDetails();
+  if(!hall.id||!pendingTransferStudent) return;
+  const btn=document.getElementById('btnConfirmTransferHall');
+  btn.disabled=true;
+  try{
+    const data=await rosterPost('/admin/attendance/api/hall-roster/transfer',{to_exam_hall_id:hall.id,student_id:pendingTransferStudent.id});
+    closeTransferHallModal();
+    showToast(data.message||`Ardayga si sax ah ayaa loogu wareejiyey ${hall.name}.`);
+    await loadRosterData();
+  }catch(error){
+    showToast(error.message,true);
+    console.error(error);
+  }finally{
+    btn.disabled=false;
+  }
+});
+
+document.getElementById('selYear').addEventListener('change',loadExamTypes);
+document.getElementById('selExamType').addEventListener('change',loadHalls);
+document.getElementById('selHall').addEventListener('change',()=>{trySyncFilterToHall();loadRosterData();});
+document.getElementById('poolSearch').addEventListener('input',loadRosterData);
+document.getElementById('hallSearch').addEventListener('input',loadRosterData);
+
+document.addEventListener('DOMContentLoaded',async()=>{await loadLevelsAndClasses();await loadExamTypes();});
+</script>
+{% endblock %}
