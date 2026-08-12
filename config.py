@@ -20,7 +20,9 @@ class Config:
     )
     if _db_url:
         if _db_url.startswith("postgres://"):
-            _db_url = _db_url.replace("postgres://", "postgresql://", 1)
+            _db_url = _db_url.replace("postgres://", "postgresql+psycopg://", 1)
+        elif _db_url.startswith("postgresql://"):
+            _db_url = _db_url.replace("postgresql://", "postgresql+psycopg://", 1)
         elif _db_url.startswith("mysql://"):
             _db_url = _db_url.replace("mysql://", "mysql+pymysql://", 1)
 
