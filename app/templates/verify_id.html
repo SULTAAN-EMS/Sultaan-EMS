@@ -4,366 +4,94 @@
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/verification-id.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/verified-name-badge.css') }}">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --verification-primary: {{ settings.verify_id_header_primary or '#2563eb' }};
-    --verification-primary-dark: {{ settings.verify_id_header_secondary or '#1e40af' }};
-    --verification-secondary: {{ settings.verify_id_badge_primary or '#10b981' }};
-    --verification-secondary-dark: {{ settings.verify_id_badge_secondary or '#059669' }};
     --verify-logo-size: {{ settings.verify_id_logo_size or '120' }}px;
-    --verify-header-padding: {{ settings.verify_id_header_padding or '48' }}px;
     --verify-photo-size: {{ settings.verify_id_photo_size or '200' }}px;
-    --verify-photo-border-width: {{ settings.verify_id_photo_border_width or '4' }}px;
-    --verify-photo-border-color: {{ settings.verify_id_photo_border_color or '#10b981' }};
-    --verify-photo-radius: {{ settings.verify_id_photo_radius or '20' }}px;
     --verify-card-radius: {{ settings.verify_id_card_radius or '20' }}px;
-    --verify-card-padding: {{ settings.verify_id_card_padding or '32' }}px;
-    --verify-card-spacing: {{ settings.verify_id_card_spacing or '24' }}px;
-    --verify-stamp-size: {{ settings.verify_id_stamp_size or '140' }}px;
-    --verify-stamp-color: {{ settings.verify_id_stamp_color or '#10b981' }};
-    --verify-status-color: {{ settings.verify_id_status_color or '#10b981' }};
-    --verify-status-dark: {{ settings.verify_id_status_dark or '#059669' }};
-    --verify-badge-radius: {{ settings.verify_id_badge_radius or '16' }}px;
   }
-  
-  .verification-id-body {
-    background: {{ settings.verify_id_bg_color or '#f0f9ff' }};
-    font-family: {{ settings.verify_id_font_family or 'Segoe UI, sans-serif' }};
-    font-size: {{ settings.verify_id_font_size or '16' }}px;
-    font-weight: {{ settings.verify_id_font_weight or '400' }};
-    color: {{ settings.verify_id_text_color or '#1f2937' }};
-    letter-spacing: {{ settings.verify_id_letter_spacing or '0' }}px;
-    line-height: {{ settings.verify_id_line_height or '1.5' }};
-    text-align: {{ settings.verify_id_text_align or 'left' }};
-  }
-  
-  .verification-header h1 {
-    font-size: {{ settings.verify_id_header_font_size or '36' }}px;
-  }
-  
-  .student-name {
-    font-size: {{ settings.verify_id_name_font_size or '24' }}px;
-  }
-  
-  .info-label {
-    font-size: {{ settings.verify_id_label_font_size or '14' }}px;
-  }
-  
-  .info-value {
-    font-size: {{ settings.verify_id_value_font_size or '14' }}px;
-  }
-  
-  .glass-card {
-    background: {{ settings.verify_id_card_bg or '#ffffff' }};
-    border-color: {{ settings.verify_id_border_color or '#e5e7eb' }};
-  }
-  
-  .verification-footer {
-    background: {{ settings.verify_id_footer_bg or '#f8fafc' }};
-    color: {{ settings.verify_id_footer_text_color or '#1f2937' }};
-  }
-  
-  .verified-badge {
-    color: {{ settings.verify_id_badge_text_color or '#059669' }};
-  }
-  
-  .status-text {
-    color: {{ settings.verify_id_status_text_color or '#ffffff' }};
-  }
-  
-  {% if settings.verify_id_template_style == 'classic' %}
-  .verification-id-body { background: #ffffff; }
-  .glass-card { background: #f9fafb; border: 1px solid #d1d5db; backdrop-filter: none; }
-  .verified-badge { background: #1f2937; color: white; border: none; }
-  {% elif settings.verify_id_template_style == 'modern' %}
-  .verification-id-body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-  .glass-card { background: rgba(255,255,255,0.95); border-radius: 24px; }
-  .verified-badge { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-  {% elif settings.verify_id_template_style == 'elegant' %}
-  .verification-id-body { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); }
-  .glass-card { background: rgba(255,255,255,0.9); border: 1px solid #e2e8f0; }
-  .verified-badge { background: linear-gradient(135deg, #c3cfe2 0%, #f5f7fa 100%); color: #1f2937; border: 1px solid #c3cfe2; }
-  {% elif settings.verify_id_template_style == 'corporate' %}
-  .verification-id-body { background: #1a202c; }
-  .glass-card { background: #2d3748; color: white; }
-  .verified-badge { background: #3182ce; color: white; }
-  .verification-header { background: #2c5282; }
-  {% elif settings.verify_id_template_style == 'government' %}
-  .verification-id-body { background: #f0f0f0; }
-  .glass-card { background: white; border: 2px solid #1a1a1a; }
-  .verified-badge { background: #1a1a1a; color: white; border: 2px solid #1a1a1a; }
-  .verification-header { background: #1a1a1a; }
-  {% elif settings.verify_id_template_style == 'university' %}
-  .verification-id-body { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); }
-  .glass-card { background: rgba(255,255,255,0.95); }
-  .verified-badge { background: #1e3c72; color: white; }
-  .verification-header { background: #1e3c72; }
-  {% elif settings.verify_id_template_style == 'luxury' %}
-  .verification-id-body { background: linear-gradient(135deg, #232526 0%, #414345 100%); }
-  .glass-card { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,215,0,0.3); }
-  .verified-badge { background: linear-gradient(135deg, #d4af37 0%, #f4e4bc 100%); color: #1a1a1a; }
-  .verification-header { background: linear-gradient(135deg, #d4af37 0%, #f4e4bc 100%); color: #1a1a1a; }
-  {% elif settings.verify_id_template_style == 'glassmorphism' %}
-  .verification-id-body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-  .glass-card { background: rgba(255,255,255,0.1); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.2); }
-  .verified-badge { background: rgba(255,255,255,0.2); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.3); color: white; }
-  {% elif settings.verify_id_template_style == 'minimal' %}
-  .verification-id-body { background: #ffffff; }
-  .glass-card { background: #fafafa; border: none; box-shadow: none; }
-  .verified-badge { background: #000000; color: white; border: none; }
-  .verification-header { background: #000000; }
-  {% elif settings.verify_id_template_style == 'dark' %}
-  .verification-id-body { background: #0f172a; }
-  .glass-card { background: #1e293b; color: #f1f5f9; }
-  .verified-badge { background: #10b981; color: white; }
-  .verification-header { background: #1e293b; }
-  {% elif settings.verify_id_template_style == 'light' %}
-  .verification-id-body { background: #fafafa; }
-  .glass-card { background: white; border: 1px solid #e5e5e5; }
-  .verified-badge { background: #f5f5f5; color: #333; border: 1px solid #e5e5e5; }
-  {% endif %}
-  
   {% if settings.verify_id_badge_animation == 'off' %}
-  .verified-badge, .badge-icon { animation: none !important; }
+  .id-verified-hero, .id-verified-hero *, .verified-mini { animation: none !important; }
   {% endif %}
-  {% if settings.verify_id_glass_effect == 'off' %}
-  .glass-card { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: white !important; }
-  {% endif %}
-  {% if settings.verify_id_show_watermark == 'off' %}
-  .verification-watermark { display: none !important; }
-  {% endif %}
-  {% if settings.verify_id_photo_shadow == 'off' %}
-  .photo-frame { box-shadow: none !important; }
-  {% endif %}
-  {% if settings.verify_id_show_header == 'off' %}
-  .verification-header { display: none !important; }
-  {% endif %}
-  {% if settings.verify_id_show_badge == 'off' %}
-  .verified-badge { display: none !important; }
-  {% endif %}
-  {% if settings.verify_id_show_status_card == 'off' %}
-  .status-card { display: none !important; }
-  {% endif %}
-  {% if settings.verify_id_show_verification_area == 'off' %}
-  .verification-area { display: none !important; }
-  {% endif %}
-  {% if settings.verify_id_show_footer == 'off' %}
-  .verification-footer { display: none !important; }
-  {% endif %}
-  {% if settings.verify_id_show_icons == 'off' %}
-  .info-label i, .verification-label i, .badge-icon, .status-icon, .verification-footer-icon { display: none !important; }
-  {% endif %}
-  {% if settings.verify_id_show_background_decorations == 'off' %}
-  .verification-id-body { background: white !important; }
-  {% endif %}
+  {% if settings.verify_id_show_watermark == 'off' %}.verification-watermark { display:none !important; }{% endif %}
+  {% if settings.verify_id_photo_shadow == 'off' %}.photo-frame { box-shadow:none !important; }{% endif %}
+  {% if settings.verify_id_show_header == 'off' %}.verification-header { display:none !important; }{% endif %}
+  {% if settings.verify_id_show_badge == 'off' %}.id-verified-hero { display:none !important; }{% endif %}
+  {% if settings.verify_id_show_status_card == 'off' %}.status-card { display:none !important; }{% endif %}
+  {% if settings.verify_id_show_verification_area == 'off' %}.verification-area { display:none !important; }{% endif %}
+  {% if settings.verify_id_show_footer == 'off' %}.verification-footer { display:none !important; }{% endif %}
+  {% if settings.verify_id_show_icons == 'off' %}.field-icon, .status-icon, .verify-icon, .identity-tag i { display:none !important; }{% endif %}
 </style>
 {% endblock %}
 {% block content %}
 {% from 'partials/verified_name_badge.html' import verified_name_badge %}
 <main class="verification-id-page">
-  <!-- Background Watermark -->
-  <div class="verification-watermark">
-    {% if settings.logo_path %}
-      <img src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} watermark">
-    {% else %}
-      <i class="fa-solid fa-school"></i>
-    {% endif %}
+  <div class="verification-watermark" aria-hidden="true">
+    {% if settings.logo_path %}<img src="{{ asset_url(settings.logo_path) }}" alt="">{% else %}<i class="fa-solid fa-school"></i>{% endif %}
   </div>
 
   <div class="verification-container">
-    <!-- Header -->
     <header class="verification-header">
       <div class="school-logo-shell">
-        {% if settings.logo_path %}
-          <img class="school-logo" src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">
-        {% else %}
-          <i class="fa-solid fa-school"></i>
-        {% endif %}
+        {% if settings.logo_path %}<img class="school-logo" src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">{% else %}<i class="fa-solid fa-school"></i>{% endif %}
       </div>
-      <h1>{{ settings.school_name }}</h1>
-      <p class="header-subtitle">Official Student Identity Verification</p>
+      <div class="school-heading"><h1>{{ settings.school_name }}</h1><p class="header-subtitle">Official Student Identity Verification</p></div>
     </header>
 
     {% if verified %}
-      <!-- Verified Badge -->
-      <div class="verified-badge">
-        <div class="badge-icon">
-          <i class="fa-solid fa-circle-check"></i>
+      <section class="id-verification-hero" aria-label="Verified student identity">
+        <div class="id-verified-hero verified-badge">
+          <span class="hero-aura"></span>
+          <span class="hero-orbit hero-orbit-one"></span><span class="hero-orbit hero-orbit-two"></span><span class="hero-orbit hero-orbit-three"></span><span class="hero-orbit hero-orbit-four"></span>
+          <span class="hero-seal"><i class="fa-solid fa-check"></i></span>
         </div>
-        <span class="badge-text">VERIFIED STUDENT</span>
-      </div>
+        <p>Student identity confirmed</p>
+      </section>
 
-      <!-- Student Information Card -->
       <section class="student-info-card glass-card">
+        <span class="identity-tag"><i class="fa-solid fa-graduation-cap"></i> Student</span>
         {% if settings.verify_id_show_photo != 'off' %}
-        <div class="student-photo-section">
-          <div class="photo-frame">
-            {% if issue.student.photo_path %}
-              <img src="{{ asset_url(issue.student.photo_path) }}" alt="{{ issue.student.full_name }} photo">
-            {% else %}
-              <div class="photo-placeholder"><i class="fa-solid fa-user-graduate"></i></div>
-            {% endif %}
-          </div>
-        </div>
+        <div class="student-photo-section"><div class="photo-frame">
+          {% if issue.student.photo_path %}<img src="{{ asset_url(issue.student.photo_path) }}" alt="{{ issue.student.full_name }} photo">{% else %}<div class="photo-placeholder"><i class="fa-solid fa-user-graduate"></i></div>{% endif %}
+        </div></div>
         {% endif %}
-
         <div class="student-details-section">
-          {% if settings.verify_id_show_student_name != 'off' %}
-          <h2 class="student-name">{{ issue.student.full_name }}{{ verified_name_badge() }}</h2>
-          {% endif %}
-
-          <div class="info-grid">
-            {% if settings.verify_id_show_student_id != 'off' %}
-            <div class="info-item">
-              <span class="info-label"><i class="fa-solid fa-id-card"></i> Student ID</span>
-              <span class="info-value">{{ issue.student.student_code }}</span>
-            </div>
-            {% endif %}
-
-            {% if settings.verify_id_show_mother_name != 'off' %}
-            {% if issue.student.mother_name %}
-            <div class="info-item">
-              <span class="info-label"><i class="fa-solid fa-user"></i> Mother's Name</span>
-              <span class="info-value">{{ issue.student.mother_name }}</span>
-            </div>
-            {% endif %}
-            {% endif %}
-
-            {% if settings.verify_id_show_class != 'off' %}
-            <div class="info-item">
-              <span class="info-label"><i class="fa-solid fa-graduation-cap"></i> Class / Grade</span>
-              <span class="info-value">
-                {% if issue.student.academic_class %}
-                  {{ issue.student.academic_class.name }}
-                {% elif issue.student.school_class %}
-                  {{ issue.student.school_class.name }}
-                {% else %}
-                  N/A
-                {% endif %}
-              </span>
-            </div>
-            {% endif %}
-
-            {% if settings.verify_id_show_section != 'off' %}
-            <div class="info-item">
-              <span class="info-label"><i class="fa-solid fa-layer-group"></i> Section</span>
-              <span class="info-value">
-                {% if issue.student.academic_section %}
-                  {{ issue.student.academic_section.name }}
-                {% elif issue.student.section %}
-                  {{ issue.student.section }}
-                {% else %}
-                  N/A
-                {% endif %}
-              </span>
-            </div>
-            {% endif %}
-
-            {% if settings.verify_id_show_academic_year != 'off' %}
-            <div class="info-item">
-              <span class="info-label"><i class="fa-solid fa-calendar-days"></i> Academic Year</span>
-              <span class="info-value">{{ issue.academic_year.name }}</span>
-            </div>
-            {% endif %}
-
-            {% if settings.verify_id_show_exam_type != 'off' %}
-            <div class="info-item">
-              <span class="info-label"><i class="fa-solid fa-file-circle-check"></i> Exam Type</span>
-              <span class="info-value">{{ exam.name if exam else 'No Active Exam Found' }}</span>
-            </div>
-            {% endif %}
-
-            {% if settings.verify_id_show_issue_date != 'off' %}
-            <div class="info-item">
-              <span class="info-label"><i class="fa-solid fa-calendar-check"></i> Issue Date</span>
-              <span class="info-value">{{ issue.issue_date.strftime('%d %b %Y') if issue.issue_date else '-' }}</span>
-            </div>
-            {% endif %}
-
-            {% if settings.verify_id_show_expiry_date != 'off' %}
-            <div class="info-item">
-              <span class="info-label"><i class="fa-solid fa-clock"></i> Expiry Date</span>
-              <span class="info-value">{{ issue.expiry_date.strftime('%d %b %Y') if issue.expiry_date else '-' }}</span>
-            </div>
-            {% endif %}
-          </div>
+          {% if settings.verify_id_show_student_name != 'off' %}<h2 class="student-name">{{ issue.student.full_name }}{{ verified_name_badge() }}</h2>{% endif %}
+          <p class="student-identity-line"><span>{{ issue.student.student_code }}</span><b></b><span>{{ issue.student.academic_level.name if issue.student.academic_level else issue.student.level or 'Student' }}</span></p>
         </div>
       </section>
 
-      <!-- Status Card -->
-      <section class="status-card glass-card active-status">
-        <div class="status-icon">
-          <i class="fa-solid fa-shield-halved"></i>
-        </div>
-        <div class="status-content">
-          <h3>Status</h3>
-          <p class="status-text">{{ display_status }}</p>
-          <p class="status-message">This student is currently active and in good standing.</p>
-        </div>
+      <section class="info-grid" aria-label="Student identity details">
+        {% if settings.verify_id_show_mother_name != 'off' and issue.student.mother_name %}<div class="info-item wide c-purple"><span class="field-icon"><i class="fa-solid fa-user"></i></span><span class="info-label">Mother's Name</span><span class="info-value">{{ issue.student.mother_name }}</span></div>{% endif %}
+        {% if settings.verify_id_show_class != 'off' %}<div class="info-item c-green"><span class="field-icon"><i class="fa-solid fa-graduation-cap"></i></span><span class="info-label">Class / Grade</span><span class="info-value">{% if issue.student.academic_class %}{{ issue.student.academic_class.name }}{% elif issue.student.school_class %}{{ issue.student.school_class.name }}{% else %}N/A{% endif %}</span></div>{% endif %}
+        {% if settings.verify_id_show_section != 'off' %}<div class="info-item c-amber"><span class="field-icon"><i class="fa-solid fa-layer-group"></i></span><span class="info-label">Section</span><span class="info-value">{% if issue.student.academic_section %}{{ issue.student.academic_section.name }}{% elif issue.student.section %}{{ issue.student.section }}{% else %}N/A{% endif %}</span></div>{% endif %}
+        {% if settings.verify_id_show_academic_year != 'off' %}<div class="info-item c-indigo"><span class="field-icon"><i class="fa-solid fa-calendar-days"></i></span><span class="info-label">Academic Year</span><span class="info-value">{{ issue.academic_year.name }}</span></div>{% endif %}
+        {% if settings.verify_id_show_exam_type != 'off' %}<div class="info-item c-sky"><span class="field-icon"><i class="fa-solid fa-file-circle-check"></i></span><span class="info-label">Exam Type</span><span class="info-value">{{ exam.name if exam else 'No Active Exam Found' }}</span></div>{% endif %}
+        {% if settings.verify_id_show_issue_date != 'off' %}<div class="info-item c-blue"><span class="field-icon"><i class="fa-solid fa-calendar-check"></i></span><span class="info-label">Issue Date</span><span class="info-value">{{ issue.issue_date.strftime('%d %b %Y') if issue.issue_date else '-' }}</span></div>{% endif %}
+        {% if settings.verify_id_show_expiry_date != 'off' %}<div class="info-item c-red"><span class="field-icon"><i class="fa-solid fa-clock"></i></span><span class="info-label">Expiry Date</span><span class="info-value">{{ issue.expiry_date.strftime('%d %b %Y') if issue.expiry_date else '-' }}</span></div>{% endif %}
       </section>
 
-      <!-- Verification Area -->
+      <section class="status-card active-status">
+        <span class="status-icon"><i class="fa-solid fa-shield-halved"></i></span>
+        <div class="status-content"><h3>Status: {{ display_status }}</h3><p class="status-text">This student is currently active and in good standing.</p></div>
+      </section>
+
       <section class="verification-area glass-card">
-        {% if settings.verify_id_show_stamp != 'off' %}
-        <div class="verification-stamp-container">
-          {% if settings.school_stamp_path %}
-            <img src="{{ asset_url(settings.school_stamp_path) }}" alt="Official Verification Stamp" class="verification-stamp-image">
-          {% else %}
-            <div class="verification-stamp">
-              <div class="stamp-inner">
-                <i class="fa-solid fa-shield-check"></i>
-                <div class="stamp-text">
-                  <span class="stamp-main">OFFICIALLY</span>
-                  <span class="stamp-sub">VERIFIED</span>
-                </div>
-              </div>
-              <div class="stamp-border"></div>
-            </div>
-          {% endif %}
-        </div>
-        {% endif %}
-
+        {% if settings.verify_id_show_stamp != 'off' %}<div class="verification-stamp-container">
+          {% if settings.school_stamp_path %}<img src="{{ asset_url(settings.school_stamp_path) }}" alt="Official Verification Stamp" class="verification-stamp-image">{% else %}<div class="verification-stamp"><i class="fa-solid fa-shield-check"></i><span>Officially<br>Verified</span></div>{% endif %}
+        </div>{% endif %}
         <div class="verification-details">
-          {% if settings.verify_id_show_verification_code != 'off' %}
-          <div class="verification-item">
-            <span class="verification-label"><i class="fa-solid fa-fingerprint"></i> Verification Code</span>
-            <span class="verification-value">{{ issue.token[:16]|upper }}</span>
-          </div>
-          {% endif %}
-
-          {% if settings.verify_id_show_date_time != 'off' %}
-          <div class="verification-item">
-            <span class="verification-label"><i class="fa-solid fa-calendar-check"></i> Date & Time</span>
-            <span class="verification-value">{{ issue.created_at.strftime('%d %b %Y at %I:%M %p') if issue.created_at else '-' }}</span>
-          </div>
-          {% endif %}
+          {% if settings.verify_id_show_verification_code != 'off' %}<div class="verification-item"><span class="verify-icon"><i class="fa-solid fa-fingerprint"></i></span><div><span class="verification-label">Verification Code</span><span class="verification-value">{{ issue.token[:16]|upper }}</span></div></div>{% endif %}
+          {% if settings.verify_id_show_date_time != 'off' %}<div class="verification-item"><span class="verify-icon"><i class="fa-solid fa-calendar-check"></i></span><div><span class="verification-label">Date &amp; Time</span><span class="verification-value">{{ issue.created_at.strftime('%d %b %Y at %I:%M %p') if issue.created_at else '-' }}</span></div></div>{% endif %}
         </div>
       </section>
 
-      <!-- Footer (kept for structural spacing; actual copyright in premium footer below) -->
-      <footer class="verification-footer">
-        <div class="verification-footer-content">
-          <div class="verification-footer-icon">
-            <i class="fa-solid fa-shield-check"></i>
-          </div>
-          <p>This student ID has been officially verified by {{ settings.school_name }}.</p>
-        </div>
-      </footer>
-
+      <footer class="verification-footer"><p>This student ID has been officially verified by {{ settings.school_name }}.</p></footer>
     {% else %}
-      <!-- Invalid State -->
-      <section class="invalid-state glass-card">
-        <div class="invalid-icon">
-          <i class="fa-solid fa-triangle-exclamation"></i>
-        </div>
-        <h2>Invalid ID Card</h2>
-        <p>This verification link is invalid or no longer recognized by the system.</p>
-        <a class="btn premium" href="{{ url_for('public.portal') }}"><i class="fa-solid fa-arrow-left"></i> Back to Portal</a>
-      </section>
+      <section class="invalid-state glass-card"><div class="invalid-icon"><i class="fa-solid fa-triangle-exclamation"></i></div><h2>Invalid ID Card</h2><p>This verification link is invalid or no longer recognized by the system.</p><a class="btn premium" href="{{ url_for('public.portal') }}"><i class="fa-solid fa-arrow-left"></i> Back to Portal</a></section>
     {% endif %}
   </div>
-  {% set f_settings = settings %}
-  {% include 'partials/sultan_footer.html' %}
+  {% set f_settings = settings %}{% include 'partials/sultan_footer.html' %}
 </main>
 {% endblock %}
