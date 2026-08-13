@@ -28,7 +28,6 @@ from .services import (
     result_success_position_tier,
     result_success_template_copy,
     subject_icon,
-    subject_short_name,
     validate_admin_password,
 )
 from .services import slug
@@ -1772,7 +1771,7 @@ CONFIG_CENTER_SECTIONS = {
     'subjects': {
         'title': 'Subjects',
         'description': 'Manage subject offerings and their level assignments',
-        'columns': ['Subject', 'Status', 'Short Name', 'Level', 'Classes', 'Created By']
+        'columns': ['Subject', 'Status', 'Level', 'Classes', 'Created By']
     },
     'audit-logs': {
         'title': 'Audit Logs',
@@ -2038,7 +2037,6 @@ def config_center():
     class_student_counts = {}
     subject_class_map = {}
     subject_icons = {}
-    subject_short_names = {}
     selected_subject_year_id = _parse_int(request.args.get("year_id"))
     selected_subject_level_id = _parse_int(request.args.get("level_id"))
     settings = get_settings()
@@ -2069,7 +2067,6 @@ def config_center():
         items = subject_query.order_by(Subject.academic_level_id, Subject.sort_order, Subject.name).all()
         for subject in items:
             subject_icons[subject.id] = subject_icon(subject.name, settings)
-            subject_short_names[subject.id] = subject_short_name(subject, settings)
             if subject.academic_level_id:
                 subject_class_map[subject.id] = AcademicClass.query.filter_by(academic_level_id=subject.academic_level_id, is_active=True).order_by(AcademicClass.sort_order, AcademicClass.name).all()
             else:
@@ -2111,10 +2108,8 @@ def config_center():
                          class_student_counts=class_student_counts,
                          subject_class_map=subject_class_map,
                          subject_icons=subject_icons,
-                         subject_short_names=subject_short_names,
                          selected_subject_year_id=selected_subject_year_id,
-                         selected_subject_level_id=selected_subject_level_id,
-                         display_subject_names=settings.get("display_subject_names", "full"))
+                         selected_subject_level_id=selected_subject_level_id)
 
 
 @admin_bp.route("/config-center/authenticate", methods=["POST"])
@@ -2218,29 +2213,6 @@ def config_result_settings():
 def config_system_defaults():
     """System Defaults Management"""
     return redirect(url_for('admin.config_center', section='system-defaults'))
-
-
-@admin_bp.route("/config-center/api/system-defaults", methods=["POST"])
-@login_required
-@config_center_required
-def config_save_system_defaults():
-    """Persist the small set of system-wide display defaults without adding schema."""
-    value = (request.form.get("display_subject_names") or "full").strip().lower()
-    allowed = {"full", "short", "full_short"}
-    if value not in allowed:
-        flash("Please choose a valid subject display mode.", "danger")
-        return redirect(url_for("admin.config_center", section=request.form.get("redirect_section") or "subjects"))
-    setting = db.session.get(Setting, "display_subject_names") or Setting(key="display_subject_names")
-    setting.value = value
-    db.session.add(setting)
-    try:
-        db.session.commit()
-        audit("Configuration Center", f"Updated subject display mode: {value}")
-        flash("System default saved successfully.", "success")
-    except Exception:
-        db.session.rollback()
-        flash("System default could not be saved.", "danger")
-    return redirect(url_for("admin.config_center", section=request.form.get("redirect_section") or "subjects"))
 
 
 @admin_bp.route("/config-center/audit-logs")
@@ -2692,7 +2664,6 @@ def config_create_subject():
     academic_level_id = _parse_int(data.get('academic_level_id'))
     max_score = _parse_float(data.get('max_score'), 100.0)
     sort_order = _parse_int(data.get('sort_order'))
-    short_name = data.get('short_name', '').strip().upper()
 
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'})
@@ -2713,9 +2684,6 @@ def config_create_subject():
             sort_order=sort_order if sort_order is not None else max_sort + 1
         )
         db.session.add(subject)
-        db.session.flush()
-        if short_name:
-            db.session.merge(Setting(key=f"subject_short_name_{subject.id}", value=short_name))
         db.session.commit()
 
         audit("Configuration Center", f"Created subject: {name}")
@@ -2736,10 +2704,6 @@ def config_update_subject(subject_id):
 
     name = str(data.get('name', subject.name) or '').strip()
     academic_level_id = _parse_int(data.get('academic_level_id')) if 'academic_level_id' in data else subject.academic_level_id
-    setting_key = f"subject_short_name_{subject.id}"
-    existing_setting = db.session.get(Setting, setting_key)
-    existing_short_name = (existing_setting.value or '').strip().upper() if existing_setting else ''
-    short_name = str(data.get('short_name', existing_short_name) or '').strip().upper()
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'})
     if _duplicate_exists(Subject, {'name': name, 'academic_level_id': academic_level_id}, exclude_id=subject.id):
@@ -2752,10 +2716,6 @@ def config_update_subject(subject_id):
     subject.sort_order = _parse_int(data.get('sort_order'), subject.sort_order)
 
     try:
-        if 'short_name' in data or existing_short_name:
-            setting = db.session.get(Setting, setting_key) or Setting(key=setting_key)
-            setting.value = short_name
-            db.session.add(setting)
         db.session.commit()
         _audit_config_change("Configuration Center Updated", "subjects", subject, old_value=old_value, new_value={'name': subject.name, 'academic_level_id': subject.academic_level_id, 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order})
         return jsonify({'success': True, 'message': 'Subject updated successfully'})

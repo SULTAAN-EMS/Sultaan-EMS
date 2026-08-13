@@ -95,15 +95,6 @@
           <option value="{{ level.id }}" {% if selected_subject_level_id == level.id %}selected{% endif %}>{{ level.name }}</option>
           {% endfor %}
         </select>
-        <form method="post" action="{{ url_for('admin.config_save_system_defaults') }}" class="config-subject-display-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="redirect_section" value="subjects">
-          <select class="config-filter-select" name="display_subject_names" aria-label="Subject display mode" onchange="this.form.submit()">
-            <option value="full" {% if display_subject_names == 'full' %}selected{% endif %}>Full Names</option>
-            <option value="short" {% if display_subject_names == 'short' %}selected{% endif %}>Short Names</option>
-            <option value="full_short" {% if display_subject_names == 'full_short' %}selected{% endif %}>Full + Short</option>
-          </select>
-        </form>
       </div>
       {% endif %}
       {% if section in mutable_sections %}
@@ -220,7 +211,7 @@
             {% for item in items %}
             {% set assigned_classes = subject_class_map.get(item.id, []) %}
             {% set icon = subject_icons.get(item.id, {"type": "fa", "value": "fa-book"}) %}
-            <tr data-id="{{ item.id }}" data-item-type="subjects" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-short-name="{{ subject_short_names.get(item.id, '') }}" data-academic-level-id="{{ item.academic_level_id or '' }}" data-sort-order="{{ item.sort_order }}">
+            <tr data-id="{{ item.id }}" data-item-type="subjects" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-academic-level-id="{{ item.academic_level_id or '' }}" data-sort-order="{{ item.sort_order }}">
               <td>
                 <div class="config-subject-cell subject-theme-{{ item.name|lower|replace(' ', '-')|replace('/', '-') }}">
                   <span class="config-subject-icon">
@@ -235,7 +226,6 @@
                 </div>
               </td>
               <td><span class="config-badge {{ 'config-badge-success' if item.is_active else 'config-badge-neutral' }}">{{ 'Active' if item.is_active else 'Archived' }}</span></td>
-              <td>{{ subject_short_names.get(item.id, '-') }}</td>
               <td>{{ item.academic_level.name if item.academic_level else 'All Levels' }}</td>
               <td>
                 {% if assigned_classes %}
@@ -335,10 +325,6 @@
           <label class="config-form-label">Weight Percentage</label>
           <input type="number" min="0" max="100" step="0.01" class="config-form-input" id="itemWeightPercentage" placeholder="0">
         </div>
-        <div class="config-form-group js-short-name-group">
-          <label class="config-form-label">Short Name</label>
-          <input type="text" maxlength="20" class="config-form-input" id="itemShortName" placeholder="MATH, ENG, AFSO">
-        </div>
         <div class="config-form-group js-sort-group">
           <label class="config-form-label">Sort Order</label>
           <input type="number" min="0" step="1" class="config-form-input" id="itemSortOrder" placeholder="Auto">
@@ -436,7 +422,6 @@ function configureForm() {
   setGroup('.js-code-group', apiType === 'exam-types');
   setGroup('.js-weight-group', apiType === 'exam-types');
   setGroup('.js-max-score-group', apiType === 'subjects');
-  setGroup('.js-short-name-group', apiType === 'subjects');
   setGroup('.js-sort-group', apiType === 'levels' || apiType === 'classes' || apiType === 'subjects');
 
   const labels = {
@@ -480,7 +465,6 @@ function editItem(itemType, itemId) {
   document.getElementById('itemRecordKind').value = itemType === 'classes' ? 'class' : 'level';
   document.getElementById('itemName').value = row.dataset.name || '';
   document.getElementById('itemShortCode').value = row.dataset.shortCode || '';
-  document.getElementById('itemShortName').value = row.dataset.shortName || '';
   document.getElementById('itemWeightPercentage').value = row.dataset.weightPercentage || '';
   document.getElementById('itemAcademicYearId').value = row.dataset.academicYearId || '';
   document.getElementById('itemAcademicLevelId').value = row.dataset.academicLevelId || '';
@@ -638,7 +622,6 @@ function payloadFor(apiType) {
   }
   if (apiType === 'subjects') {
     payload.academic_level_id = document.getElementById('itemAcademicLevelId').value;
-    payload.short_name = document.getElementById('itemShortName').value.trim();
     payload.sort_order = document.getElementById('itemSortOrder').value;
   }
   return payload;

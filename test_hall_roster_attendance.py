@@ -13,6 +13,8 @@ from app.models import (
     Exam, ExamHall, ExamHallEnrollment, ExamHallSubject, ExamSession,
     ExamSessionSubject, ExamType, SchoolClass, Student, Subject, User
 )
+from app.attendance_rules import scheduled_subject_scope_key
+from sqlalchemy.exc import IntegrityError
 
 
 class AttendanceTestConfig(Config):
@@ -643,6 +645,61 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         with self.app.open_resource('templates/admin/exam_timetable.html') as handle:
             self.assertIn('deleteModal', handle.read().decode('utf-8'))
         print("[PASS] Test (n): Timetable delete cascade + confirmation UI marker verified.")
+
+    def test_n1_schedule_rejects_subject_already_assigned_in_exam_scope(self):
+        """A subject cannot be scheduled twice for one year/exam/level scope."""
+        self.login()
+        first_session_id = self._create_schedule_session([
+            {'level_id': self.level_sec.id, 'subject_id': self.subject.id},
+        ])
+        self.assertTrue(first_session_id)
+        second = self.client.post('/admin/attendance/api/sessions', json={
+            'academic_year_id': self.year.id,
+            'exam_type_id': self.exam_type.id,
+            'date': date(2026, 8, 13).isoformat(),
+            'sitting_label': 'Fadhi 2aad',
+        }).get_json()
+        self.assertTrue(second['success'], second)
+        saved = self.client.put(
+            f"/admin/attendance/api/sessions/{second['session']['id']}/subjects",
+            json={'assignments': [{'level_id': self.level_sec.id, 'subject_id': self.subject.id}]},
+        )
+        self.assertEqual(saved.status_code, 409)
+        self.assertFalse(saved.get_json()['success'])
+
+    def test_n2_database_scope_constraint_rejects_concurrent_duplicate_subject(self):
+        """The database itself protects a schedule if an API pre-check is bypassed."""
+        first = ExamSession(
+            academic_year_id=self.year.id,
+            exam_type_id=self.exam_type.id,
+            session_date=date(2026, 8, 12),
+            sitting_label='Concurrent Fadhi 1',
+        )
+        second = ExamSession(
+            academic_year_id=self.year.id,
+            exam_type_id=self.exam_type.id,
+            session_date=date(2026, 8, 13),
+            sitting_label='Concurrent Fadhi 2',
+        )
+        db.session.add_all([first, second])
+        db.session.flush()
+        scope_key = scheduled_subject_scope_key(self.year.id, None, self.exam_type.id)
+        db.session.add(ExamSessionSubject(
+            exam_session_id=first.id,
+            academic_level_id=self.level_sec.id,
+            subject_id=self.subject.id,
+            exam_scope_key=scope_key,
+        ))
+        db.session.commit()
+        db.session.add(ExamSessionSubject(
+            exam_session_id=second.id,
+            academic_level_id=self.level_sec.id,
+            subject_id=self.subject.id,
+            exam_scope_key=scope_key,
+        ))
+        with self.assertRaises(IntegrityError):
+            db.session.commit()
+        db.session.rollback()
 
     def test_o_attendance_status_is_isolated_per_subject_slot(self):
         """Changing one subject status cannot change another subject for the same student/session."""

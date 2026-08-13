@@ -17,6 +17,7 @@ from .models import (
 )
 from .permissions import enforce_endpoint_permission
 from .services import get_settings
+from .attendance_rules import NON_SAT_STATUSES, SAT_STATUSES, normalize_attendance_status, scheduled_subject_scope_key
 
 attendance_bp = Blueprint("admin_attendance", __name__)
 
@@ -28,6 +29,9 @@ ATTENDANCE_STATUSES = [
     {"key": "emergency", "label": "Xaalad degdeg", "cls": "o-emergency", "icon": "fa-triangle-exclamation"},
     {"key": "late", "label": "Soo daahid", "cls": "o-late", "icon": "fa-clock"},
 ]
+
+# Keep API validation and report calculations tied to the same canonical keys.
+ATTENDANCE_STATUS_KEYS = SAT_STATUSES | NON_SAT_STATUSES
 
 @attendance_bp.before_request
 @login_required
@@ -372,7 +376,10 @@ def session_attendance_payload(hall, session):
         .filter_by(exam_hall_id=hall.id, exam_session_id=session.id)
         .all()
     )
-    status_map = {(record.student_id, record.subject_id): record.status.lower() for record in records}
+    status_map = {
+        (record.student_id, record.subject_id): normalize_attendance_status(record.status)
+        for record in records
+    }
     tallies = {status["key"]: 0 for status in ATTENDANCE_STATUSES}
     groups = {}
 
@@ -452,6 +459,38 @@ def sessions_in_scope(year_id, exam, legacy_exam_type):
     elif legacy_exam_type:
         query = query.filter(ExamSession.exam_type_id == legacy_exam_type.id)
     return query.order_by(ExamSession.session_date, ExamSession.session_time, ExamSession.id).all()
+
+
+def conflicting_subject_assignments(session, selected):
+    """Find subjects already scheduled in another sitting of this exam scope.
+
+    A subject belongs to one level and may be examined only once for the same
+    academic year/examination scope.  We validate before replacing the current
+    session assignments, keeping the existing schedule intact on conflict.
+    """
+    if not selected:
+        return []
+    exam = db.session.get(Exam, session.exam_id) if session.exam_id else None
+    legacy = db.session.get(ExamType, session.exam_type_id) if session.exam_type_id else None
+    scoped_session_ids = [
+        candidate.id
+        for candidate in sessions_in_scope(session.academic_year_id, exam, legacy)
+        if candidate.id != session.id
+    ]
+    if not scoped_session_ids:
+        return []
+    selected_pairs = set(selected)
+    matches = (
+        ExamSessionSubject.query
+        .join(ExamSession, ExamSessionSubject.exam_session_id == ExamSession.id)
+        .join(Subject, ExamSessionSubject.subject_id == Subject.id)
+        .filter(ExamSessionSubject.exam_session_id.in_(scoped_session_ids))
+        .all()
+    )
+    return [
+        row for row in matches
+        if (row.academic_level_id, row.subject_id) in selected_pairs
+    ]
 
 
 # ==========================================
@@ -687,6 +726,14 @@ def api_update_session_subjects(session_id):
         seen_subject_ids.add(subject.id)
         selected.append((level.id, subject.id))
 
+    conflicts = conflicting_subject_assignments(session, selected)
+    if conflicts:
+        names = ", ".join(sorted({row.subject.name for row in conflicts if row.subject}))
+        return jsonify({
+            "success": False,
+            "error": f"Maadadan hore ayaa loogu dejiyey fadhi kale oo imtixaankan ah: {names}."
+        }), 409
+
     try:
         ExamSessionSubject.query.filter_by(exam_session_id=session.id).delete(synchronize_session=False)
         db.session.add_all([
@@ -694,13 +741,23 @@ def api_update_session_subjects(session_id):
                 exam_session_id=session.id,
                 academic_level_id=level_id,
                 subject_id=subject_id,
+                exam_scope_key=scheduled_subject_scope_key(
+                    session.academic_year_id,
+                    session.exam_id,
+                    session.exam_type_id,
+                ),
             )
             for level_id, subject_id in selected
         ])
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
-        return jsonify({"success": False, "error": "Maadooyinka jadwalka lama kaydin."}), 409
+        # The database scope constraint is the final guard for concurrent
+        # browsers. Give the same clear business error as the pre-check.
+        return jsonify({
+            "success": False,
+            "error": "Maadadan hore ayaa loogu dejiyey fadhi kale oo imtixaankan ah."
+        }), 409
     audit("Exam Timetable", f"Updated subjects for session '{session.sitting_label}'")
     db.session.refresh(session)
     return jsonify({"success": True, "session": serialize_session(session)})
@@ -1128,7 +1185,7 @@ def api_attendance_data():
     records = AttendanceRecord.query.filter_by(exam_hall_id=exam_hall_id, subject_id=subject_id).order_by(AttendanceRecord.id.asc()).all() if subject_id else []
     record_map = {}
     for r in records:
-        record_map[r.student_id] = r.status.lower()
+        record_map[r.student_id] = normalize_attendance_status(r.status)
 
     students_data = []
     tallies = {st["key"]: 0 for st in ATTENDANCE_STATUSES}
@@ -1175,8 +1232,8 @@ def api_mark_status():
     exam_session_id = parse_int(data.get("exam_session_id"))
     status_val = (data.get("status") or "present").lower().strip()
 
-    valid_keys = [s["key"] for s in ATTENDANCE_STATUSES]
-    if status_val not in valid_keys:
+    status_val = normalize_attendance_status(status_val)
+    if status_val not in ATTENDANCE_STATUS_KEYS:
         return jsonify({"success": False, "error": "Xaaladda xaadirinta lama aqoonsan."}), 400
 
     if not student_id or not exam_hall_id or not subject_id:
@@ -1320,7 +1377,8 @@ def mark_session_bulk_attendance(*, hall, exam, legacy_exam_type, session, year_
         audit("Bulk Attendance", f"Cleared {removed} session slots in Hall {hall.id}")
         return {"success": True, "updated_count": removed, "status": "clear"}
 
-    if status_val not in {item["key"] for item in ATTENDANCE_STATUSES}:
+    status_val = normalize_attendance_status(status_val)
+    if status_val not in ATTENDANCE_STATUS_KEYS:
         return {"success": False, "error": "Xaaladda xaadirinta lama aqoonsan."}, 400
 
     updated_count = 0
@@ -1437,7 +1495,8 @@ def api_mark_bulk():
         audit("Bulk Attendance", f"Cleared attendance for {len(student_ids)} students in Hall {exam_hall_id}")
         return jsonify({"success": True, "updated_count": len(student_ids), "status": "clear"})
 
-    if status_val not in [s["key"] for s in ATTENDANCE_STATUSES]:
+    status_val = normalize_attendance_status(status_val)
+    if status_val not in ATTENDANCE_STATUS_KEYS:
         return jsonify({"success": False, "error": "Xaaladda xaadirinta lama aqoonsan."}), 400
 
     for s_id in student_ids:

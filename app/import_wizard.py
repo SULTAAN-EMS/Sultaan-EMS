@@ -8,7 +8,7 @@ from . import db
 from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, Exam, Result, SchoolClass, Student, Subject
 
 
-STUDENT_HEADERS = ["student_id", "full_name", "mother_name", "phone", "class", "academic_year"]
+STUDENT_HEADERS = ["student_id", "full_name", "mother_name", "phone", "gender", "class", "academic_year"]
 PHONE_REGEX = re.compile(r"^\+25261\d{7}$")
 YEAR_REGEX = re.compile(r"^\d{4}-\d{4}$")
 
@@ -18,8 +18,8 @@ def student_template():
     ws = wb.active
     ws.title = "Students"
     ws.append(STUDENT_HEADERS)
-    ws.append(["3001", "Amina Ali Omar", "Sahra Jama", "+252615551234", "Form One A", "2025-2026"])
-    ws.append(["3002", "Hassan Farah Noor", "Fadumo Abdi", "+252615555678", "Form One B", "2025-2026"])
+    ws.append(["3001", "Amina Ali Omar", "Sahra Jama", "+252615551234", "Female", "Form One A", "2025-2026"])
+    ws.append(["3002", "Hassan Farah Noor", "Fadumo Abdi", "+252615555678", "Male", "Form One B", "2025-2026"])
     return wb
 
 
@@ -150,6 +150,7 @@ HEADER_ALIASES = {
     "full_name": {"full_name", "student_name", "name"},
     "mother_name": {"mother_name", "mother_s_name", "mothers_name"},
     "phone": {"phone", "phone_number", "mobile"},
+    "gender": {"gender", "sex"},
 }
 
 
@@ -227,7 +228,7 @@ def process_student_import(file):
     wb = load_workbook(file, data_only=True)
     ws = get_import_worksheet(wb, target_name="Students")
 
-    required_headers = ["student_id", "full_name", "mother_name", "phone", "class", "academic_year"]
+    required_headers = ["student_id", "full_name", "mother_name", "phone", "gender", "class", "academic_year"]
     header_row_idx, raw_headers, headers_norm = detect_header_row(ws, required_headers, max_scan_rows=10)
 
     missing = [h for h in required_headers if h not in headers_norm]
@@ -268,6 +269,7 @@ def process_student_import(file):
         full_name = data.get("full_name", "")
         mother_name = data.get("mother_name", "")
         phone = data.get("phone", "")
+        gender = data.get("gender", "").strip().title()
         class_name = data.get("class", "")
         academic_year = data.get("academic_year", "")
 
@@ -303,13 +305,17 @@ def process_student_import(file):
         elif not PHONE_REGEX.match(phone):
             row_errors.append(f"Row {row_idx}: phone number invalid (must start with +25261 followed by 7 digits).")
 
-        # 5. class validation
+        # 5. gender validation
+        if gender not in {"Male", "Female"}:
+            row_errors.append(f"Row {row_idx}: gender must be Male or Female.")
+
+        # 6. class validation
         if not class_name:
             row_errors.append(f"Row {row_idx}: class is required.")
         elif class_name.lower() not in classes_by_name:
             row_errors.append(f"Row {row_idx}: class '{class_name}' does not exist.")
 
-        # 6. academic_year validation
+        # 7. academic_year validation
         if not academic_year:
             row_errors.append(f"Row {row_idx}: academic_year is required.")
         elif not YEAR_REGEX.match(academic_year):
@@ -329,6 +335,7 @@ def process_student_import(file):
                 full_name=full_name,
                 mother_name=mother_name,
                 phone=phone,
+                gender=gender,
                 academic_year=year_obj,
                 is_active=True
             )
@@ -410,10 +417,6 @@ def process_result_import(file):
         if s.name:
             db_subjects[s.name.lower().strip()] = s
             db_subjects[normalize_header_key(s.name)] = s
-        subj_code = getattr(s, "code", None)
-        if subj_code:
-            db_subjects[str(subj_code).lower().strip()] = s
-            db_subjects[normalize_header_key(str(subj_code))] = s
 
     subject_cols = {}
     unmapped_subject_warnings = []

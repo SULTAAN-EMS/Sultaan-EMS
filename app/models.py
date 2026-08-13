@@ -762,6 +762,8 @@ class ExamSessionSubject(TimestampMixin, db.Model):
         nullable=False,
         index=True,
     )
+    # Stored scope rejects duplicate subject scheduling during concurrent saves.
+    exam_scope_key = db.Column(db.String(100), nullable=False, index=True)
 
     exam_session = db.relationship("ExamSession", back_populates="subject_assignments")
     academic_level = db.relationship("AcademicLevel")
@@ -769,6 +771,7 @@ class ExamSessionSubject(TimestampMixin, db.Model):
 
     __table_args__ = (
         UniqueConstraint("exam_session_id", "subject_id", name="uq_exam_session_subject"),
+        UniqueConstraint("exam_scope_key", "academic_level_id", "subject_id", name="uq_exam_scope_level_subject"),
     )
 
 

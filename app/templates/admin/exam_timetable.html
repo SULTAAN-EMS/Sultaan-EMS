@@ -13,7 +13,7 @@
 
 {% block admin_content %}
 <div class="schedule-scope">
-  <div class="nav-strip"><a href="{{ url_for('admin_attendance.hall_roster') }}"><i class="fa-solid fa-list-check"></i> Diiwaan-gelinta Hall Exam</a><a href="{{ url_for('admin_attendance.dashboard') }}"><i class="fa-solid fa-clipboard-user"></i> Xaadiriinta</a><a href="{{ url_for('admin_attendance.timetable') }}" class="active"><i class="fa-solid fa-calendar-days"></i> Jadwalka Imtixaanka</a></div>
+  <div class="nav-strip"><a href="{{ url_for('admin_attendance.hall_roster') }}"><i class="fa-solid fa-list-check"></i> Diiwaan-gelinta Hall Exam</a><a href="{{ url_for('admin_attendance.timetable') }}" class="active"><i class="fa-solid fa-calendar-days"></i> Jadwalka Imtixaanka</a><a href="{{ url_for('admin_attendance.dashboard') }}"><i class="fa-solid fa-clipboard-user"></i> Xaadiriinta</a></div>
   <h1>Jadwalka Imtixaanka</h1><p class="lede">Samee fadhiyada imtixaanka, ka dibna u qoondee maadooyinka saxda ah level kasta. Xaadiriintu xogtan ayay si toos ah u akhrinaysaa.</p>
   <div class="scope-bar"><div class="scope-field"><label>Sanad-dugsiyeedka</label><select id="yearSelect">{% for year in years %}<option value="{{ year.id }}" {% if year.is_current %}selected{% endif %}>{{ year.name }}</option>{% endfor %}</select></div><div class="scope-field"><label>Nooca Imtixaanka</label><select id="examSelect"></select></div></div>
   <div id="unassignedWarning"></div>

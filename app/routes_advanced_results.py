@@ -16,10 +16,11 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AttendanceRecord, Exam, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, Subject, LabelTranslation
+from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AttendanceRecord, Exam, ExamHallEnrollment, ExamType, GradeScale, IdCardIssue, IncidentReport, ReportVerification, Result, SchoolClass, SeatAssignment, SeatMixerAssignment, Setting, Student, Subject, LabelTranslation
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
-from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, result_payload, subject_display_name, subject_short_name
+from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, result_payload, subject_display_name
+from .attendance_rules import counts_as_exam_sitting
 
 advanced_results_bp = Blueprint("admin_advanced_results", __name__)
 
@@ -52,7 +53,7 @@ def require_login():
 
 @advanced_results_bp.app_context_processor
 def inject_results_hub_helpers():
-    return {"rh_label": get_label, "subject_display_name": subject_display_name, "subject_short_name": subject_short_name}
+    return {"rh_label": get_label, "subject_display_name": subject_display_name}
 
 
 RESULTS_LABEL_SEEDS = [
@@ -185,9 +186,10 @@ def get_latest_exam_for_year(academic_year):
 
 def subjects_for_scope(exam, level_id=None, class_id=None):
     """Return subjects for the effective academic level of the current scope."""
-    effective_level_id = exam.academic_level_id if exam else None
-    if not effective_level_id:
-        effective_level_id = level_id
+    # An explicitly requested level must win over an exam's optional default
+    # level.  Analytics iterates real levels one by one; using the exam default
+    # there would incorrectly reuse one level's subjects for every level.
+    effective_level_id = level_id or (exam.academic_level_id if exam else None)
     if not effective_level_id and class_id:
         academic_class = db.session.get(AcademicClass, class_id)
         effective_level_id = academic_class.academic_level_id if academic_class else None
@@ -1971,6 +1973,39 @@ def _analytics_report_student_class_id(student, classes_by_id, legacy_class_matc
     return matches[0].id if len(matches) == 1 else None
 
 
+def _attendance_rows_for_exam_scope(academic_year, exam, student_ids):
+    """Return the final attendance records for one Results Hub examination.
+
+    Canonical attendance records point at ``Exam``.  The legacy ExamType arm
+    keeps historical records readable during the ongoing Results Hub migration.
+    It is deliberately restricted to the matching year/name, never all records
+    in an academic year.
+    """
+    if not student_ids:
+        return []
+    scope_filters = [AttendanceRecord.exam_id == exam.id]
+    legacy_exam_type = ExamType.query.filter_by(
+        academic_year_id=academic_year.id,
+        name=exam.name,
+    ).first()
+    if legacy_exam_type:
+        scope_filters.append(
+            db_and(
+                AttendanceRecord.exam_id.is_(None),
+                AttendanceRecord.exam_type_id == legacy_exam_type.id,
+            )
+        )
+    return (
+        AttendanceRecord.query.filter(
+            AttendanceRecord.academic_year_id == academic_year.id,
+            AttendanceRecord.student_id.in_(student_ids),
+            db_or(*scope_filters),
+        )
+        .order_by(AttendanceRecord.recorded_at.desc(), AttendanceRecord.id.desc())
+        .all()
+    )
+
+
 def build_analytics_results_report_data(academic_year, exam):
     """Build the reference report's LEVELS payload using published Results Hub data only."""
     levels = (
@@ -2029,23 +2064,24 @@ def build_analytics_results_report_data(academic_year, exam):
         )
         .all()
     )
+    # Attendance is the source of truth for an examination sitting.  A student
+    # counts only after Joogto/present or Daahid/late was recorded.  Older
+    # records can contain localized labels, which ``counts_as_exam_sitting``
+    # normalizes without rewriting historical data.
+    latest_attendance = {}
+    for record in _attendance_rows_for_exam_scope(academic_year, exam, student_ids):
+        if not record.subject_id:
+            continue
+        latest_attendance.setdefault((record.student_id, record.subject_id), record)
+
+    subject_sitting_student_ids = defaultdict(set)
+    for (student_id, subject_id), record in latest_attendance.items():
+        if counts_as_exam_sitting(record.status):
+            subject_sitting_student_ids[subject_id].add(student_id)
+    exam_sitting_student_ids = set().union(*subject_sitting_student_ids.values()) if subject_sitting_student_ids else set()
+
     results_by_student = defaultdict(list)
     results_by_level_subject = defaultdict(lambda: defaultdict(list))
-    for result in results:
-        if not result.subject or not result.subject.max_score:
-            continue
-        score_pct = round(float(result.score or 0) / float(result.subject.max_score) * 100, 4)
-        results_by_student[result.student_id].append(score_pct)
-
-    absent_student_ids = {
-        row.student_id
-        for row in AttendanceRecord.query.filter(
-            AttendanceRecord.academic_year_id == academic_year.id,
-            AttendanceRecord.exam_id == exam.id,
-            AttendanceRecord.student_id.in_(student_ids),
-            AttendanceRecord.status == "Absent",
-        ).all()
-    }
     grade_cache = load_grade_scale_cache(exam.id)
 
     def is_pass(score):
@@ -2055,21 +2091,28 @@ def build_analytics_results_report_data(academic_year, exam):
         gender = str(student.gender or "").strip().lower()
         return "f" if gender == "female" else "m"
 
-    student_averages = {
-        student_id: round(sum(scores) / len(scores), 4)
-        for student_id, scores in results_by_student.items()
-        if scores
-    }
     student_level_lookup = {}
     for (level_id, _class_id), grouped_students in students_by_level_class.items():
         for student in grouped_students:
             student_level_lookup[student.id] = level_id
     for result in results:
         level_id = student_level_lookup.get(result.student_id)
-        if not level_id or result.student_id in absent_student_ids or not result.subject or not result.subject.max_score:
+        if (
+            not level_id
+            or not result.subject
+            or not result.subject.max_score
+            or result.student_id not in subject_sitting_student_ids.get(result.subject_id, set())
+        ):
             continue
         result_pct = round(float(result.score or 0) / float(result.subject.max_score) * 100, 4)
+        results_by_student[result.student_id].append(result_pct)
         results_by_level_subject[level_id][result.subject_id].append((result.subject, result_pct))
+
+    student_averages = {
+        student_id: round(sum(scores) / len(scores), 4)
+        for student_id, scores in results_by_student.items()
+        if scores
+    }
 
     level_styles = ("sec", "up", "low")
     level_titles = {
@@ -2107,7 +2150,7 @@ def build_analytics_results_report_data(academic_year, exam):
             for student in class_students:
                 bucket = gender_bucket(student)
                 row[bucket] += 1
-                if student.id in absent_student_ids:
+                if student.id not in exam_sitting_student_ids:
                     row[f"{bucket}Absent"] += 1
                     continue
                 bucket_sitting_counts[bucket] += 1
@@ -2133,14 +2176,15 @@ def build_analytics_results_report_data(academic_year, exam):
         level_subjects.update({subject_id: records[0][0] for subject_id, records in results_by_level_subject[level.id].items() if records})
         for subject in sorted(level_subjects.values(), key=lambda item: (item.sort_order, item.name)):
             scores = [score for _subject, score in results_by_level_subject[level.id].get(subject.id, [])]
+            sat_count = len(subject_sitting_student_ids.get(subject.id, set()))
             passed_count = sum(1 for score in scores if is_pass(score))
             subject_rows.append({
                 "name": subject_display_name(subject),
                 "avg": round(sum(scores) / len(scores), 1) if scores else 0,
-                "appeared": len(scores),
+                "appeared": sat_count,
                 "passed": passed_count,
-                "failed": len(scores) - passed_count,
-                "pass": round(passed_count / len(scores) * 100, 2) if scores else 0,
+                "failed": max(sat_count - passed_count, 0),
+                "pass": round(passed_count / sat_count * 100, 2) if sat_count else 0,
             })
 
         if not class_rows or not subject_rows:
@@ -2154,7 +2198,7 @@ def build_analytics_results_report_data(academic_year, exam):
         ]
         grade_counts = defaultdict(int)
         for student in level_students:
-            if student.id in absent_student_ids:
+            if student.id not in exam_sitting_student_ids:
                 continue
             student_average = student_averages.get(student.id)
             if student_average is not None:
@@ -3021,6 +3065,107 @@ def delete_student(student_id):
     return redirect(url_for("admin_advanced_results.students_management"))
 
 
+def _student_delete_dependency_summary(student_ids):
+    """Return the records that make a permanent student deletion unsafe."""
+    if not student_ids:
+        return {}
+    checks = {
+        "results": Result.query.filter(Result.student_id.in_(student_ids)).count(),
+        "attendance": AttendanceRecord.query.filter(AttendanceRecord.student_id.in_(student_ids)).count(),
+        "incident_reports": IncidentReport.query.filter(IncidentReport.student_id.in_(student_ids)).count(),
+        "report_verifications": ReportVerification.query.filter(ReportVerification.student_id.in_(student_ids)).count(),
+        "id_card_issues": IdCardIssue.query.filter(IdCardIssue.student_id.in_(student_ids)).count(),
+        "hall_enrollments": ExamHallEnrollment.query.filter(ExamHallEnrollment.student_id.in_(student_ids)).count(),
+        "seat_mixer_assignments": SeatMixerAssignment.query.filter(SeatMixerAssignment.student_id.in_(student_ids)).count(),
+        "seat_assignments": SeatAssignment.query.filter(SeatAssignment.student_id.in_(student_ids)).count(),
+    }
+    return {name: count for name, count in checks.items() if count}
+
+
+def _students_for_bulk_delete(academic_year_id, academic_class_id):
+    if not academic_year_id or not academic_class_id:
+        return None, None, "Dooro sanad-dugsiyeedka iyo fasalka si sax ah."
+    academic_year = db.session.get(AcademicYear, academic_year_id)
+    academic_class = db.session.get(AcademicClass, academic_class_id)
+    if not academic_year or not academic_class:
+        return None, None, "Sanad-dugsiyeedka ama fasalka lama heli karo."
+    legacy_class = SchoolClass.query.filter_by(name=academic_class.name).first()
+    class_filters = [Student.academic_class_id == academic_class.id]
+    if legacy_class:
+        class_filters.append(
+            db_and(
+                Student.academic_class_id.is_(None),
+                Student.class_id == legacy_class.id,
+            )
+        )
+    students = (
+        Student.query.filter(
+            Student.academic_year_id == academic_year.id,
+            db_or(*class_filters),
+        )
+        .order_by(Student.full_name)
+        .all()
+    )
+    return academic_class, students, None
+
+
+@advanced_results_bp.route("/students/bulk-delete/preview", methods=["POST"])
+def preview_bulk_delete_students():
+    if current_user.role not in {"super_admin", "admin"}:
+        return jsonify({"success": False, "error": "Kaliya maamulka ayaa tirtiri kara fasal dhan."}), 403
+    data = request.get_json(silent=True) or request.form
+    academic_class, students, error = _students_for_bulk_delete(
+        int_or_none(data.get("academic_year_id")),
+        int_or_none(data.get("academic_class_id")),
+    )
+    if error:
+        return jsonify({"success": False, "error": error}), 400
+    student_ids = [student.id for student in students]
+    return jsonify({
+        "success": True,
+        "class_name": academic_class.name,
+        "student_count": len(students),
+        "dependencies": _student_delete_dependency_summary(student_ids),
+    })
+
+
+@advanced_results_bp.route("/students/bulk-delete/confirm", methods=["POST"])
+def confirm_bulk_delete_students():
+    if current_user.role not in {"super_admin", "admin"}:
+        return jsonify({"success": False, "error": "Kaliya maamulka ayaa tirtiri kara fasal dhan."}), 403
+    data = request.get_json(silent=True) or request.form
+    academic_class, students, error = _students_for_bulk_delete(
+        int_or_none(data.get("academic_year_id")),
+        int_or_none(data.get("academic_class_id")),
+    )
+    if error:
+        return jsonify({"success": False, "error": error}), 400
+    password = str(data.get("password") or "")
+    if not password or not current_user.check_password(password):
+        return jsonify({"success": False, "error": "Password-ka maamulka waa khaldan yahay."}), 403
+
+    student_ids = [student.id for student in students]
+    dependencies = _student_delete_dependency_summary(student_ids)
+    if dependencies:
+        return jsonify({
+            "success": False,
+            "error": "Tirtirka waa la xannibay si loo ilaaliyo xogta imtixaanka ee ku xiran ardeyda.",
+            "dependencies": dependencies,
+        }), 409
+    if not students:
+        return jsonify({"success": False, "error": "Ardey laga tirtirayo fasalkan lama helin."}), 404
+    try:
+        for student in students:
+            db.session.delete(student)
+        audit("Student Updates", f"Bulk deleted {len(students)} students from class {academic_class.name}")
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Bulk student deletion failed for class %s", academic_class.id)
+        return jsonify({"success": False, "error": "Ardeyda lama tirtiri karin. Wax isbeddel ah lama keydin."}), 500
+    return jsonify({"success": True, "deleted_count": len(students), "class_name": academic_class.name})
+
+
 @advanced_results_bp.route("/students/<int:student_id>/data")
 def student_data_json(student_id):
     """API endpoint to fetch student data as JSON for AJAX preview"""
@@ -3032,6 +3177,7 @@ def student_data_json(student_id):
         "full_name": student.full_name,
         "mother_name": student.mother_name,
         "phone": student.phone,
+        "gender": student.gender,
         "photo_path": student.photo_path,
         "photo_url": stored_asset_url(student.photo_path),
         "academic_level_id": student.academic_level_id,
@@ -3160,11 +3306,11 @@ def export_students():
     wb = Workbook()
     ws = wb.active
     ws.title = "Students"
-    ws.append(["student_id", "full_name", "mother_name", "phone", "class", "academic_year", "active"])
+    ws.append(["student_id", "full_name", "mother_name", "phone", "gender", "class", "academic_year", "active"])
     for student in Student.query.order_by(Student.full_name).all():
         class_name = student.academic_class.name if student.academic_class else (student.school_class.name if student.school_class else "")
         year_name = student.academic_year.name if student.academic_year else ""
-        ws.append([student.student_code, student.full_name, student.mother_name, student.phone, class_name, year_name, student.is_active])
+        ws.append([student.student_code, student.full_name, student.mother_name, student.phone, student.gender or "", class_name, year_name, student.is_active])
     return workbook_response(wb, "students.xlsx")
 
 

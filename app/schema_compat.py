@@ -96,6 +96,7 @@ def ensure_schema_compatibility():
         ondelete="CASCADE",
     )
     migrate_attendance_session_unique_constraint()
+    migrate_exam_schedule_subject_scope_constraint()
 
     # Update teacher_classes foreign key to reference academic_classes instead of school_classes
     # This requires manual migration for existing data
@@ -105,6 +106,7 @@ def ensure_schema_compatibility():
     # legacy production DB self-heals instead of raising "Unknown column ...".
     sync_all_model_columns()
     seed_legacy_student_genders()
+    remove_obsolete_subject_short_name_settings()
 
 
 def seed_legacy_student_genders():
@@ -224,13 +226,15 @@ def add_column_if_missing(table, column, ddl):
         db.session.rollback()
 
 
-def add_index_if_missing(table, index_name, columns):
+def add_index_if_missing(table, index_name, columns, unique=False):
     inspector = inspect(db.engine)
     if not inspector.has_table(table):
         return
     indexes = inspector.get_indexes(table)
-    names = {idx.get("name") for idx in indexes}
+    unique_constraints = inspector.get_unique_constraints(table)
+    names = {idx.get("name") for idx in indexes} | {item.get("name") for item in unique_constraints}
     covered = {tuple(idx.get("column_names") or []) for idx in indexes}
+    covered |= {tuple(item.get("column_names") or []) for item in unique_constraints}
     # Skip if an index with this name exists or one already covers the same columns.
     if index_name in names or tuple(columns) in covered:
         return
@@ -238,7 +242,27 @@ def add_index_if_missing(table, index_name, columns):
     # An index is a performance optimization, not required for correctness.
     # Never let it brick startup (e.g. storage-engine quirks on legacy DBs).
     try:
-        db.session.execute(text(f"CREATE INDEX {index_name} ON {table} ({cols})"))
+        unique_sql = "UNIQUE " if unique else ""
+        db.session.execute(text(f"CREATE {unique_sql}INDEX {index_name} ON {table} ({cols})"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def remove_obsolete_subject_short_name_settings():
+    """Remove retired, non-relational display preferences once.
+
+    Subject names now have one authoritative value: ``subjects.name``.  These
+    old Settings entries only controlled display aliases, so removing them does
+    not alter subjects, results, schedules, or any historical record.
+    """
+    from .models import Setting
+
+    try:
+        keys = ["display_subject_names"]
+        Setting.query.filter(
+            (Setting.key.in_(keys)) | (Setting.key.like("subject_short_name_%"))
+        ).delete(synchronize_session=False)
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -294,6 +318,58 @@ def migrate_attendance_session_unique_constraint():
                 "ON attendance_records (student_id, exam_hall_id, subject_id, exam_session_id)"
             ))
             db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def migrate_exam_schedule_subject_scope_constraint():
+    """Backfill and enforce one subject per exam scope and level.
+
+    Existing duplicate schedules are retained for audit/history. The earliest
+    assignment keeps the canonical key; later historical duplicates receive a
+    suffix, allowing the new unique index to protect every future write.
+    """
+    inspector = inspect(db.engine)
+    if not inspector.has_table("exam_session_subjects"):
+        return
+    add_column_if_missing(
+        "exam_session_subjects",
+        "exam_scope_key",
+        column_sql(db.engine.dialect.name, "exam_scope_key", "VARCHAR(100)"),
+    )
+    from .attendance_rules import scheduled_subject_scope_key
+    from .models import ExamSession, ExamSessionSubject
+
+    try:
+        assignments = (
+            ExamSessionSubject.query
+            .join(ExamSession, ExamSessionSubject.exam_session_id == ExamSession.id)
+            .order_by(ExamSessionSubject.id)
+            .all()
+        )
+        seen = set()
+        changed = False
+        for assignment in assignments:
+            session = assignment.exam_session
+            base_key = scheduled_subject_scope_key(
+                session.academic_year_id,
+                session.exam_id,
+                session.exam_type_id,
+            )
+            pair = (base_key, assignment.academic_level_id, assignment.subject_id)
+            desired_key = base_key if pair not in seen else f"{base_key}:historic-{assignment.id}"
+            seen.add(pair)
+            if assignment.exam_scope_key != desired_key:
+                assignment.exam_scope_key = desired_key
+                changed = True
+        if changed:
+            db.session.commit()
+        add_index_if_missing(
+            "exam_session_subjects",
+            "uq_exam_scope_level_subject",
+            ["exam_scope_key", "academic_level_id", "subject_id"],
+            unique=True,
+        )
     except Exception:
         db.session.rollback()
 

@@ -161,6 +161,9 @@
         <i class="fa-solid fa-file-export"></i>
         {{ rh_label("students.export_excel", default="Excel Export") }}
       </a>
+      <button type="button" class="btn btn-outline" id="bulkDeleteClassButton" onclick="openBulkDeleteClassModal()" {% if not selected_class_id %}disabled title="Marka hore dooro fasal"{% endif %}>
+        <i class="fa-solid fa-trash-can"></i> Delete selected class
+      </button>
     </div>
 
     {% set import_summary = session.pop('import_summary', None) %}
@@ -353,6 +356,23 @@
   </main>
 </div>
 
+<div class="modal fade" id="bulkDeleteClassModal" tabindex="-1" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.65);backdrop-filter:blur(8px);z-index:10001;align-items:center;justify-content:center;" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:520px;width:92%;margin:0 auto;">
+    <div class="modal-content" style="border:1px solid rgba(225,29,72,.28);border-radius:20px;overflow:hidden;background:linear-gradient(145deg,#fff,#fff7f7);box-shadow:0 30px 70px rgba(127,29,29,.28);">
+      <div style="height:5px;background:linear-gradient(90deg,#e11d48,#f97316,#e11d48);"></div>
+      <div style="padding:25px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;"><span style="width:44px;height:44px;display:grid;place-items:center;border-radius:14px;background:#fff1f2;color:#e11d48;font-size:1.2rem;"><i class="fa-solid fa-triangle-exclamation"></i></span><div><h3 style="margin:0;color:#172033;font-size:1.2rem;">Delete a whole class</h3><small style="color:#64748b;">Protected destructive action</small></div></div>
+        <p id="bulkDeleteClassMessage" style="color:#475569;line-height:1.55;margin:0 0 13px;"></p>
+        <div id="bulkDeleteDependencyWarning" style="display:none;border:1px solid #fdba74;background:#fff7ed;color:#9a3412;border-radius:12px;padding:12px;font-size:.86rem;margin-bottom:14px;"></div>
+        <label style="display:block;font-size:.82rem;font-weight:700;color:#334155;margin-bottom:6px;">Administrator password</label>
+        <input id="bulkDeletePassword" type="password" autocomplete="current-password" style="width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:11px 12px;box-sizing:border-box;" placeholder="Confirm with your password">
+        <p id="bulkDeleteError" style="display:none;margin:9px 0 0;color:#be123c;font-size:.82rem;font-weight:700;"></p>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;"><button type="button" class="btn btn-outline" onclick="closeBulkDeleteClassModal()">Cancel</button><button type="button" class="btn" id="bulkDeleteConfirmButton" onclick="confirmBulkDeleteClass()" style="background:linear-gradient(135deg,#e11d48,#b91c1c);color:white;border:none;">Confirm Delete</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Student Delete Confirmation Modal -->
 <div class="modal fade" id="deleteStudentModal" tabindex="-1" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center;" role="dialog" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered" style="max-width: 480px; width: 90%; margin: 0 auto;">
@@ -407,6 +427,53 @@ var _deleteStudentBaseUrl = "{{ url_for('admin_advanced_results.students_managem
 function _makeDeleteUrl(id) {
   return _deleteStudentBaseUrl + '/students/' + encodeURIComponent(id) + '/delete';
 }
+
+const bulkDeletePreviewUrl = "{{ url_for('admin_advanced_results.preview_bulk_delete_students') }}";
+const bulkDeleteConfirmUrl = "{{ url_for('admin_advanced_results.confirm_bulk_delete_students') }}";
+const bulkDeleteCsrf = "{{ csrf_token() }}";
+function selectedBulkDeleteScope() {
+  return { academic_year_id: document.getElementById('year-selector')?.value || '', academic_class_id: document.getElementById('class-selector')?.value || '' };
+}
+function dependencyText(dependencies) {
+  return Object.entries(dependencies || {}).map(([key, count]) => `${count} ${key.replace('_', ' ')}`).join(', ');
+}
+async function openBulkDeleteClassModal() {
+  const scope = selectedBulkDeleteScope();
+  if (!scope.academic_year_id || !scope.academic_class_id) return;
+  const modal = document.getElementById('bulkDeleteClassModal');
+  const message = document.getElementById('bulkDeleteClassMessage');
+  const warning = document.getElementById('bulkDeleteDependencyWarning');
+  document.getElementById('bulkDeleteError').style.display = 'none';
+  document.getElementById('bulkDeletePassword').value = '';
+  message.textContent = 'Checking linked records...'; warning.style.display = 'none';
+  modal.style.display = 'flex'; modal.setAttribute('aria-hidden', 'false');
+  try {
+    const response = await fetch(bulkDeletePreviewUrl, {method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':bulkDeleteCsrf},body:JSON.stringify(scope)});
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Unable to inspect the selected class.');
+    message.textContent = `${data.student_count} student(s) in ${data.class_name} are selected for permanent deletion.`;
+    const dependencies = dependencyText(data.dependencies);
+    if (dependencies) { warning.textContent = `Deletion is blocked: ${dependencies} are linked to these students. Preserve or remove those records first.`; warning.style.display = 'block'; document.getElementById('bulkDeleteConfirmButton').disabled = true; }
+    else document.getElementById('bulkDeleteConfirmButton').disabled = false;
+  } catch (error) { document.getElementById('bulkDeleteError').textContent = error.message; document.getElementById('bulkDeleteError').style.display='block'; document.getElementById('bulkDeleteConfirmButton').disabled=true; }
+}
+function closeBulkDeleteClassModal() { const modal=document.getElementById('bulkDeleteClassModal'); modal.style.display='none'; modal.setAttribute('aria-hidden','true'); }
+async function confirmBulkDeleteClass() {
+  const button=document.getElementById('bulkDeleteConfirmButton'); const error=document.getElementById('bulkDeleteError');
+  const payload={...selectedBulkDeleteScope(),password:document.getElementById('bulkDeletePassword').value};
+  button.disabled=true; button.textContent='Deleting...'; error.style.display='none';
+  try { const response=await fetch(bulkDeleteConfirmUrl,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':bulkDeleteCsrf},body:JSON.stringify(payload)}); const data=await response.json(); if(!response.ok||!data.success) throw new Error(data.error||'Deletion could not be completed.'); window.location.reload(); }
+  catch (err) { error.textContent=err.message; error.style.display='block'; button.disabled=false; button.innerHTML='<i class="fa-solid fa-trash-can"></i> Confirm Delete'; }
+}
+
+document.getElementById('bulkDeleteClassModal').addEventListener('click', function(event) {
+  if (event.target === this) closeBulkDeleteClassModal();
+});
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape' && document.getElementById('bulkDeleteClassModal').style.display === 'flex') {
+    closeBulkDeleteClassModal();
+  }
+});
 
 function openDeleteStudentModal(studentId, studentName, studentCode) {
   var modal = document.getElementById('deleteStudentModal');

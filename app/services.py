@@ -388,7 +388,6 @@ DEFAULT_SETTINGS = {
     "verify_id_status_text_color": "#ffffff",
     "verify_id_shadow_color": "#000000",
     "verify_id_template_style": "premium",
-    "display_subject_names": "full",
     "result_success_overlay_active_template": "m1",
     "result_success_overlay_duration_seconds": "8",
     "result_success_overlay_show_progress_bar": "on",
@@ -771,29 +770,9 @@ def subject_icon(subject_name, settings=None):
     return {"type": "fa", "value": "fa-book"}
 
 
-def subject_short_name(subject, settings=None):
-    settings = settings or get_settings()
-    configured = settings.get(f"subject_short_name_{subject.id}") if subject and subject.id else ""
-    if configured:
-        return configured
-    words = str(subject.name if subject else "").replace("-", " ").split()
-    if not words:
-        return ""
-    if len(words) == 1:
-        return words[0][:4].upper()
-    return "".join(word[0] for word in words[:4]).upper()
-
-
 def subject_display_name(subject, settings=None):
-    settings = settings or get_settings()
-    mode = settings.get("display_subject_names", "full")
-    short = subject_short_name(subject, settings)
-    full = subject.name if subject else ""
-    if mode == "short":
-        return short or full
-    if mode == "full_short" and short:
-        return f"{full} ({short})"
-    return full
+    """Subjects use their configured full name everywhere in the system."""
+    return subject.name if subject else ""
 
 
 def slug(value):
