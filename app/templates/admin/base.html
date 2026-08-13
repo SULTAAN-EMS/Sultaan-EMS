@@ -5,57 +5,25 @@
 {% endblock %}
 {% block content %}
 <style>
-/* Hover navigation: collapsed by default and expanded only while engaged. */
-.admin-body { grid-template-columns: 64px minmax(0, 1fr) !important; }
+/* Shared, click-controlled sidebar.  The body grid and sidebar width use the
+   same variable so every admin page moves in one smooth transition. */
+.admin-body {
+  --admin-sidebar-expanded: 280px;
+  --admin-sidebar-collapsed: 76px;
+  --admin-sidebar-width: var(--admin-sidebar-expanded);
+  grid-template-columns: var(--admin-sidebar-width) minmax(0, 1fr) !important;
+  transition: grid-template-columns 280ms cubic-bezier(.4,0,.2,1);
+}
+.admin-body.sidebar-collapsed { --admin-sidebar-width: var(--admin-sidebar-collapsed); }
 .sidebar {
-  width: 64px;
-  min-width: 64px;
+  width: 100%;
+  min-width: 0;
   padding: 14px;
-  transition: width 180ms ease, min-width 180ms ease, box-shadow 180ms ease;
   overflow: visible;
   z-index: 40;
+  transition: box-shadow 280ms cubic-bezier(.4,0,.2,1);
 }
-.sidebar:hover,
-.sidebar:focus-within {
-  width: 280px;
-  min-width: 280px;
-  box-shadow: 18px 0 38px rgba(0, 23, 70, .22);
-}
-.sidebar:not(:hover):not(:focus-within) .admin-brand,
-.sidebar:not(:hover):not(:focus-within) .admin-profile,
-.sidebar:not(:hover):not(:focus-within) .sidebar-logout {
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
-}
-.sidebar:not(:hover):not(:focus-within) .admin-brand { display: none; }
-.sidebar:not(:hover):not(:focus-within) .sidebar-fixed > div { justify-content: center; }
-.sidebar:not(:hover):not(:focus-within) .side-nav {
-  display: none;
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
-}
-/* The collapsed rail deliberately exposes only the centred three-line menu.
-   Navigation never leaks through before the administrator hovers the rail. */
-.sidebar:not(:hover):not(:focus-within) .sidebar-fixed {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 0;
-}
-.sidebar:not(:hover):not(:focus-within) .sidebar-fixed > div {
-  width: 100%;
-  justify-content: center;
-}
-.sidebar:not(:hover):not(:focus-within) .sidebar-toggle-btn {
-  width: 40px;
-  height: 40px;
-  margin: 0 auto;
-  border-radius: 13px;
-  box-shadow: 0 8px 18px rgba(1, 19, 55, .26);
-}
+.sidebar.collapsed { box-shadow: 8px 0 26px rgba(0, 23, 70, .12); }
 
 /* Toggle button */
 .sidebar-toggle-btn {
@@ -74,6 +42,7 @@
   flex-shrink: 0;
 }
 .sidebar-toggle-btn:hover { background: rgba(255,255,255,0.28); }
+.sidebar-toggle-btn:focus-visible { outline: 3px solid rgba(191,219,254,.7); outline-offset: 3px; }
 
 /* Brand area */
 .admin-brand {
@@ -112,7 +81,8 @@
   max-width: 200px;
 }
 
-/* Nav content is intentionally hidden when the rail is collapsed. */
+/* Nav labels fade and contract; icons, active state, and link hit targets stay
+   present in the compact rail. */
 .side-nav a {
   display: flex;
   align-items: center;
@@ -125,6 +95,7 @@
   overflow: hidden;
 }
 .side-nav a:hover { background: rgba(255,255,255,.12); color: #fff; }
+.side-nav a.is-active { background: rgba(255,255,255,.2); color: #fff; box-shadow: inset 3px 0 0 #fbbf24, 0 7px 18px rgba(1,19,55,.18); }
 .side-nav a span.nav-label {
   overflow: hidden;
   white-space: nowrap;
@@ -147,6 +118,64 @@
   transition: opacity 0.2s ease, max-width 0.28s ease;
   max-width: 180px;
   overflow: hidden;
+}
+
+#admin-sidebar-tooltip {
+  position: fixed;
+  z-index: 10050;
+  max-width: min(280px, calc(100vw - 100px));
+  padding: 7px 12px;
+  color: #fff;
+  background: #071a3a;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 8px;
+  box-shadow: 0 8px 22px rgba(0,0,0,.28);
+  font-size: .8rem;
+  font-weight: 650;
+  line-height: 1.25;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+#admin-sidebar-tooltip.is-visible { opacity: 1; transform: translateX(0); }
+
+@media (min-width: 821px) {
+  .sidebar.collapsed .admin-brand .brand-text-wrap,
+  .sidebar.collapsed .admin-profile,
+  .sidebar.collapsed .logout-text,
+  .sidebar.collapsed .nav-label,
+  .sidebar.collapsed .nav-group-header {
+    opacity: 0;
+    max-width: 0;
+    width: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .sidebar.collapsed .admin-brand {
+    flex: 0 0 0;
+    max-width: 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .sidebar.collapsed .sidebar-fixed > div { justify-content: center; }
+  .sidebar.collapsed .sidebar-toggle-btn { margin: 0; }
+  .sidebar.collapsed .side-nav { padding-right: 0; }
+  .sidebar.collapsed .side-nav a,
+  .sidebar.collapsed .side-nav .nav-group a,
+  .sidebar.collapsed .logout {
+    justify-content: center;
+    gap: 0;
+    padding-left: 12px;
+  }
+  .sidebar.collapsed .nav-group { margin: 4px 0; padding-top: 0; border-top-color: transparent; }
+  .sidebar.collapsed .sidebar-logout { padding: 0; }
+}
+@media (max-width: 820px) {
+  .admin-body { grid-template-columns: 1fr !important; }
 }
 
 /* Compact header for non-dashboard pages */
@@ -219,9 +248,9 @@
         </span>
         <span class="brand-text-wrap"><strong style="color:#fff;display:block;font-size:0.9rem;line-height:1.1;">{{ ui_settings.dashboard_title }}</strong><small style="color:#bfdbfe;font-size:0.72rem;">Administration</small></span>
       </a>
-      <span class="sidebar-toggle-btn" aria-label="Navigation menu" title="Hover to open navigation" style="flex-shrink:0;">
+      <button type="button" class="sidebar-toggle-btn" id="adminSidebarToggle" aria-label="Collapse navigation" aria-expanded="true" style="flex-shrink:0;">
         <i class="fa-solid fa-bars"></i>
-      </span>
+      </button>
     </div>
     <div class="admin-profile">
       <span class="admin-avatar" style="flex-shrink:0;">
@@ -317,6 +346,76 @@ window.SYSTEM_LOADER_CONFIG = {{ {
 }|tojson }};
 window.SYSTEM_LOADER_DESIGN = window.SYSTEM_LOADER_CONFIG.design || null;
 document.addEventListener("DOMContentLoaded", function() {
+
+  // Shared sidebar state for every admin page. The compact rail keeps its
+  // icons available and reveals labels through hover tooltips, never clicks.
+  (function initialiseAdminSidebar() {
+    const sidebar = document.querySelector('.sidebar');
+    const toggle = document.getElementById('adminSidebarToggle');
+    const page = document.body;
+    if (!sidebar || !toggle) return;
+
+    const storageKey = 'sultaan-admin-sidebar-collapsed';
+    const desktopQuery = window.matchMedia('(min-width: 821px)');
+    let collapsed = false;
+    try { collapsed = sessionStorage.getItem(storageKey) === 'true'; } catch (_) {}
+
+    const tooltip = document.createElement('div');
+    tooltip.id = 'admin-sidebar-tooltip';
+    tooltip.setAttribute('role', 'tooltip');
+    document.body.appendChild(tooltip);
+
+    function applySidebarState() {
+      const compact = desktopQuery.matches && collapsed;
+      sidebar.classList.toggle('collapsed', compact);
+      page.classList.toggle('sidebar-collapsed', compact);
+      toggle.setAttribute('aria-expanded', String(!compact));
+      toggle.setAttribute('aria-label', compact ? 'Expand navigation' : 'Collapse navigation');
+      tooltip.classList.remove('is-visible');
+    }
+
+    function hideTooltip() {
+      tooltip.classList.remove('is-visible');
+    }
+
+    function showTooltip(event) {
+      if (!sidebar.classList.contains('collapsed')) return;
+      const item = event.currentTarget;
+      const label = item.dataset.sidebarTooltip || item.querySelector('.nav-label, .logout-text')?.textContent?.trim();
+      if (!label) return;
+      const rect = item.getBoundingClientRect();
+      tooltip.textContent = label;
+      tooltip.style.left = `${Math.round(rect.right + 12)}px`;
+      tooltip.style.top = `${Math.round(rect.top + rect.height / 2)}px`;
+      tooltip.style.transform = 'translateY(-50%) translateX(-6px)';
+      tooltip.classList.add('is-visible');
+      requestAnimationFrame(() => { tooltip.style.transform = 'translateY(-50%) translateX(0)'; });
+    }
+
+    document.querySelectorAll('.side-nav a, .sidebar-logout .logout').forEach((item) => {
+      const label = item.querySelector('.nav-label, .logout-text')?.textContent?.trim();
+      if (label) item.dataset.sidebarTooltip = label;
+      item.addEventListener('mouseenter', showTooltip);
+      item.addEventListener('mouseleave', hideTooltip);
+      item.addEventListener('focus', showTooltip);
+      item.addEventListener('blur', hideTooltip);
+    });
+
+    const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
+    document.querySelectorAll('.side-nav a[href]').forEach((link) => {
+      const linkPath = new URL(link.href, window.location.origin).pathname.replace(/\/$/, '') || '/';
+      if (linkPath === currentPath) link.classList.add('is-active');
+    });
+
+    toggle.addEventListener('click', () => {
+      if (!desktopQuery.matches) return;
+      collapsed = !collapsed;
+      try { sessionStorage.setItem(storageKey, String(collapsed)); } catch (_) {}
+      applySidebarState();
+    });
+    window.addEventListener('resize', applySidebarState);
+    applySidebarState();
+  })();
 
   // ── Live admin status indicator ──
   (function startStatusMonitor() {
