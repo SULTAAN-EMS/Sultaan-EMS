@@ -3,6 +3,7 @@
 {% block extra_head %}
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/verified-name-badge.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/verification-particle-burst.css') }}">
 {% endblock %}
 {% block content %}
 {% from 'partials/verified_name_badge.html' import verified_name_badge %}
@@ -70,12 +71,8 @@
       {% endif %}
       {% set verify_order = _clean %}
       <section class="verification-status-card" style="order: {{ verify_order.index('status') + 1 if 'status' in verify_order else 1 }}">
-        <div class="verification-success-badge" aria-label="{{ settings.verify_badge_text }}">
-          <i class="fa-solid {{ 'fa-certificate' if settings.verify_badge_style == 'classic' else 'fa-shield-halved' if settings.verify_badge_style == 'shield' else 'fa-check' if settings.verify_badge_style == 'modern' else 'fa-award' }}"></i>
-          <span></span>
-        </div>
-        <div class="verification-stars"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></div>
-        <h2>{{ settings.verify_page_title }}</h2>
+        {% include 'partials/verification_particle_burst.html' %}
+        <h2 class="verified-rainbow-text">{{ settings.verify_page_title }}</h2>
         <p>{{ settings.verify_page_subtitle }}</p>
         <span class="verification-pill"><i class="fa-solid fa-shield-halved"></i>{{ settings.verify_success_message }}</span>
       </section>
