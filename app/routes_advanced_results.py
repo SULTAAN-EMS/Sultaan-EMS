@@ -16,7 +16,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AttendanceRecord, Exam, ExamHallEnrollment, ExamType, GradeScale, IdCardIssue, IncidentAttachment, IncidentReport, ReportVerification, Result, SchoolClass, SeatAssignment, SeatMixerAssignment, Setting, Student, Subject, LabelTranslation
+from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AttendanceRecord, Exam, ExamType, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, Subject, LabelTranslation
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, result_payload, subject_display_name
@@ -3063,125 +3063,6 @@ def delete_student(student_id):
     # relying on a generic toast that can be missed after the list reloads.
     session["student_deleted_notice"] = deleted_student
     return redirect(url_for("admin_advanced_results.students_management"))
-
-
-def _student_delete_dependency_summary(student_ids):
-    """Summarize dependent records that a confirmed class deletion will remove."""
-    if not student_ids:
-        return {}
-    checks = {
-        "results": Result.query.filter(Result.student_id.in_(student_ids)).count(),
-        "attendance": AttendanceRecord.query.filter(AttendanceRecord.student_id.in_(student_ids)).count(),
-        "incident_reports": IncidentReport.query.filter(IncidentReport.student_id.in_(student_ids)).count(),
-        "report_verifications": ReportVerification.query.filter(ReportVerification.student_id.in_(student_ids)).count(),
-        "id_card_issues": IdCardIssue.query.filter(IdCardIssue.student_id.in_(student_ids)).count(),
-        "hall_enrollments": ExamHallEnrollment.query.filter(ExamHallEnrollment.student_id.in_(student_ids)).count(),
-        "seat_mixer_assignments": SeatMixerAssignment.query.filter(SeatMixerAssignment.student_id.in_(student_ids)).count(),
-        "seat_assignments": SeatAssignment.query.filter(SeatAssignment.student_id.in_(student_ids)).count(),
-    }
-    return {name: count for name, count in checks.items() if count}
-
-
-def _students_for_bulk_delete(academic_year_id, academic_class_id):
-    if not academic_year_id or not academic_class_id:
-        return None, None, "Dooro sanad-dugsiyeedka iyo fasalka si sax ah."
-    academic_year = db.session.get(AcademicYear, academic_year_id)
-    academic_class = db.session.get(AcademicClass, academic_class_id)
-    if not academic_year or not academic_class:
-        return None, None, "Sanad-dugsiyeedka ama fasalka lama heli karo."
-    legacy_class = SchoolClass.query.filter_by(name=academic_class.name).first()
-    class_filters = [Student.academic_class_id == academic_class.id]
-    if legacy_class:
-        class_filters.append(
-            db_and(
-                Student.academic_class_id.is_(None),
-                Student.class_id == legacy_class.id,
-            )
-        )
-    students = (
-        Student.query.filter(
-            Student.academic_year_id == academic_year.id,
-            db_or(*class_filters),
-        )
-        .order_by(Student.full_name)
-        .all()
-    )
-    return academic_class, students, None
-
-
-def _bulk_delete_target(data):
-    """Class deletion is intentionally the only bulk deletion operation."""
-    academic_class, students, error = _students_for_bulk_delete(
-        int_or_none(data.get("academic_year_id")),
-        int_or_none(data.get("academic_class_id")),
-    )
-    if error:
-        return None, "", None, error
-    return students, academic_class.name, academic_class, None
-
-
-@advanced_results_bp.route("/students/bulk-delete/preview", methods=["POST"])
-def preview_bulk_delete_students():
-    if current_user.role not in {"super_admin", "admin"}:
-        return jsonify({"success": False, "error": "Kaliya maamulka ayaa tirtiri kara fasal dhan."}), 403
-    data = request.get_json(silent=True) or request.form
-    students, target_name, academic_class, error = _bulk_delete_target(data)
-    if error:
-        return jsonify({"success": False, "error": error}), 400
-    student_ids = [student.id for student in students]
-    if not students:
-        return jsonify({"success": False, "error": "Ardey laga tirtirayo fasalkan lama helin."}), 404
-    return jsonify({
-        "success": True,
-        "class_name": target_name,
-        "target_name": target_name,
-        "student_count": len(students),
-        "dependencies": _student_delete_dependency_summary(student_ids),
-    })
-
-
-@advanced_results_bp.route("/students/bulk-delete/confirm", methods=["POST"])
-def confirm_bulk_delete_students():
-    if current_user.role not in {"super_admin", "admin"}:
-        return jsonify({"success": False, "error": "Kaliya maamulka ayaa tirtiri kara fasal dhan."}), 403
-    data = request.get_json(silent=True) or request.form
-    students, target_name, academic_class, error = _bulk_delete_target(data)
-    if error:
-        return jsonify({"success": False, "error": error}), 400
-    acknowledged = data.get("acknowledged") is True or str(data.get("acknowledged", "")).lower() == "true"
-    if not acknowledged:
-        return jsonify({"success": False, "error": "Calaamadee xaqiijinta tirtirka aan dib loo celin karin."}), 400
-    password = str(data.get("password") or "")
-    if not password or not current_user.check_password(password):
-        return jsonify({"success": False, "error": "Password-ka maamulka waa khaldan yahay."}), 403
-
-    student_ids = [student.id for student in students]
-    if not students:
-        return jsonify({"success": False, "error": "Ardey laga tirtirayo fasalkan lama helin."}), 404
-    try:
-        # Delete dependent history explicitly.  This works consistently even
-        # on existing MySQL deployments where older foreign keys may not have
-        # ON DELETE CASCADE enabled yet.
-        report_ids = [row.id for row in IncidentReport.query.filter(IncidentReport.student_id.in_(student_ids)).all()]
-        if report_ids:
-            IncidentAttachment.query.filter(IncidentAttachment.report_id.in_(report_ids)).delete(synchronize_session=False)
-        IncidentReport.query.filter(IncidentReport.student_id.in_(student_ids)).delete(synchronize_session=False)
-        Result.query.filter(Result.student_id.in_(student_ids)).delete(synchronize_session=False)
-        AttendanceRecord.query.filter(AttendanceRecord.student_id.in_(student_ids)).delete(synchronize_session=False)
-        ReportVerification.query.filter(ReportVerification.student_id.in_(student_ids)).delete(synchronize_session=False)
-        IdCardIssue.query.filter(IdCardIssue.student_id.in_(student_ids)).delete(synchronize_session=False)
-        ExamHallEnrollment.query.filter(ExamHallEnrollment.student_id.in_(student_ids)).delete(synchronize_session=False)
-        SeatMixerAssignment.query.filter(SeatMixerAssignment.student_id.in_(student_ids)).delete(synchronize_session=False)
-        SeatAssignment.query.filter(SeatAssignment.student_id.in_(student_ids)).delete(synchronize_session=False)
-        for student in students:
-            db.session.delete(student)
-        audit("Student Updates", f"Bulk deleted {len(students)} students from {target_name}")
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-        current_app.logger.exception("Bulk student deletion failed for %s", target_name)
-        return jsonify({"success": False, "error": "Ardeyda lama tirtiri karin. Wax isbeddel ah lama keydin."}), 500
-    return jsonify({"success": True, "deleted_count": len(students), "class_name": target_name})
 
 
 @advanced_results_bp.route("/students/<int:student_id>/data")
