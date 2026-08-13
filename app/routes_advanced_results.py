@@ -16,7 +16,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AttendanceRecord, Exam, ExamHallEnrollment, ExamType, GradeScale, IdCardIssue, IncidentReport, ReportVerification, Result, SchoolClass, SeatAssignment, SeatMixerAssignment, Setting, Student, Subject, LabelTranslation
+from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AttendanceRecord, Exam, ExamHallEnrollment, ExamType, GradeScale, IdCardIssue, IncidentAttachment, IncidentReport, ReportVerification, Result, SchoolClass, SeatAssignment, SeatMixerAssignment, Setting, Student, Subject, LabelTranslation
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, result_payload, subject_display_name
@@ -3066,7 +3066,7 @@ def delete_student(student_id):
 
 
 def _student_delete_dependency_summary(student_ids):
-    """Return the records that make a permanent student deletion unsafe."""
+    """Summarize dependent records that a confirmed class deletion will remove."""
     if not student_ids:
         return {}
     checks = {
@@ -3109,34 +3109,8 @@ def _students_for_bulk_delete(academic_year_id, academic_class_id):
     return academic_class, students, None
 
 
-def _selected_students_for_bulk_delete(data):
-    """Resolve an explicit selection without allowing a stale or unknown row."""
-    raw_ids = data.get("student_ids") or []
-    if isinstance(raw_ids, str):
-        raw_ids = [value for value in raw_ids.split(",") if value.strip()]
-    if not isinstance(raw_ids, list):
-        return None, "", "Ardeyda la doortay lama aqoonsan."
-
-    student_ids = sorted({int_or_none(value) for value in raw_ids} - {None})
-    if not student_ids:
-        return None, "", "Dooro ugu yaraan hal arday."
-
-    academic_year_id = int_or_none(data.get("academic_year_id"))
-    query = Student.query.filter(Student.id.in_(student_ids))
-    if academic_year_id:
-        query = query.filter(Student.academic_year_id == academic_year_id)
-    students = query.order_by(Student.full_name).all()
-    if len(students) != len(student_ids):
-        return None, "", "Qaar ka mid ah ardeyda la doortay lama helin ama sanadkan kuma jiraan."
-    return students, f"{len(students)} arday oo la doortay", None
-
-
 def _bulk_delete_target(data):
-    """Return either the whole selected class or the explicitly selected rows."""
-    if data.get("student_ids"):
-        students, label, error = _selected_students_for_bulk_delete(data)
-        return students, label, None, error
-
+    """Class deletion is intentionally the only bulk deletion operation."""
     academic_class, students, error = _students_for_bulk_delete(
         int_or_none(data.get("academic_year_id")),
         int_or_none(data.get("academic_class_id")),
@@ -3155,6 +3129,8 @@ def preview_bulk_delete_students():
     if error:
         return jsonify({"success": False, "error": error}), 400
     student_ids = [student.id for student in students]
+    if not students:
+        return jsonify({"success": False, "error": "Ardey laga tirtirayo fasalkan lama helin."}), 404
     return jsonify({
         "success": True,
         "class_name": target_name,
@@ -3172,21 +3148,31 @@ def confirm_bulk_delete_students():
     students, target_name, academic_class, error = _bulk_delete_target(data)
     if error:
         return jsonify({"success": False, "error": error}), 400
+    acknowledged = data.get("acknowledged") is True or str(data.get("acknowledged", "")).lower() == "true"
+    if not acknowledged:
+        return jsonify({"success": False, "error": "Calaamadee xaqiijinta tirtirka aan dib loo celin karin."}), 400
     password = str(data.get("password") or "")
     if not password or not current_user.check_password(password):
         return jsonify({"success": False, "error": "Password-ka maamulka waa khaldan yahay."}), 403
 
     student_ids = [student.id for student in students]
-    dependencies = _student_delete_dependency_summary(student_ids)
-    if dependencies:
-        return jsonify({
-            "success": False,
-            "error": "Tirtirka waa la xannibay si loo ilaaliyo xogta imtixaanka ee ku xiran ardeyda.",
-            "dependencies": dependencies,
-        }), 409
     if not students:
         return jsonify({"success": False, "error": "Ardey laga tirtirayo fasalkan lama helin."}), 404
     try:
+        # Delete dependent history explicitly.  This works consistently even
+        # on existing MySQL deployments where older foreign keys may not have
+        # ON DELETE CASCADE enabled yet.
+        report_ids = [row.id for row in IncidentReport.query.filter(IncidentReport.student_id.in_(student_ids)).all()]
+        if report_ids:
+            IncidentAttachment.query.filter(IncidentAttachment.report_id.in_(report_ids)).delete(synchronize_session=False)
+        IncidentReport.query.filter(IncidentReport.student_id.in_(student_ids)).delete(synchronize_session=False)
+        Result.query.filter(Result.student_id.in_(student_ids)).delete(synchronize_session=False)
+        AttendanceRecord.query.filter(AttendanceRecord.student_id.in_(student_ids)).delete(synchronize_session=False)
+        ReportVerification.query.filter(ReportVerification.student_id.in_(student_ids)).delete(synchronize_session=False)
+        IdCardIssue.query.filter(IdCardIssue.student_id.in_(student_ids)).delete(synchronize_session=False)
+        ExamHallEnrollment.query.filter(ExamHallEnrollment.student_id.in_(student_ids)).delete(synchronize_session=False)
+        SeatMixerAssignment.query.filter(SeatMixerAssignment.student_id.in_(student_ids)).delete(synchronize_session=False)
+        SeatAssignment.query.filter(SeatAssignment.student_id.in_(student_ids)).delete(synchronize_session=False)
         for student in students:
             db.session.delete(student)
         audit("Student Updates", f"Bulk deleted {len(students)} students from {target_name}")

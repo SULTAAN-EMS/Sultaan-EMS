@@ -161,15 +161,10 @@
         <i class="fa-solid fa-file-export"></i>
         {{ rh_label("students.export_excel", default="Excel Export") }}
       </a>
-      <label class="btn btn-outline" for="bulkSelectVisible" style="cursor:pointer;">
-        <input id="bulkSelectVisible" type="checkbox" style="margin-right:6px;"> Select visible
-      </label>
-      <button type="button" class="btn btn-outline" id="bulkDeleteSelectedButton" onclick="openBulkDeleteClassModal('selected')" disabled>
-        <i class="fa-solid fa-trash-can"></i> Delete selected
-      </button>
-      <button type="button" class="btn btn-outline" id="bulkDeleteClassButton" onclick="openBulkDeleteClassModal('class')" title="Dooro fasal si aad fasalka oo dhan u tirtirto">
+      <button type="button" class="btn btn-outline" id="bulkDeleteClassButton" onclick="openBulkDeleteClassModal()" title="Dooro fasal si aad fasalka oo dhan u tirtirto">
         <i class="fa-solid fa-trash-can"></i> Delete class
       </button>
+      <span id="bulkDeleteClassCount" style="display:none;align-items:center;padding:7px 10px;border-radius:999px;background:#fff7ed;color:#9a3412;font-size:.8rem;font-weight:700;"></span>
     </div>
 
     {% set import_summary = session.pop('import_summary', None) %}
@@ -219,8 +214,7 @@
     <div class="sm-grid">
       <div class="sm-list">
         {% for student in students %}
-          <div class="sm-row" data-student-id="{{ student.id }}" data-student-class-id="{{ student.academic_class_id or '' }}" onclick="selectStudent('{{ student.id }}')">
-            <input class="sm-bulk-checkbox" type="checkbox" value="{{ student.id }}" aria-label="Select {{ student.full_name }}" onclick="event.stopPropagation()" style="margin:0 2px 0 0; accent-color:var(--royal, #24406B); width:16px; height:16px;">
+          <div class="sm-row" data-student-id="{{ student.id }}" data-student-class-id="{{ student.academic_class_id or '' }}" data-student-class-name="{{ (student.academic_class.name if student.academic_class else (student.school_class.name if student.school_class else ''))|e }}" onclick="selectStudent('{{ student.id }}')">
             <div class="sm-avatar">
               {% if student.photo_path %}
                 <img src="{{ asset_url(student.photo_path) }}" alt="{{ student.full_name }}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
@@ -368,13 +362,20 @@
     <div class="modal-content" style="border:1px solid rgba(225,29,72,.28);border-radius:20px;overflow:hidden;background:linear-gradient(145deg,#fff,#fff7f7);box-shadow:0 30px 70px rgba(127,29,29,.28);">
       <div style="height:5px;background:linear-gradient(90deg,#e11d48,#f97316,#e11d48);"></div>
       <div style="padding:25px;">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;"><span style="width:44px;height:44px;display:grid;place-items:center;border-radius:14px;background:#fff1f2;color:#e11d48;font-size:1.2rem;"><i class="fa-solid fa-triangle-exclamation"></i></span><div><h3 style="margin:0;color:#172033;font-size:1.2rem;">Delete a whole class</h3><small style="color:#64748b;">Protected destructive action</small></div></div>
-        <p id="bulkDeleteClassMessage" style="color:#475569;line-height:1.55;margin:0 0 13px;"></p>
-        <div id="bulkDeleteDependencyWarning" style="display:none;border:1px solid #fdba74;background:#fff7ed;color:#9a3412;border-radius:12px;padding:12px;font-size:.86rem;margin-bottom:14px;"></div>
-        <label style="display:block;font-size:.82rem;font-weight:700;color:#334155;margin-bottom:6px;">Administrator password</label>
-        <input id="bulkDeletePassword" type="password" autocomplete="current-password" style="width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:11px 12px;box-sizing:border-box;" placeholder="Confirm with your password">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;"><span style="width:44px;height:44px;display:grid;place-items:center;border-radius:14px;background:#fff1f2;color:#e11d48;font-size:1.2rem;"><i class="fa-solid fa-triangle-exclamation"></i></span><div><h3 style="margin:0;color:#172033;font-size:1.2rem;">Tirtir fasalka oo dhan</h3><small style="color:#64748b;">Tallaabo joogto ah oo aan dib loo celin karin</small></div></div>
+        <div id="bulkDeleteClassMessage" style="color:#475569;line-height:1.55;margin:0 0 13px;"></div>
+        <div id="bulkDeleteDependencyWarning" style="display:none;border:1px solid #fecaca;background:#fff1f2;color:#9f1239;border-radius:12px;padding:13px;font-size:.86rem;margin-bottom:14px;"></div>
+        <label id="bulkDeleteAcknowledgement" style="display:flex;align-items:flex-start;gap:10px;border:1px solid #fed7aa;background:#fff7ed;border-radius:12px;padding:13px;cursor:pointer;color:#9a3412;font-size:.86rem;line-height:1.45;margin-bottom:14px;">
+          <input id="bulkDeleteAcknowledged" type="checkbox" style="margin-top:2px;width:18px;height:18px;accent-color:#dc2626;">
+          <span>Waan fahmay in tirtirkan aan dib loo celin karin, waxaana xaqiijinayaa inaan doonayo in fasalkan iyo dhammaan xogtiisa ku xiran la tirtiro.</span>
+        </label>
+        <label style="display:block;font-size:.82rem;font-weight:700;color:#334155;margin-bottom:6px;">Password-ka maamulka</label>
+        <div id="bulkDeletePasswordWrap" style="display:flex;align-items:center;gap:9px;border:1px solid #cbd5e1;border-radius:10px;padding:0 11px;background:#f8fafc;opacity:.55;">
+          <i class="fa-solid fa-lock" style="color:#64748b;"></i>
+          <input id="bulkDeletePassword" type="password" autocomplete="current-password" disabled style="width:100%;border:0;background:transparent;padding:11px 0;outline:0;box-sizing:border-box;" placeholder="Marka hore calaamadee xaqiijinta kore">
+        </div>
         <p id="bulkDeleteError" style="display:none;margin:9px 0 0;color:#be123c;font-size:.82rem;font-weight:700;"></p>
-        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;"><button type="button" class="btn btn-outline" onclick="closeBulkDeleteClassModal()">Cancel</button><button type="button" class="btn" id="bulkDeleteConfirmButton" onclick="confirmBulkDeleteClass()" style="background:linear-gradient(135deg,#e11d48,#b91c1c);color:white;border:none;">Confirm Delete</button></div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;"><button type="button" class="btn btn-outline" onclick="closeBulkDeleteClassModal()">Jooji</button><button type="button" class="btn" id="bulkDeleteConfirmButton" onclick="confirmBulkDeleteClass()" disabled style="background:linear-gradient(135deg,#e11d48,#b91c1c);color:white;border:none;"><i class="fa-solid fa-trash-can"></i> Tirtir Fasalka</button></div>
       </div>
     </div>
   </div>
@@ -438,76 +439,77 @@ function _makeDeleteUrl(id) {
 const bulkDeletePreviewUrl = "{{ url_for('admin_advanced_results.preview_bulk_delete_students') }}";
 const bulkDeleteConfirmUrl = "{{ url_for('admin_advanced_results.confirm_bulk_delete_students') }}";
 const bulkDeleteCsrf = "{{ csrf_token() }}";
-let bulkDeletePayload = null;
 function selectedBulkDeleteScope() {
   return { academic_year_id: document.getElementById('year-selector')?.value || '', academic_class_id: document.getElementById('class-selector')?.value || '' };
 }
-function selectedStudentIds() {
-  return Array.from(document.querySelectorAll('.sm-bulk-checkbox:checked')).map(input => Number(input.value));
-}
-function updateBulkDeleteControls() {
-  const selected = selectedStudentIds();
-  const deleteSelected = document.getElementById('bulkDeleteSelectedButton');
-  const selectVisible = document.getElementById('bulkSelectVisible');
-  if (deleteSelected) deleteSelected.disabled = selected.length === 0;
-  if (selectVisible) {
-    const visible = document.querySelectorAll('.sm-bulk-checkbox');
-    selectVisible.checked = visible.length > 0 && selected.length === visible.length;
-    selectVisible.indeterminate = selected.length > 0 && selected.length < visible.length;
-  }
-}
 function dependencyText(dependencies) {
-  return Object.entries(dependencies || {}).map(([key, count]) => `${count} ${key.replace('_', ' ')}`).join(', ');
+  const labels = {results:'Natiijooyinka imtixaanka', attendance:'Diiwaanka xaadirinta', incident_reports:'Warbixinnada dhacdada', report_verifications:'Xaqiijinta report-ka', id_card_issues:'Diiwaanka kaararka', hall_enrollments:'Diiwaanka hall-ka', seat_mixer_assignments:'Qaybinta kuraasta', seat_assignments:'Kuraasta imtixaanka'};
+  return Object.entries(dependencies || {}).map(([key, count]) => `${count} ${labels[key] || key.replaceAll('_', ' ')}`).join(', ');
 }
-async function openBulkDeleteClassModal(mode) {
+async function refreshBulkDeleteClassCount() {
   const scope = selectedBulkDeleteScope();
-  const isSelectedMode = mode === 'selected';
-  if (!scope.academic_year_id || (!isSelectedMode && !scope.academic_class_id)) {
+  const count = document.getElementById('bulkDeleteClassCount');
+  if (!scope.academic_year_id || !scope.academic_class_id) { count.style.display = 'none'; return; }
+  try {
+    const response = await fetch(bulkDeletePreviewUrl, {method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':bulkDeleteCsrf},body:JSON.stringify(scope)});
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || '');
+    count.textContent = `${data.student_count} arday oo fasalkan ah`;
+    count.style.display = 'inline-flex';
+  } catch (error) { count.style.display = 'none'; }
+}
+function updateBulkDeleteReadyState() {
+  const acknowledged = document.getElementById('bulkDeleteAcknowledged').checked;
+  const password = document.getElementById('bulkDeletePassword');
+  const passwordWrap = document.getElementById('bulkDeletePasswordWrap');
+  password.disabled = !acknowledged;
+  passwordWrap.style.opacity = acknowledged ? '1' : '.55';
+  password.placeholder = acknowledged ? 'Geli password-kaaga si aad u xaqiijiso' : 'Marka hore calaamadee xaqiijinta kore';
+  if (!acknowledged) password.value = '';
+  document.getElementById('bulkDeleteConfirmButton').disabled = !acknowledged || !password.value.trim();
+}
+async function openBulkDeleteClassModal() {
+  const scope = selectedBulkDeleteScope();
+  if (!scope.academic_year_id || !scope.academic_class_id) {
     showBulkDeleteError('Dooro sanad-dugsiyeedka iyo fasalka ka hor tirtirka.');
     return;
   }
-  const studentIds = selectedStudentIds();
-  if (isSelectedMode && !studentIds.length) {
-    showBulkDeleteError('Dooro ugu yaraan hal arday.');
-    return;
-  }
-  bulkDeletePayload = isSelectedMode ? {academic_year_id: scope.academic_year_id, student_ids: studentIds} : scope;
   const modal = document.getElementById('bulkDeleteClassModal');
   const message = document.getElementById('bulkDeleteClassMessage');
   const warning = document.getElementById('bulkDeleteDependencyWarning');
   document.getElementById('bulkDeleteError').style.display = 'none';
   document.getElementById('bulkDeletePassword').value = '';
+  document.getElementById('bulkDeleteAcknowledged').checked = false;
+  updateBulkDeleteReadyState();
   message.textContent = 'Checking linked records...'; warning.style.display = 'none';
   modal.style.display = 'flex'; modal.setAttribute('aria-hidden', 'false');
   try {
-    const response = await fetch(bulkDeletePreviewUrl, {method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':bulkDeleteCsrf},body:JSON.stringify(bulkDeletePayload)});
+    const response = await fetch(bulkDeletePreviewUrl, {method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':bulkDeleteCsrf},body:JSON.stringify(scope)});
     const data = await response.json();
     if (!response.ok || !data.success) throw new Error(data.error || 'Unable to inspect the selected class.');
-    message.textContent = `${data.student_count} student(s) in ${data.target_name || data.class_name} are selected for permanent deletion.`;
+    message.textContent = `${data.target_name || data.class_name} waxaa ku jira ${data.student_count} arday. Tirtirkani waa joogto ah, dib looma soo celin karo.`;
     const dependencies = dependencyText(data.dependencies);
-    if (dependencies) { warning.textContent = `Deletion is blocked: ${dependencies} are linked to these students. Preserve or remove those records first.`; warning.style.display = 'block'; document.getElementById('bulkDeleteConfirmButton').disabled = true; }
-    else document.getElementById('bulkDeleteConfirmButton').disabled = false;
-  } catch (error) { document.getElementById('bulkDeleteError').textContent = error.message; document.getElementById('bulkDeleteError').style.display='block'; document.getElementById('bulkDeleteConfirmButton').disabled=true; }
+    warning.textContent = dependencies ? `Xogtan ku xiran sidoo kale waa la tirtirayaa: ${dependencies}.` : 'Diiwaanka guud ee ardeyda fasalkan ayaa si joogto ah loo tirtirayaa.';
+    warning.style.display = 'block';
+  } catch (error) { document.getElementById('bulkDeleteError').textContent = error.message; document.getElementById('bulkDeleteError').style.display='block'; }
 }
-function closeBulkDeleteClassModal() { const modal=document.getElementById('bulkDeleteClassModal'); modal.style.display='none'; modal.setAttribute('aria-hidden','true'); bulkDeletePayload=null; }
+function closeBulkDeleteClassModal() { const modal=document.getElementById('bulkDeleteClassModal'); modal.style.display='none'; modal.setAttribute('aria-hidden','true'); }
 async function confirmBulkDeleteClass() {
   const button=document.getElementById('bulkDeleteConfirmButton'); const error=document.getElementById('bulkDeleteError');
-  const payload={...(bulkDeletePayload || {}),password:document.getElementById('bulkDeletePassword').value};
-  button.disabled=true; button.textContent='Deleting...'; error.style.display='none';
+  const payload={...selectedBulkDeleteScope(),acknowledged:document.getElementById('bulkDeleteAcknowledged').checked,password:document.getElementById('bulkDeletePassword').value};
+  button.disabled=true; button.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Tirtiraya...'; error.style.display='none';
   try {
     const response=await fetch(bulkDeleteConfirmUrl,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':bulkDeleteCsrf},body:JSON.stringify(payload)});
     const data=await response.json();
     if(!response.ok||!data.success) throw new Error(data.error||'Deletion could not be completed.');
-    const ids = new Set((payload.student_ids || []).map(Number));
+    const selectedClassName = document.getElementById('class-selector').selectedOptions[0]?.textContent?.trim() || '';
     document.querySelectorAll('.sm-row[data-student-id]').forEach(row => {
-      if (ids.size ? ids.has(Number(row.dataset.studentId)) : row.dataset.studentClassId === String(payload.academic_class_id)) row.remove();
+      if (row.dataset.studentClassId === String(payload.academic_class_id) || row.dataset.studentClassName === selectedClassName) row.remove();
     });
-    document.querySelectorAll('.sm-bulk-checkbox').forEach(input => input.checked=false);
-    updateBulkDeleteControls();
     closeBulkDeleteClassModal();
     showBulkDeleteSuccess(data);
   }
-  catch (err) { error.textContent=err.message; error.style.display='block'; button.disabled=false; button.innerHTML='<i class="fa-solid fa-trash-can"></i> Confirm Delete'; }
+  catch (err) { error.textContent=err.message; error.style.display='block'; button.innerHTML='<i class="fa-solid fa-trash-can"></i> Tirtir Fasalka'; updateBulkDeleteReadyState(); }
 }
 function showBulkDeleteError(message) {
   const notice = document.createElement('div');
@@ -529,12 +531,10 @@ function showBulkDeleteSuccess(data) {
   window.setTimeout(() => notice.remove(), 6200);
 }
 
-document.querySelectorAll('.sm-bulk-checkbox').forEach(input => input.addEventListener('change', updateBulkDeleteControls));
-document.getElementById('bulkSelectVisible')?.addEventListener('change', event => {
-  document.querySelectorAll('.sm-bulk-checkbox').forEach(input => input.checked = event.target.checked);
-  updateBulkDeleteControls();
-});
-updateBulkDeleteControls();
+document.getElementById('bulkDeleteAcknowledged').addEventListener('change', updateBulkDeleteReadyState);
+document.getElementById('bulkDeletePassword').addEventListener('input', updateBulkDeleteReadyState);
+document.getElementById('class-selector')?.addEventListener('change', refreshBulkDeleteClassCount);
+refreshBulkDeleteClassCount();
 
 document.getElementById('bulkDeleteClassModal').addEventListener('click', function(event) {
   if (event.target === this) closeBulkDeleteClassModal();

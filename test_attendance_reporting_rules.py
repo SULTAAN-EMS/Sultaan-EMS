@@ -143,7 +143,7 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         self.assertEqual(summary["success_count"], 1, summary)
         self.assertEqual(Student.query.filter_by(student_code="900002").one().gender, "Female")
 
-    def test_bulk_delete_preview_and_confirm_protect_linked_records(self):
+    def test_bulk_delete_class_cascades_confirmed_linked_records(self):
         with self.client.session_transaction() as session:
             session["_user_id"] = str(self.admin.id)
             session["_fresh"] = True
@@ -151,12 +151,19 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         preview = self.client.post("/admin/advanced-results/students/bulk-delete/preview", json=scope)
         self.assertTrue(preview.get_json()["success"])
         self.assertGreater(preview.get_json()["dependencies"].get("results", 0), 0)
-        blocked = self.client.post(
+        missing_acknowledgement = self.client.post(
             "/admin/advanced-results/students/bulk-delete/confirm",
             json={**scope, "password": "correct-password"},
         )
-        self.assertEqual(blocked.status_code, 409)
-        self.assertEqual(Student.query.filter_by(student_code="R-001").count(), 1)
+        self.assertEqual(missing_acknowledgement.status_code, 400)
+        deleted = self.client.post(
+            "/admin/advanced-results/students/bulk-delete/confirm",
+            json={**scope, "acknowledged": True, "password": "correct-password"},
+        )
+        self.assertTrue(deleted.get_json()["success"], deleted.get_json())
+        self.assertEqual(Student.query.filter_by(academic_class_id=self.academic_class.id).count(), 0)
+        self.assertEqual(Result.query.filter_by(student_id=self.present_student.id).count(), 0)
+        self.assertEqual(AttendanceRecord.query.filter_by(student_id=self.present_student.id).count(), 0)
 
     def test_bulk_delete_removes_unlinked_class_after_password_confirmation(self):
         empty_class = AcademicClass(academic_level_id=self.level.id, name="Form Two")
@@ -181,33 +188,7 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         self.assertEqual(preview["dependencies"], {})
         deleted = self.client.post(
             "/admin/advanced-results/students/bulk-delete/confirm",
-            json={**scope, "password": "correct-password"},
-        )
-        self.assertTrue(deleted.get_json()["success"], deleted.get_json())
-        self.assertIsNone(db.session.get(Student, removable.id))
-
-    def test_bulk_delete_removes_explicit_unlinked_student_selection(self):
-        removable = Student(
-            student_code="R-004",
-            full_name="Selected Student",
-            gender="Female",
-            academic_year_id=self.year.id,
-            academic_level_id=self.level.id,
-            academic_class_id=self.academic_class.id,
-        )
-        db.session.add(removable)
-        db.session.commit()
-        with self.client.session_transaction() as session:
-            session["_user_id"] = str(self.admin.id)
-            session["_fresh"] = True
-        payload = {"academic_year_id": self.year.id, "student_ids": [removable.id]}
-        preview = self.client.post("/admin/advanced-results/students/bulk-delete/preview", json=payload).get_json()
-        self.assertTrue(preview["success"])
-        self.assertEqual(preview["student_count"], 1)
-        self.assertEqual(preview["dependencies"], {})
-        deleted = self.client.post(
-            "/admin/advanced-results/students/bulk-delete/confirm",
-            json={**payload, "password": "correct-password"},
+            json={**scope, "acknowledged": True, "password": "correct-password"},
         )
         self.assertTrue(deleted.get_json()["success"], deleted.get_json())
         self.assertIsNone(db.session.get(Student, removable.id))
@@ -220,8 +201,10 @@ class AttendanceReportingRuleTests(unittest.TestCase):
             f"/admin/advanced-results/students-management?year_id={self.year.id}&class_id={self.academic_class.id}"
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"bulkSelectVisible", response.data)
-        self.assertIn(b"bulkDeleteSelectedButton", response.data)
+        self.assertIn(b"bulkDeleteClassButton", response.data)
+        self.assertIn(b"bulkDeleteAcknowledged", response.data)
+        self.assertNotIn(b"bulkSelectVisible", response.data)
+        self.assertNotIn(b"bulkDeleteSelectedButton", response.data)
 
     def test_timetable_create_and_delete_are_immediately_available_without_cache(self):
         with self.client.session_transaction() as session:
@@ -266,8 +249,43 @@ class AttendanceReportingRuleTests(unittest.TestCase):
             json={"assignments": [{"level_id": self.level.id, "subject_id": self.subject.id}]},
         )
         self.assertEqual(saved.status_code, 200, saved.get_json())
+        self.assertEqual(saved.get_json()["session"]["subject_count"], 1)
         detail = self.client.get(f"/admin/attendance/api/sessions/{session_id}").get_json()
         self.assertEqual(detail["assignments"], [{"level_id": self.level.id, "subject_id": self.subject.id}])
+
+    def test_timetable_payload_exposes_scheduled_subjects_for_picker_filtering(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        first = self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": self.year.id,
+            "exam_id": self.exam.id,
+            "date": "2030-06-16",
+            "time": "08:00",
+            "sitting_label": "Sitting one",
+        }).get_json()["session"]
+        saved = self.client.put(
+            f"/admin/attendance/api/sessions/{first['id']}/subjects",
+            json={"assignments": [{"level_id": self.level.id, "subject_id": self.subject.id}]},
+        )
+        self.assertTrue(saved.get_json()["success"], saved.get_json())
+        second = self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": self.year.id,
+            "exam_id": self.exam.id,
+            "date": "2030-06-16",
+            "time": "11:00",
+            "sitting_label": "Sitting two",
+        }).get_json()["session"]
+        payload = self.client.get(
+            f"/admin/attendance/api/timetable-data?academic_year_id={self.year.id}&exam_id={self.exam.id}"
+        ).get_json()
+        first_payload = next(row for row in payload["sessions"] if row["id"] == first["id"])
+        self.assertIn({"level_id": self.level.id, "subject_id": self.subject.id}, first_payload["assignments"])
+        with self.app.open_resource("templates/admin/exam_timetable.html") as template_file:
+            template = template_file.read().decode("utf-8")
+        self.assertIn("isScheduledInAnotherSitting", template)
+        self.assertIn("availableSubjects", template)
+        self.assertNotEqual(first["id"], second["id"])
 
 
 if __name__ == "__main__":

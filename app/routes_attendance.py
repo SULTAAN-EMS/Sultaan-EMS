@@ -349,6 +349,16 @@ def serialize_session(session):
         "time_label": rendered_time,
         "label": " - ".join(part for part in [rendered_date, session.sitting_label, rendered_time] if part),
         "subject_count": assignment_count,
+        # Sent with timetable data so the browser can omit subjects already
+        # allocated to another sitting before the user ever clicks Save.
+        "assignments": [
+            {
+                "level_id": assignment.academic_level_id,
+                "subject_id": assignment.subject_id,
+            }
+            for assignment in session.subject_assignments
+            if assignment.subject and assignment.subject.academic_level_id == assignment.academic_level_id
+        ],
     }
 
 
