@@ -5,7 +5,7 @@ import os
 import sys
 import unittest
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
@@ -107,6 +107,42 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         self.assertEqual(summary["success_count"], 1, summary)
         self.assertEqual(Student.query.filter_by(student_code="900001").one().gender, "Female")
 
+    def test_downloaded_student_template_round_trips_gender_with_display_headers(self):
+        """The actual download and upload path uses one normalized header contract."""
+        with self.client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        response = self.client.get("/admin/advanced-results/students/import/template")
+        self.assertEqual(response.status_code, 200)
+        workbook = load_workbook(io.BytesIO(response.data), data_only=True)
+        worksheet = workbook["Students"]
+        self.assertEqual(
+            [cell.value for cell in worksheet[1]],
+            ["ID", "Name", "Mother", "Mobile", "Class", "Number", "Academic Year", "Gender"],
+        )
+        worksheet.append(["3001", "Template Female", "Template Mother", "+252615551234", "Form One", 1, "2030-2031", "Female"])
+        worksheet.append(["3002", "Template Male", "Template Mother", "+252615555678", "Form One", 2, "2030-2031", "Male"])
+        stream = io.BytesIO()
+        workbook.save(stream)
+        stream.seek(0)
+        summary = process_student_import(stream)
+        self.assertEqual(summary["success_count"], 2, summary)
+        self.assertEqual(Student.query.filter_by(student_code="3001").one().gender, "Female")
+        self.assertEqual(Student.query.filter_by(student_code="3002").one().gender, "Male")
+
+    def test_student_import_accepts_normalized_display_gender_headers(self):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Students"
+        sheet.append([" ID ", "Name", "Mother", "Mobile", "Class", "Number", "Academic Year", "Gender"])
+        sheet.append(["900002", "Second Import", "Second Mother", "+252615551235", "Form One", 1, "2030-2031", "dhedig"])
+        stream = io.BytesIO()
+        workbook.save(stream)
+        stream.seek(0)
+        summary = process_student_import(stream)
+        self.assertEqual(summary["success_count"], 1, summary)
+        self.assertEqual(Student.query.filter_by(student_code="900002").one().gender, "Female")
+
     def test_bulk_delete_preview_and_confirm_protect_linked_records(self):
         with self.client.session_transaction() as session:
             session["_user_id"] = str(self.admin.id)
@@ -149,6 +185,89 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         )
         self.assertTrue(deleted.get_json()["success"], deleted.get_json())
         self.assertIsNone(db.session.get(Student, removable.id))
+
+    def test_bulk_delete_removes_explicit_unlinked_student_selection(self):
+        removable = Student(
+            student_code="R-004",
+            full_name="Selected Student",
+            gender="Female",
+            academic_year_id=self.year.id,
+            academic_level_id=self.level.id,
+            academic_class_id=self.academic_class.id,
+        )
+        db.session.add(removable)
+        db.session.commit()
+        with self.client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        payload = {"academic_year_id": self.year.id, "student_ids": [removable.id]}
+        preview = self.client.post("/admin/advanced-results/students/bulk-delete/preview", json=payload).get_json()
+        self.assertTrue(preview["success"])
+        self.assertEqual(preview["student_count"], 1)
+        self.assertEqual(preview["dependencies"], {})
+        deleted = self.client.post(
+            "/admin/advanced-results/students/bulk-delete/confirm",
+            json={**payload, "password": "correct-password"},
+        )
+        self.assertTrue(deleted.get_json()["success"], deleted.get_json())
+        self.assertIsNone(db.session.get(Student, removable.id))
+
+    def test_student_management_renders_bulk_delete_controls(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        response = self.client.get(
+            f"/admin/advanced-results/students-management?year_id={self.year.id}&class_id={self.academic_class.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"bulkSelectVisible", response.data)
+        self.assertIn(b"bulkDeleteSelectedButton", response.data)
+
+    def test_timetable_create_and_delete_are_immediately_available_without_cache(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        created = self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": self.year.id,
+            "exam_id": self.exam.id,
+            "date": "2030-06-14",
+            "time": "09:00",
+            "sitting_label": "Immediate session",
+        })
+        self.assertEqual(created.status_code, 200, created.get_json())
+        session_id = created.get_json()["session"]["id"]
+        listing = self.client.get(
+            f"/admin/attendance/api/timetable-data?academic_year_id={self.year.id}&exam_id={self.exam.id}"
+        )
+        self.assertIn("no-store", listing.headers.get("Cache-Control", ""))
+        self.assertIn(session_id, [row["id"] for row in listing.get_json()["sessions"]])
+        deleted = self.client.delete(f"/admin/attendance/api/sessions/{session_id}")
+        self.assertTrue(deleted.get_json()["success"], deleted.get_json())
+        refreshed = self.client.get(
+            f"/admin/attendance/api/timetable-data?academic_year_id={self.year.id}&exam_id={self.exam.id}"
+        )
+        self.assertNotIn(session_id, [row["id"] for row in refreshed.get_json()["sessions"]])
+
+    def test_timetable_session_saves_its_level_subjects(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        created = self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": self.year.id,
+            "exam_id": self.exam.id,
+            "date": "2030-06-15",
+            "time": "11:00",
+            "sitting_label": "Subject save session",
+        }).get_json()
+        self.assertTrue(created["success"], created)
+        session_id = created["session"]["id"]
+        saved = self.client.put(
+            f"/admin/attendance/api/sessions/{session_id}/subjects",
+            json={"assignments": [{"level_id": self.level.id, "subject_id": self.subject.id}]},
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_json())
+        detail = self.client.get(f"/admin/attendance/api/sessions/{session_id}").get_json()
+        self.assertEqual(detail["assignments"], [{"level_id": self.level.id, "subject_id": self.subject.id}])
 
 
 if __name__ == "__main__":

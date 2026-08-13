@@ -3109,21 +3109,56 @@ def _students_for_bulk_delete(academic_year_id, academic_class_id):
     return academic_class, students, None
 
 
-@advanced_results_bp.route("/students/bulk-delete/preview", methods=["POST"])
-def preview_bulk_delete_students():
-    if current_user.role not in {"super_admin", "admin"}:
-        return jsonify({"success": False, "error": "Kaliya maamulka ayaa tirtiri kara fasal dhan."}), 403
-    data = request.get_json(silent=True) or request.form
+def _selected_students_for_bulk_delete(data):
+    """Resolve an explicit selection without allowing a stale or unknown row."""
+    raw_ids = data.get("student_ids") or []
+    if isinstance(raw_ids, str):
+        raw_ids = [value for value in raw_ids.split(",") if value.strip()]
+    if not isinstance(raw_ids, list):
+        return None, "", "Ardeyda la doortay lama aqoonsan."
+
+    student_ids = sorted({int_or_none(value) for value in raw_ids} - {None})
+    if not student_ids:
+        return None, "", "Dooro ugu yaraan hal arday."
+
+    academic_year_id = int_or_none(data.get("academic_year_id"))
+    query = Student.query.filter(Student.id.in_(student_ids))
+    if academic_year_id:
+        query = query.filter(Student.academic_year_id == academic_year_id)
+    students = query.order_by(Student.full_name).all()
+    if len(students) != len(student_ids):
+        return None, "", "Qaar ka mid ah ardeyda la doortay lama helin ama sanadkan kuma jiraan."
+    return students, f"{len(students)} arday oo la doortay", None
+
+
+def _bulk_delete_target(data):
+    """Return either the whole selected class or the explicitly selected rows."""
+    if data.get("student_ids"):
+        students, label, error = _selected_students_for_bulk_delete(data)
+        return students, label, None, error
+
     academic_class, students, error = _students_for_bulk_delete(
         int_or_none(data.get("academic_year_id")),
         int_or_none(data.get("academic_class_id")),
     )
     if error:
+        return None, "", None, error
+    return students, academic_class.name, academic_class, None
+
+
+@advanced_results_bp.route("/students/bulk-delete/preview", methods=["POST"])
+def preview_bulk_delete_students():
+    if current_user.role not in {"super_admin", "admin"}:
+        return jsonify({"success": False, "error": "Kaliya maamulka ayaa tirtiri kara fasal dhan."}), 403
+    data = request.get_json(silent=True) or request.form
+    students, target_name, academic_class, error = _bulk_delete_target(data)
+    if error:
         return jsonify({"success": False, "error": error}), 400
     student_ids = [student.id for student in students]
     return jsonify({
         "success": True,
-        "class_name": academic_class.name,
+        "class_name": target_name,
+        "target_name": target_name,
         "student_count": len(students),
         "dependencies": _student_delete_dependency_summary(student_ids),
     })
@@ -3134,10 +3169,7 @@ def confirm_bulk_delete_students():
     if current_user.role not in {"super_admin", "admin"}:
         return jsonify({"success": False, "error": "Kaliya maamulka ayaa tirtiri kara fasal dhan."}), 403
     data = request.get_json(silent=True) or request.form
-    academic_class, students, error = _students_for_bulk_delete(
-        int_or_none(data.get("academic_year_id")),
-        int_or_none(data.get("academic_class_id")),
-    )
+    students, target_name, academic_class, error = _bulk_delete_target(data)
     if error:
         return jsonify({"success": False, "error": error}), 400
     password = str(data.get("password") or "")
@@ -3157,13 +3189,13 @@ def confirm_bulk_delete_students():
     try:
         for student in students:
             db.session.delete(student)
-        audit("Student Updates", f"Bulk deleted {len(students)} students from class {academic_class.name}")
+        audit("Student Updates", f"Bulk deleted {len(students)} students from {target_name}")
         db.session.commit()
     except Exception:
         db.session.rollback()
-        current_app.logger.exception("Bulk student deletion failed for class %s", academic_class.id)
+        current_app.logger.exception("Bulk student deletion failed for %s", target_name)
         return jsonify({"success": False, "error": "Ardeyda lama tirtiri karin. Wax isbeddel ah lama keydin."}), 500
-    return jsonify({"success": True, "deleted_count": len(students), "class_name": academic_class.name})
+    return jsonify({"success": True, "deleted_count": len(students), "class_name": target_name})
 
 
 @advanced_results_bp.route("/students/<int:student_id>/data")

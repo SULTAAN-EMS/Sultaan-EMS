@@ -39,6 +39,15 @@ def require_login():
     enforce_endpoint_permission()
 
 
+@attendance_bp.after_request
+def prevent_cached_attendance_api_responses(response):
+    """A newly saved timetable must be visible to the same browser immediately."""
+    if request.path.startswith("/admin/attendance/api/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 def get_exam_types(academic_year_id):
     """Return exams configured in Results Hub Setup for one academic year."""
     if not academic_year_id:

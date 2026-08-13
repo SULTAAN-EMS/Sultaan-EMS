@@ -1,3 +1,4 @@
+import io
 import re
 from collections import Counter
 from datetime import datetime
@@ -8,7 +9,16 @@ from . import db
 from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, Exam, Result, SchoolClass, Student, Subject
 
 
-STUDENT_HEADERS = ["student_id", "full_name", "mother_name", "phone", "gender", "class", "academic_year"]
+# Keep the download readable for school staff.  The importer normalizes these
+# display headers (and the earlier machine-style headers) to the same fields.
+STUDENT_HEADERS = [
+    "ID", "Name", "Mother", "Mobile", "Class", "Number",
+    "Academic Year", "Gender",
+]
+STUDENT_REQUIRED_HEADERS = [
+    "student_id", "full_name", "mother_name", "phone", "class",
+    "academic_year", "gender",
+]
 PHONE_REGEX = re.compile(r"^\+25261\d{7}$")
 YEAR_REGEX = re.compile(r"^\d{4}-\d{4}$")
 
@@ -18,8 +28,8 @@ def student_template():
     ws = wb.active
     ws.title = "Students"
     ws.append(STUDENT_HEADERS)
-    ws.append(["3001", "Amina Ali Omar", "Sahra Jama", "+252615551234", "Female", "Form One A", "2025-2026"])
-    ws.append(["3002", "Hassan Farah Noor", "Fadumo Abdi", "+252615555678", "Male", "Form One B", "2025-2026"])
+    # Do not ship fake rows that can fail validation in a real school's Setup.
+    # The downloaded file is intentionally an empty, ready-to-fill template.
     return wb
 
 
@@ -143,14 +153,15 @@ def result_entry_import_template(year_id=None, exam_id=None, level_id=None, clas
 
 
 HEADER_ALIASES = {
-    "student_id": {"student_id", "student_code", "student_number", "id"},
-    "class": {"class", "class_name", "school_class", "grade"},
+    "student_id": {"student_id", "student_code", "student_number", "student_no", "id"},
+    "class": {"class", "class_name", "school_class", "grade", "fasal"},
     "exam_type": {"exam_type", "exam_name", "exam", "exam_title"},
-    "academic_year": {"academic_year", "year_name", "academic_year_name", "year"},
-    "full_name": {"full_name", "student_name", "name"},
-    "mother_name": {"mother_name", "mother_s_name", "mothers_name"},
-    "phone": {"phone", "phone_number", "mobile"},
-    "gender": {"gender", "sex"},
+    "academic_year": {"academic_year", "year_name", "academic_year_name", "year", "academic_session"},
+    "full_name": {"full_name", "student_name", "name", "student_full_name"},
+    "mother_name": {"mother_name", "mother", "mother_s_name", "mothers_name"},
+    "phone": {"phone", "phone_number", "mobile", "mobile_number", "telephone"},
+    "gender": {"gender", "sex", "student_gender"},
+    "number": {"number", "no", "row_number"},
 }
 
 
@@ -162,6 +173,20 @@ def clean_str(val):
     val_str = str(val)
     val_str = val_str.replace("\ufeff", "").replace("\u200b", "").replace("\xa0", " ").strip()
     return val_str
+
+
+def normalize_student_gender(value):
+    """Accept the template's standard values plus concise Somali/English input."""
+    normalized = " ".join(clean_str(value).lower().split())
+    aliases = {
+        "male": "Male",
+        "m": "Male",
+        "lab": "Male",
+        "female": "Female",
+        "f": "Female",
+        "dhedig": "Female",
+    }
+    return aliases.get(normalized, clean_str(value).strip().title())
 
 
 def normalize_header_key(raw_header):
@@ -225,13 +250,23 @@ def detect_header_row(ws, required_canonical_keys, max_scan_rows=10):
 
 
 def process_student_import(file):
-    wb = load_workbook(file, data_only=True)
+    # Uploaded FileStorage streams can behave differently under Gunicorn than
+    # in Flask's development server. Reading a stable copy prevents header
+    # detection from starting at an unexpected stream position.
+    if hasattr(file, "read"):
+        file_obj = io.BytesIO(file.read())
+        if hasattr(file, "seek"):
+            file.seek(0)
+    else:
+        file_obj = file
+    wb = load_workbook(file_obj, data_only=True)
     ws = get_import_worksheet(wb, target_name="Students")
 
-    required_headers = ["student_id", "full_name", "mother_name", "phone", "gender", "class", "academic_year"]
-    header_row_idx, raw_headers, headers_norm = detect_header_row(ws, required_headers, max_scan_rows=10)
+    header_row_idx, raw_headers, headers_norm = detect_header_row(
+        ws, STUDENT_REQUIRED_HEADERS, max_scan_rows=10
+    )
 
-    missing = [h for h in required_headers if h not in headers_norm]
+    missing = [h for h in STUDENT_REQUIRED_HEADERS if h not in headers_norm]
     if missing:
         return {
             "success_count": 0,
@@ -269,7 +304,7 @@ def process_student_import(file):
         full_name = data.get("full_name", "")
         mother_name = data.get("mother_name", "")
         phone = data.get("phone", "")
-        gender = data.get("gender", "").strip().title()
+        gender = normalize_student_gender(data.get("gender", ""))
         class_name = data.get("class", "")
         academic_year = data.get("academic_year", "")
 
@@ -383,9 +418,6 @@ def process_student_import(file):
         "errors": failed_errors,
         "kind": "Students"
     }
-
-
-import io
 
 def process_result_import(file):
     if hasattr(file, "read"):
