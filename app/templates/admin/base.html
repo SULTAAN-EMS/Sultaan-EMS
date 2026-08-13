@@ -339,7 +339,7 @@
 
 <script>
 window.SYSTEM_LOADER_CONFIG = {{ {
-  'design': ui_settings.admin_loader_design or '',
+  'design': ui_settings.admin_loader_design or '42',
   'rotationEnabled': ui_settings.admin_loader_rotation_enabled == 'on',
   'rotationPool': (ui_settings.admin_loader_rotation_pool or '[]'),
   'deletedDesigns': (ui_settings.admin_loader_deleted_designs or '[]')
@@ -355,10 +355,11 @@ document.addEventListener("DOMContentLoaded", function() {
     const page = document.body;
     if (!sidebar || !toggle) return;
 
-    const storageKey = 'sultaan-admin-sidebar-collapsed';
     const desktopQuery = window.matchMedia('(min-width: 821px)');
-    let collapsed = false;
-    try { collapsed = sessionStorage.getItem(storageKey) === 'true'; } catch (_) {}
+    // Every page visit begins compact.  Expanding is intentionally temporary:
+    // refreshing or following a navigation link returns to the icon rail.
+    let collapsed = true;
+    let collapseTimer;
 
     const tooltip = document.createElement('div');
     tooltip.id = 'admin-sidebar-tooltip';
@@ -372,6 +373,19 @@ document.addEventListener("DOMContentLoaded", function() {
       toggle.setAttribute('aria-expanded', String(!compact));
       toggle.setAttribute('aria-label', compact ? 'Expand navigation' : 'Collapse navigation');
       tooltip.classList.remove('is-visible');
+    }
+
+    function clearAutoCollapse() {
+      window.clearTimeout(collapseTimer);
+    }
+
+    function scheduleAutoCollapse(delay = 9000) {
+      clearAutoCollapse();
+      if (collapsed || !desktopQuery.matches) return;
+      collapseTimer = window.setTimeout(() => {
+        collapsed = true;
+        applySidebarState();
+      }, delay);
     }
 
     function hideTooltip() {
@@ -410,8 +424,17 @@ document.addEventListener("DOMContentLoaded", function() {
     toggle.addEventListener('click', () => {
       if (!desktopQuery.matches) return;
       collapsed = !collapsed;
-      try { sessionStorage.setItem(storageKey, String(collapsed)); } catch (_) {}
       applySidebarState();
+      if (!collapsed) scheduleAutoCollapse();
+    });
+    sidebar.addEventListener('mouseenter', clearAutoCollapse);
+    sidebar.addEventListener('mouseleave', () => scheduleAutoCollapse(1600));
+    document.querySelectorAll('.side-nav a[href]').forEach((link) => {
+      link.addEventListener('click', () => {
+        // Immediately return to compact mode while the next page loads.
+        collapsed = true;
+        applySidebarState();
+      });
     });
     window.addEventListener('resize', applySidebarState);
     applySidebarState();

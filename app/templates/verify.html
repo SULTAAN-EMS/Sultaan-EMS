@@ -2,8 +2,10 @@
 {% block title %}{{ settings.verify_page_title if verified else _('Invalid Result') }}{% endblock %}
 {% block extra_head %}
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/verified-name-badge.css') }}">
 {% endblock %}
 {% block content %}
+{% from 'partials/verified_name_badge.html' import verified_name_badge %}
 <main class="verification-page preset-{{ settings.verify_design_preset }} badge-style-{{ settings.verify_badge_style }} badge-theme-{{ settings.verify_theme }}"
   style="
     --verify-primary: {{ settings.verify_primary_color }};
@@ -91,7 +93,7 @@
         <div class="verification-student-main">
           {% if settings.verify_fields_student_name == 'on' %}
             <span class="verification-eyebrow"><i class="fa-solid fa-user-check"></i> Student</span>
-            <h3>{{ result.student.full_name }}</h3>
+            <h3>{{ result.student.full_name }}{{ verified_name_badge() }}</h3>
           {% endif %}
           <div class="verification-info-grid">
             {% if settings.verify_fields_student_id == 'on' %}<div><i class="fa-solid fa-id-card"></i><span>Student ID</span><strong>{{ result.student.student_code }}</strong></div>{% endif %}

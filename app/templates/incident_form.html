@@ -3,9 +3,11 @@
 {% block body_class %}public-body incident-form-body{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/incident-form.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/verified-name-badge.css') }}">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 {% endblock %}
 {% block content %}
+{% from 'partials/verified_name_badge.html' import verified_name_badge %}
 <div class="incident-form-container">
   <div class="form-header security-header">
     <div class="header-content">
@@ -41,7 +43,7 @@
     {% endif %}
     {% if incident_settings.get('show_student_info') == 'true' %}
     <div class="student-identity-details">
-      <h2>{{ student.full_name }}</h2>
+      <h2>{{ student.full_name }}{{ verified_name_badge() }}</h2>
       <div class="identity-grid">
         <div class="identity-item">
           <span class="icon"><i class="fa-solid fa-id-card"></i></span>

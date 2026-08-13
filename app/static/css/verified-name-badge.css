@@ -1,0 +1,25 @@
+.verified-mini {
+  display:inline-grid;
+  place-items:center;
+  width:20px;
+  height:20px;
+  margin-left:7px;
+  vertical-align:middle;
+  position:relative;
+  flex:0 0 auto;
+  filter:drop-shadow(0 2px 4px rgba(11,99,229,.28));
+}
+
+.verified-mini .seal-shape {
+  position:absolute;
+  inset:0;
+  background:linear-gradient(135deg,#3fc6ff 0%,#0b63e5 72%,#084eb9 100%);
+  /* 12 outer points with 12 shallow inner points: a compact verified seal. */
+  clip-path:polygon(50% 0%,60.9% 9.4%,75% 6.7%,79.7% 20.3%,93.3% 25%,90.6% 39.1%,100% 50%,90.6% 60.9%,93.3% 75%,79.7% 79.7%,75% 93.3%,60.9% 90.6%,50% 100%,39.1% 90.6%,25% 93.3%,20.3% 79.7%,6.7% 75%,9.4% 60.9%,0% 50%,9.4% 39.1%,6.7% 25%,20.3% 20.3%,25% 6.7%,39.1% 9.4%);
+}
+
+.verified-mini svg { position:relative; z-index:1; width:13px; height:13px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .verified-mini { filter:none; }
+}

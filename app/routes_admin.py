@@ -608,10 +608,6 @@ def settings():
             "primary_color",
             "secondary_color",
             "sidebar_color",
-            "admin_loader_design",
-            "admin_loader_rotation_enabled",
-            "admin_loader_rotation_pool",
-            "admin_loader_deleted_designs",
             "visible_cards",
             "homepage_widgets",
             "search_footer_text",
@@ -994,28 +990,65 @@ def settings():
     )
 
 
+LOADER_DESIGN_IDS = (20, 36, 38, 42)
+LOADER_LOCKED_DESIGN_ID = 42
+LOADER_DELETABLE_DESIGN_IDS = frozenset({20, 36, 38})
+
+
+def _normalise_loader_configuration(settings):
+    """Keep persisted loader preferences inside the supported four-design catalog."""
+    try:
+        deleted = {int(item) for item in json.loads(settings.get("admin_loader_deleted_designs") or "[]")}
+    except (TypeError, ValueError, json.JSONDecodeError):
+        deleted = set()
+    try:
+        pool = {int(item) for item in json.loads(settings.get("admin_loader_rotation_pool") or "[]")}
+    except (TypeError, ValueError, json.JSONDecodeError):
+        pool = set()
+
+    # Sultan Royal Badge is the durable fallback and can never be removed.
+    deleted &= LOADER_DELETABLE_DESIGN_IDS
+    available = [design_id for design_id in LOADER_DESIGN_IDS if design_id not in deleted]
+    requested_active = str(settings.get("admin_loader_design") or "").strip()
+    active = int(requested_active) if requested_active.isdigit() else LOADER_LOCKED_DESIGN_ID
+    if active not in available:
+        active = LOADER_LOCKED_DESIGN_ID
+    pool = [design_id for design_id in LOADER_DESIGN_IDS if design_id in pool and design_id in available]
+
+    return {
+        "active": active,
+        "available": available,
+        "deleted": sorted(deleted),
+        "pool": pool,
+    }
+
+
 @admin_bp.route("/loading-animations")
 @permission_required("settings")
 def loading_animations():
     """Manage the global loader without coupling it to the general Settings form."""
     settings = get_settings()
-    try:
-        deleted_designs = [int(item) for item in json.loads(settings.get("admin_loader_deleted_designs") or "[]")]
-    except (TypeError, ValueError):
-        deleted_designs = []
-    try:
-        rotation_pool = [int(item) for item in json.loads(settings.get("admin_loader_rotation_pool") or "[]")]
-    except (TypeError, ValueError):
-        rotation_pool = []
-    available_designs = [design_id for design_id in range(1, 43) if design_id not in deleted_designs]
-    active_design = str(settings.get("admin_loader_design") or (available_designs[0] if available_designs else ""))
+    config = _normalise_loader_configuration(settings)
+    # Retire the legacy 42-design catalog the first time its settings page is opened.
+    # Settings remain key/value records, so this is compatible with existing databases.
+    normalised_values = {
+        "admin_loader_design": str(config["active"]),
+        "admin_loader_rotation_pool": json.dumps(config["pool"]),
+        "admin_loader_deleted_designs": json.dumps(config["deleted"]),
+    }
+    if any(settings.get(key) != value for key, value in normalised_values.items()):
+        for key, value in normalised_values.items():
+            setting = db.session.get(Setting, key) or Setting(key=key)
+            setting.value = value
+            db.session.add(setting)
+        db.session.commit()
     return render_template(
         "admin/loading_animations.html",
-        available_designs=available_designs,
-        active_design=active_design,
+        available_designs=config["available"],
+        active_design=str(config["active"]),
         rotation_enabled=settings.get("admin_loader_rotation_enabled") == "on",
-        rotation_pool=rotation_pool,
-        deleted_designs=deleted_designs,
+        rotation_pool=config["pool"],
+        deleted_designs=config["deleted"],
     )
 
 
@@ -1030,10 +1063,14 @@ def autosave_loading_animations():
     except (TypeError, ValueError, json.JSONDecodeError):
         return jsonify({"success": False, "message": "Invalid loading animation selection."}), 400
 
-    valid = set(range(1, 43))
+    valid = set(LOADER_DESIGN_IDS)
     if not set(deleted).issubset(valid) or not set(pool).issubset(valid):
         return jsonify({"success": False, "message": "Invalid loading animation design."}), 400
 
+    if LOADER_LOCKED_DESIGN_ID in deleted:
+        return jsonify({"success": False, "message": "Sultan Royal Badge is the protected default and cannot be removed."}), 400
+
+    deleted = sorted(set(deleted) & LOADER_DELETABLE_DESIGN_IDS)
     available = valid - set(deleted)
     if not available:
         return jsonify({"success": False, "message": "At least one loading animation must remain available."}), 400
@@ -1041,9 +1078,9 @@ def autosave_loading_animations():
     rotation_enabled = str(payload.get("rotation_enabled", "off")) == "on"
     pool = [design_id for design_id in pool if design_id in available]
     requested_active = str(payload.get("active_design", "")).strip()
-    active_design = int(requested_active) if requested_active.isdigit() else min(available)
+    active_design = int(requested_active) if requested_active.isdigit() else LOADER_LOCKED_DESIGN_ID
     if active_design not in available:
-        active_design = min(available)
+        active_design = LOADER_LOCKED_DESIGN_ID
     if rotation_enabled and not pool:
         pool = [active_design]
 
