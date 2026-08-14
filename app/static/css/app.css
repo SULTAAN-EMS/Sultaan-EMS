@@ -3533,20 +3533,22 @@ tbody tr:hover td { background: #f8fbff; }
 }
 .verification-hero.compact-result-header {
   display:block;
-  padding:16px 20px;
+  padding:14px 18px;
   text-align:left;
   color:#fff;
   background:linear-gradient(160deg,#1B3A6B 0%,#122A50 68%,#16213D 100%);
   border:1px solid rgba(233,203,140,.25);
-  border-radius:14px;
+  border-radius:0;
   box-shadow:0 14px 30px -18px rgba(18,42,80,.5);
 }
-.compact-result-header .result-header-inner { display:flex; align-items:center; gap:14px; }
-.compact-result-header .result-header-crest { display:grid; place-items:center; width:50px; height:50px; flex:0 0 50px; overflow:hidden; border:1px solid #C9974A; border-radius:50%; background:#16213D; }
-.compact-result-header .verification-logo { display:var(--verify-display-logo); width:50px; height:50px; padding:4px; border:0; border-radius:50%; background:transparent; box-shadow:none; }
+.result-verification-certificate { border-radius:0 0 calc(var(--verify-radius) + 10px) calc(var(--verify-radius) + 10px); }
+.compact-result-header .result-header-inner,.compact-result-header .result-header-inner > div:last-child { display:flex; align-items:center; gap:14px; text-align:left; }
+.compact-result-header .result-header-inner > div:last-child { display:block; }
+.compact-result-header .result-header-crest { display:grid; place-items:center; width:50px; height:50px; flex:0 0 50px; overflow:hidden; box-sizing:border-box; padding:3px; border:1px solid rgba(233,203,140,.75); border-radius:50%; background:#fff; }
+.compact-result-header .verification-logo { display:var(--verify-display-logo); width:100%; height:100%; padding:1px; border:0; border-radius:50%; background:transparent; box-shadow:none; }
 .compact-result-header .fallback-logo { color:#E9CB8C; font-size:1.45rem; }
-.compact-result-header h1 { margin:0; color:#fff; font-family:Fraunces,serif; font-size:18px; font-weight:700; line-height:1.2; letter-spacing:0; text-transform:none; }
-.compact-result-header p { margin-top:4px; color:#E9CB8C; font-size:9px; font-weight:600; letter-spacing:1.6px; line-height:1.4; opacity:1; text-transform:uppercase; }
+.compact-result-header h1 { margin:0; color:#fff; font-family:Fraunces,serif; font-size:18px; font-weight:700; line-height:1.2; letter-spacing:0; text-align:left; text-transform:none; }
+.compact-result-header p { margin-top:4px; color:#E9CB8C; font-size:9px; font-weight:600; letter-spacing:1.6px; line-height:1.4; opacity:1; text-align:left; text-transform:uppercase; }
 .verification-page { --student-photo-size:clamp(104px, 20vw, 118px); }
 .verification-page .verification-student-card { grid-template-columns:calc(var(--student-photo-size) + 8px) minmax(0,1fr); }
 @media (max-width:760px) { .verification-page { --student-photo-size:104px; }.verification-page .verification-student-card { grid-template-columns:112px minmax(0,1fr); } }

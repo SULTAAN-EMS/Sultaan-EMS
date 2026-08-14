@@ -38,7 +38,7 @@
     --verify-display-details: {{ 'block' if settings.verify_show_details == 'on' else 'none' }};
     --verify-display-footer: {{ 'block' if settings.verify_show_footer == 'on' else 'none' }};
   ">
-  <section class="verification-certificate {% if not verified %}is-invalid{% endif %}">
+  <section class="verification-certificate result-verification-certificate {% if not verified %}is-invalid{% endif %}">
     <header class="verification-hero compact-result-header">
       <div class="result-header-inner">
         <div class="result-header-crest">
