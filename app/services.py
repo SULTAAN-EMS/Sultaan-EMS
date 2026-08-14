@@ -1082,7 +1082,28 @@ def result_payload(student, exam=None, public_only=True):
         query = query.filter_by(exam_id=exam.id)
     if public_only:
         query = query.join(Result.exam).filter(Result.is_published.is_(True))
-    rows = query.join(Result.subject).order_by(Result.subject_id.asc()).all()
+
+    # A result subject is valid only for the student's actual level.  This
+    # prevents same-name records from another level (for example English) from
+    # leaking into the student portal or its printable counterpart.
+    student_level_id = student.academic_level_id
+    if not student_level_id and student.academic_class:
+        student_level_id = student.academic_class.academic_level_id
+    if not student_level_id and student.level:
+        # Older student records may only retain the human-readable level name.
+        # Resolve it before filtering, but never widen the query if it cannot
+        # be resolved: showing another level's subject is worse than showing no
+        # subject for incomplete legacy data.
+        legacy_level = AcademicLevel.query.filter_by(name=student.level).first()
+        student_level_id = legacy_level.id if legacy_level else None
+    query = query.join(Result.subject)
+    rows = (
+        query.filter(Subject.academic_level_id == student_level_id)
+        .order_by(Result.subject_id.asc())
+        .all()
+        if student_level_id
+        else []
+    )
     total = sum(Decimal(row.score) for row in rows)
     max_total = sum(Decimal(row.subject.max_score) for row in rows) or Decimal("0")
     average = round(float(total / max_total * 100), 2) if max_total else 0

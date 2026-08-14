@@ -59,14 +59,9 @@ def result_entry_import_template(year_id=None, exam_id=None, level_id=None, clas
     effective_level_id = selected_level.id if selected_level else None
     if effective_level_id:
         scoped_subjects = Subject.query.filter_by(academic_level_id=effective_level_id).order_by(Subject.sort_order, Subject.name).all()
-        if not scoped_subjects:
-            scoped_subjects = Subject.query.filter(Subject.academic_level_id.is_(None)).order_by(Subject.sort_order, Subject.name).all()
     else:
-        scoped_subjects = Subject.query.order_by(Subject.sort_order, Subject.name).all()
+        scoped_subjects = []
     subject_names = [s.name for s in scoped_subjects]
-    if not subject_names:
-        subject_names = ["Math", "English", "Somali", "Physics", "Chemistry",
-                         "Biology", "History", "Geography", "Islamic", "Technology"]
 
     # ── header row ───────────────────────────────────────────────────
     headers = ["#", "student_id", "full_name", "mother_name", "class",
@@ -546,6 +541,7 @@ def process_result_import(file):
 
             # 5. subject mark checks
             row_subject_marks = []
+            resolved_subject_ids = set()
             for col_idx, subject_candidates in subject_cols.items():
                 if col_idx >= len(row_cells):
                     continue
@@ -554,18 +550,28 @@ def process_result_import(file):
                     continue
 
                 # Header names can legitimately exist on more than one level.
-                # Resolve the matching record from the importing student's level,
-                # then keep the global legacy record only as a compatibility fallback.
+                # Only an exact level match is safe; global/other-level subjects
+                # must never receive marks for this student's result.
                 student_level_id = student_obj.academic_level_id
                 if not student_level_id and student_obj.academic_class:
                     student_level_id = student_obj.academic_class.academic_level_id
+                if not student_level_id and student_obj.level:
+                    legacy_level = AcademicLevel.query.filter_by(name=student_obj.level).first()
+                    student_level_id = legacy_level.id if legacy_level else None
                 subj_obj = next(
                     (subject for subject in subject_candidates if subject.academic_level_id == student_level_id),
                     None,
-                ) or next(
-                    (subject for subject in subject_candidates if subject.academic_level_id is None),
-                    None,
-                ) or subject_candidates[0]
+                )
+                if not subj_obj:
+                    header_name = raw_headers[col_idx] if col_idx < len(raw_headers) else f"column {col_idx + 1}"
+                    row_errors.append(
+                        f"Row {row_idx}: subject '{header_name}' is not configured for the student's level."
+                    )
+                    continue
+                if subj_obj.id in resolved_subject_ids:
+                    row_errors.append(f"Row {row_idx}: subject '{subj_obj.name}' appears more than once in the file.")
+                    continue
+                resolved_subject_ids.add(subj_obj.id)
 
                 try:
                     score_num = float(cell_val)

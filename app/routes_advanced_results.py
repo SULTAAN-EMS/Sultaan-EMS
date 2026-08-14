@@ -213,11 +213,7 @@ def get_latest_exam_for_year(academic_year):
 
 
 def subjects_for_scope(exam, level_id=None, class_id=None):
-    """Return configured scope subjects plus every persisted result subject in scope.
-
-    The latter keeps legacy/global or previously mis-tagged subjects visible while
-    Setup data is being normalized, instead of hiding valid imported marks.
-    """
+    """Return only the subjects explicitly assigned to the effective level."""
     # An explicitly requested level must win over an exam's optional default
     # level.  Analytics iterates real levels one by one; using the exam default
     # there would incorrectly reuse one level's subjects for every level.
@@ -226,36 +222,13 @@ def subjects_for_scope(exam, level_id=None, class_id=None):
         academic_class = db.session.get(AcademicClass, class_id)
         effective_level_id = academic_class.academic_level_id if academic_class else None
 
-    query = Subject.query
-    if effective_level_id:
-        scoped_subjects = query.filter_by(academic_level_id=effective_level_id).all()
-        if not scoped_subjects:
-            scoped_subjects = query.filter(Subject.academic_level_id.is_(None)).all()
-    else:
-        scoped_subjects = query.all()
-
-    # Result Entry and the class report must never hide a real saved result just
-    # because the subject's old Setup record was global or assigned differently.
-    persisted_subjects = []
-    if exam:
-        scoped_students = students_for_scope_query(
-            exam.academic_year_id,
-            level_id=effective_level_id,
-            class_id=class_id,
-            exam=exam,
-        ).with_entities(Student.id).all()
-        student_ids = [student_id for (student_id,) in scoped_students]
-        if student_ids:
-            persisted_subjects = (
-                Subject.query.join(Result, Result.subject_id == Subject.id)
-                .filter(Result.exam_id == exam.id, Result.student_id.in_(student_ids))
-                .distinct()
-                .all()
-            )
-
-    subject_by_id = {subject.id: subject for subject in scoped_subjects}
-    subject_by_id.update({subject.id: subject for subject in persisted_subjects})
-    return sorted(subject_by_id.values(), key=lambda subject: (subject.sort_order, subject.name, subject.id))
+    if not effective_level_id:
+        return []
+    return (
+        Subject.query.filter_by(academic_level_id=effective_level_id)
+        .order_by(Subject.sort_order, Subject.name, Subject.id)
+        .all()
+    )
 
 
 def students_for_scope_query(academic_year_id, level_id=None, class_id=None, section_id=None, exam=None):
@@ -1054,11 +1027,35 @@ def export_student_pdf():
     if not selected_year or not selected_exam or not student:
         abort(404)
     
-    # Get subjects and results
-    subjects = Subject.query.filter_by(academic_level_id=selected_exam.academic_level_id).all() if selected_exam.academic_level_id else Subject.query.all()
-    subjects = sorted(subjects, key=lambda s: (s.sort_order, s.name))
-    
-    results = Result.query.filter_by(student_id=student.id, exam_id=exam_id, is_published=True).all()
+    # Use the student's actual level, not an optional exam default or the
+    # complete subjects table.  A same-name subject at another level is a
+    # distinct academic record and must not appear in this student's PDF.
+    student_level_id = student.academic_level_id
+    if not student_level_id and student.academic_class:
+        student_level_id = student.academic_class.academic_level_id
+    if not student_level_id and student.level:
+        legacy_level = AcademicLevel.query.filter_by(name=student.level).first()
+        student_level_id = legacy_level.id if legacy_level else None
+    subjects = (
+        subjects_for_scope(
+            selected_exam,
+            level_id=student_level_id,
+            class_id=student.academic_class_id,
+        )
+        if student_level_id
+        else []
+    )
+    subject_ids = [subject.id for subject in subjects]
+    results = (
+        Result.query.filter(
+            Result.student_id == student.id,
+            Result.exam_id == exam_id,
+            Result.is_published.is_(True),
+            Result.subject_id.in_(subject_ids),
+        ).all()
+        if subject_ids
+        else []
+    )
     results_dict = {r.subject_id: r for r in results}
     
     # Load grade scales once to avoid N+1 queries
@@ -2158,12 +2155,17 @@ def build_analytics_results_report_data(academic_year, exam):
     for (level_id, _class_id), grouped_students in students_by_level_class.items():
         for student in grouped_students:
             student_level_lookup[student.id] = level_id
+    subject_ids_by_level = {
+        level.id: {subject.id for subject in subjects_for_scope(exam, level_id=level.id)}
+        for level in included_levels
+    }
     for result in results:
         level_id = student_level_lookup.get(result.student_id)
         if (
             not level_id
             or not result.subject
             or not result.subject.max_score
+            or result.subject_id not in subject_ids_by_level.get(level_id, set())
             or result.student_id not in subject_sitting_student_ids.get(result.subject_id, set())
         ):
             continue
@@ -2236,7 +2238,6 @@ def build_analytics_results_report_data(academic_year, exam):
 
         subject_rows = []
         level_subjects = {subject.id: subject for subject in subjects_for_scope(exam, level_id=level.id)}
-        level_subjects.update({subject_id: records[0][0] for subject_id, records in results_by_level_subject[level.id].items() if records})
         for subject in sorted(level_subjects.values(), key=lambda item: (item.sort_order, item.name)):
             scores = [score for _subject, score in results_by_level_subject[level.id].get(subject.id, [])]
             sat_count = len(subject_sitting_student_ids.get(subject.id, set()))
