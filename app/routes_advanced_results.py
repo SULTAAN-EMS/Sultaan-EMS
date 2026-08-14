@@ -20,7 +20,7 @@ from .import_wizard import process_result_import, process_student_import, result
 from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AttendanceRecord, Exam, ExamType, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, Subject, LabelTranslation
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
-from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, result_payload, subject_display_name
+from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, competition_rank_lookup, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, result_payload, subject_display_name
 from .attendance_rules import counts_as_exam_sitting
 
 advanced_results_bp = Blueprint("admin_advanced_results", __name__)
@@ -271,7 +271,7 @@ def students_for_scope_query(academic_year_id, level_id=None, class_id=None, sec
 
 
 def rank_student_in_scope(student, academic_year_id, exam, subjects, level_id=None, class_id=None, section_id=None):
-    """Return the student's rank within the selected academic scope."""
+    """Return the student's competition rank within their class/level scope."""
     if not student or not exam or not subjects:
         return "-"
 
@@ -279,7 +279,8 @@ def rank_student_in_scope(student, academic_year_id, exam, subjects, level_id=No
         academic_year_id,
         level_id=level_id,
         class_id=class_id,
-        section_id=section_id,
+        # A class rank must include every section of the same class.
+        section_id=None,
         exam=exam,
     ).all()
     if not scoped_students:
@@ -306,11 +307,8 @@ def rank_student_in_scope(student, academic_year_id, exam, subjects, level_id=No
         percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
         ranked.append((scoped_student.id, percentage, total_score))
 
-    ranked.sort(key=lambda item: (item[1], item[2]), reverse=True)
-    for index, (student_id, _percentage, _total_score) in enumerate(ranked, start=1):
-        if student_id == student.id:
-            return index
-    return "-"
+    rank_lookup = competition_rank_lookup({student_id: percentage for student_id, percentage, _total_score in ranked})
+    return rank_lookup.get(student.id, "-")
 
 
 @advanced_results_bp.route("/")
@@ -921,7 +919,7 @@ def student_view():
         subjects,
         level_id=student.academic_level_id,
         class_id=student.academic_class_id,
-        section_id=student.academic_section_id,
+        section_id=None,
     )
     
     student_view_settings = get_settings()
@@ -1341,7 +1339,7 @@ def export_class_pdf():
         })
 
     ranked_data = sorted(roster_data, key=lambda row: (row["percentage"], row["total_score"]), reverse=True)
-    rank_lookup = {row["student"].id: index for index, row in enumerate(ranked_data, start=1)}
+    rank_lookup = competition_rank_lookup({row["student"].id: row["percentage"] for row in ranked_data})
     for row in ranked_data:
         row["rank"] = rank_lookup.get(row["student"].id, 0)
         row["rank_label"] = ordinal(row["rank"]) if row["rank"] else "-"

@@ -14,6 +14,7 @@ from .models import (
     Exam,
     GradeScale,
     Result,
+    Student,
     Setting,
     LabelTranslation,
 )
@@ -739,6 +740,27 @@ def academic_round(value, settings=None):
     return float(format_academic_number(value, settings=settings))
 
 
+def competition_rank_lookup(scores_by_student):
+    """Return standard competition ranks for the supplied official scores.
+
+    Equal scores share a rank and the following rank skips the tied positions:
+    98.6, 98.6, 97.8 becomes 1, 1, 3.
+    """
+    ordered_scores = sorted(
+        ((student_id, Decimal(str(score))) for student_id, score in scores_by_student.items()),
+        key=lambda item: (-item[1], item[0]),
+    )
+    ranks = {}
+    previous_score = None
+    current_rank = 0
+    for position, (student_id, score) in enumerate(ordered_scores, start=1):
+        if previous_score is None or score != previous_score:
+            current_rank = position
+            previous_score = score
+        ranks[student_id] = current_rank
+    return ranks
+
+
 SUBJECT_ICON_DEFAULTS = {
     "math": "fa-calculator",
     "mathematics": "fa-calculator",
@@ -1102,22 +1124,52 @@ def result_payload(student, exam=None, public_only=True):
         )
 
     rank = None
-    if rows:
-        peers = {}
-        peer_rows = Result.query.filter_by(exam_id=rows[0].exam_id).all()
-        for peer in peer_rows:
-            peers.setdefault(peer.student_id, {"total": Decimal("0"), "max": Decimal("0")})
-            peers[peer.student_id]["total"] += Decimal(peer.score)
-            peers[peer.student_id]["max"] += Decimal(peer.subject.max_score)
-        ordered = sorted(
-            ((sid, round(float(data["total"] / data["max"] * 100), 2) if data["max"] else 0) for sid, data in peers.items()),
-            key=lambda item: item[1],
-            reverse=True,
+    if rows and active_exam:
+        # Rank against the student's own class first.  Older student records that
+        # only have the legacy class/level fields remain in the same scope.
+        peer_query = Student.query.filter_by(
+            academic_year_id=active_exam.academic_year_id or student.academic_year_id,
         )
-        for index, (sid, _avg) in enumerate(ordered, start=1):
-            if sid == student.id:
-                rank = index
-                break
+        if student.academic_class_id:
+            class_filters = [Student.academic_class_id == student.academic_class_id]
+            if student.class_id:
+                class_filters.append(
+                    (Student.academic_class_id.is_(None)) & (Student.class_id == student.class_id)
+                )
+            peer_query = peer_query.filter(or_(*class_filters))
+        elif student.class_id:
+            peer_query = peer_query.filter(Student.class_id == student.class_id)
+        elif student.academic_level_id:
+            level_filters = [Student.academic_level_id == student.academic_level_id]
+            if student.level:
+                level_filters.append(
+                    (Student.academic_level_id.is_(None)) & (Student.level == student.level)
+                )
+            peer_query = peer_query.filter(or_(*level_filters))
+        elif student.level:
+            peer_query = peer_query.filter(Student.level == student.level)
+
+        peers = peer_query.all()
+        subject_maxima = {row.subject_id: Decimal(row.subject.max_score) for row in rows}
+        if peers and subject_maxima:
+            peer_rows_query = Result.query.filter(
+                Result.exam_id == active_exam.id,
+                Result.student_id.in_([peer.id for peer in peers]),
+                Result.subject_id.in_(subject_maxima),
+            )
+            if public_only:
+                peer_rows_query = peer_rows_query.filter(Result.is_published.is_(True))
+
+            scores_by_student = {peer.id: Decimal("0") for peer in peers}
+            for peer_row in peer_rows_query.all():
+                scores_by_student[peer_row.student_id] += Decimal(peer_row.score)
+
+            maximum_score = sum(subject_maxima.values(), Decimal("0"))
+            official_scores = {
+                peer_id: round(float(score / maximum_score * 100), 2) if maximum_score else 0
+                for peer_id, score in scores_by_student.items()
+            }
+            rank = competition_rank_lookup(official_scores).get(student.id)
 
     # Regression fix: treat is_active=NULL as True for legacy production rows.
     from sqlalchemy import or_ as _or_rs
