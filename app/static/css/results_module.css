@@ -103,6 +103,17 @@
     color: var(--gold);
 }
 
+/* Results Hub pages do not use a compact top header. Keep their own header flush
+   with the shared admin shell, matching the other full-width admin workspaces. */
+.admin-page-hero-layout .admin-main {
+    padding-top: 0;
+    gap: 0;
+}
+
+.admin-page-hero-layout .admin-top-compact {
+    display: none;
+}
+
 /* Grade Management refinement: preserve the table workflow while making the
    long configuration list easier to scan and safer to edit. */
 .grade-scale-card {

@@ -1,5 +1,6 @@
 {% extends "admin/base.html" %}
 {% set active_tab = "entry" %}
+{% block body_class %}{{ super() }} admin-page-hero-layout{% endblock %}
 {% block page_title %}{{ rh_label("entry.title", default="Whole-Class Result Entry") }}{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/results_module.css') }}">
@@ -221,11 +222,6 @@
         </span>
       </div>
 
-      <div class="rh-entry-filter-card context-apply" style="display: flex; align-items: center; justify-content: center; min-height: 108px; background: none; border: none; box-shadow: none; padding: 0;">
-        <button type="submit" class="rh-btn primary" style="width: 100%; height: 52px; font-size: 0.95rem; font-weight: 700; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
-          <i class="fa-solid fa-filter"></i> Apply Filters
-        </button>
-      </div>
     </form>
 
     <input type="hidden" id="csrfToken" value="{{ csrf_token() }}">
@@ -354,7 +350,14 @@ function filterClassesByLevel() {
   });
 }
 
-document.getElementById('levelSelect')?.addEventListener('change', filterClassesByLevel);
+document.getElementById('yearSelect')?.addEventListener('change', () => submitFilters(['examSelect', 'levelSelect', 'classSelect', 'sectionSelect']));
+document.getElementById('examSelect')?.addEventListener('change', () => submitFilters(['levelSelect', 'classSelect', 'sectionSelect']));
+document.getElementById('levelSelect')?.addEventListener('change', () => {
+  filterClassesByLevel();
+  submitFilters(['classSelect', 'sectionSelect']);
+});
+document.getElementById('classSelect')?.addEventListener('change', () => submitFilters(['sectionSelect']));
+document.getElementById('sectionSelect')?.addEventListener('change', () => filterForm.submit());
 // Initial client-side filter pass
 filterClassesByLevel();
 

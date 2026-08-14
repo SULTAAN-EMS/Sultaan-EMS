@@ -294,10 +294,10 @@
   <nav class="side-nav">
     {% if can('dashboard') %}<a href="{{ url_for('admin.dashboard') }}"><i class="fa-solid fa-chart-pie" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">{{ _('Dashboard') }}</span></a>{% endif %}
     
-    <!-- Academic & Results Group -->
+    <!-- Academic Records Group -->
     <div class="nav-group">
-      <div class="nav-group-header">Academic &amp; Results</div>
-      {% if can('results') %}<a href="{{ url_for('admin_advanced_results.new_dashboard') }}"><i class="fa-solid fa-square-poll-vertical" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Result Management</span></a>{% endif %}
+      <div class="nav-group-header">Academic Records</div>
+      {% if can('results') %}<a href="{{ url_for('admin_advanced_results.new_dashboard') }}"><i class="fa-solid fa-square-poll-vertical" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Academic Records</span></a>{% endif %}
     </div>
 
     <div class="nav-group">

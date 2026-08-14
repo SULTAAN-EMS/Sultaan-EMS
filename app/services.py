@@ -31,7 +31,7 @@ DEFAULT_SETTINGS = {
     "logo_path": "",
     "admin_logo_path": "",
     "dashboard_title": "School Result Management",
-    "dashboard_subtitle": "Academic results, publishing, and student records in one secure workspace.",
+    "dashboard_subtitle": "Academic records, publishing, and student records in one secure workspace.",
     "dashboard_theme": "light",
     "primary_color": "#002060",
     "secondary_color": "#007bff",

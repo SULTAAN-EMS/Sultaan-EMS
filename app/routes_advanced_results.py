@@ -2,6 +2,7 @@ from collections import defaultdict
 from decimal import Decimal
 import math
 import json
+import re
 from tempfile import NamedTemporaryFile
 from datetime import date
 
@@ -42,6 +43,33 @@ def stored_asset_url(path):
     if value.startswith("uploads/"):
         return url_for("static", filename=value)
     return url_for("static", filename=f"uploads/{value}")
+
+
+def _safe_download_name_part(value, fallback):
+    """Return one portable filename segment without leaking UI-only characters."""
+    invalid_characters = '<>:"/\\\\|?*'
+    cleaned = "".join(
+        " " if character in invalid_characters or ord(character) < 32 else character
+        for character in str(value or "")
+    )
+    cleaned = " ".join(cleaned.split()).strip(" .")
+    return cleaned or fallback
+
+
+def _school_initials_for_download():
+    settings = get_settings()
+    school_name = settings.get("school_name") or settings.get("dashboard_title") or "EMS"
+    words = re.findall(r"[A-Za-z0-9]+", school_name)
+    return "".join(word[0].upper() for word in words[:6]) or "EMS"
+
+
+def result_workbook_filename(year, exam, academic_class, *, results=False):
+    """Build a human-readable workbook name from the currently selected scope."""
+    class_name = _safe_download_name_part(getattr(academic_class, "name", None), "Class")
+    exam_name = _safe_download_name_part(getattr(exam, "name", None), "Exam")
+    year_name = _safe_download_name_part(getattr(year, "name", None), "Academic Year")
+    result_prefix = "Natiijada " if results else ""
+    return f"{_school_initials_for_download()} - {class_name} - {result_prefix}{exam_name} ({year_name}).xlsx"
 
 
 @advanced_results_bp.before_request
@@ -1393,6 +1421,7 @@ def export_class_excel():
     
     selected_year = db.session.get(AcademicYear, year_id)
     selected_exam = db.session.get(Exam, exam_id)
+    selected_class = db.session.get(AcademicClass, class_id)
     
     if not selected_year or not selected_exam:
         abort(404)
@@ -1538,7 +1567,16 @@ def export_class_excel():
     tmp = NamedTemporaryFile(delete=False, suffix=".xlsx")
     wb.save(tmp.name)
     tmp.close()
-    return send_file(tmp.name, as_attachment=True, download_name="class_results.xlsx")
+    return send_file(
+        tmp.name,
+        as_attachment=True,
+        download_name=result_workbook_filename(
+            selected_year,
+            selected_exam,
+            selected_class,
+            results=True,
+        ),
+    )
 
 
 @advanced_results_bp.route("/result-entry")
@@ -3149,6 +3187,9 @@ def import_results():
     level_id = request.form.get("level_id") or request.args.get("level_id") or ""
     class_id = request.form.get("class_id") or request.args.get("class_id") or ""
     section_id = request.form.get("section_id") or request.args.get("section_id") or ""
+    selected_year = db.session.get(AcademicYear, int_or_none(year_id))
+    selected_exam = db.session.get(Exam, int_or_none(exam_id))
+    selected_class = db.session.get(AcademicClass, int_or_none(class_id))
 
     redirect_url = url_for(
         "admin_advanced_results.result_entry",
@@ -3170,7 +3211,13 @@ def import_results():
 
         return jsonify({
             "success": True,
-            "summary": summary
+            "summary": summary,
+            "result_filename": result_workbook_filename(
+                selected_year,
+                selected_exam,
+                selected_class,
+                results=True,
+            ) if selected_year and selected_exam and selected_class else None,
         })
     except Exception as ex:
         db.session.rollback()
@@ -3196,7 +3243,14 @@ def result_import_template():
         class_id=class_id,
         section_id=section_id,
     )
-    return workbook_response(wb, "result_entry_import_template.xlsx")
+    return workbook_response(
+        wb,
+        result_workbook_filename(
+            db.session.get(AcademicYear, year_id),
+            db.session.get(Exam, exam_id),
+            db.session.get(AcademicClass, class_id),
+        ),
+    )
 
 
 
