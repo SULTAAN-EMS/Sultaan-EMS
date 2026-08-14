@@ -300,24 +300,21 @@
       {% if can('results') %}<a href="{{ url_for('admin_advanced_results.new_dashboard') }}"><i class="fa-solid fa-square-poll-vertical" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Result Management</span></a>{% endif %}
     </div>
 
-    {% if can('seat_arrangement') %}
     <div class="nav-group">
       <div class="nav-group-header">Operations</div>
-      <a href="{{ url_for('seat_mixer.index') }}"><i class="fa-solid fa-chair" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Seat Mixer</span></a>
+      {% if can('seat_arrangement') %}<a href="{{ url_for('seat_mixer.index') }}"><i class="fa-solid fa-chair" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Seat Mixer</span></a>{% endif %}
+      {% if can('attendance') %}<a href="{{ url_for('admin_attendance.dashboard') }}"><i class="fa-solid fa-user-check" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Attendance</span></a>{% endif %}
+      <a href="{{ url_for('admin.invigilators') }}"><i class="fa-solid fa-user-shield" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Exam Invigilators</span></a>
+      <a href="{{ url_for('admin.incidents') }}"><i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Incident Reports</span></a>
+      <a href="{{ url_for('admin.incident_settings') }}"><i class="fa-solid fa-sliders" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Incident Settings</span></a>
+      {% if can('id_cards') %}<a href="{{ url_for('admin_id_cards.dashboard') }}"><i class="fa-solid fa-id-card-clip" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">ID Cards</span></a>{% endif %}
+      {% if can('teachers') %}<a href="{{ url_for('admin_teachers.dashboard') }}"><i class="fa-solid fa-chalkboard-user" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Teacher Department</span></a>{% endif %}
+      {% if can('users') %}<a href="{{ url_for('admin.users') }}"><i class="fa-solid fa-users-gear" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">{{ _('Users') }}</span></a>{% endif %}
+      {% if can('settings') or can('system_settings') %}<a href="{{ url_for('admin.loading_animations') }}"><i class="fa-solid fa-spinner" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Loading Animations</span></a>{% endif %}
+      {% if can('system_settings') %}<a href="{{ url_for('admin.audit_logs') }}"><i class="fa-solid fa-clipboard-list" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Audit Log</span></a>{% endif %}
+      <a href="{{ url_for('auth.change_password') }}"><i class="fa-solid fa-shield-halved" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Security</span></a>
+      {% if can('settings') or can('system_settings') %}<a href="{{ url_for('admin.settings') }}"><i class="fa-solid fa-sliders" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">{{ _('Settings') }}</span></a>{% endif %}
     </div>
-    {% endif %}
-    
-    {% if can('teachers') %}<a href="{{ url_for('admin_teachers.dashboard') }}"><i class="fa-solid fa-chalkboard-user" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Teacher Department</span></a>{% endif %}
-    {% if can('attendance') %}<a href="{{ url_for('admin_attendance.dashboard') }}"><i class="fa-solid fa-user-check" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Attendance</span></a>{% endif %}
-    {% if can('id_cards') %}<a href="{{ url_for('admin_id_cards.dashboard') }}"><i class="fa-solid fa-id-card-clip" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">ID Cards</span></a>{% endif %}
-    <a href="{{ url_for('admin.invigilators') }}"><i class="fa-solid fa-user-shield" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Exam Invigilators</span></a>
-    <a href="{{ url_for('admin.incidents') }}"><i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Incident Reports</span></a>
-    <a href="{{ url_for('admin.incident_settings') }}"><i class="fa-solid fa-sliders" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Incident Settings</span></a>
-    {% if can('users') %}<a href="{{ url_for('admin.users') }}"><i class="fa-solid fa-users-gear" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">{{ _('Users') }}</span></a>{% endif %}
-    {% if can('settings') or can('system_settings') %}<a href="{{ url_for('admin.settings') }}"><i class="fa-solid fa-sliders" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">{{ _('Settings') }}</span></a>{% endif %}
-    {% if can('settings') or can('system_settings') %}<a href="{{ url_for('admin.loading_animations') }}"><i class="fa-solid fa-spinner" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Loading Animations</span></a>{% endif %}
-    {% if can('system_settings') %}<a href="{{ url_for('admin.audit_logs') }}"><i class="fa-solid fa-clipboard-list" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Audit Log</span></a>{% endif %}
-    <a href="{{ url_for('auth.change_password') }}"><i class="fa-solid fa-shield-halved" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Security</span></a>
   </nav>
   <form method="post" action="{{ url_for('auth.logout') }}" class="sidebar-logout">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
