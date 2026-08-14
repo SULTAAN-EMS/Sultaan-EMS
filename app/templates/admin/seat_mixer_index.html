@@ -5,9 +5,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/seat_mixer.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin-page-heroes.css') }}">
 {% endblock %}
 
 {% block admin_content %}
+{% from 'partials/admin_page_hero.html' import admin_page_hero %}
 <div class="sm-wrapper">
   <div class="sm-bg-fx">
     <div class="sm-blob b1"></div>
@@ -17,7 +19,13 @@
   <div class="sm-grid-fx"></div>
 
   <div class="sm-shell">
-    <div class="sm-masthead">
+    {{ admin_page_hero('seat', [
+      {'label': 'Active Exam Halls', 'value': halls|length},
+      {'label': 'Academic Levels', 'value': levels|length},
+      {'label': 'Arrangement Engine', 'value': 'Smart'},
+      {'label': 'Live Seating', 'value': 'Ready'}
+    ]) }}
+    <div class="sm-masthead" hidden>
       <div class="sm-kicker"><span class="dot"></span>SEAT MIXER · Anti-Adjacency Engine</div>
       <h1>Seat Mixer — Exam Hall Command Center</h1>
       <p class="sm-lede">Create Exam Halls, mix classes from different levels, and automatically or manually arrange student seating to prevent same-class students from sharing tables.</p>

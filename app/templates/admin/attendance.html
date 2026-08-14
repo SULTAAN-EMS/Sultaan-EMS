@@ -5,6 +5,7 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin-page-heroes.css') }}">
 <style>
   .att-scope {--ink:#16223B;--navy:#1B2A4A;--paper:#FBFAF7;--paper-2:#F1EEE5;--line:#DCD6C6;--gold:#B8862F;--green:#2F6B4F;--rust:#A6402F;--amber:#B67A1E;--slate:#5B6478;--font-clean:'HP Simplified','Aptos','Inter','Segoe UI',sans-serif;font-family:'Inter',sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased;width:100%;min-width:0;box-sizing:border-box;}
   .att-scope .wrap{width:100%;max-width:none;margin:0;padding-bottom:70px;box-sizing:border-box;}
@@ -37,14 +38,21 @@
 {% endblock %}
 
 {% block admin_content %}
+{% from 'partials/admin_page_hero.html' import admin_page_hero %}
 <div class="att-scope"><div class="wrap">
   <div class="nav-strip">
     <a href="{{ url_for('admin_attendance.hall_roster') }}"><i class="fa-solid fa-list-check"></i> Diiwaan-gelinta Hall Exam</a>
     <a href="{{ url_for('admin_attendance.timetable') }}"><i class="fa-solid fa-calendar-days"></i> Jadwalka Imtixaanka</a>
     <a href="{{ url_for('admin_attendance.dashboard') }}" class="active"><i class="fa-solid fa-clipboard-user"></i> Xaadiriinta</a>
   </div>
-  <h1 class="pagetitle">Xaadiriinta Imtixaanka</h1>
-  <p class="lede">Ardeyda waxaa laga keenayaa Hall Exam-ka. Jadwalka fadhiga ayaa si toos ah u go'aaminaya maadooyinka saxda ah ee level kasta.</p>
+  {{ admin_page_hero('attendance', [
+    {'label': 'Academic Years', 'value': years|length},
+    {'label': 'Active Exam Types', 'value': exam_types|length},
+    {'label': 'Attendance Source', 'value': 'Schedule'},
+    {'label': 'Status Sync', 'value': 'Live'}
+  ]) }}
+  <h1 class="pagetitle" hidden>Xaadiriinta Imtixaanka</h1>
+  <p class="lede" hidden>Ardeyda waxaa laga keenayaa Hall Exam-ka. Jadwalka fadhiga ayaa si toos ah u go'aaminaya maadooyinka saxda ah ee level kasta.</p>
   <div class="stepper">
     <div class="step"><i class="fa-solid fa-calendar-days icon"></i><div class="field"><label>Sanad-dugsiyeedka</label><select id="selYear">{% for y in years %}<option value="{{ y.id }}" {% if y.is_current %}selected{% endif %}>{{ y.name }}</option>{% endfor %}</select></div></div>
     <div class="step"><i class="fa-solid fa-file-pen icon"></i><div class="field"><label>Nooca Imtixaanka</label><select id="selExamType"></select></div></div>

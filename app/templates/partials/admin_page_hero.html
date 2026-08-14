@@ -1,0 +1,54 @@
+{% macro admin_page_hero(kind, stats) -%}
+<section class="upper-hero-stack" aria-labelledby="{{ kind }}-hero-title">
+  <div class="upper-hero upper-hero--{{ kind }}">
+    <div class="upper-hero__content">
+      {% if kind == 'seat' %}
+        <div class="upper-hero__kicker"><span class="upper-hero__icon"><i class="fa-solid fa-table-cells-large"></i></span>Seat Mixer · Exam Hall Command Center</div>
+        <h2 id="{{ kind }}-hero-title">Smart Exam Hall Seating</h2>
+        <p>Mix students from different levels and automatically create a balanced seating arrangement with anti-adjacency protection.</p>
+      {% elif kind == 'attendance' %}
+        <div class="upper-hero__kicker"><span class="upper-hero__icon"><i class="fa-solid fa-clipboard-check"></i></span>Exam Attendance Control Center</div>
+        <h2 id="{{ kind }}-hero-title">Student Attendance</h2>
+        <p>Track examination attendance directly from the active exam schedule and keep every student's status clear and up to date.</p>
+      {% else %}
+        <div class="upper-hero__kicker"><span class="upper-hero__icon"><i class="fa-solid fa-id-card"></i></span>Student Identity &amp; Card Studio</div>
+        <h2 id="{{ kind }}-hero-title">Professional ID Card Designer</h2>
+        <p>Design, customize and manage student identification cards with templates, branding, QR placement and print-ready settings.</p>
+      {% endif %}
+    </div>
+
+    {% if kind == 'seat' %}
+      <div class="upper-hero__seat-visual" aria-hidden="true">
+        <span class="upper-hero__table t1"></span><span class="upper-hero__table t2"></span><span class="upper-hero__table t3"></span>
+        <span class="upper-hero__table t4"></span><span class="upper-hero__table t5"></span>
+        <i class="upper-hero__seat-dot s1"></i><i class="upper-hero__seat-dot s2"></i><i class="upper-hero__seat-dot s3"></i>
+        <i class="upper-hero__seat-dot s4"></i><i class="upper-hero__seat-dot s5"></i>
+      </div>
+    {% elif kind == 'attendance' %}
+      <div class="upper-hero__attendance-visual" aria-hidden="true">
+        <span class="upper-hero__person p1"><i class="fa-regular fa-user"></i></span><span class="upper-hero__person p2"><i class="fa-regular fa-user"></i></span><span class="upper-hero__person p3"><i class="fa-regular fa-user"></i></span>
+        <span class="upper-hero__person p4"><i class="fa-regular fa-user"></i></span><span class="upper-hero__person p5"><i class="fa-regular fa-user"></i></span>
+        <span class="upper-hero__check"><i class="fa-solid fa-check"></i></span>
+      </div>
+    {% else %}
+      <div class="upper-hero__card-visual" aria-hidden="true">
+        <span class="upper-hero__back-card"></span>
+        <div class="upper-hero__idcard">
+          <span class="upper-hero__mini-photo"><i class="fa-regular fa-user"></i></span>
+          <div class="upper-hero__id-lines">
+            <span class="upper-hero__data-row"><i></i><b class="is-wide"></b></span>
+            <span class="upper-hero__data-row"><i></i><b class="is-short"></b></span>
+            <span class="upper-hero__data-row"><i></i><b class="is-wide"></b></span>
+          </div>
+          <span class="upper-hero__qr">
+            <svg viewBox="0 0 29 29" aria-hidden="true" shape-rendering="crispEdges"><rect width="29" height="29" fill="#fff"/><g fill="#273451"><rect x="0" y="0" width="7" height="7"/><rect x="1" y="1" width="5" height="5" fill="#fff"/><rect x="2" y="2" width="3" height="3"/><rect x="22" y="0" width="7" height="7"/><rect x="23" y="1" width="5" height="5" fill="#fff"/><rect x="24" y="2" width="3" height="3"/><rect x="0" y="22" width="7" height="7"/><rect x="1" y="23" width="5" height="5" fill="#fff"/><rect x="2" y="24" width="3" height="3"/><rect x="9" y="1" width="2" height="2"/><rect x="13" y="1" width="2" height="2"/><rect x="17" y="1" width="2" height="2"/><rect x="9" y="4" width="2" height="2"/><rect x="15" y="4" width="2" height="2"/><rect x="9" y="9" width="2" height="2"/><rect x="12" y="9" width="2" height="2"/><rect x="16" y="9" width="2" height="2"/><rect x="20" y="9" width="2" height="2"/><rect x="10" y="12" width="2" height="2"/><rect x="14" y="12" width="2" height="2"/><rect x="18" y="12" width="2" height="2"/><rect x="9" y="15" width="2" height="2"/><rect x="13" y="15" width="2" height="2"/><rect x="17" y="15" width="2" height="2"/><rect x="21" y="15" width="2" height="2"/><rect x="11" y="18" width="2" height="2"/><rect x="15" y="18" width="2" height="2"/><rect x="19" y="18" width="2" height="2"/><rect x="9" y="21" width="2" height="2"/><rect x="13" y="21" width="2" height="2"/><rect x="19" y="21" width="2" height="2"/><rect x="9" y="24" width="2" height="2"/><rect x="12" y="24" width="2" height="2"/><rect x="16" y="24" width="2" height="2"/><rect x="20" y="24" width="2" height="2"/></g></svg>
+          </span>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+  <div class="upper-hero__stats" aria-label="{{ kind|title }} summary">
+    {% for stat in stats %}<div class="upper-hero__stat"><small>{{ stat.label }}</small><strong>{{ stat.value }}</strong></div>{% endfor %}
+  </div>
+</section>
+{%- endmacro %}
