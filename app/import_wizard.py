@@ -447,8 +447,9 @@ def process_result_import(file):
     db_subjects = {}
     for s in Subject.query.all():
         if s.name:
-            db_subjects[s.name.lower().strip()] = s
-            db_subjects[normalize_header_key(s.name)] = s
+            for subject_key in {s.name.lower().strip(), normalize_header_key(s.name)}:
+                if subject_key:
+                    db_subjects.setdefault(subject_key, []).append(s)
 
     subject_cols = {}
     unmapped_subject_warnings = []
@@ -457,16 +458,16 @@ def process_result_import(file):
         if not h_name or norm_h in fixed_header_set or h_name.lower().strip() in fixed_header_set:
             continue
         clean_h = h_name.lower().strip()
-        subj_obj = db_subjects.get(norm_h) or db_subjects.get(clean_h)
+        subject_candidates = db_subjects.get(norm_h) or db_subjects.get(clean_h)
         
         # Fallback partial matching (e.g., 'English Filming' -> 'english')
-        if not subj_obj:
+        if not subject_candidates:
             first_word = clean_h.split()[0] if clean_h.split() else ""
             if first_word and len(first_word) > 2 and first_word in db_subjects:
-                subj_obj = db_subjects[first_word]
+                subject_candidates = db_subjects[first_word]
 
-        if subj_obj:
-            subject_cols[col_idx] = subj_obj
+        if subject_candidates:
+            subject_cols[col_idx] = subject_candidates
         else:
             unmapped_subject_warnings.append(f"Column {col_idx + 1} ('{h_name}'): Subject not found in system (column skipped).")
 
@@ -545,12 +546,26 @@ def process_result_import(file):
 
             # 5. subject mark checks
             row_subject_marks = []
-            for col_idx, subj_obj in subject_cols.items():
+            for col_idx, subject_candidates in subject_cols.items():
                 if col_idx >= len(row_cells):
                     continue
                 cell_val = row_cells[col_idx]
                 if cell_val is None or str(cell_val).strip() == "":
                     continue
+
+                # Header names can legitimately exist on more than one level.
+                # Resolve the matching record from the importing student's level,
+                # then keep the global legacy record only as a compatibility fallback.
+                student_level_id = student_obj.academic_level_id
+                if not student_level_id and student_obj.academic_class:
+                    student_level_id = student_obj.academic_class.academic_level_id
+                subj_obj = next(
+                    (subject for subject in subject_candidates if subject.academic_level_id == student_level_id),
+                    None,
+                ) or next(
+                    (subject for subject in subject_candidates if subject.academic_level_id is None),
+                    None,
+                ) or subject_candidates[0]
 
                 try:
                     score_num = float(cell_val)

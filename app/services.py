@@ -741,10 +741,10 @@ def academic_round(value, settings=None):
 
 
 def competition_rank_lookup(scores_by_student):
-    """Return standard competition ranks for the supplied official scores.
+    """Return dense ranks for the supplied official scores.
 
-    Equal scores share a rank and the following rank skips the tied positions:
-    98.6, 98.6, 97.8 becomes 1, 1, 3.
+    Equal scores share a rank and the following distinct score receives the
+    immediately next rank: 98.6, 98.6, 97.8 becomes 1, 1, 2.
     """
     ordered_scores = sorted(
         ((student_id, Decimal(str(score))) for student_id, score in scores_by_student.items()),
@@ -753,9 +753,9 @@ def competition_rank_lookup(scores_by_student):
     ranks = {}
     previous_score = None
     current_rank = 0
-    for position, (student_id, score) in enumerate(ordered_scores, start=1):
+    for student_id, score in ordered_scores:
         if previous_score is None or score != previous_score:
-            current_rank = position
+            current_rank += 1
             previous_score = score
         ranks[student_id] = current_rank
     return ranks

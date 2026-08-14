@@ -213,7 +213,11 @@ def get_latest_exam_for_year(academic_year):
 
 
 def subjects_for_scope(exam, level_id=None, class_id=None):
-    """Return subjects for the effective academic level of the current scope."""
+    """Return configured scope subjects plus every persisted result subject in scope.
+
+    The latter keeps legacy/global or previously mis-tagged subjects visible while
+    Setup data is being normalized, instead of hiding valid imported marks.
+    """
     # An explicitly requested level must win over an exam's optional default
     # level.  Analytics iterates real levels one by one; using the exam default
     # there would incorrectly reuse one level's subjects for every level.
@@ -225,10 +229,33 @@ def subjects_for_scope(exam, level_id=None, class_id=None):
     query = Subject.query
     if effective_level_id:
         scoped_subjects = query.filter_by(academic_level_id=effective_level_id).all()
-        if scoped_subjects:
-            return sorted(scoped_subjects, key=lambda subject: (subject.sort_order, subject.name))
-        query = Subject.query.filter(Subject.academic_level_id.is_(None))
-    return sorted(query.all(), key=lambda subject: (subject.sort_order, subject.name))
+        if not scoped_subjects:
+            scoped_subjects = query.filter(Subject.academic_level_id.is_(None)).all()
+    else:
+        scoped_subjects = query.all()
+
+    # Result Entry and the class report must never hide a real saved result just
+    # because the subject's old Setup record was global or assigned differently.
+    persisted_subjects = []
+    if exam:
+        scoped_students = students_for_scope_query(
+            exam.academic_year_id,
+            level_id=effective_level_id,
+            class_id=class_id,
+            exam=exam,
+        ).with_entities(Student.id).all()
+        student_ids = [student_id for (student_id,) in scoped_students]
+        if student_ids:
+            persisted_subjects = (
+                Subject.query.join(Result, Result.subject_id == Subject.id)
+                .filter(Result.exam_id == exam.id, Result.student_id.in_(student_ids))
+                .distinct()
+                .all()
+            )
+
+    subject_by_id = {subject.id: subject for subject in scoped_subjects}
+    subject_by_id.update({subject.id: subject for subject in persisted_subjects})
+    return sorted(subject_by_id.values(), key=lambda subject: (subject.sort_order, subject.name, subject.id))
 
 
 def students_for_scope_query(academic_year_id, level_id=None, class_id=None, section_id=None, exam=None):
