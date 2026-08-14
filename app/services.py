@@ -166,6 +166,8 @@ DEFAULT_SETTINGS = {
     "result_dashboard_show_download_button": "on",
     "result_dashboard_show_print_button": "on",
     "result_dashboard_show_share_button": "on",
+    "result_dashboard_show_top10_button": "on",
+    "top10_tunnel_music_path": "",
     "result_dashboard_background_image": "",
     "result_dashboard_default_avatar": "",
     "result_dashboard_footer_logo": "",
@@ -759,6 +761,97 @@ def competition_rank_lookup(scores_by_student):
             previous_score = score
         ranks[student_id] = current_rank
     return ranks
+
+
+def top_students_for_class(student, exam, limit=10):
+    """Return the published Top 10 for one student's real class and exam.
+
+    The ranking deliberately resolves results through the class level's subject
+    records.  Identically named subjects from another level are separate
+    academic records and cannot influence this public Top 10 view.
+    """
+    if not student or not exam:
+        return []
+
+    level_id = student.academic_level_id
+    if not level_id and student.academic_class:
+        level_id = student.academic_class.academic_level_id
+    if not level_id and student.level:
+        legacy_level = AcademicLevel.query.filter_by(name=student.level).first()
+        level_id = legacy_level.id if legacy_level else None
+    if not level_id:
+        return []
+
+    classmates_query = Student.query.filter_by(academic_year_id=exam.academic_year_id, is_active=True)
+    if student.academic_class_id:
+        class_filters = [Student.academic_class_id == student.academic_class_id]
+        if student.class_id:
+            class_filters.append((Student.academic_class_id.is_(None)) & (Student.class_id == student.class_id))
+        classmates_query = classmates_query.filter(or_(*class_filters))
+    elif student.class_id:
+        classmates_query = classmates_query.filter(Student.class_id == student.class_id)
+    else:
+        classmates_query = classmates_query.filter(Student.academic_level_id == level_id)
+
+    classmates = classmates_query.order_by(Student.full_name, Student.id).all()
+    if not classmates:
+        return []
+
+    subject_ids = [
+        subject.id
+        for subject in Subject.query.filter_by(academic_level_id=level_id)
+        .order_by(Subject.sort_order, Subject.name, Subject.id)
+        .all()
+    ]
+    if not subject_ids:
+        return []
+
+    marks_by_student = {classmate.id: [] for classmate in classmates}
+    rows = (
+        Result.query.join(Result.subject)
+        .filter(
+            Result.exam_id == exam.id,
+            Result.is_published.is_(True),
+            Result.student_id.in_(marks_by_student),
+            Result.subject_id.in_(subject_ids),
+        )
+        .all()
+    )
+    for row in rows:
+        max_score = Decimal(str(row.subject.max_score or 0))
+        if max_score > 0:
+            marks_by_student[row.student_id].append((Decimal(str(row.score or 0)), max_score))
+
+    averages = {}
+    for student_id, marks in marks_by_student.items():
+        if not marks:
+            continue
+        total = sum((score for score, _max_score in marks), Decimal("0"))
+        maximum = sum((max_score for _score, max_score in marks), Decimal("0"))
+        if maximum > 0:
+            averages[student_id] = (total / maximum * Decimal("100")).quantize(Decimal("0.01"))
+
+    ranks = competition_rank_lookup(averages)
+    class_name = (
+        student.academic_class.name if student.academic_class
+        else student.school_class.name if student.school_class
+        else student.level or "Class"
+    )
+    ordered = sorted(
+        (classmate for classmate in classmates if classmate.id in averages),
+        key=lambda classmate: (-averages[classmate.id], classmate.full_name.casefold(), classmate.id),
+    )[:max(1, min(int(limit or 10), 10))]
+    return [
+        {
+            "student_id": classmate.student_code,
+            "name": classmate.full_name,
+            "photo_path": classmate.photo_path,
+            "average": float(averages[classmate.id]),
+            "rank": ranks[classmate.id],
+            "class_name": class_name,
+        }
+        for classmate in ordered
+    ]
 
 
 SUBJECT_ICON_DEFAULTS = {

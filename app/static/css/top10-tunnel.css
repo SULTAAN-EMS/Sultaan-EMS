@@ -1,0 +1,99 @@
+/* Top 10 honour tunnel.  This is intentionally isolated from the Report Card
+   styling so the tunnel can retain the supplied dark, cinematic presentation. */
+.top10-tunnel-overlay {
+  --top10-bg: #0b0e13;
+  --top10-bg-2: #10141c;
+  --top10-gold: #d4af37;
+  --top10-gold-soft: rgba(212, 175, 55, .35);
+  --top10-ivory: #f4f1ea;
+  --top10-muted: #8b93a1;
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  background: #000;
+  color: var(--top10-ivory);
+  transition: opacity .45s ease;
+}
+.top10-tunnel-overlay.is-open { opacity: 1; pointer-events: auto; }
+.top10-tunnel-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.top10-tunnel-topbar {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, .55), transparent);
+}
+.top10-tunnel-hint { margin: 0; color: rgba(244, 241, 234, .75); font: 500 13px "Space Grotesk", Inter, sans-serif; }
+.top10-tunnel-actions { display: flex; align-items: center; gap: 10px; }
+.top10-tunnel-mute,
+.top10-tunnel-close {
+  border: 1px solid rgba(244, 241, 234, .25);
+  color: var(--top10-ivory);
+  cursor: pointer;
+  font: 600 14px "Space Grotesk", Inter, sans-serif;
+  transition: border-color .2s ease, background .2s ease, transform .2s ease;
+}
+.top10-tunnel-mute {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(10, 12, 17, .55);
+  backdrop-filter: blur(8px);
+}
+.top10-tunnel-close { padding: 10px 18px; border-radius: 999px; background: rgba(244, 241, 234, .92); color: #0b0e13; }
+.top10-tunnel-mute:hover { border-color: var(--top10-gold); }
+.top10-tunnel-close:hover { background: #fff; transform: translateY(-1px); }
+.top10-tunnel-dots { position: absolute; z-index: 3; bottom: 22px; left: 50%; display: flex; gap: 6px; transform: translateX(-50%); }
+.top10-tunnel-dots span { width: 5px; height: 5px; border-radius: 50%; background: rgba(244, 241, 234, .28); transition: background .25s ease, transform .25s ease; }
+.top10-tunnel-dots span.is-current { background: var(--top10-gold); transform: scale(1.5); }
+.top10-tunnel-loader,
+.top10-tunnel-empty {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  min-width: min(320px, calc(100vw - 40px));
+  gap: 10px;
+  place-items: center;
+  padding: 28px 34px;
+  border: 1px solid var(--top10-gold-soft);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(212, 175, 55, .14), rgba(10, 12, 17, .92));
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .48);
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+.top10-tunnel-loader i,
+.top10-tunnel-empty i { color: var(--top10-gold); font-size: 2rem; }
+.top10-tunnel-loader strong,
+.top10-tunnel-empty strong { font: 600 1.12rem "Fraunces", Georgia, serif; }
+.top10-tunnel-loader span,
+.top10-tunnel-empty span { color: var(--top10-muted); font-size: .88rem; }
+.top10-tunnel-overlay.is-ready .top10-tunnel-loader,
+.top10-tunnel-overlay.is-ready .top10-tunnel-empty { display: none; }
+.result-action-button.top10 {
+  border: 1px solid rgba(255, 255, 255, .16);
+  box-shadow: 0 16px 30px rgba(91, 38, 180, .28);
+}
+
+@media (max-width: 640px) {
+  .top10-tunnel-topbar { padding: 14px; }
+  .top10-tunnel-hint { display: none; }
+  .top10-tunnel-actions { width: 100%; justify-content: flex-end; }
+  .top10-tunnel-close { padding: 9px 12px; font-size: 12px; }
+  .top10-tunnel-dots { bottom: 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .top10-tunnel-overlay { transition: none; }
+}

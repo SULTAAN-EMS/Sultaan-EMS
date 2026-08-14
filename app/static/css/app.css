@@ -951,6 +951,22 @@ tbody tr:hover td { background: #f8fbff; }
 .result-action-button.download { background: linear-gradient(135deg, #1d7cff, #0f4eea); }
 .result-action-button.print { background: linear-gradient(135deg, #0bbf72, #059b5a); }
 .result-action-button.share { background: linear-gradient(135deg, #7650d8, #5626b4); }
+.result-action-button.top10 { background: linear-gradient(135deg, #7650d8, #5626b4); }
+.tunnel-music-preview {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.4fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(91, 38, 180, .16);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(118, 80, 216, .08), rgba(212, 175, 55, .08));
+}
+.tunnel-music-preview strong,
+.tunnel-music-preview small { display: block; }
+.tunnel-music-preview small { margin-top: 3px; color: #64748b; }
+.tunnel-music-preview audio { width: 100%; }
+@media (max-width: 720px) { .tunnel-music-preview { grid-template-columns: 1fr; } }
 .result-action-button.copied small::after { content: " copied"; }
 .confetti-burst { pointer-events: none; position: fixed; inset: 0; z-index: 45; overflow: hidden; }
 .confetti-burst span { position: absolute; top: -18px; left: var(--x); width: 10px; height: 16px; border-radius: 3px; background: var(--gold); animation: confetti-fall 4.8s ease-in var(--d) forwards; transform: rotate(var(--r)); }
@@ -3152,6 +3168,9 @@ tbody tr:hover td { background: #f8fbff; }
 }
 .result-action-button.share {
   display: var(--sis-display-share-button);
+}
+.result-action-button.top10 {
+  display: var(--sis-display-top10-button);
 }
 .result-footer-logo {
   width: 24px;

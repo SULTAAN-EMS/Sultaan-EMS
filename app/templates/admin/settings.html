@@ -428,7 +428,7 @@
       ('result_dashboard_show_social_icons','Social Icons'),
       ('result_dashboard_show_download_button','Download Button'),
       ('result_dashboard_show_print_button','Print Button'),
-      ('result_dashboard_show_share_button','Share Button')
+      ('result_dashboard_show_top10_button','Top 10 Students Button')
     ] %}
       <label><i class="fa-solid fa-toggle-on"></i> {{ label }}<select name="{{ key }}"><option value="on" {% if settings.get(key) == 'on' %}selected{% endif %}>ON</option><option value="off" {% if settings.get(key) != 'on' %}selected{% endif %}>OFF</option></select></label>
     {% endfor %}
@@ -437,6 +437,16 @@
     <label><i class="fa-solid fa-image"></i> Result Background Image<input name="result_dashboard_background_image" type="file" accept="image/*"></label>
     <label><i class="fa-solid fa-user-graduate"></i> Default Student Avatar<input name="result_dashboard_default_avatar" type="file" accept="image/*"></label>
     <label><i class="fa-solid fa-shoe-prints"></i> Footer Logo<input name="result_dashboard_footer_logo" type="file" accept="image/*"></label>
+  </section>
+
+  <section class="panel form-grid premium-form">
+    <div class="section-heading wide"><span><i class="fa-solid fa-music"></i></span><div><h2>Tunnel Background Music</h2><p>Music plays only while families are viewing the Top 10 Students tunnel.</p></div></div>
+    <label><i class="fa-solid fa-file-audio"></i> Upload MP3 or WAV (10 MB max)<input name="top10_tunnel_background_music" id="top10TunnelMusicUpload" type="file" accept=".mp3,.wav,audio/mpeg,audio/wav"></label>
+    <div class="wide tunnel-music-preview" data-default-src="{{ url_for('static', filename='audio/top10-tunnel-default.wav') }}">
+      <div><strong>Current tunnel track</strong><small>{% if settings.top10_tunnel_music_path %}Custom school music is active.{% else %}Using the bundled default track.{% endif %}</small></div>
+      <audio id="top10TunnelMusicPreview" controls preload="metadata" src="{{ asset_url(settings.top10_tunnel_music_path) if settings.top10_tunnel_music_path else url_for('static', filename='audio/top10-tunnel-default.wav') }}"></audio>
+      <button type="button" class="secondary-action" id="top10TunnelMusicReset"><i class="fa-solid fa-rotate-left"></i> Reset to Default</button>
+    </div>
   </section>
 
   <section class="panel form-grid premium-form result-sidebar-customizer">
@@ -643,6 +653,39 @@
     syncOrder();
     table.querySelectorAll("input, select").forEach((input) => input.addEventListener("input", previewRows));
     previewRows();
+  })();
+  (() => {
+    const upload = document.getElementById("top10TunnelMusicUpload");
+    const preview = document.getElementById("top10TunnelMusicPreview");
+    const reset = document.getElementById("top10TunnelMusicReset");
+    const panel = document.querySelector(".tunnel-music-preview");
+    const form = document.querySelector("[data-autosave-form]");
+    if (!upload || !preview || !reset || !panel || !form) return;
+    upload.addEventListener("change", () => {
+      const file = upload.files && upload.files[0];
+      if (!file) return;
+      preview.src = URL.createObjectURL(file);
+      preview.load();
+    });
+    reset.addEventListener("click", async () => {
+      reset.disabled = true;
+      try {
+        const response = await fetch("{{ url_for('admin.reset_top10_tunnel_music') }}", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "X-Requested-With": "XMLHttpRequest", "X-CSRFToken": form.querySelector('[name="csrf_token"]').value }
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) throw new Error(payload.message || "Unable to reset tunnel music.");
+        preview.src = panel.dataset.defaultSrc;
+        preview.load();
+        panel.querySelector("small").textContent = "Using the bundled default track.";
+      } catch (error) {
+        window.alert(error.message || "Unable to reset tunnel music.");
+      } finally {
+        reset.disabled = false;
+      }
+    });
   })();
 </script>
 {% endblock %}

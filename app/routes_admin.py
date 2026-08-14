@@ -14,7 +14,7 @@ from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
 from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
 from .permissions import PERMISSIONS, can, enforce_endpoint_permission, permission_required
-from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
+from .security import ALLOWED_AUDIO, ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import (
     PROMOTION_COPY_MARKERS,
     RESULT_SUCCESS_OVERLAY_LABEL_DEFAULTS,
@@ -703,6 +703,7 @@ def settings():
             "result_dashboard_show_download_button",
             "result_dashboard_show_print_button",
             "result_dashboard_show_share_button",
+            "result_dashboard_show_top10_button",
             "result_sidebar_theme",
             "result_sidebar_student_name_size",
             "result_sidebar_student_name_weight",
@@ -954,6 +955,26 @@ def settings():
             setting = db.session.get(Setting, setting_key) or Setting(key=setting_key)
             setting.value = image_url
             db.session.add(setting)
+        music_upload = request.files.get("top10_tunnel_background_music")
+        if music_upload and music_upload.filename:
+            if not allowed_file(music_upload.filename, ALLOWED_AUDIO):
+                message = "Tunnel background music must be an MP3 or WAV file."
+                if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                    return jsonify({"success": False, "message": message}), 400
+                flash(message, "danger")
+                return redirect(url_for("admin.settings"))
+            music_upload.stream.seek(0, 2)
+            music_size = music_upload.stream.tell()
+            music_upload.stream.seek(0)
+            if music_size > 10 * 1024 * 1024:
+                message = "Tunnel background music must be 10 MB or smaller."
+                if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                    return jsonify({"success": False, "message": message}), 400
+                flash(message, "danger")
+                return redirect(url_for("admin.settings"))
+            setting = db.session.get(Setting, "top10_tunnel_music_path") or Setting(key="top10_tunnel_music_path")
+            setting.value = upload_image(music_upload, "school/top10-tunnel")
+            db.session.add(setting)
         for subject in Subject.query.order_by(Subject.name).all():
             field_name = f"subject_icon_{subject.id}"
             upload = request.files.get(field_name)
@@ -988,6 +1009,18 @@ def settings():
         subjects=Subject.query.order_by(Subject.name).all(),
         slug=slug,
     )
+
+
+@admin_bp.route("/settings/top10-tunnel-music/reset", methods=["POST"])
+@permission_required("settings")
+def reset_top10_tunnel_music():
+    """Revert the public tunnel to the bundled default music track."""
+    setting = db.session.get(Setting, "top10_tunnel_music_path") or Setting(key="top10_tunnel_music_path")
+    setting.value = ""
+    db.session.add(setting)
+    audit("Tunnel Music Reset", "Restored the default Top 10 tunnel background music")
+    db.session.commit()
+    return jsonify(success=True, message="Default tunnel music restored.")
 
 
 LOADER_DESIGN_IDS = (20, 36, 38, 42)

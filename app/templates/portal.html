@@ -3,6 +3,7 @@
 {% block body_class %}public-body premium-public-body{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/result-success-overlay.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/top10-tunnel.css') }}">
 {% endblock %}
 {% block content %}
 <style>
@@ -96,7 +97,7 @@
   --sis-display-social-icons: {{ 'flex' if settings.result_dashboard_show_social_icons == 'on' else 'none' }};
   --sis-display-download-button: {{ 'grid' if settings.result_dashboard_show_download_button == 'on' else 'none' }};
   --sis-display-print-button: {{ 'grid' if settings.result_dashboard_show_print_button == 'on' else 'none' }};
-  --sis-display-share-button: {{ 'grid' if settings.result_dashboard_show_share_button == 'on' else 'none' }};
+  --sis-display-top10-button: {{ 'grid' if settings.result_dashboard_show_top10_button == 'on' else 'none' }};
 "{% endif %}>
   <nav class="premium-language-nav">
     <a class="premium-contact-link" href="{{ settings.call_url or '#' }}" aria-label="Contact the examination office" title="Contact / Help">
@@ -388,10 +389,24 @@
         <section class="result-action-panel reference-actions glass-card">
           <a class="result-action-button download" href="{{ url_for('public.print_report', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}" target="_blank" rel="noopener"><i class="fa-solid fa-download"></i><span>Download Report</span><small>PDF</small></a>
           <a class="result-action-button print" href="{{ url_for('public.print_report', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}" target="_blank" rel="noopener"><i class="fa-solid fa-print"></i><span>Print Result</span><small>Print</small></a>
-          <button type="button" class="result-action-button share js-share-result" data-share-url="{{ url_for('public.print_report', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}" data-share-title="{{ result.student.full_name }} Result"><i class="fa-solid fa-share-nodes"></i><span>Share Result</span><small>Share</small></button>
+          <button type="button" class="result-action-button top10 js-top10-launch" data-top10-url="{{ url_for('public.api_top_students', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}"><i class="fa-solid fa-trophy"></i><span>View Top 10 Students</span><small>Top 10</small></button>
         </section>
       </div>
     </section>
+
+    <section class="top10-tunnel-overlay" id="top10TunnelOverlay" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Top 10 Students">
+      <canvas class="top10-tunnel-canvas" id="top10TunnelCanvas"></canvas>
+      <div class="top10-tunnel-loader" id="top10TunnelLoader" aria-live="polite"><i class="fa-solid fa-spinner fa-spin"></i><strong>Loading Top 10 Students</strong><span>Preparing the honour tunnel...</span></div>
+      <div class="top10-tunnel-empty" id="top10TunnelEmpty" hidden><i class="fa-solid fa-trophy"></i><strong>Top 10 is not available yet</strong><span>Published class results are needed before the tunnel can begin.</span></div>
+      <header class="top10-tunnel-topbar">
+        <p class="top10-tunnel-hint" id="top10TunnelHint">Hold to speed up &middot; Esc to close</p>
+        <div class="top10-tunnel-actions"><button type="button" class="top10-tunnel-mute" id="top10TunnelMute" title="Sound on/off" aria-label="Toggle tunnel sound"><i class="fa-solid fa-volume-high"></i></button><button type="button" class="top10-tunnel-close" id="top10TunnelClose"><i class="fa-solid fa-arrow-left"></i> Back to Report Card</button></div>
+      </header>
+      <div class="top10-tunnel-dots" id="top10TunnelDots" aria-hidden="true"></div>
+      <audio id="top10TunnelAudio" loop preload="auto" data-default-src="{{ url_for('static', filename='audio/top10-tunnel-default.wav') }}" data-custom-src="{{ asset_url(settings.top10_tunnel_music_path) if settings.top10_tunnel_music_path else '' }}"></audio>
+    </section>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
+    <script src="{{ url_for('static', filename='js/top10-tunnel.js') }}" defer></script>
   {% endif %}
 
   {% if result_success_overlay is defined and result_success_overlay %}
@@ -501,25 +516,6 @@
         };
         closeButton?.addEventListener("click", closeOverlay);
         window.setTimeout(openOverlay, reduceMotion ? 0 : 220);
-      })();
-      (() => {
-        const button = document.querySelector(".js-share-result");
-        if (!button) return;
-        button.addEventListener("click", async () => {
-          const shareUrl = new URL(button.dataset.shareUrl, window.location.origin).href;
-          const shareData = { title: button.dataset.shareTitle || document.title, url: shareUrl };
-          try {
-            if (navigator.share) {
-              await navigator.share(shareData);
-            } else if (navigator.clipboard) {
-              await navigator.clipboard.writeText(shareUrl);
-              button.classList.add("copied");
-              setTimeout(() => button.classList.remove("copied"), 1400);
-            }
-          } catch (error) {
-            button.classList.remove("copied");
-          }
-        });
       })();
       (() => {
         const chart = document.querySelector(".reference-sunburst");

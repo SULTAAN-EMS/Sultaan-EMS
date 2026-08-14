@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from . import db
 from .i18n import language_redirect
 from .models import AcademicYear, Exam, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, ReportVerification, Result, SeverityLevel, Student, Subject
-from .services import active_exam_for_student, get_settings, result_payload, result_success_overlay_config
+from .services import active_exam_for_student, get_settings, result_payload, result_success_overlay_config, top_students_for_class
 from .verification import verification_payload
 
 public_bp = Blueprint("public", __name__)
@@ -280,6 +280,50 @@ def api_result(student_code):
         "status": payload["status"],
         "grade": payload["overall_grade"],
     })
+
+
+def _public_asset_url(path):
+    """Build a browser-safe asset URL without exposing storage details."""
+    if not path:
+        return ""
+    value = str(path)
+    if value.startswith(("http://", "https://", "data:", "/static/")):
+        return value
+    return url_for("static", filename=value if value.startswith("uploads/") else f"uploads/{value}")
+
+
+@public_bp.route("/api/top-students/<student_code>")
+def api_top_students(student_code):
+    """Return the published Top 10 for the viewer's class and chosen exam."""
+    student = Student.query.filter(func.trim(Student.student_code) == student_code.strip()).first()
+    exam_id = request.args.get("exam_id", type=int)
+    if not student or not exam_id:
+        return jsonify(ok=False, message="Student and examination are required."), 404
+    if student.is_result_locked:
+        return jsonify(ok=False, message="Result temporarily withheld."), 423
+
+    exam = (
+        Exam.query.join(Result, Result.exam_id == Exam.id)
+        .filter(Exam.id == exam_id, Result.student_id == student.id, Result.is_published.is_(True))
+        .first()
+    )
+    if not exam:
+        return jsonify(ok=False, message="Published examination not found."), 404
+
+    settings = get_settings()
+    students = top_students_for_class(student, exam)
+    for entry in students:
+        entry["photo"] = _public_asset_url(entry.pop("photo_path", "")) or _public_asset_url(settings.get("result_dashboard_default_avatar"))
+    class_name = students[0]["class_name"] if students else (
+        student.academic_class.name if student.academic_class else student.level or "Class"
+    )
+    return jsonify(
+        ok=True,
+        class_name=class_name,
+        academic_year=exam.academic_year.name if exam.academic_year else "",
+        exam_type=exam.name,
+        students=students,
+    )
 
 
 @public_bp.route("/verify/<token>")

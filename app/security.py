@@ -7,6 +7,7 @@ from werkzeug.utils import secure_filename
 
 ALLOWED_PHOTOS = {"jpg", "jpeg", "png", "webp"}
 ALLOWED_SHEETS = {"xlsx"}
+ALLOWED_AUDIO = {"mp3", "wav"}
 
 
 def role_required(*roles):
