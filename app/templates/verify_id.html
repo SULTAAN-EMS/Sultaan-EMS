@@ -93,6 +93,8 @@
       <section class="invalid-state glass-card"><div class="invalid-icon"><i class="fa-solid fa-triangle-exclamation"></i></div><h2>Invalid ID Card</h2><p>This verification link is invalid or no longer recognized by the system.</p><a class="btn premium" href="{{ url_for('public.portal') }}"><i class="fa-solid fa-arrow-left"></i> Back to Portal</a></section>
     {% endif %}
   </div>
-  {% set f_settings = settings %}{% include 'partials/sultan_footer.html' %}
+  {% set f_settings = settings %}
+  {% set footer_logo_override = issue.student.photo_path if verified and issue.student.photo_path else none %}
+  {% include 'partials/sultan_footer.html' %}
 </main>
 {% endblock %}

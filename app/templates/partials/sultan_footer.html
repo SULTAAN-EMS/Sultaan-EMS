@@ -143,14 +143,15 @@
 </style>
 
 {% set f_settings = incident_settings if incident_settings is defined else settings %}
+{% set footer_logo_source = footer_logo_override if footer_logo_override is defined and footer_logo_override else f_settings.get('footer_logo_path') %}
 {% if f_settings.get('show_footer') == 'true' or f_settings.get('verify_show_footer') == 'on' or f_settings.get('verify_id_show_footer') == 'on' %}
 <footer class="sultan-premium-footer">
   <!-- 2. Rotating Gradient Ring with Logo/Fallback -->
   <div class="footer-logo-ring-container">
     <div class="footer-logo-ring"></div>
     <div class="footer-logo-inner">
-      {% if f_settings.get('footer_logo_path') %}
-      <img id="footerLogo" src="{{ asset_url(f_settings.get('footer_logo_path')) }}" alt="Logo">
+      {% if footer_logo_source %}
+      <img id="footerLogo" src="{{ asset_url(footer_logo_source) }}" alt="Logo">
       {% else %}
       <span id="footerFallback"><i class="fa-solid fa-shield-halved"></i></span>
       <img id="footerLogo" src="" alt="Logo" style="display: none;">
