@@ -39,15 +39,20 @@
     --verify-display-footer: {{ 'block' if settings.verify_show_footer == 'on' else 'none' }};
   ">
   <section class="verification-certificate {% if not verified %}is-invalid{% endif %}">
-    <header class="verification-hero">
-      <div class="verification-hero-curve"></div>
-      {% if settings.logo_path %}
-        <img class="verification-logo" src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">
-      {% else %}
-        <span class="verification-logo fallback-logo"><i class="fa-solid fa-school"></i></span>
-      {% endif %}
-      <h1>{{ settings.school_name }}</h1>
-      <p>{{ settings.verify_school_motto or settings.school_motto }}</p>
+    <header class="verification-hero compact-result-header">
+      <div class="result-header-inner">
+        <div class="result-header-crest">
+          {% if settings.logo_path %}
+            <img class="verification-logo" src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">
+          {% else %}
+            <span class="verification-logo fallback-logo"><i class="fa-solid fa-school"></i></span>
+          {% endif %}
+        </div>
+        <div>
+          <h1>{{ settings.school_name }}</h1>
+          <p>Xarunta Korriinka Maskaxda</p>
+        </div>
+      </div>
     </header>
 
     {% if verified %}
@@ -72,7 +77,7 @@
       {% set verify_order = _clean %}
       <section class="verification-status-card" style="order: {{ verify_order.index('status') + 1 if 'status' in verify_order else 1 }}">
         {% include 'partials/verification_particle_burst.html' %}
-        <h2 class="verified-rainbow-text">{{ settings.verify_page_title }}</h2>
+        <h2 class="verified-rainbow-text">LA XAQIIJIYEY</h2>
         <p>{{ settings.verify_page_subtitle }}</p>
         <span class="verification-pill"><i class="fa-solid fa-shield-halved"></i>{{ settings.verify_success_message }}</span>
       </section>
