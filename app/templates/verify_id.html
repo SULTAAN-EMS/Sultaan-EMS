@@ -56,7 +56,7 @@
         </div></div>
         {% endif %}
         <div class="student-details-section">
-          {% if settings.verify_id_show_student_name != 'off' %}<h2 class="student-name">{{ issue.student.full_name }}{{ verified_name_badge() }}</h2>{% endif %}
+          {% if settings.verify_id_show_student_name != 'off' %}<h2 class="student-name"><span class="student-name-text">{{ issue.student.full_name }}</span>{{ verified_name_badge() }}</h2>{% endif %}
           {% set student_level = issue.student.academic_level.name if issue.student.academic_level else issue.student.level or 'Student' %}
           {% set normalized_level = student_level|lower %}
           <p class="student-identity-line"><span class="student-id-code">{{ issue.student.student_code }}</span><b></b><span class="student-level-tag {% if 'secondary' in normalized_level or 'sare' in normalized_level %}level-secondary{% elif 'upper' in normalized_level or 'middle' in normalized_level or 'dhexe' in normalized_level %}level-upper{% elif 'lower' in normalized_level or 'hoose' in normalized_level %}level-lower{% elif 'kg' in normalized_level or 'kindergarten' in normalized_level %}level-kg{% else %}level-default{% endif %}">{{ student_level }}</span></p>
