@@ -1,6 +1,7 @@
 {% extends "admin/base.html" %}
 {% block title %}Seat Mixer — Exam Hall Command Center{% endblock %}
 
+{% block body_class %}{{ super() }} admin-page-hero-layout{% endblock %}
 {% block extra_head %}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -19,12 +20,7 @@
   <div class="sm-grid-fx"></div>
 
   <div class="sm-shell">
-    {{ admin_page_hero('seat', [
-      {'label': 'Active Exam Halls', 'value': halls|length},
-      {'label': 'Academic Levels', 'value': levels|length},
-      {'label': 'Arrangement Engine', 'value': 'Smart'},
-      {'label': 'Live Seating', 'value': 'Ready'}
-    ]) }}
+    {{ admin_page_hero('seat') }}
     <div class="sm-masthead" hidden>
       <div class="sm-kicker"><span class="dot"></span>SEAT MIXER · Anti-Adjacency Engine</div>
       <h1>Seat Mixer — Exam Hall Command Center</h1>

@@ -1,5 +1,6 @@
 {% extends "admin/base.html" %}
 {% block title %}Xaadiriinta Imtixaanka | SULTAN EMS{% endblock %}
+{% block body_class %}{{ super() }} admin-page-hero-layout{% endblock %}
 
 {% block extra_head %}
 <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -40,17 +41,12 @@
 {% block admin_content %}
 {% from 'partials/admin_page_hero.html' import admin_page_hero %}
 <div class="att-scope"><div class="wrap">
+  {{ admin_page_hero('attendance') }}
   <div class="nav-strip">
     <a href="{{ url_for('admin_attendance.hall_roster') }}"><i class="fa-solid fa-list-check"></i> Diiwaan-gelinta Hall Exam</a>
     <a href="{{ url_for('admin_attendance.timetable') }}"><i class="fa-solid fa-calendar-days"></i> Jadwalka Imtixaanka</a>
     <a href="{{ url_for('admin_attendance.dashboard') }}" class="active"><i class="fa-solid fa-clipboard-user"></i> Xaadiriinta</a>
   </div>
-  {{ admin_page_hero('attendance', [
-    {'label': 'Academic Years', 'value': years|length},
-    {'label': 'Active Exam Types', 'value': exam_types|length},
-    {'label': 'Attendance Source', 'value': 'Schedule'},
-    {'label': 'Status Sync', 'value': 'Live'}
-  ]) }}
   <h1 class="pagetitle" hidden>Xaadiriinta Imtixaanka</h1>
   <p class="lede" hidden>Ardeyda waxaa laga keenayaa Hall Exam-ka. Jadwalka fadhiga ayaa si toos ah u go'aaminaya maadooyinka saxda ah ee level kasta.</p>
   <div class="stepper">

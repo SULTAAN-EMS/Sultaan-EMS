@@ -1,4 +1,4 @@
-{% macro admin_page_hero(kind, stats) -%}
+{% macro admin_page_hero(kind) -%}
 <section class="upper-hero-stack" aria-labelledby="{{ kind }}-hero-title">
   <div class="upper-hero upper-hero--{{ kind }}">
     <div class="upper-hero__content">
@@ -46,9 +46,6 @@
         </div>
       </div>
     {% endif %}
-  </div>
-  <div class="upper-hero__stats" aria-label="{{ kind|title }} summary">
-    {% for stat in stats %}<div class="upper-hero__stat"><small>{{ stat.label }}</small><strong>{{ stat.value }}</strong></div>{% endfor %}
   </div>
 </section>
 {%- endmacro %}

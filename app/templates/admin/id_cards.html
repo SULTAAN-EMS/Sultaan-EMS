@@ -1,17 +1,13 @@
 {% extends "admin/base.html" %}
 {% block page_title %}Student ID Cards{% endblock %}
+{% block body_class %}{{ super() }} admin-page-hero-layout{% endblock %}
 {% block extra_head %}
 {{ super() }}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-page-heroes.css') }}">
 {% endblock %}
 {% block admin_content %}
 {% from 'partials/admin_page_hero.html' import admin_page_hero %}
-{{ admin_page_hero('id', [
-  {'label': 'Card Templates', 'value': templates|length},
-  {'label': 'Students in View', 'value': students|length},
-  {'label': 'Recent Issues', 'value': issues|length},
-  {'label': 'Verification', 'value': 'QR Ready'}
-]) }}
+{{ admin_page_hero('id') }}
 <section class="panel">
   <div class="section-heading"><span><i class="fa-solid fa-layer-group"></i></span><div><h2>ID Card Template Manager</h2><p>Switch the active ID card design instantly. The selected template is saved in system settings.</p></div></div>
   <div class="template-grid">
