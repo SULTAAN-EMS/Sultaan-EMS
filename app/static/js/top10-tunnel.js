@@ -80,42 +80,75 @@
     syncPauseUI();
   };
 
+  const musicButton = document.getElementById('top10TunnelMusic') || document.getElementById('musicBtn');
+  const musicPanel = document.getElementById('musicPanel') || document.getElementById('top10TunnelMusicPanel');
+  const singleMusicMode = document.getElementById('singleMusicMode');
+  const sequenceMusicMode = document.getElementById('sequenceMusicMode');
+
+  let selectedMusicTracks = [];
+  let musicMode = 'sequence'; // 'sequence' or 'single'
+
   const parseTrackSources = () => {
     if (!audio) return [];
     try {
       const raw = audio.dataset.customSources;
       const parsed = JSON.parse(raw || '[]');
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const urls = parsed.map(entry => (typeof entry === 'string' ? entry : entry.url)).filter(Boolean);
-        if (urls.length > 0) return urls;
+        const items = parsed.map((entry, i) => {
+          if (typeof entry === 'string') return { url: entry, name: `Ambient Track ${i + 1}` };
+          return { url: entry.url, name: entry.name || `Ambient Track ${i + 1}` };
+        }).filter(item => Boolean(item.url));
+        if (items.length > 0) return items;
       }
     } catch (e) {}
     const single = audio.dataset.customSrc;
-    if (single) return [single];
-    return [audio.dataset.defaultSrc];
+    if (single) return [{ url: single, name: 'Custom Track 1' }];
+    return [{ url: audio.dataset.defaultSrc, name: 'Ambient Track 1' }];
   };
 
+  function buildMusicOptionsUI(){
+    const wrap = document.getElementById('musicOptions');
+    if (!wrap) return;
+    wrap.innerHTML = trackList.map((track, i) => `
+      <label class="music-option">
+        <input type="checkbox" value="${i}" checked>
+        ${track.name}
+      </label>
+    `).join('');
+  }
+
+  function readSelectedMusicTracks(){
+    if (!musicPanel) return;
+    const values = [...musicPanel.querySelectorAll('.music-option input:checked')].map(i => Number(i.value));
+    // If nothing is checked, fall back to auto-rotating ALL current tracks
+    selectedMusicTracks = values.length ? values : trackList.map((_, i) => i);
+    currentTrackIndex = 0;
+    playTrackAtIndex(selectedMusicTracks[0] ?? 0);
+  }
+
   const playTrackAtIndex = (index) => {
-    if (!audio || !trackList.length || muted) return;
-    currentTrackIndex = index % trackList.length;
-    const targetUrl = trackList[currentTrackIndex];
-    if (targetUrl) {
-      const fullUrl = new URL(targetUrl, window.location.href).href;
+    if (!audio || !trackList.length) return;
+    const targetIdx = index % trackList.length;
+    const target = trackList[targetIdx];
+    if (target && target.url) {
+      const fullUrl = new URL(target.url, window.location.href).href;
       if (audio.src !== fullUrl) {
         audio.src = fullUrl;
       }
       audio.volume = muted ? 0 : 0.22;
-      if (running && !paused) {
+      if (running && !paused && !muted) {
         audio.play().catch(() => {});
       }
     }
   };
 
   const startMusic = () => {
-    if (!audio || muted) return;
+    if (!audio) return;
     trackList = parseTrackSources();
+    selectedMusicTracks = trackList.map((_, i) => i);
+    buildMusicOptionsUI();
     currentTrackIndex = 0;
-    playTrackAtIndex(0);
+    playTrackAtIndex(selectedMusicTracks[0] ?? 0);
   };
 
   const stopMusic = () => {
@@ -141,13 +174,60 @@
     }
   };
 
+  const closeMusicPanel = () => {
+    if (musicPanel) {
+      musicPanel.classList.remove('open', 'is-open');
+    }
+  };
+
+  if (musicButton && musicPanel) {
+    musicButton.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = musicPanel.classList.contains('open') || musicPanel.classList.contains('is-open');
+      if (isOpen) {
+        closeMusicPanel();
+      } else {
+        musicPanel.classList.add('open', 'is-open');
+      }
+    });
+    musicPanel.addEventListener('click', (e) => e.stopPropagation());
+    document.addEventListener('click', (e) => {
+      if (musicPanel && musicButton && !musicPanel.contains(e.target) && !musicButton.contains(e.target)) {
+        closeMusicPanel();
+      }
+    });
+  }
+
+  if (musicPanel) {
+    musicPanel.addEventListener('change', (e) => {
+      if (e.target && e.target.matches('.music-option input')) readSelectedMusicTracks();
+    });
+  }
+
+  if (singleMusicMode && sequenceMusicMode) {
+    singleMusicMode.addEventListener('click', () => {
+      musicMode = 'single';
+      singleMusicMode.classList.add('active', 'is-active');
+      sequenceMusicMode.classList.remove('active', 'is-active');
+      readSelectedMusicTracks();
+      closeMusicPanel();
+    });
+    sequenceMusicMode.addEventListener('click', () => {
+      musicMode = 'sequence';
+      sequenceMusicMode.classList.add('active', 'is-active');
+      singleMusicMode.classList.remove('active', 'is-active');
+      readSelectedMusicTracks();
+      closeMusicPanel();
+    });
+  }
+
   if (audio) {
     audio.addEventListener('ended', () => {
       if (!running || paused) return;
-      if (trackList.length > 1) {
-        currentTrackIndex = (currentTrackIndex + 1) % trackList.length;
-        playTrackAtIndex(currentTrackIndex);
-      } else {
+      if (musicMode === 'sequence' && selectedMusicTracks.length > 1) {
+        currentTrackIndex = (currentTrackIndex + 1) % selectedMusicTracks.length;
+        playTrackAtIndex(selectedMusicTracks[currentTrackIndex]);
+      } else if (selectedMusicTracks.length > 0) {
         audio.currentTime = 0;
         audio.play().catch(() => {});
       }
@@ -300,47 +380,53 @@
     ctx.strokeStyle = 'rgba(212,175,55,0.55)';
     ctx.stroke();
 
-    // Big photo, centered inside the border rectangle with clear breathing room
+    // Big photo rendered with dynamic aspect-ratio matching width (no side gaps)
     const photoMargin = 56;
-    const px = photoMargin, py = photoMargin;
-    const pw = W - photoMargin*2;
+    const py = photoMargin;
     const ph = H * 0.54 - photoMargin;
+    const maxW = W - photoMargin * 2;
+    let pw = maxW;
+    let px = photoMargin;
+
+    if (photoImg && photoImg.width && photoImg.height) {
+      const imgR = photoImg.width / photoImg.height;
+      const targetW = ph * imgR;
+      pw = Math.min(targetW, maxW);
+      px = (W - pw) / 2;
+    }
+
     ctx.save();
     ctx.beginPath();
-    ctx.roundRect(px,py,pw,ph,24);
+    ctx.roundRect(px, py, pw, ph, 24);
     ctx.closePath(); ctx.clip();
     if (photoImg){
-      const imgR = photoImg.width/photoImg.height, boxR = pw/ph;
-      let dw, dh, dx, dy;
-      if (imgR > boxR){ dw = pw; dh = pw/imgR; dx = px; dy = py + (ph-dh)/2; }
-      else { dh = ph; dw = ph*imgR; dx = px + (pw-dw)/2; dy = py; }
       ctx.fillStyle = '#0b0e13';
       ctx.fillRect(px, py, pw, ph);
-      ctx.drawImage(photoImg, dx, dy, dw, dh);
+      ctx.drawImage(photoImg, px, py, pw, ph);
     } else {
-      ctx.fillStyle = '#1a1f2b'; ctx.fillRect(px,py,pw,ph);
+      ctx.fillStyle = '#1a1f2b'; ctx.fillRect(px, py, pw, ph);
       ctx.fillStyle = '#d4af37'; ctx.font = "600 130px 'Fraunces', serif"; ctx.textAlign = 'center';
       ctx.fillText(((student.name || student.student_name || '?')).trim().charAt(0).toUpperCase(), W / 2, py + ph * .62);
     }
     ctx.restore();
     ctx.beginPath();
-    ctx.roundRect(px,py,pw,ph,24);
+    ctx.roundRect(px, py, pw, ph, 24);
     ctx.lineWidth = 4; ctx.strokeStyle = '#D4AF37'; ctx.stroke();
 
-    // Rank badge overlapping top-right corner if rank exists
+    // Rank badge overlapping top-right corner of the photo frame
     const rankVal = student.rank || student.position;
     if (rankVal !== undefined && rankVal !== null && rankVal !== '') {
-      const bx = px+pw-10, by = py+10, br = 60;
-      ctx.beginPath(); ctx.arc(bx,by,br,0,Math.PI*2);
+      const bx = px + pw - 10, by = py + 10, br = 60;
+      ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(10,12,17,0.94)'; ctx.fill();
       ctx.lineWidth = 4; ctx.strokeStyle = '#D4AF37'; ctx.stroke();
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillStyle = '#D4AF37';
       ctx.font = "700 40px 'Fraunces', serif";
-      ctx.fillText('#' + rankVal, bx, by-6);
+      ctx.fillText('#' + rankVal, bx, by - 6);
       ctx.fillStyle = '#8B93A1';
       ctx.font = "600 13px 'Space Grotesk', sans-serif";
-      ctx.fillText('RANK', bx, by+22);
+      ctx.fillText('RANK', bx, by + 22);
     }
 
     // Name + class, pulled well clear of the photo below it.

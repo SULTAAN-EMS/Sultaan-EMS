@@ -532,32 +532,51 @@ function drawStudentCard(ctx, student, photoImg, animPhase){
   ctx.strokeStyle = 'rgba(212,175,55,0.55)';
   ctx.stroke();
 
-  // Big photo rendered with CONTAIN (never cropped or distorted)
+  // Big photo rendered with dynamic aspect-ratio matching width (no side gaps)
   const photoMargin = 56;
-  const px = photoMargin, py = photoMargin;
-  const pw = W - photoMargin*2;
+  const py = photoMargin;
   const ph = H * 0.54 - photoMargin;
+  const maxW = W - photoMargin * 2;
+  let pw = maxW;
+  let px = photoMargin;
+
+  if (photoImg && photoImg.width && photoImg.height) {
+    const imgR = photoImg.width / photoImg.height;
+    const targetW = ph * imgR;
+    pw = Math.min(targetW, maxW);
+    px = (W - pw) / 2;
+  }
+
   ctx.save();
   ctx.beginPath();
-  ctx.roundRect(px,py,pw,ph,24);
+  ctx.roundRect(px, py, pw, ph, 24);
   ctx.closePath(); ctx.clip();
   if (photoImg){
-    const imgR = photoImg.width/photoImg.height, boxR = pw/ph;
-    let dw, dh, dx, dy;
-    if (imgR > boxR){ dw = pw; dh = pw/imgR; dx = px; dy = py + (ph-dh)/2; }
-    else { dh = ph; dw = ph*imgR; dx = px + (pw-dw)/2; dy = py; }
     ctx.fillStyle = '#0b0e13';
     ctx.fillRect(px, py, pw, ph);
-    ctx.drawImage(photoImg, dx, dy, dw, dh);
+    ctx.drawImage(photoImg, px, py, pw, ph);
   } else {
-    ctx.fillStyle = '#1a1f2b'; ctx.fillRect(px,py,pw,ph);
+    ctx.fillStyle = '#1a1f2b'; ctx.fillRect(px, py, pw, ph);
     ctx.fillStyle = '#D4AF37'; ctx.font = "600 130px 'Fraunces', serif"; ctx.textAlign = 'center';
     ctx.fillText((student.name || '?').trim().charAt(0).toUpperCase(), W / 2, py + ph * .62);
   }
   ctx.restore();
   ctx.beginPath();
-  ctx.roundRect(px,py,pw,ph,24);
+  ctx.roundRect(px, py, pw, ph, 24);
   ctx.lineWidth = 4; ctx.strokeStyle = '#D4AF37'; ctx.stroke();
+
+  // Rank badge overlapping top-right corner of the photo frame
+  const bx = px + pw - 10, by = py + 10, br = 60;
+  ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(10,12,17,0.94)'; ctx.fill();
+  ctx.lineWidth = 4; ctx.strokeStyle = '#D4AF37'; ctx.stroke();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#D4AF37';
+  ctx.font = "700 40px 'Fraunces', serif";
+  ctx.fillText('#' + student.rank, bx, by - 6);
+  ctx.fillStyle = '#8B93A1';
+  ctx.font = "600 13px 'Space Grotesk', sans-serif";
+  ctx.fillText('RANK', bx, by + 22);
 
   // Name + class title
   const infoTop = py+ph+66;

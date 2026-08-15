@@ -33,6 +33,7 @@
 .top10-tunnel-hint { margin: 0; color: rgba(244, 241, 234, .75); font: 500 13px "Space Grotesk", Inter, sans-serif; }
 .top10-tunnel-actions { display: flex; align-items: center; gap: 10px; }
 .top10-tunnel-pause,
+.top10-tunnel-music,
 .top10-tunnel-mute,
 .top10-tunnel-close {
   border: 1px solid rgba(244, 241, 234, .25);
@@ -41,7 +42,8 @@
   font: 600 14px "Space Grotesk", Inter, sans-serif;
   transition: border-color .2s ease, background .2s ease, transform .2s ease;
 }
-.top10-tunnel-pause {
+.top10-tunnel-pause,
+.top10-tunnel-music {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -51,8 +53,10 @@
   background: rgba(10, 12, 17, .55);
   backdrop-filter: blur(8px);
 }
-.top10-tunnel-pause:hover { border-color: var(--top10-gold); background: rgba(10, 12, 17, .75); }
-.top10-tunnel-pause:active { transform: scale(.96); }
+.top10-tunnel-pause:hover,
+.top10-tunnel-music:hover { border-color: var(--top10-gold); background: rgba(10, 12, 17, .75); }
+.top10-tunnel-pause:active,
+.top10-tunnel-music:active { transform: scale(.96); }
 .top10-tunnel-mute {
   display: grid;
   width: 38px;
@@ -65,6 +69,90 @@
 .top10-tunnel-close { padding: 10px 18px; border-radius: 999px; background: rgba(244, 241, 234, .92); color: #0b0e13; }
 .top10-tunnel-mute:hover { border-color: var(--top10-gold); }
 .top10-tunnel-close:hover { background: #fff; transform: translateY(-1px); }
+
+.top10-tunnel-music-panel,
+.music-panel {
+  position: absolute;
+  top: 70px;
+  right: 22px;
+  width: min(310px, calc(100vw - 44px));
+  padding: 16px;
+  border: 1px solid rgba(212, 175, 55, .28);
+  border-radius: 16px;
+  background: rgba(10, 12, 17, .86);
+  backdrop-filter: blur(16px);
+  z-index: 8;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .35);
+  display: none;
+}
+.top10-tunnel-music-panel.is-open,
+.top10-tunnel-music-panel.open,
+.music-panel.is-open,
+.music-panel.open { display: block; }
+.top10-tunnel-music-panel h3,
+.music-panel h3 { margin: 0 0 5px; font-family: 'Fraunces', serif; font-size: 18px; color: var(--top10-ivory); }
+.top10-tunnel-music-panel p,
+.music-panel p { margin: 0 0 12px; color: var(--top10-muted); font-size: 12px; line-height: 1.45; }
+.top10-tunnel-music-options,
+.music-options {
+  display: grid !important;
+  gap: 8px !important;
+  margin-bottom: 12px !important;
+  max-height: none !important;
+  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+}
+.top10-tunnel-music-option,
+.music-option {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 9px !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: var(--top10-ivory) !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: none !important;
+  width: auto !important;
+  grid: none !important;
+  grid-template-columns: none !important;
+  grid-template-rows: none !important;
+  grid-template-areas: none !important;
+}
+.top10-tunnel-music-option input,
+.music-option input {
+  accent-color: var(--top10-gold) !important;
+  cursor: pointer !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  flex: none !important;
+  display: inline-block !important;
+}
+.top10-tunnel-music-mode,
+.music-mode { display: flex; gap: 8px; }
+.top10-tunnel-music-mode button,
+.music-mode button {
+  flex: 1;
+  border: 1px solid rgba(244, 241, 234, .16);
+  background: rgba(244, 241, 234, .05);
+  color: var(--top10-ivory);
+  border-radius: 10px;
+  padding: 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.top10-tunnel-music-mode button.is-active,
+.top10-tunnel-music-mode button.active,
+.music-mode button.is-active,
+.music-mode button.active { border-color: var(--top10-gold); background: rgba(212, 175, 55, .13); color: var(--top10-gold); }
 .top10-tunnel-dots { position: absolute; z-index: 3; bottom: 22px; left: 50%; display: flex; gap: 6px; transform: translateX(-50%); }
 .top10-tunnel-dots span { width: 5px; height: 5px; border-radius: 50%; background: rgba(244, 241, 234, .28); transition: background .25s ease, transform .25s ease; }
 .top10-tunnel-dots span.is-current { background: var(--top10-gold); transform: scale(1.5); }
