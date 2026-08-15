@@ -447,6 +447,20 @@
       <audio id="top10TunnelMusicPreview" controls preload="metadata" src="{{ asset_url(settings.top10_tunnel_music_path) if settings.top10_tunnel_music_path else url_for('static', filename='audio/top10-tunnel-default.wav') }}"></audio>
       <button type="button" class="secondary-action" id="top10TunnelMusicReset"><i class="fa-solid fa-rotate-left"></i> Reset to Default</button>
     </div>
+    <div class="wide tunnel-music-library" aria-live="polite">
+      <div class="tunnel-music-library__heading"><strong><i class="fa-solid fa-list-ol"></i> Uploaded Music Library</strong><small>Tracks remain saved after refresh. The newest uploaded track is active.</small></div>
+      <ol>
+        {% for track in top10_tunnel_tracks %}
+          <li class="{% if track.url == settings.top10_tunnel_music_path %}is-active{% endif %}">
+            <span class="tunnel-music-library__order">{{ "%02d"|format(loop.index) }}</span>
+            <span class="tunnel-music-library__track"><b>{{ track.name }}</b><small>{% if track.uploaded_at %}{{ track.uploaded_at }}{% else %}Saved custom track{% endif %}</small></span>
+            {% if track.url == settings.top10_tunnel_music_path %}<em><i class="fa-solid fa-circle-check"></i> Active</em>{% endif %}
+          </li>
+        {% else %}
+          <li class="is-empty"><i class="fa-solid fa-music"></i> No custom track has been uploaded. The default track is active.</li>
+        {% endfor %}
+      </ol>
+    </div>
   </section>
 
   <section class="panel form-grid premium-form result-sidebar-customizer">

@@ -400,10 +400,10 @@
       <div class="top10-tunnel-empty" id="top10TunnelEmpty" hidden><i class="fa-solid fa-trophy"></i><strong>Top 10 is not available yet</strong><span>Published class results are needed before the tunnel can begin.</span></div>
       <header class="top10-tunnel-topbar">
         <p class="top10-tunnel-hint" id="top10TunnelHint">Hold to speed up &middot; Esc to close</p>
-        <div class="top10-tunnel-actions"><button type="button" class="top10-tunnel-mute" id="top10TunnelMute" title="Sound on/off" aria-label="Toggle tunnel sound"><i class="fa-solid fa-volume-high"></i></button><button type="button" class="top10-tunnel-close" id="top10TunnelClose"><i class="fa-solid fa-arrow-left"></i> Back to Report Card</button></div>
+        <div class="top10-tunnel-actions"><button type="button" class="top10-tunnel-pause" id="top10TunnelPause" title="Pause / Resume" aria-label="Pause tunnel motion"><i class="fa-solid fa-pause"></i><span>Pause</span></button><button type="button" class="top10-tunnel-mute" id="top10TunnelMute" title="Sound on/off" aria-label="Toggle tunnel sound"><i class="fa-solid fa-volume-high"></i></button><button type="button" class="top10-tunnel-close" id="top10TunnelClose"><i class="fa-solid fa-arrow-left"></i> Back to Report Card</button></div>
       </header>
       <div class="top10-tunnel-dots" id="top10TunnelDots" aria-hidden="true"></div>
-      <audio id="top10TunnelAudio" loop preload="auto" data-default-src="{{ url_for('static', filename='audio/top10-tunnel-default.wav') }}" data-custom-src="{{ asset_url(settings.top10_tunnel_music_path) if settings.top10_tunnel_music_path else '' }}"></audio>
+      <audio id="top10TunnelAudio" loop preload="auto" data-default-src="{{ url_for('static', filename='audio/top10-tunnel-default.wav') }}" data-custom-src="{{ asset_url(settings.top10_tunnel_music_path) if settings.top10_tunnel_music_path else '' }}" data-custom-sources="{{ settings.top10_tunnel_music_tracks|default('[]') }}"></audio>
     </section>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
     <script src="{{ url_for('static', filename='js/top10-tunnel.js') }}" defer></script>

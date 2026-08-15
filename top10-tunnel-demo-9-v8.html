@@ -1,0 +1,1601 @@
+<!DOCTYPE html>
+<html lang="so">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Student Result Portal — Top 10</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Space+Grotesk:wght@400;500;600&display=swap');
+
+  :root{
+    --bg: #0B0E13;
+    --bg-2: #10141C;
+    --gold: #D4AF37;
+    --gold-soft: rgba(212,175,55,0.35);
+    --ivory: #F4F1EA;
+    --muted: #8B93A1;
+    --line: rgba(244,241,234,0.12);
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; height:100%;
+    background:var(--bg);
+    color:var(--ivory);
+    font-family:'Space Grotesk', sans-serif;
+    overflow-x:hidden;
+  }
+  .eyebrow{
+    font-size:12px; letter-spacing:0.18em; text-transform:uppercase;
+    color:var(--gold); font-weight:600;
+  }
+  h1{
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    font-size:clamp(34px, 6vw, 58px);
+    line-height:1.05;
+    margin:14px 0 18px;
+    letter-spacing:-0.01em;
+  }
+  h1 em{ font-style: italic; color: var(--gold); }
+
+  .landing{
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    padding:48px 24px;
+    position:relative;
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 0%, rgba(212,175,55,0.10), transparent 60%),
+      linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+  }
+  .landing::before{
+    content:"";
+    position:absolute; inset:0;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse 60% 50% at 50% 30%, black, transparent 75%);
+    pointer-events:none;
+  }
+  .content{ position:relative; max-width:640px; }
+  p.sub{
+    color:var(--muted);
+    font-size:16px;
+    line-height:1.6;
+    max-width:480px;
+    margin:0 auto 34px;
+  }
+
+  .cta{
+    position:relative;
+    appearance:none;
+    border:1px solid var(--gold-soft);
+    background: linear-gradient(180deg, rgba(212,175,55,0.14), rgba(212,175,55,0.04));
+    color:var(--ivory);
+    padding:16px 30px;
+    border-radius:999px;
+    font-family:'Space Grotesk', sans-serif;
+    font-size:15px;
+    font-weight:600;
+    letter-spacing:0.01em;
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    gap:10px;
+    transition: transform .25s ease, border-color .25s ease, background .25s ease;
+  }
+  .cta:hover{ transform:translateY(-2px); border-color:var(--gold); background: linear-gradient(180deg, rgba(212,175,55,0.22), rgba(212,175,55,0.06)); }
+  .cta:active{ transform:translateY(0px) scale(0.98); }
+  .cta .ring{
+    width:9px; height:9px; border-radius:50%;
+    background:var(--gold);
+    box-shadow:0 0 0 3px rgba(212,175,55,0.18);
+  }
+
+  .hint{
+    margin-top:18px;
+    font-size:12px;
+    color:var(--muted);
+    letter-spacing:0.02em;
+  }
+
+  /* ---- Fullscreen tunnel overlay ---- */
+  #tunnelOverlay{
+    position:fixed; inset:0;
+    background:#000;
+    z-index:1000;
+    opacity:0;
+    pointer-events:none;
+    transition: opacity .45s ease;
+  }
+  #tunnelOverlay.active{ opacity:1; pointer-events:auto; }
+
+  #tunnelCanvas{ position:absolute; inset:0; display:block; width:100%; height:100%; }
+
+  .overlay-topbar{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 20px 22px;
+    z-index:5;
+    background: linear-gradient(180deg, rgba(0,0,0,0.55), transparent);
+  }
+  .overlay-hint{
+    font-size:13px; color: rgba(244,241,234,0.75);
+    letter-spacing:0.01em;
+  }
+  .close-btn{
+    appearance:none; border:1px solid rgba(244,241,234,0.25);
+    background: rgba(244,241,234,0.92);
+    color:#0B0E13;
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:600; font-size:14px;
+    padding:10px 18px; border-radius:999px;
+    cursor:pointer;
+  }
+  .close-btn:hover{ background:#fff; }
+
+  .mute-btn{
+    appearance:none; border:1px solid rgba(244,241,234,0.25);
+    background: rgba(10,12,17,0.55);
+    backdrop-filter: blur(8px);
+    color:var(--ivory);
+    width:38px; height:38px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; margin-right:10px; flex:none;
+    font-size:16px;
+    transition: border-color .2s ease, background .2s ease;
+  }
+  .mute-btn:hover{ border-color:var(--gold); }
+  .topbar-right{ display:flex; align-items:center; }
+
+  .control-btn{
+    appearance:none; border:1px solid rgba(244,241,234,0.25);
+    background:rgba(10,12,17,0.55); backdrop-filter:blur(8px);
+    color:var(--ivory); min-width:42px; height:38px; padding:0 12px;
+    border-radius:999px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; margin-right:8px; flex:none; font-size:14px; font-weight:600;
+    transition:border-color .2s ease, background .2s ease, transform .15s ease;
+  }
+  .control-btn:hover{border-color:var(--gold); background:rgba(10,12,17,0.75);}
+  .control-btn:active{transform:scale(.96);}
+  .music-panel{
+    position:absolute; top:70px; right:22px; width:min(310px, calc(100vw - 44px));
+    padding:16px; border:1px solid rgba(212,175,55,.28);
+    border-radius:16px; background:rgba(10,12,17,.86); backdrop-filter:blur(16px);
+    z-index:8; box-shadow:0 18px 50px rgba(0,0,0,.35); display:none;
+  }
+  .music-panel.open{display:block;}
+  .music-panel h3{margin:0 0 5px; font-family:'Fraunces',serif; font-size:18px;}
+  .music-panel p{margin:0 0 12px; color:var(--muted); font-size:12px; line-height:1.45;}
+  .music-options{display:grid; gap:8px; margin-bottom:12px;}
+  .music-option{display:flex; align-items:center; gap:9px; font-size:13px; color:var(--ivory);}
+  .music-option input{accent-color:var(--gold);}
+  .music-mode{display:flex; gap:8px;}
+  .music-mode button{flex:1; border:1px solid rgba(244,241,234,.16); background:rgba(244,241,234,.05); color:var(--ivory); border-radius:10px; padding:8px; cursor:pointer; font-size:12px;}
+  .music-mode button.active{border-color:var(--gold); background:rgba(212,175,55,.13); color:var(--gold);}
+
+  .dots{
+    position:absolute; left:50%; bottom:22px; transform:translateX(-50%);
+    display:flex; gap:6px; z-index:5;
+  }
+  .dots span{
+    width:5px; height:5px; border-radius:50%;
+    background: rgba(244,241,234,0.28);
+    transition: background .25s ease, transform .25s ease;
+  }
+  .dots span.on{ background: var(--gold); transform: scale(1.5); }
+
+  /* ---------- Student Info Card (post-tunnel details) ---------- */
+  .student-info-card{
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .student-info-item{
+    display:flex; align-items:center; gap:10px;
+    padding:10px 14px; border-radius:12px;
+    background:rgba(244,241,234,0.04);
+    border:1px solid var(--line);
+  }
+  .student-info-icon{ font-size:15px; }
+  .student-info-label{
+    font-size:11px; text-transform:uppercase; letter-spacing:0.1em;
+    color:var(--muted); min-width:64px;
+  }
+  .student-info-value{ font-size:14px; color:var(--ivory); font-weight:600; }
+
+  /* Name field gets the animated treatment (reveal / shine / sparkle / underline) */
+  .student-info-item.is-name{
+    flex-direction:column; align-items:center; text-align:center;
+    padding:18px 16px;
+  }
+  .name-caption{
+    font-size:10px; text-transform:uppercase; letter-spacing:.14em;
+    color:var(--muted); margin-bottom:10px;
+  }
+  .name-stage{ position:relative; display:inline-block; padding:6px 20px; max-width:100%; }
+  .name-glow-bg{
+    position:absolute; inset:-6px; border-radius:16px;
+    background:radial-gradient(circle, var(--gold) 0%, transparent 72%);
+    filter:blur(20px); opacity:.35; z-index:0;
+    animation: nameGlowPulse 2.6s ease-in-out infinite;
+  }
+  @keyframes nameGlowPulse{ 0%,100%{ opacity:.3; transform:scale(.94); } 50%{ opacity:.6; transform:scale(1.05); } }
+  .animated-name{
+    position:relative; z-index:1; display:inline-block;
+    font-family:'Fraunces', serif;
+    font-size:19px; font-weight:700; letter-spacing:.01em;
+    white-space:normal; line-height:1.35;
+    background:linear-gradient(100deg, var(--gold) 0%, #ffffff 45%, var(--gold) 100%);
+    background-size:260% auto;
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 0 10px rgba(212,175,55,0.5));
+    clip-path:inset(0 100% 0 0);
+    animation: nameReveal 1s cubic-bezier(.22,.61,.36,1) forwards, nameShine 3s linear 1s infinite;
+  }
+  @keyframes nameReveal{ to{ clip-path:inset(0 0 0 0); } }
+  @keyframes nameShine{ to{ background-position:-260% center; } }
+  .name-sweep{
+    position:absolute; top:0; left:-45%; width:30%; height:100%;
+    background:linear-gradient(100deg, transparent, rgba(255,255,255,0.6), transparent);
+    transform:skewX(-20deg); mix-blend-mode:overlay; z-index:2; pointer-events:none;
+    opacity:0; animation: sweepMove 2.8s ease-in-out 1.1s infinite;
+  }
+  @keyframes sweepMove{ 0%{ left:-45%; opacity:0; } 8%{ opacity:1; } 55%{ opacity:1; } 65%{ left:130%; opacity:0; } 100%{ left:130%; opacity:0; } }
+  .name-sparkle{ position:absolute; font-size:12px; color:var(--gold); z-index:1; opacity:0; animation: sparkleTwinkle 2.2s ease-in-out .9s infinite; }
+  .name-sparkle.left{ left:0; top:2px; }
+  .name-sparkle.right{ right:0; bottom:2px; animation-delay:1.4s; }
+  @keyframes sparkleTwinkle{ 0%,100%{ opacity:0; transform:scale(.6) rotate(0deg); } 50%{ opacity:1; transform:scale(1.15) rotate(20deg); } }
+  .name-underline{
+    width:0; height:2px; margin:10px auto 0;
+    background:linear-gradient(90deg, transparent, var(--gold), transparent);
+    animation: underlineGrow .8s ease 1s forwards; border-radius:2px;
+    box-shadow:0 0 10px rgba(212,175,55,0.5);
+  }
+  @keyframes underlineGrow{ to{ width:75%; } }
+</style>
+</head>
+<body>
+
+<div class="landing">
+  <div class="content">
+    <div class="eyebrow" id="eyebrowFasal">Student Result Portal</div>
+    <h1>Top Ten <em>Honour</em><br/>Board</h1>
+    <p class="sub" id="subText">
+      Daawo natiijada 10-ka ardayda ugu sarreeya, iyadoo sawirradooda lagu soo bandhigayo tunnel 3D ah oo si joogto ah u wareegaya.
+    </p>
+    <button class="cta" id="openTunnel">
+      <span class="ring"></span>
+      Guji halkan si aad u daawato Top 10 Student
+    </button>
+    <div class="hint">Hold to speed up · Esc to close</div>
+  </div>
+</div>
+
+<div id="tunnelOverlay">
+  <canvas id="tunnelCanvas"></canvas>
+
+  <div class="overlay-topbar">
+    <div class="overlay-hint">Hold to speed up · Esc to close</div>
+    <div class="topbar-right">
+      <button class="control-btn" id="pauseBtn" title="Pause / Resume">
+        <svg id="pauseIcon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+        <span id="pauseBtnText">Pause</span>
+      </button>
+      <button class="control-btn" id="musicBtn" title="Music settings">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+        <span>Music</span>
+      </button>
+      <button class="mute-btn" id="muteBtn" title="Sound on/off">
+        <svg id="muteIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+      </button>
+      <button class="close-btn" id="closeTunnel">Close</button>
+    </div>
+  </div>
+
+  <div class="music-panel" id="musicPanel">
+    <h3>Music Settings</h3>
+    <p>Dooro hal track ama dhowr track. Haddii Sequence la doorto, mid kasta marka uu dhammaado kan xiga ayaa si automatic ah u bilaabanaya.</p>
+    <div class="music-options">
+      <label class="music-option"><input type="checkbox" value="0" checked> Ambient Track 1</label>
+      <label class="music-option"><input type="checkbox" value="1"> Ambient Track 2</label>
+      <label class="music-option"><input type="checkbox" value="2"> Ambient Track 3</label>
+    </div>
+    <div class="music-mode">
+      <button id="singleMusicMode">Hal Track</button>
+      <button id="sequenceMusicMode" class="active">Sequence</button>
+    </div>
+  </div>
+
+  <div class="dots" id="dots"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ---------------------------------------------------------
+   Demo data — replace with data pulled from the results DB.
+--------------------------------------------------------- */
+const SANAD_DUGSIYEEDKA = "2025 - 2026";
+const EXAM_TYPE = "Exam-ka Guud (Final)";
+
+const STUDENTS_BY_CLASS = {
+  "Fasalka 12 - A": [
+    { name: "Mohamed Cabdilaahi", id: "ST-2041", avg: "96.4%", rank: 1, photo: "https://i.pravatar.cc/300?img=12" },
+    { name: "Sagal Warsame", id: "ST-1877", avg: "94.6%", rank: 2, photo: "https://i.pravatar.cc/300?img=47" },
+    { name: "Amina Faarax", id: "ST-1850", avg: "91.4%", rank: 3, photo: "https://i.pravatar.cc/300?img=29" },
+    { name: "Xasan Cabdi", id: "ST-2064", avg: "90.9%", rank: 4, photo: "https://i.pravatar.cc/300?img=5" },
+    { name: "Layla Maxamed", id: "ST-2101", avg: "90.2%", rank: 5, photo: "https://i.pravatar.cc/300?img=9" },
+    { name: "Cabdulaahi Nuur", id: "ST-2117", avg: "89.6%", rank: 6, photo: "https://i.pravatar.cc/300?img=14" },
+    { name: "Fadumo Xasan", id: "ST-2130", avg: "89.0%", rank: 7, photo: "https://i.pravatar.cc/300?img=20" },
+    { name: "Zakariye Cali", id: "ST-2144", avg: "88.5%", rank: 8, photo: "https://i.pravatar.cc/300?img=33" },
+    { name: "Hibo Warsame", id: "ST-2159", avg: "88.1%", rank: 9, photo: "https://i.pravatar.cc/300?img=36" },
+    { name: "Cismaan Faarax", id: "ST-2166", avg: "87.6%", rank: 10, photo: "https://i.pravatar.cc/300?img=51" },
+  ],
+  "Fasalka 12 - B": [
+    { name: "Hodan Ismaaciil", id: "ST-1982", avg: "95.7%", rank: 1, photo: "https://i.pravatar.cc/300?img=32" },
+    { name: "Ifrah Maxamed", id: "ST-1999", avg: "93.5%", rank: 2, photo: "https://i.pravatar.cc/300?img=44" },
+    { name: "Nasteexo Cabdi", id: "ST-1904", avg: "92.6%", rank: 3, photo: "https://i.pravatar.cc/300?img=39" },
+    { name: "Deeqa Cismaan", id: "ST-1911", avg: "91.8%", rank: 4, photo: "https://i.pravatar.cc/300?img=41" },
+    { name: "Maxamed Xuseen", id: "ST-1923", avg: "91.1%", rank: 5, photo: "https://i.pravatar.cc/300?img=13" },
+    { name: "Rahma Cali", id: "ST-1937", avg: "90.4%", rank: 6, photo: "https://i.pravatar.cc/300?img=48" },
+    { name: "Yaasiin Aadan", id: "ST-1948", avg: "89.9%", rank: 7, photo: "https://i.pravatar.cc/300?img=8" },
+    { name: "Sahra Nuur", id: "ST-1956", avg: "89.3%", rank: 8, photo: "https://i.pravatar.cc/300?img=45" },
+    { name: "Cabdiweli Xasan", id: "ST-1965", avg: "88.7%", rank: 9, photo: "https://i.pravatar.cc/300?img=17" },
+    { name: "Khadiija Warsame", id: "ST-1974", avg: "88.0%", rank: 10, photo: "https://i.pravatar.cc/300?img=31" },
+  ],
+  "Fasalka 11 - A": [
+    { name: "Cabdiraxmaan Xasan", id: "ST-2210", avg: "95.1%", rank: 1, photo: "https://i.pravatar.cc/300?img=15" },
+    { name: "Sadia Cabdulle", id: "ST-2223", avg: "92.9%", rank: 2, photo: "https://i.pravatar.cc/300?img=27" },
+    { name: "Yaasin Warsame", id: "ST-2238", avg: "91.7%", rank: 3, photo: "https://i.pravatar.cc/300?img=19" },
+    { name: "Nimco Cali", id: "ST-2249", avg: "90.8%", rank: 4, photo: "https://i.pravatar.cc/300?img=26" },
+    { name: "Xuseen Faarax", id: "ST-2255", avg: "90.0%", rank: 5, photo: "https://i.pravatar.cc/300?img=11" },
+    { name: "Asli Maxamed", id: "ST-2262", avg: "89.4%", rank: 6, photo: "https://i.pravatar.cc/300?img=24" },
+    { name: "Bashiir Cismaan", id: "ST-2270", avg: "88.8%", rank: 7, photo: "https://i.pravatar.cc/300?img=6" },
+    { name: "Hamdi Xasan", id: "ST-2281", avg: "88.2%", rank: 8, photo: "https://i.pravatar.cc/300?img=30" },
+    { name: "Cali Aadan", id: "ST-2293", avg: "87.7%", rank: 9, photo: "https://i.pravatar.cc/300?img=7" },
+    { name: "Ubax Nuur", id: "ST-2299", avg: "87.1%", rank: 10, photo: "https://i.pravatar.cc/300?img=42" },
+  ],
+};
+
+function getQueryParam(name){
+  return new URLSearchParams(window.location.search).get(name);
+}
+
+const CLASS_KEYS = Object.keys(STUDENTS_BY_CLASS);
+const CURRENT_FASAL = STUDENTS_BY_CLASS[getQueryParam('fasal')] ? getQueryParam('fasal') : CLASS_KEYS[0];
+
+const STUDENTS = STUDENTS_BY_CLASS[CURRENT_FASAL].map(s => ({
+  ...s,
+  fasal: CURRENT_FASAL,
+  sanadDugsiyeedka: SANAD_DUGSIYEEDKA,
+  examType: EXAM_TYPE,
+}));
+
+document.getElementById('eyebrowFasal').textContent = 'Student Result Portal — ' + CURRENT_FASAL;
+document.getElementById('subText').textContent =
+  'Daawo natiijada 10-ka ugu sarreeya ee ' + CURRENT_FASAL + ', iyadoo sawirradooda lagu soo bandhigayo tunnel 3D ah oo si joogto ah u wareegaya.';
+
+/* ---------------------------------------------------------
+   3D photo tunnel — V5 Fully Compliant Implementation
+--------------------------------------------------------- */
+const TUNNEL_WIDTH = 2, TUNNEL_HEIGHT = 1.8, SEGMENT_DEPTH = 1;
+const NUM_SEGMENTS = 15, LINE_RADIUS = 0.003, SCROLL_TO_Z = 0.05, CAMERA_CHASE = 0.1;
+const FADE_IN = 1, GRID = 3;
+const GOLD = 0xD4AF37, LINE_COLOR = 0x8B93A1;
+const FOG_FAR = NUM_SEGMENTS * SEGMENT_DEPTH * 0.95;
+
+const CARD_W = 1.15, CARD_CANVAS_W = 720, CARD_CANVAS_H = 940;
+const CARD_D_START = 20, CARD_D_END = 2.65;
+const SECONDS_BETWEEN_CARDS = 7.0;
+const CARD_SECONDS_PER_STUDENT = SECONDS_BETWEEN_CARDS * STUDENTS.length;
+const CARD_SPEED = (CARD_D_START - CARD_D_END) / CARD_SECONDS_PER_STUDENT;
+
+let renderer, scene, camera, segments = [], fading = [];
+let scrollPos = 0, pressed = false, last = 0, raf = 0, running = false;
+let imageIndex = 0, colorIndex = 0;
+let studentCards = [];
+let populateSegment = null;
+
+function drawCardVectorIcon(ctx, type, x, y, size = 20, color = '#FFFFFF') {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  const s = size / 22;
+  ctx.scale(s, s);
+
+  const t = String(type || '').toLowerCase();
+  if (t === 'class' || t.includes('class') || t.includes('level') || t === '🎓') {
+    ctx.beginPath();
+    ctx.moveTo(0, -9);
+    ctx.lineTo(11, -3);
+    ctx.lineTo(0, 3);
+    ctx.lineTo(-11, -3);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-7, 0);
+    ctx.quadraticCurveTo(0, 5, 7, 0);
+    ctx.lineTo(7, 4);
+    ctx.quadraticCurveTo(0, 8, -7, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(6, -0.5);
+    ctx.lineTo(9.5, 3);
+    ctx.lineTo(9.5, 7);
+    ctx.stroke();
+  } else if (t === 'score' || t.includes('score') || t.includes('avg') || t.includes('percent') || t === '📊' || t.includes('%')) {
+    ctx.beginPath(); ctx.roundRect(-8, 0, 4, 9, 1.5); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(-2, -7, 4, 16, 1.5); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(4, -4, 4, 13, 1.5); ctx.fill();
+  } else if (t === 'year' || t === 'calendar' || t.includes('year') || t.includes('sanad') || t === '★') {
+    ctx.beginPath();
+    ctx.roundRect(-9, -7, 18, 16, 3);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-9, -2); ctx.lineTo(9, -2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-5, -10); ctx.lineTo(-5, -6);
+    ctx.moveTo(5, -10);  ctx.lineTo(5, -6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(-4, 2, 1.2, 0, Math.PI * 2);
+    ctx.arc(0, 2, 1.2, 0, Math.PI * 2);
+    ctx.arc(4, 2, 1.2, 0, Math.PI * 2);
+    ctx.arc(-4, 5.5, 1.2, 0, Math.PI * 2);
+    ctx.arc(0, 5.5, 1.2, 0, Math.PI * 2);
+    ctx.arc(4, 5.5, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (t === 'exam' || t === 'check' || t.includes('exam') || t === '✓') {
+    ctx.beginPath();
+    ctx.roundRect(-8, -9, 16, 18, 3);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-4, 0);
+    ctx.lineTo(-1, 3);
+    ctx.lineTo(4, -3);
+    ctx.stroke();
+  } else if (t === 'id' || t.includes('id') || t === '🪪') {
+    ctx.beginPath();
+    ctx.roundRect(-10, -7, 20, 14, 3);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, -7, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.roundRect(-7, -4, 6, 6, 1);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(1, -3); ctx.lineTo(7, -3);
+    ctx.moveTo(1, 0);  ctx.lineTo(5, 0);
+    ctx.moveTo(-7, 4); ctx.lineTo(7, 4);
+    ctx.stroke();
+  } else if (t === 'rank' || t.includes('rank') || t === '🏆') {
+    ctx.beginPath();
+    ctx.moveTo(-7, -9);
+    ctx.lineTo(7, -9);
+    ctx.lineTo(5, -1);
+    ctx.quadraticCurveTo(0, 4, -5, -1);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-7, -7); ctx.quadraticCurveTo(-11, -6, -9, -2); ctx.quadraticCurveTo(-7, 0, -5, -2);
+    ctx.moveTo(7, -7);  ctx.quadraticCurveTo(11, -6, 9, -2);  ctx.quadraticCurveTo(7, 0, 5, -2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, 3.5); ctx.lineTo(0, 7);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.roundRect(-6, 7, 12, 3, 1);
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+let combAvailable = true;
+
+function drawStudentCard(ctx, student, photoImg, animPhase){
+  const W = CARD_CANVAS_W, H = CARD_CANVAS_H;
+  const t = animPhase || 0;
+  ctx.clearRect(0,0,W,H);
+
+  function hexToRgba(hex, a){
+    const v = String(hex).replace('#','');
+    const n = parseInt(v, 16);
+    return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+  }
+
+  // Outer border rectangle (the whole card)
+  const pad = 8;
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.62)';
+  ctx.shadowBlur = 34;
+  ctx.shadowOffsetY = 16;
+  ctx.beginPath();
+  ctx.roundRect(pad,pad,W-pad*2,H-pad*2,32);
+  ctx.fillStyle = 'rgba(10,12,17,0.92)';
+  ctx.fill();
+  ctx.restore();
+
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(212,175,55,0.55)';
+  ctx.stroke();
+
+  // Big photo rendered with CONTAIN (never cropped or distorted)
+  const photoMargin = 56;
+  const px = photoMargin, py = photoMargin;
+  const pw = W - photoMargin*2;
+  const ph = H * 0.54 - photoMargin;
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(px,py,pw,ph,24);
+  ctx.closePath(); ctx.clip();
+  if (photoImg){
+    const imgR = photoImg.width/photoImg.height, boxR = pw/ph;
+    let dw, dh, dx, dy;
+    if (imgR > boxR){ dw = pw; dh = pw/imgR; dx = px; dy = py + (ph-dh)/2; }
+    else { dh = ph; dw = ph*imgR; dx = px + (pw-dw)/2; dy = py; }
+    ctx.fillStyle = '#0b0e13';
+    ctx.fillRect(px, py, pw, ph);
+    ctx.drawImage(photoImg, dx, dy, dw, dh);
+  } else {
+    ctx.fillStyle = '#1a1f2b'; ctx.fillRect(px,py,pw,ph);
+    ctx.fillStyle = '#D4AF37'; ctx.font = "600 130px 'Fraunces', serif"; ctx.textAlign = 'center';
+    ctx.fillText((student.name || '?').trim().charAt(0).toUpperCase(), W / 2, py + ph * .62);
+  }
+  ctx.restore();
+  ctx.beginPath();
+  ctx.roundRect(px,py,pw,ph,24);
+  ctx.lineWidth = 4; ctx.strokeStyle = '#D4AF37'; ctx.stroke();
+
+  // Name + class title
+  const infoTop = py+ph+66;
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'center';
+  ctx.font = "600 40px 'Fraunces', serif";
+
+  const NAME_A = '#D4AF37';
+  const NAME_B = '#FFE9AE';
+  const nameWidth = Math.max(ctx.measureText(student.name).width, 40);
+
+  const boxPadX = 26, boxPadY = 10;
+  const textTop = infoTop - 34, textBottom = infoTop + 10;
+  const boxX = W/2 - nameWidth/2 - boxPadX;
+  const boxY = textTop - boxPadY;
+  const boxW = nameWidth + boxPadX*2;
+  const boxH = (textBottom - textTop) + boxPadY*2;
+
+  // Pulsing radial glow behind name
+  const glowPulse = 0.3 + 0.3 * (0.5 + 0.5*Math.sin(t * (2*Math.PI/2.6)));
+  ctx.save();
+  const glowR = ctx.createRadialGradient(
+    W/2, boxY + boxH/2, 4,
+    W/2, boxY + boxH/2, boxW*0.62
+  );
+  glowR.addColorStop(0, `rgba(212,175,55,${(0.30 + glowPulse*0.3).toFixed(3)})`);
+  glowR.addColorStop(1, 'rgba(212,175,55,0)');
+  ctx.fillStyle = glowR;
+  ctx.fillRect(boxX-30, boxY-30, boxW+60, boxH+60);
+
+  ctx.beginPath();
+  ctx.roundRect(boxX, boxY, boxW, boxH, 12);
+  ctx.fillStyle = 'rgba(10,12,17,0.55)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(212,175,55,0.28)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
+
+  // Animated shimmering name text
+  const shift = Math.sin(t * 0.6) * nameWidth * 0.65;
+  const nameGrad = ctx.createLinearGradient(
+    W/2 - nameWidth/2 + shift, 0,
+    W/2 + nameWidth/2 + shift, 0
+  );
+  nameGrad.addColorStop(0.00, '#F4F1EA');
+  nameGrad.addColorStop(0.32, '#F4F1EA');
+  nameGrad.addColorStop(0.50, NAME_B);
+  nameGrad.addColorStop(0.58, NAME_A);
+  nameGrad.addColorStop(0.68, NAME_B);
+  nameGrad.addColorStop(0.84, '#F4F1EA');
+  nameGrad.addColorStop(1.00, '#F4F1EA');
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(212,175,55,' + (0.4 + 0.3*Math.sin(t*2.4)).toFixed(3) + ')';
+  ctx.shadowBlur = 20 + 10*Math.sin(t*2.4);
+  ctx.fillStyle = nameGrad;
+  ctx.fillText(student.name, W/2, infoTop);
+  ctx.restore();
+
+  // Diagonal light sweep
+  {
+    const cyclePos = (t / 2.8) % 1;
+    let sweepOpacity = 0;
+    if (cyclePos < 0.08) sweepOpacity = cyclePos/0.08;
+    else if (cyclePos < 0.55) sweepOpacity = 1;
+    else if (cyclePos < 0.65) sweepOpacity = 1 - (cyclePos-0.55)/0.10;
+    if (sweepOpacity > 0.01){
+      const sweepX = boxX - boxW*0.45 + cyclePos * (boxW*1.75);
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(boxX, boxY, boxW, boxH, 12);
+      ctx.clip();
+      ctx.globalCompositeOperation = 'overlay';
+      ctx.globalAlpha = sweepOpacity;
+      ctx.translate(sweepX, boxY + boxH/2);
+      ctx.rotate(-20 * Math.PI/180);
+      const sweepGrad = ctx.createLinearGradient(-boxW*0.15, 0, boxW*0.15, 0);
+      sweepGrad.addColorStop(0, 'rgba(255,255,255,0)');
+      sweepGrad.addColorStop(0.5, 'rgba(255,255,255,0.65)');
+      sweepGrad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = sweepGrad;
+      ctx.fillRect(-boxW*0.15, -boxH, boxW*0.3, boxH*2);
+      ctx.restore();
+    }
+  }
+
+  // Section 2.6: Flanking sparkle stars with SCALE & ROTATION motion
+  {
+    const leftTw = 0.5 + 0.5*Math.sin(t * (2*Math.PI/2.2) - Math.PI/2);
+    const rightTw = 0.5 + 0.5*Math.sin((t-1.4) * (2*Math.PI/2.2) - Math.PI/2);
+
+    // Left star: scale(.6 -> 1.15), rotate(0 -> 20deg)
+    ctx.save();
+    const lScale = 0.6 + 0.55 * leftTw;
+    const lRot = (leftTw * 20) * Math.PI / 180;
+    ctx.translate(boxX - 22, boxY + boxH/2);
+    ctx.scale(lScale, lScale);
+    ctx.rotate(lRot);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = "22px 'Space Grotesk', sans-serif";
+    ctx.fillStyle = NAME_B;
+    ctx.shadowColor = 'rgba(212,175,55,0.85)'; ctx.shadowBlur = 12;
+    ctx.globalAlpha = leftTw;
+    ctx.fillText('✦', 0, 0);
+    ctx.restore();
+
+    // Right star: scale(.6 -> 1.15), rotate(0 -> -20deg)
+    ctx.save();
+    const rScale = 0.6 + 0.55 * rightTw;
+    const rRot = (-rightTw * 20) * Math.PI / 180;
+    ctx.translate(boxX + boxW + 22, boxY + boxH/2);
+    ctx.scale(rScale, rScale);
+    ctx.rotate(rRot);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = "22px 'Space Grotesk', sans-serif";
+    ctx.fillStyle = NAME_B;
+    ctx.shadowColor = 'rgba(212,175,55,0.85)'; ctx.shadowBlur = 12;
+    ctx.globalAlpha = rightTw;
+    ctx.fillText('✦', 0, 0);
+    ctx.restore();
+  }
+
+  // Glowing underline
+  {
+    const ulW = boxW * 0.62, ulX = W/2 - ulW/2, ulY = boxY + boxH + 10;
+    const ulGlow = 0.55 + 0.35*Math.sin(t*2.4);
+    ctx.save();
+    ctx.shadowColor = `rgba(212,175,55,${ulGlow.toFixed(3)})`;
+    ctx.shadowBlur = 10;
+    const ulGrad = ctx.createLinearGradient(ulX, 0, ulX+ulW, 0);
+    ulGrad.addColorStop(0, 'rgba(212,175,55,0)');
+    ulGrad.addColorStop(0.5, NAME_A);
+    ulGrad.addColorStop(1, 'rgba(212,175,55,0)');
+    ctx.fillStyle = ulGrad;
+    ctx.beginPath();
+    ctx.roundRect(ulX, ulY, ulW, 2.4, 1.2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  const lineY = boxY + boxH + 28;
+  ctx.strokeStyle = 'rgba(244,241,234,0.14)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(40,lineY); ctx.lineTo(W-40,lineY); ctx.stroke();
+
+  /* ---------------------------------------------------------
+     Section 2.5: Student Information Cards (Exactly 4 non-duplicated cards):
+     1. Class / Level
+     2. Average / Score
+     3. Academic Year (Sanad Dugsiyeedka)
+     4. Exam Type
+     Dark Navy Dominant Gradients.
+  --------------------------------------------------------- */
+  const cards = [
+    { value: student.fasal, label: 'CLASS / LEVEL', icon: 'class', a: '#071526', mid: '#0F2643', b: '#173B66' },
+    { value: student.avg, label: 'CELCELIS GUUD', icon: 'score', a: '#061324', mid: '#0E223E', b: '#15345B' },
+    { value: student.sanadDugsiyeedka, label: 'SANAD DUGSIYEEDKA', icon: 'year', a: '#07162A', mid: '#102747', b: '#193B6E' },
+    { value: student.examType, label: 'EXAM TYPE', icon: 'exam', a: '#071428', mid: '#0E2240', b: '#173663' }
+  ];
+
+  const cardGap = 18;
+  const cardW = (W - 80 - cardGap) / 2;
+  const cardH = 92;
+  const cardsTop = lineY + 24;
+
+  cards.forEach((item, idx) => {
+    const col = idx % 2;
+    const row = Math.floor(idx / 2);
+    const x = 40 + col * (cardW + cardGap);
+    const y = cardsTop + row * (cardH + 16);
+
+    // Tile radial back-glow
+    {
+      const tileGlow = 0.28 + 0.22 * (0.5 + 0.5*Math.sin((t + idx*0.6) * (2*Math.PI/2.6)));
+      ctx.save();
+      const tileGlowGrad = ctx.createRadialGradient(
+        x + cardW/2, y + cardH/2, 4,
+        x + cardW/2, y + cardH/2, cardW * 0.65
+      );
+      tileGlowGrad.addColorStop(0, hexToRgba(item.b, tileGlow.toFixed(3)));
+      tileGlowGrad.addColorStop(1, hexToRgba(item.b, 0));
+      ctx.fillStyle = tileGlowGrad;
+      ctx.fillRect(x - 20, y - 20, cardW + 40, cardH + 40);
+      ctx.restore();
+    }
+
+    // Genuine 2D elevation drop shadow
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowBlur = 18;
+    ctx.shadowOffsetY = 8;
+
+    // Gradient card background
+    const grad = ctx.createLinearGradient(x, y, x + cardW, y + cardH);
+    grad.addColorStop(0, item.a);
+    grad.addColorStop(0.55, item.mid);
+    grad.addColorStop(1, item.b);
+
+    ctx.beginPath();
+    ctx.roundRect(x, y, cardW, cardH, 18);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.restore();
+
+    // Border & subtle highlight stroke
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(x, y, cardW, cardH, 18);
+    ctx.strokeStyle = 'rgba(212,175,55,0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Glass / frosted depth overlay layer
+    const glassOverlay = ctx.createLinearGradient(x, y, x, y + cardH);
+    glassOverlay.addColorStop(0, 'rgba(255, 255, 255, 0.18)');
+    glassOverlay.addColorStop(0.45, 'rgba(255, 255, 255, 0.035)');
+    glassOverlay.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+    ctx.beginPath();
+    ctx.roundRect(x + 2, y + 2, cardW - 4, cardH * 0.55, 14);
+    ctx.fillStyle = glassOverlay;
+    ctx.fill();
+
+    // Corner glow
+    const corner = ctx.createRadialGradient(
+      x + cardW - 10, y + 8, 2,
+      x + cardW - 10, y + 8, cardW * 0.5
+    );
+    corner.addColorStop(0, 'rgba(255,255,255,0.14)');
+    corner.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = corner;
+    ctx.fill();
+
+    // Icon badge with real vector coding path (no emoji text!)
+    const ix = x + 34, iy = y + cardH / 2;
+    ctx.beginPath();
+    ctx.arc(ix, iy, 22, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    drawCardVectorIcon(ctx, item.icon, ix, iy, 22, '#FFFFFF');
+
+    // Label
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = "700 12px 'Space Grotesk', sans-serif";
+    ctx.fillText(item.label, x + 68, y + 30);
+
+    // Value
+    ctx.font = "700 20px 'Space Grotesk', sans-serif";
+    let value = String(item.value ?? '');
+    const maxWidth = cardW - 84;
+    while (ctx.measureText(value).width > maxWidth && value.length > 3) {
+      value = value.slice(0, -4) + '…';
+    }
+    const valueX = x + 68, valueY = y + 60;
+    const valueWidth = Math.max(ctx.measureText(value).width, 30);
+
+    ctx.save();
+    ctx.shadowColor = item.b;
+    ctx.shadowBlur = 8 + 5*Math.sin((t+idx*0.6)*2.4);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(value, valueX, valueY);
+    ctx.restore();
+
+    // Value glow underline
+    {
+      const ulW = Math.min(valueWidth, cardW - 100);
+      const ulX = valueX, ulY = valueY + 8;
+      const ulGlow = 0.5 + 0.35*Math.sin((t+idx*0.6)*2.4);
+      ctx.save();
+      ctx.shadowColor = item.b;
+      ctx.shadowBlur = 8;
+      ctx.globalAlpha = ulGlow;
+      const ulGrad = ctx.createLinearGradient(ulX, 0, ulX+ulW, 0);
+      ulGrad.addColorStop(0, item.b);
+      ulGrad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = ulGrad;
+      ctx.beginPath();
+      ctx.roundRect(ulX, ulY, ulW, 2, 1);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Diagonal shine sweep
+    {
+      const cyclePos = ((t + idx*0.7) / 2.8) % 1;
+      let sweepOpacity = 0;
+      if (cyclePos < 0.08) sweepOpacity = cyclePos/0.08;
+      else if (cyclePos < 0.55) sweepOpacity = 1;
+      else if (cyclePos < 0.65) sweepOpacity = 1 - (cyclePos-0.55)/0.10;
+      if (sweepOpacity > 0.01){
+        const sweepX = x - cardW*0.45 + cyclePos * (cardW*1.75);
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(x, y, cardW, cardH, 18);
+        ctx.clip();
+        ctx.globalCompositeOperation = 'overlay';
+        ctx.globalAlpha = sweepOpacity;
+        ctx.translate(sweepX, y + cardH/2);
+        ctx.rotate(-20 * Math.PI/180);
+        const tileSweepGrad = ctx.createLinearGradient(-cardW*0.12, 0, cardW*0.12, 0);
+        tileSweepGrad.addColorStop(0, 'rgba(255,255,255,0)');
+        tileSweepGrad.addColorStop(0.5, 'rgba(255,255,255,0.55)');
+        tileSweepGrad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = tileSweepGrad;
+        ctx.fillRect(-cardW*0.12, -cardH, cardW*0.24, cardH*2);
+        ctx.restore();
+      }
+    }
+
+    ctx.restore();
+  });
+
+  // Secondary metadata surface (Sanad Dugsiyeedka & Exam Type outside the 4 cards)
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#8B93A1';
+  ctx.font = "500 13px 'Space Grotesk', sans-serif";
+  const metaText = `${student.sanadDugsiyeedka} · ${student.examType}`;
+  ctx.fillText(metaText, W / 2, H - 36);
+  ctx.restore();
+}
+
+function buildStudentCards(){
+  const loop = CARD_D_START - CARD_D_END;
+  const gap = loop / STUDENTS.length;
+  combAvailable = true;
+
+  studentCards = STUDENTS.map((student, i) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = CARD_CANVAS_W; canvas.height = CARD_CANVAS_H;
+    const ctx = canvas.getContext('2d');
+    drawStudentCard(ctx, student, null);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
+
+    // Section 2.2: COMB exit shader with fallback detection
+    let material, usesComb = false;
+    try {
+      material = new THREE.ShaderMaterial({
+        uniforms: {
+          uMap: { value: texture },
+          uOpacity: { value: 0 },
+          uComb: { value: 0 },
+          uCombDirection: { value: 1 }
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          void main(){
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform sampler2D uMap;
+          uniform float uOpacity;
+          uniform float uComb;
+          uniform float uCombDirection;
+          varying vec2 vUv;
+
+          void main(){
+            float teeth = 14.0;
+            float band = floor(vUv.y * teeth);
+            float phase = mod(band, 2.0);
+            float dir = mix(-1.0, 1.0, phase);
+            float shifted = vUv.x + dir * uComb * uCombDirection;
+
+            float edge = dir > 0.0 ? shifted : 1.0 - shifted;
+            float keep = step(0.0, edge) * step(edge, 1.0);
+
+            vec4 c = texture2D(uMap, vec2(clamp(shifted,0.0,1.0), vUv.y));
+            c.a *= uOpacity * keep;
+            gl_FragColor = c;
+          }
+        `,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        fog: false
+      });
+      usesComb = true;
+    } catch (e) {
+      combAvailable = false;
+      material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        fog: false
+      });
+    }
+
+    const geo = new THREE.PlaneGeometry(CARD_W, CARD_W * CARD_CANVAS_H/CARD_CANVAS_W);
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.renderOrder = 2;
+    scene.add(mesh);
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    const cardRef = {
+      mesh, material, texture, ctx, student,
+      photoImg: null,
+      d: CARD_D_START - i*gap,
+      index: i,
+      exiting: false,
+      exitProgress: 0,
+      usesComb
+    };
+    img.onload = () => {
+      cardRef.photoImg = img;
+      drawStudentCard(ctx, student, img);
+      texture.needsUpdate = true;
+    };
+    img.onerror = () => {
+      // Photo failed (CORS block, 404, network) — render placeholder immediately
+      cardRef.photoImg = null;
+      drawStudentCard(ctx, student, null);
+      texture.needsUpdate = true;
+    };
+    img.src = student.photo;
+
+    return cardRef;
+  });
+}
+
+function activateCombFallback(){
+  if (!combAvailable) return;
+  combAvailable = false;
+  studentCards.forEach(card => {
+    if (!card.usesComb) return;
+    const currentOpacity = card.material.uniforms?.uOpacity?.value ?? 0;
+    const replacement = new THREE.MeshBasicMaterial({
+      map: card.texture,
+      transparent: true,
+      opacity: currentOpacity,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      fog: false
+    });
+    card.material.dispose();
+    card.material = replacement;
+    card.mesh.material = replacement;
+    card.usesComb = false;
+  });
+}
+
+function updateStudentCards(dt){
+  let nearestIdx = -1, nearestD = Infinity;
+
+  for (const card of studentCards){
+    if (!card.exiting){
+      card.d -= dt * CARD_SPEED;
+
+      if (card.d <= CARD_D_END){
+        card.d = CARD_D_END;
+        card.exiting = true;
+        card.exitProgress = 0;
+      }
+    } else {
+      // Exit transition duration is strictly ~0.62s
+      card.exitProgress += dt / 0.62;
+
+      if (card.usesComb){
+        card.material.uniforms.uComb.value = Math.min(1.25, card.exitProgress);
+      }
+
+      if (card.exitProgress >= 1){
+        card.d = CARD_D_START;
+        card.exiting = false;
+        card.exitProgress = 0;
+        if (card.usesComb){
+          card.material.uniforms.uComb.value = 0;
+        }
+      }
+    }
+
+    card.mesh.position.set(0, 0, camera.position.z - card.d);
+
+    const approach = Math.max(
+      0,
+      Math.min(1, (CARD_D_START - card.d) / (CARD_D_START - CARD_D_END))
+    );
+
+    let opacity = 0.08 + approach * 0.92;
+    if (card.exiting){
+      opacity = Math.max(0, 1 - card.exitProgress);
+    }
+
+    if (card.usesComb){
+      card.material.uniforms.uOpacity.value = opacity;
+    } else {
+      card.material.opacity = opacity;
+    }
+
+    // Scale approach, and if COMB shader fallback is active, scale down smoothly on exit
+    let scale = 0.14 + approach * 0.86;
+    if (card.exiting && !card.usesComb){
+      scale *= (1 - card.exitProgress * 0.3);
+    }
+    card.mesh.scale.setScalar(scale);
+
+    if (card.d > 0 && card.d < nearestD && !card.exiting){
+      nearestD = card.d;
+      nearestIdx = card.index;
+    }
+  }
+
+  if (nearestIdx >= 0 && dotsWrap && dotsWrap.children.length){
+    [...dotsWrap.children].forEach((dot, idx) => dot.classList.toggle('on', idx === nearestIdx));
+  }
+
+  if (nearestIdx >= 0 && nearestIdx !== lastAnimatedIdx){
+    lastAnimatedIdx = nearestIdx;
+  }
+  if (nearestIdx >= 0){
+    const nearCard = studentCards[nearestIdx];
+    if (nearCard && nearCard.ctx){
+      nameAnimClock += dt;
+      drawStudentCard(nearCard.ctx, nearCard.student, nearCard.photoImg, nameAnimClock);
+      nearCard.texture.needsUpdate = true;
+    }
+  }
+}
+
+function buildTunnel(canvas, urls){
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x000000);
+  const fogNear = Math.min(FOG_FAR * 0.35, FOG_FAR - 0.01);
+  scene.fog = new THREE.Fog(0x000000, fogNear, FOG_FAR);
+
+  camera = new THREE.PerspectiveCamera(45, 1, 0.5, 1000);
+  camera.position.set(0,0,0);
+
+  renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false, powerPreference:"high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+
+  if (renderer.debug){
+    renderer.debug.onShaderError = () => activateCombFallback();
+  }
+
+  const lineMaterial = new THREE.MeshBasicMaterial({ color: LINE_COLOR, transparent:true, opacity:0.5 });
+
+  const loader = new THREE.TextureLoader();
+  loader.setCrossOrigin("anonymous");
+
+  const hw = TUNNEL_WIDTH/2, hh = TUNNEL_HEIGHT/2;
+  const cols = GRID, rows = GRID;
+  const colW = TUNNEL_WIDTH/cols, rowH = TUNNEL_HEIGHT/rows;
+
+  const geoFloor = new THREE.PlaneGeometry(colW, SEGMENT_DEPTH);
+  const geoWall = new THREE.PlaneGeometry(SEGMENT_DEPTH, rowH);
+  const geoTubeZ = new THREE.TubeGeometry(new THREE.LineCurve3(new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-SEGMENT_DEPTH)), 1, LINE_RADIUS, 8);
+  const geoTubeX = new THREE.TubeGeometry(new THREE.LineCurve3(new THREE.Vector3(0,0,0), new THREE.Vector3(TUNNEL_WIDTH,0,0)), 1, LINE_RADIUS, 8);
+  const geoTubeY = new THREE.TubeGeometry(new THREE.LineCurve3(new THREE.Vector3(0,0,0), new THREE.Vector3(0,TUNNEL_HEIGHT,0)), 1, LINE_RADIUS, 8);
+
+  const palette = [0x1a1f2b, 0x14181f, GOLD, 0x2a2f3a];
+  const colorMats = palette.map(hex => new THREE.MeshBasicMaterial({ color: hex, side: THREE.DoubleSide }));
+
+  const imageMats = urls.map(url => {
+    const mat = new THREE.MeshBasicMaterial({ transparent:true, opacity:0, side: THREE.DoubleSide });
+    loader.load(url, (tex) => {
+      tex.minFilter = THREE.LinearFilter;
+      tex.generateMipmaps = false;
+      if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+      mat.map = tex; mat.needsUpdate = true;
+      fading.push(mat);
+    }, undefined, () => {});
+    return mat;
+  });
+
+  const tube = (geo,x,y,z=0) => { const m = new THREE.Mesh(geo, lineMaterial); m.position.set(x,y,z); return m; };
+
+  const SLOTS = [];
+  { const z = -SEGMENT_DEPTH/2;
+    for (let i=0;i<cols;i++){ const x = -hw + i*colW + colW/2;
+      SLOTS.push({geo:geoFloor,pos:new THREE.Vector3(x,-hh,z),rot:new THREE.Euler(-Math.PI/2,0,0)});
+      SLOTS.push({geo:geoFloor,pos:new THREE.Vector3(x,hh,z),rot:new THREE.Euler(Math.PI/2,0,0)});
+    }
+    for (let i=0;i<rows;i++){ const y = -hh + i*rowH + rowH/2;
+      SLOTS.push({geo:geoWall,pos:new THREE.Vector3(-hw,y,z),rot:new THREE.Euler(0,Math.PI/2,0)});
+      SLOTS.push({geo:geoWall,pos:new THREE.Vector3(hw,y,z),rot:new THREE.Euler(0,-Math.PI/2,0)});
+    }
+  }
+
+  function populate(group){
+    const slabs = group.userData.slabs;
+    for (const slab of slabs){
+      const r = Math.random();
+      if (r < 0.72){
+        slab.visible = true;
+        slab.material = imageMats[imageIndex % imageMats.length];
+        imageIndex++;
+      } else if (r < 0.92){
+        slab.visible = true;
+        slab.material = colorMats[(colorIndex % (colorMats.length-1)) + 1];
+        colorIndex++;
+      } else {
+        slab.visible = false;
+      }
+    }
+  }
+
+  function createSegment(z){
+    const group = new THREE.Group();
+    group.position.z = z;
+    for (let i=0;i<=cols;i++){ const x = -hw + i*colW;
+      group.add(tube(geoTubeZ,x,-hh)); group.add(tube(geoTubeZ,x,hh));
+    }
+    for (let i=1;i<rows;i++){ const y = -hh + i*rowH;
+      group.add(tube(geoTubeZ,-hw,y)); group.add(tube(geoTubeZ,hw,y));
+    }
+    group.add(tube(geoTubeX,-hw,-hh)); group.add(tube(geoTubeX,-hw,hh));
+    group.add(tube(geoTubeY,-hw,-hh)); group.add(tube(geoTubeY,hw,-hh));
+
+    const slabs = SLOTS.map(slot => {
+      const m = new THREE.Mesh(slot.geo, colorMats[0]);
+      m.position.copy(slot.pos); m.rotation.copy(slot.rot); m.visible = false;
+      group.add(m); return m;
+    });
+    group.userData.slabs = slabs;
+    populate(group);
+    return group;
+  }
+
+  populateSegment = populate;
+
+  segments = [];
+  for (let i=0;i<NUM_SEGMENTS;i++){ const g = createSegment(-i*SEGMENT_DEPTH); scene.add(g); segments.push(g); }
+
+  buildStudentCards();
+
+  try {
+    renderer.compile(scene, camera);
+  } catch (e) {
+    activateCombFallback();
+  }
+
+  // Synchronous WebGL link-status guard: Three.js r140+ does not throw on shader
+  // compile failure — it fires onShaderError asynchronously (after first render).
+  // On many mobile/embedded GPUs the shader fails silently, leaving all cards
+  // invisible. We check every compiled program NOW, before the first frame.
+  if (combAvailable) {
+    try {
+      const gl = renderer.getContext();
+      const glPrograms = renderer.info?.programs;
+      if (gl && glPrograms) {
+        for (const prog of glPrograms) {
+          const webglProgram = prog.program;
+          if (webglProgram && !gl.getProgramParameter(webglProgram, gl.LINK_STATUS)) {
+            activateCombFallback();
+            break;
+          }
+        }
+      }
+    } catch (_) { /* renderer.info not available — rely on onShaderError */ }
+  }
+
+  function resize(){
+    const w = Math.max(1, canvas.clientWidth || window.innerWidth);
+    const h = Math.max(1, canvas.clientHeight || window.innerHeight);
+    camera.aspect = w/h; camera.updateProjectionMatrix();
+    renderer.setSize(w,h,false);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  return { resize };
+}
+
+function animate(now){
+  if (!running) return;
+  raf = requestAnimationFrame(animate);
+  const dt = last ? Math.min((now-last)/1000, 1/30) : 1/60;
+  last = now;
+
+  const speed = 1.0, boost = 3.2;
+  scrollPos += pressed ? boost : speed;
+
+  const want = -SCROLL_TO_Z * scrollPos;
+  camera.position.z += CAMERA_CHASE * (want - camera.position.z);
+
+  const span = NUM_SEGMENTS * SEGMENT_DEPTH;
+  const z = camera.position.z;
+  for (const seg of segments){
+    if (seg.position.z > z + SEGMENT_DEPTH){
+      let min = 0; for (const s of segments) min = Math.min(min, s.position.z);
+      seg.position.z = min - SEGMENT_DEPTH;
+      populateSegment(seg);
+    } else if (seg.position.z < z - span - SEGMENT_DEPTH){
+      let max = -999999; for (const s of segments) max = Math.max(max, s.position.z);
+      seg.position.z = max + SEGMENT_DEPTH;
+      populateSegment(seg);
+    }
+  }
+
+  for (let i=fading.length-1;i>=0;i--){
+    const m = fading[i];
+    m.opacity = Math.min(1, m.opacity + dt/FADE_IN);
+    if (m.opacity >= 1) fading.splice(i,1);
+  }
+
+  updateStudentCards(dt);
+
+  renderer.render(scene, camera);
+}
+
+/* ---------------------------------------------------------
+   Audio system
+--------------------------------------------------------- */
+let audioCtx = null, masterGain = null, filterNode = null, whooshGain = null;
+let audioBuilt = false, muted = false, audioPaused = false;
+let padOscillators = [], musicTrackTimer = null, musicTrackIndex = 0;
+let musicMode = 'sequence';
+let selectedMusicTracks = [0];
+const MUSIC_TRACKS = [
+  { name:'Ambient Track 1', freqs:[110,165,220], filter:900 },
+  { name:'Ambient Track 2', freqs:[146.83,220,293.66], filter:1050 },
+  { name:'Ambient Track 3', freqs:[98,147,196], filter:760 },
+];
+const MUSIC_TRACK_DURATION = 18000;
+
+function applyMusicTrack(index){
+  if (!audioCtx || !padOscillators.length) return;
+  const track = MUSIC_TRACKS[index];
+  const now = audioCtx.currentTime;
+  padOscillators.forEach((osc, i) => {
+    osc.frequency.cancelScheduledValues(now);
+    osc.frequency.linearRampToValueAtTime(track.freqs[i], now + 0.8);
+  });
+  filterNode.frequency.cancelScheduledValues(now);
+  filterNode.frequency.linearRampToValueAtTime(track.filter, now + 0.8);
+}
+
+function scheduleNextMusicTrack(){
+  clearTimeout(musicTrackTimer);
+  if (musicMode !== 'sequence' || selectedMusicTracks.length < 2 || !running || audioPaused) return;
+  musicTrackTimer = setTimeout(() => {
+    if (!running || audioPaused) return;
+    musicTrackIndex = (musicTrackIndex + 1) % selectedMusicTracks.length;
+    applyMusicTrack(selectedMusicTracks[musicTrackIndex]);
+    scheduleNextMusicTrack();
+  }, MUSIC_TRACK_DURATION);
+}
+
+function initAudio(){
+  if (audioBuilt) return;
+  audioBuilt = true;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0;
+  masterGain.connect(audioCtx.destination);
+
+  filterNode = audioCtx.createBiquadFilter();
+  filterNode.type = 'lowpass';
+  filterNode.frequency.value = 900;
+  filterNode.connect(masterGain);
+
+  const padGain = audioCtx.createGain();
+  padGain.gain.value = 0.5;
+  padGain.connect(filterNode);
+
+  MUSIC_TRACKS[0].freqs.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const lfo = audioCtx.createOscillator();
+    lfo.frequency.value = 0.05 + i*0.02;
+    const lfoGain = audioCtx.createGain();
+    lfoGain.gain.value = 3;
+    lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
+    lfo.start();
+    osc.connect(padGain);
+    osc.start();
+    padOscillators.push(osc);
+  });
+
+  const bufferSize = audioCtx.sampleRate * 2;
+  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i=0;i<bufferSize;i++) data[i] = Math.random()*2-1;
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = noiseBuffer; noise.loop = true;
+  const noiseFilter = audioCtx.createBiquadFilter();
+  noiseFilter.type = 'bandpass'; noiseFilter.frequency.value = 500; noiseFilter.Q.value = 0.6;
+  whooshGain = audioCtx.createGain();
+  whooshGain.gain.value = 0.05;
+  noise.connect(noiseFilter); noiseFilter.connect(whooshGain); whooshGain.connect(masterGain);
+  noise.start();
+}
+
+function startAmbient(){
+  initAudio();
+  audioPaused = false;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const now = audioCtx.currentTime;
+  masterGain.gain.cancelScheduledValues(now);
+  masterGain.gain.linearRampToValueAtTime(muted ? 0 : 0.22, now + 0.8);
+  applyMusicTrack(selectedMusicTracks[musicTrackIndex] ?? 0);
+  scheduleNextMusicTrack();
+}
+function stopAmbient(){
+  clearTimeout(musicTrackTimer);
+  musicTrackTimer = null;
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  masterGain.gain.cancelScheduledValues(now);
+  masterGain.gain.linearRampToValueAtTime(0, now + 0.25);
+}
+function pauseAmbient(){
+  clearTimeout(musicTrackTimer);
+  musicTrackTimer = null;
+  if (!audioCtx) return;
+  audioPaused = true;
+  audioCtx.suspend();
+}
+function resumeAmbient(){
+  if (!audioCtx) return;
+  audioPaused = false;
+  audioCtx.resume().then(() => {
+    const now = audioCtx.currentTime;
+    masterGain.gain.cancelScheduledValues(now);
+    masterGain.gain.linearRampToValueAtTime(muted ? 0 : 0.22, now + 0.25);
+    scheduleNextMusicTrack();
+  });
+}
+function setWhoosh(active){
+  if (!audioCtx || audioPaused) return;
+  const now = audioCtx.currentTime;
+  whooshGain.gain.cancelScheduledValues(now);
+  whooshGain.gain.linearRampToValueAtTime(active ? 0.16 : 0.05, now + 0.3);
+  filterNode.frequency.cancelScheduledValues(now);
+  filterNode.frequency.linearRampToValueAtTime(active ? 1600 : MUSIC_TRACKS[selectedMusicTracks[musicTrackIndex] ?? 0].filter, now + 0.3);
+}
+function toggleMute(){
+  muted = !muted;
+  const muteIcon = document.getElementById('muteIcon');
+  if (muteIcon) {
+    muteIcon.innerHTML = muted
+      ? '<path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>'
+      : '<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>';
+  }
+  if (audioCtx && masterGain){
+    const now = audioCtx.currentTime;
+    masterGain.gain.cancelScheduledValues(now);
+    masterGain.gain.linearRampToValueAtTime(muted ? 0 : 0.22, now + 0.3);
+  }
+}
+
+/* ---------------------------------------------------------
+   Overlay controls & UI syncing
+--------------------------------------------------------- */
+const overlay = document.getElementById('tunnelOverlay');
+const canvas = document.getElementById('tunnelCanvas');
+const dotsWrap = document.getElementById('dots');
+let lastAnimatedIdx = -1;
+let nameAnimClock = 0;
+const pauseBtn = document.getElementById('pauseBtn');
+const musicBtn = document.getElementById('musicBtn');
+const musicPanel = document.getElementById('musicPanel');
+const singleMusicMode = document.getElementById('singleMusicMode');
+const sequenceMusicMode = document.getElementById('sequenceMusicMode');
+let built = false;
+let paused = false;
+let autoPausedByVisibility = false;
+
+STUDENTS.forEach((_, i) => {
+  const dot = document.createElement('span');
+  if (i === 0) dot.classList.add('on');
+  dotsWrap.appendChild(dot);
+});
+
+function syncPauseUI(){
+  const pauseIcon = document.getElementById('pauseIcon');
+  if (pauseIcon) {
+    pauseIcon.innerHTML = paused
+      ? '<path d="M8 5v14l11-7z"/>'
+      : '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+  }
+  const txt = document.getElementById('pauseBtnText');
+  if (txt) txt.textContent = paused ? 'Resume' : 'Pause';
+  pauseBtn.title = paused ? 'Resume tunnel' : 'Pause tunnel';
+}
+
+function pauseTunnel(reason='manual'){
+  if (!running || paused) return;
+  paused = true;
+  if (reason === 'visibility') autoPausedByVisibility = true;
+  cancelAnimationFrame(raf);
+  running = false;
+  pressed = false;
+  setWhoosh(false);
+  pauseAmbient();
+  syncPauseUI();
+}
+
+function resumeTunnel(){
+  if (!overlay.classList.contains('active') || !paused) return;
+  paused = false;
+  autoPausedByVisibility = false;
+  running = true;
+  last = 0;
+  raf = requestAnimationFrame(animate);
+  resumeAmbient();
+  syncPauseUI();
+}
+
+function openTunnel(){
+  overlay.classList.add('active');
+  if (!built){
+    buildTunnel(canvas, STUDENTS.map(s => s.photo));
+    built = true;
+  }
+  paused = false;
+  autoPausedByVisibility = false;
+  running = true; last = 0;
+  raf = requestAnimationFrame(animate);
+  startAmbient();
+  syncPauseUI();
+}
+function closeTunnel(){
+  overlay.classList.remove('active');
+  running = false;
+  paused = false;
+  autoPausedByVisibility = false;
+  cancelAnimationFrame(raf);
+  pressed = false;
+  clearTimeout(musicTrackTimer);
+  musicTrackTimer = null;
+  stopAmbient();
+  musicPanel.classList.remove('open');
+  syncPauseUI();
+}
+
+function readSelectedMusicTracks(){
+  const values = [...musicPanel.querySelectorAll('.music-option input:checked')].map(i => Number(i.value));
+  selectedMusicTracks = values.length ? values : [0];
+  musicTrackIndex = 0;
+  applyMusicTrack(selectedMusicTracks[0]);
+  scheduleNextMusicTrack();
+}
+
+musicPanel.querySelectorAll('.music-option input').forEach(input => {
+  input.addEventListener('change', readSelectedMusicTracks);
+});
+
+singleMusicMode.addEventListener('click', () => {
+  musicMode = 'single';
+  singleMusicMode.classList.add('active');
+  sequenceMusicMode.classList.remove('active');
+  readSelectedMusicTracks();
+});
+sequenceMusicMode.addEventListener('click', () => {
+  musicMode = 'sequence';
+  sequenceMusicMode.classList.add('active');
+  singleMusicMode.classList.remove('active');
+  readSelectedMusicTracks();
+});
+
+musicBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  musicPanel.classList.toggle('open');
+});
+musicPanel.addEventListener('click', e => e.stopPropagation());
+
+document.getElementById('openTunnel').addEventListener('click', openTunnel);
+document.getElementById('closeTunnel').addEventListener('click', closeTunnel);
+document.getElementById('muteBtn').addEventListener('click', toggleMute);
+pauseBtn.addEventListener('click', () => paused ? resumeTunnel() : pauseTunnel());
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeTunnel();
+  if (e.key === ' ' && overlay.classList.contains('active')) { e.preventDefault(); paused ? resumeTunnel() : pauseTunnel(); }
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!overlay.classList.contains('active')) return;
+  if (document.hidden) {
+    if (!paused) pauseTunnel('visibility');
+  } else if (autoPausedByVisibility) {
+    resumeTunnel();
+  }
+});
+
+canvas.addEventListener('pointerdown', () => { if (!paused) { pressed = true; setWhoosh(true); } });
+window.addEventListener('pointerup', () => { pressed = false; setWhoosh(false); });
+canvas.addEventListener('pointerleave', () => { pressed = false; setWhoosh(false); });
+</script>
+
+<script>
+(function () {
+  function iconFor(label) {
+    const s = String(label || '').toLowerCase();
+    if (s.includes('class') || s.includes('level')) return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>';
+    if (s.includes('id')) return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2.5"/><path d="M15 8h3M15 12h3M7 16h10"/></svg>';
+    if (s.includes('rank') || s.includes('position')) return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.45 1-1 1H7v4h10v-4h-2c-.55 0-1-.45-1-1v-2.34"/><path d="M18 4H6v7a6 6 0 0 0 12 0V4z"/></svg>';
+    if (s.includes('score') || s.includes('percent') || s.includes('avg') || s.includes('%')) return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>';
+    return '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+  }
+
+  window.SultaanStudentInfoCards = {
+    render(container, items) {
+      if (!container || !Array.isArray(items)) return;
+      container.className = 'student-info-card';
+      container.innerHTML = items.map(item => {
+        const isName = String(item.label || '').toLowerCase().includes('name');
+        if (isName) {
+          return `
+            <div class="student-info-item is-name">
+              <div class="name-caption">${item.label ?? 'Name'}</div>
+              <div class="name-stage">
+                <div class="name-glow-bg"></div>
+                <span class="name-sparkle left">✦</span>
+                <span class="animated-name">${item.value ?? ''}</span>
+                <div class="name-sweep"></div>
+                <span class="name-sparkle right">✦</span>
+              </div>
+              <div class="name-underline"></div>
+            </div>
+          `;
+        }
+        return `
+        <div class="student-info-item">
+          <span class="student-info-icon">${item.icon || iconFor(item.label)}</span>
+          <span class="student-info-label">${item.label ?? ''}</span>
+          <span class="student-info-value">${item.value ?? ''}</span>
+        </div>
+      `;
+      }).join('');
+    }
+  };
+})();
+</script>
+
+</body>
+</html>

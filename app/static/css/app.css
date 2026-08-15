@@ -962,6 +962,20 @@ tbody tr:hover td { background: #f8fbff; }
   border-radius: 12px;
   background: linear-gradient(135deg, rgba(118, 80, 216, .08), rgba(212, 175, 55, .08));
 }
+
+.tunnel-music-library { display:grid; gap:10px; padding:14px; border:1px solid #dbeafe; border-radius:14px; background:linear-gradient(145deg,#f8fbff,#eff6ff); }
+.tunnel-music-library__heading { display:grid; gap:3px; }
+.tunnel-music-library__heading strong { color:#172554; font-size:.92rem; }
+.tunnel-music-library__heading small { color:#64748b; }
+.tunnel-music-library ol { display:grid; gap:8px; margin:0; padding:0; list-style:none; counter-reset:none; }
+.tunnel-music-library li { display:flex; align-items:center; gap:10px; min-height:48px; padding:8px 10px; border:1px solid #e2e8f0; border-radius:11px; background:#fff; }
+.tunnel-music-library li.is-active { border-color:#93c5fd; background:linear-gradient(90deg,#eff6ff,#fff); }
+.tunnel-music-library li.is-empty { color:#64748b; font-size:.86rem; }
+.tunnel-music-library__order { display:grid; width:25px; height:25px; place-items:center; flex:0 0 auto; border-radius:50%; background:#172554; color:#fff; font-size:.75rem; font-weight:800; }
+.tunnel-music-library__track { display:grid; min-width:0; gap:2px; flex:1; }
+.tunnel-music-library__track b { overflow:hidden; color:#1e293b; font-size:.86rem; text-overflow:ellipsis; white-space:nowrap; }
+.tunnel-music-library__track small { color:#64748b; font-size:.72rem; }
+.tunnel-music-library li em { color:#047857; font-size:.73rem; font-style:normal; font-weight:800; white-space:nowrap; }
 .tunnel-music-preview strong,
 .tunnel-music-preview small { display: block; }
 .tunnel-music-preview small { margin-top: 3px; color: #64748b; }

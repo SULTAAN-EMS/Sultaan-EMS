@@ -168,6 +168,7 @@ DEFAULT_SETTINGS = {
     "result_dashboard_show_share_button": "on",
     "result_dashboard_show_top10_button": "on",
     "top10_tunnel_music_path": "",
+    "top10_tunnel_music_tracks": "[]",
     "result_dashboard_background_image": "",
     "result_dashboard_default_avatar": "",
     "result_dashboard_footer_logo": "",

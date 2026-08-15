@@ -7,6 +7,7 @@ from flask_login import current_user, login_required
 from openpyxl import Workbook
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from werkzeug.utils import secure_filename
 
 from . import db
 from .audit import audit
@@ -33,6 +34,26 @@ from .services import (
 from .services import slug
 
 admin_bp = Blueprint("admin", __name__)
+
+
+def _top10_tunnel_tracks(raw_value):
+    """Read the small, persistent Top 10 music library defensively."""
+    try:
+        payload = json.loads(raw_value or "[]")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, list):
+        return []
+    tracks = []
+    for entry in payload:
+        if not isinstance(entry, dict) or not isinstance(entry.get("url"), str):
+            continue
+        tracks.append({
+            "url": entry["url"],
+            "name": str(entry.get("name") or "Tunnel music"),
+            "uploaded_at": str(entry.get("uploaded_at") or ""),
+        })
+    return tracks
 
 
 INCIDENT_SETTING_DEFAULTS = [
@@ -972,9 +993,24 @@ def settings():
                     return jsonify({"success": False, "message": message}), 400
                 flash(message, "danger")
                 return redirect(url_for("admin.settings"))
+            music_url = upload_image(music_upload, "school/top10-tunnel")
             setting = db.session.get(Setting, "top10_tunnel_music_path") or Setting(key="top10_tunnel_music_path")
-            setting.value = upload_image(music_upload, "school/top10-tunnel")
+            previous_music_url = setting.value
+            setting.value = music_url
             db.session.add(setting)
+            library_setting = db.session.get(Setting, "top10_tunnel_music_tracks") or Setting(key="top10_tunnel_music_tracks")
+            tracks = _top10_tunnel_tracks(library_setting.value)
+            # Preserve an old single-track setup when the library is introduced.
+            if not tracks and previous_music_url and previous_music_url != music_url:
+                tracks.append({"url": previous_music_url, "name": "Existing custom track", "uploaded_at": ""})
+            tracks.append({
+                "url": music_url,
+                "name": secure_filename(music_upload.filename) or "Tunnel music",
+                "uploaded_at": datetime.now().strftime("%B %d, %Y %H:%M"),
+            })
+            # Retain a deliberate, ordered library without unbounded settings data.
+            library_setting.value = json.dumps(tracks[-10:])
+            db.session.add(library_setting)
         for subject in Subject.query.order_by(Subject.name).all():
             field_name = f"subject_icon_{subject.id}"
             upload = request.files.get(field_name)
@@ -1002,9 +1038,11 @@ def settings():
             return jsonify({"success": True, "message": "Settings saved."})
         flash("Settings saved.", "success")
         return redirect(url_for("admin.settings"))
+    current_settings = get_settings()
     return render_template(
         "admin/settings.html",
-        settings=get_settings(),
+        settings=current_settings,
+        top10_tunnel_tracks=_top10_tunnel_tracks(current_settings.get("top10_tunnel_music_tracks")),
         scales=GradeScale.query.order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all(),
         subjects=Subject.query.order_by(Subject.name).all(),
         slug=slug,

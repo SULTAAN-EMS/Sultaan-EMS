@@ -32,6 +32,7 @@
 }
 .top10-tunnel-hint { margin: 0; color: rgba(244, 241, 234, .75); font: 500 13px "Space Grotesk", Inter, sans-serif; }
 .top10-tunnel-actions { display: flex; align-items: center; gap: 10px; }
+.top10-tunnel-pause,
 .top10-tunnel-mute,
 .top10-tunnel-close {
   border: 1px solid rgba(244, 241, 234, .25);
@@ -40,6 +41,18 @@
   font: 600 14px "Space Grotesk", Inter, sans-serif;
   transition: border-color .2s ease, background .2s ease, transform .2s ease;
 }
+.top10-tunnel-pause {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: rgba(10, 12, 17, .55);
+  backdrop-filter: blur(8px);
+}
+.top10-tunnel-pause:hover { border-color: var(--top10-gold); background: rgba(10, 12, 17, .75); }
+.top10-tunnel-pause:active { transform: scale(.96); }
 .top10-tunnel-mute {
   display: grid;
   width: 38px;
