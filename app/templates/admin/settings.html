@@ -451,10 +451,11 @@
       <div class="tunnel-music-library__heading"><strong><i class="fa-solid fa-list-ol"></i> Uploaded Music Library</strong><small>Tracks remain saved after refresh. The newest uploaded track is active.</small></div>
       <ol>
         {% for track in top10_tunnel_tracks %}
-          <li class="{% if track.url == settings.top10_tunnel_music_path %}is-active{% endif %}">
+          <li class="{% if track.url == settings.top10_tunnel_music_path %}is-active{% endif %}" data-track-url="{{ track.url }}">
             <span class="tunnel-music-library__order">{{ "%02d"|format(loop.index) }}</span>
             <span class="tunnel-music-library__track"><b>{{ track.name }}</b><small>{% if track.uploaded_at %}{{ track.uploaded_at }}{% else %}Saved custom track{% endif %}</small></span>
             {% if track.url == settings.top10_tunnel_music_path %}<em><i class="fa-solid fa-circle-check"></i> Active</em>{% endif %}
+            <button type="button" class="tunnel-music-library__delete" data-track-url="{{ track.url }}" title="Delete this track permanently"><i class="fa-solid fa-trash-can"></i></button>
           </li>
         {% else %}
           <li class="is-empty"><i class="fa-solid fa-music"></i> No custom track has been uploaded. The default track is active.</li>
@@ -674,32 +675,82 @@
     const reset = document.getElementById("top10TunnelMusicReset");
     const panel = document.querySelector(".tunnel-music-preview");
     const form = document.querySelector("[data-autosave-form]");
+    const library = document.querySelector(".tunnel-music-library ol");
     if (!upload || !preview || !reset || !panel || !form) return;
+
+    const csrfToken = () => form.querySelector('[name="csrf_token"]').value;
+
     upload.addEventListener("change", () => {
       const file = upload.files && upload.files[0];
       if (!file) return;
       preview.src = URL.createObjectURL(file);
       preview.load();
     });
+
     reset.addEventListener("click", async () => {
       reset.disabled = true;
       try {
         const response = await fetch("{{ url_for('admin.reset_top10_tunnel_music') }}", {
           method: "POST",
           credentials: "same-origin",
-          headers: { "X-Requested-With": "XMLHttpRequest", "X-CSRFToken": form.querySelector('[name="csrf_token"]').value }
+          headers: { "X-Requested-With": "XMLHttpRequest", "X-CSRFToken": csrfToken() }
         });
         const payload = await response.json();
         if (!response.ok || !payload.success) throw new Error(payload.message || "Unable to reset tunnel music.");
         preview.src = panel.dataset.defaultSrc;
         preview.load();
         panel.querySelector("small").textContent = "Using the bundled default track.";
+        // Clear the library list visually
+        if (library) {
+          library.innerHTML = '<li class="is-empty"><i class="fa-solid fa-music"></i> No custom track has been uploaded. The default track is active.</li>';
+        }
       } catch (error) {
         window.alert(error.message || "Unable to reset tunnel music.");
       } finally {
         reset.disabled = false;
       }
     });
+
+    // Delegated delete handler for track rows
+    if (library) {
+      library.addEventListener("click", async (e) => {
+        const btn = e.target.closest(".tunnel-music-library__delete");
+        if (!btn) return;
+        const trackUrl = btn.dataset.trackUrl;
+        if (!trackUrl) return;
+        if (!window.confirm("Permanently delete this track? It will be removed from storage and can never be played again.")) return;
+        btn.disabled = true;
+        try {
+          const response = await fetch("{{ url_for('admin.delete_top10_tunnel_track') }}", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+              "X-CSRFToken": csrfToken()
+            },
+            body: JSON.stringify({ url: trackUrl })
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.success) throw new Error(payload.message || "Unable to delete track.");
+          // Remove the row from the list
+          const row = btn.closest("li");
+          if (row) row.remove();
+          // If no rows remain, show empty state
+          const remaining = library.querySelectorAll("li:not(.is-empty)");
+          if (remaining.length === 0) {
+            library.innerHTML = '<li class="is-empty"><i class="fa-solid fa-music"></i> No custom track has been uploaded. The default track is active.</li>';
+            preview.src = panel.dataset.defaultSrc;
+            preview.load();
+            panel.querySelector("small").textContent = "Using the bundled default track.";
+          }
+        } catch (error) {
+          window.alert(error.message || "Unable to delete track.");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    }
   })();
 </script>
 {% endblock %}

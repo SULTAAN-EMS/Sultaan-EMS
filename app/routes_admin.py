@@ -1056,9 +1056,65 @@ def reset_top10_tunnel_music():
     setting = db.session.get(Setting, "top10_tunnel_music_path") or Setting(key="top10_tunnel_music_path")
     setting.value = ""
     db.session.add(setting)
+    # Also clear the tracks library so the tunnel stops reading uploaded tracks
+    library_setting = db.session.get(Setting, "top10_tunnel_music_tracks") or Setting(key="top10_tunnel_music_tracks")
+    library_setting.value = "[]"
+    db.session.add(library_setting)
     audit("Tunnel Music Reset", "Restored the default Top 10 tunnel background music")
     db.session.commit()
     return jsonify(success=True, message="Default tunnel music restored.")
+
+
+@admin_bp.route("/settings/top10-tunnel-music/delete-track", methods=["POST"])
+@permission_required("settings")
+def delete_top10_tunnel_track():
+    """Permanently remove an uploaded track from the tunnel music library."""
+    track_url = request.json.get("url", "").strip() if request.is_json else ""
+    if not track_url:
+        return jsonify(success=False, message="No track URL provided."), 400
+
+    library_setting = db.session.get(Setting, "top10_tunnel_music_tracks") or Setting(key="top10_tunnel_music_tracks")
+    tracks = _top10_tunnel_tracks(library_setting.value)
+    original_count = len(tracks)
+    tracks = [t for t in tracks if t["url"] != track_url]
+    if len(tracks) == original_count:
+        return jsonify(success=False, message="Track not found in library."), 404
+
+    library_setting.value = json.dumps(tracks)
+    db.session.add(library_setting)
+
+    # If the deleted track was the active one, clear the active path
+    path_setting = db.session.get(Setting, "top10_tunnel_music_path") or Setting(key="top10_tunnel_music_path")
+    if path_setting.value == track_url:
+        path_setting.value = tracks[-1]["url"] if tracks else ""
+        db.session.add(path_setting)
+
+    # Try to delete from Cloudinary storage
+    try:
+        import cloudinary
+        import cloudinary.uploader
+        from flask import current_app
+        if current_app.config.get("CLOUDINARY_CLOUD_NAME"):
+            cloudinary.config(
+                cloud_name=current_app.config["CLOUDINARY_CLOUD_NAME"],
+                api_key=current_app.config["CLOUDINARY_API_KEY"],
+                api_secret=current_app.config["CLOUDINARY_API_SECRET"],
+                secure=True,
+            )
+            # Extract public_id from the Cloudinary URL
+            # URL format: https://res.cloudinary.com/<cloud>/video/upload/v.../folder/filename.ext
+            parts = track_url.split("/upload/")
+            if len(parts) == 2:
+                public_id = parts[1].rsplit(".", 1)[0]  # Remove file extension
+                if "/" in public_id:
+                    public_id = "/".join(public_id.split("/")[1:])  # Remove version segment
+                cloudinary.uploader.destroy(public_id, resource_type="video")
+    except Exception:
+        pass  # Best-effort deletion from storage; track is already removed from library
+
+    audit("Tunnel Music Track Deleted", f"Removed track from library: {track_url}")
+    db.session.commit()
+    return jsonify(success=True, message="Track permanently deleted.")
 
 
 LOADER_DESIGN_IDS = (20, 36, 38, 42)

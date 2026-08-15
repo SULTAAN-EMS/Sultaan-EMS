@@ -974,8 +974,33 @@ tbody tr:hover td { background: #f8fbff; }
 .tunnel-music-library__order { display:grid; width:25px; height:25px; place-items:center; flex:0 0 auto; border-radius:50%; background:#172554; color:#fff; font-size:.75rem; font-weight:800; }
 .tunnel-music-library__track { display:grid; min-width:0; gap:2px; flex:1; }
 .tunnel-music-library__track b { overflow:hidden; color:#1e293b; font-size:.86rem; text-overflow:ellipsis; white-space:nowrap; }
-.tunnel-music-library__track small { color:#64748b; font-size:.72rem; }
 .tunnel-music-library li em { color:#047857; font-size:.73rem; font-style:normal; font-weight:800; white-space:nowrap; }
+.tunnel-music-library__delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #fee2e2;
+  border-radius: 8px;
+  background: #fff;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition: all 0.15s ease;
+  margin-left: 6px;
+  flex: 0 0 auto;
+}
+.tunnel-music-library__delete:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
+  transform: scale(1.05);
+}
+.tunnel-music-library__delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .tunnel-music-preview strong,
 .tunnel-music-preview small { display: block; }
 .tunnel-music-preview small { margin-top: 3px; color: #64748b; }
