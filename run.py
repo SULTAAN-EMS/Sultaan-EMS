@@ -1,3 +1,6 @@
+import os
+os.environ.setdefault("SENDFILE", "0")
+
 from app import create_app
 
 app = create_app()

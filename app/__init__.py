@@ -297,6 +297,15 @@ def create_app(config_class=Config):
 
         db.session.commit()
 
+    try:
+        import os
+        from whitenoise import WhiteNoise
+        static_dir = os.path.join(app.root_path, "static")
+        if os.path.isdir(static_dir):
+            app.wsgi_app = WhiteNoise(app.wsgi_app, root=static_dir, prefix="static/")
+    except Exception as ex:
+        app.logger.warning("WhiteNoise initialization skipped: %s", ex)
+
     return app
 
 
