@@ -1947,18 +1947,33 @@
 </style>
 
 <script>
-// Tab Navigation
+// Tab Navigation with State Persistence
+function activateTab(tabId) {
+  if (!tabId) return;
+  const targetBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+  const targetContent = document.getElementById(`tab-${tabId}`);
+  if (!targetBtn || !targetContent) return;
+
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+  targetBtn.classList.add('active');
+  targetContent.classList.add('active');
+  syncRelatedPanels(tabId);
+  try {
+    localStorage.setItem('incident_settings_active_tab', tabId);
+  } catch (e) {}
+}
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', function() {
-    // Remove active class from all tabs
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    
-    // Add active class to clicked tab
-    this.classList.add('active');
     const tabId = this.getAttribute('data-tab');
-    document.getElementById('tab-' + tabId).classList.add('active');
-    syncRelatedPanels(tabId);
+    activateTab(tabId);
+    if (history.replaceState) {
+      history.replaceState(null, '', '#' + tabId);
+    } else {
+      window.location.hash = tabId;
+    }
   });
 });
 
@@ -1975,9 +1990,17 @@ const setLookupSaveStatus = (message, state) => {
   lookupSaveStatus.className = `lookup-save-status${state ? ` is-${state}` : ''}`;
   const icon = state === 'error' ? 'fa-triangle-exclamation' : state === 'saving' ? 'fa-circle-notch fa-spin' : 'fa-circle-check';
   lookupSaveStatus.innerHTML = `<i class="fa-solid ${icon}"></i><span>${message}</span>`;
+  if (state === 'saved') {
+    setTimeout(() => {
+      if (lookupSaveStatus.classList.contains('is-saved')) {
+        lookupSaveStatus.hidden = true;
+      }
+    }, 4000);
+  }
 };
 
-document.querySelectorAll('.lookup-add-row, .lookup-edit-form, .lookup-delete-form').forEach(form => {
+// Unified Master Data Form Handling (Categories, Severities, Action Tokens)
+document.querySelectorAll('.lookup-add-row, .lookup-add-row-vertical, .lookup-edit-form, .lookup-edit-form-vertical, .lookup-delete-form').forEach(form => {
   form.addEventListener('submit', async function(event) {
     event.preventDefault();
     const confirmMessage = this.getAttribute('data-confirm');
@@ -1986,12 +2009,14 @@ document.querySelectorAll('.lookup-add-row, .lookup-edit-form, .lookup-delete-fo
     }
     this.classList.add('is-submitting');
     const button = this.querySelector('button[type="submit"]');
+    let originalHtml = '';
     if (button) {
       button.disabled = true;
-      button.dataset.originalHtml = button.innerHTML;
+      originalHtml = button.dataset.originalHtml || button.innerHTML;
+      button.dataset.originalHtml = originalHtml;
       button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
     }
-    setLookupSaveStatus('Saving...', 'saving');
+    setLookupSaveStatus('Saving changes...', 'saving');
     try {
       const response = await fetch(this.action, {
         method: 'POST',
@@ -2003,45 +2028,101 @@ document.querySelectorAll('.lookup-add-row, .lookup-edit-form, .lookup-delete-fo
       if (!response.ok || !payload.success) {
         throw new Error(payload.message || 'Unable to save this change.');
       }
-      setLookupSaveStatus(`${payload.message} Last saved: just now.`, 'saved');
-      window.setTimeout(() => window.location.reload(), 550);
-    } catch (error) {
-      this.classList.remove('is-submitting');
-      if (button) {
-        button.disabled = false;
-        button.innerHTML = button.dataset.originalHtml || '<i class="fa-solid fa-check"></i>';
+      setLookupSaveStatus(payload.message || 'Changes saved successfully.', 'saved');
+
+      const isDelete = form.classList.contains('lookup-delete-form');
+      const isAdd = form.classList.contains('lookup-add-row') || form.classList.contains('lookup-add-row-vertical');
+      const isEdit = form.classList.contains('lookup-edit-form') || form.classList.contains('lookup-edit-form-vertical');
+
+      if (isDelete) {
+        // Smoothly remove item from DOM
+        const card = form.closest('.category-item-card');
+        if (card) {
+          card.style.transition = 'all 0.3s ease';
+          card.style.opacity = '0';
+          card.style.transform = 'scale(0.95)';
+          setTimeout(() => card.remove(), 300);
+        }
+      } else if (isEdit) {
+        // Visual feedback on save button
+        if (button) {
+          button.disabled = false;
+          button.innerHTML = '<i class="fa-solid fa-check" style="color:#10b981;"></i>';
+          setTimeout(() => {
+            button.innerHTML = button.dataset.originalHtml || '<i class="fa-solid fa-floppy-disk"></i>';
+          }, 1600);
+        }
+        // Update color pill preview if severity
+        const colorInput = form.querySelector('input[name="color"]');
+        const pill = form.querySelector('.severity-preview-pill');
+        if (colorInput && pill) {
+          pill.style.setProperty('--pill-color', colorInput.value);
+        }
+      } else if (isAdd) {
+        // Reset add form inputs and reload on master-data tab
+        form.reset();
+        try {
+          localStorage.setItem('incident_settings_active_tab', 'master-data');
+        } catch (e) {}
+        if (history.replaceState) {
+          history.replaceState(null, '', '#master-data');
+        }
+        setTimeout(() => window.location.reload(), 450);
       }
+    } catch (error) {
       setLookupSaveStatus(error.message || 'Could not save. Please try again.', 'error');
+    } finally {
+      this.classList.remove('is-submitting');
+      if (button && !form.classList.contains('lookup-edit-form') && !form.classList.contains('lookup-edit-form-vertical')) {
+        button.disabled = false;
+        button.innerHTML = originalHtml || '<i class="fa-solid fa-check"></i>';
+      }
     }
+  });
+});
+
+// Color picker live sync for severity cards
+document.querySelectorAll('.lookup-edit-form input[name="color"]').forEach(colorInput => {
+  colorInput.addEventListener('input', function() {
+    const pill = this.closest('form')?.querySelector('.severity-preview-pill');
+    if (pill) pill.style.setProperty('--pill-color', this.value);
   });
 });
 
 // Color Picker Functions
 function updateColor(settingKey, value) {
-  document.getElementById('setting_' + settingKey).value = value;
-  document.getElementById('preview_' + settingKey).style.backgroundColor = value;
+  const textInput = document.getElementById('setting_' + settingKey);
+  const preview = document.getElementById('preview_' + settingKey);
+  if (textInput) textInput.value = value;
+  if (preview) preview.style.backgroundColor = value;
   updatePreview();
 }
 
 function updateColorFromHex(settingKey, value) {
   if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
-    document.getElementById('color_' + settingKey).value = value;
-    document.getElementById('preview_' + settingKey).style.backgroundColor = value;
+    const colorInput = document.getElementById('color_' + settingKey);
+    const preview = document.getElementById('preview_' + settingKey);
+    if (colorInput) colorInput.value = value;
+    if (preview) preview.style.backgroundColor = value;
     updatePreview();
   }
 }
 
 function resetColor(settingKey, originalValue) {
-  document.getElementById('setting_' + settingKey).value = originalValue;
-  document.getElementById('color_' + settingKey).value = originalValue;
-  document.getElementById('preview_' + settingKey).style.backgroundColor = originalValue;
+  const textInput = document.getElementById('setting_' + settingKey);
+  const colorInput = document.getElementById('color_' + settingKey);
+  const preview = document.getElementById('preview_' + settingKey);
+  if (textInput) textInput.value = originalValue;
+  if (colorInput) colorInput.value = originalValue;
+  if (preview) preview.style.backgroundColor = originalValue;
   updatePreview();
 }
 
 // Template Selection
 function selectTemplate(template) {
   document.querySelectorAll('.template-option').forEach(opt => opt.classList.remove('selected'));
-  document.querySelector('.template-option[data-template="' + template + '"]').classList.add('selected');
+  const selectedOpt = document.querySelector('.template-option[data-template="' + template + '"]');
+  if (selectedOpt) selectedOpt.classList.add('selected');
   
   const templateInput = document.querySelector('input[name*="template"]');
   if (templateInput) {
@@ -2052,8 +2133,10 @@ function selectTemplate(template) {
 
 // Font Size Slider
 function updateFontSize(settingKey, value) {
-  document.getElementById('setting_' + settingKey).value = value;
-  document.getElementById('value_' + settingKey).textContent = value + 'px';
+  const settingInput = document.getElementById('setting_' + settingKey);
+  const valueDisplay = document.getElementById('value_' + settingKey);
+  if (settingInput) settingInput.value = value;
+  if (valueDisplay) valueDisplay.textContent = value + 'px';
   updatePreview();
 }
 
@@ -2066,30 +2149,40 @@ function resetToDefaults() {
 
 // Live Preview Update
 function updatePreview() {
-  // This function would update the live preview based on current settings
-  // For now, it's a placeholder for future implementation
   const previewForm = document.getElementById('previewForm');
   if (previewForm) {
-    // Apply color changes
     const primaryColor = document.querySelector('input[name*="primary_color"]')?.value || '#3b82f6';
     const backgroundColor = document.querySelector('input[name*="background_color"]')?.value || '#ffffff';
     
     previewForm.style.backgroundColor = backgroundColor;
-    previewForm.querySelector('.preview-header-section h2').style.color = primaryColor;
+    const headerTitle = previewForm.querySelector('.preview-header-section h2');
+    if (headerTitle) headerTitle.style.color = primaryColor;
   }
 }
 
-// Initialize preview on load
+// Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
   updatePreview();
-  const activeTab = document.querySelector('.tab-btn.active')?.getAttribute('data-tab') || 'fields';
-  syncRelatedPanels(activeTab);
-  if (window.location.hash === '#incident-management' || window.location.hash === '#master-data') {
-    const masterDataTab = document.querySelector('.tab-btn[data-tab="master-data"]');
-    if (masterDataTab) {
-      masterDataTab.click();
-      document.getElementById('tab-master-data')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+
+  // Determine initial active tab: hash -> localStorage -> default 'fields'
+  let initialTab = 'fields';
+  const hash = (window.location.hash || '').replace('#', '');
+  if (hash === 'incident-management' || hash === 'master-data') {
+    initialTab = 'master-data';
+  } else if (hash && document.querySelector(`.tab-btn[data-tab="${hash}"]`)) {
+    initialTab = hash;
+  } else {
+    try {
+      const savedTab = localStorage.getItem('incident_settings_active_tab');
+      if (savedTab && document.querySelector(`.tab-btn[data-tab="${savedTab}"]`)) {
+        initialTab = savedTab;
+      }
+    } catch (e) {}
+  }
+
+  activateTab(initialTab);
+  if (initialTab === 'master-data') {
+    document.getElementById('tab-master-data')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 });
 </script>

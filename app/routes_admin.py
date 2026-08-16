@@ -1226,12 +1226,6 @@ def autosave_loading_animations():
     return jsonify({"success": True, "message": "Loading animation saved.", "config": values})
 
 
-def _result_success_overlay_response(success, message, status=200, **payload):
-    body = {"success": success, "message": message, **payload}
-    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return jsonify(body), status
-    flash(message, "success" if success else "danger")
-    return redirect(url_for("admin.result_success_overlay_settings"))
 
 
 def _result_success_overlay_setting(key, value):
