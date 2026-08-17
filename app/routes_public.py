@@ -484,10 +484,10 @@ def incident_report_form(token):
             return incident_form_error("Please correct the highlighted fields.", validation_errors)
 
         if not category_id:
-            default_category = IncidentCategory.query.filter_by(is_active=True).order_by(IncidentCategory.sort_order, IncidentCategory.id).first()
+            default_category = IncidentCategory.query.order_by(IncidentCategory.sort_order, IncidentCategory.id).first()
             category_id = default_category.id if default_category else None
         if not severity_id:
-            default_severity = SeverityLevel.query.filter_by(is_active=True).order_by(SeverityLevel.sort_order, SeverityLevel.id).first()
+            default_severity = SeverityLevel.query.order_by(SeverityLevel.sort_order, SeverityLevel.id).first()
             severity_id = default_severity.id if default_severity else None
         if not category_id or not severity_id:
             return incident_form_error("Incident categories and severity levels must be configured before submitting reports.")
@@ -495,14 +495,14 @@ def incident_report_form(token):
             description = "No description provided."
 
         try:
-            category = IncidentCategory.query.filter_by(id=int(category_id), is_active=True).first()
-            severity = SeverityLevel.query.filter_by(id=int(severity_id), is_active=True).first()
+            category = IncidentCategory.query.filter_by(id=int(category_id)).first()
+            severity = SeverityLevel.query.filter_by(id=int(severity_id)).first()
         except (TypeError, ValueError):
             category = severity = None
         if not category:
-            return incident_form_error("Please select an active incident category.")
+            return incident_form_error("Please select a valid incident category.")
         if not severity:
-            return incident_form_error("Please select an active severity level.")
+            return incident_form_error("Please select a valid severity level.")
 
         category_is_other = is_other_lookup_value(category.name)
         action_has_other = any(is_other_lookup_value(action) for action in actions_list)
@@ -611,9 +611,9 @@ def incident_report_form(token):
         return render_template("incident_success.html", settings=settings, report=report, student=student, token=token)
     
     # GET request - show form
-    categories = IncidentCategory.query.filter_by(is_active=True).order_by(IncidentCategory.sort_order).all()
-    severities = SeverityLevel.query.filter_by(is_active=True).order_by(SeverityLevel.sort_order).all()
-    actions = IncidentAction.query.filter_by(is_active=True).order_by(IncidentAction.sort_order).all()
+    categories = IncidentCategory.query.order_by(IncidentCategory.sort_order).all()
+    severities = SeverityLevel.query.order_by(SeverityLevel.sort_order).all()
+    actions = IncidentAction.query.order_by(IncidentAction.sort_order).all()
     exams = Exam.query.filter_by(is_published=True).order_by(Exam.id.desc()).all()
     subjects = Subject.query.order_by(Subject.name).all()
     

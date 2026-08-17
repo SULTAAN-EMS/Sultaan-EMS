@@ -129,7 +129,7 @@
                   {% if student_data.student.mother_name %}<span class="mother-name">({{ student_data.student.mother_name }})</span>{% endif %}
                 </td>
                 {% for subject_data in student_data.subject_data %}
-                  <td class="rh-mono">{{ subject_data.score|academic_number(settings) }}</td>
+                  <td class="rh-mono">{% if subject_data.is_uf %}<span class="rh-uf" title="Ma Gelin — Examination not taken">⚠️ MG</span>{% else %}{{ subject_data.score|academic_number(settings) }}{% endif %}</td>
                 {% endfor %}
                   <td class="rh-mono"><strong>{{ student_data.total_score|academic_number(settings) }}/{{ student_data.total_max|academic_number(settings) }}</strong></td>
                   <td class="rh-mono">{{ student_data.percentage|academic_number(settings) }}%</td>

@@ -343,10 +343,12 @@ body {
   padding-right: .4mm;
 }
 .tis-print-table th:nth-child(3),
-.tis-print-table td:nth-child(3),
+.tis-print-table td:nth-child(3) {
+  width: 20mm;
+}
 .tis-print-table th:nth-child(4),
 .tis-print-table td:nth-child(4) {
-  width: 20mm;
+  width: 15mm;
 }
 .tis-print-table th:nth-child(5),
 .tis-print-table td:nth-child(5) {
@@ -536,6 +538,23 @@ body {
   font-variant-numeric: tabular-nums;
   letter-spacing: .01em;
   white-space: nowrap;
+}
+.print-grade-badge.uf-result-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: .4mm .8mm;
+  line-height: 1;
+  font-size: 7pt;
+  font-variant-numeric: normal;
+  letter-spacing: normal;
+  white-space: nowrap;
+  background:#fff7ed !important;
+  border-color:#fb923c !important;
+  color:#9a3412 !important;
+  font-family:"Segoe UI Emoji", Arial, sans-serif;
 }
 @media print {
   html, body { width: 210mm; height: 297mm; background: #fff; }

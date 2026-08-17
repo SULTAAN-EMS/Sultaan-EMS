@@ -20,7 +20,7 @@ from .import_wizard import process_result_import, process_student_import, result
 from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AttendanceRecord, Exam, ExamType, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, Subject, LabelTranslation
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
-from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, competition_rank_lookup, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, result_payload, subject_display_name
+from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, result_payload, subject_display_name
 from .attendance_rules import counts_as_exam_sitting
 
 advanced_results_bp = Blueprint("admin_advanced_results", __name__)
@@ -718,6 +718,11 @@ def class_roster():
         students = student_query.order_by(Student.full_name).all()
         
         subjects = subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
+        attendance_uf_keys = attendance_uf_subject_keys(
+            selected_exam,
+            [student.id for student in students],
+            [subject.id for subject in subjects],
+        )
         
         # Build results data for each student
         roster_data = []
@@ -755,6 +760,7 @@ def class_roster():
                     "max_score": max_score,
                     "percentage": round(percentage, 2),
                     "grade": grade_info,
+                    "is_uf": (student.id, subject.id) in attendance_uf_keys,
                 })
             
             overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
@@ -1261,6 +1267,11 @@ def export_class_pdf():
         .all()
     )
     subjects = subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
+    attendance_uf_keys = attendance_uf_subject_keys(
+        selected_exam,
+        [student.id for student in students],
+        [subject.id for subject in subjects],
+    )
     
     # Load grade scales once to avoid N+1 queries
     exam_scales = GradeScale.query.filter(
@@ -1344,6 +1355,7 @@ def export_class_pdf():
                 "grade": grade_info,
                 "is_fail": is_fail,
                 "is_weak": is_weak,
+                "is_uf": (student.id, subject.id) in attendance_uf_keys,
             })
         
         overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
@@ -1461,6 +1473,11 @@ def export_class_excel():
         .all()
     )
     subjects = subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
+    attendance_uf_keys = attendance_uf_subject_keys(
+        selected_exam,
+        [student.id for student in students],
+        [subject.id for subject in subjects],
+    )
     
     # Load grade scales once to avoid N+1 queries
     exam_scales = GradeScale.query.filter(
@@ -1548,7 +1565,7 @@ def export_class_excel():
             total_score += score
             total_max += max_score
             
-            row_data.append(score)
+            row_data.append("⚠️ MG" if (student.id, subject.id) in attendance_uf_keys else score)
         
         overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
         overall_grade = cached_grade_for(overall_percentage)

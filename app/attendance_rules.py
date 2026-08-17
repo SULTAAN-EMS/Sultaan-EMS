@@ -24,6 +24,7 @@ _STATUS_ALIASES = {
     "excused": "excused",
     "la fasaxay": "excused",
     "sick": "sick",
+    "cudurdaar": "sick",
     "cudur daar": "sick",
     "emergency": "emergency",
     "xaalad degdeg": "emergency",

@@ -224,8 +224,8 @@ def incidents():
         "minor": sum(1 for r in reports if r.severity and r.severity.name.lower() == "minor"),
         "resolved": sum(1 for r in reports if r.status == "Resolved"),
     }
-    categories = IncidentCategory.query.filter_by(is_active=True).order_by(IncidentCategory.sort_order).all()
-    severities = SeverityLevel.query.filter_by(is_active=True).order_by(SeverityLevel.sort_order).all()
+    categories = IncidentCategory.query.order_by(IncidentCategory.sort_order).all()
+    severities = SeverityLevel.query.order_by(SeverityLevel.sort_order).all()
     academic_years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
     exams = Exam.query.order_by(Exam.id.desc()).all()
     levels = AcademicLevel.query.order_by(AcademicLevel.sort_order, AcademicLevel.name).all()
@@ -264,8 +264,8 @@ def incident_view(report_id):
     """View single incident report details"""
     ensure_incident_setting_defaults()
     report = IncidentReport.query.get_or_404(report_id)
-    categories = IncidentCategory.query.filter_by(is_active=True).order_by(IncidentCategory.sort_order).all()
-    severities = SeverityLevel.query.filter_by(is_active=True).order_by(SeverityLevel.sort_order).all()
+    categories = IncidentCategory.query.order_by(IncidentCategory.sort_order).all()
+    severities = SeverityLevel.query.order_by(SeverityLevel.sort_order).all()
     image_display_size = incident_setting_value("incident_image_display_size", "medium")
     return render_template(
         "admin/incident_view.html",
@@ -297,8 +297,8 @@ def incident_edit(report_id):
         flash("Incident report updated successfully.", "success")
         return redirect(url_for("admin.incidents"))
 
-    categories = IncidentCategory.query.filter_by(is_active=True).order_by(IncidentCategory.sort_order).all()
-    severities = SeverityLevel.query.filter_by(is_active=True).order_by(SeverityLevel.sort_order).all()
+    categories = IncidentCategory.query.order_by(IncidentCategory.sort_order).all()
+    severities = SeverityLevel.query.order_by(SeverityLevel.sort_order).all()
     return render_template("admin/incident_edit.html", report=report, categories=categories, severities=severities)
 
 
@@ -1831,7 +1831,8 @@ def incident_lookup_create(kind):
     if hasattr(row, "color"):
         row.color = normalize_lookup_color(request.form.get("color"))
     row.sort_order = safe_lookup_sort_order(request.form.get("sort_order"))
-    row.is_active = request.form.get("is_active") in ("on", "true", "1")
+    # Retained only for schema compatibility; Master Data has no activation state.
+    row.is_active = True
     db.session.add(row)
     try:
         db.session.commit()
@@ -1864,7 +1865,8 @@ def incident_lookup_update(kind, row_id):
     if hasattr(row, "color"):
         row.color = normalize_lookup_color(request.form.get("color"))
     row.sort_order = safe_lookup_sort_order(request.form.get("sort_order"))
-    row.is_active = request.form.get("is_active") in ("on", "true", "1")
+    # Retained only for schema compatibility; Master Data has no activation state.
+    row.is_active = True
     db.session.add(row)
     try:
         db.session.commit()
@@ -1895,14 +1897,15 @@ def incident_lookup_delete(kind, row_id):
 
     try:
         if referenced:
-            row.is_active = False
-            db.session.add(row)
-            message = f"{kind.title()} is used by existing reports, so it was deactivated safely."
-        else:
-            db.session.delete(row)
-            message = f"{kind.title()} deleted successfully."
+            return incident_lookup_response(
+                f"{kind.title()} is used by existing reports and cannot be deleted.",
+                "danger",
+                409,
+            )
+        db.session.delete(row)
+        message = f"{kind.title()} deleted successfully."
         db.session.commit()
-        record_incident_lookup_audit("Incident Settings Updated", f"Deleted/deactivated incident {kind}: {name}")
+        record_incident_lookup_audit("Incident Settings Updated", f"Deleted incident {kind}: {name}")
         return incident_lookup_response(message)
     except SQLAlchemyError as exc:
         db.session.rollback()

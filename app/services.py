@@ -10,6 +10,8 @@ from .models import (
     AcademicYear,
     AcademicLevel,
     AcademicClass,
+    AttendanceRecord,
+    ExamType,
     Subject,
     Exam,
     GradeScale,
@@ -18,6 +20,7 @@ from .models import (
     Setting,
     LabelTranslation,
 )
+from .attendance_rules import NON_SAT_STATUSES, normalize_attendance_status
 
 
 DEFAULT_SETTINGS = {
@@ -1170,6 +1173,58 @@ def seed_grade_scales():
         #   → admin-saved score ranges; must never be reset.
 
 
+def attendance_uf_subject_keys(exam, student_ids, subject_ids=None):
+    """Return exact student/subject pairs that did not sit one examination.
+
+    Attendance is the only source of truth.  The lookup is deliberately
+    constrained by the Results Hub exam, academic year, student, and subject;
+    an attendance row from another day, subject, or exam can never produce MG.
+    Historical rows that predate ``exam_id`` remain readable only through the
+    matching legacy ExamType in the same academic year.
+    """
+    if not exam or not student_ids:
+        return set()
+
+    scope_filters = [AttendanceRecord.exam_id == exam.id]
+    legacy_exam_type = ExamType.query.filter_by(
+        academic_year_id=exam.academic_year_id,
+        name=exam.name,
+    ).first()
+    if legacy_exam_type:
+        scope_filters.append(
+            (AttendanceRecord.exam_id.is_(None))
+            & (AttendanceRecord.exam_type_id == legacy_exam_type.id)
+        )
+
+    query = AttendanceRecord.query.filter(
+        AttendanceRecord.academic_year_id == exam.academic_year_id,
+        AttendanceRecord.student_id.in_(list(student_ids)),
+        or_(*scope_filters),
+    )
+    if subject_ids is not None:
+        subject_ids = list(subject_ids)
+        if not subject_ids:
+            return set()
+        query = query.filter(AttendanceRecord.subject_id.in_(subject_ids))
+
+    # Several historic hall records can exist for the same subject.  The most
+    # recently saved record is the authoritative correction for that exact
+    # student + subject + exam scope.
+    latest_by_pair = {}
+    for record in query.order_by(
+        AttendanceRecord.recorded_at.desc(), AttendanceRecord.id.desc()
+    ).all():
+        if record.subject_id is None:
+            continue
+        latest_by_pair.setdefault((record.student_id, record.subject_id), record)
+
+    return {
+        pair
+        for pair, record in latest_by_pair.items()
+        if normalize_attendance_status(record.status) in NON_SAT_STATUSES
+    }
+
+
 def result_payload(student, exam=None, public_only=True):
     query = Result.query.filter_by(student_id=student.id)
     if exam:
@@ -1216,6 +1271,10 @@ def result_payload(student, exam=None, public_only=True):
     overall = grade_for_from_cache(average, grade_cache)
     status = "Gudbay" if overall.get("is_pass") else "Haray"
 
+    uf_subject_keys = attendance_uf_subject_keys(
+        active_exam,
+        [student.id],
+    )
     subject_rows = []
     for row in rows:
         percentage_raw = Decimal(row.score) / Decimal(row.subject.max_score) * 100 if row.subject.max_score else 0
@@ -1235,8 +1294,42 @@ def result_payload(student, exam=None, public_only=True):
                 "status": "Pass" if displayed_grade.get("is_pass", automatic_grade.get("is_pass")) else "Needs Support",
                 "percentage": percentage,
                 "icon": subject_icon(row.subject.name, settings),
+                "is_uf": (student.id, row.subject_id) in uf_subject_keys,
             }
         )
+
+    # An absent student can legitimately have no Result row at all.  Surface
+    # that subject as MG without manufacturing a result, changing totals, or
+    # affecting grades/ranks.  Existing numerical rows remain authoritative.
+    missing_uf_subject_ids = {
+        subject_id
+        for student_id, subject_id in uf_subject_keys
+        if student_id == student.id and subject_id not in {row.subject_id for row in rows}
+    }
+    if missing_uf_subject_ids and student_level_id:
+        for subject in (
+            Subject.query.filter(
+                Subject.id.in_(missing_uf_subject_ids),
+                Subject.academic_level_id == student_level_id,
+            )
+            .order_by(Subject.id.asc())
+            .all()
+        ):
+            automatic_grade = grade_for_from_cache(Decimal("0"), grade_cache)
+            subject_rows.append(
+                {
+                    "id": None,
+                    "subject": subject_display_name(subject, settings).strip(),
+                    "score": 0.0,
+                    "max_score": float(subject.max_score),
+                    "grade": automatic_grade,
+                    "automatic_grade": automatic_grade,
+                    "status": "Needs Support",
+                    "percentage": 0.0,
+                    "icon": subject_icon(subject.name, settings),
+                    "is_uf": True,
+                }
+            )
 
     rank = None
     if rows and active_exam:

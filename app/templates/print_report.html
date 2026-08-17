@@ -113,8 +113,8 @@
               <td>{{ loop.index }}</td>
               <td>{{ row.subject }}</td>
               <td>{{ row.max_score|academic_number(settings) }}</td>
-              <td><strong class="print-grade-badge print-mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.score|academic_number(settings) }}</strong></td>
-              <td><strong class="print-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.grade.grade }}</strong></td>
+              <td>{% if row.is_uf %}<strong class="print-grade-badge print-mark-badge uf-result-indicator" title="Ma Gelin — Examination not taken">⚠️ MG</strong>{% else %}<strong class="print-grade-badge print-mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.score|academic_number(settings) }}</strong>{% endif %}</td>
+              <td>{% if row.is_uf %}<strong class="print-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken">⚠️ MG</strong>{% else %}<strong class="print-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.grade.grade }}</strong>{% endif %}</td>
               <td>{{ row.grade.comment }}</td>
             </tr>
           {% endfor %}

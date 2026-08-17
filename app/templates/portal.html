@@ -312,9 +312,9 @@
                     <td data-label="No.">{{ loop.index }}</td>
                     <td data-label="Subject">{{ row.subject }}</td>
                     <td data-label="Full Mark">{{ row.max_score|academic_number(settings) }}</td>
-                    <td data-label="Mark Obtained"><span class="dynamic-grade-badge mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.score|academic_number(settings) }}</b></span></td>
-                    <td data-label="Grade"><span class="dynamic-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.grade.grade }}</b></span></td>
-                    <td data-label="Grade Point">{{ row.grade.grade_point|academic_number(settings) }}</td>
+                    <td data-label="Mark Obtained">{% if row.is_uf %}<span class="dynamic-grade-badge mark-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b>⚠️ MG</b></span>{% else %}<span class="dynamic-grade-badge mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.score|academic_number(settings) }}</b></span>{% endif %}</td>
+                    <td data-label="Grade">{% if row.is_uf %}<span class="dynamic-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b>⚠️ MG</b></span>{% else %}<span class="dynamic-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.grade.grade }}</b></span>{% endif %}</td>
+                    <td data-label="Grade Point">{% if row.is_uf %}<span class="dynamic-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b>⚠️ MG</b></span>{% else %}{{ row.grade.grade_point|academic_number(settings) }}{% endif %}</td>
                   </tr>
                 {% endfor %}
               </tbody>

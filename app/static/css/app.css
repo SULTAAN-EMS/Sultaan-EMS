@@ -3211,6 +3211,31 @@ tbody tr:hover td { background: #f8fbff; }
 .result-action-button.top10 {
   display: var(--sis-display-top10-button);
 }
+
+.premium-result .dynamic-grade-badge.uf-result-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 3px;
+  line-height: 1;
+  white-space: nowrap;
+  background:#fff7ed !important;
+  border-color:#fb923c !important;
+  color:#9a3412 !important;
+}
+.premium-result .dynamic-grade-badge.uf-result-indicator b {
+  display: inline-block;
+  min-width: 0;
+  padding: 2px 4px;
+  line-height: 1;
+  font-size: .74rem;
+  white-space: nowrap;
+  background:#fff7ed !important;
+  color:#9a3412 !important;
+}
+.rh-uf { display:inline-flex; align-items:center; padding:2px 7px; border:1px solid #fb923c; border-radius:999px; background:#fff7ed; color:#9a3412; font-size:.78rem; font-weight:800; white-space:nowrap; }
 .result-footer-logo {
   width: 24px;
   height: 24px;

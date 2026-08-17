@@ -24,12 +24,10 @@
       </div>
     </div>
     <div class="header-actions">
-      <button type="button" class="btn-reset" onclick="resetToDefaults()">
-        <i class="fa-solid fa-rotate-left"></i> Reset to Default
-      </button>
-      <button type="submit" form="settingsForm" class="btn-save-header">
-        <i class="fa-solid fa-check"></i> Save Settings
-      </button>
+      <div id="autoSaveIndicator" class="auto-save-indicator state-idle" role="status" aria-live="polite">
+        <i class="fa-solid fa-cloud-arrow-up"></i>
+        <span class="status-text">All changes saved</span>
+      </div>
     </div>
   </div>
 
@@ -91,32 +89,34 @@
               </div>
             </div>
             <div class="card-body">
-              {% for setting in grouped_settings.get('general', []) %}
-              <div class="setting-row">
-                <div class="setting-left">
-                  <div class="setting-icon">
-                    <i class="fa-solid fa-{% if 'prefix' in setting.setting_key %}hashtag{% elif 'image' in setting.setting_key %}image{% else %}gear{% endif %}"></i>
+              <div class="toggles-grid">
+                {% for setting in grouped_settings.get('general', []) %}
+                <div class="toggle-card">
+                  <div class="setting-left">
+                    <div class="setting-icon">
+                      <i class="fa-solid fa-{% if 'prefix' in setting.setting_key %}hashtag{% elif 'image' in setting.setting_key %}image{% else %}gear{% endif %}"></i>
+                    </div>
+                    <div class="setting-info">
+                      <label class="setting-title">{{ setting.description }}</label>
+                      <span class="setting-desc">Applies to newly submitted incident reports and admin views.</span>
+                    </div>
                   </div>
-                  <div class="setting-info">
-                    <label class="setting-title">{{ setting.description }}</label>
-                    <span class="setting-desc">Applies to newly submitted incident reports and admin views.</span>
+                  <div class="setting-right">
+                    {% if setting.setting_key == 'incident_image_display_size' %}
+                      <select name="setting_{{ setting.setting_key }}" class="modern-select">
+                        <option value="small" {% if setting.setting_value == 'small' %}selected{% endif %}>Small</option>
+                        <option value="medium" {% if setting.setting_value == 'medium' %}selected{% endif %}>Medium</option>
+                        <option value="large" {% if setting.setting_value == 'large' %}selected{% endif %}>Large</option>
+                      </select>
+                    {% elif setting.setting_key == 'incident_reference_prefix' %}
+                      <input type="text" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" class="modern-input" maxlength="10" style="text-transform: uppercase;">
+                    {% else %}
+                      <input type="text" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" class="modern-input">
+                    {% endif %}
                   </div>
                 </div>
-                <div class="setting-right">
-                  {% if setting.setting_key == 'incident_image_display_size' %}
-                    <select name="setting_{{ setting.setting_key }}" class="modern-select">
-                      <option value="small" {% if setting.setting_value == 'small' %}selected{% endif %}>Small</option>
-                      <option value="medium" {% if setting.setting_value == 'medium' %}selected{% endif %}>Medium</option>
-                      <option value="large" {% if setting.setting_value == 'large' %}selected{% endif %}>Large</option>
-                    </select>
-                  {% elif setting.setting_key == 'incident_reference_prefix' %}
-                    <input type="text" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" class="modern-input" maxlength="10" style="text-transform: uppercase;">
-                  {% else %}
-                    <input type="text" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" class="modern-input">
-                  {% endif %}
-                </div>
+                {% endfor %}
               </div>
-              {% endfor %}
             </div>
           </div>
         </div>
@@ -132,25 +132,27 @@
               </div>
             </div>
             <div class="card-body">
-              {% for setting in grouped_settings.get('fields', []) %}
-              <div class="setting-row">
-                <div class="setting-left">
-                  <div class="setting-icon">
-                    <i class="fa-solid fa-{% if 'student' in setting.setting_key %}user-graduate{% elif 'teacher' in setting.setting_key %}chalkboard-user{% elif 'photo' in setting.setting_key %}image{% elif 'subject' in setting.setting_key %}book{% elif 'exam' in setting.setting_key %}file-circle-check{% elif 'evidence' in setting.setting_key %}paperclip{% elif 'room' in setting.setting_key %}door-open{% else %}circle{% endif %}"></i>
+              <div class="toggles-grid">
+                {% for setting in grouped_settings.get('fields', []) %}
+                <div class="toggle-card">
+                  <div class="setting-left">
+                    <div class="setting-icon">
+                      <i class="fa-solid fa-{% if 'student' in setting.setting_key %}user-graduate{% elif 'teacher' in setting.setting_key %}chalkboard-user{% elif 'photo' in setting.setting_key %}image{% elif 'subject' in setting.setting_key %}book{% elif 'exam' in setting.setting_key %}file-circle-check{% elif 'evidence' in setting.setting_key %}paperclip{% elif 'room' in setting.setting_key %}door-open{% else %}circle{% endif %}"></i>
+                    </div>
+                    <div class="setting-info">
+                      <label class="setting-title">{{ setting.description }}</label>
+                      <span class="setting-desc">Toggle to show or hide this field on the form</span>
+                    </div>
                   </div>
-                  <div class="setting-info">
-                    <label class="setting-title">{{ setting.description }}</label>
-                    <span class="setting-desc">Toggle to show or hide this field on the form</span>
+                  <div class="setting-right">
+                    <label class="modern-toggle">
+                      <input type="checkbox" name="setting_{{ setting.setting_key }}" {% if setting.setting_value == 'true' %}checked{% endif %}>
+                      <span class="toggle-slider"></span>
+                    </label>
                   </div>
                 </div>
-                <div class="setting-right">
-                  <label class="modern-toggle">
-                    <input type="checkbox" name="setting_{{ setting.setting_key }}" {% if setting.setting_value == 'true' %}checked{% endif %}>
-                    <span class="toggle-slider"></span>
-                  </label>
-                </div>
+                {% endfor %}
               </div>
-              {% endfor %}
             </div>
           </div>
         </div>
@@ -166,25 +168,27 @@
               </div>
             </div>
             <div class="card-body">
-              {% for setting in grouped_settings.get('requirements', []) %}
-              <div class="setting-row">
-                <div class="setting-left">
-                  <div class="setting-icon">
-                    <i class="fa-solid fa-{% if 'student' in setting.setting_key %}user-graduate{% elif 'teacher' in setting.setting_key %}chalkboard-user{% elif 'description' in setting.setting_key %}align-left{% elif 'signature' in setting.setting_key %}signature{% else %}asterisk{% endif %}"></i>
+              <div class="toggles-grid">
+                {% for setting in grouped_settings.get('requirements', []) %}
+                <div class="toggle-card">
+                  <div class="setting-left">
+                    <div class="setting-icon">
+                      <i class="fa-solid fa-{% if 'student' in setting.setting_key %}user-graduate{% elif 'teacher' in setting.setting_key %}chalkboard-user{% elif 'description' in setting.setting_key %}align-left{% elif 'signature' in setting.setting_key %}signature{% else %}asterisk{% endif %}"></i>
+                    </div>
+                    <div class="setting-info">
+                      <label class="setting-title">{{ setting.description }}</label>
+                      <span class="setting-desc">Make this field mandatory for all reports</span>
+                    </div>
                   </div>
-                  <div class="setting-info">
-                    <label class="setting-title">{{ setting.description }}</label>
-                    <span class="setting-desc">Make this field mandatory for all reports</span>
+                  <div class="setting-right">
+                    <label class="modern-toggle">
+                      <input type="checkbox" name="setting_{{ setting.setting_key }}" {% if setting.setting_value == 'true' %}checked{% endif %}>
+                      <span class="toggle-slider"></span>
+                    </label>
                   </div>
                 </div>
-                <div class="setting-right">
-                  <label class="modern-toggle">
-                    <input type="checkbox" name="setting_{{ setting.setting_key }}" {% if setting.setting_value == 'true' %}checked{% endif %}>
-                    <span class="toggle-slider"></span>
-                  </label>
-                </div>
+                {% endfor %}
               </div>
-              {% endfor %}
             </div>
           </div>
         </div>
@@ -200,39 +204,41 @@
               </div>
             </div>
             <div class="card-body">
-              {% for setting in grouped_settings.get('security', []) %}
-              <div class="setting-row">
-                <div class="setting-left">
-                  <div class="setting-icon">
-                    <i class="fa-solid fa-{% if 'password' in setting.setting_key %}key{% elif 'signature' in setting.setting_key %}signature{% else %}shield{% endif %}"></i>
+              <div class="toggles-grid">
+                {% for setting in grouped_settings.get('security', []) %}
+                <div class="toggle-card">
+                  <div class="setting-left">
+                    <div class="setting-icon">
+                      <i class="fa-solid fa-{% if 'password' in setting.setting_key %}key{% elif 'signature' in setting.setting_key %}signature{% else %}shield{% endif %}"></i>
+                    </div>
+                    <div class="setting-info">
+                      <label class="setting-title">{{ setting.description }}</label>
+                      <span class="setting-desc">Applied to invigilator account creation and password changes.</span>
+                    </div>
                   </div>
-                  <div class="setting-info">
-                    <label class="setting-title">{{ setting.description }}</label>
-                    <span class="setting-desc">Applied to invigilator account creation and password changes.</span>
-                  </div>
-                </div>
-                <div class="setting-right">
-                  {% if setting.setting_key == 'invigilator_password_type' %}
-                    <select name="setting_{{ setting.setting_key }}" class="modern-select">
-                      <option value="numbers" {% if setting.setting_value == 'numbers' %}selected{% endif %}>Numbers Only</option>
-                      <option value="letters" {% if setting.setting_value == 'letters' %}selected{% endif %}>Letters Only</option>
-                      <option value="letters_numbers" {% if setting.setting_value == 'letters_numbers' %}selected{% endif %}>Letters + Numbers</option>
-                    </select>
-                  {% elif setting.setting_type == 'boolean' %}
-                    <label class="modern-toggle">
-                      <input type="checkbox" name="setting_{{ setting.setting_key }}" {% if setting.setting_value == 'true' %}checked{% endif %}>
-                      <span class="toggle-slider"></span>
-                    </label>
-                  {% else %}
-                    {% if 'timeout' in setting.setting_key or 'duration' in setting.setting_key %}
-                      <input type="number" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" min="1" max="10080" class="modern-input">
+                  <div class="setting-right">
+                    {% if setting.setting_key == 'invigilator_password_type' %}
+                      <select name="setting_{{ setting.setting_key }}" class="modern-select">
+                        <option value="numbers" {% if setting.setting_value == 'numbers' %}selected{% endif %}>Numbers Only</option>
+                        <option value="letters" {% if setting.setting_value == 'letters' %}selected{% endif %}>Letters Only</option>
+                        <option value="letters_numbers" {% if setting.setting_value == 'letters_numbers' %}selected{% endif %}>Letters + Numbers</option>
+                      </select>
+                    {% elif setting.setting_type == 'boolean' %}
+                      <label class="modern-toggle">
+                        <input type="checkbox" name="setting_{{ setting.setting_key }}" {% if setting.setting_value == 'true' %}checked{% endif %}>
+                        <span class="toggle-slider"></span>
+                      </label>
                     {% else %}
-                      <input type="number" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" min="4" max="32" class="modern-input">
+                      {% if 'timeout' in setting.setting_key or 'duration' in setting.setting_key %}
+                        <input type="number" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" min="1" max="10080" class="modern-input">
+                      {% else %}
+                        <input type="number" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" min="4" max="32" class="modern-input">
+                      {% endif %}
                     {% endif %}
-                  {% endif %}
+                  </div>
                 </div>
+                {% endfor %}
               </div>
-              {% endfor %}
             </div>
           </div>
         </div>
@@ -248,22 +254,24 @@
               </div>
             </div>
             <div class="card-body">
-              {% for setting in grouped_settings.get('header', []) %}
-              <div class="input-group">
-                <label for="setting_{{ setting.setting_key }}">{{ setting.description }}</label>
-                {% if setting.setting_type == 'boolean' %}
-                <label class="modern-toggle">
-                  <input type="checkbox" name="setting_{{ setting.setting_key }}" {% if setting.setting_value == 'true' %}checked{% endif %}>
-                  <span class="toggle-slider"></span>
-                </label>
-                {% else %}
-                <div class="input-wrapper">
-                  <i class="fa-solid fa-pen input-icon"></i>
-                  <input type="text" id="setting_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" placeholder="Enter {{ setting.description|lower }}">
+              <div class="inputs-grid">
+                {% for setting in grouped_settings.get('header', []) %}
+                <div class="input-group">
+                  <label for="setting_{{ setting.setting_key }}">{{ setting.description }}</label>
+                  {% if setting.setting_type == 'boolean' %}
+                  <label class="modern-toggle">
+                    <input type="checkbox" name="setting_{{ setting.setting_key }}" {% if setting.setting_value == 'true' %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                  </label>
+                  {% else %}
+                  <div class="input-wrapper">
+                    <i class="fa-solid fa-pen input-icon"></i>
+                    <input type="text" id="setting_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" placeholder="Enter {{ setting.description|lower }}">
+                  </div>
+                  {% endif %}
                 </div>
-                {% endif %}
+                {% endfor %}
               </div>
-              {% endfor %}
             </div>
           </div>
         </div>
@@ -279,34 +287,36 @@
               </div>
             </div>
             <div class="card-body">
-              {% for setting in grouped_settings.get('footer', []) %}
-              <div class="input-group">
-                <label for="setting_{{ setting.setting_key }}">{{ setting.description }}</label>
-                {% if setting.setting_type == 'boolean' %}
-                <label class="modern-toggle">
-                  <input type="checkbox" name="setting_{{ setting.setting_key }}" {% if setting.setting_value == 'true' %}checked{% endif %}>
-                  <span class="toggle-slider"></span>
-                </label>
-                {% elif 'color' in setting.setting_key.lower() or setting.setting_key in ['footer_bg_start', 'footer_bg_end', 'footer_gold', 'footer_teal'] %}
-                <div class="input-wrapper" style="display: flex; align-items: center; gap: 10px; width: 100%;">
-                  <input type="color" id="picker_{{ setting.setting_key }}" value="{{ setting.setting_value or '#ffffff' }}" onchange="document.getElementById('setting_{{ setting.setting_key }}').value = this.value; document.getElementById('setting_{{ setting.setting_key }}').dispatchEvent(new Event('change'));" style="width: 50px; height: 38px; padding: 0; border-radius: 6px; cursor: pointer; border: 1px solid var(--line);">
-                  <input type="text" id="setting_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" placeholder="#HEX" class="modern-input" style="flex: 1;" onchange="document.getElementById('picker_{{ setting.setting_key }}').value = this.value; document.getElementById('setting_{{ setting.setting_key }}').dispatchEvent(new Event('change'));">
-                </div>
-                {% elif setting.setting_key == 'footer_logo_path' %}
-                <div class="input-wrapper" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
-                  <input type="file" id="file_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}" accept="image/*" class="modern-input" style="width: 100%;" onchange="const reader = new FileReader(); reader.onload = (e) => { const img = document.getElementById('preview_img_{{ setting.setting_key }}'); if(img) { img.src = e.target.result; img.style.display = 'block'; } }; if(this.files[0]) reader.readAsDataURL(this.files[0]);">
-                  <div class="logo-preview-wrapper" style="margin-top: 6px;">
-                    <img id="preview_img_{{ setting.setting_key }}" src="{% if setting.setting_value %}{{ asset_url(setting.setting_value) }}{% endif %}" alt="Footer logo preview" style="max-height: 40px; border-radius: 6px; border: 1px solid var(--line); {% if not setting.setting_value %}display: none;{% endif %}">
+              <div class="inputs-grid">
+                {% for setting in grouped_settings.get('footer', []) %}
+                <div class="input-group">
+                  <label for="setting_{{ setting.setting_key }}">{{ setting.description }}</label>
+                  {% if setting.setting_type == 'boolean' %}
+                  <label class="modern-toggle">
+                    <input type="checkbox" name="setting_{{ setting.setting_key }}" {% if setting.setting_value == 'true' %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                  </label>
+                  {% elif 'color' in setting.setting_key.lower() or setting.setting_key in ['footer_bg_start', 'footer_bg_end', 'footer_gold', 'footer_teal'] %}
+                  <div class="input-wrapper" style="display: flex; align-items: center; gap: 10px; width: 100%;">
+                    <input type="color" id="picker_{{ setting.setting_key }}" value="{{ setting.setting_value or '#ffffff' }}" onchange="document.getElementById('setting_{{ setting.setting_key }}').value = this.value; document.getElementById('setting_{{ setting.setting_key }}').dispatchEvent(new Event('change'));" style="width: 50px; height: 38px; padding: 0; border-radius: 6px; cursor: pointer; border: 1px solid var(--line);">
+                    <input type="text" id="setting_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" placeholder="#HEX" class="modern-input" style="flex: 1;" onchange="document.getElementById('picker_{{ setting.setting_key }}').value = this.value; document.getElementById('setting_{{ setting.setting_key }}').dispatchEvent(new Event('change'));">
                   </div>
+                  {% elif setting.setting_key == 'footer_logo_path' %}
+                  <div class="input-wrapper" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                    <input type="file" id="file_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}" accept="image/*" class="modern-input" style="width: 100%;" onchange="const reader = new FileReader(); reader.onload = (e) => { const img = document.getElementById('preview_img_{{ setting.setting_key }}'); if(img) { img.src = e.target.result; img.style.display = 'block'; } }; if(this.files[0]) reader.readAsDataURL(this.files[0]);">
+                    <div class="logo-preview-wrapper" style="margin-top: 6px;">
+                      <img id="preview_img_{{ setting.setting_key }}" src="{% if setting.setting_value %}{{ asset_url(setting.setting_value) }}{% endif %}" alt="Footer logo preview" style="max-height: 40px; border-radius: 6px; border: 1px solid var(--line); {% if not setting.setting_value %}display: none;{% endif %}">
+                    </div>
+                  </div>
+                  {% else %}
+                  <div class="input-wrapper">
+                    <i class="fa-solid fa-pen input-icon"></i>
+                    <input type="text" id="setting_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" placeholder="Enter {{ setting.description|lower }}">
+                  </div>
+                  {% endif %}
                 </div>
-                {% else %}
-                <div class="input-wrapper">
-                  <i class="fa-solid fa-pen input-icon"></i>
-                  <input type="text" id="setting_{{ setting.setting_key }}" name="setting_{{ setting.setting_key }}" value="{{ setting.setting_value }}" placeholder="Enter {{ setting.description|lower }}">
-                </div>
-                {% endif %}
+                {% endfor %}
               </div>
-              {% endfor %}
             </div>
           </div>
         </div>
@@ -525,32 +535,31 @@
                   </div>
                 </div>
                 <div class="card-body">
-                  <form method="POST" action="{{ url_for('admin.incident_lookup_create', kind='category') }}" class="lookup-add-row-vertical">
+                  <form method="POST" action="{{ url_for('admin.incident_lookup_create', kind='category') }}" class="lookup-add-card">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <div class="module-input-row">
-                      <input type="text" name="name" placeholder="Category Name (e.g. Unauthorized Material)" required class="modern-input">
-                      <input type="number" name="sort_order" value="0" min="0" title="Sort order" class="modern-input sort-input">
-                      <label class="lookup-active"><input type="checkbox" name="is_active" checked> Active</label>
+                    <div class="entity-form-grid">
+                      <div class="field-col field-name">
+                        <label class="field-label">Category Name <span class="req">*</span></label>
+                        <input type="text" name="name" placeholder="e.g. Unauthorized Material" required class="modern-input">
+                      </div>
+                      <div class="field-col field-sort">
+                        <label class="field-label">Sort</label>
+                        <input type="number" name="sort_order" value="0" min="0" title="Sort order" class="modern-input sort-input">
+                      </div>
                     </div>
-                    <div class="module-desc-row">
-                      <input type="text" name="description" placeholder="Category Description / Policy Details (optional)" class="modern-input desc-input">
-                      <button type="submit" class="btn-add-category"><i class="fa-solid fa-plus"></i> Add Category</button>
-                    </div>
+                    <button type="submit" class="btn-add-entity"><i class="fa-solid fa-plus"></i> Add Category</button>
                   </form>
                   <div class="categories-list">
                     {% for row in categories %}
                     <div class="category-item-card">
                       <form method="POST" action="{{ url_for('admin.incident_lookup_update', kind='category', row_id=row.id) }}" class="lookup-edit-form-vertical">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <div class="item-main-row">
+                        <div class="item-header-row">
                           <i class="fa-solid fa-tag item-icon"></i>
                           <input class="category-name-input modern-input" name="name" value="{{ row.name }}" required placeholder="Category Name">
-                          <input class="category-sort-input modern-input sort-input" type="number" name="sort_order" value="{{ row.sort_order }}" min="0" title="Sort order">
-                          <label class="lookup-active"><input type="checkbox" name="is_active" {% if row.is_active %}checked{% endif %}> Active</label>
-                          <button type="submit" class="btn-edit" title="Save Category"><i class="fa-solid fa-floppy-disk"></i></button>
-                        </div>
-                        <div class="item-desc-row">
-                          <input class="modern-input desc-input" name="description" value="{{ row.description or '' }}" placeholder="Category Description / Policy Details...">
+                          <div class="item-action-controls">
+                            <input class="category-sort-input modern-input sort-input" type="number" name="sort_order" value="{{ row.sort_order }}" min="0" title="Sort order">
+                          </div>
                         </div>
                       </form>
                       <form method="POST" action="{{ url_for('admin.incident_lookup_delete', kind='category', row_id=row.id) }}" class="lookup-delete-form" data-confirm="Delete category '{{ row.name }}'? Existing reports will remain protected.">
@@ -573,30 +582,40 @@
                   </div>
                 </div>
                 <div class="card-body">
-                  <form method="POST" action="{{ url_for('admin.incident_lookup_create', kind='severity') }}" class="lookup-add-row">
+                  <form method="POST" action="{{ url_for('admin.incident_lookup_create', kind='severity') }}" class="lookup-add-card">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="text" name="name" placeholder="Severity Name (e.g. Minor, Critical)" required class="modern-input">
-                    <div class="color-picker-group">
-                      <input type="color" name="color" value="#10b981" title="Identity Color" class="color-input">
+                    <div class="entity-form-grid severity-add-grid">
+                      <div class="field-col field-name">
+                        <label class="field-label">Severity Name <span class="req">*</span></label>
+                        <input type="text" name="name" placeholder="e.g. Minor, Critical" required class="modern-input">
+                      </div>
+                      <div class="field-col field-color">
+                        <label class="field-label">Color</label>
+                        <div class="color-picker-box">
+                          <input type="color" name="color" value="#10b981" title="Identity Color" class="color-input">
+                        </div>
+                      </div>
+                      <div class="field-col field-sort">
+                        <label class="field-label">Sort</label>
+                        <input type="number" name="sort_order" value="0" min="0" title="Sort order" class="modern-input sort-input">
+                      </div>
                     </div>
-                    <input type="number" name="sort_order" value="0" min="0" title="Sort order" class="modern-input sort-input">
-                    <label class="lookup-active"><input type="checkbox" name="is_active" checked> Active</label>
-                    <button type="submit" class="btn-add-category"><i class="fa-solid fa-plus"></i> Add Severity</button>
+                    <button type="submit" class="btn-add-entity"><i class="fa-solid fa-plus"></i> Add Severity</button>
                   </form>
                   <div class="categories-list">
                     {% for row in severities %}
-                    <div class="category-item-card">
-                      <form method="POST" action="{{ url_for('admin.incident_lookup_update', kind='severity', row_id=row.id) }}" class="lookup-edit-form">
+                    <div class="category-item-card severity-item-card">
+                      <form method="POST" action="{{ url_for('admin.incident_lookup_update', kind='severity', row_id=row.id) }}" class="lookup-edit-form-vertical">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <div class="category-info">
+                        <div class="item-header-row">
                           <span class="severity-preview-pill" style="--pill-color: {{ row.color or '#64748b' }};"></span>
-                          <input class="category-name-input modern-input" name="name" value="{{ row.name }}" required>
-                          <input type="color" name="color" value="{{ row.color or '#64748b' }}" title="Identity Color" class="color-input">
-                          <input class="category-sort-input modern-input sort-input" type="number" name="sort_order" value="{{ row.sort_order }}" min="0" title="Sort order">
-                          <label class="lookup-active"><input type="checkbox" name="is_active" {% if row.is_active %}checked{% endif %}> Active</label>
-                        </div>
-                        <div class="category-actions">
-                          <button type="submit" class="btn-edit" title="Save Severity"><i class="fa-solid fa-floppy-disk"></i></button>
+                          <input class="category-name-input modern-input" name="name" value="{{ row.name }}" required placeholder="Severity Name">
+                          <div class="item-action-controls">
+                            <div class="color-picker-box">
+                              <input type="color" name="color" value="{{ row.color or '#64748b' }}" title="Identity Color" class="color-input">
+                            </div>
+                            <input class="category-sort-input modern-input sort-input" type="number" name="sort_order" value="{{ row.sort_order }}" min="0" title="Sort order">
+                          </div>
                         </div>
                       </form>
                       <form method="POST" action="{{ url_for('admin.incident_lookup_delete', kind='severity', row_id=row.id) }}" class="lookup-delete-form" data-confirm="Delete severity level '{{ row.name }}'? Existing reports will remain protected.">
@@ -619,32 +638,31 @@
                   </div>
                 </div>
                 <div class="card-body">
-                  <form method="POST" action="{{ url_for('admin.incident_lookup_create', kind='action') }}" class="lookup-add-row-vertical">
+                  <form method="POST" action="{{ url_for('admin.incident_lookup_create', kind='action') }}" class="lookup-add-card">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <div class="module-input-row">
-                      <input type="text" name="name" placeholder="Action Name (e.g. Paper Confiscated)" required class="modern-input">
-                      <input type="number" name="sort_order" value="0" min="0" title="Sort order" class="modern-input sort-input">
-                      <label class="lookup-active"><input type="checkbox" name="is_active" checked> Active</label>
+                    <div class="entity-form-grid">
+                      <div class="field-col field-name">
+                        <label class="field-label">Action Name <span class="req">*</span></label>
+                        <input type="text" name="name" placeholder="e.g. Paper Confiscated" required class="modern-input">
+                      </div>
+                      <div class="field-col field-sort">
+                        <label class="field-label">Sort</label>
+                        <input type="number" name="sort_order" value="0" min="0" title="Sort order" class="modern-input sort-input">
+                      </div>
                     </div>
-                    <div class="module-desc-row">
-                      <input type="text" name="description" placeholder="Action Token Description / Standard Protocol (optional)" class="modern-input desc-input">
-                      <button type="submit" class="btn-add-category"><i class="fa-solid fa-plus"></i> Add Action Token</button>
-                    </div>
+                    <button type="submit" class="btn-add-entity"><i class="fa-solid fa-plus"></i> Add Action Token</button>
                   </form>
                   <div class="categories-list">
                     {% for row in actions %}
                     <div class="category-item-card">
                       <form method="POST" action="{{ url_for('admin.incident_lookup_update', kind='action', row_id=row.id) }}" class="lookup-edit-form-vertical">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <div class="item-main-row">
+                        <div class="item-header-row">
                           <i class="fa-solid fa-check-to-slot item-icon"></i>
                           <input class="category-name-input modern-input" name="name" value="{{ row.name }}" required placeholder="Action Token Name">
-                          <input class="category-sort-input modern-input sort-input" type="number" name="sort_order" value="{{ row.sort_order }}" min="0" title="Sort order">
-                          <label class="lookup-active"><input type="checkbox" name="is_active" {% if row.is_active %}checked{% endif %}> Active</label>
-                          <button type="submit" class="btn-edit" title="Save Action Token"><i class="fa-solid fa-floppy-disk"></i></button>
-                        </div>
-                        <div class="item-desc-row">
-                          <input class="modern-input desc-input" name="description" value="{{ row.description or '' }}" placeholder="Action Token Description / Protocol Details...">
+                          <div class="item-action-controls">
+                            <input class="category-sort-input modern-input sort-input" type="number" name="sort_order" value="{{ row.sort_order }}" min="0" title="Sort order">
+                          </div>
                         </div>
                       </form>
                       <form method="POST" action="{{ url_for('admin.incident_lookup_delete', kind='action', row_id=row.id) }}" class="lookup-delete-form" data-confirm="Delete action token '{{ row.name }}'? Existing reports will remain protected.">
@@ -659,30 +677,35 @@
 
             </div>
           </section>
-        </div></div>
+        </div>
+      </div>
+    </div>
 
   <!-- Footer Info -->
   <div class="settings-footer">
-    <i class="fa-solid fa-circle-info"></i>
-    <span>Lookup changes save immediately. Form configuration changes are applied after clicking Save Settings.</span>
+    <i class="fa-solid fa-circle-check"></i>
+    <span>All configuration settings and master data changes save automatically in real-time.</span>
   </div>
 </div>
 
 <style>
 /* Page Wrapper */
 .incident-settings-page {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 2rem 2rem;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 /* Page Header */
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   margin-bottom: 1.5rem;
-  padding: 1.5rem 0;
+  padding: 0 0 1rem 0;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+  width: 100%;
 }
 
 .header-left {
@@ -752,44 +775,51 @@
 
 .header-actions {
   display: flex;
+  align-items: center;
   gap: 0.75rem;
 }
 
-.btn-reset,
-.btn-save-header {
+.auto-save-indicator {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  border-radius: 12px;
-  font-size: 0.95rem;
+  padding: 0.6rem 1.1rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  border: none;
+  transition: all 0.25s ease;
+  user-select: none;
 }
 
-.btn-reset {
-  background: white;
+.auto-save-indicator i {
+  font-size: 0.95rem;
+}
+
+.auto-save-indicator.state-idle {
+  background: #f1f5f9;
   color: #64748b;
-  border: 2px solid #e5e7eb;
+  border: 1px solid #e2e8f0;
 }
 
-.btn-reset:hover {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #475569;
+.auto-save-indicator.state-saving {
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
 }
 
-.btn-save-header {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  color: white;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+.auto-save-indicator.state-saved {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.12);
 }
 
-.btn-save-header:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+.auto-save-indicator.state-error {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.15);
 }
 
 /* Tab Navigation */
@@ -838,13 +868,12 @@
 
 /* Settings Layout */
 .settings-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1.5rem;
-  align-items: start;
+  display: block;
+  width: 100%;
 }
 
 .settings-column {
+  width: 100%;
   min-width: 0;
 }
 
@@ -852,15 +881,16 @@
 .settings-card {
   background: white;
   border-radius: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(0, 0, 0, 0.05);
   border: 1px solid #f1f5f9;
   overflow: hidden;
   margin-bottom: 1.5rem;
   transition: box-shadow 0.3s ease;
+  width: 100%;
 }
 
 .settings-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.07), 0 2px 6px rgba(0, 0, 0, 0.05);
 }
 
 .card-header {
@@ -882,6 +912,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .header-text {
@@ -928,66 +959,95 @@
 /* Tab Content */
 .tab-content {
   display: none;
+  width: 100%;
 }
 
 .tab-content.active {
   display: block;
 }
 
-/* Setting Rows */
+/* Modern Responsive Toggles Grid */
+.toggles-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  width: 100%;
+}
+
+.toggle-card,
 .setting-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 0;
-  border-bottom: 1px solid #f1f5f9;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
+  background: #f8fafc;
+  border: 1px solid #eef2f6;
+  border-radius: 16px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.setting-row:last-child {
-  border-bottom: none;
+.toggle-card:hover,
+.setting-row:hover {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.05);
 }
 
-.setting-left {
+.toggle-card .setting-left,
+.setting-row .setting-left {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.9rem;
   flex: 1;
+  min-width: 0;
 }
 
-.setting-icon {
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+.toggle-card .setting-icon,
+.setting-row .setting-icon {
+  width: 42px;
+  height: 42px;
+  background: linear-gradient(135deg, #eef2f6, #e2e8f0);
   border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #64748b;
-  font-size: 1rem;
+  color: #475569;
+  font-size: 1.05rem;
   flex-shrink: 0;
 }
 
-.setting-info {
+.toggle-card .setting-info,
+.setting-row .setting-info {
   flex: 1;
+  min-width: 0;
 }
 
-.setting-title {
+.toggle-card .setting-title,
+.setting-row .setting-title {
   font-size: 0.95rem;
   font-weight: 600;
   color: #1e293b;
   margin: 0;
   display: block;
+  line-height: 1.35;
 }
 
-.setting-desc {
+.toggle-card .setting-desc,
+.setting-row .setting-desc {
   font-size: 0.8rem;
-  color: #94a3b8;
+  color: #64748b;
   margin: 0.25rem 0 0;
   display: block;
+  line-height: 1.3;
 }
 
-.setting-right {
+.toggle-card .setting-right,
+.setting-row .setting-right {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
 }
 
 /* Modern Toggle Switch */
@@ -996,6 +1056,7 @@
   display: inline-block;
   width: 52px;
   height: 28px;
+  flex-shrink: 0;
 }
 
 .modern-toggle input {
@@ -1037,13 +1098,18 @@
   transform: translateX(24px);
 }
 
-/* Input Groups */
-.input-group {
-  margin-bottom: 1.25rem;
+/* Inputs Grid for Header/Footer/Labels */
+.inputs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  width: 100%;
 }
 
-.input-group:last-child {
+/* Input Groups */
+.input-group {
   margin-bottom: 0;
+  width: 100%;
 }
 
 .input-group label {
@@ -1376,9 +1442,11 @@
   text-align: center;
 }
 
-/* Category Management */
+/* Category & Enterprise Master Data Management */
 .lookup-management-panel {
   margin-top: 1.5rem;
+  width: 100%;
+  min-width: 0;
   animation: fadeInLookup .28s ease both;
 }
 
@@ -1392,25 +1460,28 @@
   align-items: center;
   gap: 1rem;
   padding: 1.25rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
   border: 1px solid rgba(99, 102, 241, .18);
-  border-radius: 22px;
+  border-radius: 20px;
   background:
     linear-gradient(135deg, rgba(99, 102, 241, .12), rgba(14, 165, 233, .08)),
     #fff;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, .08);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, .06);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .lookup-management-icon {
-  width: 56px;
-  height: 56px;
+  width: 52px;
+  height: 52px;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  border-radius: 18px;
+  border-radius: 16px;
   color: #fff;
   background: linear-gradient(135deg, #6366f1, #0ea5e9);
-  box-shadow: 0 12px 28px rgba(99, 102, 241, .28);
+  box-shadow: 0 10px 24px rgba(99, 102, 241, .28);
 }
 
 .lookup-eyebrow {
@@ -1426,21 +1497,30 @@
 .lookup-management-hero h2 {
   margin: 0;
   color: #0f172a;
-  font-size: 1.25rem;
-  font-weight: 900;
+  font-size: 1.2rem;
+  font-weight: 800;
 }
 
 .lookup-management-hero p {
   margin: .25rem 0 0;
   color: #64748b;
-  font-size: .92rem;
+  font-size: .9rem;
 }
 
 .lookup-management-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
+  gap: 1.25rem;
   align-items: start;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1100px) {
+  .lookup-management-grid {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
 }
 
 .lookup-save-status {
@@ -1472,232 +1552,229 @@
 
 .lookup-management-grid .settings-card {
   margin-bottom: 0;
-  border-radius: 22px;
-  border-color: rgba(148, 163, 184, .22);
-  box-shadow: 0 18px 40px rgba(15, 23, 42, .07);
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, .2);
+  box-shadow: 0 4px 20px rgba(15, 23, 42, .05);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .lookup-management-grid .settings-card .card-header {
   background:
-    linear-gradient(135deg, rgba(59, 130, 246, .1), rgba(255, 255, 255, .94));
+    linear-gradient(135deg, rgba(59, 130, 246, .08), rgba(255, 255, 255, .95));
+}
+
+.lookup-add-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.15rem;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  margin-bottom: 1.25rem;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.entity-form-grid {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.65rem;
+  width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.field-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.field-col.field-name {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+.field-col.field-sort {
+  width: 68px;
+  flex: 0 0 68px;
+}
+
+.field-col.field-color {
+  width: 42px;
+  flex: 0 0 42px;
+}
+
+.field-col.field-desc {
+  width: 100%;
+  min-width: 0;
+}
+
+.field-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0;
+  display: block;
+}
+
+.field-label .req {
+  color: #ef4444;
+}
+
+.btn-add-entity {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  margin-top: 0.25rem;
+}
+
+.btn-add-entity:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
 .categories-list {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-}
-
-.category-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem;
-  background: #f8fafc;
-  border: 1px solid rgba(148, 163, 184, .18);
-  border-radius: 12px;
-  transition: all 0.3s ease;
-}
-
-.category-item:hover {
-  background: #fff;
-  transform: translateY(-1px);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, .07);
-}
-
-.category-info {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.category-icon {
-  color: #3b82f6;
-  font-size: 1rem;
-}
-
-.category-name {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.category-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.lookup-add-row,
-.lookup-edit-form,
-.category-info {
-  display: flex;
-  align-items: center;
-  gap: .65rem;
-  flex-wrap: wrap;
-}
-
-.lookup-add-row {
-  padding: .85rem;
-  margin-bottom: 1rem;
-  border: 1px dashed #cbd5e1;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #f8fafc, #ffffff);
-}
-
-.lookup-add-row input[type="text"],
-.lookup-add-row input[type="number"],
-.category-name-input,
-.category-desc-input,
-.category-sort-input {
-  border: 1px solid #dbe3ef;
-  border-radius: 10px;
-  padding: .55rem .7rem;
-  color: #0f172a;
-  font-weight: 700;
-  background: #fff;
-}
-
-.category-name-input {
-  min-width: 170px;
-}
-
-.category-desc-input {
-  min-width: 220px;
-  flex: 1;
-}
-
-.category-sort-input,
-.lookup-add-row input[type="number"] {
-  width: 86px;
-}
-
-.lookup-active {
-  display: inline-flex;
-  align-items: center;
-  gap: .35rem;
-  color: #475569;
-  font-weight: 800;
-  font-size: .86rem;
-}
-
-.lookup-active input {
-  accent-color: #10b981;
-}
-
-.btn-edit,
-.btn-delete {
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-}
-
-.btn-edit {
-  background: #dbeafe;
-  color: #2563eb;
-}
-
-.btn-edit:hover {
-  background: #bfdbfe;
-  transform: translateY(-1px);
-}
-
-.btn-delete {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.btn-delete:hover {
-  background: #fecaca;
-  transform: translateY(-1px);
-}
-
-.lookup-edit-form.is-submitting,
-.lookup-add-row.is-submitting,
-.lookup-delete-form.is-submitting {
-  opacity: .72;
-  pointer-events: none;
-}
-
-/* Independent Architecture Module Styles */
-.independent-module {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
-}
-
-.lookup-add-row-vertical {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 1.1rem;
-  background: #f8fafc;
-  border-radius: 14px;
-  border: 1px solid #e2e8f0;
-  margin-bottom: 1.25rem;
-}
-
-.module-input-row,
-.item-main-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.module-desc-row,
-.item-desc-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.desc-input {
-  flex: 1;
-  font-size: 0.85rem;
-  background: #ffffff;
-}
-
-.sort-input {
-  width: 80px;
-}
-
-.item-icon {
-  color: #3b82f6;
-  font-size: 0.95rem;
-  width: 24px;
-  text-align: center;
+  width: 100%;
+  min-width: 0;
 }
 
 .category-item-card {
   display: flex;
   align-items: flex-start;
-  gap: 0.75rem;
-  padding: 0.9rem;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
   background: #ffffff;
-  border: 1px solid #f1f5f9;
-  border-radius: 12px;
-  margin-bottom: 0.75rem;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  border: 1px solid #eef2f6;
+  border-radius: 14px;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .category-item-card:hover {
   border-color: #cbd5e1;
-  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
 }
 
 .lookup-edit-form-vertical {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.6rem;
+}
+
+.item-header-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.item-icon {
+  color: #3b82f6;
+  font-size: 0.95rem;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.category-name-input {
+  flex: 1 1 100px;
+  min-width: 0;
+  font-weight: 700;
+}
+
+.item-action-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.sort-input,
+.category-sort-input {
+  width: 60px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.color-picker-box {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #dbe3ef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.color-picker-box input[type="color"] {
+  border: none;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  margin: -7px;
+  cursor: pointer;
+  background: transparent;
+}
+
+.item-desc-row {
+  width: 100%;
+  min-width: 0;
+}
+
+.modern-textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.45;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 48px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.modern-textarea:focus {
+  background: #ffffff;
+  border-color: #3b82f6;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
 
 .severity-preview-pill {
@@ -1710,113 +1787,51 @@
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 2px 4px rgba(15, 23, 42, 0.15);
 }
 
-/* Preview Card */
-.preview-card {
-  background: white;
-  border-radius: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
-  border: 1px solid #f1f5f9;
-  overflow: hidden;
+.lookup-delete-form {
+  flex-shrink: 0;
 }
 
-.preview-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1.25rem 1.5rem;
-  background: linear-gradient(to bottom, #f8fafc, white);
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.preview-header i {
-  color: #3b82f6;
-  font-size: 1.25rem;
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(135deg, #dbeafe, #bfdbfe);
-  border-radius: 12px;
-  display: flex;
+.btn-edit,
+.btn-delete {
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  font-size: 0.85rem;
 }
 
-.preview-body {
-  padding: 1.5rem;
+.btn-edit {
+  background: #eff6ff;
+  color: #2563eb;
 }
 
-.preview-form {
-  background: #f8fafc;
-  border-radius: 16px;
-  padding: 1.5rem;
-  border: 1px solid #e2e8f0;
+.btn-edit:hover {
+  background: #dbeafe;
+  transform: translateY(-1px);
 }
 
-.preview-header-section {
-  text-align: center;
-  margin-bottom: 1.5rem;
-  padding-bottom: 1rem;
-  border-bottom: 2px solid #e2e8f0;
+.btn-delete {
+  background: #fef2f2;
+  color: #dc2626;
 }
 
-.preview-header-section h2 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0 0 0.5rem;
+.btn-delete:hover {
+  background: #fee2e2;
+  transform: translateY(-1px);
 }
 
-.preview-school {
-  font-size: 0.875rem;
-  color: #64748b;
-  margin: 0;
-}
-
-.preview-field {
-  margin-bottom: 1rem;
-}
-
-.preview-field label {
-  display: block;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #64748b;
-  margin-bottom: 0.375rem;
-}
-
-.preview-input {
-  padding: 0.625rem 0.875rem;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  color: #1e293b;
-}
-
-.preview-textarea {
-  padding: 0.625rem 0.875rem;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  color: #1e293b;
-  min-height: 60px;
-}
-
-.preview-signature {
-  margin-top: 1.5rem;
-}
-
-.preview-signature label {
-  display: block;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #64748b;
-  margin-bottom: 0.375rem;
-}
-
-.preview-signature-line {
-  height: 40px;
-  border-bottom: 2px solid #cbd5e1;
+.lookup-edit-form.is-submitting,
+.lookup-edit-form-vertical.is-submitting,
+.lookup-add-card.is-submitting,
+.lookup-delete-form.is-submitting {
+  opacity: .72;
+  pointer-events: none;
 }
 
 /* Settings Footer */
@@ -1830,6 +1845,9 @@
   margin-top: 2rem;
   font-size: 0.875rem;
   color: #64748b;
+  border: 1px solid #e2e8f0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .settings-footer i {
@@ -1838,24 +1856,21 @@
 }
 
 /* Responsive Design */
-@media (max-width: 1200px) {
-  .settings-layout {
+@media (max-width: 1024px) {
+  .toggles-grid,
+  .inputs-grid {
     grid-template-columns: 1fr;
-  }
-  
-  .preview-column {
-    position: static;
-    order: -1;
   }
 }
 
 @media (max-width: 768px) {
   .incident-settings-page {
-    padding: 0 1rem 1rem;
+    padding: 0;
   }
   
   .page-header {
     flex-direction: column;
+    align-items: flex-start;
     gap: 1rem;
   }
   
@@ -1863,22 +1878,15 @@
     width: 100%;
   }
   
-  .btn-reset,
-  .btn-save-header {
-    flex: 1;
-    justify-content: center;
-  }
-  
   .tab-navigation {
     overflow-x: auto;
     padding-bottom: 0.75rem;
   }
   
+  .toggles-grid,
+  .inputs-grid,
   .labels-grid,
-  .colors-grid {
-    grid-template-columns: 1fr;
-  }
-
+  .colors-grid,
   .lookup-management-grid {
     grid-template-columns: 1fr;
   }
@@ -1891,18 +1899,9 @@
     grid-template-columns: repeat(2, 1fr);
   }
   
+  .toggle-card,
   .setting-row {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1rem;
-  }
-  
-  .setting-right {
-    width: 100%;
-  }
-  
-  .modern-toggle {
-    width: 100%;
+    padding: 1rem;
   }
 }
 
@@ -1932,18 +1931,194 @@
   .preview-body {
     padding: 1rem;
   }
+
+  .toggle-card,
+  .setting-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.85rem;
+  }
+
+  .toggle-card .setting-right,
+  .setting-row .setting-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .toggle-card .setting-right .modern-select,
+  .toggle-card .setting-right .modern-input,
+  .setting-row .setting-right .modern-select,
+  .setting-row .setting-right .modern-input {
+    width: 100%;
+  }
 }
+
 .modern-select,
 .modern-input {
-  min-width: 190px;
-  padding: .72rem .9rem;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: .65rem .85rem;
   border: 1px solid #dbe3ef;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fff;
   color: #0f172a;
-  font-weight: 700;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, .06);
+  font-weight: 600;
+  font-size: 0.9rem;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, .04);
 }
+
+/* Master Data must remain usable at normal browser zoom. These rules are
+   deliberately scoped so the other Incident Settings tabs keep their layout. */
+#tab-master-data .lookup-management-grid {
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1rem;
+}
+
+#tab-master-data .lookup-management-grid .card-header {
+  min-width: 0;
+}
+
+#tab-master-data .lookup-management-grid .card-header .header-text,
+#tab-master-data .lookup-management-grid .card-header p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#tab-master-data .lookup-add-card {
+  gap: .65rem;
+  padding: .85rem;
+  margin-bottom: .85rem;
+}
+
+#tab-master-data .entity-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 68px auto;
+  gap: .55rem;
+  align-items: end;
+}
+
+#tab-master-data .severity-add-grid {
+  grid-template-columns: minmax(0, 1fr) 42px 68px auto;
+}
+
+#tab-master-data .field-col.field-name,
+#tab-master-data .field-col.field-sort,
+#tab-master-data .field-col.field-color {
+  width: auto;
+  min-width: 0;
+}
+
+#tab-master-data .field-col.field-sort,
+#tab-master-data .field-col.field-color {
+  flex: initial;
+}
+
+#tab-master-data .category-item-card {
+  align-items: center;
+  gap: .45rem;
+  padding: .7rem .75rem;
+}
+
+#tab-master-data .lookup-edit-form-vertical {
+  gap: 0;
+}
+
+#tab-master-data .item-header-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: .45rem;
+}
+
+#tab-master-data .item-action-controls {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: .35rem;
+}
+
+#tab-master-data .lookup-delete-form {
+  align-self: center;
+}
+
+@media (max-width: 760px) {
+  #tab-master-data .lookup-management-hero {
+    padding: 1rem;
+  }
+
+  #tab-master-data .lookup-management-hero p {
+    display: none;
+  }
+
+  #tab-master-data .entity-form-grid,
+  #tab-master-data .severity-add-grid {
+    grid-template-columns: minmax(0, 1fr) 68px auto;
+  }
+
+  #tab-master-data .severity-add-grid .field-color {
+    grid-row: 2;
+    grid-column: 1;
+  }
+
+  #tab-master-data .item-header-row {
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+
+  #tab-master-data .item-action-controls {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 440px) {
+  #tab-master-data .entity-form-grid,
+  #tab-master-data .severity-add-grid {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  #tab-master-data .field-name {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Keep the editable name field independent from the compact controls. A
+   master-data card can be narrow in a multi-column workspace, so controls
+   reflow below instead of taking space from or overlapping the name input. */
+#tab-master-data .entity-form-grid,
+#tab-master-data .severity-add-grid {
+  grid-template-columns: repeat(3, max-content);
+  justify-content: start;
+}
+
+#tab-master-data .entity-form-grid .field-name,
+#tab-master-data .severity-add-grid .field-name {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+}
+
+#tab-master-data .category-item-card {
+  flex-wrap: wrap;
+}
+
+#tab-master-data .item-header-row {
+  grid-template-columns: 20px minmax(0, 1fr);
+}
+
+#tab-master-data .category-name-input {
+  width: 100%;
+  min-width: 0;
+}
+
+#tab-master-data .item-action-controls {
+  grid-column: 2;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+#tab-master-data .lookup-delete-form {
+  margin-left: auto;
+}
+
 </style>
 
 <script>
@@ -1983,119 +2158,317 @@ function syncRelatedPanels(activeTab) {
   });
 }
 
+// Global Auto-Save Status Indicator
+const autoSaveIndicator = document.getElementById('autoSaveIndicator');
 const lookupSaveStatus = document.getElementById('lookupSaveStatus');
-const setLookupSaveStatus = (message, state) => {
-  if (!lookupSaveStatus) return;
-  lookupSaveStatus.hidden = false;
-  lookupSaveStatus.className = `lookup-save-status${state ? ` is-${state}` : ''}`;
-  const icon = state === 'error' ? 'fa-triangle-exclamation' : state === 'saving' ? 'fa-circle-notch fa-spin' : 'fa-circle-check';
-  lookupSaveStatus.innerHTML = `<i class="fa-solid ${icon}"></i><span>${message}</span>`;
+let statusResetTimer = null;
+
+function setAutoSaveStatus(state, message) {
+  clearTimeout(statusResetTimer);
+  const iconHtml = state === 'saving'
+    ? '<i class="fa-solid fa-circle-notch fa-spin"></i>'
+    : state === 'error'
+    ? '<i class="fa-solid fa-triangle-exclamation"></i>'
+    : '<i class="fa-solid fa-circle-check"></i>';
+
+  // Update Header Indicator
+  if (autoSaveIndicator) {
+    autoSaveIndicator.className = `auto-save-indicator state-${state}`;
+    autoSaveIndicator.innerHTML = `${iconHtml}<span class="status-text">${message}</span>`;
+  }
+
+  // Update Master Data Inline Banner if present
+  if (lookupSaveStatus) {
+    lookupSaveStatus.hidden = false;
+    lookupSaveStatus.className = `lookup-save-status is-${state}`;
+    lookupSaveStatus.innerHTML = `${iconHtml}<span>${message}</span>`;
+  }
+
   if (state === 'saved') {
-    setTimeout(() => {
-      if (lookupSaveStatus.classList.contains('is-saved')) {
+    statusResetTimer = setTimeout(() => {
+      if (autoSaveIndicator && autoSaveIndicator.classList.contains('state-saved')) {
+        autoSaveIndicator.className = 'auto-save-indicator state-idle';
+        autoSaveIndicator.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i><span class="status-text">All changes saved</span>';
+      }
+      if (lookupSaveStatus && lookupSaveStatus.classList.contains('is-saved')) {
         lookupSaveStatus.hidden = true;
       }
-    }, 4000);
+    }, 3500);
   }
-};
+}
 
-// Unified Master Data Form Handling (Categories, Severities, Action Tokens)
-document.querySelectorAll('.lookup-add-row, .lookup-add-row-vertical, .lookup-edit-form, .lookup-edit-form-vertical, .lookup-delete-form').forEach(form => {
-  form.addEventListener('submit', async function(event) {
-    event.preventDefault();
-    const confirmMessage = this.getAttribute('data-confirm');
-    if (confirmMessage && !confirm(confirmMessage)) {
-      return;
+// --------------------------------------------------------------------------
+// 1. General Settings Form Auto-Save (General, Fields, Requirements, Security, Header, Footer, Labels, Styling)
+// --------------------------------------------------------------------------
+const settingsForm = document.getElementById('settingsForm');
+let settingsDebounceTimer = null;
+let isSettingsSaving = false;
+let pendingSettingsSave = false;
+
+async function executeSettingsAutoSave() {
+  if (!settingsForm) return;
+  if (isSettingsSaving) {
+    pendingSettingsSave = true;
+    return;
+  }
+  isSettingsSaving = true;
+  pendingSettingsSave = false;
+  setAutoSaveStatus('saving', 'Saving changes...');
+
+  try {
+    const formData = new FormData(settingsForm);
+    const response = await fetch(settingsForm.action, {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.status !== 'success') {
+      throw new Error(payload.message || 'Unable to save settings.');
     }
-    this.classList.add('is-submitting');
+    setAutoSaveStatus('saved', 'All changes saved');
+  } catch (error) {
+    console.error('Settings auto-save error:', error);
+    setAutoSaveStatus('error', error.message || 'Save failed. Please retry.');
+  } finally {
+    isSettingsSaving = false;
+    if (pendingSettingsSave) {
+      executeSettingsAutoSave();
+    }
+  }
+}
+
+function triggerSettingsAutoSave(debounceMs = 450) {
+  clearTimeout(settingsDebounceTimer);
+  if (debounceMs <= 0) {
+    executeSettingsAutoSave();
+  } else {
+    settingsDebounceTimer = setTimeout(executeSettingsAutoSave, debounceMs);
+  }
+}
+
+if (settingsForm) {
+  // Prevent accidental normal page reload submission
+  settingsForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    triggerSettingsAutoSave(0);
+  });
+
+  // Debounced auto-save on typing in text, number, textarea, color fields
+  settingsForm.querySelectorAll('input[type="text"], input[type="number"], textarea, input[type="color"]').forEach(input => {
+    input.addEventListener('input', () => triggerSettingsAutoSave(450));
+    input.addEventListener('change', () => triggerSettingsAutoSave(0));
+    input.addEventListener('blur', () => triggerSettingsAutoSave(0));
+  });
+
+  // Immediate auto-save on toggling checkboxes, selects, and file uploads
+  settingsForm.querySelectorAll('input[type="checkbox"], select, input[type="file"]').forEach(control => {
+    control.addEventListener('change', () => triggerSettingsAutoSave(0));
+  });
+}
+
+// --------------------------------------------------------------------------
+// 2. Master Data Auto-Save (Incident Categories, Severity Levels, Action Tokens)
+// --------------------------------------------------------------------------
+async function executeMasterDataRowSave(form) {
+  if (!form || form.dataset.saving === 'true') return;
+  form.dataset.saving = 'true';
+  const button = form.querySelector('button[type="submit"], .btn-edit');
+  const originalHtml = button ? button.innerHTML : '';
+  if (button) {
+    button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+  }
+  setAutoSaveStatus('saving', 'Saving changes...');
+
+  try {
+    const response = await fetch(form.action, {
+      method: 'POST',
+      body: new FormData(form),
+      credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.message || 'Unable to save change.');
+    }
+    setAutoSaveStatus('saved', payload.message || 'Changes saved.');
+    if (button) {
+      button.innerHTML = '<i class="fa-solid fa-check" style="color:#10b981;"></i>';
+      setTimeout(() => {
+        button.innerHTML = originalHtml || '<i class="fa-solid fa-floppy-disk"></i>';
+      }, 1500);
+    }
+    const colorInput = form.querySelector('input[name="color"]');
+    const pill = form.querySelector('.severity-preview-pill');
+    if (colorInput && pill) {
+      pill.style.setProperty('--pill-color', colorInput.value);
+    }
+    resortMasterDataList(form);
+  } catch (error) {
+    console.error('Master data auto-save error:', error);
+    setAutoSaveStatus('error', error.message || 'Save failed. Please retry.');
+    if (button) {
+      button.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;"></i>';
+    }
+  } finally {
+    form.dataset.saving = 'false';
+  }
+}
+
+function resortMasterDataList(form) {
+  const list = form.closest('.categories-list');
+  if (!list) return;
+  const cards = Array.from(list.querySelectorAll(':scope > .category-item-card'));
+  cards.sort((left, right) => {
+    const leftOrder = Number(left.querySelector('input[name="sort_order"]')?.value || 0);
+    const rightOrder = Number(right.querySelector('input[name="sort_order"]')?.value || 0);
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+    const leftName = left.querySelector('input[name="name"]')?.value || '';
+    const rightName = right.querySelector('input[name="name"]')?.value || '';
+    return leftName.localeCompare(rightName);
+  });
+  cards.forEach(card => list.appendChild(card));
+}
+
+// Attach live auto-save listeners to every row edit form
+document.querySelectorAll('.lookup-edit-form, .lookup-edit-form-vertical').forEach(form => {
+  let rowDebounceTimer = null;
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    clearTimeout(rowDebounceTimer);
+    executeMasterDataRowSave(form);
+  });
+
+  form.querySelectorAll('input[type="text"], input[type="number"], textarea').forEach(input => {
+    input.addEventListener('input', function() {
+      clearTimeout(rowDebounceTimer);
+      rowDebounceTimer = setTimeout(() => executeMasterDataRowSave(form), 450);
+    });
+    input.addEventListener('change', function() {
+      clearTimeout(rowDebounceTimer);
+      executeMasterDataRowSave(form);
+    });
+    input.addEventListener('blur', function() {
+      clearTimeout(rowDebounceTimer);
+      executeMasterDataRowSave(form);
+    });
+  });
+
+  form.querySelectorAll('input[type="color"]').forEach(control => {
+    control.addEventListener('change', function() {
+      clearTimeout(rowDebounceTimer);
+      executeMasterDataRowSave(form);
+    });
+  });
+});
+
+// Color picker live sync for severity cards
+document.querySelectorAll('.lookup-edit-form input[name="color"], .lookup-edit-form-vertical input[name="color"]').forEach(colorInput => {
+  colorInput.addEventListener('input', function() {
+    const pill = this.closest('.category-item-card, form')?.querySelector('.severity-preview-pill');
+    if (pill) pill.style.setProperty('--pill-color', this.value);
+  });
+});
+
+// --------------------------------------------------------------------------
+// 3. Master Data Create & Delete Form Handlers
+// --------------------------------------------------------------------------
+document.querySelectorAll('.lookup-add-row, .lookup-add-row-vertical, .lookup-add-card').forEach(form => {
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
     const button = this.querySelector('button[type="submit"]');
-    let originalHtml = '';
+    const originalHtml = button ? button.innerHTML : '';
     if (button) {
       button.disabled = true;
-      originalHtml = button.dataset.originalHtml || button.innerHTML;
-      button.dataset.originalHtml = originalHtml;
       button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
     }
-    setLookupSaveStatus('Saving changes...', 'saving');
+    setAutoSaveStatus('saving', 'Creating item...');
+
     try {
       const response = await fetch(this.action, {
         method: 'POST',
         body: new FormData(this),
         credentials: 'same-origin',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload.success) {
-        throw new Error(payload.message || 'Unable to save this change.');
+        throw new Error(payload.message || 'Unable to create item.');
       }
-      setLookupSaveStatus(payload.message || 'Changes saved successfully.', 'saved');
-
-      const isDelete = form.classList.contains('lookup-delete-form');
-      const isAdd = form.classList.contains('lookup-add-row') || form.classList.contains('lookup-add-row-vertical');
-      const isEdit = form.classList.contains('lookup-edit-form') || form.classList.contains('lookup-edit-form-vertical');
-
-      if (isDelete) {
-        // Smoothly remove item from DOM
-        const card = form.closest('.category-item-card');
-        if (card) {
-          card.style.transition = 'all 0.3s ease';
-          card.style.opacity = '0';
-          card.style.transform = 'scale(0.95)';
-          setTimeout(() => card.remove(), 300);
-        }
-      } else if (isEdit) {
-        // Visual feedback on save button
-        if (button) {
-          button.disabled = false;
-          button.innerHTML = '<i class="fa-solid fa-check" style="color:#10b981;"></i>';
-          setTimeout(() => {
-            button.innerHTML = button.dataset.originalHtml || '<i class="fa-solid fa-floppy-disk"></i>';
-          }, 1600);
-        }
-        // Update color pill preview if severity
-        const colorInput = form.querySelector('input[name="color"]');
-        const pill = form.querySelector('.severity-preview-pill');
-        if (colorInput && pill) {
-          pill.style.setProperty('--pill-color', colorInput.value);
-        }
-      } else if (isAdd) {
-        // Reset add form inputs and reload on master-data tab
-        form.reset();
-        try {
-          localStorage.setItem('incident_settings_active_tab', 'master-data');
-        } catch (e) {}
-        if (history.replaceState) {
-          history.replaceState(null, '', '#master-data');
-        }
-        setTimeout(() => window.location.reload(), 450);
+      setAutoSaveStatus('saved', payload.message || 'Created successfully.');
+      this.reset();
+      try {
+        localStorage.setItem('incident_settings_active_tab', 'master-data');
+      } catch (err) {}
+      if (history.replaceState) {
+        history.replaceState(null, '', '#master-data');
       }
+      setTimeout(() => window.location.reload(), 450);
     } catch (error) {
-      setLookupSaveStatus(error.message || 'Could not save. Please try again.', 'error');
-    } finally {
-      this.classList.remove('is-submitting');
-      if (button && !form.classList.contains('lookup-edit-form') && !form.classList.contains('lookup-edit-form-vertical')) {
+      setAutoSaveStatus('error', error.message || 'Could not create item.');
+      if (button) {
         button.disabled = false;
-        button.innerHTML = originalHtml || '<i class="fa-solid fa-check"></i>';
+        button.innerHTML = originalHtml;
       }
     }
   });
 });
 
-// Color picker live sync for severity cards
-document.querySelectorAll('.lookup-edit-form input[name="color"]').forEach(colorInput => {
-  colorInput.addEventListener('input', function() {
-    const pill = this.closest('form')?.querySelector('.severity-preview-pill');
-    if (pill) pill.style.setProperty('--pill-color', this.value);
+document.querySelectorAll('.lookup-delete-form').forEach(form => {
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const confirmMessage = this.getAttribute('data-confirm');
+    if (confirmMessage && !confirm(confirmMessage)) {
+      return;
+    }
+    const button = this.querySelector('button[type="submit"]');
+    if (button) {
+      button.disabled = true;
+      button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+    }
+    setAutoSaveStatus('saving', 'Deleting item...');
+
+    try {
+      const response = await fetch(this.action, {
+        method: 'POST',
+        body: new FormData(this),
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.message || 'Unable to delete item.');
+      }
+      setAutoSaveStatus('saved', payload.message || 'Item removed.');
+      const card = form.closest('.category-item-card');
+      if (card) {
+        card.style.transition = 'all 0.3s ease';
+        card.style.opacity = '0';
+        card.style.transform = 'scale(0.95)';
+        setTimeout(() => card.remove(), 300);
+      }
+    } catch (error) {
+      setAutoSaveStatus('error', error.message || 'Could not delete item.');
+      if (button) {
+        button.disabled = false;
+        button.innerHTML = '<i class="fa-solid fa-trash"></i>';
+      }
+    }
   });
 });
 
-// Color Picker Functions
+// --------------------------------------------------------------------------
+// 4. Color, Template & Font Helpers (Auto-Save on trigger)
+// --------------------------------------------------------------------------
 function updateColor(settingKey, value) {
   const textInput = document.getElementById('setting_' + settingKey);
   const preview = document.getElementById('preview_' + settingKey);
   if (textInput) textInput.value = value;
   if (preview) preview.style.backgroundColor = value;
   updatePreview();
+  triggerSettingsAutoSave(0);
 }
 
 function updateColorFromHex(settingKey, value) {
@@ -2105,6 +2478,7 @@ function updateColorFromHex(settingKey, value) {
     if (colorInput) colorInput.value = value;
     if (preview) preview.style.backgroundColor = value;
     updatePreview();
+    triggerSettingsAutoSave(0);
   }
 }
 
@@ -2116,55 +2490,49 @@ function resetColor(settingKey, originalValue) {
   if (colorInput) colorInput.value = originalValue;
   if (preview) preview.style.backgroundColor = originalValue;
   updatePreview();
+  triggerSettingsAutoSave(0);
 }
 
-// Template Selection
 function selectTemplate(template) {
   document.querySelectorAll('.template-option').forEach(opt => opt.classList.remove('selected'));
   const selectedOpt = document.querySelector('.template-option[data-template="' + template + '"]');
   if (selectedOpt) selectedOpt.classList.add('selected');
-  
+
   const templateInput = document.querySelector('input[name*="template"]');
   if (templateInput) {
     templateInput.value = template;
   }
   updatePreview();
+  triggerSettingsAutoSave(0);
 }
 
-// Font Size Slider
 function updateFontSize(settingKey, value) {
   const settingInput = document.getElementById('setting_' + settingKey);
   const valueDisplay = document.getElementById('value_' + settingKey);
   if (settingInput) settingInput.value = value;
   if (valueDisplay) valueDisplay.textContent = value + 'px';
   updatePreview();
+  triggerSettingsAutoSave(0);
 }
 
-// Reset to Defaults
-function resetToDefaults() {
-  if (confirm('Are you sure you want to reset all settings to default?')) {
-    location.reload();
-  }
-}
-
-// Live Preview Update
 function updatePreview() {
   const previewForm = document.getElementById('previewForm');
   if (previewForm) {
     const primaryColor = document.querySelector('input[name*="primary_color"]')?.value || '#3b82f6';
     const backgroundColor = document.querySelector('input[name*="background_color"]')?.value || '#ffffff';
-    
+
     previewForm.style.backgroundColor = backgroundColor;
     const headerTitle = previewForm.querySelector('.preview-header-section h2');
     if (headerTitle) headerTitle.style.color = primaryColor;
   }
 }
 
-// Initialize on page load
+// --------------------------------------------------------------------------
+// 5. Page Initialization
+// --------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', function() {
   updatePreview();
 
-  // Determine initial active tab: hash -> localStorage -> default 'fields'
   let initialTab = 'fields';
   const hash = (window.location.hash || '').replace('#', '');
   if (hash === 'incident-management' || hash === 'master-data') {

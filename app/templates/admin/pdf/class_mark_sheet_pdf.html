@@ -47,6 +47,15 @@
             line-height: 1.22;
         }
 
+        .uf-result-indicator {
+            background: #fff7ed !important;
+            color: #9a3412 !important;
+            border: 1px solid #fb923c !important;
+            font-family: "Segoe UI Emoji", Arial, sans-serif;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
         .page {
             width: 297mm;
             height: 210mm;
@@ -701,7 +710,9 @@
                                     </td>
                                     <td class="class-code">{{ scope_info.class.name if scope_info.class else "-" }}</td>
                                     {% for subject_data in row.subject_data %}
-                                        {% if subject_data.is_fail %}
+                                        {% if subject_data.is_uf %}
+                                            <td class="uf-result-indicator" title="Ma Gelin — Examination not taken">⚠️ MG</td>
+                                        {% elif subject_data.is_fail %}
                                             <td style="background-color: {{ fail_config.bg_color if fail_config and fail_config.bg_color else '#fee2e2' }}; color: {{ fail_config.text_color if fail_config and fail_config.text_color else '#991b1b' }}; font-weight: 700;">{{ subject_data.score|academic_number(settings) }}</td>
                                         {% elif subject_data.is_weak %}
                                             <td style="background-color: {{ weak_config.bg_color if weak_config and weak_config.bg_color else '#f59e0b' }}; color: {{ weak_config.text_color if weak_config and weak_config.text_color else '#ffffff' }}; font-weight: 700;">{{ subject_data.score|academic_number(settings) }}</td>
