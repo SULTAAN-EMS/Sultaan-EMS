@@ -39,12 +39,15 @@
       <h3><i class="fa-solid fa-triangle-exclamation"></i> Incident Details</h3>
       <div class="form-grid">
         <div class="form-group">
-          <label for="category_id">Category *</label>
-          <select id="category_id" name="category_id" required>
+          <label>Categories *</label>
+          <div class="incident-category-edit-list">
             {% for category in categories %}
-            <option value="{{ category.id }}" {% if report.category_id == category.id %}selected{% endif %}>{{ category.name }}</option>
+            <label class="incident-category-edit-option">
+              <input type="checkbox" name="category_ids" value="{{ category.id }}" {% if category in report.selected_categories %}checked{% endif %}>
+              <span>{{ category.name }}</span>
+            </label>
             {% endfor %}
-          </select>
+          </div>
         </div>
         
         <div class="form-group">
@@ -269,6 +272,35 @@
   resize: vertical;
   min-height: 120px;
 }
+
+.incident-category-edit-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: .55rem;
+  max-height: 180px;
+  overflow: auto;
+  padding: .6rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.incident-category-edit-option {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .55rem .65rem;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #fff;
+  color: #1e3a5f;
+  font-size: .82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.incident-category-edit-option input { accent-color: #2878e8; }
 
 .form-actions {
   display: flex;

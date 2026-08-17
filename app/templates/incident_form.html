@@ -153,13 +153,17 @@
       
       <div class="form-row">
         <div class="form-group">
-          <label for="category_id">Incident Category{% if incident_settings.get('require_category', 'true') == 'true' %} *{% endif %}</label>
-          <select id="category_id" name="category_id" data-required="{{ incident_settings.get('require_category', 'true') }}" data-message="Please select a Category.">
-            <option value="">Select category</option>
-          {% for category in categories %}
-            <option value="{{ category.id }}">{{ category.name }}</option>
-            {% endfor %}
-          </select>
+          <label for="categorySelectorTrigger">Incident Category{% if incident_settings.get('require_category', 'true') == 'true' %} *{% endif %}</label>
+          <input id="categorySelectionValidation" type="hidden" data-required="{{ incident_settings.get('require_category', 'true') }}" data-message="Please select a Category.">
+          <div id="selectedCategoryInputs"></div>
+          <button id="categorySelectorTrigger" class="category-selector-trigger" type="button" aria-haspopup="dialog" aria-expanded="false">
+            <span class="category-selector-main-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+            <span class="category-selector-copy">
+              <span class="category-selector-label">Incident Category</span>
+              <span id="selectedCategoryValue" class="category-selector-value">Select category</span>
+            </span>
+            <i class="fa-solid fa-chevron-right category-selector-arrow" aria-hidden="true"></i>
+          </button>
         </div>
         <div id="categoryDescriptionGroup" class="form-group full-width category-description-group" hidden>
           <label for="category_description">Category Details / Additional Context <span class="required-mark">*</span></label>
@@ -246,16 +250,44 @@
       {% endif %}
       
       <div class="form-row">
-        <div class="form-group">
-          <label for="incident_date">Incident Date{% if incident_settings.get('require_incident_date', 'true') == 'true' %} *{% endif %}</label>
-          <input type="date" id="incident_date" name="incident_date" value="{{ current_date_iso }}" data-display="incident_date_display" data-required="{{ incident_settings.get('require_incident_date', 'true') }}" data-message="Incident Date is required.">
-          <span class="date-display" id="incident_date_display">{{ current_date }}</span>
-        </div>
-        
-        <div class="form-group">
-          <label for="incident_time">Incident Time{% if incident_settings.get('require_incident_time', 'true') == 'true' %} *{% endif %}</label>
-          <input type="time" id="incident_time" name="incident_time" value="{{ current_time_24 }}" data-display="incident_time_display" data-required="{{ incident_settings.get('require_incident_time', 'true') }}" data-message="Incident Time is required.">
-          <span class="date-display" id="incident_time_display">{{ current_time }}</span>
+        <div class="form-group full-width">
+          <label for="incidentDateTimeTrigger">Incident Date &amp; Time{% if incident_settings.get('require_incident_date', 'true') == 'true' or incident_settings.get('require_incident_time', 'true') == 'true' %} *{% endif %}</label>
+          <div id="incidentDateTimePicker" class="incident-datetime-picker">
+            <span class="incident-datetime-badge">Date &amp; Time</span>
+            <input type="hidden" id="incident_date" name="incident_date" value="{{ current_date_iso }}" data-required="{{ incident_settings.get('require_incident_date', 'true') }}" data-message="Incident Date is required.">
+            <input type="hidden" id="incident_time" name="incident_time" value="{{ current_time_24 }}" data-required="{{ incident_settings.get('require_incident_time', 'true') }}" data-message="Incident Time is required.">
+            <button id="incidentDateTimeTrigger" class="incident-datetime-trigger" type="button" aria-haspopup="dialog" aria-expanded="false">
+              <span class="incident-datetime-field"><i class="fa-regular fa-calendar"></i><span id="incidentDateText">{{ current_date }}</span></span>
+              <span class="incident-datetime-divider" aria-hidden="true"></span>
+              <span class="incident-datetime-field"><i class="fa-regular fa-clock"></i><span id="incidentTimeText">{{ current_time }}</span></span>
+              <span class="incident-datetime-spacer"></span>
+              <span class="incident-datetime-toggle"><i class="fa-solid fa-calendar-clock"></i></span>
+            </button>
+            <div id="incidentDateTimePanel" class="incident-datetime-panel" role="dialog" aria-modal="false" aria-label="Choose incident date and time" hidden>
+              <div class="incident-datetime-columns">
+                <div class="incident-calendar">
+                  <div class="incident-calendar-head">
+                    <button id="incidentPrevMonth" class="incident-calendar-nav" type="button" aria-label="Previous month"><i class="fa-solid fa-chevron-left"></i></button>
+                    <select id="incidentMonthSelect" class="incident-datetime-select" aria-label="Month"></select>
+                    <select id="incidentYearSelect" class="incident-datetime-select" aria-label="Year"></select>
+                    <button id="incidentNextMonth" class="incident-calendar-nav" type="button" aria-label="Next month"><i class="fa-solid fa-chevron-right"></i></button>
+                  </div>
+                  <div class="incident-calendar-weekdays" aria-hidden="true"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+                  <div id="incidentCalendarDays" class="incident-calendar-days"></div>
+                </div>
+                <div class="incident-time-control">
+                  <p>Time</p>
+                  <div class="incident-time-columns">
+                    <div><span>Hour</span><button class="incident-time-spin" type="button" data-time-target="hour" data-direction="1" aria-label="Increase hour"><i class="fa-solid fa-chevron-up"></i></button><strong id="incidentHourValue">12</strong><button class="incident-time-spin" type="button" data-time-target="hour" data-direction="-1" aria-label="Decrease hour"><i class="fa-solid fa-chevron-down"></i></button></div>
+                    <div><span>Minute</span><button class="incident-time-spin" type="button" data-time-target="minute" data-direction="1" aria-label="Increase minute"><i class="fa-solid fa-chevron-up"></i></button><strong id="incidentMinuteValue">00</strong><button class="incident-time-spin" type="button" data-time-target="minute" data-direction="-1" aria-label="Decrease minute"><i class="fa-solid fa-chevron-down"></i></button></div>
+                    <div><span>AM / PM</span><button class="incident-time-spin" type="button" data-time-target="ampm" data-direction="1" aria-label="Toggle AM or PM"><i class="fa-solid fa-chevron-up"></i></button><strong id="incidentAmPmValue">AM</strong><button class="incident-time-spin" type="button" data-time-target="ampm" data-direction="-1" aria-label="Toggle AM or PM"><i class="fa-solid fa-chevron-down"></i></button></div>
+                  </div>
+                  <div class="incident-datetime-quick-actions"><button id="incidentTodayButton" type="button">Today</button><button id="incidentNowButton" type="button">Now</button></div>
+                  <button id="incidentDateTimeDone" class="incident-datetime-done" type="button">Done</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -363,6 +395,51 @@
       </a>
     </div>
   </form>
+
+  <div id="categorySelectorModal" class="category-selector-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="categorySelectorTitle" hidden>
+    <div class="category-selector-sheet" role="document">
+      <div class="category-selector-sheet-header">
+        <div class="category-selector-drag-line" aria-hidden="true"></div>
+        <div class="category-selector-header-row">
+          <div class="category-selector-heading">
+            <span class="category-selector-header-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+            <span>
+              <strong id="categorySelectorTitle">Select Category</strong>
+              <small>Select one or more incidents</small>
+            </span>
+          </div>
+          <button id="closeCategorySelector" class="category-selector-close" type="button" aria-label="Close category selector"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+      </div>
+      <div class="category-selector-search-wrap">
+        <label class="category-selector-search" for="categorySearch">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input id="categorySearch" type="search" placeholder="Search category..." autocomplete="off">
+        </label>
+      </div>
+      <p id="categorySelectionCount" class="category-selector-count" aria-live="polite">No category selected</p>
+      <div id="categorySelectorList" class="category-selector-list">
+        {% for category in categories %}
+        <button
+          class="category-selector-item"
+          type="button"
+          data-category-id="{{ category.id }}"
+          data-category-name="{{ category.name }}"
+          data-is-other="{{ 'true' if category.id in other_category_ids else 'false' }}">
+          <span class="category-selector-item-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+          <span class="category-selector-item-copy">
+            <strong>{{ category.name }}</strong>
+            <small>{% if category.id in other_category_ids %}Other examination incident{% else %}Examination incident{% endif %}</small>
+          </span>
+          <span class="category-selector-check"><i class="fa-solid fa-check"></i></span>
+        </button>
+        {% endfor %}
+      </div>
+      <div class="category-selector-footer">
+        <button id="confirmCategorySelection" class="category-selector-confirm" type="button" disabled>Continue</button>
+      </div>
+    </div>
+  </div>
   
   {% include 'partials/sultan_footer.html' %}
 </div>
@@ -562,18 +639,164 @@ document.addEventListener('DOMContentLoaded', function() {
     return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   };
 
-  const wireDisplay = (inputId, formatter) => {
-    const input = document.getElementById(inputId);
-    const display = input ? document.getElementById(input.dataset.display) : null;
-    if (!input || !display) return;
-    const update = () => { display.textContent = formatter(input.value); };
-    input.addEventListener('change', update);
-    input.addEventListener('input', update);
-    update();
-  };
+  const dateInput = document.getElementById('incident_date');
+  const timeInput = document.getElementById('incident_time');
+  const dateTimePicker = document.getElementById('incidentDateTimePicker');
+  const dateTimeTrigger = document.getElementById('incidentDateTimeTrigger');
+  const dateTimePanel = document.getElementById('incidentDateTimePanel');
+  const dateText = document.getElementById('incidentDateText');
+  const timeText = document.getElementById('incidentTimeText');
 
-  wireDisplay('incident_date', formatDate);
-  wireDisplay('incident_time', formatTime);
+  if (dateInput && timeInput && dateTimePicker && dateTimeTrigger && dateTimePanel) {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const today = new Date();
+    const parseDateInput = (value) => {
+      const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(value || '');
+      return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : null;
+    };
+    let selectedDate = parseDateInput(dateInput.value) || new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    let hasSelectedDate = Boolean(parseDateInput(dateInput.value));
+    let viewMonth = selectedDate.getMonth();
+    let viewYear = selectedDate.getFullYear();
+    const parsedTime = /^([0-2][0-9]):([0-5][0-9])$/.exec(timeInput.value || '');
+    const initialHours = parsedTime ? Number(parsedTime[1]) : today.getHours();
+    let hour12 = (initialHours % 12) || 12;
+    let minute = parsedTime ? Number(parsedTime[2]) : today.getMinutes();
+    let ampm = initialHours >= 12 ? 'PM' : 'AM';
+    let hasSelectedTime = Boolean(parsedTime);
+
+    const monthSelect = document.getElementById('incidentMonthSelect');
+    const yearSelect = document.getElementById('incidentYearSelect');
+    const daysGrid = document.getElementById('incidentCalendarDays');
+    const hourValue = document.getElementById('incidentHourValue');
+    const minuteValue = document.getElementById('incidentMinuteValue');
+    const ampmValue = document.getElementById('incidentAmPmValue');
+    const pad = (value) => String(value).padStart(2, '0');
+    const sameDate = (left, right) => left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate();
+    const dispatchFieldChange = (field) => {
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const syncFields = () => {
+      if (hasSelectedDate) {
+        dateInput.value = `${selectedDate.getFullYear()}-${pad(selectedDate.getMonth() + 1)}-${pad(selectedDate.getDate())}`;
+        dispatchFieldChange(dateInput);
+      }
+      if (hasSelectedTime) {
+        const hour24 = ampm === 'PM' ? (hour12 % 12) + 12 : hour12 % 12;
+        timeInput.value = `${pad(hour24)}:${pad(minute)}`;
+        dispatchFieldChange(timeInput);
+      }
+    };
+    const renderSummary = () => {
+      if (dateText) dateText.textContent = hasSelectedDate ? formatDate(dateInput.value) : 'Select date';
+      if (timeText) timeText.textContent = hasSelectedTime ? formatTime(timeInput.value) : 'Select time';
+    };
+    const renderTime = () => {
+      if (hourValue) hourValue.textContent = pad(hour12);
+      if (minuteValue) minuteValue.textContent = pad(minute);
+      if (ampmValue) ampmValue.textContent = ampm;
+    };
+    const renderCalendar = () => {
+      if (!daysGrid || !monthSelect || !yearSelect) return;
+      monthSelect.value = String(viewMonth);
+      yearSelect.value = String(viewYear);
+      const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+      const daysThisMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+      const daysPreviousMonth = new Date(viewYear, viewMonth, 0).getDate();
+      const cells = [];
+      for (let day = firstDay - 1; day >= 0; day -= 1) cells.push(new Date(viewYear, viewMonth - 1, daysPreviousMonth - day));
+      for (let day = 1; day <= daysThisMonth; day += 1) cells.push(new Date(viewYear, viewMonth, day));
+      let nextMonthDay = 1;
+      while (cells.length < 42) {
+        cells.push(new Date(viewYear, viewMonth + 1, nextMonthDay));
+        nextMonthDay += 1;
+      }
+      daysGrid.replaceChildren(...cells.map((date) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'incident-calendar-day';
+        if (date.getMonth() !== viewMonth) button.classList.add('is-other');
+        if (sameDate(date, today)) button.classList.add('is-today');
+        if (hasSelectedDate && sameDate(date, selectedDate)) button.classList.add('is-selected');
+        button.dataset.year = String(date.getFullYear());
+        button.dataset.month = String(date.getMonth());
+        button.dataset.day = String(date.getDate());
+        button.textContent = String(date.getDate());
+        return button;
+      }));
+    };
+    const populateSelects = () => {
+      if (!monthSelect || !yearSelect) return;
+      monthSelect.replaceChildren(...months.map((month, index) => new Option(month, String(index))));
+      const start = today.getFullYear() - 30;
+      const end = today.getFullYear() + 30;
+      yearSelect.replaceChildren(...Array.from({ length: end - start + 1 }, (_, index) => new Option(String(start + index), String(start + index))));
+    };
+    const closeDateTimePicker = () => {
+      dateTimePanel.hidden = true;
+      dateTimeTrigger.setAttribute('aria-expanded', 'false');
+    };
+    const openDateTimePicker = () => {
+      dateTimePanel.hidden = false;
+      dateTimeTrigger.setAttribute('aria-expanded', 'true');
+      renderCalendar();
+      renderTime();
+    };
+
+    dateTimeTrigger.addEventListener('click', () => dateTimePanel.hidden ? openDateTimePicker() : closeDateTimePicker());
+    document.getElementById('incidentPrevMonth')?.addEventListener('click', () => { viewMonth -= 1; if (viewMonth < 0) { viewMonth = 11; viewYear -= 1; } renderCalendar(); });
+    document.getElementById('incidentNextMonth')?.addEventListener('click', () => { viewMonth += 1; if (viewMonth > 11) { viewMonth = 0; viewYear += 1; } renderCalendar(); });
+    monthSelect?.addEventListener('change', () => { viewMonth = Number(monthSelect.value); renderCalendar(); });
+    yearSelect?.addEventListener('change', () => { viewYear = Number(yearSelect.value); renderCalendar(); });
+    daysGrid?.addEventListener('click', (event) => {
+      const button = event.target.closest('.incident-calendar-day');
+      if (!button) return;
+      selectedDate = new Date(Number(button.dataset.year), Number(button.dataset.month), Number(button.dataset.day));
+      hasSelectedDate = true;
+      viewMonth = selectedDate.getMonth();
+      viewYear = selectedDate.getFullYear();
+      syncFields();
+      renderSummary();
+      renderCalendar();
+    });
+    dateTimePanel.querySelectorAll('.incident-time-spin').forEach((button) => button.addEventListener('click', () => {
+      const direction = Number(button.dataset.direction);
+      if (button.dataset.timeTarget === 'hour') hour12 = hour12 + direction > 12 ? 1 : hour12 + direction < 1 ? 12 : hour12 + direction;
+      if (button.dataset.timeTarget === 'minute') minute = minute + direction > 59 ? 0 : minute + direction < 0 ? 59 : minute + direction;
+      if (button.dataset.timeTarget === 'ampm') ampm = ampm === 'AM' ? 'PM' : 'AM';
+      hasSelectedTime = true;
+      syncFields();
+      renderSummary();
+      renderTime();
+    }));
+    document.getElementById('incidentTodayButton')?.addEventListener('click', () => {
+      selectedDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      hasSelectedDate = true;
+      viewMonth = selectedDate.getMonth();
+      viewYear = selectedDate.getFullYear();
+      syncFields();
+      renderSummary();
+      renderCalendar();
+    });
+    document.getElementById('incidentNowButton')?.addEventListener('click', () => {
+      const now = new Date();
+      hour12 = (now.getHours() % 12) || 12;
+      minute = now.getMinutes();
+      ampm = now.getHours() >= 12 ? 'PM' : 'AM';
+      hasSelectedTime = true;
+      syncFields();
+      renderSummary();
+      renderTime();
+    });
+    document.getElementById('incidentDateTimeDone')?.addEventListener('click', closeDateTimePicker);
+    document.addEventListener('click', (event) => { if (!dateTimePicker.contains(event.target)) closeDateTimePicker(); });
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeDateTimePicker(); });
+    populateSelects();
+    renderSummary();
+    renderCalendar();
+    renderTime();
+  }
 
   if (incidentForm) {
     const validationSummary = document.getElementById('validationSummary');
@@ -594,7 +817,16 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     const radioChecked = (name) => Boolean(incidentForm.querySelector(`input[name="${name}"]:checked`));
     const checkboxChecked = (name) => Boolean(incidentForm.querySelector(`input[name="${name}"]:checked`));
-    const categorySelect = document.getElementById('category_id');
+    const categorySelectorTrigger = document.getElementById('categorySelectorTrigger');
+    const categorySelectorModal = document.getElementById('categorySelectorModal');
+    const categorySelectorList = document.getElementById('categorySelectorList');
+    const categorySearch = document.getElementById('categorySearch');
+    const categorySelectionCount = document.getElementById('categorySelectionCount');
+    const selectedCategoryValue = document.getElementById('selectedCategoryValue');
+    const selectedCategoryInputs = document.getElementById('selectedCategoryInputs');
+    const categorySelectionValidation = document.getElementById('categorySelectionValidation');
+    const confirmCategorySelection = document.getElementById('confirmCategorySelection');
+    const closeCategorySelector = document.getElementById('closeCategorySelector');
     const categoryDescriptionGroup = document.getElementById('categoryDescriptionGroup');
     const categoryDescription = document.getElementById('category_description');
     const categoryDescriptionCount = document.getElementById('categoryDescriptionCount');
@@ -603,9 +835,59 @@ document.addEventListener('DOMContentLoaded', function() {
     const actionDescription = document.getElementById('action_description');
     const actionDescriptionCount = document.getElementById('actionDescriptionCount');
 
-    const selectedCategoryIsOther = () => {
-      const option = categorySelect?.options[categorySelect.selectedIndex];
-      return option && option.text.trim().toLowerCase() === 'other';
+    const selectedCategoryIds = new Set();
+    const categoryItems = () => Array.from(categorySelectorList?.querySelectorAll('.category-selector-item') || []);
+    const selectedCategoryIsOther = () => categoryItems().some((item) => (
+      selectedCategoryIds.has(String(item.dataset.categoryId)) && item.dataset.isOther === 'true'
+    ));
+
+    const syncCategorySelection = () => {
+      const selectedItems = categoryItems().filter((item) => selectedCategoryIds.has(String(item.dataset.categoryId)));
+      selectedItems.forEach((item) => item.classList.add('is-selected'));
+      categoryItems().filter((item) => !selectedCategoryIds.has(String(item.dataset.categoryId)))
+        .forEach((item) => item.classList.remove('is-selected'));
+      const count = selectedItems.length;
+      const categoryNames = selectedItems.map((item) => item.dataset.categoryName || 'Category');
+      if (categorySelectionCount) {
+        categorySelectionCount.innerHTML = count
+          ? `<strong>${count}</strong> ${count === 1 ? 'category' : 'categories'} selected`
+          : 'No category selected';
+      }
+      if (selectedCategoryValue) {
+        selectedCategoryValue.textContent = count === 0
+          ? 'Select category'
+          : count === 1 ? categoryNames[0] : `${count} categories selected`;
+      }
+      if (confirmCategorySelection) confirmCategorySelection.disabled = count === 0;
+      if (categorySelectionValidation) categorySelectionValidation.value = count ? 'selected' : '';
+      if (selectedCategoryInputs) {
+        selectedCategoryInputs.replaceChildren(...Array.from(selectedCategoryIds).map((categoryId) => {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'category_ids';
+          input.value = categoryId;
+          return input;
+        }));
+      }
+      syncCategoryDescription();
+    };
+
+    const openCategorySelector = () => {
+      if (!categorySelectorModal) return;
+      categorySelectorModal.hidden = false;
+      categorySelectorModal.classList.add('is-open');
+      categorySelectorModal.setAttribute('aria-hidden', 'false');
+      categorySelectorTrigger?.setAttribute('aria-expanded', 'true');
+      window.setTimeout(() => categorySearch?.focus(), 100);
+    };
+
+    const closeCategorySelectorModal = () => {
+      if (!categorySelectorModal) return;
+      categorySelectorModal.classList.remove('is-open');
+      categorySelectorModal.setAttribute('aria-hidden', 'true');
+      categorySelectorModal.hidden = true;
+      categorySelectorTrigger?.setAttribute('aria-expanded', 'false');
+      categorySelectorTrigger?.focus();
     };
 
     const selectedActionIsOther = () => Array.from(incidentForm.querySelectorAll('input[name="actions_taken"]:checked'))
@@ -631,7 +913,29 @@ document.addEventListener('DOMContentLoaded', function() {
       if (actionDescriptionCount) actionDescriptionCount.textContent = `${actionDescription.value.length} / 500`;
     };
 
-    categorySelect?.addEventListener('change', syncCategoryDescription);
+    categorySelectorTrigger?.addEventListener('click', openCategorySelector);
+    closeCategorySelector?.addEventListener('click', closeCategorySelectorModal);
+    confirmCategorySelection?.addEventListener('click', closeCategorySelectorModal);
+    categorySelectorModal?.addEventListener('click', (event) => {
+      if (event.target === categorySelectorModal) closeCategorySelectorModal();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && categorySelectorModal?.classList.contains('is-open')) closeCategorySelectorModal();
+    });
+    categorySelectorList?.addEventListener('click', (event) => {
+      const item = event.target.closest('.category-selector-item');
+      if (!item) return;
+      const categoryId = String(item.dataset.categoryId);
+      if (selectedCategoryIds.has(categoryId)) selectedCategoryIds.delete(categoryId);
+      else selectedCategoryIds.add(categoryId);
+      syncCategorySelection();
+    });
+    categorySearch?.addEventListener('input', () => {
+      const needle = categorySearch.value.trim().toLocaleLowerCase();
+      categoryItems().forEach((item) => {
+        item.hidden = Boolean(needle) && !String(item.dataset.categoryName || '').toLocaleLowerCase().includes(needle);
+      });
+    });
     incidentForm.querySelectorAll('input[name="actions_taken"]').forEach((input) => input.addEventListener('change', syncActionDescription));
     
     categoryDescription?.addEventListener('input', () => {
@@ -641,7 +945,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (actionDescriptionCount) actionDescriptionCount.textContent = `${actionDescription.value.length} / 500`;
     });
 
-    syncCategoryDescription();
+    syncCategorySelection();
     syncActionDescription();
     const validateIncidentForm = () => {
       clearValidation();

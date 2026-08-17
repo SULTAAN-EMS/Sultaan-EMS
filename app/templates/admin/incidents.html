@@ -269,9 +269,12 @@
                 </div>
               </td>
               <td>
-                <div class="category-cell">
-                  <i class="fa-solid fa-tag category-icon"></i>
-                  <span>{{ report.category.name if report.category else 'N/A' }}</span>
+                <div class="category-cell category-cell-multi">
+                  {% for category in report.selected_categories %}
+                  <span class="incident-category-chip"><i class="fa-solid fa-triangle-exclamation category-icon"></i>{{ category.name }}</span>
+                  {% else %}
+                  <span>N/A</span>
+                  {% endfor %}
                 </div>
               </td>
               <td>
@@ -925,6 +928,34 @@
 .category-icon {
   color: #3b82f6;
   font-size: 0.875rem;
+}
+
+.category-cell-multi {
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+
+.incident-category-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .28rem .5rem;
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1e3a5f;
+  font-size: .74rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.incident-category-chip .category-icon {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  color: #2878e8;
+  font-size: .68rem;
 }
 
 .severity-badge {

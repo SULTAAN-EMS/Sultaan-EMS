@@ -101,8 +101,8 @@
       <h3><i class="fa-solid fa-triangle-exclamation"></i> Incident Details</h3>
       <div class="info-grid">
         <div class="info-item">
-          <span class="label">Category:</span>
-          <span class="value">{{ report.category.name if report.category else 'N/A' }}</span>
+          <span class="label">Categories:</span>
+          <span class="value">{{ report.selected_categories|map(attribute='name')|join(', ') or 'N/A' }}</span>
         </div>
         {% if report.other_description %}
         <div class="info-item full-width">

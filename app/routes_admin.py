@@ -13,7 +13,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
+from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
 from .permissions import PERMISSIONS, can, enforce_endpoint_permission, permission_required
 from .security import ALLOWED_AUDIO, ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import (
@@ -171,7 +171,12 @@ def incidents():
     date_from = request.args.get("date_from", "")
     date_to = request.args.get("date_to", "")
 
-    query = IncidentReport.query.outerjoin(IncidentReport.student).outerjoin(IncidentReport.exam)
+    query = (
+        IncidentReport.query
+        .outerjoin(IncidentReport.student)
+        .outerjoin(IncidentReport.exam)
+        .outerjoin(IncidentReport.category_links)
+    )
 
     if q:
         query = query.filter(
@@ -188,7 +193,12 @@ def incidents():
         query = query.filter(IncidentReport.severity_id == int(severity_filter))
 
     if category_filter:
-        query = query.filter(IncidentReport.category_id == int(category_filter))
+        query = query.filter(
+            or_(
+                IncidentReport.category_id == int(category_filter),
+                IncidentReportCategory.category_id == int(category_filter),
+            )
+        )
 
     if room_filter:
         query = query.filter(IncidentReport.exam_room.like(f"%{room_filter}%"))
@@ -214,7 +224,7 @@ def incidents():
     if date_to:
         query = query.filter(IncidentReport.incident_date <= datetime.strptime(date_to, "%Y-%m-%d").date())
 
-    reports = query.order_by(IncidentReport.created_at.desc()).all()
+    reports = query.distinct().order_by(IncidentReport.created_at.desc()).all()
     # Statistics reflect the currently filtered report set.
     stats = {
         "total": len(reports),
@@ -282,7 +292,21 @@ def incident_edit(report_id):
     report = IncidentReport.query.get_or_404(report_id)
 
     if request.method == "POST":
-        report.category_id = int(request.form.get("category_id"))
+        category_ids = []
+        for raw_value in request.form.getlist("category_ids") or [request.form.get("category_id", "")]:
+            try:
+                category_id = int(raw_value)
+            except (TypeError, ValueError):
+                continue
+            if category_id not in category_ids:
+                category_ids.append(category_id)
+        selected_categories = IncidentCategory.query.filter(IncidentCategory.id.in_(category_ids)).all() if category_ids else []
+        categories_by_id = {category.id: category for category in selected_categories}
+        if not category_ids or len(categories_by_id) != len(category_ids):
+            flash("Please select at least one valid category.", "danger")
+            return redirect(request.url)
+        report.category_id = category_ids[0]
+        report.category_links = [IncidentReportCategory(category_id=category_id) for category_id in category_ids]
         report.severity_id = int(request.form.get("severity_id"))
         report.exam_room = request.form.get("exam_room", "")
         report.description = request.form.get("description", "")
@@ -1891,7 +1915,10 @@ def incident_lookup_delete(kind, row_id):
     name = row.name
     referenced = False
     if kind == "category":
-        referenced = IncidentReport.query.filter_by(category_id=row.id).first() is not None
+        referenced = (
+            IncidentReport.query.filter_by(category_id=row.id).first() is not None
+            or IncidentReportCategory.query.filter_by(category_id=row.id).first() is not None
+        )
     elif kind == "severity":
         referenced = IncidentReport.query.filter_by(severity_id=row.id).first() is not None
 

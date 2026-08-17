@@ -74,7 +74,7 @@
         {% for report in incident_reports %}
         <tr>
           <td><strong>{{ report.report_number }}</strong></td>
-          <td>{{ report.category.name if report.category else 'N/A' }}</td>
+          <td>{{ report.selected_categories|map(attribute='name')|join(', ') or 'N/A' }}</td>
           <td>
             <span class="severity-badge" style="background: {{ report.severity.color if report.severity else '#64748b' }}; color: white; font-size: 0.8rem; padding: 0.2rem 0.6rem; border-radius: 12px;">
               {{ report.severity.name if report.severity else 'N/A' }}

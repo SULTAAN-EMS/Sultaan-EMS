@@ -27,8 +27,8 @@
         <span class="value">{{ student.student_code }}</span>
       </div>
       <div class="detail-row">
-        <span class="label">Category:</span>
-        <span class="value">{{ report.category.name if report.category else 'N/A' }}</span>
+        <span class="label">Categories:</span>
+        <span class="value">{{ report.selected_categories|map(attribute='name')|join(', ') or 'N/A' }}</span>
       </div>
       <div class="detail-row">
         <span class="label">Severity:</span>

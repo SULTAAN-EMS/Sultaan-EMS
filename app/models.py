@@ -558,6 +558,38 @@ class IncidentReport(TimestampMixin, db.Model):
     subject = db.relationship("Subject")
     category = db.relationship("IncidentCategory")
     severity = db.relationship("SeverityLevel")
+    category_links = db.relationship(
+        "IncidentReportCategory",
+        back_populates="report",
+        cascade="all, delete-orphan",
+        order_by="IncidentReportCategory.id",
+    )
+
+    @property
+    def selected_categories(self):
+        """Return every category for new multi-category reports and legacy reports."""
+        linked_categories = [link.category for link in self.category_links if link.category]
+        return linked_categories or ([self.category] if self.category else [])
+
+
+class IncidentReportCategory(TimestampMixin, db.Model):
+    """Additional categories selected for one incident report.
+
+    ``IncidentReport.category_id`` remains the primary/legacy category so old
+    records and integrations remain valid. This relation stores the complete
+    selection for reports submitted with the multi-category selector.
+    """
+    __tablename__ = "incident_report_categories"
+    __table_args__ = (
+        db.UniqueConstraint("report_id", "category_id", name="uq_incident_report_category"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    report_id = db.Column(db.Integer, db.ForeignKey("incident_reports.id", ondelete="CASCADE"), nullable=False, index=True)
+    category_id = db.Column(db.Integer, db.ForeignKey("incident_categories.id", ondelete="RESTRICT"), nullable=False, index=True)
+
+    report = db.relationship("IncidentReport", back_populates="category_links")
+    category = db.relationship("IncidentCategory")
 
 
 class IncidentAttachment(TimestampMixin, db.Model):

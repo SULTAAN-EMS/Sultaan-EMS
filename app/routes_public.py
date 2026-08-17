@@ -7,7 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from . import db
 from .i18n import language_redirect
-from .models import AcademicYear, Exam, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, ReportVerification, Result, SeverityLevel, Student, Subject
+from .models import AcademicYear, Exam, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeverityLevel, Student, Subject
 from .services import active_exam_for_student, get_settings, result_payload, result_success_overlay_config, top_students_for_class
 from .verification import verification_payload
 
@@ -69,6 +69,20 @@ def incident_form_error(message, errors=None, status=400):
 
 def is_other_lookup_value(value):
     return (value or "").strip().casefold() == "other"
+
+
+def submitted_incident_category_ids():
+    """Read multi-select categories while accepting legacy single-category forms."""
+    raw_values = request.form.getlist("category_ids") or [request.form.get("category_id", "")]
+    category_ids = []
+    for raw_value in raw_values:
+        try:
+            category_id = int(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if category_id not in category_ids:
+            category_ids.append(category_id)
+    return category_ids
 
 
 @public_bp.route("/")
@@ -449,7 +463,7 @@ def incident_report_form(token):
         from .models import IncidentReport
         import random
         import string
-        category_id = request.form.get("category_id")
+        category_ids = submitted_incident_category_ids()
         severity_id = request.form.get("severity_id")
         description = request.form.get("description", "").strip()
         actions_list = request.form.getlist("actions_taken")
@@ -462,7 +476,7 @@ def incident_report_form(token):
             signature_data = invigilator.signature_data or ""
 
         validation_errors = []
-        if incident_bool_setting(settings_dict, "require_category", True) and not category_id:
+        if incident_bool_setting(settings_dict, "require_category", True) and not category_ids:
             validation_errors.append("Please select a Category.")
         if incident_bool_setting(settings_dict, "require_severity", True) and not severity_id:
             validation_errors.append("Please select a Severity Level.")
@@ -483,28 +497,33 @@ def incident_report_form(token):
         if validation_errors:
             return incident_form_error("Please correct the highlighted fields.", validation_errors)
 
-        if not category_id:
+        if not category_ids:
             default_category = IncidentCategory.query.order_by(IncidentCategory.sort_order, IncidentCategory.id).first()
-            category_id = default_category.id if default_category else None
+            category_ids = [default_category.id] if default_category else []
         if not severity_id:
             default_severity = SeverityLevel.query.order_by(SeverityLevel.sort_order, SeverityLevel.id).first()
             severity_id = default_severity.id if default_severity else None
-        if not category_id or not severity_id:
+        if not category_ids or not severity_id:
             return incident_form_error("Incident categories and severity levels must be configured before submitting reports.")
         if not description:
             description = "No description provided."
 
         try:
-            category = IncidentCategory.query.filter_by(id=int(category_id)).first()
+            categories_by_id = {
+                category.id: category
+                for category in IncidentCategory.query.filter(IncidentCategory.id.in_(category_ids)).all()
+            }
             severity = SeverityLevel.query.filter_by(id=int(severity_id)).first()
         except (TypeError, ValueError):
-            category = severity = None
-        if not category:
+            categories_by_id = {}
+            severity = None
+        selected_categories = [categories_by_id.get(category_id) for category_id in category_ids]
+        if len(selected_categories) != len(category_ids) or any(category is None for category in selected_categories):
             return incident_form_error("Please select a valid incident category.")
         if not severity:
             return incident_form_error("Please select a valid severity level.")
 
-        category_is_other = is_other_lookup_value(category.name)
+        category_is_other = any(is_other_lookup_value(category.name) for category in selected_categories)
         action_has_other = any(is_other_lookup_value(action) for action in actions_list)
 
         if category_is_other and not category_description and not other_description:
@@ -548,7 +567,8 @@ def incident_report_form(token):
             invigilator_id=invigilator.id,
             teacher_id=None,
             user_id=None,
-            category_id=category.id,
+            # Keep the first selected category as the legacy primary category.
+            category_id=selected_categories[0].id,
             severity_id=severity.id,
             exam_id=exam.id if exam else None,
             subject_id=int(request.form.get("subject_id")) if request.form.get("subject_id") else None,
@@ -566,6 +586,10 @@ def incident_report_form(token):
 
         try:
             db.session.add(report)
+            db.session.flush()
+            db.session.add_all(
+                [IncidentReportCategory(report_id=report.id, category_id=category.id) for category in selected_categories]
+            )
             if signature_data and allow_signature_reuse:
                 invigilator.signature_data = signature_data
             db.session.commit()
@@ -612,6 +636,7 @@ def incident_report_form(token):
     
     # GET request - show form
     categories = IncidentCategory.query.order_by(IncidentCategory.sort_order).all()
+    other_category_ids = [category.id for category in categories if is_other_lookup_value(category.name)]
     severities = SeverityLevel.query.order_by(SeverityLevel.sort_order).all()
     actions = IncidentAction.query.order_by(IncidentAction.sort_order).all()
     exams = Exam.query.filter_by(is_published=True).order_by(Exam.id.desc()).all()
@@ -636,6 +661,7 @@ def incident_report_form(token):
         token=token,
         student=student,
         categories=categories,
+        other_category_ids=other_category_ids,
         severities=severities,
         actions=actions,
         exams=exams,
