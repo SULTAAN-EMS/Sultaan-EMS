@@ -4,8 +4,10 @@
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/result-success-overlay.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/top10-tunnel.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/verified-name-badge.css') }}">
 {% endblock %}
 {% block content %}
+{% from 'partials/verified_name_badge.html' import verified_name_badge %}
 <style>
   .premium-homepage {
     --portal-page-title-size: {{ settings.typography_page_title_size }};
@@ -137,7 +139,7 @@
         <div class="selection-profile-card">
           <span class="result-options-photo">{% if result_options.student.photo_path %}<img src="{{ asset_url(result_options.student.photo_path) }}" alt="{{ result_options.student.full_name }} photo">{% elif settings.result_dashboard_default_avatar %}<img src="{{ asset_url(settings.result_dashboard_default_avatar) }}" alt="Default student avatar">{% else %}<i class="fa-solid fa-user-graduate"></i>{% endif %}</span>
           <div class="selection-profile-copy"><h2 id="selectionSheetTitle">{{ result_options.student.full_name }}</h2><p>{{ result_options.student.student_code }}</p></div>
-          <span class="selection-verified-badge"><i class="fa-solid fa-check"></i> Verified</span>
+          {{ verified_name_badge(label='Verified', variant='white') }}
         </div>
         <form method="post" action="{{ url_for('public.result') }}" class="selection-wizard-form" id="selectionWizardForm">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="student_id" value="{{ result_options.student.student_code }}"><input type="hidden" name="phone" value="{{ result_options.phone or '' }}"><input type="hidden" name="year_id" id="selectionYearValue"><input type="hidden" name="exam_id" id="selectionExamValue">
@@ -277,7 +279,7 @@
           {% if result.student.photo_path %}<img src="{{ asset_url(result.student.photo_path) }}" alt="{{ result.student.full_name }} photo">{% elif settings.result_dashboard_default_avatar %}<img src="{{ asset_url(settings.result_dashboard_default_avatar) }}" alt="Default student avatar">{% else %}<i class="fa-solid fa-user-graduate"></i>{% endif %}
           <span class="reference-photo-logo">{% if settings.logo_path %}<img src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">{% else %}<i class="fa-solid fa-school"></i>{% endif %}</span>
         </div>
-        <h2>{{ result.student.full_name }}</h2>
+        <h2>{{ result.student.full_name }}{{ verified_name_badge(label='Verified', variant='white') }}</h2>
         <p>{{ result.student.school_class.name }}</p>
         <div class="reference-side-lines">
           <div class="side-parent"><span><i class="fa-solid fa-user"></i></span><small>{{ settings.result_label_mother_name }}</small><strong>{{ result.student.mother_name }}</strong></div>

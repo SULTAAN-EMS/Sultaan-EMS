@@ -1,5 +1,5 @@
-{% macro verified_name_badge(label='Verified') -%}
-<span class="verified-mini" role="img" aria-label="{{ label }}" title="{{ label }}">
+{% macro verified_name_badge(label='Verified', variant='default') -%}
+<span class="verified-mini{% if variant != 'default' %} verified-mini--{{ variant }}{% endif %}" role="img" aria-label="{{ label }}" title="{{ label }}">
   <span class="seal-shape"></span>
   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path d="M5 12.5l4.2 4.2L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>

@@ -43,7 +43,7 @@
     {% endif %}
     {% if incident_settings.get('show_student_info') == 'true' %}
     <div class="student-identity-details">
-      <h2>{{ student.full_name }}{{ verified_name_badge() }}</h2>
+      <h2>{{ student.full_name }}{{ verified_name_badge(variant='red') }}</h2>
       <div class="identity-grid">
         <div class="identity-item">
           <span class="icon"><i class="fa-solid fa-id-card"></i></span>

@@ -7,7 +7,6 @@
   vertical-align:middle;
   position:relative;
   flex:0 0 auto;
-  filter:drop-shadow(0 2px 4px rgba(11,99,229,.28));
 }
 
 .verified-mini .seal-shape {
@@ -19,6 +18,24 @@
 }
 
 .verified-mini svg { position:relative; z-index:1; width:13px; height:13px; }
+
+/* Context variants come after the shared seal rule so they reliably win over
+   the default blue fill without changing the badge geometry. */
+.verified-mini--red .seal-shape {
+  background: #dc2626;
+}
+
+.verified-mini--white {
+  background: transparent;
+}
+
+.verified-mini--white .seal-shape {
+  background: #ffffff;
+}
+
+.verified-mini--white svg path {
+  stroke: #163b73;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .verified-mini { filter:none; }
