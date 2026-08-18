@@ -5067,6 +5067,7 @@ tbody tr:hover td { background: #f8fbff; }
 .selection-profile-card { display: flex; align-items: center; gap: 14px; padding: 14px; border: 1px solid rgba(255,255,255,.18); border-radius: 18px; background: rgba(255,255,255,.1); }
 .selection-profile-copy { min-width: 0; flex: 1; }
 .selection-profile-copy h2 { margin: 0; overflow-wrap: anywhere; color: #fff; font-size: clamp(1rem, 2.4vw, 1.35rem); line-height: 1.2; }
+.selection-profile-copy h2 .verified-mini { margin-left: 6px; vertical-align: middle; }
 .selection-profile-copy p { margin: 5px 0 0; color: rgba(255,255,255,.7); font-size: .86rem; }
 .selection-verified-badge { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; padding: 7px 10px; border-radius: 999px; color: #D1FAE5; background: rgba(16, 185, 129, .22); font-size: .72rem; font-weight: 800; }
 .selection-verified-badge i { color: #6EE7B7; }

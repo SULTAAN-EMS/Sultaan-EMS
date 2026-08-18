@@ -138,8 +138,7 @@
         <div class="selection-sheet-handle" aria-hidden="true"></div>
         <div class="selection-profile-card">
           <span class="result-options-photo">{% if result_options.student.photo_path %}<img src="{{ asset_url(result_options.student.photo_path) }}" alt="{{ result_options.student.full_name }} photo">{% elif settings.result_dashboard_default_avatar %}<img src="{{ asset_url(settings.result_dashboard_default_avatar) }}" alt="Default student avatar">{% else %}<i class="fa-solid fa-user-graduate"></i>{% endif %}</span>
-          <div class="selection-profile-copy"><h2 id="selectionSheetTitle">{{ result_options.student.full_name }}</h2><p>{{ result_options.student.student_code }}</p></div>
-          {{ verified_name_badge(label='Verified', variant='white') }}
+          <div class="selection-profile-copy"><h2 id="selectionSheetTitle">{{ result_options.student.full_name }}{{ verified_name_badge(label='Verified', variant='white') }}</h2><p>{{ result_options.student.student_code }}</p></div>
         </div>
         <form method="post" action="{{ url_for('public.result') }}" class="selection-wizard-form" id="selectionWizardForm">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="student_id" value="{{ result_options.student.student_code }}"><input type="hidden" name="phone" value="{{ result_options.phone or '' }}"><input type="hidden" name="year_id" id="selectionYearValue"><input type="hidden" name="exam_id" id="selectionExamValue">

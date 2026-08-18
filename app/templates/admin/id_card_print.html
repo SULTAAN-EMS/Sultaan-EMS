@@ -316,6 +316,29 @@
       height: 20mm;
       object-fit: contain;
     }
+    .qr-frame-link {
+      position: relative;
+      display: inline-block;
+      line-height: 0;
+    }
+    .qr-frame-link::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 6px);
+      transform: translate(-50%, 3px);
+      padding: 5px 8px;
+      border-radius: 6px;
+      background: #07143b;
+      color: #fff;
+      font: 600 10px/1.2 Arial, sans-serif;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .15s ease, transform .15s ease;
+    }
+    .qr-frame-link:hover::after,
+    .qr-frame-link:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }
     .qr-frame small {
       display: block;
       width: 100%;
@@ -441,7 +464,7 @@
 
                 <div class="qr-column">
                   <div class="qr-frame">
-                    <img src="{{ item.qr.qr_code }}" alt="QR">
+                    <a class="qr-frame-link" href="{{ item.qr.url }}" aria-label="Click to Verify" data-tooltip="Click to Verify"><img src="{{ item.qr.qr_code }}" alt="QR"></a>
                     <small>Scan to Verify</small>
                   </div>
                 </div>

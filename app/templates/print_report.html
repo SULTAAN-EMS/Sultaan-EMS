@@ -97,7 +97,7 @@
           <div class="download-date-row"><span><i class="fa-solid fa-calendar-day"></i></span><small>Download Date</small><strong>{{ download_date_text }}</strong></div>
         </div>
         <div class="tis-verify-qr">
-          {% if result.verification %}<img src="{{ result.verification.qr_code }}" alt="Verification QR Code">{% else %}<i class="fa-solid fa-qrcode"></i>{% endif %}
+          {% if result.verification %}<a class="tis-verify-qr-link" href="{{ result.verification.url }}" aria-label="Click to Verify" data-tooltip="Click to Verify"><img src="{{ result.verification.qr_code }}" alt="Verification QR Code"></a>{% else %}<i class="fa-solid fa-qrcode"></i>{% endif %}
           <strong>{{ result.settings.print_qr_label }}</strong>
         </div>
       </div>
