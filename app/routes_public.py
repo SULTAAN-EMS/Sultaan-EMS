@@ -85,6 +85,21 @@ def submitted_incident_category_ids():
     return category_ids
 
 
+def incident_subjects_for_student(student):
+    """Return only the configured subjects for the identified student's level."""
+    level_id = student.academic_level_id
+    if not level_id and student.academic_class:
+        level_id = student.academic_class.academic_level_id
+    if not level_id:
+        return []
+    return (
+        Subject.query
+        .filter(Subject.academic_level_id == level_id)
+        .order_by(Subject.sort_order, Subject.name)
+        .all()
+    )
+
+
 @public_bp.route("/")
 def portal():
     return render_template("portal.html", settings=get_settings())
@@ -414,6 +429,8 @@ def incident_report_form(token):
         return render_template("qr_landing.html", settings=settings, token=token, student=None), 404
     
     student = issue.student
+    student_subjects = incident_subjects_for_student(student)
+    student_subject_ids = {subject.id for subject in student_subjects}
     
     # Debug logging - Student details
     import logging
@@ -497,6 +514,10 @@ def incident_report_form(token):
         if validation_errors:
             return incident_form_error("Please correct the highlighted fields.", validation_errors)
 
+        subject_id = request.form.get("subject_id", type=int)
+        if subject_id and subject_id not in student_subject_ids:
+            return incident_form_error("Please select a subject assigned to this student's level.")
+
         if not category_ids:
             default_category = IncidentCategory.query.order_by(IncidentCategory.sort_order, IncidentCategory.id).first()
             category_ids = [default_category.id] if default_category else []
@@ -571,7 +592,7 @@ def incident_report_form(token):
             category_id=selected_categories[0].id,
             severity_id=severity.id,
             exam_id=exam.id if exam else None,
-            subject_id=int(request.form.get("subject_id")) if request.form.get("subject_id") else None,
+            subject_id=subject_id,
             exam_room=request.form.get("exam_room", ""),
             incident_date=incident_date,
             incident_time=incident_time,
@@ -640,7 +661,7 @@ def incident_report_form(token):
     severities = SeverityLevel.query.order_by(SeverityLevel.sort_order).all()
     actions = IncidentAction.query.order_by(IncidentAction.sort_order).all()
     exams = Exam.query.filter_by(is_published=True).order_by(Exam.id.desc()).all()
-    subjects = Subject.query.order_by(Subject.name).all()
+    subjects = student_subjects
     
     # Pre-compute current date/time for form defaults
     now = datetime.now()

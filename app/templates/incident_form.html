@@ -231,11 +231,12 @@
         <div class="form-group">
           <label for="subject_id">Subject{% if incident_settings.get('require_subject') == 'true' %} *{% endif %}</label>
           <select id="subject_id" name="subject_id" data-required="{{ incident_settings.get('require_subject', 'false') }}" data-message="Please select a Subject.">
-            <option value="">Select subject (optional)</option>
+            <option value="">{% if subjects %}Select subject{% else %}No subjects available for this student's level{% endif %}</option>
             {% for subject in subjects %}
             <option value="{{ subject.id }}">{{ subject.name }}</option>
             {% endfor %}
           </select>
+          {% if not subjects %}<p class="help-text">No subjects are configured for this student's level.</p>{% endif %}
         </div>
         {% endif %}
       </div>
@@ -251,9 +252,9 @@
       
       <div class="form-row">
         <div class="form-group full-width">
-          <label for="incidentDateTimeTrigger">Incident Date &amp; Time{% if incident_settings.get('require_incident_date', 'true') == 'true' or incident_settings.get('require_incident_time', 'true') == 'true' %} *{% endif %}</label>
+          <label class="sr-only" for="incidentDateTimeTrigger">Incident Date &amp; Time</label>
           <div id="incidentDateTimePicker" class="incident-datetime-picker">
-            <span class="incident-datetime-badge">Date &amp; Time</span>
+            <span class="incident-datetime-badge">Incident Date &amp; Time{% if incident_settings.get('require_incident_date', 'true') == 'true' or incident_settings.get('require_incident_time', 'true') == 'true' %} *{% endif %}</span>
             <input type="hidden" id="incident_date" name="incident_date" value="{{ current_date_iso }}" data-required="{{ incident_settings.get('require_incident_date', 'true') }}" data-message="Incident Date is required.">
             <input type="hidden" id="incident_time" name="incident_time" value="{{ current_time_24 }}" data-required="{{ incident_settings.get('require_incident_time', 'true') }}" data-message="Incident Time is required.">
             <button id="incidentDateTimeTrigger" class="incident-datetime-trigger" type="button" aria-haspopup="dialog" aria-expanded="false">
@@ -429,7 +430,6 @@
           <span class="category-selector-item-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
           <span class="category-selector-item-copy">
             <strong>{{ category.name }}</strong>
-            <small>{% if category.id in other_category_ids %}Other examination incident{% else %}Examination incident{% endif %}</small>
           </span>
           <span class="category-selector-check"><i class="fa-solid fa-check"></i></span>
         </button>
@@ -733,13 +733,43 @@ document.addEventListener('DOMContentLoaded', function() {
       const end = today.getFullYear() + 30;
       yearSelect.replaceChildren(...Array.from({ length: end - start + 1 }, (_, index) => new Option(String(start + index), String(start + index))));
     };
+    const isDesktopDateTimePicker = () => window.matchMedia('(min-width: 641px)').matches;
+    const restoreDateTimePanelHome = () => {
+      if (!dateTimePanel.classList.contains('is-portal')) return;
+      dateTimePicker.appendChild(dateTimePanel);
+      dateTimePanel.classList.remove('is-portal');
+      dateTimePanel.style.removeProperty('left');
+      dateTimePanel.style.removeProperty('top');
+      dateTimePanel.style.removeProperty('width');
+    };
+    const positionDateTimePanel = () => {
+      if (!dateTimePanel.classList.contains('is-portal')) return;
+      const triggerRect = dateTimeTrigger.getBoundingClientRect();
+      const gap = 12;
+      const panelWidth = Math.min(590, window.innerWidth - 24);
+      const left = Math.max(12, Math.min(triggerRect.left, window.innerWidth - panelWidth - 12));
+      dateTimePanel.style.width = `${panelWidth}px`;
+      const panelHeight = dateTimePanel.offsetHeight;
+      const roomBelow = window.innerHeight - triggerRect.bottom - gap;
+      const top = roomBelow >= panelHeight || triggerRect.top < panelHeight + gap
+        ? Math.min(window.innerHeight - panelHeight - 12, triggerRect.bottom + gap)
+        : Math.max(12, triggerRect.top - panelHeight - gap);
+      dateTimePanel.style.left = `${left}px`;
+      dateTimePanel.style.top = `${top}px`;
+    };
     const closeDateTimePicker = () => {
       dateTimePanel.hidden = true;
       dateTimeTrigger.setAttribute('aria-expanded', 'false');
+      restoreDateTimePanelHome();
     };
     const openDateTimePicker = () => {
       dateTimePanel.hidden = false;
       dateTimeTrigger.setAttribute('aria-expanded', 'true');
+      if (isDesktopDateTimePicker()) {
+        document.body.appendChild(dateTimePanel);
+        dateTimePanel.classList.add('is-portal');
+        window.requestAnimationFrame(positionDateTimePanel);
+      }
       renderCalendar();
       renderTime();
     };
@@ -790,8 +820,23 @@ document.addEventListener('DOMContentLoaded', function() {
       renderTime();
     });
     document.getElementById('incidentDateTimeDone')?.addEventListener('click', closeDateTimePicker);
-    document.addEventListener('click', (event) => { if (!dateTimePicker.contains(event.target)) closeDateTimePicker(); });
+    document.addEventListener('click', (event) => {
+      if (!dateTimePicker.contains(event.target) && !dateTimePanel.contains(event.target)) closeDateTimePicker();
+    });
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeDateTimePicker(); });
+    window.addEventListener('resize', () => {
+      if (dateTimePanel.hidden) return;
+      if (isDesktopDateTimePicker()) {
+        if (!dateTimePanel.classList.contains('is-portal')) {
+          document.body.appendChild(dateTimePanel);
+          dateTimePanel.classList.add('is-portal');
+        }
+        positionDateTimePanel();
+      } else {
+        restoreDateTimePanelHome();
+      }
+    });
+    window.addEventListener('scroll', positionDateTimePanel, true);
     populateSelects();
     renderSummary();
     renderCalendar();
@@ -878,7 +923,6 @@ document.addEventListener('DOMContentLoaded', function() {
       categorySelectorModal.classList.add('is-open');
       categorySelectorModal.setAttribute('aria-hidden', 'false');
       categorySelectorTrigger?.setAttribute('aria-expanded', 'true');
-      window.setTimeout(() => categorySearch?.focus(), 100);
     };
 
     const closeCategorySelectorModal = () => {
