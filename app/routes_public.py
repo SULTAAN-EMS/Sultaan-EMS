@@ -463,7 +463,6 @@ def incident_report_form(token):
     # Check if invigilator is logged in
     invigilator = current_invigilator()
     if not invigilator:
-        flash("Please log in as an invigilator to submit an incident report.", "warning")
         from flask import session
         session["invigilator_next"] = request.url
         return redirect(url_for("invigilator.login"))

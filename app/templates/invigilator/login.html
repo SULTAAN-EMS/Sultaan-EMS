@@ -12,7 +12,7 @@
   html, body { min-height:100%; background:#111; font-family:'Inter',sans-serif; }
   body { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:40px 16px; background:radial-gradient(circle at 15% 0%,rgba(201,162,75,.18),transparent 50%),radial-gradient(circle at 85% 100%,rgba(70,70,70,.4),transparent 55%),linear-gradient(150deg,#0d0d0d 0%,#161616 45%,#1c1a14 100%); }
   #particles-canvas { position:fixed; inset:0; z-index:0; pointer-events:none; }
-  .border-frame { position:relative; z-index:1; width:380px; max-width:100%; border-radius:21px; padding:2.5px; overflow:hidden; box-shadow:0 40px 90px -30px rgba(0,0,0,.85); }
+  .border-frame { position:relative; z-index:1; width:400px; max-width:100%; border-radius:21px; padding:2.5px; overflow:hidden; box-shadow:0 40px 90px -30px rgba(0,0,0,.85); }
   .border-frame::before { content:''; position:absolute; top:50%; left:-100%; width:300%; height:0; padding-top:300%; margin-top:-150%; background:conic-gradient(from 0deg,#c9a24b,#7a1f2b,#c9a24b 25%,#3a2f1c,#7a1f2b 50%,#c9a24b 65%,#7a1f2b,#c9a24b 100%); animation:spin 6s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
   .phone { width:100%; background:#f6f1e6; border-radius:19px; padding:40px 30px 0; position:relative; z-index:1; overflow:hidden; }
@@ -57,9 +57,9 @@
   .forgot { text-align:center; margin-top:16px; }
   .forgot a { color:#8a7a5f; font-size:12px; text-decoration:none; }
   .forgot a:hover { color:#7a1f2b; text-decoration:underline; }
-  .notice { display:flex; align-items:flex-start; gap:10px; margin-top:22px; padding:13px 14px; background:#f0e9d6; border:1px solid #dfcda5; border-left:3px solid #7a1f2b; border-radius:8px; font-size:10px; color:#6b5b3c; line-height:1.5; }
-  .notice-icon { display:grid; place-items:center; flex:0 0 24px; width:24px; height:24px; border-radius:50%; background:#7a1f2b; color:#fff; }
-  .notice-icon svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; }
+  .notice { display:flex; align-items:center; gap:8px; min-height:0; margin-top:18px; padding:8px 10px; background:#f0e9d6; border:1px solid #dfcda5; border-left:3px solid #7a1f2b; border-radius:8px; font-size:9px; color:#6b5b3c; line-height:1.2; }
+  .notice-icon { display:grid; place-items:center; flex:0 0 20px; width:20px; height:20px; border-radius:50%; background:#7a1f2b; color:#fff; }
+  .notice-icon svg { width:12px; height:12px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; }
   .alert { margin:18px 0 -4px; padding:10px 12px; border-radius:6px; font-size:11px; line-height:1.4; }
   .alert-danger { background:#f7e1df; color:#7a1f2b; border:1px solid #e4b9b5; }
   .alert-warning { background:#f8edd0; color:#6b5b3c; border:1px solid #e5cf95; }
@@ -102,7 +102,7 @@
     <button class="btn" type="submit"><svg viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>GUDUB</button>
   </form>
   <div class="forgot"><a href="{{ url_for('invigilator.forgot_password') }}">Ma illowday af-garashada?</a></div>
-  <div class="notice"><span class="notice-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 4.8-3.4 8.1-8 9-4.6-.9-8-4.2-8-9V7l8-4z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg></span><span>Kaliya howlwadeennada loo oggolaaday ayaa geli kara. Haddii aad u baahan tahay oggolaansho gelitaan, la xidhiidh maamulaha nidaamka.</span></div>
+  <div class="notice"><span class="notice-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 4.8-3.4 8.1-8 9-4.6-.9-8-4.2-8-9V7l8-4z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg></span><span>Kaliya howlwadeennada loo oggolaaday ayaa geli kara.</span></div>
   <div class="cr-footer"><div class="ornament"></div><div class="type-wrap"><div class="cr-text">© <b>SULTAAN EMS</b> | 2026</div></div></div>
 </div></div>
 <script>
