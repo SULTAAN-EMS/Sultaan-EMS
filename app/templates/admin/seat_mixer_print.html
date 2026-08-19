@@ -3,82 +3,143 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Seating Plan - {{ hall.name }} - {{ version.label }}</title>
+  <title>Exam Seating Plan - {{ hall.name }}</title>
   <style>
-    :root { --ink:#10244a; --blue:#2867c7; --line:#d8e1ef; --muted:#63738b; --paper:#fff; }
-    * { box-sizing:border-box; }
-    body { margin:0; background:#edf2f8; color:var(--ink); font:13px/1.4 Arial,sans-serif; }
-    .sheet { width:min(1180px,calc(100% - 36px)); margin:24px auto; background:var(--paper); padding:30px; box-shadow:0 16px 40px rgba(18,38,74,.14); }
-    .head { display:flex; justify-content:space-between; gap:22px; border-bottom:3px solid var(--blue); padding-bottom:16px; margin-bottom:22px; }
-    .school { font-size:20px; font-weight:800; letter-spacing:.02em; }.meta { color:var(--muted); margin-top:4px; }.version { text-align:right; font-weight:700; }
-    .legend { display:flex; flex-wrap:wrap; gap:10px; margin:0 0 20px; }.legend span { display:inline-flex; gap:6px; align-items:center; color:var(--muted); font-size:11px; }.dot { width:11px; height:11px; border-radius:4px; display:inline-block; }
-    .row-pair { display:grid; gap:14px; grid-template-columns:repeat(2,minmax(0,1fr)); margin:0 0 17px; }
-    .row-column { min-width:0; }
-    .row-title { text-transform:uppercase; color:var(--muted); letter-spacing:.11em; font-weight:700; font-size:10px; padding-bottom:4px; margin-bottom:8px; border-bottom:1px solid var(--line); }
-    .table { border:1px solid var(--line); border-radius:9px; margin-bottom:8px; background:#fbfcff; overflow:hidden; page-break-inside:avoid; }
-    .table-title { font-size:10px; font-weight:800; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; margin:0; padding:7px 8px; background:#f4f7fb; border-bottom:1px solid var(--line); }
-    .chairs { display:grid; gap:0; grid-template-columns:1fr; }
-    .student { display:grid; grid-template-columns:30px minmax(0,1fr) auto; column-gap:7px; align-items:center; border-left:4px solid var(--class-color,#9aa8bd); border-radius:0; background:#fff; border-top:0; border-right:0; border-bottom:1px solid #edf1f6; padding:6px 7px; min-width:0; }
-    .student-top { display:flex; align-items:center; gap:6px; }.photo,.avatar { width:27px; height:27px; border-radius:50%; object-fit:cover; flex:none; }.avatar { background:var(--class-color,#9aa8bd); color:#fff; display:grid; place-items:center; font-weight:700; font-size:10px; }
-    .student-top { display:contents; }.photo,.avatar { grid-row:span 2; width:27px; height:27px; }.name { font-size:10px; font-weight:800; overflow-wrap:anywhere; white-space:normal; }.detail { margin-top:2px; color:var(--muted); font-size:8.5px; }.seat { grid-column:3; grid-row:1 / span 2; margin:0; color:var(--blue); font-weight:700; white-space:nowrap; }
-    .empty { min-height:58px; border:1px dashed #d4ddeb; border-radius:7px; color:#a7b3c5; display:grid; place-items:center; font-size:10px; }
-    .foot { display:flex; justify-content:space-between; gap:12px; border-top:1px solid var(--line); padding-top:14px; margin-top:22px; color:var(--muted); font-size:10px; }
-    .actions { position:fixed; right:18px; bottom:18px; display:flex; gap:8px; }.actions button { border:0; border-radius:8px; padding:10px 14px; color:#fff; background:var(--blue); font-weight:700; cursor:pointer; }.actions button:last-child { background:#516174; }
-    @page { size:{{ orientation|default('landscape') }}; margin:10mm; }
+    :root {
+      --navy: #123b78;
+      --navy-deep: #08295e;
+      --ink: #18263d;
+      --muted: #60708a;
+      --line: #d9e2ef;
+      --paper: #fff;
+      --soft: #f5f8fc;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body { background: #edf2f8; color: var(--ink); font: 11px/1.35 Arial, sans-serif; }
+    .sheet { width: min(1160px, calc(100% - 32px)); margin: 18px auto; padding: 20px; background: var(--paper); box-shadow: 0 16px 42px rgba(18, 38, 74, .14); }
+    .doc-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 13px; border-bottom: 3px solid var(--navy); }
+    .brand-lockup { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .school-logo { width: 48px; height: 48px; flex: 0 0 48px; display: grid; place-items: center; overflow: hidden; border-radius: 50%; border: 1px solid #b9cde7; background: #f1f6fd; color: var(--navy); font-size: 20px; font-weight: 800; }
+    .school-logo img { width: 100%; height: 100%; object-fit: contain; }
+    .school-name { color: var(--navy); font-size: 19px; font-weight: 900; letter-spacing: .02em; }
+    .document-title { color: var(--navy); font-size: 18px; font-weight: 900; text-align: right; text-transform: uppercase; }
+    .document-subtitle { margin-top: 3px; color: var(--muted); font-size: 10px; font-weight: 700; text-align: right; }
+    .meta-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 13px 0 8px; padding: 8px 0; border: 1px solid var(--line); border-radius: 9px; background: #fbfdff; }
+    .meta-item { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 3px 12px; border-right: 1px solid var(--line); }
+    .meta-item:last-child { border-right: 0; }
+    .meta-icon { color: var(--navy); font-size: 14px; }
+    .meta-copy { min-width: 0; }
+    .meta-label { display: block; color: var(--muted); font-size: 7.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .meta-value { display: block; margin-top: 2px; overflow-wrap: anywhere; color: var(--ink); font-size: 10.5px; font-weight: 800; }
+    .summary { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 8px 11px; border: 1px solid #d9e4f3; border-radius: 8px; background: #f4f8fe; color: var(--ink); }
+    .summary i { color: var(--navy); font-size: 15px; }
+    .summary strong { color: var(--navy); font-size: 9px; text-transform: uppercase; }
+    .summary span { color: #344761; font-size: 10px; }
+    .notice { margin-bottom: 13px; padding: 6px 10px; border: 1px solid #d9e4f3; border-radius: 7px; background: #f8fbff; color: #425673; font-size: 9px; }
+    .row-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-bottom: 12px; align-items: start; break-inside: auto; page-break-inside: auto; }
+    .row-column { min-width: 0; }
+    .row-column { break-inside: avoid; page-break-inside: avoid; }
+    .row-title { margin: 0 0 6px; padding: 5px 8px; border-radius: 6px; background: var(--row-color, var(--navy)); color: #fff; font-size: 11px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+    .table { overflow: hidden; margin-bottom: 8px; border: 1px solid color-mix(in srgb, var(--row-color, #9bb0cb) 45%, #fff); border-radius: 8px; background: #fff; break-inside: avoid; page-break-inside: avoid; }
+    .table-title { padding: 5px 8px; border-bottom: 1px solid color-mix(in srgb, var(--row-color, #9bb0cb) 35%, #fff); background: color-mix(in srgb, var(--row-color, #9bb0cb) 13%, #fff); color: color-mix(in srgb, var(--row-color, #1d4f91) 75%, #10244a); font-size: 9px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+    .student-card { display: grid; grid-template-columns: 16mm minmax(0, 1fr) 20mm; gap: 4px; align-items: center; min-width: 0; min-height: 25mm; padding: 5px; border-bottom: 1px dashed #dce4ef; border-left: 3px solid var(--class-color, #9aa8bd); break-inside: avoid; page-break-inside: avoid; }
+    .student-card:last-child { border-bottom: 0; }
+    .seat-label { display: inline-block; margin-bottom: 2px; padding: 1px 3px; border-radius: 3px; background: color-mix(in srgb, var(--class-color, #1d4f91) 15%, #fff); color: color-mix(in srgb, var(--class-color, #1d4f91) 78%, #18263d); font-size: 6.5px; font-weight: 900; }
+    .student-photo { grid-column: 1; width: 15mm; height: 17mm; overflow: hidden; border-radius: 5px; object-fit: cover; background: color-mix(in srgb, var(--class-color, #9aa8bd) 16%, #fff); }
+    .student-avatar { display: grid; place-items: center; color: #fff; font-size: 15px; font-weight: 900; }
+    .student-copy { grid-column: 2; min-width: 0; }
+    .student-name { overflow-wrap: anywhere; word-break: normal; color: var(--ink); font-size: 7.5px; font-weight: 900; line-height: 1.15; }
+    .student-id { margin-top: 2px; color: var(--navy); font-size: 6.8px; font-weight: 800; }
+    .student-class { margin-top: 1px; overflow-wrap: anywhere; color: var(--muted); font-size: 6.8px; font-weight: 700; }
+    .seat-ref { margin-top: 2px; color: var(--navy); font-size: 6.5px; font-weight: 900; white-space: nowrap; }
+    .student-qr-link { grid-column: 3; display: block; width: 19mm; height: 19mm; padding: 1mm; border: 1px solid #aebdd0; border-radius: 4px; background: #fff; }
+    .student-qr { display: block; width: 100%; height: 100%; object-fit: contain; }
+    .qr-missing { grid-column: 3; display: grid; place-items: center; width: 19mm; height: 19mm; border: 1px dashed #b9c5d4; border-radius: 4px; color: #95a3b6; font-size: 6px; text-align: center; }
+    .empty-seat { display: grid; place-items: center; min-height: 55px; border-bottom: 1px dashed #dce4ef; color: #99a7b9; font-size: 8px; }
+    .empty-seat:last-child { border-bottom: 0; }
+    .doc-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; }
+    .actions { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 7px; }
+    .actions button { padding: 9px 12px; border: 0; border-radius: 7px; background: var(--navy); color: #fff; font-size: 11px; font-weight: 800; cursor: pointer; }
+    .actions button:last-child { background: #65748a; }
+    @page { size: A4 {{ orientation|default('portrait') }}; margin: 9mm; }
     {% if orientation == 'portrait' %}
-    .sheet { width:min(820px,calc(100% - 28px)); padding:20px; }
-    .row-pair { gap:8px; }
-    .table { margin-bottom:6px; }
-    .student { padding:5px; }
+    .sheet { width: min(810px, calc(100% - 24px)); padding: 17px; }
+    .meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .meta-item:nth-child(2) { border-right: 0; }
+    .meta-item:nth-child(-n+2) { border-bottom: 1px solid var(--line); padding-bottom: 7px; }
+    .meta-item:nth-child(n+3) { padding-top: 7px; }
+    .row-grid { gap: 6px; }
+    .student-card { grid-template-columns: 14mm minmax(0, 1fr) 18mm; padding: 4px; }
+    .student-photo { width: 13mm; height: 15mm; }
+    .student-qr-link, .qr-missing { width: 17mm; height: 17mm; }
     {% endif %}
-    @media print { body { background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; } .sheet { width:auto; margin:0; padding:0; box-shadow:none; } .actions { display:none; } }
+    @media (max-width: 700px) {
+      .sheet { width: calc(100% - 16px); margin: 8px auto; padding: 13px; }
+      .doc-head { align-items: flex-start; flex-direction: column; gap: 9px; }
+      .document-title, .document-subtitle { text-align: left; }
+      .meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .meta-item:nth-child(2) { border-right: 0; }
+      .meta-item:nth-child(-n+2) { border-bottom: 1px solid var(--line); padding-bottom: 7px; }
+      .meta-item:nth-child(n+3) { padding-top: 7px; }
+      .row-grid { grid-template-columns: 1fr; }
+      .actions { position: static; justify-content: center; margin: 10px 0; }
+    }
+    @media print {
+      body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .sheet { width: auto; margin: 0; padding: 0; box-shadow: none; }
+      .actions { display: none; }
+    }
   </style>
 </head>
 <body>
   <main class="sheet">
-    <header class="head">
-      <div><div class="school">{{ school_name }}</div><div class="meta">Examination Seating Plan · {{ hall.name }}</div></div>
-      <div class="version">{{ version.label }}<div class="meta">Generated {{ version.updated_at.strftime('%d %b %Y, %H:%M') if version.updated_at else '' }}</div></div>
+    <header class="doc-head">
+      <div class="brand-lockup">
+        <div class="school-logo">{% if school_logo %}<img src="{{ school_logo }}" alt="{{ school_name }} logo">{% else %}S{% endif %}</div>
+        <div><div class="school-name">{{ school_name }}</div><div class="document-subtitle" style="text-align:left">Exam Seating Plan with QR Verification</div></div>
+      </div>
+      <div><div class="document-title">Exam Seating Plan</div><div class="document-subtitle">{{ hall.name }}{% if version.label %} · {{ version.label }}{% endif %}</div></div>
     </header>
 
-    <div class="legend">
-      {% for class_id, class_name in print_classes %}
-      <span><i class="dot" style="background:{{ class_color(class_id) }}"></i>{{ class_name }}</span>
-      {% endfor %}
-    </div>
+    <section class="meta-grid" aria-label="Exam details">
+      <div class="meta-item"><span class="meta-icon">&#128197;</span><div class="meta-copy"><span class="meta-label">Academic Year</span><strong class="meta-value">{{ academic_year_name or 'Not specified' }}</strong></div></div>
+      <div class="meta-item"><span class="meta-icon">&#128196;</span><div class="meta-copy"><span class="meta-label">Exam Type</span><strong class="meta-value">{{ exam_name or 'Not specified' }}</strong></div></div>
+      <div class="meta-item"><span class="meta-icon">&#127970;</span><div class="meta-copy"><span class="meta-label">Exam Hall / Class</span><strong class="meta-value">{{ hall.name }}</strong></div></div>
+      <div class="meta-item"><span class="meta-icon">&#128337;</span><div class="meta-copy"><span class="meta-label">Date &amp; Time</span><strong class="meta-value">{{ hall_start_time.strftime('%d %b %Y, %H:%M') if hall_start_time else 'Not specified' }}</strong></div></div>
+    </section>
 
-    {% for row_pair in print_rows|batch(2, none) %}
-    {% set first_row_index = loop.index0 * 2 %}
-    <section class="row-pair">
-      {% for row in row_pair if row %}
-      <section class="row-column">
-      <div class="row-title">Row {{ first_row_index + loop.index }}</div>
-      {% for table in row %}
-      <article class="table">
-        <div class="table-title">Table {{ table.table + 1 }}</div>
-        <div class="chairs">
+    <div class="summary"><span>&#128101;</span><strong>Classes included in this hall ({{ assignments|length }} placed students)</strong><span>{% for class_id, class_name in print_classes %}{{ class_name }} ({{ class_counts.get(class_id, 0) }}){% if not loop.last %} · {% endif %}{% else %}No class data{% endfor %}</span></div>
+    <div class="notice"><strong>Instructions for Invigilators:</strong> Please scan each student's QR code before entry to verify identity.</div>
+
+    {% set row_colors = ['#c2185b', '#2f67b2', '#35a053', '#e4771d', '#6f55a8', '#168b99'] %}
+    <section class="row-grid">
+      {% for row in print_rows %}
+      {% set row_color = row_colors[loop.index0 % (row_colors|length)] %}
+      <section class="row-column" style="--row-color:{{ row_color }}">
+        <h2 class="row-title">Row {{ loop.index }}</h2>
+        {% for table in row %}
+        <article class="table">
+          <h3 class="table-title">Table {{ table.table + 1 }}</h3>
           {% for assignment in table.seats %}
           {% if assignment and assignment.student %}
           {% set student = assignment.student %}
           {% set color = class_color(student.academic_class_id or student.id) %}
-          <div class="student" style="--class-color:{{ color }}">
-            <div class="student-top">
-              {% if photo_url(student.photo_path) %}<img class="photo" src="{{ photo_url(student.photo_path) }}" alt="{{ student.full_name }}">{% else %}<span class="avatar" style="--class-color:{{ color }}">{{ student.full_name[:1] }}</span>{% endif %}
-              <div class="name">{{ student.full_name }}</div>
-            </div>
-            <div class="detail">{{ student.academic_class.name if student.academic_class else '' }} · {{ student.gender or 'Not recorded' }}</div>
-            <div class="detail seat">Seat {{ assignment.seat_number + 1 }}</div>
+          {% set qr = qr_payload(student.id) %}
+          <div class="student-card" style="--class-color:{{ color }}">
+            {% if photo_url(student.photo_path) %}<img class="student-photo" src="{{ photo_url(student.photo_path) }}" alt="{{ student.full_name }} photo">{% else %}<span class="student-photo student-avatar" style="background:{{ color }}">{{ student.full_name[:1] }}</span>{% endif %}
+            <div class="student-copy"><span class="seat-label">Seat {{ assignment.seat_number + 1 }}</span><div class="student-name">{{ student.full_name }}</div><div class="student-id">ID: {{ student.student_code }}</div><div class="student-class">{{ student.academic_class.name if student.academic_class else 'Class not recorded' }}</div><div class="seat-ref">Seat No: #{{ assignment.row_number + 1 }}/#{{ assignment.table_number + 1 }}/#{{ assignment.seat_number + 1 }}</div></div>
+            {% if qr %}<a class="student-qr-link" href="{{ qr.url }}" target="_blank" rel="noopener" aria-label="Verify {{ student.full_name }}"><img class="student-qr" src="{{ qr.qr_code }}" alt="QR verification for {{ student.full_name }}"></a>{% else %}<span class="qr-missing">QR unavailable</span>{% endif %}
           </div>
-          {% else %}<div class="empty">Empty seat</div>{% endif %}
+          {% else %}<div class="empty-seat">Empty seat</div>{% endif %}
           {% endfor %}
-        </div>
-      </article>
-      {% endfor %}
+        </article>
+        {% endfor %}
       </section>
       {% endfor %}
     </section>
-    {% endfor %}
-    <footer class="foot"><span>Official seating layout · Keep visible at the examination hall.</span><span>{{ assignments|length }} students placed</span></footer>
+
+    <footer class="doc-foot"><span>Exam Officer Signature<br><br>________________________</span><span style="text-align:center">Official seating plan<br><br>________________</span><span style="text-align:right">Date<br><br>________________________</span></footer>
   </main>
   <div class="actions"><button type="button" onclick="window.print()">Print / Save PDF</button><button type="button" onclick="window.close()">Close</button></div>
 </body>

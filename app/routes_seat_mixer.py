@@ -25,6 +25,7 @@ from .models import (
     AcademicYear,
     ExamHall,
     ExamHallVersion,
+    IdCardIssue,
     SeatAssignment,
     SeatMixerAssignment,
     SeatMixerSaveSnapshot,
@@ -32,6 +33,7 @@ from .models import (
     Student,
 )
 from .permissions import enforce_endpoint_permission
+from .verification import id_card_qr_payload
 
 seat_mixer_bp = Blueprint("seat_mixer", __name__)
 
@@ -1233,7 +1235,7 @@ def api_class_students():
 def print_arrangement():
     """Dedicated plain print/export view for one version."""
     version_id = request.args.get("version_id", type=int)
-    orientation = request.args.get("orientation", "landscape").lower()
+    orientation = request.args.get("orientation", "portrait").lower()
     if orientation not in {"portrait", "landscape"}:
         orientation = "landscape"
 
@@ -1276,12 +1278,45 @@ def print_arrangement():
             })
         print_rows.append(tables)
     print_classes = {}
+    class_counts = {}
     for assignment in assignments:
         student = assignment.student
         if student and student.academic_class_id and student.academic_class:
             print_classes.setdefault(student.academic_class_id, student.academic_class.name)
+            class_counts[student.academic_class_id] = class_counts.get(student.academic_class_id, 0) + 1
 
     class_colors = version_class_colors(version_id)
+    # Reuse the ID-card verification token/QR mechanism. Existing active
+    # issues are preferred; missing issues are created through the same helper
+    # used by ID Cards so every printed student receives a valid destination.
+    from .routes_id_cards import get_or_create_issue
+    student_qr = {}
+    issues_created = False
+    for assignment in assignments:
+        student = assignment.student
+        if not student or student.id in student_qr:
+            continue
+        issue = IdCardIssue.query.filter_by(
+            student_id=student.id,
+            academic_year_id=student.academic_year_id,
+            status="Active",
+        ).first()
+        if not issue:
+            issue = get_or_create_issue(student)
+            issues_created = True
+        student_qr[str(student.id)] = id_card_qr_payload(issue)
+    if issues_created:
+        db.session.commit()
+
+    hall_exam = hall.exam
+    hall_exam_type = hall.exam_type
+    academic_year_name = (
+        hall_exam.academic_year.name if hall_exam and hall_exam.academic_year
+        else hall_exam_type.academic_year.name if hall_exam_type and hall_exam_type.academic_year
+        else ""
+    )
+    exam_name = hall_exam.name if hall_exam else hall_exam_type.name if hall_exam_type else ""
+    logo_setting = db.session.get(Setting, "logo_path")
     return render_template(
         "admin/seat_mixer_print.html",
         hall=hall,
@@ -1289,9 +1324,15 @@ def print_arrangement():
         assignments=assignments,
         print_rows=print_rows,
         print_classes=sorted(print_classes.items(), key=lambda item: item[1]),
+        class_counts=class_counts,
         seats_per_table=seats_per_table,
         class_color=lambda class_id: class_colors.get(str(class_id), get_class_color(class_id)),
         photo_url=stored_photo_url,
+        qr_payload=lambda student_id: student_qr.get(str(student_id)),
         school_name=get_school_name(),
+        school_logo=stored_photo_url(logo_setting.value) if logo_setting and logo_setting.value else None,
+        academic_year_name=academic_year_name,
+        exam_name=exam_name,
+        hall_start_time=hall.start_time,
         orientation=orientation,
     )
