@@ -25,53 +25,65 @@
     .school-name { color: var(--navy); font-size: 19px; font-weight: 900; letter-spacing: .02em; }
     .document-title { color: var(--navy); font-size: 18px; font-weight: 900; text-align: right; text-transform: uppercase; }
     .document-subtitle { margin-top: 3px; color: var(--muted); font-size: 10px; font-weight: 700; text-align: right; }
-    .meta-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 13px 0 8px; padding: 8px 0; border: 1px solid var(--line); border-radius: 9px; background: #fbfdff; }
-    .meta-item { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 3px 12px; border-right: 1px solid var(--line); }
+    .meta-grid { display: grid; grid-template-columns: 1fr 1.65fr 1.15fr .8fr; gap: 5px; margin: 11px 0 7px; padding: 5px; border: 1px solid var(--line); border-radius: 9px; background: #f8fbff; }
+    .meta-item { display: flex; align-items: center; gap: 5px; min-width: 0; padding: 5px 7px; border: 1px solid transparent; border-radius: 7px; }
     .meta-item:last-child { border-right: 0; }
-    .meta-icon { color: var(--navy); font-size: 14px; }
-    .meta-copy { min-width: 0; }
-    .meta-label { display: block; color: var(--muted); font-size: 7.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-    .meta-value { display: block; margin-top: 2px; overflow-wrap: anywhere; color: var(--ink); font-size: 10.5px; font-weight: 800; }
-    .summary { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 8px 11px; border: 1px solid #d9e4f3; border-radius: 8px; background: #f4f8fe; color: var(--ink); }
-    .summary i { color: var(--navy); font-size: 15px; }
-    .summary strong { color: var(--navy); font-size: 9px; text-transform: uppercase; }
-    .summary span { color: #344761; font-size: 10px; }
+    .meta-item:nth-child(1) { background: linear-gradient(135deg, #eef5ff, #e4efff); border-color: #cbdcf5; }
+    .meta-item:nth-child(2) { background: linear-gradient(135deg, #f4efff, #eee5ff); border-color: #d9c9f7; }
+    .meta-item:nth-child(3) { background: linear-gradient(135deg, #fff7e9, #ffeed2); border-color: #f1d8a9; }
+    .meta-item:nth-child(4) { background: linear-gradient(135deg, #edfbf6, #dcf5eb); border-color: #bfe6d5; }
+    .meta-icon { display: inline-grid; place-items: center; flex: 0 0 14px; color: var(--navy); }
+    .meta-item:nth-child(2) .meta-icon { color: #7650bd; }
+    .meta-item:nth-child(3) .meta-icon { color: #c27b18; }
+    .meta-item:nth-child(4) .meta-icon { color: #168462; }
+    .meta-icon svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+    .meta-copy { display: flex; align-items: baseline; gap: 3px; min-width: 0; white-space: nowrap; }
+    .meta-label { display: inline; color: #000; font-size: 5.8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+    .meta-label::after { content: ':'; }
+    .meta-item:nth-child(1) .meta-value,
+    .meta-item:nth-child(2) .meta-value,
+    .meta-item:nth-child(3) .meta-value,
+    .meta-item:nth-child(4) .meta-value { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink); font-size: 8.4px; line-height: 1.1; font-weight: 800; }
+    .summary { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; padding: 7px 9px; border: 1px solid #d9e4f3; border-radius: 8px; background: linear-gradient(135deg, #f4f8fe, #eef5ff); color: var(--ink); }
+    .summary-icon { display: inline-grid; place-items: center; flex: 0 0 22px; width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, #dbeaff, #c9dcfa); color: #245aa8; }
+    .summary-icon svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+    .summary-label { color: var(--navy); font-size: 8.5px; font-weight: 900; }
+    .class-list { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+    .class-chip { display: inline-flex; align-items: center; padding: 2px 6px; border: 1px solid color-mix(in srgb, var(--chip-color, #315f9e) 40%, #fff); border-radius: 999px; background: color-mix(in srgb, var(--chip-color, #315f9e) 13%, #fff); color: color-mix(in srgb, var(--chip-color, #315f9e) 82%, #14233a); font-size: 8px; font-weight: 900; white-space: nowrap; }
     .notice { margin-bottom: 13px; padding: 6px 10px; border: 1px solid #d9e4f3; border-radius: 7px; background: #f8fbff; color: #425673; font-size: 9px; }
     .row-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-bottom: 12px; align-items: start; break-inside: auto; page-break-inside: auto; }
     .row-column { min-width: 0; }
-    .row-column { break-inside: avoid; page-break-inside: avoid; }
-    .row-title { margin: 0 0 6px; padding: 5px 8px; border-radius: 6px; background: var(--row-color, var(--navy)); color: #fff; font-size: 11px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
-    .table { overflow: hidden; margin-bottom: 8px; border: 1px solid color-mix(in srgb, var(--row-color, #9bb0cb) 45%, #fff); border-radius: 8px; background: #fff; break-inside: avoid; page-break-inside: avoid; }
-    .table-title { padding: 5px 8px; border-bottom: 1px solid color-mix(in srgb, var(--row-color, #9bb0cb) 35%, #fff); background: color-mix(in srgb, var(--row-color, #9bb0cb) 13%, #fff); color: color-mix(in srgb, var(--row-color, #1d4f91) 75%, #10244a); font-size: 9px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
-    .student-card { display: grid; grid-template-columns: 16mm minmax(0, 1fr) 20mm; gap: 4px; align-items: center; min-width: 0; min-height: 25mm; padding: 5px; border-bottom: 1px dashed #dce4ef; border-left: 3px solid var(--class-color, #9aa8bd); break-inside: avoid; page-break-inside: avoid; }
+    .row-column { break-inside: auto; page-break-inside: auto; }
+    .row-title { margin: 0 0 4px; padding: 4px 7px; border-radius: 6px; background: var(--row-color, var(--navy)); color: #fff; font-size: 11px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+    .table { overflow: hidden; margin-bottom: 5px; border: 1px solid color-mix(in srgb, var(--row-color, #9bb0cb) 45%, #fff); border-radius: 8px; background: #fff; break-inside: avoid; page-break-inside: avoid; }
+    .table-title { padding: 3px 7px; border-bottom: 1px solid color-mix(in srgb, var(--row-color, #9bb0cb) 35%, #fff); background: color-mix(in srgb, var(--row-color, #9bb0cb) 13%, #fff); color: color-mix(in srgb, var(--row-color, #1d4f91) 75%, #10244a); font-size: 8.5px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+    .student-card { display: grid; grid-template-columns: 15mm minmax(0, 1fr) 19mm; gap: 3px; align-items: center; min-width: 0; min-height: 0; padding: 2px 4px; border-bottom: 1px dashed #dce4ef; border-left: 3px solid var(--class-color, #9aa8bd); break-inside: avoid; page-break-inside: avoid; }
     .student-card:last-child { border-bottom: 0; }
-    .seat-label { display: inline-block; margin-bottom: 2px; padding: 1px 3px; border-radius: 3px; background: color-mix(in srgb, var(--class-color, #1d4f91) 15%, #fff); color: color-mix(in srgb, var(--class-color, #1d4f91) 78%, #18263d); font-size: 6.5px; font-weight: 900; }
-    .student-photo { grid-column: 1; width: 15mm; height: 17mm; overflow: hidden; border-radius: 5px; object-fit: cover; background: color-mix(in srgb, var(--class-color, #9aa8bd) 16%, #fff); }
+    .student-visual { grid-column: 1; display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+    .seat-label { display: inline-block; margin: 0 0 2px 1px; padding: 1px 3px; border-radius: 3px; background: color-mix(in srgb, var(--class-color, #1d4f91) 15%, #fff); color: color-mix(in srgb, var(--class-color, #1d4f91) 78%, #18263d); font-size: 6px; font-weight: 900; line-height: 1.1; }
+    .student-photo { width: 13mm; height: 14mm; overflow: hidden; border-radius: 5px; object-fit: cover; background: color-mix(in srgb, var(--class-color, #9aa8bd) 16%, #fff); }
     .student-avatar { display: grid; place-items: center; color: #fff; font-size: 15px; font-weight: 900; }
     .student-copy { grid-column: 2; min-width: 0; }
     .student-name { overflow-wrap: anywhere; word-break: normal; color: var(--ink); font-size: 7.5px; font-weight: 900; line-height: 1.15; }
     .student-id { margin-top: 2px; color: var(--navy); font-size: 6.8px; font-weight: 800; }
     .student-class { margin-top: 1px; overflow-wrap: anywhere; color: var(--muted); font-size: 6.8px; font-weight: 700; }
     .seat-ref { margin-top: 2px; color: var(--navy); font-size: 6.5px; font-weight: 900; white-space: nowrap; }
-    .student-qr-link { grid-column: 3; display: block; width: 19mm; height: 19mm; padding: 1mm; border: 1px solid #aebdd0; border-radius: 4px; background: #fff; }
+    .student-qr-link { grid-column: 3; display: block; width: 18mm; height: 18mm; padding: 1mm; border: 1px solid #aebdd0; border-radius: 4px; background: #fff; }
     .student-qr { display: block; width: 100%; height: 100%; object-fit: contain; }
-    .qr-missing { grid-column: 3; display: grid; place-items: center; width: 19mm; height: 19mm; border: 1px dashed #b9c5d4; border-radius: 4px; color: #95a3b6; font-size: 6px; text-align: center; }
-    .empty-seat { display: grid; place-items: center; min-height: 55px; border-bottom: 1px dashed #dce4ef; color: #99a7b9; font-size: 8px; }
+    .qr-missing { grid-column: 3; display: grid; place-items: center; width: 18mm; height: 18mm; border: 1px dashed #b9c5d4; border-radius: 4px; color: #95a3b6; font-size: 6px; text-align: center; }
+    .empty-seat { display: grid; place-items: center; min-height: 0; padding: 7px 4px; border-bottom: 1px dashed #dce4ef; color: #99a7b9; font-size: 8px; }
     .empty-seat:last-child { border-bottom: 0; }
-    .doc-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; }
+    .doc-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8px; }
     .actions { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 7px; }
     .actions button { padding: 9px 12px; border: 0; border-radius: 7px; background: var(--navy); color: #fff; font-size: 11px; font-weight: 800; cursor: pointer; }
     .actions button:last-child { background: #65748a; }
     @page { size: A4 {{ orientation|default('portrait') }}; margin: 9mm; }
     {% if orientation == 'portrait' %}
     .sheet { width: min(810px, calc(100% - 24px)); padding: 17px; }
-    .meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .meta-item:nth-child(2) { border-right: 0; }
-    .meta-item:nth-child(-n+2) { border-bottom: 1px solid var(--line); padding-bottom: 7px; }
-    .meta-item:nth-child(n+3) { padding-top: 7px; }
+    .meta-grid { grid-template-columns: 1fr 1.65fr 1.15fr .8fr; }
     .row-grid { gap: 6px; }
-    .student-card { grid-template-columns: 14mm minmax(0, 1fr) 18mm; padding: 4px; }
-    .student-photo { width: 13mm; height: 15mm; }
+    .student-card { grid-template-columns: 13mm minmax(0, 1fr) 18mm; padding: 3px; }
+    .student-photo { width: 12mm; height: 13mm; }
     .student-qr-link, .qr-missing { width: 17mm; height: 17mm; }
     {% endif %}
     @media (max-width: 700px) {
@@ -103,32 +115,31 @@
     </header>
 
     <section class="meta-grid" aria-label="Exam details">
-      <div class="meta-item"><span class="meta-icon">&#128197;</span><div class="meta-copy"><span class="meta-label">Academic Year</span><strong class="meta-value">{{ academic_year_name or 'Not specified' }}</strong></div></div>
-      <div class="meta-item"><span class="meta-icon">&#128196;</span><div class="meta-copy"><span class="meta-label">Exam Type</span><strong class="meta-value">{{ exam_name or 'Not specified' }}</strong></div></div>
-      <div class="meta-item"><span class="meta-icon">&#127970;</span><div class="meta-copy"><span class="meta-label">Exam Hall / Class</span><strong class="meta-value">{{ hall.name }}</strong></div></div>
-      <div class="meta-item"><span class="meta-icon">&#128337;</span><div class="meta-copy"><span class="meta-label">Date &amp; Time</span><strong class="meta-value">{{ hall_start_time.strftime('%d %b %Y, %H:%M') if hall_start_time else 'Not specified' }}</strong></div></div>
+      <div class="meta-item"><span class="meta-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg></span><div class="meta-copy"><span class="meta-label">Sanad Dugsiyeedka</span><strong class="meta-value">{{ academic_year_name or 'Not specified' }}</strong></div></div>
+      <div class="meta-item"><span class="meta-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z"></path><path d="M14 3v4h4M9 12h6M9 16h6"></path></svg></span><div class="meta-copy"><span class="meta-label">Nuuca Imtixaanka</span><strong class="meta-value">{{ exam_name or 'Not specified' }}</strong></div></div>
+      <div class="meta-item"><span class="meta-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 21V8l9-5 9 5v13M3 21h18M7 21v-7h3v7M14 21v-7h3v7M7 10h.01M12 10h.01M17 10h.01"></path></svg></span><div class="meta-copy"><span class="meta-label">Fasal-Imtixaan</span><strong class="meta-value">{{ hall.name }}</strong></div></div>
+      <div class="meta-item"><span class="meta-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span><div class="meta-copy"><span class="meta-label">Wadarta Ardeyda</span><strong class="meta-value">{{ assignments|length }}</strong></div></div>
     </section>
 
-    <div class="summary"><span>&#128101;</span><strong>Classes included in this hall ({{ assignments|length }} placed students)</strong><span>{% for class_id, class_name in print_classes %}{{ class_name }} ({{ class_counts.get(class_id, 0) }}){% if not loop.last %} · {% endif %}{% else %}No class data{% endfor %}</span></div>
-    <div class="notice"><strong>Instructions for Invigilators:</strong> Please scan each student's QR code before entry to verify identity.</div>
+    <div class="summary"><span class="summary-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span><strong class="summary-label">Fasallada ku jira fasal-imtixaankan:</strong><span class="class-list">{% for class_id, class_name in print_classes %}<span class="class-chip" style="--chip-color:{{ class_color(class_id) }}">{{ class_name }} ({{ class_counts.get(class_id, 0) }})</span>{% else %}<span class="class-chip">Xog fasal lama helin</span>{% endfor %}</span></div>
 
     {% set row_colors = ['#c2185b', '#2f67b2', '#35a053', '#e4771d', '#6f55a8', '#168b99'] %}
     <section class="row-grid">
       {% for row in print_rows %}
       {% set row_color = row_colors[loop.index0 % (row_colors|length)] %}
       <section class="row-column" style="--row-color:{{ row_color }}">
-        <h2 class="row-title">Row {{ loop.index }}</h2>
+        <h2 class="row-title">Safka {{ loop.index }}</h2>
         {% for table in row %}
         <article class="table">
-          <h3 class="table-title">Table {{ table.table + 1 }}</h3>
+          <h3 class="table-title">Miiska {{ table.table + 1 }}</h3>
           {% for assignment in table.seats %}
           {% if assignment and assignment.student %}
           {% set student = assignment.student %}
           {% set color = class_color(student.academic_class_id or student.id) %}
           {% set qr = qr_payload(student.id) %}
           <div class="student-card" style="--class-color:{{ color }}">
-            {% if photo_url(student.photo_path) %}<img class="student-photo" src="{{ photo_url(student.photo_path) }}" alt="{{ student.full_name }} photo">{% else %}<span class="student-photo student-avatar" style="background:{{ color }}">{{ student.full_name[:1] }}</span>{% endif %}
-            <div class="student-copy"><span class="seat-label">Seat {{ assignment.seat_number + 1 }}</span><div class="student-name">{{ student.full_name }}</div><div class="student-id">ID: {{ student.student_code }}</div><div class="student-class">{{ student.academic_class.name if student.academic_class else 'Class not recorded' }}</div><div class="seat-ref">Seat No: #{{ assignment.row_number + 1 }}/#{{ assignment.table_number + 1 }}/#{{ assignment.seat_number + 1 }}</div></div>
+            <div class="student-visual"><span class="seat-label">Seat {{ assignment.seat_number + 1 }}</span>{% if photo_url(student.photo_path) %}<img class="student-photo" src="{{ photo_url(student.photo_path) }}" alt="{{ student.full_name }} photo">{% else %}<span class="student-photo student-avatar" style="background:{{ color }}">{{ student.full_name[:1] }}</span>{% endif %}</div>
+            <div class="student-copy"><div class="student-name">{{ student.full_name }}</div><div class="student-id">ID: {{ student.student_code }}</div><div class="student-class">{{ student.academic_class.name if student.academic_class else 'Class not recorded' }}</div><div class="seat-ref">Seat No: S{{ assignment.row_number + 1 }}/M{{ assignment.table_number + 1 }}/K{{ assignment.seat_number + 1 }}</div></div>
             {% if qr %}<a class="student-qr-link" href="{{ qr.url }}" target="_blank" rel="noopener" aria-label="Verify {{ student.full_name }}"><img class="student-qr" src="{{ qr.qr_code }}" alt="QR verification for {{ student.full_name }}"></a>{% else %}<span class="qr-missing">QR unavailable</span>{% endif %}
           </div>
           {% else %}<div class="empty-seat">Empty seat</div>{% endif %}
