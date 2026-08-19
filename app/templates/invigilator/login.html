@@ -1,276 +1,121 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="so">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Invigilator Login - Exam System</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        .login-container {
-            background: white;
-            border-radius: 20px;
-            padding: 3rem;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 450px;
-            width: 90%;
-        }
-
-        .login-header {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-
-        .login-logo {
-            width: 82px;
-            height: 82px;
-            margin: 0 auto 1rem;
-            border-radius: 24px;
-            display: grid;
-            place-items: center;
-            background: linear-gradient(135deg, #eef2ff, #f0fdfa);
-            box-shadow: 0 14px 35px rgba(79, 70, 229, .18);
-            overflow: hidden;
-        }
-
-        .login-logo img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            padding: .55rem;
-        }
-
-        .login-logo i {
-            font-size: 3rem;
-            color: #667eea;
-        }
-
-        .login-header h1 {
-            color: #333;
-            margin: 0 0 0.5rem 0;
-            font-size: 1.8rem;
-        }
-
-        .login-header p {
-            color: #666;
-            margin: 0;
-            font-size: 0.95rem;
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: #333;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 0.8rem 1rem;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .form-group input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .show-password-check {
-            display: inline-flex;
-            align-items: center;
-            gap: .5rem;
-            margin-top: .55rem;
-            color: #475569;
-            font-weight: 600;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .show-password-check input {
-            width: 16px;
-            height: 16px;
-            accent-color: #667eea;
-        }
-
-        .btn-login {
-            width: 100%;
-            padding: 0.9rem;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .btn-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-        }
-
-        .login-footer {
-            text-align: center;
-            margin-top: 2rem;
-            padding-top: 1.5rem;
-            border-top: 1px solid #e0e0e0;
-        }
-
-        .login-footer a {
-            color: #667eea;
-            text-decoration: none;
-            font-weight: 600;
-        }
-
-        .login-footer a:hover {
-            text-decoration: underline;
-        }
-
-        .alert {
-            padding: 1rem;
-            border-radius: 10px;
-            margin-bottom: 1.5rem;
-            font-size: 0.9rem;
-        }
-
-        .alert-danger {
-            background: #fee;
-            color: #c33;
-            border: 1px solid #fcc;
-        }
-
-        .alert-success {
-            background: #efe;
-            color: #3c3;
-            border: 1px solid #cfc;
-        }
-
-        .alert-warning {
-            background: #ffd;
-            color: #963;
-            border: 1px solid #fc9;
-        }
-
-        .alert-info {
-            background: #eef;
-            color: #36c;
-            border: 1px solid #ccf;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exam Invigilator Login - Examination Hall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { min-height:100%; background:#111; font-family:'Inter',sans-serif; }
+  body { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:40px 16px; background:radial-gradient(circle at 15% 0%,rgba(201,162,75,.18),transparent 50%),radial-gradient(circle at 85% 100%,rgba(70,70,70,.4),transparent 55%),linear-gradient(150deg,#0d0d0d 0%,#161616 45%,#1c1a14 100%); }
+  #particles-canvas { position:fixed; inset:0; z-index:0; pointer-events:none; }
+  .border-frame { position:relative; z-index:1; width:380px; max-width:100%; border-radius:21px; padding:2.5px; overflow:hidden; box-shadow:0 40px 90px -30px rgba(0,0,0,.85); }
+  .border-frame::before { content:''; position:absolute; top:50%; left:-100%; width:300%; height:0; padding-top:300%; margin-top:-150%; background:conic-gradient(from 0deg,#c9a24b,#7a1f2b,#c9a24b 25%,#3a2f1c,#7a1f2b 50%,#c9a24b 65%,#7a1f2b,#c9a24b 100%); animation:spin 6s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .phone { width:100%; background:#f6f1e6; border-radius:19px; padding:40px 30px 0; position:relative; z-index:1; overflow:hidden; }
+  .phone::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,transparent,#c9a24b,transparent); }
+  .school-header { display:flex; align-items:center; gap:12px; padding-bottom:22px; border-bottom:1px solid #e2d6b8; }
+  .school-logo { width:52px; height:52px; border-radius:50%; background:radial-gradient(circle at 35% 30%,#fffaf0,#f0e6cc); border:1.5px solid #7a1f2b; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }
+  .school-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; padding:4px; }
+  .school-logo svg { width:26px; height:26px; }
+  .school-name { font-family:'Fraunces',serif; font-weight:700; font-size:15.5px; color:#2a2019; line-height:1.25; }
+  .school-name .en { display:block; font-family:'Inter',sans-serif; font-weight:500; font-size:10.5px; color:#8a7a5f; letter-spacing:.8px; text-transform:uppercase; margin-top:3px; }
+  .mark { text-align:center; margin-top:26px; display:flex; justify-content:center; }
+  .mark-circle { width:64px; height:64px; border-radius:50%; display:flex; align-items:center; justify-content:center; position:relative; background:#7a1f2b; border:1.5px solid #7a1f2b; }
+  .mark-circle::before { content:''; position:absolute; inset:-7px; border-radius:50%; border:1.5px dashed #c9a24b; animation:markSpin 7s linear infinite; }
+  .mark-circle::after { content:''; position:absolute; inset:0; border-radius:50%; box-shadow:0 0 0 0 rgba(122,31,43,.4); animation:markPulse 2.4s ease-in-out infinite; }
+  @keyframes markSpin { to { transform:rotate(360deg); } }
+  @keyframes markPulse { 0%,100%{box-shadow:0 0 0 0 rgba(122,31,43,.4)} 50%{box-shadow:0 0 0 9px rgba(122,31,43,0)} }
+  .mark-circle svg { width:28px; height:28px; }
+  h1 { font-size:19px; font-weight:700; color:#2a2019; text-align:left; white-space:nowrap; margin-top:10px; font-family:'Fraunces',serif; }
+  .sub { text-align:left; color:#8a7a5f; font-size:9px; white-space:nowrap; margin-top:6px; letter-spacing:.25px; }
+  .divider { display:flex; align-items:center; gap:10px; margin:26px 0 20px; color:#a5936c; font-size:10.5px; letter-spacing:1px; text-transform:uppercase; }
+  .divider::before,.divider::after { content:''; flex:1; height:1px; background:#dccfa9; }
+  label { font-size:11.5px; font-weight:600; color:#6b5b3c; text-transform:uppercase; letter-spacing:.6px; display:block; margin-bottom:9px; }
+  .field { margin-bottom:20px; position:relative; }
+  .input-wrap { position:relative; display:flex; align-items:center; }
+  .input-wrap svg.icon-left { position:absolute; left:2px; width:17px; height:17px; stroke:#a5936c; pointer-events:none; }
+  .input-wrap input { width:100%; padding:8px 30px 8px 28px; border:none; border-bottom:1.5px solid #dccfa9; background:transparent; font-family:'Inter',sans-serif; font-size:14.5px; color:#2a2019; outline:none; transition:border-color .2s; }
+  .input-wrap input::placeholder { color:#b3a482; }
+  .input-wrap input:focus { border-bottom-color:#7a1f2b; }
+  .eye-toggle { position:absolute; right:2px; width:18px; height:18px; stroke:#7a1f2b; fill:none; cursor:pointer; background:transparent !important; border:none !important; outline:none !important; -webkit-appearance:none; appearance:none; padding:0; border-radius:0; box-shadow:none !important; }
+  .eye-toggle.active { stroke:#c9a24b; }
+  .remember-row { display:flex; align-items:center; margin:4px 0 26px; }
+  .remember-check { display:flex; align-items:center; gap:9px; cursor:pointer; user-select:none; }
+  .remember-check input { position:absolute; opacity:0; width:0; height:0; }
+  .remember-check .box { width:17px; height:17px; border:1.5px solid #c9b990; border-radius:4px; display:flex; align-items:center; justify-content:center; transition:all .2s; }
+  .remember-check .box svg { width:11px; height:11px; stroke:#fff; stroke-width:3; fill:none; opacity:0; transform:scale(.5); transition:all .15s; }
+  .remember-check input:checked + .box { background:#7a1f2b; border-color:#7a1f2b; }
+  .remember-check input:checked + .box svg { opacity:1; transform:scale(1); }
+  .remember-check .label-text { font-size:12.5px; color:#6b5b3c; text-transform:none; letter-spacing:0; margin:0; }
+  .btn { width:100%; max-width:190px; margin:0 auto; padding:11px 22px; border:1.5px solid #a9812f; border-radius:12px; background:linear-gradient(135deg,#c9a24b,#a9812f); color:#211405; font-family:'Inter',sans-serif; font-weight:700; font-size:14px; letter-spacing:.6px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; overflow:hidden; transition:transform .15s,box-shadow .15s,border-color .15s; }
+  .btn:hover { transform:translateY(-1px); border-color:#7a1f2b; box-shadow:0 10px 24px -8px rgba(201,162,75,.55); }
+  .btn svg { width:17px; height:17px; stroke:#211405; fill:none; stroke-width:2; flex-shrink:0; }
+  .forgot { text-align:center; margin-top:16px; }
+  .forgot a { color:#8a7a5f; font-size:12px; text-decoration:none; }
+  .forgot a:hover { color:#7a1f2b; text-decoration:underline; }
+  .notice { display:flex; align-items:flex-start; gap:10px; margin-top:22px; padding:13px 14px; background:#f0e9d6; border:1px solid #dfcda5; border-left:3px solid #7a1f2b; border-radius:8px; font-size:10px; color:#6b5b3c; line-height:1.5; }
+  .notice-icon { display:grid; place-items:center; flex:0 0 24px; width:24px; height:24px; border-radius:50%; background:#7a1f2b; color:#fff; }
+  .notice-icon svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; }
+  .alert { margin:18px 0 -4px; padding:10px 12px; border-radius:6px; font-size:11px; line-height:1.4; }
+  .alert-danger { background:#f7e1df; color:#7a1f2b; border:1px solid #e4b9b5; }
+  .alert-warning { background:#f8edd0; color:#6b5b3c; border:1px solid #e5cf95; }
+  .alert-success { background:#e0f0e4; color:#285c3a; border:1px solid #b7d7bf; }
+  .alert-info { background:#e2edf5; color:#245275; border:1px solid #c0d6e5; }
+  .cr-footer { margin-top:26px; padding:16px 0 20px; display:flex; align-items:center; justify-content:center; gap:8px; position:relative; }
+  .cr-footer .ornament { position:absolute; left:0; right:0; top:0; height:1px; background:#e2d6b8; }
+  .cr-footer .ornament::before { content:'◆'; color:#7a1f2b; font-size:7px; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:#f6f1e6; padding:0 4px; }
+  .cr-footer .cr-text { font-family:'Inter',sans-serif; font-size:10.5px; letter-spacing:1.5px; color:#a5936c; text-transform:uppercase; }
+  .cr-footer .cr-text b { color:#7a1f2b; font-weight:700; }
+  .cr-footer .type-wrap { display:inline-block; overflow:hidden; white-space:nowrap; border-right:1px solid #7a1f2b; animation:typing-cr 3.5s steps(24) infinite,caret-cr .7s step-end infinite; }
+  @keyframes typing-cr { 0%,10%{width:0} 60%,100%{width:21ch} }
+  @keyframes caret-cr { 50%{border-color:transparent} }
+  @media (max-width:480px) { body{padding:18px 14px;align-items:flex-start;padding-top:60px} .border-frame{transform-origin:top center;transition:transform .25s ease} }
+</style>
 </head>
 <body>
-    <div class="login-container">
-        <div class="login-header">
-            <div class="login-logo">
-                {% if settings and settings.logo_path %}
-                <img src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">
-                {% else %}
-                <i class="fa-solid fa-user-shield"></i>
-                {% endif %}
-            </div>
-            <h1>Exam Invigilator Login</h1>
-            <p>Secure access for examination staff</p>
-        </div>
-
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">
-                        {{ message }}
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
-        <form method="POST" action="{{ url_for('invigilator.login') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" required autofocus autocomplete="username">
-            </div>
-
-            <div class="form-group">
-                <label for="password">Password</label>
-                <div style="position: relative;">
-                    <input type="password" id="password" name="password" required autocomplete="current-password" style="padding-right: 44px;">
-                    <button type="button" id="togglePasswordBtn" title="Toggle Password Visibility" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #64748b; cursor: pointer; font-size: 1.1rem; padding: 4px; display: flex; align-items: center; justify-content: center;">
-                        <i class="fa-solid fa-eye" id="togglePasswordIcon"></i>
-                    </button>
-                </div>
-            </div>
-
-            <div style="margin-bottom: 1.25rem;">
-                <label class="show-password-check remember-check" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 500; color: #475569; cursor: pointer;">
-                    <input type="checkbox" id="remember_login" name="remember_login" value="1" style="width: 18px; height: 18px; accent-color: #4f46e5; cursor: pointer;"> Remember Login
-                </label>
-            </div>
-
-            <button type="submit" class="btn-login">
-                <i class="fa-solid fa-sign-in-alt"></i> Login
-            </button>
-        </form>
-
-        <div class="login-footer">
-            <p><a href="{{ url_for('invigilator.forgot_password') }}">Forgot Password?</a></p>
-            <p>Authorized personnel only. Contact administrator if you need access.</p>
-        </div>
+<canvas id="particles-canvas"></canvas>
+<div class="border-frame"><div class="phone">
+  <div class="school-header">
+    <div class="school-logo">
+      {% if settings and settings.logo_path %}<img src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name or 'School' }} logo">
+      {% else %}<svg viewBox="0 0 24 24" fill="none" stroke="#c9a24b" stroke-width="1.4"><path d="M12 3l8 4-8 4-8-4 8-4z"/><path d="M4 11v5c0 1.5 3.5 3 8 3s8-1.5 8-3v-5"/><path d="M20 7v6"/></svg>{% endif %}
     </div>
-    <script>
-      document.addEventListener("DOMContentLoaded", function() {
-        const toggleBtn = document.getElementById('togglePasswordBtn');
-        const passwordInput = document.getElementById('password');
-        const toggleIcon = document.getElementById('togglePasswordIcon');
-        const usernameInput = document.getElementById('username');
-        const rememberCheckbox = document.getElementById('remember_login');
-        const loginForm = document.querySelector('form');
+    <div class="school-name">{{ settings.school_name if settings and settings.school_name else 'SULTAAN EMS' }}<span class="en">NIDAAMKA MAAREYNTA IMTIXAANNADA</span></div>
+  </div>
 
-        // Toggle password visibility with eye icon
-        if (toggleBtn && passwordInput && toggleIcon) {
-          toggleBtn.addEventListener('click', function() {
-            const isPassword = passwordInput.type === 'password';
-            passwordInput.type = isPassword ? 'text' : 'password';
-            toggleIcon.className = isPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
-          });
-        }
+  <div class="mark"><div class="mark-circle"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6"><rect x="5" y="4" width="14" height="18" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M12 9v5"/><circle cx="12" cy="17" r=".75" fill="#fff" stroke="none"/></svg></div></div>
+  <h1>Gelitaanka Ilaaliyaha Imtixaanka</h1>
+  <div class="sub">Gelitaan Ammaan ah oo loogu talagalay Howlwadeennada Imtixaanka</div>
+  <div class="divider">Aqoonsiga Gelitaanka</div>
 
-        // Remember login restore
-        const savedUser = localStorage.getItem('invigilator_remember_username');
-        if (savedUser && usernameInput && rememberCheckbox) {
-          usernameInput.value = savedUser;
-          rememberCheckbox.checked = true;
-        }
+  {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for category, message in messages %}<div class="alert alert-{{ category }}">{{ message }}</div>{% endfor %}{% endif %}{% endwith %}
 
-        // Save remember login preference on submit
-        if (loginForm && rememberCheckbox && usernameInput) {
-          loginForm.addEventListener('submit', function() {
-            if (rememberCheckbox.checked && usernameInput.value.trim()) {
-              localStorage.setItem('invigilator_remember_username', usernameInput.value.trim());
-            } else {
-              localStorage.removeItem('invigilator_remember_username');
-            }
-          });
-        }
-      });
-    </script>
+  <form method="POST" action="{{ url_for('invigilator.login') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field"><label for="username">Magac-u-yaal</label><div class="input-wrap"><svg class="icon-left" viewBox="0 0 24 24" fill="none" stroke-width="1.6"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg><input type="text" id="username" name="username" required autocomplete="username"></div></div>
+    <div class="field"><label for="password">Af-garasho</label><div class="input-wrap"><svg class="icon-left" viewBox="0 0 24 24" fill="none" stroke-width="1.6"><rect x="5" y="10.5" width="14" height="9" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg><input id="password" type="password" name="password" placeholder="Enter password" required autocomplete="current-password"><svg id="eye" class="eye-toggle" viewBox="0 0 24 24" fill="none" stroke-width="1.6" aria-label="Toggle password visibility" role="button" tabindex="0"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg></div></div>
+    <div class="remember-row"><label class="remember-check"><input type="checkbox" id="remember_login" name="remember_login" value="1"><span class="box"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span><span class="label-text">Remember Login</span></label></div>
+    <button class="btn" type="submit"><svg viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>GUDUB</button>
+  </form>
+  <div class="forgot"><a href="{{ url_for('invigilator.forgot_password') }}">Ma illowday af-garashada?</a></div>
+  <div class="notice"><span class="notice-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 4.8-3.4 8.1-8 9-4.6-.9-8-4.2-8-9V7l8-4z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg></span><span>Kaliya howlwadeennada loo oggolaaday ayaa geli kara. Haddii aad u baahan tahay oggolaansho gelitaan, la xidhiidh maamulaha nidaamka.</span></div>
+  <div class="cr-footer"><div class="ornament"></div><div class="type-wrap"><div class="cr-text">© <b>SULTAAN EMS</b> | 2026</div></div></div>
+</div></div>
+<script>
+  if (window.innerWidth <= 480) document.querySelector('.border-frame').style.transform = 'scale(0.85)';
+  (function(){
+    const pw=document.getElementById('password'), eye=document.getElementById('eye');
+    function togglePw(){ if(!pw)return; const open=pw.type==='password'; pw.type=open?'text':'password'; eye.classList.toggle('active',open); eye.innerHTML=open?'<path d="M17.9 17.9A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a20.6 20.6 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 7 11 7a20.5 20.5 0 0 1-2.35 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/>':'<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>'; }
+    eye.addEventListener('click',togglePw); eye.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')togglePw();});
+    const user=document.getElementById('username'), remember=document.getElementById('remember_login'), form=document.querySelector('form'), saved=localStorage.getItem('invigilator_remember_username');
+    if(saved){user.value=saved;remember.checked=true;} form.addEventListener('submit',()=>{if(remember.checked&&user.value.trim())localStorage.setItem('invigilator_remember_username',user.value.trim());else localStorage.removeItem('invigilator_remember_username');});
+  })();
+  window.addEventListener('load',function(){const text=document.querySelector('.cr-footer .cr-text'), tag=document.createElement('style');tag.textContent='@keyframes typing-cr {0%,10%{width:0}60%,100%{width:'+text.scrollWidth+'px}}';document.head.appendChild(tag);});
+  (function(){const canvas=document.getElementById('particles-canvas'),ctx=canvas.getContext('2d'),particles=[],COUNT=55,rand=(a,b)=>Math.random()*(b-a)+a;function resize(){canvas.width=innerWidth;canvas.height=innerHeight}addEventListener('resize',resize);resize();function make(){return{x:rand(0,canvas.width),y:rand(0,canvas.height),r:rand(.6,2.2),speedY:rand(.08,.35),speedX:rand(-.15,.15),alpha:rand(.15,.7),twinkleSpeed:rand(.0015,.008),twinklePhase:rand(0,Math.PI*2)}}for(let i=0;i<COUNT;i++)particles.push(make());function draw(){ctx.clearRect(0,0,canvas.width,canvas.height);const t=Date.now();particles.forEach(p=>{p.y-=p.speedY;p.x+=p.speedX;if(p.y<-10){p.y=canvas.height+10;p.x=rand(0,canvas.width)}if(p.x<-10)p.x=canvas.width+10;if(p.x>canvas.width+10)p.x=-10;const a=p.alpha*(.4+.6*((Math.sin(t*p.twinkleSpeed+p.twinklePhase)+1)/2));ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(201,162,75,'+a.toFixed(3)+')';ctx.fill()});requestAnimationFrame(draw)}draw()})();
+</script>
 </body>
 </html>
