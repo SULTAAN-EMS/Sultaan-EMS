@@ -1,5 +1,6 @@
 {% extends "admin/base.html" %}
 {% set active_tab = "analytics" %}
+{% block body_class %}{{ super() }} admin-page-hero-layout{% endblock %}
 {% block page_title %}{{ rh_label("analytics.title", default="Analytics — Infographic") }}{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/results_module.css') }}">

@@ -1,5 +1,6 @@
 {% extends "admin/base.html" %}
 {% set active_tab = "settings" %}
+{% block body_class %}{{ super() }} admin-page-hero-layout{% endblock %}
 {% block page_title %}{{ rh_label("settings.title", default="Results Settings") }}{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/results_module.css') }}">

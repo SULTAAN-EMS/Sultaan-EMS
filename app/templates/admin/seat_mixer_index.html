@@ -5,7 +5,7 @@
 {% block extra_head %}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/seat_mixer.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/seat_mixer.css', v='roster-ux-20260819-2') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-page-heroes.css') }}">
 {% endblock %}
 
@@ -209,7 +209,7 @@
 
 <div class="sm-toast-region" id="smToastRegion" aria-live="polite" aria-atomic="true"></div>
 
-<script src="{{ url_for('static', filename='js/seat_mixer.js') }}"></script>
+<script src="{{ url_for('static', filename='js/seat_mixer.js', v='roster-ux-20260819-2') }}"></script>
 <script>
 window.SM_init({
   halls: {{ halls|tojson }},

@@ -1103,7 +1103,7 @@
         var countBadge = sel ? ' · ' + sel.uids.size : '';
         var chevron = sel ? (sel.collapsed ? ' ▸' : ' ▾') : '';
         var removeBtn = sel ? '<span class="sm-chip-remove" data-remove="' + cid + '" title="Remove from mix">✕</span>' : '';
-        html += '<div class="sm-class-chip ' + (sel ? 'on' : '') + '" data-class="' + cid + '">' +
+        html += '<div class="sm-class-chip ' + (sel ? 'on' : '') + '" data-class="' + cid + '" data-class-name="' + escapeHtml(c.name) + '">' +
           '<span class="dot" style="background:' + color + ';" data-colordot="' + cid + '"></span>' +
           escapeHtml(c.name) + countBadge + chevron + removeBtn + '</div>';
       });
@@ -1146,7 +1146,7 @@
       else if (elsewhere && !isSelfCombo) statusHtml = '<span class="rstatus taken">' + escapeHtml(elsewhere.hallName) + ' · ' + escapeHtml(elsewhere.versionLabel) + '</span>';
       else statusHtml = '<span class="rstatus">Available</span>';
 
-      return '<div class="sm-roster-row" data-uid="' + st.id + '" data-class="' + cid + '">' +
+      return '<div class="sm-roster-row" data-uid="' + st.id + '" data-class="' + cid + '" role="button" tabindex="0" aria-pressed="' + (checked ? 'true' : 'false') + '" aria-label="' + (checked ? 'Deselect ' : 'Select ') + escapeHtml(st.full_name) + '">' +
         '<input type="checkbox" ' + (checked ? 'checked' : '') + '>' +
         photoHtml(st, '') +
         '<span class="rname" title="' + escapeHtml(st.full_name) + '">' + escapeHtml(st.first_name || st.full_name) + '<small class="rmeta"><i class="fa-solid fa-circle" style="color:' + escapeHtml(classColor) + '"></i> ' + escapeHtml(st.class_name || '') + ' · ' + escapeHtml(st.gender || 'Not recorded') + '</small></span>' +
@@ -1154,7 +1154,7 @@
         statusHtml + '</div>';
     }).join('');
 
-    return '<div class="sm-roster-panel">' +
+    return '<div class="sm-roster-panel" id="roster-' + cid + '">' +
       '<div class="sm-roster-head"><span class="rtitle">' + escapeHtml(cls.name) + ' roster</span>' +
       '<div class="sm-roster-quick">' +
       '<button data-act="all" data-class="' + cid + '">Select all</button>' +
@@ -1811,17 +1811,38 @@
       if (combo) setClassColor(combo, SM.classColorPicker.classId, e.target.value);
     });
 
-    // Checkbox changes in roster
-    $('smClassesArea').addEventListener('change', function (e) {
-      if (e.target.type !== 'checkbox') return;
-      var row = e.target.closest('.sm-roster-row');
-      var uid = parseInt(row.dataset.uid);
+    function rosterScrollState(cid) {
+      var outer = $('smClassesArea');
+      var list = document.querySelector('#roster-' + cid + ' .sm-roster-list');
+      return { outer: outer ? outer.scrollTop : 0, inner: list ? list.scrollTop : 0 };
+    }
+
+    function restoreRosterScroll(cid, state) {
+      function restore() {
+        var outer = $('smClassesArea');
+        var list = document.querySelector('#roster-' + cid + ' .sm-roster-list');
+        if (outer) outer.scrollTop = state.outer;
+        if (list) list.scrollTop = state.inner;
+      }
+      requestAnimationFrame(function () {
+        restore();
+        // A second frame covers the browser's layout pass after innerHTML is
+        // replaced, without moving the user or flashing the list.
+        requestAnimationFrame(restore);
+      });
+    }
+
+    function toggleRosterStudent(row, checked) {
+      if (!row) return;
+      var uid = parseInt(row.dataset.uid, 10);
       var cid = row.dataset.class;
       var combo = currentCombo();
+      if (!combo || !combo.selectedClasses[cid]) return;
       var sel = combo.selectedClasses[cid];
       var hall = currentHall();
+      var scrollState = rosterScrollState(cid);
 
-      if (e.target.checked) {
+      if (checked) {
         sel.uids.add(uid);
         SM.studentHallMap[uid] = {
           hallId: SM.currentHallId, versionId: SM.currentVersionId,
@@ -1833,8 +1854,59 @@
         var seat = combo.seats.find(function (s) { return s.assigned && s.assigned.id === uid; });
         if (seat) seat.assigned = null;
       }
-      renderClassesArea(combo);
+      var chip = document.querySelector('.sm-class-chip[data-class="' + cid + '"]');
+      if (chip) {
+        var chipName = chip.dataset.className || '';
+        var chipColor = classColorFor(combo, cid);
+        chip.innerHTML = '<span class="dot" style="background:' + chipColor + ';" data-colordot="' + cid + '"></span>' +
+          escapeHtml(chipName) + ' &middot; ' + sel.uids.size +
+          (sel.collapsed ? ' ▸' : ' ▾') +
+          '<span class="sm-chip-remove" data-remove="' + cid + '" title="Remove from mix">✕</span>';
+      }
+      var status = row.querySelector('.rstatus');
+      if (status) {
+        if (checked) {
+          status.className = 'rstatus selected';
+          status.style.setProperty('--roster-class-color', classColorFor(combo, cid));
+          status.textContent = 'Selected';
+        } else {
+          status.className = 'rstatus';
+          status.removeAttribute('style');
+          status.textContent = 'Available';
+        }
+      }
+      row.setAttribute('aria-pressed', checked ? 'true' : 'false');
+      var rosterCount = document.querySelector('#roster-' + cid + ' .rcount');
+      if (rosterCount) rosterCount.textContent = sel.uids.size + ' selected';
       renderHallFromSeats(combo, combo.lastMeta);
+      restoreRosterScroll(cid, scrollState);
+    }
+
+    // Checkbox changes in roster. The row click handler below delegates here,
+    // so both interaction paths share exactly one toggle and one re-render.
+    $('smClassesArea').addEventListener('change', function (e) {
+      if (e.target.type !== 'checkbox') return;
+      toggleRosterStudent(e.target.closest('.sm-roster-row'), e.target.checked);
+    });
+
+    $('smClassesArea').addEventListener('click', function (e) {
+      var row = e.target.closest('.sm-roster-row');
+      if (!row || e.target.closest('input[type="checkbox"]')) return;
+      var checkbox = row.querySelector('input[type="checkbox"]');
+      if (!checkbox) return;
+      checkbox.checked = !checkbox.checked;
+      toggleRosterStudent(row, checkbox.checked);
+    });
+
+    $('smClassesArea').addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var row = e.target.closest('.sm-roster-row');
+      if (!row || e.target.closest('input[type="checkbox"]')) return;
+      e.preventDefault();
+      var checkbox = row.querySelector('input[type="checkbox"]');
+      if (!checkbox) return;
+      checkbox.checked = !checkbox.checked;
+      toggleRosterStudent(row, checkbox.checked);
     });
 
     // Action buttons

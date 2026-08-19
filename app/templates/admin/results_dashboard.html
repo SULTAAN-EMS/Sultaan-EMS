@@ -1,5 +1,6 @@
 {% extends "admin/base.html" %}
 {% set active_tab = "dashboard" %}
+{% block body_class %}{{ super() }} admin-page-hero-layout{% endblock %}
 {% block title %}{{ rh_label("dashboard.title", default="Results Dashboard") }}{% endblock %}
 {% block page_title %}{{ rh_label("dashboard.title", default="Results Dashboard") }}{% endblock %}
 {% block admin_content %}

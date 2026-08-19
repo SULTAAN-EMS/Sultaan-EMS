@@ -943,7 +943,15 @@ def api_hall_roster_data():
             return jsonify({"success": False, "error": "Fasalka la doortay kuma jiro heerkan."}), 400
 
     # Assigned students for this hall
-    enrollments = ExamHallEnrollment.query.filter_by(exam_hall_id=exam_hall_id).all()
+    # Enrollment order is the source of truth for class-group order.  This keeps
+    # the roster in the order classes were added to the hall, instead of letting
+    # an unordered student query silently alphabetize or interleave groups.
+    enrollments = (
+        ExamHallEnrollment.query
+        .filter_by(exam_hall_id=exam_hall_id)
+        .order_by(ExamHallEnrollment.created_at, ExamHallEnrollment.id)
+        .all()
+    )
     assigned_student_ids = [e.student_id for e in enrollments]
     same_context_enrollments = (
         ExamHallEnrollment.query
@@ -957,11 +965,19 @@ def api_hall_roster_data():
     )
     assignment_map = {en.student_id: en.exam_hall for en in same_context_enrollments if en.exam_hall_id != exam_hall_id}
 
-    assigned_students_raw = Student.query.filter(Student.id.in_(assigned_student_ids)).all() if assigned_student_ids else []
+    assigned_students_raw = {}
+    if assigned_student_ids:
+        assigned_students_raw = {
+            student.id: student
+            for student in Student.query.filter(Student.id.in_(assigned_student_ids)).all()
+        }
     
     # Filter assigned list by search query
     assigned_list = []
-    for s in assigned_students_raw:
+    for enrollment in enrollments:
+        s = assigned_students_raw.get(enrollment.student_id)
+        if not s:
+            continue
         if q and q not in s.student_code.lower() and q not in s.full_name.lower():
             continue
         cls_name = s.academic_class.name if s.academic_class else (s.school_class.name if s.school_class else (s.level or ""))
@@ -1150,6 +1166,43 @@ def api_remove_student():
         audit("Hall Roster", f"Removed student {student_id} from hall {exam_hall_id}")
 
     return jsonify({"success": True})
+
+
+@attendance_bp.route("/api/hall-roster/remove-class", methods=["POST"])
+def api_remove_class_from_hall():
+    """Remove only one class group from the selected hall roster."""
+    data = request.get_json(silent=True) or request.form
+    exam_hall_id = parse_int(data.get("exam_hall_id"))
+    academic_class_id = parse_int(data.get("academic_class_id"))
+    class_name = (data.get("class_name") or "").strip()
+    if not exam_hall_id or (not academic_class_id and not class_name):
+        return jsonify({"success": False, "error": "Fasalka la nadiifinayo lama helin."}), 400
+
+    hall = db.session.get(ExamHall, exam_hall_id)
+    if not hall or not hall.is_active:
+        return jsonify({"success": False, "error": "Hall-ka la doortay lama heli karo."}), 404
+
+    enrollments = ExamHallEnrollment.query.filter_by(exam_hall_id=exam_hall_id).all()
+    student_ids = [enrollment.student_id for enrollment in enrollments]
+    students = Student.query.filter(Student.id.in_(student_ids)).all() if student_ids else []
+    matched_ids = {
+        student.id for student in students
+        if (academic_class_id and student.academic_class_id == academic_class_id)
+        or (class_name and (
+            (student.academic_class and student.academic_class.name == class_name)
+            or (student.school_class and student.school_class.name == class_name)
+            or (not student.academic_class and not student.school_class and (student.level or "") == class_name)
+        ))
+    }
+    removed = 0
+    for enrollment in enrollments:
+        if enrollment.student_id in matched_ids:
+            db.session.delete(enrollment)
+            removed += 1
+    if removed:
+        db.session.commit()
+        audit("Hall Roster", f"Removed {removed} students from class group in hall {hall.id}")
+    return jsonify({"success": True, "removed": removed})
 
 
 @attendance_bp.route("/api/attendance-data")

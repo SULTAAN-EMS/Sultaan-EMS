@@ -922,6 +922,12 @@
     overflow: hidden;
 }
 
+/* All Results Hub tabs share the same shell. Pull it through the admin-main
+   inset so the navy school header starts flush at the top on every tab. */
+.admin-main > .results-hub {
+    margin: -22px;
+}
+
 .rh-topbar {
     background:
         radial-gradient(circle at 18% 20%, rgba(200, 154, 42, .20), transparent 30%),

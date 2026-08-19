@@ -442,6 +442,8 @@
   cursor: pointer; transition: background .12s ease;
 }
 .sm-roster-row:hover { background: rgba(96,165,250,.08); }
+.sm-roster-row[aria-pressed="true"] { background: rgba(96,165,250,.12); }
+.sm-roster-row:focus-visible { outline: 2px solid var(--sm-blue2); outline-offset: 1px; }
 .sm-roster-row img,
 .sm-roster-row .sm-avatar-fallback { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; }
 .sm-roster-row .rname { font-size: 12px; font-weight: 700; flex: 1; color: var(--sm-text); }

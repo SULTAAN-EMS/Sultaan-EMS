@@ -1,8 +1,10 @@
 {% extends "admin/base.html" %}
 {% block title %}Diiwaan-gelinta Hall Exam | SULTAN EMS{% endblock %}
+{% block body_class %}{{ super() }} admin-page-hero-layout{% endblock %}
 
 {% block extra_head %}
 <meta name="csrf-token" content="{{ csrf_token() }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin-page-heroes.css') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -59,6 +61,15 @@
   .hr-scope .list{max-height:480px;overflow-y:auto;flex:1;}
   .hr-scope .row{display:grid;grid-template-columns:30px 82px minmax(0,1fr) auto auto 42px;align-items:center;gap:10px;padding:9px 14px;min-height:50px;border-bottom:1px solid #EFEBDF;cursor:pointer;transition:background .1s ease, opacity .12s ease;}
   .hr-scope .row:last-child{border-bottom:none;}
+  .hr-scope .class-group{border-bottom:1px solid #E8E1D2;}
+  .hr-scope .class-group:last-child{border-bottom:0;}
+  .hr-scope .class-group-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 14px;background:linear-gradient(135deg,#F7F4EA,#FFFFFF);border-bottom:1px solid #EEE8DB;}
+  .hr-scope .class-group-title{display:flex;align-items:center;gap:8px;min-width:0;color:var(--ink);font-size:12px;font-weight:900;}
+  .hr-scope .class-group-title i{width:24px;height:24px;border-radius:8px;display:grid;place-items:center;color:#fff;background:var(--group-color);font-size:11px;flex:0 0 24px;}
+  .hr-scope .class-group-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .hr-scope .class-group-count{font-family:'IBM Plex Mono',monospace;color:var(--slate);font-size:10px;font-weight:800;white-space:nowrap;}
+  .hr-scope .clear-class{border:1px solid #F0C3BB;background:#FFF5F4;color:var(--rust);border-radius:9px;padding:5px 8px;display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:900;cursor:pointer;white-space:nowrap;}
+  .hr-scope .clear-class:hover{background:#FBE7E3;border-color:#E5A69B;}
   .hr-scope .row:hover{background:#FAF8F1;}
   .hr-scope .avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;overflow:hidden;background-size:cover;background-position:center;}
   .hr-scope .rid{font-family:var(--font-clean);font-size:11.5px;color:#293653;white-space:nowrap;width:82px;flex-shrink:0;font-weight:800;letter-spacing:.01em;}
@@ -67,7 +78,13 @@
   .hr-scope .hall-note{display:inline-flex;align-items:center;gap:5px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;font-weight:800;color:#7C2D12;background:#FFF1D6;border:1px solid rgba(245,158,11,.28);border-radius:999px;padding:3px 8px;}
   .hr-scope .row.busy{opacity:.6;pointer-events:none;}
   .hr-scope .move{font-size:16px;color:var(--gold);flex-shrink:0;font-weight:800;border:0;background:transparent;cursor:pointer;padding:0;text-align:center;}
-  .hr-scope .move.remove{color:var(--rust);}
+  .hr-scope .student-action{width:29px;height:24px;border:0;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:none;transition:transform 160ms ease,opacity 160ms ease;}
+  .hr-scope .student-action .action-icon{color:#fff;font-size:17px;font-weight:700;line-height:1;}
+  .hr-scope .student-action.success-state{background:#22C55E;}
+  .hr-scope .student-action.danger-state{background:#EF4444;}
+  .hr-scope .student-action:hover{transform:translateY(-1px);opacity:.92;}
+  .hr-scope .student-action:active{transform:scale(.96);}
+  .hr-scope .move.remove{color:#fff;background:#EF4444;border-radius:7px;width:29px;height:24px;}
   .hr-scope .move.transfer{width:auto;font-size:11px;color:#fff;background:linear-gradient(135deg,#0F766E,#14B8A6);border-radius:999px;padding:5px 9px;box-shadow:0 10px 20px -16px rgba(15,118,110,.8);}
   .hr-scope .empty{padding:30px 20px;text-align:center;color:var(--slate);font-size:13px;font-style:italic;}
   .hr-scope .foot-note{margin-top:20px;font-size:12px;color:var(--slate);line-height:1.6;}
@@ -77,9 +94,11 @@
   .hr-scope .toast i{width:34px;height:34px;border-radius:13px;display:inline-flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(135deg,#2F6B4F,#5DBB89);}
   .hr-scope .toast.error i{background:linear-gradient(135deg,#A6402F,#E56A59);}
   @keyframes toastIn{from{opacity:0;transform:translateY(10px) scale(.98);}to{opacity:1;transform:translateY(0) scale(1);}}
-  .hr-scope .modal-backdrop{position:fixed;inset:0;background:rgba(12,20,36,.46);backdrop-filter:blur(7px);z-index:90;display:none;align-items:center;justify-content:center;padding:20px;}
-  .hr-scope .modal-backdrop.show{display:flex;}
-  .hr-scope .confirm-modal{width:min(430px,100%);border-radius:24px;background:linear-gradient(145deg,#FFFFFF,#FBF7EE);border:1px solid rgba(255,255,255,.75);box-shadow:0 30px 100px -35px rgba(22,34,59,.75);padding:24px;animation:modalPop .2s ease-out;}
+  /* Bootstrap's global .modal-backdrop sets opacity on the whole layer,
+     including the dialog. Override it so the dialog remains fully opaque. */
+  .hr-scope .modal-backdrop{position:fixed;inset:0;background:rgba(12,20,36,.46)!important;opacity:1!important;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);z-index:1090;display:none;align-items:center;justify-content:center;padding:20px;}
+  .hr-scope .modal-backdrop.show{display:flex;opacity:1!important;}
+  .hr-scope .confirm-modal{width:min(430px,100%);border-radius:24px;background-color:#FFFFFF;background-image:linear-gradient(145deg,#FFFFFF 0%,#FBF7EE 100%);opacity:1;isolation:isolate;border:1px solid rgba(255,255,255,.92);box-shadow:0 30px 100px -35px rgba(22,34,59,.75);padding:24px;animation:modalPop .2s ease-out;}
   .hr-scope .confirm-icon{width:52px;height:52px;border-radius:18px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#FBE7E3,#FFE8C2);color:var(--rust);font-size:21px;box-shadow:0 14px 34px -22px rgba(166,64,47,.8);margin-bottom:14px;}
   .hr-scope .confirm-modal h3{margin:0 0 8px;font-family:'Newsreader',serif;font-size:22px;color:var(--ink);}
   .hr-scope .confirm-modal p{margin:0;color:var(--slate);font-size:13.5px;line-height:1.55;font-weight:600;}
@@ -95,17 +114,7 @@
 <div class="hr-scope">
 <div class="wrap">
 
-  <div class="nav-strip">
-    <a href="{{ url_for('admin_attendance.hall_roster') }}" class="active">
-      <i class="fa-solid fa-list-check"></i> Diiwaan-gelinta Hall Exam
-    </a>
-    <a href="{{ url_for('admin_attendance.timetable') }}">
-      <i class="fa-solid fa-calendar-days"></i> Jadwalka Imtixaanka
-    </a>
-    <a href="{{ url_for('admin_attendance.dashboard') }}">
-      <i class="fa-solid fa-clipboard-user"></i> Xaadiriinta
-    </a>
-  </div>
+  {% set active_area = 'hall' %}{% include 'admin/_attendance_section_nav.html' %}
 
   <h1 class="pagetitle">Diiwaan-gelinta Hall Exam / Fasal Imtixaan</h1>
   <p class="lede">Dooro sanad-dugsiyeedka iyo nooca imtixaanka, kadibna samee ama dooro hall/fasal-imtixaan. Ardeyda geli tan uu doonayo pool-ka bidix — waa liiska ardeyda saxda ah ee <b>hore loogu diiwaan-geliyey system-ka</b> (fasalkooda dhabta ah), si aan loo isticmaalin xog qalad ah.</p>
@@ -213,6 +222,18 @@
     </div>
   </div>
 
+  <div class="modal-backdrop" id="clearClassModal" aria-hidden="true">
+    <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="clearClassTitle">
+      <div class="confirm-icon"><i class="fa-solid fa-users-slash"></i></div>
+      <h3 id="clearClassTitle">Ka saar fasalkan?</h3>
+      <p id="clearClassText">Ardayda fasalkan waxaa laga saarayaa hall-kan oo keliya.</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="btnCancelClearClass" type="button"><i class="fa-solid fa-xmark"></i> Jooji</button>
+        <button class="btn btn-confirm-delete" id="btnConfirmClearClass" type="button"><i class="fa-solid fa-eraser"></i> Haa, ka saar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="transferHallModal" aria-hidden="true">
     <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="transferHallTitle">
       <div class="confirm-icon" style="color:#0F766E;background:linear-gradient(135deg,#DDFCF4,#E0F2FE);"><i class="fa-solid fa-right-left"></i></div>
@@ -234,6 +255,7 @@
 const COLORS=['#24406B','#B8863E','#2F6B4F','#A6402F','#6C4E9E','#2C6C87','#96355E','#0F766E','#7C3AED','#BE123C'];
 function hash(str){let h=0;for(let i=0;i<str.length;i++){h=(h*31+str.charCodeAt(i))>>>0;}return h;}
 function initials(name){return (name||'').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();}
+function escapeHtml(value){const node=document.createElement('span');node.textContent=value==null?'':String(value);return node.innerHTML;}
 function colorFor(id){return COLORS[hash(String(id))%COLORS.length];}
 function classColor(s){return colorFor('class:'+(s.class_name||s.academic_class_id||s.id));}
 function selectedExamScope(){
@@ -254,6 +276,7 @@ let levelsData=[];
 const csrfToken=document.querySelector('meta[name="csrf-token"]')?.content||'';
 let toastTimer=null;
 let pendingTransferStudent=null;
+let pendingClearClass=null;
 
 async function rosterPost(url,payload){
   const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken},body:JSON.stringify(payload)});
@@ -372,10 +395,10 @@ function makeRow(s,isAssigned){
   const assignedElsewhere=!isAssigned&&s.assigned_hall_id;
   const hallNote=assignedElsewhere?`<span class="hall-note" title="Ardeygan ${s.assigned_hall_name} ayuu ku qoran yahay"><i class="fa-solid fa-school"></i>${s.assigned_hall_name}</span>`:'<span></span>';
   const moveIcon=isAssigned
-    ?'<button class="move remove" type="button" title="Ka saar">\u2715</button>'
+    ?'<button class="move student-action danger-state" type="button" title="Ka saar" aria-label="Remove student"><span class="action-icon">&times;</span></button>'
     : assignedElsewhere
       ?'<button class="move transfer" type="button" title="Transfer garee">Transfer</button>'
-      :'<button class="move" type="button" title="Geli Hall-kan">\uff0b</button>';
+      :'<button class="move student-action success-state" type="button" title="Geli Hall-kan" aria-label="Add student"><span class="action-icon">+</span></button>';
   row.innerHTML=`<span class="avatar" style="${bgStyle}">${av}</span><span class="rid">${s.student_code}</span><span class="rname">${s.full_name}</span><span class="rclass" style="background:${cColor};">${s.class_name||''}</span>${hallNote}${moveIcon}`;
   row.addEventListener('click',async()=>{
     const hallId=document.getElementById('selHall').value;
@@ -407,12 +430,43 @@ function renderPoolList(items){
   items.forEach(s=>list.appendChild(makeRow(s,false)));
 }
 
+async function clearClassGroup(group){
+  if(!group?.students?.length)return;
+  pendingClearClass=group;
+  document.getElementById('clearClassText').innerHTML=`Ma ka saaraysaa <b>${group.students.length} ardey</b> oo ka tirsan <b>${escapeHtml(group.class_name||'fasalkan')}</b> hall-kan? Ardayda fasallada kale waxba lagama beddelayo.`;
+  const modal=document.getElementById('clearClassModal');
+  modal.classList.add('show');
+  modal.setAttribute('aria-hidden','false');
+}
+function closeClearClassModal(){
+  const modal=document.getElementById('clearClassModal');
+  modal.classList.remove('show');
+  modal.setAttribute('aria-hidden','true');
+  pendingClearClass=null;
+}
+
 function renderHallList(items,q){
   const filt=q?(items.filter(s=>s.full_name.toLowerCase().includes(q.toLowerCase())||s.student_code.toLowerCase().includes(q.toLowerCase()))):items;
   const list=document.getElementById('hallList');
   document.getElementById('hallCount').textContent=`${filt.length} ardey`;
   list.innerHTML=filt.length?'':`<div class="empty">Wali ardey lagama darin hall-kan. Riix "+" bidix ka.</div>`;
-  filt.forEach(s=>list.appendChild(makeRow(s,true)));
+  const groups=[];
+  const byKey=new Map();
+  filt.forEach(student=>{
+    const key=String(student.academic_class_id||student.class_name||'unknown');
+    let group=byKey.get(key);
+    if(!group){group={key,class_name:student.class_name||'Fasal aan la magacaabin',academic_class_id:student.academic_class_id,students:[]};byKey.set(key,group);groups.push(group);}
+    group.students.push(student);
+  });
+  groups.forEach(group=>{
+    const shell=document.createElement('section');shell.className='class-group';
+    shell.style.setProperty('--group-color',classColor(group.students[0]));
+    const head=document.createElement('div');head.className='class-group-head';
+    head.innerHTML=`<div class="class-group-title"><i class="fa-solid fa-users-rectangle"></i><strong>${escapeHtml(group.class_name)}</strong><span class="class-group-count">${group.students.length} ardey</span></div><button class="clear-class" type="button" title="Ka saar dhammaan fasalkan"><i class="fa-solid fa-eraser"></i> Nadiifi fasalkan</button>`;
+    head.querySelector('.clear-class').addEventListener('click',()=>clearClassGroup(group));
+    const rows=document.createElement('div');group.students.forEach(student=>rows.appendChild(makeRow(student,true)));
+    shell.append(head,rows);list.appendChild(shell);
+  });
 }
 
 document.getElementById('btnAddHall').addEventListener('click',async()=>{
@@ -476,9 +530,24 @@ function closeTransferHallModal(){
 document.getElementById('btnDeleteHall').addEventListener('click',openDeleteHallModal);
 document.getElementById('btnCancelDeleteHall').addEventListener('click',closeDeleteHallModal);
 document.getElementById('deleteHallModal').addEventListener('click',event=>{if(event.target.id==='deleteHallModal')closeDeleteHallModal();});
+document.getElementById('btnCancelClearClass').addEventListener('click',closeClearClassModal);
+document.getElementById('clearClassModal').addEventListener('click',event=>{if(event.target.id==='clearClassModal')closeClearClassModal();});
 document.getElementById('btnCancelTransferHall').addEventListener('click',closeTransferHallModal);
 document.getElementById('transferHallModal').addEventListener('click',event=>{if(event.target.id==='transferHallModal')closeTransferHallModal();});
-document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeDeleteHallModal();closeTransferHallModal();}});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeDeleteHallModal();closeClearClassModal();closeTransferHallModal();}});
+document.getElementById('btnConfirmClearClass').addEventListener('click',async()=>{
+  const group=pendingClearClass;
+  if(!group?.students?.length)return;
+  const btn=document.getElementById('btnConfirmClearClass');
+  btn.disabled=true;
+  try{
+    await rosterPost('/admin/attendance/api/hall-roster/remove-class',{exam_hall_id:document.getElementById('selHall').value,academic_class_id:group.academic_class_id||'',class_name:group.class_name||''});
+    closeClearClassModal();
+    showToast(`Fasalka ${group.class_name||''} waa laga saaray fasal-imtixaankan.`);
+    await loadRosterData();
+  }catch(error){showToast(error.message,true);console.error(error);}
+  finally{btn.disabled=false;}
+});
 document.getElementById('btnConfirmDeleteHall').addEventListener('click',async()=>{
   const hall=selectedHallDetails();
   if(!hall.id) return;

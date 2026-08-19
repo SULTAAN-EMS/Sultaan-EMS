@@ -4,6 +4,11 @@
 {% block page_title %}{{ rh_label("entry.title", default="Whole-Class Result Entry") }}{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/results_module.css') }}">
+<style>
+  /* Keep the result-entry school header flush with the shared admin content edge. */
+  .admin-page-hero-layout .admin-main{padding-top:0!important;gap:0!important;}
+  .admin-page-hero-layout .results-hub{margin:-22px!important;}
+</style>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <div class="results-hub">

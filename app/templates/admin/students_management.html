@@ -1,5 +1,6 @@
 {% extends "admin/base.html" %}
 {% set active_tab = "students" %}
+{% block body_class %}{{ super() }} admin-page-hero-layout{% endblock %}
 {% block title %}{{ rh_label("students.title", default="Wadarta Ardayda") }}{% endblock %}
 {% block page_title %}{{ rh_label("students.title", default="Wadarta Ardayda") }}{% endblock %}
 {% block admin_content %}
