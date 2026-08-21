@@ -101,23 +101,53 @@
   .ref-stub__value{ font-size:13.5px; font-weight:500; color:var(--accent-deep); }
   .ref-stub__date{ font-size:11px; color:var(--ink-soft); }
 
-  /* ---------- Star rating ---------- */
-  .stars{ display:flex; gap:2px; margin-bottom:4px; }
-  .star{
-    background:none; border:none; padding:2px; margin:0; font-size:30px; line-height:1;
-    color:#D8DCE1; cursor:pointer; transform-origin:center 65%; -webkit-tap-highlight-color:transparent;
-    transition:color .15s ease;
+  /* ---------- Star rating: numbered, animated rating card ---------- */
+  .rating-card{
+    position:relative; background:linear-gradient(180deg,#FFFFFF 0%,#FBFBFC 100%);
+    border:1px solid var(--line); border-radius:14px;
+    padding:22px 16px 18px 22px;
+    box-shadow:0 1px 2px rgba(22,35,63,.04),0 10px 30px rgba(22,35,63,.08);
+    overflow:hidden; margin:0 -8px 20px;
   }
-  .star.is-filled{ color:var(--brass); }
-  .star:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; border-radius:4px; }
-  .star.is-pop{ animation:star-pop .4s cubic-bezier(.34,1.56,.64,1) both; }
-  @keyframes star-pop{
-    0%{ transform:scale(.5) rotate(-18deg); }
-    55%{ transform:scale(1.3) rotate(10deg); }
-    75%{ transform:scale(.92) rotate(-4deg); }
+  .rating-card::before{
+    content:""; position:absolute; top:0; left:0; bottom:0; width:5px;
+    background:linear-gradient(180deg,var(--brick-deep),var(--brass),var(--teal-deep));
+  }
+  .rating-card__eyebrow{
+    font-family:var(--font-mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-soft); margin:2px 0 4px; text-align:center;
+  }
+  .rating-card__title{ font-family:var(--font-display); font-weight:600; font-size:16px; margin:0 0 6px; text-align:center; }
+  .rating-card__desc{ font-size:12.5px; color:var(--ink-soft); margin:0 0 18px; text-align:center; line-height:1.5; }
+  .stars-panel{ border:1px solid var(--line); border-radius:12px; padding:16px 14px 14px; background:#F7F8F9; }
+  .stars-row{ display:flex; justify-content:space-between; gap:6px; }
+  .star-slot{
+    display:flex; flex-direction:column; align-items:center; gap:6px; flex:1;
+    background:none; border:none; padding:2px; margin:0; cursor:pointer; -webkit-tap-highlight-color:transparent;
+  }
+  .star-num{
+    width:20px; height:20px; border-radius:50%; background:#E3E5E8; color:var(--ink-soft);
+    font-family:var(--font-mono); font-size:10px; font-weight:600; display:flex; align-items:center; justify-content:center;
+    transition:background .25s ease,color .25s ease,box-shadow .25s ease;
+  }
+  .glyph{ display:block; font-size:30px; line-height:1; color:#fff; -webkit-text-stroke:1.4px var(--line); transition:color .25s ease,-webkit-text-stroke-color .25s ease,transform .2s cubic-bezier(.34,1.56,.64,1); }
+  .star-slot.is-pop .glyph{ animation:slot-pop .4s cubic-bezier(.34,1.56,.64,1) both; }
+  .star-slot:focus-visible{ outline:2px solid var(--brass); outline-offset:3px; border-radius:6px; }
+  @keyframes slot-pop{
+    0%{ transform:scale(.5) rotate(-16deg); }
+    55%{ transform:scale(1.3) rotate(8deg); }
     100%{ transform:scale(1) rotate(0deg); }
   }
-  .stars-caption{ font-size:12px; color:var(--ink-soft); margin:0 0 20px; }
+  .progress-track{ position:relative; margin-top:14px; height:7px; border-radius:7px; background:#E3E5E8; overflow:hidden; }
+  .progress-fill{
+    position:absolute; inset:0 auto 0 0; width:0%; border-radius:7px;
+    background:linear-gradient(90deg,var(--brick-deep),var(--brick),var(--brass),var(--teal),var(--teal-deep));
+    background-size:300% 100%; transition:width .5s cubic-bezier(.34,1.15,.4,1);
+  }
+  .progress-fill.is-set{ animation:fill-shimmer 1.6s linear infinite; }
+  .progress-fill.is-set::after{ content:""; position:absolute; inset:0; border-radius:7px; box-shadow:0 0 10px 1px var(--glow-color,rgba(43,111,99,.4)); animation:fill-glow 1.6s ease-in-out infinite; }
+  @keyframes fill-shimmer{ 0%{ background-position:0% 50%; } 100%{ background-position:300% 50%; } }
+  @keyframes fill-glow{ 0%,100%{ opacity:.35; } 50%{ opacity:.9; } }
 
   /* ---------- Reactions ---------- */
   .reactions{ display:flex; gap:8px; flex-wrap:nowrap; margin-bottom:20px; }
@@ -224,6 +254,57 @@
     border:1px solid var(--line); border-radius:6px; padding:10px 12px; resize:vertical;
   }
   select:focus-visible, textarea:focus-visible, input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent); }
+  fieldset.field-legend{
+    min-width:0; border:1.5px solid #A9B3C1; border-radius:8px; margin:0 0 16px; padding:2px 12px 12px;
+    background:var(--card); transition:border-color .15s ease;
+  }
+  fieldset.field-legend legend{
+    padding:3px 10px; margin-left:8px; font-size:12px; font-weight:600; color:var(--ink);
+    background:#F7F8F9; border:1px solid var(--line); border-radius:20px;
+  }
+  fieldset.field-legend textarea{
+    width:100%; font-family:var(--font-body); font-size:14px; color:var(--ink); background:transparent;
+    border:none; outline:none; resize:vertical; padding:4px 2px; display:block;
+  }
+  fieldset.field-legend:focus-within{ border-color:var(--accent); }
+  fieldset.field-group{
+    min-width:0; border:1.5px solid #A9B3C1; border-radius:10px; margin:0 0 22px; padding:14px 14px 16px;
+    background:var(--card);
+  }
+  fieldset.field-group > legend{
+    padding:3px 10px; margin-left:6px; font-size:12.5px; font-weight:600;
+    border-radius:20px; border:1px solid transparent;
+  }
+  fieldset.field-group.tone-teal > legend{ color:var(--teal-deep); background:#E3EFEC; border-color:#BFDAD3; }
+  fieldset.field-group.tone-brass > legend{ color:var(--brass-deep); background:#F3EEDD; border-color:#E3D4A8; }
+  fieldset.field-group.tone-brick > legend{ color:var(--brick-deep); background:#FBEAE7; border-color:#E8C3BC; }
+  fieldset.field-group .type-grid{ margin-bottom:0; }
+  fieldset.field-group select,
+  fieldset.field-group textarea{
+    width:100%; font-family:var(--font-body); font-size:14px; color:var(--ink); background:transparent;
+    border:none; outline:none; resize:vertical; padding:4px 2px; display:block;
+  }
+  fieldset.field-group:focus-within{ border-color:var(--accent); }
+  fieldset.field-group.tone-teal{ animation:pulse-teal 2.6s ease-in-out infinite; animation-delay:0s; }
+  fieldset.field-group.tone-brass{ animation:pulse-brass 2.6s ease-in-out infinite; animation-delay:.5s; }
+  fieldset.field-group.tone-brick{ animation:pulse-brick 2.6s ease-in-out infinite; animation-delay:1s; }
+  @keyframes pulse-teal{
+    0%,100%{ border-color:var(--teal); box-shadow:0 0 0 0 rgba(43,111,99,0); }
+    50%{ border-color:var(--teal-deep); box-shadow:0 0 9px 1px rgba(43,111,99,.32); }
+  }
+  @keyframes pulse-brass{
+    0%,100%{ border-color:var(--brass); box-shadow:0 0 0 0 rgba(169,129,46,0); }
+    50%{ border-color:var(--brass-deep); box-shadow:0 0 9px 1px rgba(169,129,46,.32); }
+  }
+  @keyframes pulse-brick{
+    0%,100%{ border-color:var(--brick); box-shadow:0 0 0 0 rgba(140,59,50,0); }
+    50%{ border-color:var(--brick-deep); box-shadow:0 0 9px 1px rgba(140,59,50,.32); }
+  }
+  @media (prefers-reduced-motion:reduce){
+    fieldset.field-group.tone-teal,
+    fieldset.field-group.tone-brass,
+    fieldset.field-group.tone-brick{ animation:none; }
+  }
   /* ---------- Signature pad ---------- */
   .sigpad{ border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--card); transition:border-color .15s ease; }
   .sigpad.is-error{ border-color:var(--brick); }
@@ -277,6 +358,7 @@
     font-size:13px; background:linear-gradient(135deg, var(--teal) 0%, var(--teal-deep) 100%);
     box-shadow:0 2px 6px rgba(31,83,73,.35);
   }
+  .recap-icon .fa-solid{ color:#fff; }
   .recap-chevron{ font-size:11px; color:var(--ink-soft); transition:transform .15s ease; }
   .recap[open] .recap-chevron{ transform:rotate(180deg); }
 
@@ -385,10 +467,14 @@
   .msg__body{ padding:0 14px 16px; border-top:1px solid #EEF0F1; }
   .msg__original{ font-size:13px; color:var(--ink); line-height:1.6; padding:12px 0 6px; }
   .reply-slip{ margin-top:10px; border-left:3px solid var(--teal); background:#F7FAF9; border-radius:0 6px 6px 0; padding:12px 14px; }
-  .reply-slip__head{ display:flex; align-items:center; gap:8px; margin-bottom:7px; }
+  .reply-slip__head{ display:grid; grid-template-columns:20px minmax(0,1fr) auto; align-items:center; column-gap:8px; margin-bottom:7px; }
   .reply-slip__seal{ width:20px; height:20px; border-radius:50%; border:2px solid var(--teal); color:var(--teal); font-size:10px; display:flex; align-items:center; justify-content:center; flex:none; }
-  .reply-slip__office{ font-family:var(--font-mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--teal-deep); }
-  .reply-slip__date{ font-size:10.5px; color:var(--ink-soft); margin-left:auto; }
+  .reply-slip__office-lockup{ min-width:0; line-height:1.35; overflow-wrap:anywhere; }
+  .reply-slip__office{ font-family:var(--font-mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--teal-deep); white-space:normal; }
+  .reply-slip__verified{ width:14px; height:14px; position:relative; display:inline-block; vertical-align:-.16em; margin-left:4px; }
+  .reply-slip__verified .seal-shape{ display:block; width:100%; height:100%; background:linear-gradient(180deg,#3FC6FF,#0B63E5); }
+  .reply-slip__verified svg{ position:absolute; top:50%; left:50%; width:56%; transform:translate(-50%,-50%); }
+  .reply-slip__date{ min-width:52px; max-width:70px; font-size:10.5px; color:var(--ink-soft); text-align:right; line-height:1.25; }
   .reply-slip p{ font-size:13px; color:var(--ink); line-height:1.6; margin:0; }
   .pending-note{ display:flex; align-items:center; gap:8px; margin-top:10px; border:1px dashed var(--line); border-radius:6px; padding:11px 13px; font-size:12px; color:var(--ink-soft); }
 
@@ -454,15 +540,14 @@
         <span class="ref-stub__date" id="commentDate">--</span>
       </div>
       <form id="commentForm">
-        <div class="stars" role="radiogroup" aria-label="Heerka farxadaada (1–5 xiddigood)">
-          <button type="button" class="star" data-star="1" role="radio" aria-checked="false" aria-label="1 xiddig">★</button>
-          <button type="button" class="star" data-star="2" role="radio" aria-checked="false" aria-label="2 xiddig">★</button>
-          <button type="button" class="star" data-star="3" role="radio" aria-checked="false" aria-label="3 xiddig">★</button>
-          <button type="button" class="star" data-star="4" role="radio" aria-checked="false" aria-label="4 xiddig">★</button>
-          <button type="button" class="star" data-star="5" role="radio" aria-checked="false" aria-label="5 xiddig">★</button>
+        <div class="rating-card">
+          <h3 class="rating-card__title">Sidee ku qiimeynaysaa nidaamka SULTAAN EMS?</h3>
+          <div class="stars-panel">
+            <div class="stars-row" id="starsRow" role="radiogroup" aria-label="Heerka qiimeynta 1 ilaa 5 xiddigood"></div>
+            <div class="progress-track" aria-hidden="true"><div class="progress-fill" id="fillBar"></div></div>
+          </div>
           <input type="hidden" name="rating" id="ratingValue" value="">
         </div>
-        <p class="stars-caption">Dhagsii xiddig si aad u qiimeyso heerka casrinimada system-keyaga SULTAAN EMS.</p>
         <div class="reactions" role="group" aria-label="Falcelin degdeg ah">
           <button type="button" class="reaction" data-value="like">
             <span class="reaction__emoji"><svg viewBox="0 0 36 36" aria-hidden="true">
@@ -523,10 +608,10 @@
             <span class="reaction__spark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
           </button>
         </div>
-        <label class="field">
-          <span class="field__label">Faallo, bogaadin ama dhiirigelin (ikhtiyaari)</span>
+        <fieldset class="field field-legend">
+          <legend>Faallo, bogaadin ama dhiirigelin (ikhtiyaari)</legend>
           <textarea id="commentInput" rows="3" placeholder="Wax ka qor nidaamka..."></textarea>
-        </label>
+        </fieldset>
         <div class="screen__actions">
           <button type="submit" class="btn btn--primary btn--block"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i><span>Dir Falcelinta</span></button>
         </div>
@@ -569,8 +654,9 @@
       </details>
 
       <form id="cabashoForm">
-        <span class="field__label">Nooca Cabashada</span>
-        <div class="type-grid" role="radiogroup" aria-label="Nooca Cabashada" id="typeGrid">
+        <fieldset class="field-group tone-teal">
+          <legend>Nooca Cabashada</legend>
+          <div class="type-grid" role="radiogroup" aria-label="Nooca Cabashada" id="typeGrid">
           <label class="type-card is-selected" data-type="maaddo">
             <input type="radio" name="ctype" value="maaddo" checked>
             <span class="type-card__icon" aria-hidden="true"><i class="fa-solid fa-book-open"></i></span>
@@ -601,10 +687,11 @@
             <span class="type-card__title">Mid Kale</span>
             <span class="type-card__desc">Arrin kale</span>
           </label>
-        </div>
+          </div>
+        </fieldset>
 
-        <label class="field" id="subjectField">
-          <span class="field__label">Maaddada</span>
+        <fieldset class="field-group tone-brass" id="subjectField">
+          <legend>Maaddada</legend>
           <select id="subjectSelect" required>
             <option value="">— Dooro maaddada —</option>
             <option>Xisaabta</option>
@@ -613,12 +700,12 @@
             <option>Kimikada</option>
             <option>Taariikhda</option>
           </select>
-        </label>
+        </fieldset>
 
-        <label class="field">
-          <span class="field__label" id="detailsLabel">Sharax si faahfaahsan cabashada</span>
+        <fieldset class="field-group tone-brick">
+          <legend id="detailsLabel">Sharax si faahfaahsan dhibaatada maaddadan</legend>
           <textarea id="detailsInput" rows="4" placeholder="Tusaale: Waxaan filayay in dhibcaha maaddadan ka sarreeyaan waxa la i siiyay..." required></textarea>
-        </label>
+        </fieldset>
 
         <div class="field">
           <span class="field__label">Saxeexa</span>
@@ -747,44 +834,78 @@
     setRating(0, false);
   });
 
-  /* ---------- Star rating (JS-driven: avoids native radio focus-scroll jump on mobile) ---------- */
-  var starButtons = document.querySelectorAll('.star');
+  /* ---------- Numbered star rating with live color-tracking progress ---------- */
+  var starsRow = document.getElementById('starsRow');
+  var fillBar = document.getElementById('fillBar');
   var ratingValue = document.getElementById('ratingValue');
+  var colorScale = ['#6E2E27','#8C3B32','#A9812E','#2B6F63','#1F5349'];
+  var glowScale = ['rgba(140,59,50,.5)','rgba(140,59,50,.5)','rgba(169,129,46,.5)','rgba(43,111,99,.5)','rgba(31,83,73,.5)'];
+  var starSlots = [];
   var currentRating = 0;
 
-  function paintStars(previewValue){
-    starButtons.forEach(function(btn){
-      var n = parseInt(btn.dataset.star, 10);
-      btn.classList.toggle('is-filled', n <= previewValue);
-      btn.setAttribute('aria-checked', String(n === currentRating));
-    });
+  for(var starNumber = 1; starNumber <= 5; starNumber++){
+    (function(n){
+      var slot = document.createElement('button');
+      slot.type = 'button';
+      slot.className = 'star-slot';
+      slot.setAttribute('role', 'radio');
+      slot.setAttribute('aria-label', n + ' xiddig');
+      slot.setAttribute('aria-checked', 'false');
+      slot.innerHTML = '<span class="star-num">' + n + '</span><span class="glyph">★</span>';
+      slot.addEventListener('click', function(){ setRating(n, true); });
+      slot.addEventListener('mouseenter', function(){ paintStars(n); });
+      slot.addEventListener('mouseleave', function(){ paintStars(currentRating); });
+      starsRow.appendChild(slot);
+      starSlots.push(slot);
+    })(starNumber);
   }
+
+  function paintStars(previewValue){
+    starSlots.forEach(function(slot, index){
+      var glyph = slot.querySelector('.glyph');
+      var num = slot.querySelector('.star-num');
+      var filled = index < previewValue;
+      slot.classList.toggle('is-filled', filled);
+      slot.setAttribute('aria-checked', String(index + 1 === currentRating));
+      if(filled){
+        glyph.style.color = colorScale[index];
+        glyph.style.webkitTextStrokeColor = colorScale[index];
+        num.style.background = colorScale[index];
+        num.style.color = '#fff';
+      } else {
+        glyph.style.color = '#fff';
+        glyph.style.webkitTextStrokeColor = 'var(--line)';
+        num.style.background = '#E3E5E8';
+        num.style.color = 'var(--ink-soft)';
+      }
+    });
+    if(fillBar){ fillBar.style.width = (previewValue * 20) + '%'; }
+  }
+
   function setRating(value, animate){
-    currentRating = value;
-    ratingValue.value = value ? String(value) : '';
-    paintStars(value);
+    currentRating = Math.max(0, Math.min(5, Number(value) || 0));
+    ratingValue.value = currentRating ? String(currentRating) : '';
+    paintStars(currentRating);
+    if(fillBar){
+      if(currentRating){ fillBar.style.setProperty('--glow-color', glowScale[currentRating - 1]); }
+      fillBar.classList.remove('is-set');
+      void fillBar.offsetWidth;
+      if(currentRating){ fillBar.classList.add('is-set'); }
+    }
     if(animate){
-      starButtons.forEach(function(btn){
-        var n = parseInt(btn.dataset.star, 10);
-        btn.classList.remove('is-pop');
-        if(n <= value){
-          btn.style.animationDelay = ((value - n) * 0.045) + 's';
+      starSlots.forEach(function(slot, index){
+        slot.classList.remove('is-pop');
+        if(index < currentRating){
+          slot.style.animationDelay = ((currentRating - index - 1) * 0.045) + 's';
         }
       });
-      void document.querySelector('.stars').offsetWidth;
-      starButtons.forEach(function(btn){
-        var n = parseInt(btn.dataset.star, 10);
-        if(n <= value){ btn.classList.add('is-pop'); }
+      void starsRow.offsetWidth;
+      starSlots.forEach(function(slot, index){
+        if(index < currentRating){ slot.classList.add('is-pop'); }
       });
     }
   }
-  starButtons.forEach(function(btn){
-    btn.addEventListener('click', function(){
-      setRating(parseInt(btn.dataset.star, 10), true);
-    });
-    btn.addEventListener('mouseenter', function(){ paintStars(parseInt(btn.dataset.star, 10)); });
-    btn.addEventListener('mouseleave', function(){ paintStars(currentRating); });
-  });
+  setRating(0, false);
 
   /* ---------- Typewriter label (only the clicked reaction) ---------- */
   var typewriterTimer = null;
@@ -1025,7 +1146,7 @@
     var html = '<p class="msg__original">' + item.details + '</p>';
     if(item.reply){
       html += '<div class="reply-slip"><div class="reply-slip__head">' +
-        '<span class="reply-slip__seal">✓</span><span class="reply-slip__office">' + item.reply.office + '</span>' +
+        '<span class="reply-slip__seal">✓</span><span class="reply-slip__office-lockup"><span class="reply-slip__office">' + item.reply.office + '</span><span class="reply-slip__verified" aria-label="Xafiis la xaqiijiyey"><span class="seal-shape"></span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span>' +
         '<span class="reply-slip__date">' + item.reply.date + '</span></div><p>' + item.reply.message + '</p></div>';
     } else if(item.status === 'pending'){
       html += '<div class="pending-note">⏳ La sugayo jawaabta xafiiska imtixaannada.</div>';
@@ -1035,6 +1156,19 @@
     d.appendChild(body);
     msgList.appendChild(d);
   });
+  (function applyVerifiedSealShape(){
+    var points = [], total = 240, bumps = 12, baseRadius = 44.6, amplitude = 3.4;
+    for(var i = 0; i < total; i++){
+      var theta = (i / total) * Math.PI * 2;
+      var radius = baseRadius + amplitude * Math.cos(bumps * theta);
+      points.push((50 + radius * Math.cos(theta)).toFixed(2) + '% ' + (50 + radius * Math.sin(theta)).toFixed(2) + '%');
+    }
+    var clip = 'polygon(' + points.join(',') + ')';
+    document.querySelectorAll('.reply-slip__verified .seal-shape').forEach(function(shape){
+      shape.style.clipPath = clip;
+      shape.style.webkitClipPath = clip;
+    });
+  })();
 })();
 </script>
 <script src="/static/js/falcelin-widget-api.js?v=3"></script>

@@ -80,7 +80,7 @@
       '<p class="msg__original">' + escapeHtml(item.details) + '</p>';
     if (item.reply) {
       html += '<div class="reply-slip"><div class="reply-slip__head"><span class="reply-slip__seal">✓</span>' +
-        '<span class="reply-slip__office">' + escapeHtml(item.reply.office) + '</span>' +
+        '<span class="reply-slip__office-lockup"><span class="reply-slip__office">' + escapeHtml(item.reply.office) + '</span><span class="reply-slip__verified" aria-label="Xafiis la xaqiijiyey"><span class="seal-shape"></span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span>' +
         '<span class="reply-slip__date">' + escapeHtml(item.reply.date) + '</span></div><p>' + escapeHtml(item.reply.message) + '</p></div>';
     } else if (item.status === 'pending') {
       html += '<div class="pending-note">⌛ La sugayo jawaabta xafiiska imtixaannada.</div>';
@@ -96,6 +96,20 @@
       var countNode = repliesBadge.querySelector('b');
       if (countNode) countNode.textContent = visible ? String(count) : '';
     }
+  }
+
+  function applyVerifiedSealShape() {
+    var points = [], total = 240, bumps = 12, baseRadius = 44.6, amplitude = 3.4;
+    for (var i = 0; i < total; i++) {
+      var theta = (i / total) * Math.PI * 2;
+      var radius = baseRadius + amplitude * Math.cos(bumps * theta);
+      points.push((50 + radius * Math.cos(theta)).toFixed(2) + '% ' + (50 + radius * Math.sin(theta)).toFixed(2) + '%');
+    }
+    var clip = 'polygon(' + points.join(',') + ')';
+    document.querySelectorAll('.reply-slip__verified .seal-shape').forEach(function (shape) {
+      shape.style.clipPath = clip;
+      shape.style.webkitClipPath = clip;
+    });
   }
 
   function loadResultSummary() {
@@ -116,6 +130,7 @@
       msgList.innerHTML = payload.items.length
         ? payload.items.map(itemMarkup).join('')
         : '<div class="empty-state"><span class="empty-state__icon">📭</span><strong>Weli wax falcelin ama cabasho ah ma jirto.</strong><p>Marka aad wax dirto, xaaladdeeda iyo jawaabta xafiiska halkan ayaad ka arki doontaa.</p></div>';
+      applyVerifiedSealShape();
       paintReplyBadge(payload.unread_count || 0);
       if (markRead && payload.unread_count) {
         requestJson('/api/falcelin/replies/read', {
