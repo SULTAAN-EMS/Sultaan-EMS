@@ -1,9 +1,15 @@
 import io
 import re
+from io import BytesIO
 from collections import Counter
 from datetime import datetime
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.comments import Comment
+from openpyxl.worksheet.datavalidation import DataValidation
+from PIL import Image
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from . import db
 from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, Exam, Result, SchoolClass, Student, Subject
@@ -12,15 +18,17 @@ from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear,
 # Keep the download readable for school staff.  The importer normalizes these
 # display headers (and the earlier machine-style headers) to the same fields.
 STUDENT_HEADERS = [
-    "ID", "Name", "Mother", "Mobile", "Class", "Number",
-    "Academic Year", "Gender",
+    "ID", "Name", "Mother", "Mobile", "Class",
+    "Academic Year", "Gender", "Photo Source",
 ]
 STUDENT_REQUIRED_HEADERS = [
     "student_id", "full_name", "mother_name", "phone", "class",
     "academic_year", "gender",
 ]
-PHONE_REGEX = re.compile(r"^\+25261\d{7}$")
+PHONE_REGEX = re.compile(r"^\+25261\d{7,8}$")
 YEAR_REGEX = re.compile(r"^\d{4}-\d{4}$")
+PHOTO_SOURCE_MAX_BYTES = 8 * 1024 * 1024
+PHOTO_SOURCE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
 
 
 def student_template():
@@ -28,8 +36,71 @@ def student_template():
     ws = wb.active
     ws.title = "Students"
     ws.append(STUDENT_HEADERS)
-    # Do not ship fake rows that can fail validation in a real school's Setup.
-    # The downloaded file is intentionally an empty, ready-to-fill template.
+
+    current_year = AcademicYear.query.filter_by(is_current=True).order_by(AcademicYear.id.desc()).first()
+    active_year_name = current_year.name if current_year else ""
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{chr(64 + len(STUDENT_HEADERS))}1"
+    ws.row_dimensions[1].height = 24
+
+    header_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
+    header_font = Font(name="Aptos", bold=True, color="FFFFFF", size=11)
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    ws["F1"].comment = Comment(
+        f"Academic Year is optional per row. Blank values automatically use the current year: {active_year_name or 'none configured' }.",
+        "SULTAAN EMS",
+    )
+    ws["H1"].comment = Comment(
+        "Optional: direct HTTPS image URL. Invalid or unavailable photos do not reject the student row.",
+        "SULTAAN EMS",
+    )
+    gender_validation = DataValidation(type="list", formula1='"Male,Female"', allow_blank=False)
+    ws.add_data_validation(gender_validation)
+    gender_validation.add("G2:G1000")
+    for column, width in {"A": 18, "B": 28, "C": 25, "D": 20, "E": 20, "F": 18, "G": 14, "H": 48}.items():
+        ws.column_dimensions[column].width = width
+    if active_year_name:
+        for row_number in range(2, 1001):
+            ws.cell(row=row_number, column=6, value=active_year_name)
+            ws.cell(row=row_number, column=6).font = Font(color="64748B", italic=True)
+
+    guide = wb.create_sheet("Instructions")
+    guide.append(["SULTAAN EMS - Student Import Guide"])
+    guide.append(["Current Academic Year", active_year_name or "No current academic year configured"])
+    guide.append([])
+    guide.append(["Column", "Required", "What to enter", "Example"])
+    guide_rows = [
+        ("ID", "Yes", "Unique student ID; letters, numbers and safe symbols are accepted.", "TIS001"),
+        ("Name", "Yes", "Student full name.", "Amina Ali Omar"),
+        ("Mother", "Yes", "Mother/guardian name.", "Sahra Jama"),
+        ("Mobile", "Yes", "Somali mobile number. Spaces, +, 00, hyphens and parentheses are normalized.", "2526177788474 / +2526177788474 / +252 61 777 8474"),
+        ("Class", "Yes", "Existing class name from Setup.", "Form Four"),
+        ("Academic Year", "No", f"Leave blank to use the current year ({active_year_name or 'configured active year'}).", active_year_name or "2026-2027"),
+        ("Gender", "Yes", "Male or Female.", "Female"),
+        ("Photo Source", "No", "Direct HTTPS image URL. A failed photo never rejects the student row.", "https://example.com/photo.jpg"),
+    ]
+    for row in guide_rows:
+        guide.append(row)
+    guide.freeze_panes = "A5"
+    guide.column_dimensions["A"].width = 22
+    guide.column_dimensions["B"].width = 12
+    guide.column_dimensions["C"].width = 78
+    guide.column_dimensions["D"].width = 34
+    for cell in guide[1]:
+        cell.font = Font(bold=True, color="FFFFFF", size=13)
+        cell.fill = header_fill
+    for cell in guide[4]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(start_color="2563EB", end_color="2563EB", fill_type="solid")
+    for row in guide.iter_rows(min_row=5):
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+    # Do not ship fake student rows that can be accidentally imported.
     return wb
 
 
@@ -156,6 +227,7 @@ HEADER_ALIASES = {
     "mother_name": {"mother_name", "mother", "mother_s_name", "mothers_name"},
     "phone": {"phone", "phone_number", "mobile", "mobile_number", "telephone"},
     "gender": {"gender", "sex", "student_gender"},
+    "photo_source": {"photo_source", "photo_url", "photo_link", "image_url", "image_link", "photo"},
     "number": {"number", "no", "row_number"},
 }
 
@@ -168,6 +240,71 @@ def clean_str(val):
     val_str = str(val)
     val_str = val_str.replace("\ufeff", "").replace("\u200b", "").replace("\xa0", " ").strip()
     return val_str
+
+
+def normalize_student_phone(value):
+    """Normalize common Somali mobile formats to a canonical +252... value."""
+    raw = clean_str(value)
+    if not raw:
+        return ""
+    compact = re.sub(r"[\s().-]+", "", raw)
+    if compact.startswith("00"):
+        compact = compact[2:]
+    if compact.startswith("+"):
+        compact = compact[1:]
+    if not compact.isdigit():
+        return compact
+    if compact.startswith("252"):
+        national = compact[3:]
+    else:
+        national = compact[1:] if compact.startswith("0") else compact
+    if re.fullmatch(r"61\d{7,8}", national):
+        return f"+252{national}"
+    return f"+{compact}" if raw.strip().startswith("+") else compact
+
+
+def fetch_photo_source(photo_source):
+    """Validate an optional remote image and reuse Cloudinary when configured.
+
+    A photo is deliberately non-blocking for the student row: callers can
+    import the student even when a remote image is unavailable.
+    """
+    source = clean_str(photo_source)
+    if not source:
+        return None, None
+
+    parsed = urlparse(source)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None, "Photo Source must be a valid HTTP(S) image URL."
+
+    try:
+        with urlopen(Request(source, headers={"User-Agent": "SULTAAN-EMS student importer"}), timeout=8) as response:
+            content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0].lower()
+            payload = response.read(PHOTO_SOURCE_MAX_BYTES + 1)
+    except Exception:
+        return None, "Photo Source could not be reached."
+
+    if len(payload) > PHOTO_SOURCE_MAX_BYTES:
+        return None, "Photo Source is larger than the 8 MB limit."
+    if content_type and content_type not in PHOTO_SOURCE_TYPES and content_type not in {"application/octet-stream", "binary/octet-stream"}:
+        return None, "Photo Source is not a supported image type."
+    try:
+        image = Image.open(BytesIO(payload))
+        image.verify()
+    except Exception:
+        return None, "Photo Source is not a valid readable image."
+
+    try:
+        from flask import current_app
+        if current_app.config.get("CLOUDINARY_CLOUD_NAME"):
+            from .cloudinary_service import upload_image
+            return upload_image(source, "school/students"), None
+    except Exception:
+        return None, "Photo Source could not be saved to image storage."
+
+    # Remote links are already browser-safe and remain compatible with the
+    # existing Student.photo_path field when Cloudinary is not configured.
+    return source, None
 
 
 def normalize_student_gender(value):
@@ -273,6 +410,8 @@ def process_student_import(file):
     # Pre-fetch lookup data
     existing_students = {s.student_code: s for s in Student.query.all()}
     existing_years = {y.name: y for y in AcademicYear.query.all()}
+    current_year = AcademicYear.query.filter_by(is_current=True).order_by(AcademicYear.id.desc()).first()
+    default_year_name = current_year.name if current_year else ""
 
     classes_by_name = {}
     for sc in SchoolClass.query.all():
@@ -283,11 +422,26 @@ def process_student_import(file):
     seen_file_ids = set()
     valid_students_to_add = []
     failed_errors = []
+    photo_warnings = []
+    row_results = []
     success_count = 0
     failed_count = 0
+    no_photo_count = 0
+    photo_attached_count = 0
+    photo_failed_count = 0
+    academic_year_column = headers_norm.index("academic_year") if "academic_year" in headers_norm else None
 
     for row_idx, row_cells in enumerate(ws.iter_rows(min_row=header_row_idx + 1, values_only=True), start=header_row_idx + 1):
         if not row_cells or all(c is None or str(c).strip() == "" for c in row_cells):
+            continue
+        # Downloaded templates pre-fill the active year down the usable rows.
+        # A row containing only that default is still an intentionally blank row.
+        if (
+            default_year_name
+            and academic_year_column is not None
+            and clean_str(row_cells[academic_year_column] if academic_year_column < len(row_cells) else "") == default_year_name
+            and all(clean_str(value) == "" for index, value in enumerate(row_cells) if index != academic_year_column)
+        ):
             continue
 
         data = {}
@@ -301,19 +455,15 @@ def process_student_import(file):
         phone = data.get("phone", "")
         gender = normalize_student_gender(data.get("gender", ""))
         class_name = data.get("class", "")
-        academic_year = data.get("academic_year", "")
-
-        # Format normalization for phone if starts with 25261 without plus
-        if phone.startswith("25261") and len(phone) == 12:
-            phone = "+" + phone
+        academic_year = data.get("academic_year", "") or default_year_name
+        photo_source = data.get("photo_source", "")
+        phone = normalize_student_phone(phone)
 
         row_errors = []
 
         # 1. student_id validation
         if not student_id:
             row_errors.append(f"Row {row_idx}: student_id is required.")
-        elif not student_id.isdigit():
-            row_errors.append(f"Row {row_idx}: student_id must be numeric (got '{student_id}').")
         elif student_id in seen_file_ids:
             row_errors.append(f"Row {row_idx}: student_id '{student_id}' is duplicated within this file.")
         elif student_id in existing_students:
@@ -333,7 +483,7 @@ def process_student_import(file):
         if not phone:
             row_errors.append(f"Row {row_idx}: phone is required.")
         elif not PHONE_REGEX.match(phone):
-            row_errors.append(f"Row {row_idx}: phone number invalid (must start with +25261 followed by 7 digits).")
+            row_errors.append(f"Row {row_idx}: phone number invalid (use a Somali +252 61 mobile number).")
 
         # 5. gender validation
         if gender not in {"Male", "Female"}:
@@ -356,9 +506,21 @@ def process_student_import(file):
         if row_errors:
             failed_count += 1
             failed_errors.extend(row_errors)
+            row_results.append({"row": row_idx, "status": "invalid", "detail": "; ".join(row_errors)})
         else:
             year_obj = existing_years[academic_year]
             matched_class = classes_by_name[class_name.lower()]
+            photo_path = None
+            if photo_source:
+                photo_path, photo_error = fetch_photo_source(photo_source)
+                if photo_path:
+                    photo_attached_count += 1
+                else:
+                    photo_failed_count += 1
+                    warning = f"Row {row_idx}: photo skipped - {photo_error}"
+                    photo_warnings.append(warning)
+            else:
+                no_photo_count += 1
 
             new_student = Student(
                 student_code=student_id,
@@ -367,6 +529,7 @@ def process_student_import(file):
                 phone=phone,
                 gender=gender,
                 academic_year=year_obj,
+                photo_path=photo_path,
                 is_active=True
             )
 
@@ -392,6 +555,11 @@ def process_student_import(file):
 
             valid_students_to_add.append(new_student)
             success_count += 1
+            row_results.append({
+                "row": row_idx,
+                "status": "imported",
+                "photo": "attached" if photo_path else ("failed" if photo_source else "none"),
+            })
 
     if valid_students_to_add:
         try:
@@ -404,6 +572,11 @@ def process_student_import(file):
                 "success_count": 0,
                 "failed_count": success_count + failed_count,
                 "errors": failed_errors,
+                "photo_warnings": photo_warnings,
+                "row_results": row_results,
+                "no_photo_count": no_photo_count,
+                "photo_attached_count": photo_attached_count,
+                "photo_failed_count": photo_failed_count,
                 "kind": "Students"
             }
 
@@ -411,6 +584,11 @@ def process_student_import(file):
         "success_count": success_count,
         "failed_count": failed_count,
         "errors": failed_errors,
+        "photo_warnings": photo_warnings,
+        "row_results": row_results,
+        "no_photo_count": no_photo_count,
+        "photo_attached_count": photo_attached_count,
+        "photo_failed_count": photo_failed_count,
         "kind": "Students"
     }
 
