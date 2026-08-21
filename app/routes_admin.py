@@ -13,7 +13,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
+from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
 from .permissions import PERMISSIONS, can, enforce_endpoint_permission, permission_required
 from .security import ALLOWED_AUDIO, ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import (
@@ -1413,6 +1413,94 @@ def delete_grade_scale(grade_id):
 def audit_logs():
     rows = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(500).all()
     return render_template("admin/audit_logs.html", rows=rows)
+
+
+@admin_bp.route("/falcelin-cabasho")
+@permission_required("settings")
+def feedback_complaints():
+    """Education Office inbox for result-portal feedback and complaints."""
+    query = request.args.get("q", "").strip()
+    class_id = request.args.get("class_id", type=int)
+    status = request.args.get("status", "").strip().lower()
+    complaint_type = request.args.get("type", "").strip().lower()
+    date_from = request.args.get("date_from", "").strip()
+    date_to = request.args.get("date_to", "").strip()
+
+    feedback_query = StudentFeedback.query.join(StudentFeedback.student).order_by(StudentFeedback.created_at.desc())
+    complaint_query = StudentComplaint.query.join(StudentComplaint.student).order_by(StudentComplaint.created_at.desc())
+    if query:
+        search = f"%{query}%"
+        feedback_query = feedback_query.filter(or_(Student.full_name.ilike(search), Student.student_code.ilike(search), StudentFeedback.ref_number.ilike(search)))
+        complaint_query = complaint_query.filter(or_(Student.full_name.ilike(search), Student.student_code.ilike(search), StudentComplaint.ref_number.ilike(search)))
+    if class_id:
+        feedback_query = feedback_query.filter(Student.academic_class_id == class_id)
+        complaint_query = complaint_query.filter(Student.academic_class_id == class_id)
+    if complaint_type:
+        complaint_query = complaint_query.filter(StudentComplaint.complaint_type == complaint_type)
+    if date_from:
+        try:
+            parsed = datetime.strptime(date_from, "%Y-%m-%d")
+            feedback_query = feedback_query.filter(StudentFeedback.created_at >= parsed)
+            complaint_query = complaint_query.filter(StudentComplaint.created_at >= parsed)
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            parsed = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+            feedback_query = feedback_query.filter(StudentFeedback.created_at < parsed)
+            complaint_query = complaint_query.filter(StudentComplaint.created_at < parsed)
+        except ValueError:
+            pass
+
+    feedback_rows = feedback_query.all()
+    complaint_rows = complaint_query.all()
+    if status == "pending":
+        complaint_rows = [item for item in complaint_rows if not item.replies]
+        feedback_rows = [item for item in feedback_rows if not item.replies]
+    elif status == "answered":
+        complaint_rows = [item for item in complaint_rows if item.replies]
+        feedback_rows = [item for item in feedback_rows if item.replies]
+
+    classes = AcademicClass.query.order_by(AcademicClass.sort_order, AcademicClass.name).all()
+    return render_template(
+        "admin/feedback_complaints.html",
+        feedback_rows=feedback_rows,
+        complaint_rows=complaint_rows,
+        classes=classes,
+        filters={"q": query, "class_id": class_id, "status": status, "type": complaint_type, "date_from": date_from, "date_to": date_to},
+    )
+
+
+@admin_bp.route("/falcelin-cabasho/<string:entry_type>/<int:entry_id>/reply", methods=["POST"])
+@permission_required("settings")
+def reply_feedback_complaint(entry_type, entry_id):
+    payload = request.get_json(silent=True) or request.form
+    message = str(payload.get("message") or "").strip()
+    office_name = str(payload.get("office_name") or "Xafiiska Waxbarashada").strip()[:150] or "Xafiiska Waxbarashada"
+    if not message:
+        return jsonify(ok=False, message="Fadlan qor jawaabta."), 400
+    if len(message) > 5000:
+        return jsonify(ok=False, message="Jawaabtu aad bay u dheertahay."), 400
+    if entry_type == "complaint":
+        entry = db.session.get(StudentComplaint, entry_id)
+        if not entry:
+            return jsonify(ok=False, message="Cabashada lama helin."), 404
+        entry.replies.append(StudentComplaintReply(admin_id=current_user.id, office_name=office_name, message=message))
+        entry.status = "answered"
+        entry.read_by_student = False
+        reference = entry.ref_number
+    elif entry_type == "feedback":
+        entry = db.session.get(StudentFeedback, entry_id)
+        if not entry:
+            return jsonify(ok=False, message="Falcelinta lama helin."), 404
+        entry.replies.append(StudentFeedbackReply(admin_id=current_user.id, office_name=office_name, message=message))
+        entry.read_by_student = False
+        reference = entry.ref_number
+    else:
+        return jsonify(ok=False, message="Nooca fariinta lama aqoonsan."), 404
+    audit("Falcelin/Cabasho Reply", f"Reply sent for {reference}")
+    db.session.commit()
+    return jsonify(ok=True, message="Jawaabta waa la diray, ardayguna wuu arki karaa.")
 
 
 @admin_bp.route("/classes/<int:row_id>/delete", methods=["POST"])

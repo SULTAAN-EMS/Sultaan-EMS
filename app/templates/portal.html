@@ -389,11 +389,15 @@
 
         <section class="result-action-panel reference-actions glass-card">
           <a class="result-action-button download" href="{{ url_for('public.print_report', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}" target="_blank" rel="noopener"><i class="fa-solid fa-download"></i><span>Download Report</span><small>PDF</small></a>
-          <a class="result-action-button print" href="{{ url_for('public.print_report', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}" target="_blank" rel="noopener"><i class="fa-solid fa-print"></i><span>Print Result</span><small>Print</small></a>
+          <button type="button" class="result-action-button falcelin js-falcelin-launch"><i class="fa-solid fa-comment-dots"></i><span>Falcelin</span><small>Faallo &amp; Cabasho</small></button>
           <button type="button" class="result-action-button top10 js-top10-launch" data-top10-url="{{ url_for('public.api_top_students', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}"><i class="fa-solid fa-trophy"></i><span>View Top 10 Students</span><small>Top 10</small></button>
         </section>
       </div>
     </section>
+
+    <div class="falcelin-widget-host" id="falcelinWidgetHost" hidden aria-hidden="true">
+      <iframe id="falcelinWidgetFrame" title="Falcelin iyo Cabasho" src="{{ url_for('static', filename='falcelin-cabasho-widget.html') }}?token={{ feedback_access_token|urlencode }}&amp;embedded=1&amp;v=3" loading="eager"></iframe>
+    </div>
 
     <section class="top10-tunnel-overlay" id="top10TunnelOverlay" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Top 10 Students">
       <canvas class="top10-tunnel-canvas" id="top10TunnelCanvas"></canvas>
@@ -422,6 +426,31 @@
     </section>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
     <script src="{{ url_for('static', filename='js/top10-tunnel.js') }}" defer></script>
+    <script>
+      (function () {
+        const launch = document.querySelector('.js-falcelin-launch');
+        const host = document.getElementById('falcelinWidgetHost');
+        const frame = document.getElementById('falcelinWidgetFrame');
+        if (!launch || !host || !frame) return;
+
+        function openWidget() {
+          host.hidden = false;
+          host.setAttribute('aria-hidden', 'false');
+          const open = () => frame.contentWindow.postMessage({ type: 'falcelin:open' }, window.location.origin);
+          if (frame.dataset.ready === 'true') open();
+          else frame.addEventListener('load', function onLoad() { frame.removeEventListener('load', onLoad); frame.dataset.ready = 'true'; open(); });
+        }
+
+        frame.addEventListener('load', () => { frame.dataset.ready = 'true'; });
+        launch.addEventListener('click', openWidget);
+        window.addEventListener('message', (event) => {
+          if (event.origin !== window.location.origin || !event.data || event.data.type !== 'falcelin:close') return;
+          host.hidden = true;
+          host.setAttribute('aria-hidden', 'true');
+          launch.focus();
+        });
+      }());
+    </script>
   {% endif %}
 
   {% if result_success_overlay is defined and result_success_overlay %}

@@ -1,0 +1,89 @@
+{% extends "admin/base.html" %}
+{% block title %}Falcelin & Cabasho{% endblock %}
+{% block extra_head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/feedback_complaints.css') }}">
+{% endblock %}
+{% block admin_content %}
+<main class="fc-admin-page">
+  <header class="fc-admin-hero">
+    <div class="fc-hero-icon"><i class="fa-solid fa-comments"></i></div>
+    <div><p>XAFIISKA WAXBARASHADA</p><h1>Falcelin &amp; Cabasho</h1><span>Dib u eeg farriimaha ardayda, kana jawaab hal meel.</span></div>
+    <div class="fc-hero-count"><strong>{{ feedback_rows|length + complaint_rows|length }}</strong><small>Farriimo muuqda</small></div>
+  </header>
+
+  <form class="fc-filters" method="get">
+    <label><i class="fa-solid fa-magnifying-glass"></i><input name="q" value="{{ filters.q }}" placeholder="Raadi arday ama tixraac..."></label>
+    <select name="class_id"><option value="">Dhammaan fasallada</option>{% for class_row in classes %}<option value="{{ class_row.id }}" {% if filters.class_id == class_row.id %}selected{% endif %}>{{ class_row.name }}</option>{% endfor %}</select>
+    <select name="status"><option value="">Dhammaan xaaladaha</option><option value="pending" {% if filters.status == 'pending' %}selected{% endif %}>Sugaya jawaab</option><option value="answered" {% if filters.status == 'answered' %}selected{% endif %}>La jawaabay</option></select>
+    <select name="type"><option value="">Dhammaan cabashooyinka</option><option value="maaddo" {% if filters.type == 'maaddo' %}selected{% endif %}>Maaddo gaar ah</option><option value="wadar" {% if filters.type == 'wadar' %}selected{% endif %}>Wadarta dhibcaha</option><option value="celcelis" {% if filters.type == 'celcelis' %}selected{% endif %}>Celceliska guud</option><option value="system" {% if filters.type == 'system' %}selected{% endif %}>System</option><option value="kale" {% if filters.type == 'kale' %}selected{% endif %}>Mid kale</option></select>
+    <input type="date" name="date_from" value="{{ filters.date_from }}" aria-label="Laga bilaabo">
+    <input type="date" name="date_to" value="{{ filters.date_to }}" aria-label="Ilaa">
+    <button type="submit"><i class="fa-solid fa-filter"></i> Shaandhee</button>
+  </form>
+
+  <section class="fc-section">
+    <div class="fc-section-title"><span class="fc-section-icon teal"><i class="fa-solid fa-heart"></i></span><div><h2>Falcelinta Ardayda</h2><p>Xiddigaha, reactions-ka, iyo faallooyinka natiijada.</p></div><b>{{ feedback_rows|length }}</b></div>
+    <div class="fc-list">
+      {% for row in feedback_rows %}
+      <article class="fc-entry">
+        <div class="fc-entry-main"><span class="fc-avatar">{{ row.student.full_name[:1] }}</span><div><strong>{{ row.student.full_name }}</strong><small>{{ row.student.academic_class.name if row.student.academic_class else row.student.level or 'Fasal lama diiwaangelin' }} · {{ row.student.student_code }}</small></div></div>
+        <div class="fc-rating" aria-label="{{ row.rating }} out of 5 stars">{{ '★' * row.rating }}<span>{{ '★' * (5 - row.rating) }}</span></div>
+        <p>{{ row.comment }}</p>
+        <div class="fc-entry-meta"><code>{{ row.ref_number }}</code><span>{{ row.reaction|title }} · {{ row.created_at.strftime('%d %b %Y, %H:%M') }}</span>{% if row.replies %}<em class="answered">La jawaabay</em>{% else %}<em class="pending">La diray</em>{% endif %}</div>
+        <button type="button" class="fc-reply" data-type="feedback" data-id="{{ row.id }}" data-student="{{ row.student.full_name|e }}" data-ref="{{ row.ref_number }}"><i class="fa-solid fa-reply"></i> Reply</button>
+      </article>
+      {% else %}<div class="fc-empty"><i class="fa-regular fa-message"></i> Weli falcelin lama helin.</div>{% endfor %}
+    </div>
+  </section>
+
+  <section class="fc-section">
+    <div class="fc-section-title"><span class="fc-section-icon brick"><i class="fa-solid fa-flag"></i></span><div><h2>Cabashooyinka</h2><p>Cabashooyinka saxeexan iyo xaaladdooda.</p></div><b>{{ complaint_rows|length }}</b></div>
+    <div class="fc-list">
+      {% for row in complaint_rows %}
+      <article class="fc-entry complaint">
+        <div class="fc-entry-main"><span class="fc-avatar brick-avatar">{{ row.student.full_name[:1] }}</span><div><strong>{{ row.student.full_name }}</strong><small>{{ row.student.academic_class.name if row.student.academic_class else row.student.level or 'Fasal lama diiwaangelin' }} · {{ row.student.student_code }}</small></div></div>
+        <span class="fc-type">{{ row.complaint_type }}{% if row.subject_name %} · {{ row.subject_name }}{% endif %}</span>
+        <p>{{ row.details }}</p>
+        <div class="fc-entry-meta"><code>{{ row.ref_number }}</code><span>{{ row.created_at.strftime('%d %b %Y, %H:%M') }}</span><em class="{{ 'answered' if row.replies else 'pending' }}">{{ 'La jawaabay' if row.replies else 'Sugaya jawaab' }}</em>{% if row.signature_data %}<button class="fc-signature" type="button" data-signature="{{ row.signature_data|e }}"><i class="fa-solid fa-signature"></i> Saxeex</button>{% endif %}</div>
+        <button type="button" class="fc-reply" data-type="complaint" data-id="{{ row.id }}" data-student="{{ row.student.full_name|e }}" data-ref="{{ row.ref_number }}"><i class="fa-solid fa-reply"></i> Reply</button>
+      </article>
+      {% else %}<div class="fc-empty"><i class="fa-regular fa-flag"></i> Weli cabasho lama helin.</div>{% endfor %}
+    </div>
+  </section>
+</main>
+
+<div class="fc-modal" id="fcReplyModal" hidden><div class="fc-modal-card" role="dialog" aria-modal="true" aria-labelledby="fcReplyTitle"><button type="button" class="fc-close" aria-label="Xir"><i class="fa-solid fa-xmark"></i></button><span class="fc-modal-icon"><i class="fa-solid fa-reply"></i></span><p>JAWAAB XAFIIS</p><h2 id="fcReplyTitle">Jawaab u dir ardayga</h2><small id="fcReplyContext"></small><label>Xafiiska<input id="fcOfficeName" value="Xafiiska Waxbarashada" maxlength="150"></label><label>Jawaabta<textarea id="fcReplyMessage" rows="5" maxlength="5000" placeholder="Qor jawaab cad oo xushmad leh..."></textarea></label><button type="button" id="fcReplySubmit" class="fc-send"><i class="fa-solid fa-paper-plane"></i> Dir Jawaabta</button></div></div>
+<div class="fc-modal" id="fcSignatureModal" hidden><div class="fc-modal-card signature-card"><button type="button" class="fc-close" aria-label="Xir"><i class="fa-solid fa-xmark"></i></button><span class="fc-modal-icon"><i class="fa-solid fa-signature"></i></span><h2>Saxeexa Ardayga</h2><img id="fcSignatureImage" alt="Student signature"></div></div>
+
+<script>
+(() => {
+  const replyModal = document.getElementById('fcReplyModal');
+  const signatureModal = document.getElementById('fcSignatureModal');
+  let replyTarget = null;
+  const close = modal => { modal.hidden = true; replyTarget = null; };
+  document.querySelectorAll('.fc-close').forEach(button => button.addEventListener('click', () => close(button.closest('.fc-modal'))));
+  document.querySelectorAll('.fc-modal').forEach(modal => modal.addEventListener('click', event => { if (event.target === modal) close(modal); }));
+  document.querySelectorAll('.fc-reply').forEach(button => button.addEventListener('click', () => {
+    replyTarget = button.dataset;
+    document.getElementById('fcReplyTitle').textContent = `Jawaab u dir ${replyTarget.student}`;
+    document.getElementById('fcReplyContext').textContent = `Tixraac: ${replyTarget.ref}`;
+    document.getElementById('fcReplyMessage').value = '';
+    replyModal.hidden = false;
+    document.getElementById('fcReplyMessage').focus();
+  }));
+  document.querySelectorAll('.fc-signature').forEach(button => button.addEventListener('click', () => { document.getElementById('fcSignatureImage').src = button.dataset.signature; signatureModal.hidden = false; }));
+  document.getElementById('fcReplySubmit').addEventListener('click', async function () {
+    if (!replyTarget) return;
+    const button = this, message = document.getElementById('fcReplyMessage').value.trim();
+    if (!message) return document.getElementById('fcReplyMessage').focus();
+    button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> La dirayaa...';
+    try {
+      const response = await fetch(`{{ url_for('admin.reply_feedback_complaint', entry_type='ENTRY_TYPE', entry_id=0) }}`.replace('ENTRY_TYPE', replyTarget.type).replace('/0/reply', `/${replyTarget.id}/reply`), { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token() }}'}, body:JSON.stringify({message, office_name:document.getElementById('fcOfficeName').value}) });
+      const data = await response.json(); if (!response.ok || !data.ok) throw new Error(data.message || 'Jawaabta lama diri karo.');
+      window.location.reload();
+    } catch (error) { button.disabled = false; button.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Dir Jawaabta'; alert(error.message); }
+  });
+})();
+</script>
+{% endblock %}

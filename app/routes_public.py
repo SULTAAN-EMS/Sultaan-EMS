@@ -1,13 +1,15 @@
+import secrets
 from datetime import date, datetime
 
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from . import db
+from . import csrf, db
 from .i18n import language_redirect
-from .models import AcademicYear, Exam, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeverityLevel, Student, Subject
+from .models import AcademicYear, Exam, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject
 from .services import active_exam_for_student, get_settings, result_payload, result_success_overlay_config, top_students_for_class
 from .verification import verification_payload
 
@@ -204,6 +206,7 @@ def result():
         settings=get_settings(),
         result=payload,
         generated_at=datetime.now(),
+        feedback_access_token=feedback_access_token(student, exam),
         result_success_overlay=result_success_overlay_config(
             exam,
             payload.get("rank"),
@@ -319,6 +322,207 @@ def _public_asset_url(path):
     if value.startswith(("http://", "https://", "data:", "/static/")):
         return value
     return url_for("static", filename=value if value.startswith("uploads/") else f"uploads/{value}")
+
+
+def _feedback_serializer():
+    return URLSafeTimedSerializer(current_app.config["SECRET_KEY"], salt="sultaan-feedback-result-view")
+
+
+def feedback_access_token(student, exam):
+    """Grant the already-authorised public result viewer short-lived feedback access."""
+    return _feedback_serializer().dumps({"student_id": student.id, "exam_id": exam.id})
+
+
+def _feedback_context_from_request():
+    token = (request.args.get("token") or (request.get_json(silent=True) or {}).get("token") or "").strip()
+    if not token:
+        return None, None, (jsonify(ok=False, message="Falcelinta lama xaqiijin karo."), 403)
+    try:
+        payload = _feedback_serializer().loads(token, max_age=60 * 60 * 4)
+        student_id = int(payload.get("student_id"))
+        exam_id = int(payload.get("exam_id"))
+    except (BadSignature, SignatureExpired, TypeError, ValueError):
+        return None, None, (jsonify(ok=False, message="Xiriirka Falcelinta wuu dhacay. Fadlan dib u fur natiijada."), 403)
+
+    student = db.session.get(Student, student_id)
+    exam = db.session.get(Exam, exam_id)
+    has_published_result = bool(
+        student and exam and Result.query.filter_by(student_id=student_id, exam_id=exam_id, is_published=True).first()
+    )
+    if not has_published_result:
+        return None, None, (jsonify(ok=False, message="Natiijadan looma heli karo Falcelin."), 404)
+    return student, exam, None
+
+
+def _feedback_ref(prefix, model):
+    year = datetime.utcnow().year
+    for _ in range(12):
+        ref = f"{prefix}-{year}-{secrets.token_hex(3).upper()}"
+        if not model.query.filter_by(ref_number=ref).first():
+            return ref
+    return f"{prefix}-{year}-{secrets.token_hex(6).upper()}"
+
+
+def _feedback_date(value):
+    return value.strftime("%d %b %Y") if value else ""
+
+
+def _feedback_reply_payload(reply):
+    if not reply:
+        return None
+    return {
+        "office": reply.office_name or "Xafiiska Waxbarashada",
+        "date": _feedback_date(reply.created_at),
+        "message": reply.message,
+    }
+
+
+def _feedback_item(entry):
+    is_complaint = isinstance(entry, StudentComplaint)
+    latest_reply = entry.replies[-1] if entry.replies else None
+    if is_complaint:
+        subject = entry.subject_name or None
+        excerpt = (entry.details or "").strip()
+        status = "answered" if latest_reply else "pending"
+        item_type = "cabasho"
+    else:
+        subject = None
+        reaction = (entry.reaction or "").replace("_", " ").title()
+        excerpt = f"{entry.rating} star · {reaction}"
+        if entry.comment:
+            excerpt += f' — "{entry.comment.strip()}"'
+        status = "answered" if latest_reply else "received"
+        item_type = "falcelin"
+    return {
+        "ref": entry.ref_number,
+        "type": item_type,
+        "date": _feedback_date(entry.created_at),
+        "subject": subject,
+        "excerpt": excerpt[:260],
+        "details": (entry.details if is_complaint else entry.comment) or "",
+        "status": status,
+        "reply": _feedback_reply_payload(latest_reply),
+    }
+
+
+@public_bp.route("/api/falcelin/subjects")
+def feedback_subjects():
+    student, exam, error = _feedback_context_from_request()
+    if error:
+        return error
+    subjects = (
+        Subject.query.join(Result, Result.subject_id == Subject.id)
+        .filter(Result.student_id == student.id, Result.exam_id == exam.id, Result.is_published.is_(True))
+        .order_by(Subject.sort_order, Subject.name)
+        .distinct()
+        .all()
+    )
+    return jsonify(ok=True, subjects=[subject.name for subject in subjects])
+
+
+@public_bp.route("/api/falcelin/result-summary")
+def feedback_result_summary():
+    student, exam, error = _feedback_context_from_request()
+    if error:
+        return error
+    payload = result_payload(student, exam=exam, public_only=True)
+    rows = []
+    for item in payload.get("subjects", []):
+        grade = item.get("grade") or {}
+        rows.append({"subject": item.get("subject") or "", "score": item.get("score"), "max_score": item.get("max_score"), "grade": grade.get("grade") if isinstance(grade, dict) else str(grade or "")})
+    overall = payload.get("overall_grade") or {}
+    return jsonify(ok=True, subjects=rows, total=payload.get("total"), max_total=payload.get("max_total"), average=payload.get("average"), grade=overall.get("grade") if isinstance(overall, dict) else str(overall or ""))
+
+
+@public_bp.route("/api/falcelin", methods=["POST"])
+@csrf.exempt
+def submit_feedback():
+    student, exam, error = _feedback_context_from_request()
+    if error:
+        return error
+    payload = request.get_json(silent=True) or {}
+    try:
+        rating = int(payload.get("rating"))
+    except (TypeError, ValueError):
+        rating = 0
+    reaction = str(payload.get("reaction") or "").strip().lower()
+    comment = str(payload.get("comment") or "").strip()
+    if rating not in {1, 2, 3, 4, 5} or reaction not in {"like", "love", "care", "wow"} or not comment:
+        return jsonify(ok=False, message="Fadlan buuxi xiddigaha, falcelinta, iyo faallada."), 400
+    if len(comment) > 2000:
+        return jsonify(ok=False, message="Faalladu aad bay u dheertahay."), 400
+    entry = StudentFeedback(
+        student_id=student.id,
+        exam_id=exam.id,
+        ref_number=_feedback_ref("FLC", StudentFeedback),
+        rating=rating,
+        reaction=reaction,
+        comment=comment,
+    )
+    db.session.add(entry)
+    db.session.commit()
+    return jsonify(ok=True, ref=entry.ref_number, date=_feedback_date(entry.created_at))
+
+
+@public_bp.route("/api/cabasho", methods=["POST"])
+@csrf.exempt
+def submit_complaint():
+    student, exam, error = _feedback_context_from_request()
+    if error:
+        return error
+    payload = request.get_json(silent=True) or {}
+    complaint_type = str(payload.get("type") or "").strip().lower()
+    subject_name = str(payload.get("subject") or "").strip()
+    details = str(payload.get("details") or "").strip()
+    signature = str(payload.get("signature") or "").strip()
+    valid_types = {"maaddo", "wadar", "celcelis", "system", "kale"}
+    if complaint_type not in valid_types or not details or not signature.startswith("data:image/png;base64,"):
+        return jsonify(ok=False, message="Fadlan buuxi dhammaan xogta cabashada oo kaydi saxeexa."), 400
+    if complaint_type == "maaddo" and not subject_name:
+        return jsonify(ok=False, message="Fadlan dooro maaddada cabashada."), 400
+    if len(details) > 5000 or len(signature) > 2_500_000:
+        return jsonify(ok=False, message="Cabashada ama saxeexu aad bay u weyn yihiin."), 400
+    entry = StudentComplaint(
+        student_id=student.id,
+        exam_id=exam.id,
+        ref_number=_feedback_ref("CAB", StudentComplaint),
+        complaint_type=complaint_type,
+        subject_name=subject_name if complaint_type == "maaddo" else None,
+        details=details,
+        signature_data=signature,
+        status="pending",
+    )
+    db.session.add(entry)
+    db.session.commit()
+    return jsonify(ok=True, ref=entry.ref_number, date=_feedback_date(entry.created_at))
+
+
+@public_bp.route("/api/falcelin/replies")
+def feedback_replies():
+    student, exam, error = _feedback_context_from_request()
+    if error:
+        return error
+    feedback_entries = StudentFeedback.query.filter_by(student_id=student.id, exam_id=exam.id).all()
+    complaints = StudentComplaint.query.filter_by(student_id=student.id, exam_id=exam.id).all()
+    entries = sorted([*feedback_entries, *complaints], key=lambda entry: entry.created_at, reverse=True)
+    unread = sum(1 for entry in entries if entry.replies and not entry.read_by_student)
+    return jsonify(ok=True, items=[_feedback_item(entry) for entry in entries], unread_count=unread)
+
+
+@public_bp.route("/api/falcelin/replies/read", methods=["PATCH"])
+@csrf.exempt
+def mark_feedback_replies_read():
+    student, exam, error = _feedback_context_from_request()
+    if error:
+        return error
+    for entry in StudentFeedback.query.filter_by(student_id=student.id, exam_id=exam.id).all():
+        if entry.replies:
+            entry.read_by_student = True
+    for entry in StudentComplaint.query.filter_by(student_id=student.id, exam_id=exam.id).all():
+        if entry.replies:
+            entry.read_by_student = True
+    db.session.commit()
+    return jsonify(ok=True)
 
 
 @public_bp.route("/api/top-students/<student_code>")

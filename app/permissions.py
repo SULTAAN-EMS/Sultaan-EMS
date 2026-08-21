@@ -72,6 +72,8 @@ ENDPOINT_PERMISSIONS = {
     "admin.settings": ("settings", "system_settings"),
     "admin.delete_grade_scale": ("settings", "system_settings"),
     "admin.audit_logs": "system_settings",
+    "admin.feedback_complaints": "settings",
+    "admin.reply_feedback_complaint": "settings",
     "admin_attendance.dashboard": "attendance",
     "admin_attendance.save": "attendance",
     "admin_attendance.bulk": "attendance",

@@ -234,6 +234,70 @@ class Setting(TimestampMixin, db.Model):
     value = db.Column(db.Text)
 
 
+class StudentFeedback(TimestampMixin, db.Model):
+    """A student's result-portal feedback submission."""
+
+    __tablename__ = "student_feedback"
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    exam_id = db.Column(db.Integer, db.ForeignKey("exams.id", ondelete="SET NULL"), nullable=True, index=True)
+    ref_number = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    rating = db.Column(db.Integer, nullable=False)
+    reaction = db.Column(db.String(20), nullable=False)
+    comment = db.Column(db.Text, nullable=False)
+    read_by_student = db.Column(db.Boolean, default=True, nullable=False, index=True)
+
+    student = db.relationship("Student", backref=db.backref("feedback_entries", cascade="all, delete-orphan"))
+    exam = db.relationship("Exam")
+
+
+class StudentComplaint(TimestampMixin, db.Model):
+    """A signed result-portal complaint awaiting Education Office review."""
+
+    __tablename__ = "student_complaints"
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    exam_id = db.Column(db.Integer, db.ForeignKey("exams.id", ondelete="SET NULL"), nullable=True, index=True)
+    ref_number = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    complaint_type = db.Column(db.String(20), nullable=False, index=True)
+    subject_name = db.Column(db.String(120))
+    details = db.Column(db.Text, nullable=False)
+    signature_data = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(20), default="pending", nullable=False, index=True)
+    read_by_student = db.Column(db.Boolean, default=True, nullable=False, index=True)
+
+    student = db.relationship("Student", backref=db.backref("complaint_entries", cascade="all, delete-orphan"))
+    exam = db.relationship("Exam")
+
+
+class StudentFeedbackReply(TimestampMixin, db.Model):
+    __tablename__ = "student_feedback_replies"
+
+    id = db.Column(db.Integer, primary_key=True)
+    feedback_id = db.Column(db.Integer, db.ForeignKey("student_feedback.id", ondelete="CASCADE"), nullable=False, index=True)
+    admin_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    office_name = db.Column(db.String(150), nullable=False, default="Xafiiska Waxbarashada")
+    message = db.Column(db.Text, nullable=False)
+
+    feedback = db.relationship("StudentFeedback", backref=db.backref("replies", cascade="all, delete-orphan", order_by="StudentFeedbackReply.created_at.asc()"))
+    admin = db.relationship("User")
+
+
+class StudentComplaintReply(TimestampMixin, db.Model):
+    __tablename__ = "student_complaint_replies"
+
+    id = db.Column(db.Integer, primary_key=True)
+    complaint_id = db.Column(db.Integer, db.ForeignKey("student_complaints.id", ondelete="CASCADE"), nullable=False, index=True)
+    admin_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    office_name = db.Column(db.String(150), nullable=False, default="Xafiiska Waxbarashada")
+    message = db.Column(db.Text, nullable=False)
+
+    complaint = db.relationship("StudentComplaint", backref=db.backref("replies", cascade="all, delete-orphan", order_by="StudentComplaintReply.created_at.asc()"))
+    admin = db.relationship("User")
+
+
 class GradeScale(TimestampMixin, db.Model):
     __tablename__ = "grade_scales"
 

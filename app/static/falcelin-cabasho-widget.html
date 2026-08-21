@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="so">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Falcelin & Cabasho — Widget</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<style>
+  :root{
+    --ink:#16233F; --ink-soft:#4B5A72; --paper:#ECEFEF; --card:#FFFFFF; --line:#CBD2D9;
+    --brass:#A9812E; --brass-deep:#7C5E20; --brick:#8C3B32; --brick-deep:#6E2E27;
+    --teal:#2B6F63; --teal-deep:#1F5349; --steel:#3D6B8C; --steel-deep:#2A4E68; --accent:var(--teal); --accent-deep:var(--teal-deep);
+    --font-display:'Fraunces', serif; --font-body:'IBM Plex Sans', sans-serif; --font-mono:'IBM Plex Mono', monospace;
+    --radius:8px;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family:var(--font-body); color:var(--ink); min-height:100vh;
+    background-color:var(--paper);
+    background-image:linear-gradient(rgba(22,35,63,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(22,35,63,.035) 1px, transparent 1px);
+    background-size:24px 24px;
+  }
+  button{ font:inherit; }
+
+  /* ---------- Placeholder for the host system's own page ---------- */
+  .host-note{
+    max-width:440px; margin:18vh auto 0; text-align:center; font-size:13px; line-height:1.6; color:var(--ink-soft);
+    border:1px dashed var(--line); border-radius:10px; padding:34px 22px;
+  }
+
+  /* ---------- Floating action button ---------- */
+  .fab{
+    position:fixed; bottom:22px; right:22px; z-index:45;
+    display:flex; align-items:center; gap:8px;
+    background:var(--ink); color:#F4F1EA; border:none; border-radius:30px;
+    padding:14px 20px 14px 16px; font-weight:600; font-size:14px; cursor:pointer;
+    box-shadow:0 10px 26px rgba(22,35,63,.35);
+    transition:background .15s ease, transform .15s ease;
+  }
+  .fab:hover{ background:#1E3157; transform:translateY(-1px); }
+  .fab:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
+  .fab__icon{ font-size:17px; }
+  .fab__dot{ position:absolute; top:-2px; right:-2px; width:12px; height:12px; border-radius:50%; background:var(--brick); border:2px solid var(--paper); }
+
+  /* ---------- Overlay + sheet ---------- */
+  .overlay{ position:fixed; inset:0; background:rgba(20,28,44,.55); backdrop-filter:blur(2px); opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:40; }
+  .overlay.is-open{ opacity:1; pointer-events:auto; }
+  .modal{ position:fixed; inset:0; display:flex; align-items:flex-end; justify-content:center; z-index:50; }
+  .modal[hidden]{ display:none; }
+  @media (min-width:640px){ .modal{ align-items:center; padding:20px; } }
+
+  .slip{
+    width:100%; max-width:420px; max-height:88vh; overflow-y:auto; background:var(--card);
+    border-radius:16px 16px 0 0; box-shadow:0 -12px 40px rgba(15,22,38,.3); position:relative;
+    opacity:0; transform:translateY(24px); transition:opacity .2s ease, transform .2s ease;
+  }
+  @media (min-width:640px){ .slip{ border-radius:var(--radius); box-shadow:0 24px 60px rgba(15,22,38,.35); } }
+  .overlay.is-open + .modal .slip{ opacity:1; transform:translateY(0); }
+
+  .slip__nav{ display:flex; align-items:center; gap:4px; padding:16px 12px 6px; border-bottom:1px solid transparent; }
+  .slip__back, .slip__close{ width:30px; height:30px; flex:none; border:none; background:transparent; border-radius:50%; cursor:pointer; color:var(--ink-soft); }
+  .slip__back{ font-size:19px; }
+  .slip__close{ font-size:14px; }
+  .slip__back:hover, .slip__close:hover{ background:#F1F2F4; color:var(--ink); }
+  .slip__back:focus-visible, .slip__close:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
+  .slip__nav h2{ flex:1; text-align:center; font-family:var(--font-display); font-weight:600; font-size:16.5px; margin:0; color:var(--ink); }
+
+  .screen{ padding:6px 22px 26px; }
+
+  /* ---------- Menu options ---------- */
+  .option-list{ display:flex; flex-direction:column; gap:10px; padding-top:8px; }
+  .option-card{
+    display:flex; align-items:center; gap:14px; width:100%; text-align:left; background:var(--card);
+    border:1px solid var(--line); border-radius:10px; padding:13px 14px; cursor:pointer; position:relative;
+    transition:border-color .15s ease;
+  }
+  .option-card:hover{ border-color:var(--brass); }
+  .option-card:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
+  .option-card__icon{ width:40px; height:40px; border-radius:9px; background:#F1F2F4; display:flex; align-items:center; justify-content:center; font-size:18px; flex:none; }
+  .option-card__icon .fa-solid{ font-size:17px; }
+  .option-card:nth-child(1){ background:linear-gradient(135deg,#E5F3EF,#F8FCFB); border-color:#BBDDD4; }
+  .option-card:nth-child(1) .option-card__icon{ background:#D3ECE5; color:var(--teal-deep); }
+  .option-card:nth-child(2){ background:linear-gradient(135deg,#FDF1EE,#FFFDFC); border-color:#E8C7C0; }
+  .option-card:nth-child(2) .option-card__icon{ background:#F5DCD6; color:var(--brick-deep); }
+  .option-card:nth-child(3){ background:linear-gradient(135deg,#F8F2E1,#FFFDF8); border-color:#E8D9AF; }
+  .option-card:nth-child(3) .option-card__icon{ background:#F1E5C2; color:var(--brass-deep); }
+  .option-card__text{ flex:1; min-width:0; }
+  .option-card__title{ display:block; font-weight:600; font-size:14px; color:var(--ink); }
+  .option-card__desc{ display:block; font-size:11.5px; color:var(--ink-soft); margin-top:2px; line-height:1.4; }
+  .option-card__chev{ color:var(--ink-soft); font-size:15px; flex:none; }
+  .option-card__badge{ position:absolute; top:9px; right:34px; background:var(--brick); color:#fff; font-size:10px; font-weight:700; border-radius:10px; padding:1px 6px; }
+  .option-card__badge[hidden]{ display:none; }
+
+  /* ---------- Ref stub ---------- */
+  .ref-stub{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; padding:6px 2px 14px; font-family:var(--font-mono); border-bottom:1px dashed var(--line); margin-bottom:18px; }
+  .ref-stub__label{ font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft); }
+  .ref-stub__value{ font-size:13.5px; font-weight:500; color:var(--accent-deep); }
+  .ref-stub__date{ font-size:11px; color:var(--ink-soft); }
+
+  /* ---------- Star rating ---------- */
+  .stars{ display:flex; gap:2px; margin-bottom:4px; }
+  .star{
+    background:none; border:none; padding:2px; margin:0; font-size:30px; line-height:1;
+    color:#D8DCE1; cursor:pointer; transform-origin:center 65%; -webkit-tap-highlight-color:transparent;
+    transition:color .15s ease;
+  }
+  .star.is-filled{ color:var(--brass); }
+  .star:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; border-radius:4px; }
+  .star.is-pop{ animation:star-pop .4s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes star-pop{
+    0%{ transform:scale(.5) rotate(-18deg); }
+    55%{ transform:scale(1.3) rotate(10deg); }
+    75%{ transform:scale(.92) rotate(-4deg); }
+    100%{ transform:scale(1) rotate(0deg); }
+  }
+  .stars-caption{ font-size:12px; color:var(--ink-soft); margin:0 0 20px; }
+
+  /* ---------- Reactions ---------- */
+  .reactions{ display:flex; gap:8px; flex-wrap:nowrap; margin-bottom:20px; }
+  .reaction{
+    display:flex; flex-direction:column; align-items:center; gap:4px; background:#F1F2F4;
+    border:1px solid transparent; border-radius:10px; padding:10px 6px; flex:1 1 0; min-width:0; cursor:pointer;
+    font-size:10.5px; color:var(--ink-soft); position:relative; overflow:visible;
+    transition:background .18s ease, border-color .18s ease, color .18s ease, transform .18s cubic-bezier(.34,1.56,.64,1);
+  }
+  .reaction__emoji{ width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; transform-origin:center bottom; transition:transform .25s cubic-bezier(.34,1.56,.64,1); filter:drop-shadow(0 2px 3px rgba(22,35,63,.18)); }
+  .reaction__emoji svg{ width:100%; height:100%; display:block; }
+  .reaction:hover{ transform:translateY(-3px); }
+  .reaction:hover .reaction__emoji{ animation-duration:.7s; animation-iteration-count:infinite; animation-timing-function:ease-in-out; }
+  .reaction[data-value="like"]:hover .reaction__emoji{ animation-name:react-tilt; }
+  .reaction[data-value="love"]:hover .reaction__emoji{ animation-name:react-beat; }
+  .reaction[data-value="care"]:hover .reaction__emoji{ animation-name:react-squeeze; }
+  .reaction[data-value="wow"]:hover .reaction__emoji{ animation-name:react-gasp; }
+
+  .reaction.is-active{ background:#fff; border-color:var(--teal); color:var(--teal-deep); box-shadow:0 4px 14px rgba(43,111,99,.22); transform:translateY(-4px); position:relative; isolation:isolate; }
+  .reaction.is-active .reaction__emoji{ animation:react-pop .5s cubic-bezier(.34,1.56,.64,1); }
+  .reaction:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
+
+  .reaction__label{ font-family:var(--font-mono); }
+  .reaction__label.is-typing::after{ content:"|"; margin-left:1px; animation:caret-blink .8s steps(1) infinite; }
+  @keyframes caret-blink{ 50%{ opacity:0; } }
+
+  /* reaction-specific active background + gradient-ring colors */
+  .reaction[data-value="like"].is-active{ background:#E8F3FF; border-color:#2E86F0; color:#1657B0; box-shadow:0 4px 14px rgba(46,134,240,.28); --glow-a:#8FCBFF; --glow-b:#1657B0; }
+  .reaction[data-value="love"].is-active{ background:#FFEBEF; border-color:#F4325C; color:#B4123A; box-shadow:0 4px 14px rgba(244,50,92,.28); --glow-a:#FFAEBD; --glow-b:#B4123A; }
+  .reaction[data-value="care"].is-active{ background:#FFF6DE; border-color:#FFC531; color:#8A5A12; box-shadow:0 4px 14px rgba(255,197,49,.32); --glow-a:#FFE79A; --glow-b:#EE9A0E; }
+  .reaction[data-value="wow"].is-active{ background:#FFE7D2; border-color:#F2994A; color:#9C4A0A; box-shadow:0 4px 14px rgba(242,153,74,.32); --glow-a:#FFC98A; --glow-b:#C15A00; }
+
+  /* premium continuously-animated border — single merged Glow + Shimmer template, tight boundary */
+  .reaction.is-active::before{
+    content:""; position:absolute; inset:-2px; border-radius:12px; pointer-events:none; z-index:-1;
+    padding:1.5px;
+    background:linear-gradient(120deg, var(--glow-b) 0%, var(--glow-a) 22%, var(--glow-b) 44%, var(--glow-b) 100%);
+    background-size:260% 260%;
+    -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude;
+    animation:ring-shimmer 2.2s linear infinite, ring-glow 1.7s ease-in-out infinite;
+  }
+  .reaction.is-active::after{ content:none; }
+
+  @keyframes ring-shimmer{ 0%{ background-position:0% 50%; } 100%{ background-position:200% 50%; } }
+  @keyframes ring-glow{
+    0%,100%{ box-shadow:0 0 0 0 rgba(0,0,0,0); opacity:.6; }
+    50%{ box-shadow:0 0 10px 2px var(--glow-a); opacity:1; }
+  }
+
+  .reaction__spark{ position:absolute; inset:0; pointer-events:none; }
+  .reaction__spark i{
+    position:absolute; top:16px; left:50%; width:5px; height:5px; border-radius:50%;
+    transform:translate(-50%,-50%); opacity:0;
+  }
+  .reaction.is-active .reaction__spark i{ animation:react-idle-twinkle 2.6s ease-in-out infinite; }
+  .reaction.is-bursting .reaction__spark i{ animation:react-burst .65s ease-out forwards; }
+  .reaction__spark i:nth-child(1){ background:var(--teal); animation-delay:0s; --tx:-18px; --ty:-16px; }
+  .reaction__spark i:nth-child(2){ background:var(--brass); animation-delay:.5s; --tx:0px; --ty:-24px; }
+  .reaction__spark i:nth-child(3){ background:var(--brick); animation-delay:1s; --tx:18px; --ty:-16px; }
+  .reaction__spark i:nth-child(4){ background:var(--teal-deep); animation-delay:1.5s; --tx:-14px; --ty:4px; }
+  .reaction__spark i:nth-child(5){ background:var(--brass-deep); animation-delay:2s; --tx:14px; --ty:4px; }
+
+  @keyframes react-idle-twinkle{
+    0%,100%{ opacity:0; transform:translate(-50%,-50%) scale(.4); }
+    50%{ opacity:.4; transform:translate(calc(-50% + var(--tx)*.35), calc(-50% + var(--ty)*.35)) scale(1); }
+  }
+
+  @keyframes react-tilt{
+    0%,100%{ transform:rotate(0deg); }
+    25%{ transform:rotate(-14deg) translateY(-2px); }
+    75%{ transform:rotate(10deg) translateY(-2px); }
+  }
+  @keyframes react-beat{
+    0%,100%{ transform:scale(1); }
+    25%{ transform:scale(1.22); }
+    45%{ transform:scale(.94); }
+    65%{ transform:scale(1.14); }
+  }
+  @keyframes react-squeeze{
+    0%,100%{ transform:scale(1,1) rotate(0deg); }
+    50%{ transform:scale(1.12,.9) rotate(-4deg); }
+  }
+  @keyframes react-gasp{
+    0%,100%{ transform:scale(1) translateY(0); }
+    50%{ transform:scale(1.24) translateY(-3px); }
+  }
+  @keyframes react-pop{
+    0%{ transform:scale(.4) rotate(-12deg); }
+    55%{ transform:scale(1.35) rotate(6deg); }
+    100%{ transform:scale(1) rotate(0deg); }
+  }
+  @keyframes react-burst{
+    0%{ opacity:1; transform:translate(-50%,-50%) scale(.4); }
+    100%{ opacity:0; transform:translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(1); }
+  }
+
+  /* ---------- Fields ---------- */
+  .field{ display:block; margin-bottom:16px; }
+  .field__label{ display:block; font-size:12px; font-weight:600; color:var(--ink); margin-bottom:6px; }
+  .field__note{ font-size:11.5px; color:var(--ink-soft); margin:6px 0 0; }
+  select, textarea, input[type="text"]{
+    width:100%; font-family:var(--font-body); font-size:14px; color:var(--ink); background:var(--card);
+    border:1px solid var(--line); border-radius:6px; padding:10px 12px; resize:vertical;
+  }
+  select:focus-visible, textarea:focus-visible, input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent); }
+  /* ---------- Signature pad ---------- */
+  .sigpad{ border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--card); transition:border-color .15s ease; }
+  .sigpad.is-error{ border-color:var(--brick); }
+  .sigpad__toolbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 10px; background:#F7F8F8; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .sigpad__group{ display:flex; align-items:center; gap:7px; }
+  .sigpad__group-label{ font-family:var(--font-mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-soft); margin-right:1px; }
+  .sigpad__color{ width:20px; height:20px; flex:none; border-radius:50%; border:none; padding:0; cursor:pointer; background:var(--sw-color); box-shadow:0 0 0 1px var(--line); transition:box-shadow .15s ease, transform .15s ease; }
+  .sigpad__color:hover{ transform:scale(1.08); }
+  .sigpad__color.is-active{ box-shadow:0 0 0 2px #fff, 0 0 0 4px var(--sw-color); }
+  .sigpad__color:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
+  .sigpad__size{ width:26px; height:26px; flex:none; border-radius:6px; border:1px solid var(--line); background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; transition:all .15s ease; }
+  .sigpad__size i{ display:block; border-radius:50%; background:var(--ink-soft); }
+  .sigpad__size[data-width="1.5"] i{ width:3px; height:3px; }
+  .sigpad__size[data-width="3"] i{ width:5px; height:5px; }
+  .sigpad__size[data-width="5"] i{ width:7px; height:7px; }
+  .sigpad__size:hover{ border-color:var(--brass); }
+  .sigpad__size.is-active{ border-color:var(--brass); background:#FBF8F0; }
+  .sigpad__size.is-active i{ background:var(--brass-deep); }
+  .sigpad__size:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
+  .sigpad__canvas-wrap{ position:relative; }
+  .sigpad__canvas{ display:block; width:100%; height:128px; touch-action:none; cursor:crosshair; background:var(--card); }
+  .sigpad.is-locked .sigpad__canvas{ cursor:default; }
+  .sigpad__baseline{ position:absolute; left:16px; right:16px; bottom:26px; height:0; border-top:1px dashed var(--line); pointer-events:none; }
+  .sigpad__hint{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; padding:0 20px; font-size:12px; color:var(--ink-soft); pointer-events:none; opacity:1; transition:opacity .15s ease; }
+  .sigpad__hint.is-hidden{ opacity:0; }
+  .sigpad.is-error .sigpad__hint{ color:var(--brick-deep); opacity:1; }
+  .sigpad__actions{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:9px 10px; border-top:1px solid var(--line); background:#FCFCFC; }
+  .sigpad__btn{ display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); font-size:11.5px; font-weight:600; padding:7px 13px; border-radius:20px; cursor:pointer; transition:all .15s ease; }
+  .sigpad__btn:hover{ border-color:var(--brass); color:var(--ink); }
+  .sigpad__btn:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
+  .sigpad__btn--save{ border-color:var(--teal); color:var(--teal-deep); background:#F1F8F6; }
+  .sigpad__btn--save:hover{ background:#E3F1EC; border-color:var(--teal-deep); }
+  .sigpad__btn--save.is-saved{ background:var(--teal-deep); border-color:var(--teal-deep); color:#fff; }
+  .sigpad__status{ font-size:10.5px; color:var(--teal-deep); font-weight:600; align-items:center; gap:4px; display:none; }
+  .sigpad.is-locked .sigpad__status{ display:inline-flex; }
+  .sigpad.is-locked .sigpad__btn--erase{ order:2; }
+
+  /* ---------- Compact results recap (Cabasho only) ---------- */
+  .recap{ border:1px solid #BFDAD3; border-radius:10px; margin-bottom:20px; overflow:hidden; box-shadow:0 3px 12px rgba(43,111,99,.14); }
+  .recap summary{
+    list-style:none; cursor:pointer; padding:11px 14px; font-size:12.5px; font-weight:600; color:var(--ink);
+    display:flex; align-items:center; justify-content:space-between;
+    background:linear-gradient(135deg, #EAF5F2 0%, #F4FAF8 55%, #FDFEFE 100%);
+  }
+  .recap summary::-webkit-details-marker{ display:none; }
+  .recap[open] summary{ border-bottom:1px solid #BFDAD3; }
+  .recap__body{ padding:12px 14px 4px; }
+  .recap-summary__label{ display:flex; align-items:center; gap:9px; }
+  .recap-icon{
+    width:26px; height:26px; border-radius:7px; flex:none; display:flex; align-items:center; justify-content:center;
+    font-size:13px; background:linear-gradient(135deg, var(--teal) 0%, var(--teal-deep) 100%);
+    box-shadow:0 2px 6px rgba(31,83,73,.35);
+  }
+  .recap-chevron{ font-size:11px; color:var(--ink-soft); transition:transform .15s ease; }
+  .recap[open] .recap-chevron{ transform:rotate(180deg); }
+
+  .compact-table{ width:100%; border-collapse:collapse; font-size:12px; margin:0 0 12px; }
+  .compact-table th{ text-align:left; font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-soft); font-weight:600; padding:0 0 5px; border-bottom:1px solid var(--line); }
+  .compact-table td{ padding:5px 0; border-bottom:1px solid #EEF0F1; color:var(--ink); }
+  .compact-table tr:last-child td{ border-bottom:none; }
+  .compact-table td:last-child, .compact-table th:last-child{ text-align:right; }
+
+  .stat-strip{ display:flex; border:1px solid var(--line); border-radius:7px; overflow:hidden; margin-bottom:6px; }
+  .stat-strip__item{ flex:1; text-align:center; padding:9px 4px; border-right:1px solid var(--line); }
+  .stat-strip__item:last-child{ border-right:none; }
+  .stat-strip__label{ display:block; font-size:9px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); margin-bottom:3px; }
+  .stat-strip__value{ display:block; font-family:var(--font-mono); font-size:12.5px; font-weight:600; color:var(--ink); }
+
+  /* ---------- Complaint type cards ---------- */
+  .type-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:20px; }
+  .type-card:last-child:nth-child(odd){ grid-column:1 / -1; text-align:center; }
+  .type-card:last-child:nth-child(odd) .type-card__icon{ margin-left:auto; margin-right:auto; }
+  .type-card{ display:block; border:1px solid var(--line); border-radius:8px; padding:10px 12px; cursor:pointer; position:relative; background:var(--card); transition:border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+  .type-card input{ position:absolute; opacity:0; }
+  .type-card__icon{ width:28px; height:28px; border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:14px; margin-bottom:7px; background:#F1F2F4; color:var(--ink-soft); }
+  .type-card__icon .fa-solid{ font-size:13px; }
+  .type-card__title{ display:block; font-weight:600; font-size:12.5px; color:var(--ink); margin-bottom:2px; }
+  .type-card__desc{ display:block; font-size:10.5px; color:var(--ink-soft); line-height:1.35; }
+  .type-card:focus-within{ outline:2px solid var(--brass); outline-offset:2px; }
+
+  .type-card[data-type="maaddo"] .type-card__icon{ background:#E3EFEC; color:var(--teal-deep); }
+  .type-card[data-type="maaddo"].is-selected{ border-color:var(--teal); background:#F3F9F8; box-shadow:0 2px 10px rgba(43,111,99,.14); }
+  .type-card[data-type="maaddo"].is-selected .type-card__title{ color:var(--teal-deep); }
+
+  .type-card[data-type="wadar"] .type-card__icon{ background:#F3EEDD; color:var(--brass-deep); }
+  .type-card[data-type="wadar"].is-selected{ border-color:var(--brass); background:#FBF8F0; box-shadow:0 2px 10px rgba(169,129,46,.16); }
+  .type-card[data-type="wadar"].is-selected .type-card__title{ color:var(--brass-deep); }
+
+  .type-card[data-type="celcelis"] .type-card__icon{ background:#FBEAE7; color:var(--brick-deep); }
+  .type-card[data-type="celcelis"].is-selected{ border-color:var(--brick); background:#FDF4F3; box-shadow:0 2px 10px rgba(140,59,50,.16); }
+  .type-card[data-type="celcelis"].is-selected .type-card__title{ color:var(--brick-deep); }
+
+  .type-card[data-type="system"] .type-card__icon{ background:#E4EEF3; color:var(--steel-deep); }
+  .type-card[data-type="system"].is-selected{ border-color:var(--steel); background:#F1F6F9; box-shadow:0 2px 10px rgba(61,107,140,.16); }
+  .type-card[data-type="system"].is-selected .type-card__title{ color:var(--steel-deep); }
+
+  .type-card[data-type="kale"] .type-card__icon{ background:#EDEEF0; color:var(--ink-soft); }
+  .type-card[data-type="kale"].is-selected{ border-color:var(--ink-soft); background:#F5F6F7; box-shadow:0 2px 10px rgba(22,35,63,.12); }
+  .type-card[data-type="kale"].is-selected .type-card__title{ color:var(--ink); }
+
+  /* ---------- Buttons ---------- */
+  .btn{ font-family:var(--font-body); font-weight:600; font-size:14px; padding:12px 18px; border-radius:7px; border:1px solid transparent; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px; }
+  .btn--primary{ background:var(--accent); color:#fff; transition:background .2s ease; }
+  .btn--primary:hover{ background:var(--accent-deep); }
+  .btn--ghost{ background:transparent; border-color:var(--line); color:var(--ink-soft); }
+  .btn--ghost:hover{ background:#F1F2F4; color:var(--ink); }
+  .btn--block{ width:100%; margin-bottom:8px; }
+  .btn:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
+  .seal{ width:14px; height:14px; border:2px solid #fff; border-radius:50%; display:inline-block; }
+  .btn--primary .fa-paper-plane{ font-size:14px; color:#fff; }
+  .screen__actions{ margin-top:22px; }
+
+  /* ---------- Confirmation ---------- */
+  .confirm{ text-align:center; padding:14px 4px 4px; }
+  .seal--big{ width:60px; height:60px; margin:0 auto 16px; border:3px solid var(--accent); color:var(--accent); font-size:24px; display:flex; align-items:center; justify-content:center; transform:scale(0); animation:stamp .35s cubic-bezier(.34,1.56,.64,1) forwards; }
+  @keyframes stamp{ to{ transform:scale(1) rotate(-6deg); } }
+  .confirm p{ font-size:13.5px; color:var(--ink-soft); line-height:1.6; margin:0 0 20px; }
+  .confirm-ref{ font-family:var(--font-mono); color:var(--ink); }
+
+  /* ---------- Messages list (admin replies) ---------- */
+  .msg-list{ display:flex; flex-direction:column; gap:10px; padding-top:6px; }
+  .msg{ border:1px solid var(--line); border-radius:8px; background:var(--card); overflow:hidden; }
+  .msg summary{ list-style:none; cursor:pointer; padding:13px 14px; display:flex; align-items:center; gap:10px; }
+  .msg summary::-webkit-details-marker{ display:none; }
+  .msg summary:focus-visible{ outline:2px solid var(--brass); outline-offset:-2px; }
+  .msg__chevron{ margin-left:auto; color:var(--ink-soft); font-size:12px; transition:transform .15s ease; }
+  .msg[open] .msg__chevron{ transform:rotate(180deg); }
+  .msg__type{ font-family:var(--font-mono); font-size:9.5px; color:var(--ink-soft); }
+  .msg__main{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .msg__ref{ font-family:var(--font-mono); font-size:12px; color:var(--ink); }
+  .msg__excerpt{ font-size:12px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .badge{ font-size:10px; font-weight:600; padding:3px 8px; border-radius:20px; letter-spacing:.03em; white-space:nowrap; flex:none; }
+  .badge--pending{ background:#F3EEDD; color:var(--brass-deep); }
+  .badge--answered{ background:#E3EFEC; color:var(--teal-deep); }
+  .badge--received{ background:#EDEEF0; color:var(--ink-soft); }
+  .msg__body{ padding:0 14px 16px; border-top:1px solid #EEF0F1; }
+  .msg__original{ font-size:13px; color:var(--ink); line-height:1.6; padding:12px 0 6px; }
+  .reply-slip{ margin-top:10px; border-left:3px solid var(--teal); background:#F7FAF9; border-radius:0 6px 6px 0; padding:12px 14px; }
+  .reply-slip__head{ display:flex; align-items:center; gap:8px; margin-bottom:7px; }
+  .reply-slip__seal{ width:20px; height:20px; border-radius:50%; border:2px solid var(--teal); color:var(--teal); font-size:10px; display:flex; align-items:center; justify-content:center; flex:none; }
+  .reply-slip__office{ font-family:var(--font-mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--teal-deep); }
+  .reply-slip__date{ font-size:10.5px; color:var(--ink-soft); margin-left:auto; }
+  .reply-slip p{ font-size:13px; color:var(--ink); line-height:1.6; margin:0; }
+  .pending-note{ display:flex; align-items:center; gap:8px; margin-top:10px; border:1px dashed var(--line); border-radius:6px; padding:11px 13px; font-size:12px; color:var(--ink-soft); }
+
+  @media (prefers-reduced-motion: reduce){
+    .overlay, .slip, .fab, .btn--primary, .seal--big, .msg__chevron, .recap-chevron{ transition:none; animation:none; }
+    .seal--big{ transform:scale(1) rotate(0deg); }
+  }
+</style>
+</head>
+<body>
+
+<div class="host-note" aria-hidden="true" hidden>Nidaamkaaga (bogga natiijada, jadwalka, iwm.) ayaa halkan ku jira. Button-ka hoose ee midig ku dheggan ayaa lagu daraa meesha aad rabto.</div>
+
+<button class="fab" id="fabBtn" aria-haspopup="dialog" aria-controls="sheetModal">
+  <span class="fab__icon" aria-hidden="true"><i class="fa-solid fa-comments"></i></span><span>Falcelin</span>
+  <span class="fab__dot" id="fabDot" aria-hidden="true"></span>
+</button>
+
+<div class="overlay" id="overlay"></div>
+<div class="modal" id="sheetModal" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+  <div class="slip">
+    <div class="slip__nav">
+      <button class="slip__back" id="backBtn" aria-label="Dib u noqo" hidden>‹</button>
+      <h2 id="sheetTitle">Falcelin & Cabasho</h2>
+      <button class="slip__close" id="closeBtn" aria-label="Xir">✕</button>
+    </div>
+
+    <!-- SCREEN: MENU -->
+    <div class="screen" id="screen-menu">
+      <div class="option-list">
+        <button class="option-card" data-screen="screen-comment" data-title="Faallo">
+          <span class="option-card__icon" aria-hidden="true"><i class="fa-solid fa-comment-dots"></i></span>
+          <span class="option-card__text">
+            <span class="option-card__title">Faallo</span>
+            <span class="option-card__desc">Qiimee natiijada — xiddigo, reaction ama faallo</span>
+          </span>
+          <span class="option-card__chev" aria-hidden="true">›</span>
+        </button>
+        <button class="option-card" data-screen="screen-cabasho" data-title="Gudbi Cabasho">
+          <span class="option-card__icon" aria-hidden="true"><i class="fa-solid fa-flag"></i></span>
+          <span class="option-card__text">
+            <span class="option-card__title">Cabasho</span>
+            <span class="option-card__desc">Ka gudbi cabasho maaddo ama xisaabin</span>
+          </span>
+          <span class="option-card__chev" aria-hidden="true">›</span>
+        </button>
+        <button class="option-card" data-screen="screen-replies" data-title="Jawaabta Admin-ka">
+          <span class="option-card__icon" aria-hidden="true"><i class="fa-solid fa-inbox"></i></span>
+          <span class="option-card__text">
+            <span class="option-card__title">Jawaabta Admin-ka</span>
+            <span class="option-card__desc">Eeg jawaabaha xafiiska waxbarashada</span>
+          </span>
+          <span class="option-card__badge" id="repliesBadge" hidden><i class="fa-solid fa-bell" aria-hidden="true"></i> <b></b></span>
+          <span class="option-card__chev" aria-hidden="true">›</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- SCREEN: COMMENT (Falcelin) -->
+    <div class="screen" id="screen-comment" hidden>
+      <div class="ref-stub">
+        <span><span class="ref-stub__label">Tixraac</span><br><span class="ref-stub__value" id="commentRef">FLC-2026-0000</span></span>
+        <span class="ref-stub__date" id="commentDate">--</span>
+      </div>
+      <form id="commentForm">
+        <div class="stars" role="radiogroup" aria-label="Heerka farxadaada (1–5 xiddigood)">
+          <button type="button" class="star" data-star="1" role="radio" aria-checked="false" aria-label="1 xiddig">★</button>
+          <button type="button" class="star" data-star="2" role="radio" aria-checked="false" aria-label="2 xiddig">★</button>
+          <button type="button" class="star" data-star="3" role="radio" aria-checked="false" aria-label="3 xiddig">★</button>
+          <button type="button" class="star" data-star="4" role="radio" aria-checked="false" aria-label="4 xiddig">★</button>
+          <button type="button" class="star" data-star="5" role="radio" aria-checked="false" aria-label="5 xiddig">★</button>
+          <input type="hidden" name="rating" id="ratingValue" value="">
+        </div>
+        <p class="stars-caption">Dhagsii xiddig si aad u qiimeyso heerka casrinimada system-keyaga SULTAAN EMS.</p>
+        <div class="reactions" role="group" aria-label="Falcelin degdeg ah">
+          <button type="button" class="reaction" data-value="like">
+            <span class="reaction__emoji"><svg viewBox="0 0 36 36" aria-hidden="true">
+              <defs><radialGradient id="likeBg" cx="35%" cy="28%" r="80%">
+                <stop offset="0%" stop-color="#6FB6FF"/><stop offset="55%" stop-color="#2E86F0"/><stop offset="100%" stop-color="#1657B0"/>
+              </radialGradient></defs>
+              <circle cx="18" cy="18" r="17" fill="url(#likeBg)"/>
+              <ellipse cx="13" cy="10" rx="7" ry="4" fill="#fff" opacity=".25"/>
+              <rect x="9.3" y="16.3" width="3.6" height="12.4" rx="1.5" fill="#fff"/>
+              <path d="M14.4 16.8v10.2c0 .9.7 1.6 1.6 1.6h6.2c1 0 1.9-.7 2.1-1.7l1.6-7.3c.3-1.4-.8-2.7-2.2-2.7h-3.1l.5-3.3c.1-.9-.1-1.7-.7-2.3-.6-.6-1.6-.5-2.1.1l-3.3 3.9c-.4.4-.6.9-.6 1.5z" fill="#fff"/>
+            </svg></span>
+            <span class="reaction__label" data-label="Ka helid">Ka helid</span>
+            <span class="reaction__spark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          </button>
+          <button type="button" class="reaction" data-value="love">
+            <span class="reaction__emoji"><svg viewBox="0 0 36 36" aria-hidden="true">
+              <defs><radialGradient id="loveBg" cx="35%" cy="26%" r="85%">
+                <stop offset="0%" stop-color="#FF8FA3"/><stop offset="55%" stop-color="#F4325C"/><stop offset="100%" stop-color="#B4123A"/>
+              </radialGradient></defs>
+              <path d="M18 30.5s-11-6.8-14-13.4C1.6 11.6 4 6.4 9.2 5.4c3-.6 5.9.8 7.4 3.3l1.4 2.3 1.4-2.3c1.5-2.5 4.4-3.9 7.4-3.3 5.2 1 7.6 6.2 5.2 11.7-3 6.6-14 13.4-14 13.4z" fill="url(#loveBg)"/>
+              <ellipse cx="12" cy="12" rx="4.3" ry="2.4" fill="#fff" opacity=".3"/>
+            </svg></span>
+            <span class="reaction__label" data-label="U riyaaqid">U riyaaqid</span>
+            <span class="reaction__spark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          </button>
+          <button type="button" class="reaction" data-value="care">
+            <span class="reaction__emoji"><svg viewBox="0 0 36 36" aria-hidden="true">
+              <defs>
+                <radialGradient id="careFace" cx="35%" cy="26%" r="85%"><stop offset="0%" stop-color="#FFE79A"/><stop offset="55%" stop-color="#FFC531"/><stop offset="100%" stop-color="#EE9A0E"/></radialGradient>
+                <radialGradient id="careHeart" cx="35%" cy="20%" r="90%"><stop offset="0%" stop-color="#FFAFC0"/><stop offset="100%" stop-color="#F02D55"/></radialGradient>
+              </defs>
+              <circle cx="18" cy="18" r="17" fill="url(#careFace)"/>
+              <path d="M5.6 19.5c2.6 3.4 5.6 5.3 7.6 6" stroke="#EE9A0E" stroke-width="3.4" fill="none" stroke-linecap="round" opacity=".9"/>
+              <path d="M30.4 19.5c-2.6 3.4-5.6 5.3-7.6 6" stroke="#EE9A0E" stroke-width="3.4" fill="none" stroke-linecap="round" opacity=".9"/>
+              <ellipse cx="11" cy="21" rx="3" ry="1.8" fill="#F4325C" opacity=".3"/>
+              <ellipse cx="25" cy="21" rx="3" ry="1.8" fill="#F4325C" opacity=".3"/>
+              <path d="M9.6 13c1.7-1.7 4.4-1.7 6.1 0" stroke="#8A5A12" stroke-width="1.7" fill="none" stroke-linecap="round"/>
+              <path d="M20.3 13c1.7-1.7 4.4-1.7 6.1 0" stroke="#8A5A12" stroke-width="1.7" fill="none" stroke-linecap="round"/>
+              <path d="M18 21.4c-2.3 0-4.3 1.9-4.3 1.9s2 3.4 4.3 3.4 4.3-3.4 4.3-3.4-2-1.9-4.3-1.9z" fill="url(#careHeart)"/>
+              <ellipse cx="16.3" cy="22.6" rx="1.1" ry=".7" fill="#fff" opacity=".55"/>
+            </svg></span>
+            <span class="reaction__label" data-label="Daneyn">Daneyn</span>
+            <span class="reaction__spark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          </button>
+          <button type="button" class="reaction" data-value="wow">
+            <span class="reaction__emoji"><svg viewBox="0 0 36 36" aria-hidden="true">
+              <defs><radialGradient id="wowFace" cx="35%" cy="26%" r="85%"><stop offset="0%" stop-color="#FFE07A"/><stop offset="55%" stop-color="#FFC531"/><stop offset="100%" stop-color="#F09B12"/></radialGradient></defs>
+              <circle cx="18" cy="18" r="17" fill="url(#wowFace)"/>
+              <path d="M9.3 14.7c1-1.5 3.1-1.9 4.5-.6M26.7 14.7c-1-1.5-3.1-1.9-4.5-.6" stroke="#8A5A12" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+              <circle cx="12.6" cy="17.3" r="2.1" fill="#3B2A0A"/>
+              <circle cx="23.4" cy="17.3" r="2.1" fill="#3B2A0A"/>
+              <circle cx="13.2" cy="16.6" r=".6" fill="#fff"/>
+              <circle cx="24" cy="16.6" r=".6" fill="#fff"/>
+              <ellipse cx="18" cy="24.5" rx="3.3" ry="4" fill="#8A5A12"/>
+              <ellipse cx="18" cy="23.6" rx="2.4" ry="3" fill="#3B2A0A"/>
+            </svg></span>
+            <span class="reaction__label" data-label="U Riyaaqid">U Riyaaqid</span>
+            <span class="reaction__spark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          </button>
+        </div>
+        <label class="field">
+          <span class="field__label">Faallo, bogaadin ama dhiirigelin (ikhtiyaari)</span>
+          <textarea id="commentInput" rows="3" placeholder="Wax ka qor nidaamka..."></textarea>
+        </label>
+        <div class="screen__actions">
+          <button type="submit" class="btn btn--primary btn--block"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i><span>Dir Falcelinta</span></button>
+        </div>
+      </form>
+      <div class="confirm" id="commentConfirm" hidden>
+        <div class="seal--big" aria-hidden="true">✓</div>
+        <h3 style="font-family:var(--font-display);margin:0 0 8px;">Waad ku mahadsan tahay!</h3>
+        <p>Falcelintaadu (<strong class="confirm-ref" id="commentConfirmRef"></strong>) way soo gaadhay xafiiska waxbarashada.</p>
+        <button type="button" class="btn btn--primary btn--block" id="commentDoneBtn">Dhamayso</button>
+      </div>
+    </div>
+
+    <!-- SCREEN: CABASHO -->
+    <div class="screen" id="screen-cabasho" hidden>
+      <div class="ref-stub">
+        <span><span class="ref-stub__label">Tixraac</span><br><span class="ref-stub__value" id="cabashoRef">CAB-2026-0000</span></span>
+        <span class="ref-stub__date" id="cabashoDate">--</span>
+      </div>
+
+      <details class="recap">
+        <summary><span class="recap-summary__label"><span class="recap-icon" aria-hidden="true"><i class="fa-solid fa-graduation-cap"></i></span>Natiijada oo Kooban</span> <span class="recap-chevron" aria-hidden="true">▾</span></summary>
+        <div class="recap__body">
+          <table class="compact-table">
+            <thead><tr><th>Maaddada</th><th>Dhibcaha</th><th>Grade</th></tr></thead>
+            <tbody id="resultSummaryRows">
+              <tr><td colspan="3">Xogta natiijada waa la soo qaadaya...</td></tr>
+            </tbody>
+          </table>
+          <div class="stat-strip">
+            <div class="stat-strip__item"><span class="stat-strip__label">Total</span><span class="stat-strip__value" id="summaryTotal">--</span></div>
+            <div class="stat-strip__item"><span class="stat-strip__label">Celcelis</span><span class="stat-strip__value" id="summaryAverage">--</span></div>
+            <div class="stat-strip__item"><span class="stat-strip__label">Grade</span><span class="stat-strip__value">A- · PASS</span></div>
+          </div>
+        </div>
+      </details>
+
+      <form id="cabashoForm">
+        <span class="field__label">Nooca Cabashada</span>
+        <div class="type-grid" role="radiogroup" aria-label="Nooca Cabashada" id="typeGrid">
+          <label class="type-card is-selected" data-type="maaddo">
+            <input type="radio" name="ctype" value="maaddo" checked>
+            <span class="type-card__icon" aria-hidden="true"><i class="fa-solid fa-book-open"></i></span>
+            <span class="type-card__title">Maaddo Gaar Ah</span>
+            <span class="type-card__desc">Dhibco maaddo gaar ah</span>
+          </label>
+          <label class="type-card" data-type="wadar">
+            <input type="radio" name="ctype" value="wadar">
+            <span class="type-card__icon" aria-hidden="true"><i class="fa-solid fa-calculator"></i></span>
+            <span class="type-card__title">Wadarta Dhibcaha</span>
+            <span class="type-card__desc">Khalad totalling ah</span>
+          </label>
+          <label class="type-card" data-type="celcelis">
+            <input type="radio" name="ctype" value="celcelis">
+            <span class="type-card__icon" aria-hidden="true"><i class="fa-solid fa-chart-column"></i></span>
+            <span class="type-card__title">Celceliska Guud</span>
+            <span class="type-card__desc">Khalad average ah</span>
+          </label>
+          <label class="type-card" data-type="system">
+            <input type="radio" name="ctype" value="system">
+            <span class="type-card__icon" aria-hidden="true"><i class="fa-solid fa-gears"></i></span>
+            <span class="type-card__title">Cabasho System-ka</span>
+            <span class="type-card__desc">Cilladdo farsamo oo ka jidha system-ka.</span>
+          </label>
+          <label class="type-card" data-type="kale">
+            <input type="radio" name="ctype" value="kale">
+            <span class="type-card__icon" aria-hidden="true"><i class="fa-solid fa-pen-to-square"></i></span>
+            <span class="type-card__title">Mid Kale</span>
+            <span class="type-card__desc">Arrin kale</span>
+          </label>
+        </div>
+
+        <label class="field" id="subjectField">
+          <span class="field__label">Maaddada</span>
+          <select id="subjectSelect" required>
+            <option value="">— Dooro maaddada —</option>
+            <option>Xisaabta</option>
+            <option>Afka Ingiriisiga</option>
+            <option>Fiisigiska</option>
+            <option>Kimikada</option>
+            <option>Taariikhda</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span class="field__label" id="detailsLabel">Sharax si faahfaahsan cabashada</span>
+          <textarea id="detailsInput" rows="4" placeholder="Tusaale: Waxaan filayay in dhibcaha maaddadan ka sarreeyaan waxa la i siiyay..." required></textarea>
+        </label>
+
+        <div class="field">
+          <span class="field__label">Saxeexa</span>
+          <div class="sigpad" id="sigpad">
+            <div class="sigpad__toolbar">
+              <div class="sigpad__group" role="group" aria-label="Midabka qalinka">
+                <span class="sigpad__group-label">Midab</span>
+                <button type="button" class="sigpad__color is-active" data-color="#16233F" style="--sw-color:#16233F" aria-label="Qalin madow"></button>
+                <button type="button" class="sigpad__color" data-color="#1F5349" style="--sw-color:#1F5349" aria-label="Qalin teal"></button>
+                <button type="button" class="sigpad__color" data-color="#6E2E27" style="--sw-color:#6E2E27" aria-label="Qalin guduud"></button>
+              </div>
+              <div class="sigpad__group" role="group" aria-label="Cufka qalinka">
+                <span class="sigpad__group-label">Cuf</span>
+                <button type="button" class="sigpad__size" data-width="1.5" aria-label="Khafiif"><i></i></button>
+                <button type="button" class="sigpad__size is-active" data-width="3" aria-label="Dhexdhexaad"><i></i></button>
+                <button type="button" class="sigpad__size" data-width="5" aria-label="Adag"><i></i></button>
+              </div>
+            </div>
+            <div class="sigpad__canvas-wrap">
+              <canvas id="sigCanvas" class="sigpad__canvas" aria-label="Meesha lagu saxiixo farta ama qalinka"></canvas>
+              <div class="sigpad__baseline" aria-hidden="true"></div>
+              <div class="sigpad__hint" id="sigHint">Halkan ku saxiix (far ama qalin)</div>
+            </div>
+            <div class="sigpad__actions">
+              <button type="button" class="sigpad__btn sigpad__btn--erase" id="sigClearBtn"><i class="fa-solid fa-eraser"></i> Tirtir</button>
+              <span class="sigpad__status" id="sigStatus">✓ La kaydiyay</span>
+              <button type="button" class="sigpad__btn sigpad__btn--save" id="sigSaveBtn"><i class="fa-solid fa-floppy-disk"></i> Kaydi Saxeexa</button>
+            </div>
+          </div>
+          <input type="hidden" id="signatureInput">
+          <p class="field__note">Anigoo saxiixaya, waxaan xaqiijinayaa in macluumaadkan ay run yihiin.</p>
+        </div>
+
+        <div class="screen__actions">
+          <button type="submit" class="btn btn--primary btn--block" id="cabSubmitBtn"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i><span>Gudbi Cabasho</span></button>
+        </div>
+      </form>
+
+      <div class="confirm" id="cabashoConfirm" hidden>
+        <div class="seal--big" aria-hidden="true">✓</div>
+        <h3 style="font-family:var(--font-display);margin:0 0 8px;">Cabashaadu waa la aqbalay</h3>
+        <p>Tixraacaagu waa <strong class="confirm-ref" id="cabashoConfirmRef"></strong>. Xafiiska waxbarashadu wuxuu kula soo xiriiri doonaa 3–5 maalmood gudahood.</p>
+        <button type="button" class="btn btn--primary btn--block" id="cabashoSeeReplies">La Soco Xaaladda →</button>
+        <button type="button" class="btn btn--ghost btn--block" id="cabashoDoneBtn">Dhamayso</button>
+      </div>
+    </div>
+
+    <!-- SCREEN: REPLIES -->
+    <div class="screen" id="screen-replies" hidden>
+      <div class="msg-list" id="msgList"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  var overlay = document.getElementById('overlay');
+  var modal = document.getElementById('sheetModal');
+  var fabBtn = document.getElementById('fabBtn');
+  var fabDot = document.getElementById('fabDot');
+  var closeBtn = document.getElementById('closeBtn');
+  var backBtn = document.getElementById('backBtn');
+  var sheetTitle = document.getElementById('sheetTitle');
+  var screens = document.querySelectorAll('.screen');
+
+  function showScreen(id, title, showBack){
+    screens.forEach(function(s){ s.hidden = s.id !== id; });
+    sheetTitle.textContent = title;
+    backBtn.hidden = !showBack;
+    if(id === 'screen-replies'){ fabDot.style.display = 'none'; }
+  }
+
+  function openSheet(){
+    modal.hidden = false;
+    overlay.classList.add('is-open');
+    document.body.style.overflow = 'hidden';
+    showScreen('screen-menu', 'Falcelin & Cabasho', false);
+  }
+  function closeSheet(){
+    modal.hidden = true;
+    overlay.classList.remove('is-open');
+    document.body.style.overflow = '';
+    fabBtn.focus();
+  }
+
+  fabBtn.addEventListener('click', openSheet);
+  closeBtn.addEventListener('click', closeSheet);
+  overlay.addEventListener('click', closeSheet);
+  backBtn.addEventListener('click', function(){ showScreen('screen-menu', 'Falcelin & Cabasho', false); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && !modal.hidden){ closeSheet(); } });
+
+  document.querySelectorAll('.option-card').forEach(function(card){
+    card.addEventListener('click', function(){
+      showScreen(card.dataset.screen, card.dataset.title, true);
+    });
+  });
+
+  function genRef(prefix){
+    return prefix + '-...';
+  }
+  function today(){
+    return new Date().toLocaleDateString('so-SO', { year:'numeric', month:'short', day:'numeric' });
+  }
+
+  /* ---------- Comment (Falcelin) ---------- */
+  var commentForm = document.getElementById('commentForm');
+  var commentConfirm = document.getElementById('commentConfirm');
+  var commentRef = document.getElementById('commentRef');
+  var commentDate = document.getElementById('commentDate');
+  var commentConfirmRef = document.getElementById('commentConfirmRef');
+  var commentDoneBtn = document.getElementById('commentDoneBtn');
+  var reactions = document.querySelectorAll('.reaction');
+  var activeReaction = null;
+
+  document.querySelector('[data-screen="screen-comment"]').addEventListener('click', function(){
+    commentRef.textContent = genRef('FLC');
+    commentDate.textContent = today();
+    commentForm.hidden = false;
+    commentConfirm.hidden = true;
+    setRating(0, false);
+  });
+
+  /* ---------- Star rating (JS-driven: avoids native radio focus-scroll jump on mobile) ---------- */
+  var starButtons = document.querySelectorAll('.star');
+  var ratingValue = document.getElementById('ratingValue');
+  var currentRating = 0;
+
+  function paintStars(previewValue){
+    starButtons.forEach(function(btn){
+      var n = parseInt(btn.dataset.star, 10);
+      btn.classList.toggle('is-filled', n <= previewValue);
+      btn.setAttribute('aria-checked', String(n === currentRating));
+    });
+  }
+  function setRating(value, animate){
+    currentRating = value;
+    ratingValue.value = value ? String(value) : '';
+    paintStars(value);
+    if(animate){
+      starButtons.forEach(function(btn){
+        var n = parseInt(btn.dataset.star, 10);
+        btn.classList.remove('is-pop');
+        if(n <= value){
+          btn.style.animationDelay = ((value - n) * 0.045) + 's';
+        }
+      });
+      void document.querySelector('.stars').offsetWidth;
+      starButtons.forEach(function(btn){
+        var n = parseInt(btn.dataset.star, 10);
+        if(n <= value){ btn.classList.add('is-pop'); }
+      });
+    }
+  }
+  starButtons.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      setRating(parseInt(btn.dataset.star, 10), true);
+    });
+    btn.addEventListener('mouseenter', function(){ paintStars(parseInt(btn.dataset.star, 10)); });
+    btn.addEventListener('mouseleave', function(){ paintStars(currentRating); });
+  });
+
+  /* ---------- Typewriter label (only the clicked reaction) ---------- */
+  var typewriterTimer = null;
+  var typingLabelEl = null;
+  function typewriteLabel(el){
+    if(typewriterTimer){ clearInterval(typewriterTimer); typewriterTimer = null; }
+    if(typingLabelEl && typingLabelEl !== el){
+      typingLabelEl.textContent = typingLabelEl.dataset.label;
+      typingLabelEl.classList.remove('is-typing');
+    }
+    var full = el.dataset.label;
+    el.classList.add('is-typing');
+    el.textContent = '';
+    var i = 0;
+    typingLabelEl = el;
+    typewriterTimer = setInterval(function(){
+      i++;
+      el.textContent = full.slice(0, i);
+      if(i >= full.length){
+        clearInterval(typewriterTimer);
+        typewriterTimer = null;
+        el.classList.remove('is-typing');
+      }
+    }, 70);
+  }
+
+  reactions.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      reactions.forEach(function(r){ r.classList.remove('is-active'); r.classList.remove('is-bursting'); });
+      btn.classList.add('is-active');
+      void btn.offsetWidth;
+      btn.classList.add('is-bursting');
+      activeReaction = btn.dataset.value;
+      typewriteLabel(btn.querySelector('.reaction__label'));
+      setTimeout(function(){ btn.classList.remove('is-bursting'); }, 650);
+    });
+  });
+
+  commentForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    // Halkan ku dar codsiga xagjirka (backend), tusaale:
+    // fetch('/api/falcelin', { method:'POST', body: JSON.stringify({
+    //   ref: commentRef.textContent, rating: commentForm.rating.value, reaction: activeReaction, comment: commentInput.value
+    // })});
+    commentConfirmRef.textContent = commentRef.textContent;
+    commentForm.hidden = true;
+    commentConfirm.hidden = false;
+  });
+  commentDoneBtn.addEventListener('click', closeSheet);
+
+  /* ---------- Cabasho ---------- */
+  var cabashoForm = document.getElementById('cabashoForm');
+  var cabashoConfirm = document.getElementById('cabashoConfirm');
+  var cabashoRef = document.getElementById('cabashoRef');
+  var cabashoDate = document.getElementById('cabashoDate');
+  var cabashoConfirmRef = document.getElementById('cabashoConfirmRef');
+  var cabashoDoneBtn = document.getElementById('cabashoDoneBtn');
+  var cabashoSeeReplies = document.getElementById('cabashoSeeReplies');
+  var typeGrid = document.getElementById('typeGrid');
+  var typeCards = document.querySelectorAll('.type-card');
+  var subjectField = document.getElementById('subjectField');
+  var subjectSelect = document.getElementById('subjectSelect');
+  var detailsLabel = document.getElementById('detailsLabel');
+  var sigpadEl = document.getElementById('sigpad');
+  var sigCanvas = document.getElementById('sigCanvas');
+  var sigCtx = sigCanvas.getContext('2d');
+  var sigHint = document.getElementById('sigHint');
+  var sigClearBtn = document.getElementById('sigClearBtn');
+  var sigSaveBtn = document.getElementById('sigSaveBtn');
+  var sigStatus = document.getElementById('sigStatus');
+  var signatureInput = document.getElementById('signatureInput');
+  var sigColorBtns = document.querySelectorAll('.sigpad__color');
+  var sigSizeBtns = document.querySelectorAll('.sigpad__size');
+  var sigColor = '#16233F';
+  var sigWidth = 3;
+  var sigDrawing = false;
+  var sigHasStrokes = false;
+  var sigLastPoint = null;
+  var sigRectW = 0, sigRectH = 0;
+
+  function sigInit(){
+    var ratio = window.devicePixelRatio || 1;
+    var rect = sigCanvas.getBoundingClientRect();
+    sigRectW = rect.width;
+    sigRectH = rect.height;
+    sigCanvas.width = sigRectW * ratio;
+    sigCanvas.height = sigRectH * ratio;
+    sigCtx.setTransform(1, 0, 0, 1, 0, 0);
+    sigCtx.scale(ratio, ratio);
+    sigCtx.lineCap = 'round';
+    sigCtx.lineJoin = 'round';
+  }
+  function sigReset(){
+    sigInit();
+    sigHasStrokes = false;
+    sigHint.textContent = 'Halkan ku saxiix (far ama qalin)';
+    sigHint.classList.remove('is-hidden');
+    signatureInput.value = '';
+    sigpadEl.classList.remove('is-locked', 'is-error');
+    sigSaveBtn.classList.remove('is-saved');
+  }
+  function sigPos(e){
+    var rect = sigCanvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+  sigCanvas.addEventListener('pointerdown', function(e){
+    if(sigpadEl.classList.contains('is-locked')) return;
+    sigDrawing = true;
+    sigLastPoint = sigPos(e);
+    sigHint.classList.add('is-hidden');
+    sigpadEl.classList.remove('is-error');
+    if(sigCanvas.setPointerCapture){ sigCanvas.setPointerCapture(e.pointerId); }
+  });
+  sigCanvas.addEventListener('pointermove', function(e){
+    if(!sigDrawing) return;
+    var p = sigPos(e);
+    sigCtx.strokeStyle = sigColor;
+    sigCtx.lineWidth = sigWidth;
+    sigCtx.beginPath();
+    sigCtx.moveTo(sigLastPoint.x, sigLastPoint.y);
+    sigCtx.lineTo(p.x, p.y);
+    sigCtx.stroke();
+    sigLastPoint = p;
+    sigHasStrokes = true;
+  });
+  function sigStop(){ sigDrawing = false; sigLastPoint = null; }
+  sigCanvas.addEventListener('pointerup', sigStop);
+  sigCanvas.addEventListener('pointercancel', sigStop);
+  window.addEventListener('pointerup', sigStop);
+
+  sigColorBtns.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      sigColorBtns.forEach(function(b){ b.classList.remove('is-active'); });
+      btn.classList.add('is-active');
+      sigColor = btn.dataset.color;
+    });
+  });
+  sigSizeBtns.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      sigSizeBtns.forEach(function(b){ b.classList.remove('is-active'); });
+      btn.classList.add('is-active');
+      sigWidth = parseFloat(btn.dataset.width);
+    });
+  });
+  sigClearBtn.addEventListener('click', function(){ sigReset(); });
+  sigSaveBtn.addEventListener('click', function(){
+    if(!sigHasStrokes){
+      sigpadEl.classList.add('is-error');
+      sigHint.classList.remove('is-hidden');
+      sigHint.textContent = 'Fadlan marka hore ku saxiix, kadibna kaydi';
+      return;
+    }
+    signatureInput.value = sigCanvas.toDataURL('image/png');
+    sigpadEl.classList.add('is-locked');
+    sigpadEl.classList.remove('is-error');
+    sigSaveBtn.classList.add('is-saved');
+  });
+
+  var typeLabels = {
+    maaddo: 'Sharax si faahfaahsan dhibaatada maaddadan',
+    wadar: 'Sharax halka aad ka aragto khalad wadarta dhibcaha',
+    celcelis: 'Sharax halka aad ka aragto khalad xisaabinta celceliska',
+    system: 'Sharax cilladda farsamo ee system-ka',
+    kale: 'Sharax si faahfaahsan arrinta'
+  };
+  function applyType(value){
+    typeCards.forEach(function(card){
+      card.classList.toggle('is-selected', card.querySelector('input').value === value);
+    });
+    var isSubjectType = value === 'maaddo';
+    subjectField.style.display = isSubjectType ? '' : 'none';
+    subjectSelect.required = isSubjectType;
+    detailsLabel.textContent = typeLabels[value];
+  }
+  typeGrid.addEventListener('change', function(e){ if(e.target.name === 'ctype'){ applyType(e.target.value); } });
+
+  document.querySelector('[data-screen="screen-cabasho"]').addEventListener('click', function(){
+    cabashoRef.textContent = genRef('CAB');
+    cabashoDate.textContent = today();
+    cabashoForm.hidden = false;
+    cabashoConfirm.hidden = true;
+    applyType('maaddo');
+    sigReset();
+  });
+
+  cabashoForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    if(!signatureInput.value){
+      sigpadEl.classList.add('is-error');
+      sigHint.classList.remove('is-hidden');
+      sigHint.textContent = 'Fadlan ku saxiix oo riix "Kaydi Saxeexa"';
+      sigpadEl.scrollIntoView({ behavior:'smooth', block:'center' });
+      return;
+    }
+    // Halkan ku dar codsiga xagjirka (backend), tusaale:
+    // fetch('/api/cabasho', { method:'POST', body: JSON.stringify({
+    //   ref: cabashoRef.textContent, type: cabashoForm.ctype.value, subject: subjectSelect.value,
+    //   details: detailsInput.value, signature: signatureInput.value
+    // })});
+    cabashoConfirmRef.textContent = cabashoRef.textContent;
+    cabashoForm.hidden = true;
+    cabashoConfirm.hidden = false;
+  });
+  cabashoDoneBtn.addEventListener('click', closeSheet);
+  cabashoSeeReplies.addEventListener('click', function(){ showScreen('screen-replies', 'Jawaabta Admin-ka', true); });
+
+  /* ---------- Replies ---------- */
+  var items = [
+    { ref:'CAB-2026-4821', type:'cabasho', date:'10 Ogosto 2026', subject:'Kimikada',
+      excerpt:'Waxaan filayay in dhibcaha maaddadan ka sarreeyaan...',
+      details:'Waxaan filayay in dhibcaha maaddadan Kimikada ka sarreeyaan 90-ka la i siiyay, maadaama imtixaanka dambe aan ku guulaystay in ka badan. Fadlan i sharaxa sida loo xisaabiyay.',
+      status:'answered',
+      reply:{ office:'Xafiiska Waxbarashada', date:'14 Ogosto 2026',
+        message:'Waan dib u eegnay dhibcahaaga Kimikada. Xisaabintu waxay ku salaysnayd celceliska imtixaannada hore iyo kan dambe (40/60). Dhibcahaagu waa sax — 90/100. Waad ku mahadsantahay in aad nala soo xiriirtay.' } },
+    { ref:'CAB-2026-5190', type:'cabasho', date:'17 Ogosto 2026', subject:'Wadarta Dhibcaha',
+      excerpt:'Wadarta guud ee dhibcahayga ma isku waafaqsana...',
+      details:'Marka aan isku daro dhibcaha shanta maaddo, wadartu ma isku waafaqsana celceliska la i tusay ee 81.2%. Fadlan dib u eega.',
+      status:'pending', reply:null },
+    { ref:'FLC-2026-2207', type:'falcelin', date:'5 Ogosto 2026', subject:null,
+      excerpt:'5★ · Love — "Nidaamkan aad buu u fudud yahay!"',
+      details:'5 xiddigood, Love. Faallo: "Nidaamkan aad buu u fudud yahay! Waan ku faraxsanahay sida degdegga ah ee natiijada loo helo."',
+      status:'received', reply:null }
+  ];
+  var badgeText = { pending:'Sugaya Jawaab', answered:'La Jawaabay', received:'La Diray' };
+  var badgeClass = { pending:'badge--pending', answered:'badge--answered', received:'badge--received' };
+  var typeText = { cabasho:'CABASHO', falcelin:'FALCELIN' };
+  var msgList = document.getElementById('msgList');
+
+  items.forEach(function(item){
+    var d = document.createElement('details');
+    d.className = 'msg';
+    var summary = document.createElement('summary');
+    summary.innerHTML =
+      '<div class="msg__main">' +
+        '<span class="msg__type">' + typeText[item.type] + (item.subject ? ' · ' + item.subject : '') + '</span>' +
+        '<span class="msg__ref">' + item.ref + '</span>' +
+        '<span class="msg__excerpt">' + item.excerpt + '</span>' +
+      '</div>' +
+      '<span class="badge ' + badgeClass[item.status] + '">' + badgeText[item.status] + '</span>' +
+      '<span class="msg__chevron" aria-hidden="true">▾</span>';
+    var body = document.createElement('div');
+    body.className = 'msg__body';
+    var html = '<p class="msg__original">' + item.details + '</p>';
+    if(item.reply){
+      html += '<div class="reply-slip"><div class="reply-slip__head">' +
+        '<span class="reply-slip__seal">✓</span><span class="reply-slip__office">' + item.reply.office + '</span>' +
+        '<span class="reply-slip__date">' + item.reply.date + '</span></div><p>' + item.reply.message + '</p></div>';
+    } else if(item.status === 'pending'){
+      html += '<div class="pending-note">⏳ La sugayo jawaabta xafiiska waxbarashada.</div>';
+    }
+    body.innerHTML = html;
+    d.appendChild(summary);
+    d.appendChild(body);
+    msgList.appendChild(d);
+  });
+})();
+</script>
+<script src="/static/js/falcelin-widget-api.js?v=3"></script>
+</body>
+</html>
