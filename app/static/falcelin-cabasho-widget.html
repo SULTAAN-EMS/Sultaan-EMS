@@ -68,6 +68,16 @@
   .slip__back:hover, .slip__close:hover{ background:#F1F2F4; color:var(--ink); }
   .slip__back:focus-visible, .slip__close:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
   .slip__nav h2{ flex:1; text-align:center; font-family:var(--font-display); font-weight:600; font-size:16.5px; margin:0; color:var(--ink); }
+  .slip__nav.is-terracotta{ background:#F7EFE6; border-bottom:1px solid #E4C9AE; }
+  .slip__nav.is-terracotta h2{ font-family:Georgia,serif; font-weight:700; font-size:17px; color:#6E3B24; }
+  .slip__nav.is-terracotta .slip__back,
+  .slip__nav.is-terracotta .slip__close{ display:grid; place-items:center; border:1.5px solid #E4C9AE; background:#FFFFFF; }
+  .slip__nav.is-terracotta .slip__back{ background:#2B6F63; color:#FFFFFF; border-color:#2B6F63; }
+  .slip__nav.is-terracotta .slip__close{ background:#D64545; color:#FFFFFF; border-color:#D64545; }
+  .slip__nav.is-terracotta .slip__back:hover{ background:#E8F1EC; }
+  .slip__nav.is-terracotta .slip__close:hover{ background:#B83232; color:#FFFFFF; }
+  .slip__nav.is-terracotta .slip__back svg{ width:16px; height:16px; }
+  .slip__nav.is-terracotta .slip__close svg{ width:14px; height:14px; }
 
   .screen{ padding:6px 22px 26px; }
 
@@ -798,12 +808,17 @@
   var closeBtn = document.getElementById('closeBtn');
   var backBtn = document.getElementById('backBtn');
   var sheetTitle = document.getElementById('sheetTitle');
+  var slipNav = document.querySelector('.slip__nav');
   var screens = document.querySelectorAll('.screen');
+
+  backBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><line x1="5" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><line x1="19" y1="5" x2="5" y2="19" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
 
   function showScreen(id, title, showBack){
     screens.forEach(function(s){ s.hidden = s.id !== id; });
     sheetTitle.textContent = title;
     backBtn.hidden = !showBack;
+    slipNav.classList.toggle('is-terracotta', Boolean(showBack));
     if(id === 'screen-replies'){ fabDot.style.display = 'none'; }
   }
 
