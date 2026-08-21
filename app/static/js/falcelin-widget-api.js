@@ -15,6 +15,7 @@
   var commentForm = document.getElementById('commentForm');
   var complaintForm = document.getElementById('cabashoForm');
   var savedSignature = '';
+  var complaintRecap = document.querySelector('#screen-cabasho .recap');
 
   if (!token || !overlay || !modal || !fab) return;
 
@@ -82,7 +83,7 @@
         '<span class="reply-slip__office">' + escapeHtml(item.reply.office) + '</span>' +
         '<span class="reply-slip__date">' + escapeHtml(item.reply.date) + '</span></div><p>' + escapeHtml(item.reply.message) + '</p></div>';
     } else if (item.status === 'pending') {
-      html += '<div class="pending-note">⌛ La sugayo jawaabta xafiiska waxbarashada.</div>';
+      html += '<div class="pending-note">⌛ La sugayo jawaabta xafiiska imtixaannada.</div>';
     }
     return html + '</div></details>';
   }
@@ -229,6 +230,7 @@
   });
 
   document.querySelector('[data-screen="screen-cabasho"]').addEventListener('click', function () {
+    if (complaintRecap) complaintRecap.hidden = false;
     window.setTimeout(loadSavedSignature, 0);
   });
 
@@ -269,7 +271,9 @@
         signature: document.getElementById('signatureInput').value || ''
       })
     }).then(function (payload) {
+      document.getElementById('cabashoRef').textContent = payload.ref;
       document.getElementById('cabashoConfirmRef').textContent = payload.ref;
+      if (complaintRecap) complaintRecap.hidden = true;
       complaintForm.hidden = true;
       document.getElementById('cabashoConfirm').hidden = false;
       loadReplies(false);

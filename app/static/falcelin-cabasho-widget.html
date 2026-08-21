@@ -338,8 +338,31 @@
 
   /* ---------- Confirmation ---------- */
   .confirm{ text-align:center; padding:14px 4px 4px; }
-  .seal--big{ width:60px; height:60px; margin:0 auto 16px; border:3px solid var(--accent); color:var(--accent); font-size:24px; display:flex; align-items:center; justify-content:center; transform:scale(0); animation:stamp .35s cubic-bezier(.34,1.56,.64,1) forwards; }
-  @keyframes stamp{ to{ transform:scale(1) rotate(-6deg); } }
+  .success-seal{ position:relative; width:180px; height:180px; margin:0 auto 4px; }
+  .success-seal__ring,.success-seal__shock,.success-seal__disc,.success-seal__check,.success-seal__confetti{ position:absolute; top:50%; left:50%; }
+  .success-seal__ring{ width:104px; height:104px; margin:-52px 0 0 -52px; border:1.5px solid var(--seal-mid); border-radius:50%; opacity:0; }
+  .success-seal.run .success-seal__ring{ animation:success-ripple 1.6s ease-out .15s infinite; }
+  .success-seal.run .success-seal__ring:nth-child(2){ animation-delay:.55s; }
+  .success-seal.run .success-seal__ring:nth-child(3){ animation-delay:.95s; }
+  @keyframes success-ripple{ 0%{opacity:.5;transform:scale(.72)} 100%{opacity:0;transform:scale(1.55)} }
+  .success-seal__disc{ width:104px; height:104px; margin:-52px 0 0 -52px; transform:scale(2.6) rotate(-14deg); opacity:0; }
+  .success-seal.run .success-seal__disc{ animation:success-stamp .55s cubic-bezier(.2,.9,.3,1.3) forwards; }
+  @keyframes success-stamp{ 0%{transform:scale(2.6) rotate(-14deg);opacity:0} 55%{transform:scale(.94) rotate(2deg);opacity:1} 75%{transform:scale(1.05) rotate(-1deg)} 100%{transform:scale(1) rotate(0);opacity:1} }
+  .success-seal__shock{ width:104px; height:104px; margin:-52px 0 0 -52px; border:2px solid var(--seal-mid); border-radius:50%; opacity:0; }
+  .success-seal.run .success-seal__shock{ animation:success-shock .6s ease-out .35s forwards; }
+  @keyframes success-shock{ 0%{opacity:.6;transform:scale(.9)} 100%{opacity:0;transform:scale(1.5)} }
+  .success-seal__check{ width:44px; height:44px; margin:-22px 0 0 -22px; display:flex; align-items:center; justify-content:center; transform:scale(0); }
+  .success-seal.run .success-seal__check{ animation:success-check-pop .5s cubic-bezier(.34,1.56,.64,1) .5s forwards,success-check-pulse 1.6s ease-in-out 1.05s infinite; }
+  @keyframes success-check-pop{ 0%{transform:scale(0)} 65%{transform:scale(1.15)} 100%{transform:scale(1)} }
+  @keyframes success-check-pulse{ 0%,100%{transform:scale(1)} 50%{transform:scale(1.09)} }
+  .success-seal__check svg{ width:100%;height:100%; }.success-seal__check path{ fill:none;stroke:#fff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:34;stroke-dashoffset:34; }
+  .success-seal.run .success-seal__check path{ animation:success-draw .3s ease .78s forwards; }
+  @keyframes success-draw{ to{stroke-dashoffset:0} }
+  .success-seal__confetti{ width:8px;height:12px;margin:-6px 0 0 -4px;border-radius:1px;opacity:0;background:var(--confetti); }
+  .success-seal.run .success-seal__confetti{ animation:success-fly .9s cubic-bezier(.2,.65,.4,1) .52s forwards; }
+  @keyframes success-fly{ 0%{opacity:1;transform:translate(0,0) rotate(0) scale(.6)} 100%{opacity:0;transform:var(--fly-to) rotate(var(--fly-rot)) scale(1)} }
+  .success-seal--teal{--seal-mid:#2B6F63;--seal-top:#5FA894;--seal-deep:#1F5349}.success-seal--brick{--seal-mid:#8C3B32;--seal-top:#B06158;--seal-deep:#6E2E27}.success-seal--brass{--seal-mid:#A9812E;--seal-top:#D8B45B;--seal-deep:#7C5E20}
+  @media (prefers-reduced-motion:reduce){.success-seal *{animation-duration:.01ms!important;animation-iteration-count:1!important}.success-seal__disc{transform:scale(1);opacity:1}.success-seal__check{transform:scale(1)}.success-seal__check path{stroke-dashoffset:0}}
   .confirm p{ font-size:13.5px; color:var(--ink-soft); line-height:1.6; margin:0 0 20px; }
   .confirm-ref{ font-family:var(--font-mono); color:var(--ink); }
 
@@ -412,11 +435,11 @@
           </span>
           <span class="option-card__chev" aria-hidden="true">›</span>
         </button>
-        <button class="option-card" data-screen="screen-replies" data-title="Jawaabta Admin-ka">
+        <button class="option-card" data-screen="screen-replies" data-title="Jawaabta Xafiiska">
           <span class="option-card__icon" aria-hidden="true"><i class="fa-solid fa-inbox"></i></span>
           <span class="option-card__text">
-            <span class="option-card__title">Jawaabta Admin-ka</span>
-            <span class="option-card__desc">Eeg jawaabaha xafiiska waxbarashada</span>
+          <span class="option-card__title">Jawaabta Xafiiska</span>
+          <span class="option-card__desc">Eeg jawaabaha xafiiska imtixaannada</span>
           </span>
           <span class="option-card__badge" id="repliesBadge" hidden><i class="fa-solid fa-bell" aria-hidden="true"></i> <b></b></span>
           <span class="option-card__chev" aria-hidden="true">›</span>
@@ -509,9 +532,14 @@
         </div>
       </form>
       <div class="confirm" id="commentConfirm" hidden>
-        <div class="seal--big" aria-hidden="true">✓</div>
+        <div class="success-seal success-seal--teal run" aria-hidden="true">
+          <i class="success-seal__ring"></i><i class="success-seal__ring"></i><i class="success-seal__ring"></i><i class="success-seal__shock"></i>
+          <svg class="success-seal__disc" viewBox="0 0 104 104"><defs><radialGradient id="feedbackSealTeal" cx="35%" cy="28%" r="80%"><stop offset="0%" stop-color="var(--seal-top)"/><stop offset="55%" stop-color="var(--seal-mid)"/><stop offset="100%" stop-color="var(--seal-deep)"/></radialGradient></defs><circle cx="52" cy="52" r="48" fill="url(#feedbackSealTeal)"/><circle cx="52" cy="52" r="40" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.5" stroke-dasharray="2 4"/></svg>
+          <span class="success-seal__check"><svg viewBox="0 0 36 36"><path d="M9 19 L15 25 L27 11"/></svg></span>
+          <i class="success-seal__confetti" style="--confetti:#A9812E;--fly-to:translate(-58px,-48px);--fly-rot:120deg"></i><i class="success-seal__confetti" style="--confetti:#2B6F63;--fly-to:translate(58px,-46px);--fly-rot:-140deg"></i><i class="success-seal__confetti" style="--confetti:#8C3B32;--fly-to:translate(-70px,8px);--fly-rot:220deg"></i><i class="success-seal__confetti" style="--confetti:#D8B45B;--fly-to:translate(70px,10px);--fly-rot:-200deg"></i>
+        </div>
         <h3 style="font-family:var(--font-display);margin:0 0 8px;">Waad ku mahadsan tahay!</h3>
-        <p>Falcelintaadu (<strong class="confirm-ref" id="commentConfirmRef"></strong>) way soo gaadhay xafiiska waxbarashada.</p>
+        <p>Falcelintaada (<strong class="confirm-ref" id="commentConfirmRef"></strong>) way gaadhay xafiiska Imtixaannada.</p>
         <button type="button" class="btn btn--primary btn--block" id="commentDoneBtn">Dhamayso</button>
       </div>
     </div>
@@ -519,7 +547,7 @@
     <!-- SCREEN: CABASHO -->
     <div class="screen" id="screen-cabasho" hidden>
       <div class="ref-stub">
-        <span><span class="ref-stub__label">Tixraac</span><br><span class="ref-stub__value" id="cabashoRef">CAB-2026-0000</span></span>
+        <span><span class="ref-stub__label">Tixraac</span><br><span class="ref-stub__value" id="cabashoRef">—</span></span>
         <span class="ref-stub__date" id="cabashoDate">--</span>
       </div>
 
@@ -630,9 +658,14 @@
       </form>
 
       <div class="confirm" id="cabashoConfirm" hidden>
-        <div class="seal--big" aria-hidden="true">✓</div>
-        <h3 style="font-family:var(--font-display);margin:0 0 8px;">Cabashaadu waa la aqbalay</h3>
-        <p>Tixraacaagu waa <strong class="confirm-ref" id="cabashoConfirmRef"></strong>. Xafiiska waxbarashadu wuxuu kula soo xiriiri doonaa 3–5 maalmood gudahood.</p>
+        <div class="success-seal success-seal--brick run" aria-hidden="true">
+          <i class="success-seal__ring"></i><i class="success-seal__ring"></i><i class="success-seal__ring"></i><i class="success-seal__shock"></i>
+          <svg class="success-seal__disc" viewBox="0 0 104 104"><defs><radialGradient id="complaintSealBrick" cx="35%" cy="28%" r="80%"><stop offset="0%" stop-color="var(--seal-top)"/><stop offset="55%" stop-color="var(--seal-mid)"/><stop offset="100%" stop-color="var(--seal-deep)"/></radialGradient></defs><circle cx="52" cy="52" r="48" fill="url(#complaintSealBrick)"/><circle cx="52" cy="52" r="40" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.5" stroke-dasharray="2 4"/></svg>
+          <span class="success-seal__check"><svg viewBox="0 0 36 36"><path d="M9 19 L15 25 L27 11"/></svg></span>
+          <i class="success-seal__confetti" style="--confetti:#A9812E;--fly-to:translate(-58px,-48px);--fly-rot:120deg"></i><i class="success-seal__confetti" style="--confetti:#2B6F63;--fly-to:translate(58px,-46px);--fly-rot:-140deg"></i><i class="success-seal__confetti" style="--confetti:#8C3B32;--fly-to:translate(-70px,8px);--fly-rot:220deg"></i><i class="success-seal__confetti" style="--confetti:#D8B45B;--fly-to:translate(70px,10px);--fly-rot:-200deg"></i>
+        </div>
+        <h3 style="font-family:var(--font-display);margin:0 0 8px;">CABASHADAADA WAA LA GUDBIYEY!</h3>
+        <p>Tixraacaagu waa <strong class="confirm-ref" id="cabashoConfirmRef"></strong>. Xafiiska Imtixaannada waxa uu kuugu soo warcelin doonaa 24 saac gudahood. Ee isha ku hay button-ka JAWAABTA XAFIISKA ee System-ka.</p>
         <button type="button" class="btn btn--primary btn--block" id="cabashoSeeReplies">La Soco Xaaladda →</button>
         <button type="button" class="btn btn--ghost btn--block" id="cabashoDoneBtn">Dhamayso</button>
       </div>
@@ -690,7 +723,7 @@
   });
 
   function genRef(prefix){
-    return prefix + '-...';
+    return '—';
   }
   function today(){
     return new Date().toLocaleDateString('so-SO', { year:'numeric', month:'short', day:'numeric' });
@@ -951,7 +984,7 @@
     cabashoConfirm.hidden = false;
   });
   cabashoDoneBtn.addEventListener('click', closeSheet);
-  cabashoSeeReplies.addEventListener('click', function(){ showScreen('screen-replies', 'Jawaabta Admin-ka', true); });
+  cabashoSeeReplies.addEventListener('click', function(){ showScreen('screen-replies', 'Jawaabta Xafiiska', true); });
 
   /* ---------- Replies ---------- */
   var items = [
@@ -959,7 +992,7 @@
       excerpt:'Waxaan filayay in dhibcaha maaddadan ka sarreeyaan...',
       details:'Waxaan filayay in dhibcaha maaddadan Kimikada ka sarreeyaan 90-ka la i siiyay, maadaama imtixaanka dambe aan ku guulaystay in ka badan. Fadlan i sharaxa sida loo xisaabiyay.',
       status:'answered',
-      reply:{ office:'Xafiiska Waxbarashada', date:'14 Ogosto 2026',
+      reply:{ office:'Xafiiska Imtixaannada', date:'14 Ogosto 2026',
         message:'Waan dib u eegnay dhibcahaaga Kimikada. Xisaabintu waxay ku salaysnayd celceliska imtixaannada hore iyo kan dambe (40/60). Dhibcahaagu waa sax — 90/100. Waad ku mahadsantahay in aad nala soo xiriirtay.' } },
     { ref:'CAB-2026-5190', type:'cabasho', date:'17 Ogosto 2026', subject:'Wadarta Dhibcaha',
       excerpt:'Wadarta guud ee dhibcahayga ma isku waafaqsana...',
@@ -995,7 +1028,7 @@
         '<span class="reply-slip__seal">✓</span><span class="reply-slip__office">' + item.reply.office + '</span>' +
         '<span class="reply-slip__date">' + item.reply.date + '</span></div><p>' + item.reply.message + '</p></div>';
     } else if(item.status === 'pending'){
-      html += '<div class="pending-note">⏳ La sugayo jawaabta xafiiska waxbarashada.</div>';
+      html += '<div class="pending-note">⏳ La sugayo jawaabta xafiiska imtixaannada.</div>';
     }
     body.innerHTML = html;
     d.appendChild(summary);
