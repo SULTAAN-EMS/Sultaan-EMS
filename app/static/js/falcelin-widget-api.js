@@ -14,6 +14,7 @@
   var msgList = document.getElementById('msgList');
   var commentForm = document.getElementById('commentForm');
   var complaintForm = document.getElementById('cabashoForm');
+  var savedSignature = '';
 
   if (!token || !overlay || !modal || !fab) return;
 
@@ -137,6 +138,73 @@
     }).catch(function () {});
   }
 
+  function paintSavedSignature(signature) {
+    var canvas = document.getElementById('sigCanvas');
+    var input = document.getElementById('signatureInput');
+    var pad = document.getElementById('sigpad');
+    var hint = document.getElementById('sigHint');
+    var save = document.getElementById('sigSaveBtn');
+    if (!canvas || !signature) return;
+    savedSignature = signature;
+    var image = new Image();
+    image.onload = function () {
+      var rect = canvas.getBoundingClientRect();
+      var ratio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.max(1, Math.round(rect.width * ratio));
+      canvas.height = Math.max(1, Math.round(rect.height * ratio));
+      var ctx = canvas.getContext('2d');
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      ctx.drawImage(image, 0, 0, rect.width, rect.height);
+      input.value = signature;
+      pad.classList.add('is-locked');
+      hint.classList.add('is-hidden');
+      if (save) save.classList.add('is-saved');
+      var status = document.getElementById('sigStatus');
+      if (status) status.textContent = '✓ Saxeex hore loo kaydiyay';
+    };
+    image.src = signature;
+  }
+
+  function loadSavedSignature() {
+    return requestJson('/api/falcelin/signature?token=' + encodeURIComponent(token))
+      .then(function (payload) { paintSavedSignature(payload.signature || ''); })
+      .catch(function () {});
+  }
+
+  var signatureSaveButton = document.getElementById('sigSaveBtn');
+  if (signatureSaveButton) {
+    signatureSaveButton.addEventListener('click', function () {
+      window.setTimeout(function () {
+        var input = document.getElementById('signatureInput');
+        if (!input || !input.value) return;
+        requestJson('/api/falcelin/signature', {
+          method: 'POST',
+          body: JSON.stringify({ token: token, signature: input.value })
+        }).then(function () {
+          savedSignature = input.value;
+          var status = document.getElementById('sigStatus');
+          if (status) status.textContent = '✓ Saxeexa si joogto ah ayaa loo kaydiyay';
+        }).catch(function (error) { showFormError(complaintForm, error.message); });
+      }, 0);
+    });
+  }
+
+  var signatureClearButton = document.getElementById('sigClearBtn');
+  if (signatureClearButton) {
+    signatureClearButton.addEventListener('click', function () {
+      var input = document.getElementById('signatureInput');
+      if (!savedSignature) return;
+      requestJson('/api/falcelin/signature', {
+        method: 'DELETE',
+        body: JSON.stringify({ token: token })
+      }).then(function () {
+        savedSignature = '';
+        if (input) input.value = '';
+      }).catch(function (error) { showFormError(complaintForm, error.message); });
+    });
+  }
+
   function notifyParent(state) {
     if (window.parent !== window) window.parent.postMessage({ type: 'falcelin:' + state }, window.location.origin);
   }
@@ -158,6 +226,10 @@
 
   document.querySelector('[data-screen="screen-replies"]').addEventListener('click', function () {
     window.setTimeout(function () { loadReplies(true); }, 0);
+  });
+
+  document.querySelector('[data-screen="screen-cabasho"]').addEventListener('click', function () {
+    window.setTimeout(loadSavedSignature, 0);
   });
 
   commentForm.addEventListener('submit', function (event) {
@@ -211,4 +283,5 @@
   loadSubjects();
   loadResultSummary();
   loadReplies(false);
+  loadSavedSignature();
 }());

@@ -354,6 +354,43 @@ def _feedback_context_from_request():
     return student, exam, None
 
 
+def _validate_student_signature(value):
+    signature = str(value or "").strip()
+    if signature and not signature.startswith("data:image/png;base64,"):
+        return None, "Saxeexa lama aqoonsan."
+    if len(signature) > 2_500_000:
+        return None, "Saxeexu aad buu u weyn yahay."
+    return signature, None
+
+
+@public_bp.route("/api/falcelin/signature", methods=["GET"])
+def get_feedback_signature():
+    student, _exam, error = _feedback_context_from_request()
+    if error:
+        return error
+    return jsonify(ok=True, signature=student.saved_signature_data or "")
+
+
+@public_bp.route("/api/falcelin/signature", methods=["POST", "DELETE"])
+@csrf.exempt
+def save_feedback_signature():
+    student, _exam, error = _feedback_context_from_request()
+    if error:
+        return error
+    if request.method == "DELETE":
+        student.saved_signature_data = None
+        db.session.commit()
+        return jsonify(ok=True, signature="")
+
+    payload = request.get_json(silent=True) or {}
+    signature, validation_error = _validate_student_signature(payload.get("signature"))
+    if validation_error or not signature:
+        return jsonify(ok=False, message=validation_error or "Fadlan marka hore ku saxiix."), 400
+    student.saved_signature_data = signature
+    db.session.commit()
+    return jsonify(ok=True, signature=signature)
+
+
 def _feedback_ref(prefix, model):
     year = datetime.utcnow().year
     for _ in range(12):
@@ -410,9 +447,20 @@ def feedback_subjects():
     student, exam, error = _feedback_context_from_request()
     if error:
         return error
+    level_id = student.academic_level_id
+    if not level_id and student.academic_class:
+        level_id = student.academic_class.academic_level_id
+    if not level_id:
+        return jsonify(ok=True, subjects=[])
     subjects = (
         Subject.query.join(Result, Result.subject_id == Subject.id)
-        .filter(Result.student_id == student.id, Result.exam_id == exam.id, Result.is_published.is_(True))
+        .filter(
+            Result.student_id == student.id,
+            Result.exam_id == exam.id,
+            Result.is_published.is_(True),
+            Subject.academic_level_id == level_id,
+            Subject.is_active.is_(True),
+        )
         .order_by(Subject.sort_order, Subject.name)
         .distinct()
         .all()
@@ -474,12 +522,13 @@ def submit_complaint():
     complaint_type = str(payload.get("type") or "").strip().lower()
     subject_name = str(payload.get("subject") or "").strip()
     details = str(payload.get("details") or "").strip()
-    signature = str(payload.get("signature") or "").strip()
+    signature = str(payload.get("signature") or "").strip() or (student.saved_signature_data or "")
     valid_types = {"maaddo", "wadar", "celcelis", "system", "kale"}
     if complaint_type not in valid_types or not details:
         return jsonify(ok=False, message="Fadlan buuxi dhammaan xogta cabashada."), 400
-    if signature and not signature.startswith("data:image/png;base64,"):
-        return jsonify(ok=False, message="Saxeexa lama aqoonsan."), 400
+    signature, signature_error = _validate_student_signature(signature)
+    if signature_error:
+        return jsonify(ok=False, message=signature_error), 400
     if complaint_type == "maaddo" and not subject_name:
         return jsonify(ok=False, message="Fadlan dooro maaddada cabashada."), 400
     if len(details) > 5000 or len(signature) > 2_500_000:

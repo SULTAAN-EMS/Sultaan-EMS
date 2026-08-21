@@ -187,6 +187,9 @@ class Student(TimestampMixin, db.Model):
 
     photo_path = db.Column(db.String(255))
     note = db.Column(db.Text)
+    # The student's reusable result-portal signature. Existing complaint
+    # records keep their own historical signature_data unchanged.
+    saved_signature_data = db.Column(db.Text, nullable=True)
 
     is_result_locked = db.Column(db.Boolean, default=False, nullable=False)
     lock_reason = db.Column(db.String(255))

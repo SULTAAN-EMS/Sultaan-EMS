@@ -939,13 +939,8 @@
 
   cabashoForm.addEventListener('submit', function(e){
     e.preventDefault();
-    if(!signatureInput.value){
-      sigpadEl.classList.add('is-error');
-      sigHint.classList.remove('is-hidden');
-      sigHint.textContent = 'Fadlan ku saxiix oo riix "Kaydi Saxeexa"';
-      sigpadEl.scrollIntoView({ behavior:'smooth', block:'center' });
-      return;
-    }
+    // A previously saved student signature is reused by the live API.
+    // Drawing a new signature is optional unless the student replaces it.
     // Halkan ku dar codsiga xagjirka (backend), tusaale:
     // fetch('/api/cabasho', { method:'POST', body: JSON.stringify({
     //   ref: cabashoRef.textContent, type: cabashoForm.ctype.value, subject: subjectSelect.value,

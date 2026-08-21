@@ -17,62 +17,110 @@
 <style>.fc-student-message{background:linear-gradient(135deg,#EAF3FB,#F5F9FD);border-color:#C7DDED;border-left-color:#3D6B8C}.fc-student-message strong{color:#2A4E68}.fc-reply-slip{background:linear-gradient(135deg,#E7F4EF,#F6FBF9);border-left-color:#2B6F63}.fc-reply-slip>div{color:#1F5349}.fc-reply-slip p{color:#173B36}</style>
 <style>.fc-delete{position:absolute;right:16px;top:15px;width:34px;height:34px;border:0;border-radius:10px;background:#FDE8E8;color:#C62828;font-size:15px;cursor:pointer;transition:transform .15s,background .15s}.fc-delete:hover{background:#C62828;color:#fff;transform:scale(1.06)}.fc-entry .fc-reply{right:58px}</style>
 <style>.fc-delete-card{text-align:center;border-top:4px solid #C62828}.fc-delete-icon{display:grid;place-items:center;width:54px;height:54px;margin:0 auto 14px;border-radius:16px;background:#FDE8E8;color:#C62828;font-size:22px}.fc-delete-card h2{margin:0 0 7px}.fc-delete-card>p{margin:0;color:#66758D;font-size:13px}.fc-delete-actions{display:flex;justify-content:center;gap:10px;margin-top:22px}.fc-delete-actions button{min-width:110px;height:40px;border:0;border-radius:9px;font-weight:700;cursor:pointer}.fc-cancel{background:#EEF2F5;color:#46566C}.fc-confirm-delete{background:#C62828;color:#fff}.fc-confirm-delete:hover{background:#A61F1F}.fc-success-toast{position:fixed;right:24px;bottom:24px;z-index:1500;display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid #B8E2CE;border-radius:13px;background:#F2FBF6;color:#175B3B;box-shadow:0 14px 38px rgba(22,70,48,.18);animation:fc-toast-in .25s ease-out}.fc-success-toast[hidden]{display:none}@keyframes fc-toast-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}.fc-success-toast>span{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#2B8A5A;color:#fff;font-size:16px}.fc-success-toast strong,.fc-success-toast small{display:block}.fc-success-toast strong{font-size:13px}.fc-success-toast small{margin-top:2px;color:#47745D;font-size:11px}</style>
-<style>.fc-status-chips a.all{background:linear-gradient(135deg,#DCEAF8,#EEF5FC);color:#24527D}.fc-status-chips a.pending{background:linear-gradient(135deg,#FFF0C9,#FFF8E9);color:#966500}.fc-status-chips a.answered{background:linear-gradient(135deg,#D9F3E8,#EFFAF5);color:#187052}.fc-filter-control.class{background:linear-gradient(135deg,#FFE5C7,#FFF4E8);color:#A75A12}.fc-filter-control.type{background:linear-gradient(135deg,#F9DDE0,#FFF0F1);color:#9B3F4D}.fc-filter-control.sort{background:linear-gradient(135deg,#E8DDFC,#F5F0FF);color:#6840A0}.fc-status-chips a.active{outline:2px solid currentColor;outline-offset:-2px}</style>
+<style>.fc-status-chips{display:flex;flex:1;gap:14px;padding:0;background:transparent}.fc-status-chips a{flex:1;justify-content:center;min-height:38px;box-sizing:border-box}.fc-status-chips a.all{background:linear-gradient(135deg,#DCEAF8,#EEF5FC);color:#24527D}.fc-status-chips a.pending{background:linear-gradient(135deg,#FFF0C9,#FFF8E9);color:#966500}.fc-status-chips a.answered{background:linear-gradient(135deg,#D9F3E8,#EFFAF5);color:#187052}.fc-filter-control.class{background:linear-gradient(135deg,#FFE5C7,#FFF4E8);color:#A75A12}.fc-filter-control.type{background:linear-gradient(135deg,#F9DDE0,#FFF0F1);color:#9B3F4D}.fc-filter-control.sort{background:linear-gradient(135deg,#E8DDFC,#F5F0FF);color:#6840A0}.fc-status-chips a.active{outline:2px solid currentColor;outline-offset:-2px}@media(max-width:900px){.fc-status-chips{flex:1 1 100%}}</style>
 <style>.fc-reaction-sticker{display:inline-flex;width:31px;height:31px;align-items:center;justify-content:center;border-radius:9px;background:#fff;border:1px solid #DCE5E9}.fc-reaction-sticker svg{width:27px;height:27px;display:block;filter:drop-shadow(0 2px 3px rgba(22,35,63,.18));transform-origin:center bottom}.fc-reaction-sticker:hover svg{animation:.7s ease-in-out infinite}.fc-reaction-sticker.like:hover svg{animation-name:fc-react-tilt}.fc-reaction-sticker.love:hover svg{animation-name:fc-react-beat}.fc-reaction-sticker.care:hover svg{animation-name:fc-react-squeeze}.fc-reaction-sticker.wow:hover svg{animation-name:fc-react-gasp}@keyframes fc-react-tilt{25%{transform:rotate(-12deg) translateY(-2px)}75%{transform:rotate(9deg) translateY(-2px)}}@keyframes fc-react-beat{50%{transform:scale(1.15)}}@keyframes fc-react-squeeze{50%{transform:scale(.9,1.08)}}@keyframes fc-react-gasp{50%{transform:scale(1.1)}} </style>
 <style>html,body{max-width:100%;overflow-x:hidden}.fc-admin-page{width:100%;max-width:none;margin:0;padding:24px;box-sizing:border-box;overflow-x:hidden}.fc-filters{flex-wrap:wrap!important;overflow-x:visible!important}.fc-rating .fc-stars{color:#A9812E!important;font-size:16px!important;letter-spacing:1px;white-space:nowrap}.fc-rating .fc-stars em{color:#B9C3CE!important}.fc-rating .fc-reaction-icon{display:inline-grid!important;visibility:visible!important;opacity:1!important;color:#2B6F63!important}.fc-rating .fc-reaction-icon i{display:block!important;visibility:visible!important;font-size:14px!important}</style>
+<style>
+  .admin-main:has(.fc-admin-page){padding-top:0}
+  .fc-admin-page{padding-top:0}
+
+  /* Keep this long page's sidebar as one viewport-sized sticky rail. The
+     middle navigation may scroll, but the brand and logout area must not. */
+  .admin-body:has(.fc-admin-page) .sidebar{
+    overflow:hidden;
+  }
+  .admin-body:has(.fc-admin-page) .sidebar .side-nav{
+    min-height:0;
+    overflow-y:auto;
+    overflow-x:hidden;
+  }
+
+  /* This page can be much taller than the viewport. Keep its admin rail
+     anchored to the viewport while only the feedback content scrolls. */
+  @media (min-width:821px){
+    .admin-body:has(.fc-admin-page){
+      display:block;
+    }
+    .admin-body:has(.fc-admin-page) .sidebar{
+      position:fixed;
+      inset:0 auto 0 0;
+      width:var(--admin-sidebar-width);
+      height:100vh;
+      box-sizing:border-box;
+      z-index:40;
+    }
+    .admin-body:has(.fc-admin-page) .admin-main{
+      margin-left:var(--admin-sidebar-width);
+      width:calc(100% - var(--admin-sidebar-width));
+      min-width:0;
+      box-sizing:border-box;
+      transition:margin-left 280ms cubic-bezier(.4,0,.2,1);
+    }
+  }
+  @media (max-width:820px){
+    .admin-body:has(.fc-admin-page){
+      display:grid;
+    }
+    .admin-body:has(.fc-admin-page) .sidebar{
+      position:static;
+      width:auto;
+      height:auto;
+    }
+    .admin-body:has(.fc-admin-page) .admin-main{ margin-left:0; width:auto; }
+  }
+</style>
 {% endblock %}
 {% block admin_content %}
 <main class="fc-admin-page">
   <header class="fc-admin-hero">
     <div class="fc-hero-icon">{% if ui_settings.logo_path %}<img src="{{ asset_url(ui_settings.logo_path) }}" alt="{{ ui_settings.school_name or 'Dugsiga' }} logo">{% else %}<i class="fa-solid fa-comments"></i>{% endif %}</div>
     <div><p>XAFIISKA IMTIXAANNADA</p><h1>Falcelin &amp; Cabasho</h1><span>Dib u eeg farriimaha ardayda, kana jawaab hal meel.</span></div>
-    <div class="fc-hero-count"><strong>{{ feedback_rows|length + complaint_rows|length }}</strong><small>Farriimo muuqda</small></div>
+    <div class="fc-hero-count"><strong id="fcVisibleCount">{{ feedback_rows|length + complaint_rows|length }}</strong><small>Farriimo muuqda</small></div>
   </header>
 
   <section class="fc-stat-cards" aria-label="Tirakoobka Falcelinta iyo Cabashooyinka">
-    <article class="fc-stat teal"><span class="fc-stat-icon"><i class="fa-solid fa-comments"></i></span><strong>{{ feedback_rows|length }}</strong><small>Wadarta Falcelin</small></article>
-    <article class="fc-stat steel"><span class="fc-stat-icon"><i class="fa-solid fa-flag"></i></span><strong>{{ complaint_rows|length }}</strong><small>Wadarta Cabashooyinka</small></article>
-    <article class="fc-stat brass"><span class="fc-stat-icon"><i class="fa-solid fa-hourglass-half"></i></span><strong>{{ feedback_rows|selectattr('replies','equalto',[])|list|length + complaint_rows|selectattr('replies','equalto',[])|list|length }}</strong><small>Sugaya Jawaab</small></article>
-    <article class="fc-stat answered"><span class="fc-stat-icon"><i class="fa-solid fa-circle-check"></i></span><strong>{{ feedback_rows|rejectattr('replies','equalto',[])|list|length + complaint_rows|rejectattr('replies','equalto',[])|list|length }}</strong><small>La Jawaabay</small></article>
+    <article class="fc-stat teal"><span class="fc-stat-icon"><i class="fa-solid fa-comments"></i></span><strong id="fcFeedbackCount">{{ feedback_rows|length }}</strong><small>Wadarta Falcelin</small></article>
+    <article class="fc-stat steel"><span class="fc-stat-icon"><i class="fa-solid fa-flag"></i></span><strong id="fcComplaintCount">{{ complaint_rows|length }}</strong><small>Wadarta Cabashooyinka</small></article>
+    <article class="fc-stat brass"><span class="fc-stat-icon"><i class="fa-solid fa-hourglass-half"></i></span><strong id="fcPendingCount">{{ feedback_rows|selectattr('replies','equalto',[])|list|length + complaint_rows|selectattr('replies','equalto',[])|list|length }}</strong><small>Sugaya Jawaab</small></article>
+    <article class="fc-stat answered"><span class="fc-stat-icon"><i class="fa-solid fa-circle-check"></i></span><strong id="fcAnsweredCount">{{ feedback_rows|rejectattr('replies','equalto',[])|list|length + complaint_rows|rejectattr('replies','equalto',[])|list|length }}</strong><small>Laga Jawaabay</small></article>
   </section>
 
   <form class="fc-filters" method="get">
-    <div class="fc-status-chips" aria-label="Xaaladda jawaabta"><a class="all {{ 'active' if not filters.status else '' }}" href="?"><i class="fa-solid fa-layer-group"></i>Dhammaan</a><a class="pending {{ 'active' if filters.status == 'pending' else '' }}" href="?status=pending"><i class="fa-solid fa-hourglass-half"></i>Sugaya</a><a class="answered {{ 'active' if filters.status == 'answered' else '' }}" href="?status=answered"><i class="fa-solid fa-circle-check"></i>La Jawaabay</a></div>
+    <div class="fc-status-chips" aria-label="Xaaladda jawaabta"><a class="all {{ 'active' if not filters.status else '' }}" href="?"><i class="fa-solid fa-layer-group"></i>Dhammaan</a><a class="pending {{ 'active' if filters.status == 'pending' else '' }}" href="?status=pending"><i class="fa-solid fa-hourglass-half"></i>Sugaya</a><a class="answered {{ 'active' if filters.status == 'answered' else '' }}" href="?status=answered"><i class="fa-solid fa-circle-check"></i>Laga Jawaabay</a></div>
     <span class="fc-filter-control class"><i class="fa-solid fa-users"></i><select name="class_id"><option value="">Fasallada</option>{% for class_row in classes %}<option value="{{ class_row.id }}" {% if filters.class_id == class_row.id %}selected{% endif %}>{{ class_row.name }}</option>{% endfor %}</select></span>
     <span class="fc-filter-control type"><i class="fa-solid fa-tag"></i><select name="type"><option value="">Cabashooyinka</option><option value="maaddo" {% if filters.type == 'maaddo' %}selected{% endif %}>Maaddo gaar ah</option><option value="wadar" {% if filters.type == 'wadar' %}selected{% endif %}>Wadarta dhibcaha</option><option value="celcelis" {% if filters.type == 'celcelis' %}selected{% endif %}>Celceliska guud</option><option value="system" {% if filters.type == 'system' %}selected{% endif %}>System</option><option value="kale" {% if filters.type == 'kale' %}selected{% endif %}>Mid kale</option></select></span>
     <span class="fc-filter-control sort"><i class="fa-solid fa-arrow-down-wide-short"></i><select name="sort" aria-label="Kala hormari"><option value="newest" {% if filters.sort != 'oldest' %}selected{% endif %}>Ugu dambeeya hore</option><option value="oldest" {% if filters.sort == 'oldest' %}selected{% endif %}>Ugu horreeya hore</option></select></span>
-    <label><input name="q" value="{{ filters.q }}" placeholder="Raadi arday ama tixraac..."><i class="fa-solid fa-magnifying-glass"></i></label>
   </form>
 
   <section class="fc-section">
-    <div class="fc-section-title"><span class="fc-section-icon teal"><i class="fa-solid fa-heart"></i></span><div><h2>Falcelinta Ardayda</h2><p>Xiddigaha, reactions-ka, iyo faallooyinka natiijada.</p></div><b>{{ feedback_rows|length }}</b></div>
+    <div class="fc-section-title"><span class="fc-section-icon teal"><i class="fa-solid fa-heart"></i></span><div><h2>Falcelinta Ardayda</h2><p>Xiddigaha, reactions-ka, iyo faallooyinka natiijada.</p></div><b id="fcFeedbackSectionCount">{{ feedback_rows|length }}</b></div>
     <div class="fc-list">
       {% for row in feedback_rows %}
       <article class="fc-entry">
         <div class="fc-entry-main"><span class="fc-avatar">{% if row.student.photo_path %}<img src="{{ asset_url(row.student.photo_path) }}" alt="{{ row.student.full_name }}">{% else %}{{ row.student.full_name[:1] }}{% endif %}</span><div><strong>{{ row.student.full_name }}</strong><small>{{ row.student.academic_class.name if row.student.academic_class else row.student.level or 'Fasal lama diiwaangelin' }} · {{ row.student.student_code }}</small></div></div>
         <div class="fc-rating" aria-label="{{ row.reaction|title }}; {{ row.rating }} out of 5 stars"><span class="fc-reaction-sticker {{ row.reaction if row.reaction in ['like','love','care','wow'] else 'like' }}" title="{{ row.reaction|title }}">{% if row.reaction == 'love' %}<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="17" fill="#F4325C"/><path d="M18 27S8 21 8 14.5C8 10 13.5 8 18 13c4.5-5 10-3 10 1.5C28 21 18 27 18 27Z" fill="#fff"/></svg>{% elif row.reaction == 'care' %}<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="17" fill="#FFC531"/><path d="M11 17c1.5-3 4-3 7 0 3-3 5.5-3 7 0" fill="none" stroke="#8A5A12" stroke-width="2" stroke-linecap="round"/><path d="M18 28s-5-3-5-6c0-2 2.5-3 5 0 2.5-3 5-2 5 0 0 3-5 6-5 6Z" fill="#F02D55"/></svg>{% elif row.reaction == 'wow' %}<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="17" fill="#F2994A"/><circle cx="12" cy="14" r="2" fill="#7C3F08"/><circle cx="24" cy="14" r="2" fill="#7C3F08"/><ellipse cx="18" cy="24" rx="3.5" ry="5" fill="#7C3F08"/></svg>{% else %}<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="17" fill="#2E86F0"/><path d="M10 16h6v13h-6zM16 16l3-10c.6-2 3.5-1.5 3.2.7L21 13h6c1.5 0 2.5 1.4 2 2.8l-2.5 9.5c-.3 1-1.2 1.7-2.3 1.7H16Z" fill="#fff"/></svg>{% endif %}</span><span class="fc-stars">{{ '★' * row.rating }}<em>{{ '★' * (5 - row.rating) }}</em></span></div>
         <div class="fc-student-message"><strong><i class="fa-solid fa-message"></i> Fariinta ardayga ka timid</strong>{{ row.comment }}</div>
-        <div class="fc-entry-meta"><code>{{ row.ref_number }}</code><span>{{ row.reaction|title }} · {{ row.created_at.strftime('%d %b %Y, %H:%M') }}</span>{% if row.replies %}<em class="answered">La jawaabay</em>{% else %}<em class="pending">La diray</em>{% endif %}</div>
+        <div class="fc-entry-meta"><code>{{ row.ref_number }}</code><span>{{ row.reaction|title }} · {{ row.created_at.strftime('%d %b %Y, %H:%M') }}</span>{% if row.replies %}<em class="answered">Laga Jawaabay</em>{% else %}<em class="pending">Lasoo diray</em>{% endif %}</div>
         {% if row.replies %}<div class="fc-reply-slip"><div>{% if ui_settings.logo_path %}<img class="fc-reply-slip-logo" src="{{ asset_url(ui_settings.logo_path) }}" alt="Logo">{% else %}<i class="fa-solid fa-circle-check"></i>{% endif %}<strong>XAFIISKA IMTIXAANNADA</strong><time>{{ row.replies[-1].created_at.strftime('%d %b %Y') }}</time></div><p>{{ row.replies[-1].message }}</p></div>{% endif %}
         <button type="button" class="fc-reply" data-type="feedback" data-id="{{ row.id }}" data-student="{{ row.student.full_name|e }}" data-ref="{{ row.ref_number }}"><i class="fa-solid fa-reply"></i> Reply</button>
-        <button type="button" class="fc-delete" data-type="feedback" data-id="{{ row.id }}" data-ref="{{ row.ref_number }}" aria-label="Tirtir falcelinta"><i class="fa-solid fa-trash-can"></i></button>
+        <button type="button" class="fc-delete" data-type="feedback" data-has-replies="{{ '1' if row.replies else '0' }}" data-id="{{ row.id }}" data-ref="{{ row.ref_number }}" aria-label="Tirtir falcelinta"><i class="fa-solid fa-trash-can"></i></button>
       </article>
       {% else %}<div class="fc-empty"><i class="fa-regular fa-message"></i> Weli falcelin lama helin.</div>{% endfor %}
     </div>
   </section>
 
   <section class="fc-section">
-    <div class="fc-section-title"><span class="fc-section-icon brick"><i class="fa-solid fa-flag"></i></span><div><h2>Cabashooyinka</h2><p>Cabashooyinka saxeexan iyo xaaladdooda.</p></div><b>{{ complaint_rows|length }}</b></div>
+    <div class="fc-section-title"><span class="fc-section-icon brick"><i class="fa-solid fa-flag"></i></span><div><h2>Cabashooyinka</h2><p>Cabashooyinka saxeexan iyo xaaladdooda.</p></div><b id="fcComplaintSectionCount">{{ complaint_rows|length }}</b></div>
     <div class="fc-list">
       {% for row in complaint_rows %}
       <article class="fc-entry complaint">
         <div class="fc-entry-main"><span class="fc-avatar brick-avatar">{% if row.student.photo_path %}<img src="{{ asset_url(row.student.photo_path) }}" alt="{{ row.student.full_name }}">{% else %}{{ row.student.full_name[:1] }}{% endif %}</span><div><strong>{{ row.student.full_name }}</strong><small>{{ row.student.academic_class.name if row.student.academic_class else row.student.level or 'Fasal lama diiwaangelin' }} · {{ row.student.student_code }}</small></div></div>
         <span class="fc-type">{{ row.complaint_type }}{% if row.subject_name %} · {{ row.subject_name }}{% endif %}</span>
         <div class="fc-student-message"><strong><i class="fa-solid fa-message"></i> Fariinta ardayga ka timid</strong>{{ row.details }}</div>
-        <div class="fc-entry-meta"><code>{{ row.ref_number }}</code><span>{{ row.created_at.strftime('%d %b %Y, %H:%M') }}</span><em class="{{ 'answered' if row.replies else 'pending' }}">{{ 'La jawaabay' if row.replies else 'Sugaya jawaab' }}</em>{% if row.signature_data %}<button class="fc-signature" type="button" data-signature="{{ row.signature_data|e }}"><i class="fa-solid fa-signature"></i> Saxeex</button>{% endif %}</div>
+        <div class="fc-entry-meta"><code>{{ row.ref_number }}</code><span>{{ row.created_at.strftime('%d %b %Y, %H:%M') }}</span><em class="{{ 'answered' if row.replies else 'pending' }}">{{ 'Laga Jawaabay' if row.replies else 'Sugaya jawaab' }}</em>{% if row.signature_data %}<button class="fc-signature" type="button" data-signature="{{ row.signature_data|e }}"><i class="fa-solid fa-signature"></i> Saxeex</button>{% endif %}</div>
         {% if row.replies %}<div class="fc-reply-slip"><div>{% if ui_settings.logo_path %}<img class="fc-reply-slip-logo" src="{{ asset_url(ui_settings.logo_path) }}" alt="Logo">{% else %}<i class="fa-solid fa-circle-check"></i>{% endif %}<strong>XAFIISKA IMTIXAANNADA</strong><time>{{ row.replies[-1].created_at.strftime('%d %b %Y') }}</time></div><p>{{ row.replies[-1].message }}</p></div>{% endif %}
         <button type="button" class="fc-reply" data-type="complaint" data-id="{{ row.id }}" data-student="{{ row.student.full_name|e }}" data-ref="{{ row.ref_number }}"><i class="fa-solid fa-reply"></i> Reply</button>
-        <button type="button" class="fc-delete" data-type="complaint" data-id="{{ row.id }}" data-ref="{{ row.ref_number }}" aria-label="Tirtir cabashada"><i class="fa-solid fa-trash-can"></i></button>
+        <button type="button" class="fc-delete" data-type="complaint" data-has-replies="{{ '1' if row.replies else '0' }}" data-id="{{ row.id }}" data-ref="{{ row.ref_number }}" aria-label="Tirtir cabashada"><i class="fa-solid fa-trash-can"></i></button>
       </article>
       {% else %}<div class="fc-empty"><i class="fa-regular fa-flag"></i> Weli cabasho lama helin.</div>{% endfor %}
     </div>
@@ -119,6 +167,9 @@
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.message || 'Tirtiristu way fashilantay.');
       deleteModal.hidden = true; button.closest('.fc-entry').remove(); deleteTarget = null;
+      const dec = id => { const el = document.getElementById(id); if (el) el.textContent = Math.max(0, Number(el.textContent || 0) - 1); };
+      dec('fcVisibleCount'); dec(button.dataset.type === 'feedback' ? 'fcFeedbackCount' : 'fcComplaintCount'); dec(button.dataset.type === 'feedback' ? 'fcFeedbackSectionCount' : 'fcComplaintSectionCount');
+      dec(button.dataset.hasReplies === '1' ? 'fcAnsweredCount' : 'fcPendingCount');
       deleteSuccess.hidden = false; setTimeout(() => { deleteSuccess.hidden = true; }, 3200);
     } catch (error) { confirmButton.disabled = false; confirmButton.innerHTML = '<i class="fa-solid fa-trash-can"></i> Tirtir'; document.getElementById('fcDeleteContext').textContent = error.message; deleteModal.hidden = false; }
   });
@@ -138,8 +189,6 @@
     let timer;
     const autoSubmit = () => { clearTimeout(timer); timer = setTimeout(() => filterForm.submit(), 300); };
     filterForm.querySelectorAll('select').forEach(control => control.addEventListener('change', autoSubmit));
-    const search = filterForm.querySelector('input[name="q"]');
-    if (search) search.addEventListener('input', autoSubmit);
   }
 })();
 </script>
