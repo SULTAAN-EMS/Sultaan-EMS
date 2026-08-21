@@ -3221,22 +3221,37 @@ tbody tr:hover td { background: #f8fbff; }
   justify-content: center;
   min-width: 0;
   max-width: 100%;
-  padding: 2px 3px;
+  padding: 2px 5px;
+  border: 1px solid #fb923c !important;
+  border-radius: 999px;
+  font-size: .74rem;
   line-height: 1;
   white-space: nowrap;
-  background:#fff7ed !important;
-  border-color:#fb923c !important;
+  background:#fff8ef !important;
   color:#9a3412 !important;
+  box-shadow:none !important;
 }
 .premium-result .dynamic-grade-badge.uf-result-indicator b {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   min-width: 0;
-  padding: 2px 4px;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0;
   line-height: 1;
-  font-size: .74rem;
+  font-size: inherit;
   white-space: nowrap;
-  background:#fff7ed !important;
+  background:transparent !important;
   color:#9a3412 !important;
+}
+.premium-result .dynamic-grade-badge.uf-result-indicator .mg-danger-icon {
+  display: inline-block;
+  margin-right: 6px;
+  position: relative;
+  top: -1px;
+  font-size: .9em;
+  line-height: 1;
+  vertical-align: middle;
 }
 .rh-uf { display:inline-flex; align-items:center; padding:2px 7px; border:1px solid #fb923c; border-radius:999px; background:#fff7ed; color:#9a3412; font-size:.78rem; font-weight:800; white-space:nowrap; }
 .result-footer-logo {

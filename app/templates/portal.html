@@ -5,6 +5,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/result-success-overlay.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/top10-tunnel.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/verified-name-badge.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/mg-detail-card.css') }}">
 {% endblock %}
 {% block content %}
 {% from 'partials/verified_name_badge.html' import verified_name_badge %}
@@ -28,7 +29,7 @@
     --portal-footer-font-weight: {{ settings.search_footer_font_weight }};
   }
 </style>
-<main class="public-hero student-homepage premium-homepage {% if result %}has-result{% endif %}" {% if result %}style="
+<main class="public-hero student-homepage premium-homepage {% if result %}has-result{% endif %}" {% if result %}data-mg-token="{{ feedback_access_token|e }}" style="
   --sis-primary: {{ settings.result_dashboard_primary_color }};
   --sis-secondary: {{ settings.result_dashboard_secondary_color }};
   --sis-accent: {{ settings.result_dashboard_accent_color }};
@@ -309,13 +310,13 @@
               <thead><tr><th>No.</th><th>Subject</th><th>Full Mark</th><th>Mark Obtained</th><th>Grade</th><th>Grade Point</th></tr></thead>
               <tbody>
                 {% for row in result.subjects %}
-                  <tr>
+                  <tr data-mg-subject-id="{{ row.subject_id or '' }}" data-mg-subject="{{ row.subject|e }}" data-mg-theme-index="{{ loop.index0 % 8 }}">
                     <td data-label="No.">{{ loop.index }}</td>
                     <td data-label="Subject">{{ row.subject }}</td>
                     <td data-label="Full Mark">{{ row.max_score|academic_number(settings) }}</td>
-                    <td data-label="Mark Obtained">{% if row.is_uf %}<span class="dynamic-grade-badge mark-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b>⚠️ MG</b></span>{% else %}<span class="dynamic-grade-badge mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.score|academic_number(settings) }}</b></span>{% endif %}</td>
-                    <td data-label="Grade">{% if row.is_uf %}<span class="dynamic-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b>⚠️ MG</b></span>{% else %}<span class="dynamic-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.grade.grade }}</b></span>{% endif %}</td>
-                    <td data-label="Grade Point">{% if row.is_uf %}<span class="dynamic-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b>⚠️ MG</b></span>{% else %}{{ row.grade.grade_point|academic_number(settings) }}{% endif %}</td>
+                    <td data-label="Mark Obtained">{% if row.is_uf %}<span class="dynamic-grade-badge mark-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b><span class="mg-danger-icon" aria-hidden="true">⚠️</span><span>MG</span></b></span>{% else %}<span class="dynamic-grade-badge mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.score|academic_number(settings) }}</b></span>{% endif %}</td>
+                    <td data-label="Grade">{% if row.is_uf %}<span class="dynamic-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b><span class="mg-danger-icon" aria-hidden="true">⚠️</span><span>MG</span></b></span>{% else %}<span class="dynamic-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.grade.grade }}</b></span>{% endif %}</td>
+                    <td data-label="Grade Point">{% if row.is_uf %}<span class="dynamic-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b><span class="mg-danger-icon" aria-hidden="true">⚠️</span><span>MG</span></b></span>{% else %}{{ row.grade.grade_point|academic_number(settings) }}{% endif %}</td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -394,6 +395,27 @@
         </section>
       </div>
     </section>
+
+    <div class="mg-detail-modal" id="mgDetailModal" aria-hidden="true" data-token="{{ feedback_access_token|e }}" data-endpoint="{{ url_for('public.feedback_mg_details') }}">
+      <article class="mg-detail-card" role="dialog" aria-modal="true" aria-labelledby="mgDetailTitle">
+        <div class="mg-detail-stamp">MA GELIN</div>
+        <div class="mg-detail-top">
+          <div class="mg-badge-row">
+            <div class="mg-badge-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+            <div class="mg-badge-text"><h2 id="mgDetailTitle">MG - MA GELIN</h2><div class="mg-badge-meaning">Maaddadan imtixaankeeda uma aaddan fadhiisan - sidaas awgeed buundo iyo grade lama xisaabin.</div></div>
+          </div>
+        </div>
+        <div class="mg-subject"><div><div class="mg-subject-label">Maadada</div><div class="mg-subject-name" data-mg-field="subject">-</div></div><div class="mg-session-tag" data-mg-session-tag>-</div></div>
+        <div class="mg-detail-list">
+          <div class="mg-detail-loading" hidden><div><i class="fa-solid fa-spinner fa-spin"></i><span>Macluumaadka Attendance ayaa la soo qaadayaa...</span></div></div>
+          <div class="mg-detail-row"><div class="mg-detail-icon" data-mg-icon="date"></div><div class="mg-detail-body"><div class="mg-detail-label">Maalinta imtixaanka</div><div class="mg-detail-value" data-mg-field="exam-date">-</div><span class="mg-source-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Laga soo xigtay Attendance</span></div></div>
+          <div class="mg-detail-row"><div class="mg-detail-icon" data-mg-icon="hall"></div><div class="mg-detail-body"><div class="mg-detail-label">Fasal-imtixaanka aad ku qorneyd</div><div class="mg-detail-value" data-mg-field="exam-room">-</div></div></div>
+          <div class="mg-detail-row"><div class="mg-detail-icon" data-mg-icon="reason"></div><div class="mg-detail-body"><div class="mg-detail-label">Sababta maqnaanshaha</div><div class="mg-detail-value reason" data-mg-field="reason">-</div></div></div>
+        </div>
+        <div class="mg-detail-footer"><button type="button" class="mg-close-btn" data-mg-close>Gartay</button></div>
+      </article>
+    </div>
+    <script src="{{ url_for('static', filename='js/mg-detail-card.js') }}"></script>
 
     <div class="falcelin-widget-host" id="falcelinWidgetHost" hidden aria-hidden="true">
       <iframe id="falcelinWidgetFrame" title="Falcelin iyo Cabasho" src="{{ url_for('static', filename='falcelin-cabasho-widget.html') }}?token={{ feedback_access_token|urlencode }}&amp;embedded=1&amp;v=3" loading="eager"></iframe>

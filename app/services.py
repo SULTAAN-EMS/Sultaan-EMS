@@ -1225,6 +1225,36 @@ def attendance_uf_subject_keys(exam, student_ids, subject_ids=None):
     }
 
 
+def attendance_uf_record(exam, student_id, subject_id):
+    """Return the authoritative non-sitting attendance row for one MG subject."""
+    if not exam or not student_id or not subject_id:
+        return None
+
+    scope_filters = [AttendanceRecord.exam_id == exam.id]
+    legacy_exam_type = ExamType.query.filter_by(
+        academic_year_id=exam.academic_year_id,
+        name=exam.name,
+    ).first()
+    if legacy_exam_type:
+        scope_filters.append(
+            (AttendanceRecord.exam_id.is_(None))
+            & (AttendanceRecord.exam_type_id == legacy_exam_type.id)
+        )
+
+    record = (
+        AttendanceRecord.query
+        .filter(
+            AttendanceRecord.academic_year_id == exam.academic_year_id,
+            AttendanceRecord.student_id == student_id,
+            AttendanceRecord.subject_id == subject_id,
+            or_(*scope_filters),
+        )
+        .order_by(AttendanceRecord.recorded_at.desc(), AttendanceRecord.id.desc())
+        .first()
+    )
+    return record if record and normalize_attendance_status(record.status) in NON_SAT_STATUSES else None
+
+
 def result_payload(student, exam=None, public_only=True):
     query = Result.query.filter_by(student_id=student.id)
     if exam:
@@ -1286,6 +1316,7 @@ def result_payload(student, exam=None, public_only=True):
         subject_rows.append(
             {
                 "id": row.id,
+                "subject_id": row.subject_id,
                 "subject": subject_display_name(row.subject, settings).strip(),
                 "score": float(row.score),
                 "max_score": float(row.subject.max_score),
@@ -1319,6 +1350,7 @@ def result_payload(student, exam=None, public_only=True):
             subject_rows.append(
                 {
                     "id": None,
+                    "subject_id": subject.id,
                     "subject": subject_display_name(subject, settings).strip(),
                     "score": 0.0,
                     "max_score": float(subject.max_score),

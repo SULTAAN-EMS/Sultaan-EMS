@@ -10,7 +10,8 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from . import csrf, db
 from .i18n import language_redirect
 from .models import AcademicYear, Exam, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject
-from .services import active_exam_for_student, get_settings, result_payload, result_success_overlay_config, top_students_for_class
+from .services import active_exam_for_student, attendance_uf_record, get_settings, result_payload, result_success_overlay_config, top_students_for_class
+from .attendance_rules import normalize_attendance_status
 from .verification import verification_payload
 
 public_bp = Blueprint("public", __name__)
@@ -497,6 +498,52 @@ def feedback_result_summary():
         rows.append({"subject": item.get("subject") or "", "score": item.get("score"), "max_score": item.get("max_score"), "grade": grade.get("grade") if isinstance(grade, dict) else str(grade or "")})
     overall = payload.get("overall_grade") or {}
     return jsonify(ok=True, subjects=rows, total=payload.get("total"), max_total=payload.get("max_total"), average=payload.get("average"), grade=overall.get("grade") if isinstance(overall, dict) else str(overall or ""))
+
+
+@public_bp.route("/api/falcelin/mg-details")
+def feedback_mg_details():
+    """Return the real attendance context behind one Ma Gelin subject."""
+    student, exam, error = _feedback_context_from_request()
+    if error:
+        return error
+
+    subject_id = request.args.get("subject_id", type=int)
+    subject = db.session.get(Subject, subject_id) if subject_id else None
+    if not subject or not subject.is_active:
+        return jsonify(ok=False, message="Macluumaadka maaddadan lama heli karo."), 404
+
+    student_level_id = student.academic_level_id or (
+        student.academic_class.academic_level_id if student.academic_class else None
+    )
+    if not student_level_id or subject.academic_level_id != student_level_id:
+        return jsonify(ok=False, message="Maaddadani kuma jirto heerka ardeygan."), 404
+
+    record = attendance_uf_record(exam, student.id, subject.id)
+    if not record:
+        return jsonify(ok=False, message="Attendance record-ka Ma Gelin lama helin."), 404
+
+    status_labels = {
+        "absent": "Maqnaansho / Ma aaddan soo xaadirin",
+        "sick": "Xanuun / Cudur daar",
+        "emergency": "Xaalad degdeg ah",
+        "excused": "Fasax la oggolaaday",
+    }
+    status_key = normalize_attendance_status(record.status)
+    session = record.exam_session
+    exam_date = session.session_date if session else record.attendance_date
+    hall = record.exam_hall.name if record.exam_hall else None
+    if not hall and record.school_class:
+        hall = record.school_class.name
+    return jsonify(
+        ok=True,
+        subject_name=subject.name,
+        session=session.sitting_label if session else "Fadhi aan la cayimin",
+        exam_date=exam_date.strftime("%d %B %Y") if exam_date else "Taariikh aan la cayimin",
+        exam_room=hall or "Fasal-imtixaan aan la cayimin",
+        absence_reason=(record.note or "").strip() or status_labels.get(status_key, status_key.title()),
+        registered_by=(record.marked_by.full_name if record.marked_by else "Attendance"),
+        recorded_time=record.recorded_at.strftime("%H:%M") if record.recorded_at else "",
+    )
 
 
 @public_bp.route("/api/falcelin", methods=["POST"])
