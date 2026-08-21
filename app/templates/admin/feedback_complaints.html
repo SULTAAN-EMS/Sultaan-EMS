@@ -203,7 +203,7 @@
   const markMessageRead = entry => {
     if (!entry || entry.dataset.deliveryStatus === 'read' || entry.dataset.readPending === '1') return;
     entry.dataset.readPending = '1';
-    fetch(`/admin/falcelin-cabasho/${entry.dataset.entryType}/${entry.dataset.entryId}/read`, { method:'POST', headers:{'X-CSRFToken':'{{ csrf_token() }}'} })
+    (window.__rawFetch || window.fetch)(`/admin/falcelin-cabasho/${entry.dataset.entryType}/${entry.dataset.entryId}/read`, { method:'POST', headers:{'X-CSRFToken':'{{ csrf_token() }}', 'X-No-Loader':'1'} })
       .then(response => response.json())
       .then(data => { if (data.ok) { entry.dataset.deliveryStatus = 'read'; } })
       .catch(() => { entry.dataset.readPending = '0'; });
@@ -217,9 +217,16 @@
     }), { threshold:[.65] });
     document.querySelectorAll('.fc-entry[data-entry-id]').forEach(entry => readObserver.observe(entry));
   }
-  const keepOfficeOnline = () => fetch('/admin/falcelin-cabasho/delivered', { method:'POST', headers:{'X-CSRFToken':'{{ csrf_token() }}'} }).catch(() => {});
+  if (window.__fcOfficeHeartbeat) window.clearInterval(window.__fcOfficeHeartbeat);
+  const keepOfficeOnline = () => (window.__rawFetch || window.fetch)('/admin/falcelin-cabasho/delivered', { method:'POST', headers:{'X-CSRFToken':'{{ csrf_token() }}', 'X-No-Loader':'1'} }).catch(() => {});
   keepOfficeOnline();
-  window.setInterval(keepOfficeOnline, 5000);
+  window.__fcOfficeHeartbeat = window.setInterval(keepOfficeOnline, 5000);
+  window.addEventListener('pagehide', () => {
+    if (window.__fcOfficeHeartbeat) {
+      window.clearInterval(window.__fcOfficeHeartbeat);
+      window.__fcOfficeHeartbeat = null;
+    }
+  }, { once: true });
   const filterForm = document.querySelector('.fc-filters');
   if (filterForm) {
     let timer;

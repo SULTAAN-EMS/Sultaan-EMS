@@ -130,6 +130,7 @@
     var value = String(url || '').toLowerCase();
     var headers = options && options.headers;
     return value.indexOf('autosave') !== -1 || value.indexOf('favicon') !== -1 || value.indexOf('status') !== -1 ||
+      value.indexOf('/api/ping') !== -1 || value.indexOf('/delivered') !== -1 ||
       (options && (options.noLoader || (headers && (headers['X-No-Loader'] || headers['x-no-loader']))));
   }
 
