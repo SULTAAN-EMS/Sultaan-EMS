@@ -5,7 +5,7 @@
   <title>Report Card - {{ result.student.student_code }}</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/print.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/mg-detail-card.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/mg-detail-card.css', v='mg-loading-20260821') }}">
   <style>
     :root {
       --report-primary: {{ result.settings.report_primary_color or result.settings.primary_color or '#002060' }};
