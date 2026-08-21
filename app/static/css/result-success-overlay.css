@@ -17,6 +17,12 @@
 .result-success-overlay.is-open {
   opacity: 1;
   visibility: visible;
+  /* Keep the celebration visible without blocking the result actions behind it. */
+  pointer-events: none;
+}
+
+.result-success-overlay.is-open .ov-card,
+.result-success-overlay.is-open .result-overlay-close {
   pointer-events: auto;
 }
 

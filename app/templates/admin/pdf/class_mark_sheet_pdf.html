@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Whole Class Results - {{ selected_exam.name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/mg-detail-card.css') }}">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
@@ -54,6 +55,11 @@
             font-family: "Segoe UI Emoji", Arial, sans-serif;
             font-weight: 800;
             white-space: nowrap;
+        }
+
+        button.uf-result-indicator {
+            cursor: pointer;
+            font: inherit;
         }
 
         .page {
@@ -678,7 +684,7 @@
                                 <th class="col-name">Student Name<small>Mother's Name</small></th>
                                 <th class="col-class">Class</th>
                                 {% for subject in subjects %}
-                                    <th class="col-subject">{{ subject.name|upper }}</th>
+                                    <th class="col-subject" data-mg-subject-id="{{ subject.id }}" data-mg-subject="{{ subject.name|e }}">{{ subject.name|upper }}</th>
                                 {% endfor %}
                                 <th class="col-total">Total<small>({{ page_students[0].total_max|academic_number(settings) if page_students else 0 }})</small></th>
                                 <th class="col-percent">Percentage</th>
@@ -690,7 +696,7 @@
                             {% for row in page_students %}
                                 {% set grade_text = row.grade.grade %}
                                 {% set grade_class = 'aplus' if grade_text == 'A+' else grade_text[:1]|lower %}
-                                <tr>
+                                <tr data-mg-token="{{ row.mg_token|e }}">
                                     <td>{{ start_idx + loop.index }}</td>
                                     <td>
                                         <div class="id-with-photo">
@@ -825,5 +831,7 @@
             </div>
         </div>
     {% endfor %}
+    {% include "partials/mg_detail_modal.html" with context %}
+    <script src="{{ url_for('static', filename='js/mg-detail-card.js') }}"></script>
 </body>
 </html>

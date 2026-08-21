@@ -1,7 +1,8 @@
 import secrets
+from io import BytesIO
 from datetime import date, datetime
 
-from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
@@ -9,7 +10,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from . import csrf, db
 from .i18n import language_redirect
-from .models import AcademicYear, Exam, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject
+from .models import AcademicLevel, AcademicYear, Exam, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject
 from .services import active_exam_for_student, attendance_uf_record, get_settings, result_payload, result_success_overlay_config, top_students_for_class
 from .attendance_rules import normalize_attendance_status
 from .verification import verification_payload
@@ -256,7 +257,127 @@ def print_report(student_code):
     payload["generated_at"] = datetime.now()
     db.session.commit()
 
-    return render_template("print_report.html", result=payload, settings=settings)
+    return render_template(
+        "print_report.html",
+        result=payload,
+        settings=settings,
+        feedback_token=feedback_access_token(student, exam),
+    )
+
+
+def _safe_pdf_filename_part(value, fallback):
+    invalid = '<>:"/\\|?*'
+    cleaned = "".join(" " if ch in invalid or ord(ch) < 32 else ch for ch in str(value or ""))
+    cleaned = " ".join(cleaned.split()).strip(" .")
+    return cleaned or fallback
+
+
+@public_bp.route("/download/<student_code>")
+def download_report(student_code):
+    """Download the currently viewed published result as a real PDF file."""
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from xml.sax.saxutils import escape
+
+    student_code = student_code.strip()
+    settings = get_settings()
+    student = Student.query.filter(func.trim(Student.student_code) == student_code).first_or_404()
+    if student.is_result_locked:
+        return render_template("locked_result.html", settings=settings, student=student), 403
+
+    requested_exam_id = request.args.get("exam_id", type=int)
+    exam_query = (
+        Exam.query.join(Result, Result.exam_id == Exam.id)
+        .filter(Result.student_id == student.id, Result.is_published.is_(True))
+    )
+    if requested_exam_id:
+        exam_query = exam_query.filter(Exam.id == requested_exam_id)
+    else:
+        exam_query = exam_query.filter(Exam.academic_year_id == student.academic_year_id)
+    exam = exam_query.order_by(Exam.id.desc()).first_or_404()
+    payload = result_payload(student, exam=exam, public_only=True)
+
+    buffer = BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=16 * mm,
+        leftMargin=16 * mm,
+        topMargin=14 * mm,
+        bottomMargin=14 * mm,
+        title=f"{student.full_name} - {exam.name}",
+        author=settings.get("school_name") or "SULTAAN EMS",
+    )
+    styles = getSampleStyleSheet()
+    school_style = ParagraphStyle("school", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=16, leading=19, textColor=colors.HexColor("#102A5C"), alignment=TA_CENTER, spaceAfter=3)
+    title_style = ParagraphStyle("title", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=12, leading=15, textColor=colors.HexColor("#102A5C"), alignment=TA_CENTER, spaceAfter=10)
+    body_style = ParagraphStyle("body", parent=styles["BodyText"], fontName="Helvetica", fontSize=9, leading=12, textColor=colors.HexColor("#1E293B"))
+    story = [
+        Paragraph(escape(str(settings.get("school_name") or "SULTAAN EMS")), school_style),
+        Paragraph(escape(f"{exam.name} - {exam.academic_year.name}"), title_style),
+    ]
+    student_info = [
+        [Paragraph("Student", body_style), Paragraph(escape(str(student.full_name)), body_style), Paragraph("Student ID", body_style), Paragraph(escape(str(student.student_code)), body_style)],
+        [Paragraph("Class", body_style), Paragraph(escape(str(getattr(student.school_class, "name", "-"))), body_style), Paragraph("Academic Year", body_style), Paragraph(escape(str(exam.academic_year.name)), body_style)],
+    ]
+    info_table = Table(student_info, colWidths=[24 * mm, 64 * mm, 30 * mm, 58 * mm])
+    info_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F7F5EF")),
+        ("BOX", (0, 0), (-1, -1), .7, colors.HexColor("#D8CDAE")),
+        ("INNERGRID", (0, 0), (-1, -1), .35, colors.HexColor("#E7E2D4")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    story.extend([info_table, Spacer(1, 9 * mm)])
+    rows = [[Paragraph("No.", body_style), Paragraph("Subject", body_style), Paragraph("Full Mark", body_style), Paragraph("Mark Obtained", body_style), Paragraph("Grade", body_style)]]
+    for index, item in enumerate(payload.get("subjects", []), 1):
+        grade = item.get("grade") or {}
+        rows.append([
+            str(index),
+            Paragraph(escape(str(item.get("subject") or "-")), body_style),
+            f"{item.get('max_score', 0):g}",
+            "MG" if item.get("is_uf") else f"{item.get('score', 0):g}",
+            "MG" if item.get("is_uf") else str(grade.get("grade") or "-"),
+        ])
+    result_table = Table(rows, colWidths=[14 * mm, 72 * mm, 28 * mm, 38 * mm, 28 * mm], repeatRows=1)
+    result_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#102A5C")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), .45, colors.HexColor("#DCE3EC")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"), ("ALIGN", (2, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    story.extend([result_table, Spacer(1, 8 * mm)])
+    summary = Table([
+        [Paragraph("Total", body_style), Paragraph("Average", body_style), Paragraph("Grade", body_style), Paragraph("Rank", body_style)],
+        [f"{payload.get('total', 0):g}/{payload.get('max_total', 0):g}", f"{payload.get('average', 0):.2f}%", str((payload.get("overall_grade") or {}).get("grade") or "-"), str(payload.get("rank") or "-")],
+    ], colWidths=[42 * mm] * 4)
+    summary.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E4EEF7")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#102A5C")),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), .45, colors.HexColor("#C9D7E6")),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    story.append(summary)
+    document.build(story)
+    buffer.seek(0)
+
+    name_parts = (student.full_name or "Student").split()[:2]
+    student_name = _safe_pdf_filename_part(" ".join(name_parts), "Student")
+    exam_name = _safe_pdf_filename_part(exam.name, "Exam")
+    year_name = _safe_pdf_filename_part(exam.academic_year.name, "Academic Year")
+    filename = f"{student_name} - {exam_name} ({year_name}).pdf"
+    return send_file(buffer, mimetype="application/pdf", as_attachment=True, download_name=filename)
 
 
 # =========================
@@ -350,7 +471,10 @@ def _feedback_context_from_request():
     has_published_result = bool(
         student and exam and Result.query.filter_by(student_id=student_id, exam_id=exam_id, is_published=True).first()
     )
-    if not has_published_result:
+    # Admin-generated class sheets can include an MG attendance record even
+    # when that student has no published Result row yet. The signed token is
+    # still required; only an authenticated admin may inspect that context.
+    if not has_published_result and not current_user.is_authenticated:
         return None, None, (jsonify(ok=False, message="Natiijadan looma heli karo Falcelin."), 404)
     return student, exam, None
 
@@ -507,14 +631,28 @@ def feedback_mg_details():
     if error:
         return error
 
-    subject_id = request.args.get("subject_id", type=int)
-    subject = db.session.get(Subject, subject_id) if subject_id else None
-    if not subject or not subject.is_active:
-        return jsonify(ok=False, message="Macluumaadka maaddadan lama heli karo."), 404
-
     student_level_id = student.academic_level_id or (
         student.academic_class.academic_level_id if student.academic_class else None
     )
+    if not student_level_id and student.level:
+        legacy_level = AcademicLevel.query.filter_by(name=student.level).first()
+        student_level_id = legacy_level.id if legacy_level else None
+    subject_id = request.args.get("subject_id", type=int)
+    subject = db.session.get(Subject, subject_id) if subject_id else None
+    if not subject and request.args.get("subject") and student_level_id:
+        subject = (
+            Subject.query
+            .filter(
+                Subject.academic_level_id == student_level_id,
+                Subject.name == request.args.get("subject").strip(),
+            )
+            .order_by(Subject.id.asc())
+            .first()
+        )
+    # Keep legacy setup rows usable when their old nullable flag is NULL.
+    if not subject or subject.is_active is False:
+        return jsonify(ok=False, message="Macluumaadka maaddadan lama heli karo."), 404
+
     if not student_level_id or subject.academic_level_id != student_level_id:
         return jsonify(ok=False, message="Maaddadani kuma jirto heerka ardeygan."), 404
 
@@ -534,11 +672,20 @@ def feedback_mg_details():
     hall = record.exam_hall.name if record.exam_hall else None
     if not hall and record.school_class:
         hall = record.school_class.name
+    somali_weekdays = ("Isniin", "Talaada", "Arabaca", "Khamiis", "Jumca", "Sabti", "Axad")
+    somali_months = (
+        "Janaayo", "Febraayo", "Maarso", "Abriil", "May", "Juun",
+        "Luulyo", "Agoosto", "Sebtembar", "Oktoobar", "Nofeember", "Diseembar",
+    )
+    exam_date_text = (
+        f"{somali_weekdays[exam_date.weekday()]}, {somali_months[exam_date.month - 1]} {exam_date.day}, {exam_date.year}."
+        if exam_date else "Taariikh aan la cayimin"
+    )
     return jsonify(
         ok=True,
         subject_name=subject.name,
         session=session.sitting_label if session else "Fadhi aan la cayimin",
-        exam_date=exam_date.strftime("%d %B %Y") if exam_date else "Taariikh aan la cayimin",
+        exam_date=exam_date_text,
         exam_room=hall or "Fasal-imtixaan aan la cayimin",
         absence_reason=(record.note or "").strip() or status_labels.get(status_key, status_key.title()),
         registered_by=(record.marked_by.full_name if record.marked_by else "Attendance"),

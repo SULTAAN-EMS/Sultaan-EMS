@@ -88,15 +88,26 @@
   function open(button) {
     activeButton = button;
     applyTheme(button.dataset.mgThemeIndex);
-    showLoading(button.dataset.mgSubject || 'Maadada');
+    var requestToken = button.dataset.mgToken || token;
+    var requestSubjectId = button.dataset.mgSubjectId || '';
+    var requestSubject = button.dataset.mgSubject || 'Maadada';
+    showLoading(requestSubject);
     modal.classList.add('is-open');
     modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('mg-modal-open');
-    var url = endpoint + '?token=' + encodeURIComponent(token) + '&subject_id=' + encodeURIComponent(button.dataset.mgSubjectId || '');
+    if (!endpoint || !requestToken || (!requestSubjectId && !requestSubject)) {
+      showError('Macluumaadka Attendance lama heli karo.');
+      return;
+    }
+    var url = endpoint + '?token=' + encodeURIComponent(requestToken) + '&subject_id=' + encodeURIComponent(requestSubjectId) + '&subject=' + encodeURIComponent(requestSubject);
     fetch(url, { credentials:'same-origin', headers:{ 'X-Requested-With':'XMLHttpRequest' } })
       .then(function (response) { return response.json().then(function (data) { if (!response.ok || !data.ok) throw new Error(data.message || 'Macluumaadka lama heli karo.'); return data; }); })
       .then(showData)
-      .catch(function (error) { showError(error.message); });
+      .catch(function (error) { showError(error.message); })
+      .finally(function () {
+        if (loading) loading.hidden = true;
+        if (detailList) detailList.style.opacity = '1';
+      });
   }
 
   modal.querySelectorAll('[data-mg-icon]').forEach(function (node) {
@@ -104,16 +115,27 @@
     if (body) node.innerHTML = svg(body);
   });
 
-  document.querySelectorAll('tr[data-mg-subject-id] .uf-result-indicator').forEach(function (badge) {
+  document.querySelectorAll('tr[data-mg-subject-id] .uf-result-indicator, tr[data-mg-token] .rh-uf, tr[data-mg-token] .uf-result-indicator').forEach(function (badge) {
     var row = badge.closest('tr');
+    if (!badge.dataset.mgSubjectId && row) {
+      var cell = badge.closest('td');
+      var header = cell && cell.closest('table') && cell.closest('table').querySelector('thead th:nth-child(' + (cell.cellIndex + 1) + ')');
+      badge.dataset.mgSubjectId = header ? (header.dataset.mgSubjectId || '') : '';
+      badge.dataset.mgSubject = header ? (header.dataset.mgSubject || '') : '';
+      badge.dataset.mgToken = row.dataset.mgToken || '';
+      if (!badge.dataset.mgSubject && row.cells && row.cells[1]) {
+        badge.dataset.mgSubject = row.cells[1].textContent.trim();
+      }
+    }
     badge.classList.add('mg-badge-trigger');
-    badge.dataset.mgSubjectId = row.dataset.mgSubjectId;
-    badge.dataset.mgSubject = row.dataset.mgSubject || '';
-    badge.dataset.mgThemeIndex = row.dataset.mgThemeIndex || '0';
+    badge.dataset.mgSubjectId = badge.dataset.mgSubjectId || (row && row.dataset.mgSubjectId) || '';
+    badge.dataset.mgSubject = badge.dataset.mgSubject || (row && row.dataset.mgSubject) || '';
+    badge.dataset.mgToken = badge.dataset.mgToken || (row && row.dataset.mgToken) || '';
+    badge.dataset.mgThemeIndex = badge.dataset.mgThemeIndex || (row && row.dataset.mgThemeIndex) || '0';
     badge.setAttribute('role', 'button');
     badge.setAttribute('tabindex', '0');
     badge.addEventListener('keydown', function (event) {
-      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(badge); }
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); open(badge); }
     });
   });
 
@@ -121,6 +143,6 @@
   modal.addEventListener('click', function (event) { if (event.target === modal) close(); });
   document.addEventListener('keydown', function (event) { if (event.key === 'Escape' && modal.classList.contains('is-open')) close(); });
   document.querySelectorAll('.mg-badge-trigger').forEach(function (button) {
-    button.addEventListener('click', function () { open(button); });
+    button.addEventListener('click', function (event) { event.stopPropagation(); open(button); });
   });
 }());

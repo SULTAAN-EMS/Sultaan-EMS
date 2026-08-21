@@ -725,6 +725,7 @@ def class_roster():
         )
         
         # Build results data for each student
+        from .routes_public import feedback_access_token
         roster_data = []
         for student in students:
             # Get results for this student and exam (only published results)
@@ -772,6 +773,7 @@ def class_roster():
             
             roster_data.append({
                 "student": student,
+                "mg_token": feedback_access_token(student, selected_exam),
                 "subject_data": subject_data,
                 "total_score": total_score,
                 "total_max": total_max,
@@ -1322,6 +1324,7 @@ def export_class_pdf():
 
     # Build roster data
     roster_data = []
+    from .routes_public import feedback_access_token
     for student in students:
         results = Result.query.filter_by(student_id=student.id, exam_id=exam_id, is_published=True).all()
         results_dict = {r.subject_id: r for r in results}
@@ -1350,6 +1353,7 @@ def export_class_pdf():
             is_weak = not is_fail and (weak_config["min"] <= percentage <= weak_config["max"])
 
             subject_data.append({
+                "subject_id": subject.id,
                 "score": score,
                 "percentage": round(percentage, 2),
                 "grade": grade_info,
@@ -1365,6 +1369,7 @@ def export_class_pdf():
 
         roster_data.append({
             "student": student,
+            "mg_token": feedback_access_token(student, selected_exam),
             "subject_data": subject_data,
             "total_score": total_score,
             "total_max": total_max,

@@ -5,6 +5,7 @@
 {% block page_title %}{{ rh_label("roster.title", default="Liiska Natiijada Fasalka") }}{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/results_module.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/mg-detail-card.css') }}">
 
 <div class="results-hub">
   {% include "admin/_results_hub_header.html" %}
@@ -112,7 +113,7 @@
               <th style="width:110px;">ID</th>
               <th>{{ rh_label("roster.student_name", default="Magaca") }}</th>
               {% for subject in subjects %}
-                <th class="mono">{{ subject_display_name(subject, settings) }}{{ selected_year.name[-2:] if selected_year else "" }}</th>
+                <th class="mono" data-mg-subject-id="{{ subject.id }}" data-mg-subject="{{ subject.name|e }}">{{ subject_display_name(subject, settings) }}{{ selected_year.name[-2:] if selected_year else "" }}</th>
               {% endfor %}
               <th>{{ rh_label("roster.total", default="Total") }}</th>
               <th>%</th>
@@ -122,7 +123,7 @@
           </thead>
           <tbody>
             {% for student_data in students %}
-              <tr onclick="viewStudent({{ student_data.student.id }})" style="cursor:pointer;">
+              <tr data-mg-token="{{ student_data.mg_token|e }}" onclick="viewStudent({{ student_data.student.id }})" style="cursor:pointer;">
                 <td class="rh-mono">{{ student_data.student.student_code }}</td>
                 <td>
                   <span class="student-name">{{ student_data.student.full_name }}</span>
@@ -151,6 +152,9 @@
     {% endif %}
   </main>
 </div>
+
+{% include "partials/mg_detail_modal.html" %}
+<script src="{{ url_for('static', filename='js/mg-detail-card.js') }}"></script>
 
 <script>
 const rosterFilterForm = document.getElementById('rosterFilterForm');

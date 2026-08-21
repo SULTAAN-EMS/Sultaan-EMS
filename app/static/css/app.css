@@ -953,6 +953,39 @@ tbody tr:hover td { background: #f8fbff; }
 .result-action-button.share { background: linear-gradient(135deg, #7650d8, #5626b4); }
 .result-action-button.top10 { background: linear-gradient(135deg, #7650d8, #5626b4); }
 .result-action-button.falcelin { background: linear-gradient(135deg, #2B6F63, #1F5349); }
+.result-download-choice { position: relative; min-width: 0; }
+.result-download-choice > .result-action-button { width: 100%; }
+.result-download-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(30, 75, 145, .16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .98);
+  box-shadow: 0 18px 36px rgba(17, 50, 105, .2);
+}
+.result-download-menu[hidden] { display: none; }
+.result-download-menu a {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-areas: "icon text" "icon sub";
+  align-items: center;
+  column-gap: 8px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: #17315f;
+  text-decoration: none;
+  background: #f4f8ff;
+}
+.result-download-menu a:hover { background: #e8f1ff; }
+.result-download-menu i { grid-area: icon; font-size: 1.05rem; color: #1769d2; text-align: center; }
+.result-download-menu span { grid-area: text; font-size: .84rem; font-weight: 800; }
+.result-download-menu small { grid-area: sub; color: #637492; font-size: .72rem; font-weight: 600; }
 .falcelin-widget-host { position:fixed; inset:0; z-index:1200; }
 .falcelin-widget-host iframe { display:block; width:100%; height:100%; border:0; background:transparent; }
 .tunnel-music-preview {

@@ -389,7 +389,13 @@
         </section>
 
         <section class="result-action-panel reference-actions glass-card">
-          <a class="result-action-button download" href="{{ url_for('public.print_report', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}" target="_blank" rel="noopener"><i class="fa-solid fa-download"></i><span>Download Report</span><small>PDF</small></a>
+          <div class="result-download-choice">
+            <button type="button" class="result-action-button download js-result-download-toggle" aria-expanded="false" aria-haspopup="menu"><i class="fa-solid fa-file-arrow-down"></i><span>La-dag/Daabac</span><small>PDF / Print</small></button>
+            <div class="result-download-menu" role="menu" hidden>
+              <a href="{{ url_for('public.download_report', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}" role="menuitem"><i class="fa-solid fa-file-pdf"></i><span>La dag Natiijadaada (PDF)</span><small>Download</small></a>
+              <a href="{{ url_for('public.print_report', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}" target="_blank" rel="noopener" role="menuitem"><i class="fa-solid fa-print"></i><span>Daabac Natiijada</span><small>Print</small></a>
+            </div>
+          </div>
           <button type="button" class="result-action-button falcelin js-falcelin-launch"><i class="fa-solid fa-comment-dots"></i><span>Falcelin</span><small>Faallo &amp; Cabasho</small></button>
           <button type="button" class="result-action-button top10 js-top10-launch" data-top10-url="{{ url_for('public.api_top_students', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}"><i class="fa-solid fa-trophy"></i><span>View Top 10 Students</span><small>Top 10</small></button>
         </section>
@@ -402,7 +408,7 @@
         <div class="mg-detail-top">
           <div class="mg-badge-row">
             <div class="mg-badge-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
-            <div class="mg-badge-text"><h2 id="mgDetailTitle">MG - MA GELIN</h2><div class="mg-badge-meaning">Maaddadan imtixaankeeda uma aaddan fadhiisan - sidaas awgeed buundo iyo grade lama xisaabin.</div></div>
+            <div class="mg-badge-text"><h2 id="mgDetailTitle">MG - MA GELIN</h2></div>
           </div>
         </div>
         <div class="mg-subject"><div><div class="mg-subject-label">Maadada</div><div class="mg-subject-name" data-mg-field="subject">-</div></div><div class="mg-session-tag" data-mg-session-tag>-</div></div>
@@ -412,7 +418,7 @@
           <div class="mg-detail-row"><div class="mg-detail-icon" data-mg-icon="hall"></div><div class="mg-detail-body"><div class="mg-detail-label">Fasal-imtixaanka aad ku qorneyd</div><div class="mg-detail-value" data-mg-field="exam-room">-</div></div></div>
           <div class="mg-detail-row"><div class="mg-detail-icon" data-mg-icon="reason"></div><div class="mg-detail-body"><div class="mg-detail-label">Sababta maqnaanshaha</div><div class="mg-detail-value reason" data-mg-field="reason">-</div></div></div>
         </div>
-        <div class="mg-detail-footer"><button type="button" class="mg-close-btn" data-mg-close>Gartay</button></div>
+        <div class="mg-detail-footer"><div class="mg-footer-message">Maaddadan imtixaankeeda uma aaddan fadhiisan - sidaas awgeed dhibco/darajo lama xisaabin.</div><button type="button" class="mg-close-btn" data-mg-close>Gartay</button></div>
       </article>
     </div>
     <script src="{{ url_for('static', filename='js/mg-detail-card.js') }}"></script>
@@ -459,7 +465,12 @@
           host.hidden = false;
           host.setAttribute('aria-hidden', 'false');
           const open = () => frame.contentWindow.postMessage({ type: 'falcelin:open' }, window.location.origin);
-          if (frame.dataset.ready === 'true') open();
+          let alreadyLoaded = frame.dataset.ready === 'true';
+          try { alreadyLoaded = alreadyLoaded || frame.contentDocument?.readyState === 'complete'; } catch (error) { /* readiness check is optional */ }
+          if (alreadyLoaded) {
+            frame.dataset.ready = 'true';
+            open();
+          }
           else frame.addEventListener('load', function onLoad() { frame.removeEventListener('load', onLoad); frame.dataset.ready = 'true'; open(); });
         }
 
@@ -472,6 +483,21 @@
           launch.focus();
         });
       }());
+      (() => {
+        const choice = document.querySelector('.result-download-choice');
+        const toggle = choice?.querySelector('.js-result-download-toggle');
+        const menu = choice?.querySelector('.result-download-menu');
+        if (!choice || !toggle || !menu) return;
+        const close = () => { menu.hidden = true; toggle.setAttribute('aria-expanded', 'false'); };
+        toggle.addEventListener('click', (event) => {
+          event.stopPropagation();
+          menu.hidden = !menu.hidden;
+          toggle.setAttribute('aria-expanded', String(!menu.hidden));
+        });
+        menu.addEventListener('click', close);
+        document.addEventListener('click', (event) => { if (!choice.contains(event.target)) close(); });
+        document.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
+      })();
     </script>
   {% endif %}
 
@@ -599,6 +625,7 @@
         const tooltip = chart.querySelector(".sunburst-tooltip");
         const center = chart.querySelector(".sunburst-center");
         const palette = ["#087cff", "#8a43e8", "#f0447b", "#ff8a25", "#12c2a6", "#0ea5e9", "#7c3aed", "#10b981", "#f59e0b", "#2563eb", "#ec4899", "#14b8a6"];
+        const precision = Number(chart.dataset.precision || 2);
         const total = subjects.reduce((sum, item) => sum + Math.max(Number(item.percentage) || 0, 1), 0);
         let startAngle = -90;
 
@@ -621,7 +648,6 @@
           ].join(" ");
         };
         const setActive = (item, index) => {
-          const precision = Number(chart.dataset.precision || 2);
           const percent = Number(item.percentage).toFixed(precision);
           tooltip.innerHTML = `<strong>${item.subject}</strong><span>${item.score}/${item.max_score} marks</span><span>Grade ${item.grade} - ${percent}%</span>`;
           center.innerHTML = `<strong>${percent}%</strong><span>${item.grade}</span>`;

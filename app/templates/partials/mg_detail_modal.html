@@ -1,0 +1,19 @@
+<div class="mg-detail-modal" id="mgDetailModal" aria-hidden="true" data-token="{{ mg_token|default('')|e }}" data-endpoint="{{ url_for('public.feedback_mg_details') }}">
+  <article class="mg-detail-card" role="dialog" aria-modal="true" aria-labelledby="mgDetailTitle">
+    <div class="mg-detail-stamp">MA GELIN</div>
+    <div class="mg-detail-top">
+      <div class="mg-badge-row">
+        <div class="mg-badge-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+        <div class="mg-badge-text"><h2 id="mgDetailTitle">MG - MA GELIN</h2></div>
+      </div>
+    </div>
+    <div class="mg-subject"><div><div class="mg-subject-label">Maadada</div><div class="mg-subject-name" data-mg-field="subject">-</div></div><div class="mg-session-tag" data-mg-session-tag>-</div></div>
+    <div class="mg-detail-list">
+      <div class="mg-detail-loading" hidden><div><i class="fa-solid fa-spinner fa-spin"></i><span>Macluumaadka Attendance ayaa la soo qaadayaa...</span></div></div>
+      <div class="mg-detail-row"><div class="mg-detail-icon" data-mg-icon="date"></div><div class="mg-detail-body"><div class="mg-detail-label">Maalinta imtixaanka</div><div class="mg-detail-value" data-mg-field="exam-date">-</div><span class="mg-source-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Laga soo xigtay Attendance</span></div></div>
+      <div class="mg-detail-row"><div class="mg-detail-icon" data-mg-icon="hall"></div><div class="mg-detail-body"><div class="mg-detail-label">Fasal-imtixaanka aad ku qorneyd</div><div class="mg-detail-value" data-mg-field="exam-room">-</div></div></div>
+      <div class="mg-detail-row"><div class="mg-detail-icon" data-mg-icon="reason"></div><div class="mg-detail-body"><div class="mg-detail-label">Sababta maqnaanshaha</div><div class="mg-detail-value reason" data-mg-field="reason">-</div></div></div>
+    </div>
+    <div class="mg-detail-footer"><div class="mg-footer-message">Maaddadan imtixaankeeda uma aaddan fadhiisan - sidaas awgeed dhibco/darajo lama xisaabin.</div><button type="button" class="mg-close-btn" data-mg-close>Gartay</button></div>
+  </article>
+</div>
