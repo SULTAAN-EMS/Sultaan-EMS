@@ -468,7 +468,9 @@
   .msg__original{ font-size:13px; color:var(--ink); line-height:1.6; padding:12px 0 6px; }
   .reply-slip{ margin-top:10px; border-left:3px solid var(--teal); background:#F7FAF9; border-radius:0 6px 6px 0; padding:12px 14px; }
   .reply-slip__head{ display:grid; grid-template-columns:20px minmax(0,1fr) auto; align-items:center; column-gap:8px; margin-bottom:7px; }
-  .reply-slip__seal{ width:20px; height:20px; border-radius:50%; border:2px solid var(--teal); color:var(--teal); font-size:10px; display:flex; align-items:center; justify-content:center; flex:none; }
+  .reply-slip__logo{ width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex:none; overflow:hidden; background:#F7FAF9; color:var(--teal); }
+  .reply-slip__logo img{ display:block; width:100%; height:100%; padding:3px; object-fit:contain; }
+  .reply-slip__logo i{ font-size:16px; }
   .reply-slip__office-lockup{ min-width:0; line-height:1.35; overflow-wrap:anywhere; }
   .reply-slip__office{ font-family:var(--font-mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--teal-deep); white-space:normal; }
   .reply-slip__verified{ width:14px; height:14px; position:relative; display:inline-block; vertical-align:-.16em; margin-left:4px; }
@@ -1152,6 +1154,24 @@
       html += '<div class="pending-note">⏳ La sugayo jawaabta xafiiska imtixaannada.</div>';
     }
     body.innerHTML = html;
+    if(item.reply){
+      var logoSlot = body.querySelector('.reply-slip__seal');
+      if(logoSlot){
+        logoSlot.className = 'reply-slip__logo';
+        logoSlot.innerHTML = '';
+        if(item.reply.logo){
+          var logoImage = document.createElement('img');
+          logoImage.src = item.reply.logo;
+          logoImage.alt = 'Logo';
+          logoSlot.appendChild(logoImage);
+        } else {
+          var logoIcon = document.createElement('i');
+          logoIcon.className = 'fa-solid fa-school';
+          logoIcon.setAttribute('aria-hidden', 'true');
+          logoSlot.appendChild(logoIcon);
+        }
+      }
+    }
     d.appendChild(summary);
     d.appendChild(body);
     msgList.appendChild(d);

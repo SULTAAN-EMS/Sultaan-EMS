@@ -407,10 +407,15 @@ def _feedback_date(value):
 def _feedback_reply_payload(reply):
     if not reply:
         return None
+    settings = get_settings()
+    logo_path = settings.get("logo_path") or ""
+    if logo_path and not str(logo_path).startswith(("http://", "https://", "data:")):
+        logo_path = url_for("static", filename=str(logo_path).replace("\\", "/"))
     return {
         "office": reply.office_name or "Xafiiska Waxbarashada",
         "date": _feedback_date(reply.created_at),
         "message": reply.message,
+        "logo": logo_path,
     }
 
 

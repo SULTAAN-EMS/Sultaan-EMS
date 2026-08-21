@@ -36,6 +36,35 @@
       .replace(/"/g, '&quot;');
   }
 
+  function logoUrl(value) {
+    var path = String(value || '');
+    if (!path) return '';
+    if (/^(https?:|data:|\/)/i.test(path)) return path;
+    return '/static/' + path.replace(/\\/g, '/').replace(/^\/+/, '');
+  }
+
+  function applyReplyLogos(items) {
+    msgList.querySelectorAll('.msg').forEach(function (node, index) {
+      var item = items[index];
+      var oldSeal = node.querySelector('.reply-slip__seal');
+      if (!item || !item.reply || !oldSeal) return;
+      oldSeal.className = 'reply-slip__logo';
+      oldSeal.innerHTML = '';
+      var source = logoUrl(item.reply.logo);
+      if (source) {
+        var image = document.createElement('img');
+        image.src = source;
+        image.alt = 'Logo';
+        oldSeal.appendChild(image);
+      } else {
+        var icon = document.createElement('i');
+        icon.className = 'fa-solid fa-school';
+        icon.setAttribute('aria-hidden', 'true');
+        oldSeal.appendChild(icon);
+      }
+    });
+  }
+
   function requestJson(url, options) {
     options = options || {};
     options.headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
@@ -130,6 +159,7 @@
       msgList.innerHTML = payload.items.length
         ? payload.items.map(itemMarkup).join('')
         : '<div class="empty-state"><span class="empty-state__icon">📭</span><strong>Weli wax falcelin ama cabasho ah ma jirto.</strong><p>Marka aad wax dirto, xaaladdeeda iyo jawaabta xafiiska halkan ayaad ka arki doontaa.</p></div>';
+      applyReplyLogos(payload.items);
       applyVerifiedSealShape();
       paintReplyBadge(payload.unread_count || 0);
       if (markRead && payload.unread_count) {
