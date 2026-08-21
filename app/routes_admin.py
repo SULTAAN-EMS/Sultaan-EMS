@@ -1485,6 +1485,21 @@ def feedback_complaints():
     )
 
 
+@admin_bp.route("/falcelin-cabasho/delivered", methods=["POST"])
+@permission_required("settings")
+def mark_feedback_delivered():
+    """Keep delivery state current while an authorized office inbox is open."""
+    now = datetime.utcnow()
+    changed = 0
+    for model in (StudentFeedback, StudentComplaint):
+        for entry in model.query.filter(model.delivered_at.is_(None)).all():
+            entry.delivered_at = now
+            changed += 1
+    if changed:
+        db.session.commit()
+    return jsonify(ok=True, delivered=changed)
+
+
 @admin_bp.route("/falcelin-cabasho/<string:entry_type>/<int:entry_id>/reply", methods=["POST"])
 @permission_required("settings")
 def reply_feedback_complaint(entry_type, entry_id):

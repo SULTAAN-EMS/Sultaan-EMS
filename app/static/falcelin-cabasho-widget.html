@@ -460,6 +460,7 @@
   .msg__main{ display:flex; flex-direction:column; gap:2px; min-width:0; }
   .msg__ref{ font-family:var(--font-mono); font-size:12px; color:var(--ink); }
   .msg__time{ font-size:11px; color:var(--ink-soft); white-space:nowrap; }
+  .message-meta{ display:inline-flex; align-items:center; gap:5px; flex:0 0 auto; }
   .msg__excerpt{ font-size:12px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .badge{ font-size:10px; font-weight:600; padding:3px 8px; border-radius:20px; letter-spacing:.03em; white-space:nowrap; flex:none; }
   .badge--pending{ background:#F3EEDD; color:var(--brass-deep); }
@@ -480,13 +481,25 @@
   .reply-slip__date{ min-width:52px; max-width:70px; font-size:10.5px; color:var(--ink-soft); text-align:right; line-height:1.25; }
   .reply-slip p{ font-size:13px; color:var(--ink); line-height:1.6; margin:0; }
   .pending-note{ display:flex; align-items:center; gap:8px; margin-top:10px; border:1px dashed var(--line); border-radius:6px; padding:11px 13px; font-size:12px; color:var(--ink-soft); }
-  .message-status{ position:relative; display:inline-flex; align-items:center; gap:2px; margin-left:8px; padding:2px 5px; border:0; border-radius:5px; background:transparent; cursor:pointer; font:600 12px var(--font-body); }
-  .message-status .ticks{ letter-spacing:-2px; font-size:13px; }
-  .message-status--sent{ color:var(--ink-soft); }
-  .message-status--delivered{ color:var(--brass-deep); }
+  .msg__original{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+  .msg__text{ min-width:0; flex:1 1 auto; }
+  .message-status{ position:relative; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; min-width:25px; margin:0; padding:2px 0; border:0; border-radius:5px; background:transparent; cursor:pointer; font:600 12px var(--font-body); }
+  .message-status .ticks{ display:inline-flex; align-items:center; justify-content:center; line-height:1; }
+  .message-status .ticks svg{ display:block; width:20px; height:11px; }
+  .message-status--sent{ color:#667781; }
+  .message-status--delivered{ color:#667781; }
   .message-status--read{ color:#2581E8; }
   .message-status__tip{ position:absolute; z-index:5; right:0; bottom:calc(100% + 7px); width:max-content; max-width:220px; padding:7px 9px; border-radius:7px; background:var(--ink); color:#fff; font-size:11px; font-weight:400; line-height:1.4; text-align:left; opacity:0; pointer-events:none; transform:translateY(3px); transition:opacity .15s ease,transform .15s ease; }
-  .message-status.is-open .message-status__tip{ opacity:1; transform:none; }
+  .status-dialog-layer{ position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:18px; background:rgba(22,35,63,.42); backdrop-filter:blur(6px); animation:status-layer-in .18s ease-out; }
+  .status-dialog-layer[hidden]{ display:none; }
+  .status-dialog-card{ position:relative; width:min(92vw,360px); padding:25px 24px 22px; border:1px solid #C8D4E1; border-radius:18px; background:linear-gradient(145deg,#FFFFFF,#F4F8FC); box-shadow:0 24px 70px rgba(22,35,63,.28); text-align:center; animation:status-card-in .22s cubic-bezier(.2,.8,.3,1.2); }
+  .status-dialog-card.sent{ border-color:#C8D0DC; }.status-dialog-card.delivered{ border-color:#E4D5AA; background:linear-gradient(145deg,#FFFDF7,#F8F3E5); }.status-dialog-card.read{ border-color:#A8D7F5; background:linear-gradient(145deg,#FFFFFF,#EDF8FF); }
+  .status-dialog-close{ position:absolute; top:10px; right:10px; width:30px; height:30px; border:0; border-radius:50%; background:#D64545; color:#FFFFFF; cursor:pointer; font-size:16px; }
+  .status-dialog-icon{ display:grid; place-items:center; width:58px; height:58px; margin:0 auto 14px; border-radius:17px; background:#E7EDF4; color:#52627A; font-size:28px; font-weight:700; }
+  .status-dialog-card.delivered .status-dialog-icon{ background:#F3EEDD; color:var(--brass-deep); }.status-dialog-card.read .status-dialog-icon{ background:#DDF1FF; color:#2FA8F0; }
+  .status-dialog-icon svg{ width:31px; height:auto; }.status-dialog-title{ margin:0 0 8px; color:var(--ink); font:600 17px var(--font-display); }.status-dialog-message{ margin:0; color:var(--ink-soft); font-size:13px; line-height:1.6; }
+  @keyframes status-layer-in{ from{opacity:0} to{opacity:1} } @keyframes status-card-in{ from{opacity:0;transform:scale(.94) translateY(8px)} to{opacity:1;transform:none} }
+  @media (prefers-reduced-motion:reduce){ .status-dialog-layer,.status-dialog-card{ animation:none; } }
 
   @media (prefers-reduced-motion: reduce){
     .overlay, .slip, .fab, .btn--primary, .seal--big, .msg__chevron, .recap-chevron{ transition:none; animation:none; }

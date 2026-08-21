@@ -57,18 +57,19 @@
     if (minutes < 60) return minutes + ' ' + (minutes === 1 ? 'minute' : 'minutes') + ' ago';
     var hours = Math.floor(minutes / 60);
     if (hours < 24) return hours + ' ' + (hours === 1 ? 'hour' : 'hours') + ' ago';
-    return new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(date);
+    var clock = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).format(date);
+    var calendarDate = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(date);
+    return clock + ' · ' + calendarDate;
   }
 
   function deliveryMarkup(item) {
-    var state = item.delivery_status === 'read' ? 'read' : item.delivery_status === 'delivered' ? 'delivered' : 'sent';
-    var ticks = state === 'sent' ? '✓' : '✓✓';
-    var explanation = state === 'sent'
-      ? 'Fariintaada waa la diray. Xafiiska Imtixaannada hadda ma online aha.'
-      : state === 'delivered'
-        ? 'Fariintaada waxay gaartay Xafiiska Imtixaannada, laakiin wali lama akhrin.'
-        : 'Fariintaada waxaa arkay Xafiiska Imtixaannada.';
-    return '<button type="button" class="message-status message-status--' + state + '" aria-label="' + explanation + '"><span class="ticks">' + ticks + '</span><span class="message-status__tip" role="tooltip">' + explanation + '</span></button>';
+    var state = item.delivery_status === 'read' ? 'read' : 'delivered';
+    var stroke = state === 'read' ? '#2FA8F0' : '#667781';
+    var ticks = '<svg viewBox="0 0 20 11" fill="none" aria-hidden="true"><path d="M1 5.5L5 9.5L15 1" stroke="' + stroke + '" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 5.5L10 9.5L20 1" stroke="' + stroke + '" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    var explanation = state === 'delivered'
+      ? 'Fariintaada wey gaadhey, Xafiiska Imtixaannada balse weli lama eegin!.'
+      : 'Fariintaada waxaa arkay Xafiiska Imtixaannada.';
+    return '<span class="message-meta"><span class="msg__time" data-relative-time="' + escapeHtml(item.created_at) + '"></span><button type="button" class="message-status message-status--' + state + '" aria-label="' + explanation + '"><span class="ticks">' + ticks + '</span><span class="message-status__tip" role="tooltip">' + explanation + '</span></button></span>';
   }
 
   function refreshRelativeTimes() {
@@ -81,12 +82,31 @@
     document.querySelectorAll('.message-status').forEach(function (button) {
       button.addEventListener('click', function (event) {
         event.stopPropagation();
-        document.querySelectorAll('.message-status.is-open').forEach(function (other) {
-          if (other !== button) other.classList.remove('is-open');
-        });
-        button.classList.toggle('is-open');
+        showStatusDialog(button);
       });
     });
+  }
+
+  function showStatusDialog(button) {
+    var layer = document.getElementById('statusDialogLayer');
+    if (!layer) {
+      layer = document.createElement('div');
+      layer.id = 'statusDialogLayer';
+      layer.className = 'status-dialog-layer';
+      layer.hidden = true;
+      document.body.appendChild(layer);
+    }
+    var state = button.className.indexOf('message-status--read') >= 0 ? 'read' : 'delivered';
+    var message = button.getAttribute('aria-label') || '';
+    var iconColor = state === 'read' ? '#2FA8F0' : '#667781';
+    var icon = '<svg viewBox="0 0 20 11" fill="none" aria-hidden="true"><path d="M1 5.5L5 9.5L15 1" stroke="' + iconColor + '" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 5.5L10 9.5L20 1" stroke="' + iconColor + '" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    var title = state === 'delivered' ? 'Fariinta waa la diray!' : 'Fariinta waa la akhriyey';
+    layer.innerHTML = '<div class="status-dialog-card ' + state + '" role="dialog" aria-modal="true" aria-labelledby="statusDialogTitle"><button type="button" class="status-dialog-close" aria-label="Xir">×</button><div class="status-dialog-icon">' + icon + '</div><h3 class="status-dialog-title" id="statusDialogTitle">' + title + '</h3><p class="status-dialog-message">' + message + '</p></div>';
+    layer.hidden = false;
+    var closeDialog = function(){ layer.hidden = true; layer.innerHTML = ''; };
+    layer.querySelector('.status-dialog-close').addEventListener('click', closeDialog);
+    layer.addEventListener('click', function(event){ if(event.target === layer) closeDialog(); }, { once:true });
+    document.addEventListener('keydown', function escapeStatus(event){ if(event.key === 'Escape'){ closeDialog(); document.removeEventListener('keydown', escapeStatus); } });
   }
 
   window.setInterval(refreshRelativeTimes, 1000);
@@ -150,11 +170,11 @@
     var typeText = { cabasho: 'CABASHO', falcelin: 'FALCELIN' };
     var html = '<details class="msg"><summary><div class="msg__main">' +
       '<span class="msg__type">' + (typeText[item.type] || 'FALCELIN') + (item.subject ? ' · ' + escapeHtml(item.subject) : '') + '</span>' +
-      '<span class="msg__ref">' + escapeHtml(item.ref) + '</span><span class="msg__time" data-relative-time="' + escapeHtml(item.created_at) + '"></span>' +
+      '<span class="msg__ref">' + escapeHtml(item.ref) + '</span>' +
       '<span class="msg__excerpt">' + escapeHtml(item.excerpt) + '</span></div>' +
       '<span class="badge ' + (badgeClass[item.status] || 'badge--received') + '">' + (badgeText[item.status] || 'La Diray') + '</span>' +
       '<span class="msg__chevron" aria-hidden="true">▾</span></summary><div class="msg__body">' +
-      '<p class="msg__original">' + escapeHtml(item.details) + deliveryMarkup(item) + '</p>';
+      '<div class="msg__original"><span class="msg__text">' + escapeHtml(item.details) + '</span>' + deliveryMarkup(item) + '</div>';
     if (item.reply) {
       html += '<div class="reply-slip"><div class="reply-slip__head"><span class="reply-slip__seal">✓</span>' +
         '<span class="reply-slip__office-lockup"><span class="reply-slip__office">' + escapeHtml(item.reply.office) + '</span><span class="reply-slip__verified" aria-label="Xafiis la xaqiijiyey"><span class="seal-shape"></span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span>' +
@@ -223,6 +243,11 @@
       msgList.innerHTML = '<div class="pending-note">' + escapeHtml(error.message) + '</div>';
     });
   }
+
+  window.setInterval(function () {
+    var repliesScreen = document.getElementById('screen-replies');
+    if (!document.hidden && repliesScreen && !repliesScreen.hidden) loadReplies(false);
+  }, 5000);
 
   function loadSubjects() {
     return requestJson('/api/falcelin/subjects?token=' + encodeURIComponent(token)).then(function (payload) {

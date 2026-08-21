@@ -217,6 +217,9 @@
     }), { threshold:[.65] });
     document.querySelectorAll('.fc-entry[data-entry-id]').forEach(entry => readObserver.observe(entry));
   }
+  const keepOfficeOnline = () => fetch('/admin/falcelin-cabasho/delivered', { method:'POST', headers:{'X-CSRFToken':'{{ csrf_token() }}'} }).catch(() => {});
+  keepOfficeOnline();
+  window.setInterval(keepOfficeOnline, 5000);
   const filterForm = document.querySelector('.fc-filters');
   if (filterForm) {
     let timer;
