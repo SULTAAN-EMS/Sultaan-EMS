@@ -1423,6 +1423,7 @@ def feedback_complaints():
     class_id = request.args.get("class_id", type=int)
     status = request.args.get("status", "").strip().lower()
     complaint_type = request.args.get("type", "").strip().lower()
+    sort_order = request.args.get("sort", "newest").strip().lower()
     date_from = request.args.get("date_from", "").strip()
     date_to = request.args.get("date_to", "").strip()
 
@@ -1452,8 +1453,10 @@ def feedback_complaints():
         except ValueError:
             pass
 
-    feedback_rows = feedback_query.all()
-    complaint_rows = complaint_query.all()
+    ordering = StudentFeedback.created_at.asc() if sort_order == "oldest" else StudentFeedback.created_at.desc()
+    complaint_ordering = StudentComplaint.created_at.asc() if sort_order == "oldest" else StudentComplaint.created_at.desc()
+    feedback_rows = feedback_query.order_by(ordering).all()
+    complaint_rows = complaint_query.order_by(complaint_ordering).all()
     if status == "pending":
         complaint_rows = [item for item in complaint_rows if not item.replies]
         feedback_rows = [item for item in feedback_rows if not item.replies]
@@ -1467,7 +1470,7 @@ def feedback_complaints():
         feedback_rows=feedback_rows,
         complaint_rows=complaint_rows,
         classes=classes,
-        filters={"q": query, "class_id": class_id, "status": status, "type": complaint_type, "date_from": date_from, "date_to": date_to},
+        filters={"q": query, "class_id": class_id, "status": status, "type": complaint_type, "sort": sort_order},
     )
 
 
@@ -1501,6 +1504,22 @@ def reply_feedback_complaint(entry_type, entry_id):
     audit("Falcelin/Cabasho Reply", f"Reply sent for {reference}")
     db.session.commit()
     return jsonify(ok=True, message="Jawaabta waa la diray, ardayguna wuu arki karaa.")
+
+
+@admin_bp.route("/falcelin-cabasho/<string:entry_type>/<int:entry_id>/delete", methods=["POST"])
+@permission_required("settings")
+def delete_feedback_complaint(entry_type, entry_id):
+    model = StudentComplaint if entry_type == "complaint" else StudentFeedback if entry_type == "feedback" else None
+    if model is None:
+        return jsonify(ok=False, message="Nooca fariinta lama aqoonsan."), 400
+    entry = db.session.get(model, entry_id)
+    if not entry:
+        return jsonify(ok=False, message="Fariinta lama helin."), 404
+    reference = entry.ref_number
+    db.session.delete(entry)
+    audit("Falcelin/Cabasho Delete", f"Deleted {reference}")
+    db.session.commit()
+    return jsonify(ok=True, message="Fariinta si guul leh ayaa loo tirtiray.")
 
 
 @admin_bp.route("/classes/<int:row_id>/delete", methods=["POST"])

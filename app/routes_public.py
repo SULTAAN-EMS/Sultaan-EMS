@@ -476,8 +476,10 @@ def submit_complaint():
     details = str(payload.get("details") or "").strip()
     signature = str(payload.get("signature") or "").strip()
     valid_types = {"maaddo", "wadar", "celcelis", "system", "kale"}
-    if complaint_type not in valid_types or not details or not signature.startswith("data:image/png;base64,"):
-        return jsonify(ok=False, message="Fadlan buuxi dhammaan xogta cabashada oo kaydi saxeexa."), 400
+    if complaint_type not in valid_types or not details:
+        return jsonify(ok=False, message="Fadlan buuxi dhammaan xogta cabashada."), 400
+    if signature and not signature.startswith("data:image/png;base64,"):
+        return jsonify(ok=False, message="Saxeexa lama aqoonsan."), 400
     if complaint_type == "maaddo" and not subject_name:
         return jsonify(ok=False, message="Fadlan dooro maaddada cabashada."), 400
     if len(details) > 5000 or len(signature) > 2_500_000:

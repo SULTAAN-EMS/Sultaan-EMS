@@ -55,6 +55,7 @@
       form.prepend(existing);
     }
     existing.textContent = message;
+    existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function setBusy(button, busy, fallback) {

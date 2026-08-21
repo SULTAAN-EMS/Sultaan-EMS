@@ -3,23 +3,45 @@
 {% block extra_head %}
 {{ super() }}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/feedback_complaints.css') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  .fc-admin-page{font-family:'IBM Plex Sans',sans-serif}.fc-admin-page h1,.fc-admin-page h2,.fc-stat strong{font-family:'Fraunces',serif}.fc-admin-page code,.fc-admin-page small,.fc-admin-page .fc-type{font-family:'IBM Plex Mono',monospace}
+  .fc-stat-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:18px 0}.fc-stat{min-height:118px;padding:17px;border:1px solid transparent;border-radius:14px}.fc-stat.teal{background:linear-gradient(135deg,#E3EFEC,#F4FAF8);border-color:#BBDDD4}.fc-stat.steel{background:linear-gradient(135deg,#E4EEF3,#F4F8FA);border-color:#C5DCE8}.fc-stat.brass{background:linear-gradient(135deg,#F3EEDD,#FBF8F0);border-color:#E8D9AF}.fc-stat.answered{background:linear-gradient(135deg,#DCEEE8,#F2FAF7);border-color:#B4D9CB}.fc-stat-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;color:#fff}.fc-stat.teal .fc-stat-icon{background:#2B6F63}.fc-stat.steel .fc-stat-icon{background:#3D6B8C}.fc-stat.brass .fc-stat-icon{background:#A9812E}.fc-stat.answered .fc-stat-icon{background:#1F5349}.fc-stat strong{display:block;margin-top:12px;font-size:28px;line-height:1;color:#16233F}.fc-stat small{display:block;margin-top:5px;color:#4B5A72}.fc-avatar{overflow:hidden}.fc-avatar img{width:100%;height:100%;display:block;object-fit:cover;border-radius:inherit}.fc-list{position:relative;padding-left:22px}.fc-list:before{content:"";position:absolute;left:5px;top:4px;bottom:4px;border-left:1px dashed #CBD2D9}.fc-entry:before{content:"";position:absolute;left:-22px;top:24px;width:9px;height:9px;border-radius:50%;background:#A9812E;border:2px solid #F3EEDD;z-index:1}.fc-entry:has(.answered):before{background:#2B6F63;border-color:#E3EFEC}@media(max-width:900px){.fc-stat-cards{grid-template-columns:1fr 1fr}}@media(max-width:520px){.fc-stat-cards{grid-template-columns:1fr}}
+  .fc-filters{box-shadow:0 5px 18px rgba(22,35,63,.06)}.fc-filters select{border:0;background:transparent;color:#2A4E68;border-radius:20px;font-weight:600}.fc-filter-control{display:flex;align-items:center;gap:7px;padding:2px 11px;border-radius:20px}.fc-filter-control i{font-size:13px}.fc-filter-control.class{background:#E4EEF3;color:#2A4E68}.fc-filter-control.type{background:#F3EEDD;color:#7C5E20}.fc-filter-control.sort{background:#E3EFEC;color:#1F5349}.fc-filters button{background:#16233F}.fc-modal{align-items:end;padding:0}.fc-modal-card{width:min(100%,560px);border-radius:18px 18px 0 0;padding:28px 30px 30px;animation:fc-sheet-in .24s ease-out}@keyframes fc-sheet-in{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+  .fc-entry{transition:box-shadow .18s ease,transform .18s ease,background .18s ease}.fc-entry:hover{transform:translateY(-1px)}.fc-filters{flex-wrap:nowrap;overflow-x:auto}.fc-filters label{min-width:220px}.fc-filters select{min-width:145px}.fc-status-chips{display:flex;gap:2px;padding:3px;border-radius:9px;background:#F1F2F4;flex:none}.fc-status-chips a{padding:7px 12px;border-radius:7px;color:#4B5A72;font-size:11.5px;font-weight:600;text-decoration:none;white-space:nowrap}.fc-status-chips a.active,.fc-status-chips a:hover{background:#fff;color:#16233F;box-shadow:0 1px 4px rgba(22,35,63,.16)}.fc-reaction-icon{display:inline-grid;place-items:center;width:27px;height:27px;margin-right:7px;border-radius:8px;background:#E3EFEC;color:#2B6F63}.fc-rating{display:flex;align-items:center;gap:4px}.fc-stars{color:#A9812E}.fc-stars em{color:#D8DCE1;font-style:normal}.fc-student-message{grid-column:1/-1;margin:4px 0 2px;padding:14px 16px;border:1px solid #DCE3E7;border-left:3px solid #3D6B8C;border-radius:0 11px 11px 0;background:linear-gradient(135deg,#F5F9FB,#EEF5F4);color:#16233F;line-height:1.55}.fc-student-message strong{display:block;margin-bottom:7px;color:#2A4E68;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.07em;text-transform:uppercase}.fc-student-message strong i{margin-right:7px}.fc-reply-slip{grid-column:1/-1;border-left:3px solid #2B6F63;background:#F7F8F8;border-radius:0 9px 9px 0;padding:12px 14px;margin-top:2px}.fc-reply-slip>div{display:flex;align-items:center;gap:8px;color:#1F5349}.fc-reply-slip>div i{font-size:16px}.fc-reply-slip strong{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase}.fc-reply-slip time{margin-left:auto;color:#4B5A72;font-size:11px}.fc-reply-slip p{margin:7px 0 0;color:#16233F;font-size:13px;line-height:1.55}
+  .fc-reply-slip-logo{width:22px;height:22px;object-fit:contain;border-radius:6px;background:#fff;padding:2px}
+</style>
+<style>.fc-hero-icon img{width:36px;height:36px;object-fit:contain;border-radius:9px;background:#fff;padding:4px}.fc-student-message{box-shadow:0 5px 16px rgba(22,35,63,.06)}</style>
+<style>.fc-status-chips a{display:inline-flex;align-items:center;gap:6px}.fc-status-chips a.pending{background:#F3EEDD;color:#7C5E20}.fc-status-chips a.answered{background:#E3EFEC;color:#1F5349}.fc-status-chips a.all{background:#E4EEF3;color:#2A4E68}.fc-filters label{flex-direction:row-reverse}.fc-filters label input{text-align:left}.fc-filters>.fc-filter-control{flex:none}</style>
+<style>.fc-student-message{background:linear-gradient(135deg,#EAF3FB,#F5F9FD);border-color:#C7DDED;border-left-color:#3D6B8C}.fc-student-message strong{color:#2A4E68}.fc-reply-slip{background:linear-gradient(135deg,#E7F4EF,#F6FBF9);border-left-color:#2B6F63}.fc-reply-slip>div{color:#1F5349}.fc-reply-slip p{color:#173B36}</style>
+<style>.fc-delete{position:absolute;right:16px;top:15px;width:34px;height:34px;border:0;border-radius:10px;background:#FDE8E8;color:#C62828;font-size:15px;cursor:pointer;transition:transform .15s,background .15s}.fc-delete:hover{background:#C62828;color:#fff;transform:scale(1.06)}.fc-entry .fc-reply{right:58px}</style>
+<style>.fc-delete-card{text-align:center;border-top:4px solid #C62828}.fc-delete-icon{display:grid;place-items:center;width:54px;height:54px;margin:0 auto 14px;border-radius:16px;background:#FDE8E8;color:#C62828;font-size:22px}.fc-delete-card h2{margin:0 0 7px}.fc-delete-card>p{margin:0;color:#66758D;font-size:13px}.fc-delete-actions{display:flex;justify-content:center;gap:10px;margin-top:22px}.fc-delete-actions button{min-width:110px;height:40px;border:0;border-radius:9px;font-weight:700;cursor:pointer}.fc-cancel{background:#EEF2F5;color:#46566C}.fc-confirm-delete{background:#C62828;color:#fff}.fc-confirm-delete:hover{background:#A61F1F}.fc-success-toast{position:fixed;right:24px;bottom:24px;z-index:1500;display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid #B8E2CE;border-radius:13px;background:#F2FBF6;color:#175B3B;box-shadow:0 14px 38px rgba(22,70,48,.18);animation:fc-toast-in .25s ease-out}.fc-success-toast[hidden]{display:none}@keyframes fc-toast-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}.fc-success-toast>span{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#2B8A5A;color:#fff;font-size:16px}.fc-success-toast strong,.fc-success-toast small{display:block}.fc-success-toast strong{font-size:13px}.fc-success-toast small{margin-top:2px;color:#47745D;font-size:11px}</style>
+<style>.fc-status-chips a.all{background:linear-gradient(135deg,#DCEAF8,#EEF5FC);color:#24527D}.fc-status-chips a.pending{background:linear-gradient(135deg,#FFF0C9,#FFF8E9);color:#966500}.fc-status-chips a.answered{background:linear-gradient(135deg,#D9F3E8,#EFFAF5);color:#187052}.fc-filter-control.class{background:linear-gradient(135deg,#FFE5C7,#FFF4E8);color:#A75A12}.fc-filter-control.type{background:linear-gradient(135deg,#F9DDE0,#FFF0F1);color:#9B3F4D}.fc-filter-control.sort{background:linear-gradient(135deg,#E8DDFC,#F5F0FF);color:#6840A0}.fc-status-chips a.active{outline:2px solid currentColor;outline-offset:-2px}</style>
+<style>.fc-reaction-sticker{display:inline-flex;width:31px;height:31px;align-items:center;justify-content:center;border-radius:9px;background:#fff;border:1px solid #DCE5E9}.fc-reaction-sticker svg{width:27px;height:27px;display:block;filter:drop-shadow(0 2px 3px rgba(22,35,63,.18));transform-origin:center bottom}.fc-reaction-sticker:hover svg{animation:.7s ease-in-out infinite}.fc-reaction-sticker.like:hover svg{animation-name:fc-react-tilt}.fc-reaction-sticker.love:hover svg{animation-name:fc-react-beat}.fc-reaction-sticker.care:hover svg{animation-name:fc-react-squeeze}.fc-reaction-sticker.wow:hover svg{animation-name:fc-react-gasp}@keyframes fc-react-tilt{25%{transform:rotate(-12deg) translateY(-2px)}75%{transform:rotate(9deg) translateY(-2px)}}@keyframes fc-react-beat{50%{transform:scale(1.15)}}@keyframes fc-react-squeeze{50%{transform:scale(.9,1.08)}}@keyframes fc-react-gasp{50%{transform:scale(1.1)}} </style>
+<style>html,body{max-width:100%;overflow-x:hidden}.fc-admin-page{width:100%;max-width:none;margin:0;padding:24px;box-sizing:border-box;overflow-x:hidden}.fc-filters{flex-wrap:wrap!important;overflow-x:visible!important}.fc-rating .fc-stars{color:#A9812E!important;font-size:16px!important;letter-spacing:1px;white-space:nowrap}.fc-rating .fc-stars em{color:#B9C3CE!important}.fc-rating .fc-reaction-icon{display:inline-grid!important;visibility:visible!important;opacity:1!important;color:#2B6F63!important}.fc-rating .fc-reaction-icon i{display:block!important;visibility:visible!important;font-size:14px!important}</style>
 {% endblock %}
 {% block admin_content %}
 <main class="fc-admin-page">
   <header class="fc-admin-hero">
-    <div class="fc-hero-icon"><i class="fa-solid fa-comments"></i></div>
-    <div><p>XAFIISKA WAXBARASHADA</p><h1>Falcelin &amp; Cabasho</h1><span>Dib u eeg farriimaha ardayda, kana jawaab hal meel.</span></div>
+    <div class="fc-hero-icon">{% if ui_settings.logo_path %}<img src="{{ asset_url(ui_settings.logo_path) }}" alt="{{ ui_settings.school_name or 'Dugsiga' }} logo">{% else %}<i class="fa-solid fa-comments"></i>{% endif %}</div>
+    <div><p>XAFIISKA IMTIXAANNADA</p><h1>Falcelin &amp; Cabasho</h1><span>Dib u eeg farriimaha ardayda, kana jawaab hal meel.</span></div>
     <div class="fc-hero-count"><strong>{{ feedback_rows|length + complaint_rows|length }}</strong><small>Farriimo muuqda</small></div>
   </header>
 
+  <section class="fc-stat-cards" aria-label="Tirakoobka Falcelinta iyo Cabashooyinka">
+    <article class="fc-stat teal"><span class="fc-stat-icon"><i class="fa-solid fa-comments"></i></span><strong>{{ feedback_rows|length }}</strong><small>Wadarta Falcelin</small></article>
+    <article class="fc-stat steel"><span class="fc-stat-icon"><i class="fa-solid fa-flag"></i></span><strong>{{ complaint_rows|length }}</strong><small>Wadarta Cabashooyinka</small></article>
+    <article class="fc-stat brass"><span class="fc-stat-icon"><i class="fa-solid fa-hourglass-half"></i></span><strong>{{ feedback_rows|selectattr('replies','equalto',[])|list|length + complaint_rows|selectattr('replies','equalto',[])|list|length }}</strong><small>Sugaya Jawaab</small></article>
+    <article class="fc-stat answered"><span class="fc-stat-icon"><i class="fa-solid fa-circle-check"></i></span><strong>{{ feedback_rows|rejectattr('replies','equalto',[])|list|length + complaint_rows|rejectattr('replies','equalto',[])|list|length }}</strong><small>La Jawaabay</small></article>
+  </section>
+
   <form class="fc-filters" method="get">
-    <label><i class="fa-solid fa-magnifying-glass"></i><input name="q" value="{{ filters.q }}" placeholder="Raadi arday ama tixraac..."></label>
-    <select name="class_id"><option value="">Dhammaan fasallada</option>{% for class_row in classes %}<option value="{{ class_row.id }}" {% if filters.class_id == class_row.id %}selected{% endif %}>{{ class_row.name }}</option>{% endfor %}</select>
-    <select name="status"><option value="">Dhammaan xaaladaha</option><option value="pending" {% if filters.status == 'pending' %}selected{% endif %}>Sugaya jawaab</option><option value="answered" {% if filters.status == 'answered' %}selected{% endif %}>La jawaabay</option></select>
-    <select name="type"><option value="">Dhammaan cabashooyinka</option><option value="maaddo" {% if filters.type == 'maaddo' %}selected{% endif %}>Maaddo gaar ah</option><option value="wadar" {% if filters.type == 'wadar' %}selected{% endif %}>Wadarta dhibcaha</option><option value="celcelis" {% if filters.type == 'celcelis' %}selected{% endif %}>Celceliska guud</option><option value="system" {% if filters.type == 'system' %}selected{% endif %}>System</option><option value="kale" {% if filters.type == 'kale' %}selected{% endif %}>Mid kale</option></select>
-    <input type="date" name="date_from" value="{{ filters.date_from }}" aria-label="Laga bilaabo">
-    <input type="date" name="date_to" value="{{ filters.date_to }}" aria-label="Ilaa">
-    <button type="submit"><i class="fa-solid fa-filter"></i> Shaandhee</button>
+    <div class="fc-status-chips" aria-label="Xaaladda jawaabta"><a class="all {{ 'active' if not filters.status else '' }}" href="?"><i class="fa-solid fa-layer-group"></i>Dhammaan</a><a class="pending {{ 'active' if filters.status == 'pending' else '' }}" href="?status=pending"><i class="fa-solid fa-hourglass-half"></i>Sugaya</a><a class="answered {{ 'active' if filters.status == 'answered' else '' }}" href="?status=answered"><i class="fa-solid fa-circle-check"></i>La Jawaabay</a></div>
+    <span class="fc-filter-control class"><i class="fa-solid fa-users"></i><select name="class_id"><option value="">Fasallada</option>{% for class_row in classes %}<option value="{{ class_row.id }}" {% if filters.class_id == class_row.id %}selected{% endif %}>{{ class_row.name }}</option>{% endfor %}</select></span>
+    <span class="fc-filter-control type"><i class="fa-solid fa-tag"></i><select name="type"><option value="">Cabashooyinka</option><option value="maaddo" {% if filters.type == 'maaddo' %}selected{% endif %}>Maaddo gaar ah</option><option value="wadar" {% if filters.type == 'wadar' %}selected{% endif %}>Wadarta dhibcaha</option><option value="celcelis" {% if filters.type == 'celcelis' %}selected{% endif %}>Celceliska guud</option><option value="system" {% if filters.type == 'system' %}selected{% endif %}>System</option><option value="kale" {% if filters.type == 'kale' %}selected{% endif %}>Mid kale</option></select></span>
+    <span class="fc-filter-control sort"><i class="fa-solid fa-arrow-down-wide-short"></i><select name="sort" aria-label="Kala hormari"><option value="newest" {% if filters.sort != 'oldest' %}selected{% endif %}>Ugu dambeeya hore</option><option value="oldest" {% if filters.sort == 'oldest' %}selected{% endif %}>Ugu horreeya hore</option></select></span>
+    <label><input name="q" value="{{ filters.q }}" placeholder="Raadi arday ama tixraac..."><i class="fa-solid fa-magnifying-glass"></i></label>
   </form>
 
   <section class="fc-section">
@@ -27,11 +49,13 @@
     <div class="fc-list">
       {% for row in feedback_rows %}
       <article class="fc-entry">
-        <div class="fc-entry-main"><span class="fc-avatar">{{ row.student.full_name[:1] }}</span><div><strong>{{ row.student.full_name }}</strong><small>{{ row.student.academic_class.name if row.student.academic_class else row.student.level or 'Fasal lama diiwaangelin' }} · {{ row.student.student_code }}</small></div></div>
-        <div class="fc-rating" aria-label="{{ row.rating }} out of 5 stars">{{ '★' * row.rating }}<span>{{ '★' * (5 - row.rating) }}</span></div>
-        <p>{{ row.comment }}</p>
+        <div class="fc-entry-main"><span class="fc-avatar">{% if row.student.photo_path %}<img src="{{ asset_url(row.student.photo_path) }}" alt="{{ row.student.full_name }}">{% else %}{{ row.student.full_name[:1] }}{% endif %}</span><div><strong>{{ row.student.full_name }}</strong><small>{{ row.student.academic_class.name if row.student.academic_class else row.student.level or 'Fasal lama diiwaangelin' }} · {{ row.student.student_code }}</small></div></div>
+        <div class="fc-rating" aria-label="{{ row.reaction|title }}; {{ row.rating }} out of 5 stars"><span class="fc-reaction-sticker {{ row.reaction if row.reaction in ['like','love','care','wow'] else 'like' }}" title="{{ row.reaction|title }}">{% if row.reaction == 'love' %}<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="17" fill="#F4325C"/><path d="M18 27S8 21 8 14.5C8 10 13.5 8 18 13c4.5-5 10-3 10 1.5C28 21 18 27 18 27Z" fill="#fff"/></svg>{% elif row.reaction == 'care' %}<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="17" fill="#FFC531"/><path d="M11 17c1.5-3 4-3 7 0 3-3 5.5-3 7 0" fill="none" stroke="#8A5A12" stroke-width="2" stroke-linecap="round"/><path d="M18 28s-5-3-5-6c0-2 2.5-3 5 0 2.5-3 5-2 5 0 0 3-5 6-5 6Z" fill="#F02D55"/></svg>{% elif row.reaction == 'wow' %}<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="17" fill="#F2994A"/><circle cx="12" cy="14" r="2" fill="#7C3F08"/><circle cx="24" cy="14" r="2" fill="#7C3F08"/><ellipse cx="18" cy="24" rx="3.5" ry="5" fill="#7C3F08"/></svg>{% else %}<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="17" fill="#2E86F0"/><path d="M10 16h6v13h-6zM16 16l3-10c.6-2 3.5-1.5 3.2.7L21 13h6c1.5 0 2.5 1.4 2 2.8l-2.5 9.5c-.3 1-1.2 1.7-2.3 1.7H16Z" fill="#fff"/></svg>{% endif %}</span><span class="fc-stars">{{ '★' * row.rating }}<em>{{ '★' * (5 - row.rating) }}</em></span></div>
+        <div class="fc-student-message"><strong><i class="fa-solid fa-message"></i> Fariinta ardayga ka timid</strong>{{ row.comment }}</div>
         <div class="fc-entry-meta"><code>{{ row.ref_number }}</code><span>{{ row.reaction|title }} · {{ row.created_at.strftime('%d %b %Y, %H:%M') }}</span>{% if row.replies %}<em class="answered">La jawaabay</em>{% else %}<em class="pending">La diray</em>{% endif %}</div>
+        {% if row.replies %}<div class="fc-reply-slip"><div>{% if ui_settings.logo_path %}<img class="fc-reply-slip-logo" src="{{ asset_url(ui_settings.logo_path) }}" alt="Logo">{% else %}<i class="fa-solid fa-circle-check"></i>{% endif %}<strong>XAFIISKA IMTIXAANNADA</strong><time>{{ row.replies[-1].created_at.strftime('%d %b %Y') }}</time></div><p>{{ row.replies[-1].message }}</p></div>{% endif %}
         <button type="button" class="fc-reply" data-type="feedback" data-id="{{ row.id }}" data-student="{{ row.student.full_name|e }}" data-ref="{{ row.ref_number }}"><i class="fa-solid fa-reply"></i> Reply</button>
+        <button type="button" class="fc-delete" data-type="feedback" data-id="{{ row.id }}" data-ref="{{ row.ref_number }}" aria-label="Tirtir falcelinta"><i class="fa-solid fa-trash-can"></i></button>
       </article>
       {% else %}<div class="fc-empty"><i class="fa-regular fa-message"></i> Weli falcelin lama helin.</div>{% endfor %}
     </div>
@@ -42,19 +66,23 @@
     <div class="fc-list">
       {% for row in complaint_rows %}
       <article class="fc-entry complaint">
-        <div class="fc-entry-main"><span class="fc-avatar brick-avatar">{{ row.student.full_name[:1] }}</span><div><strong>{{ row.student.full_name }}</strong><small>{{ row.student.academic_class.name if row.student.academic_class else row.student.level or 'Fasal lama diiwaangelin' }} · {{ row.student.student_code }}</small></div></div>
+        <div class="fc-entry-main"><span class="fc-avatar brick-avatar">{% if row.student.photo_path %}<img src="{{ asset_url(row.student.photo_path) }}" alt="{{ row.student.full_name }}">{% else %}{{ row.student.full_name[:1] }}{% endif %}</span><div><strong>{{ row.student.full_name }}</strong><small>{{ row.student.academic_class.name if row.student.academic_class else row.student.level or 'Fasal lama diiwaangelin' }} · {{ row.student.student_code }}</small></div></div>
         <span class="fc-type">{{ row.complaint_type }}{% if row.subject_name %} · {{ row.subject_name }}{% endif %}</span>
-        <p>{{ row.details }}</p>
+        <div class="fc-student-message"><strong><i class="fa-solid fa-message"></i> Fariinta ardayga ka timid</strong>{{ row.details }}</div>
         <div class="fc-entry-meta"><code>{{ row.ref_number }}</code><span>{{ row.created_at.strftime('%d %b %Y, %H:%M') }}</span><em class="{{ 'answered' if row.replies else 'pending' }}">{{ 'La jawaabay' if row.replies else 'Sugaya jawaab' }}</em>{% if row.signature_data %}<button class="fc-signature" type="button" data-signature="{{ row.signature_data|e }}"><i class="fa-solid fa-signature"></i> Saxeex</button>{% endif %}</div>
+        {% if row.replies %}<div class="fc-reply-slip"><div>{% if ui_settings.logo_path %}<img class="fc-reply-slip-logo" src="{{ asset_url(ui_settings.logo_path) }}" alt="Logo">{% else %}<i class="fa-solid fa-circle-check"></i>{% endif %}<strong>XAFIISKA IMTIXAANNADA</strong><time>{{ row.replies[-1].created_at.strftime('%d %b %Y') }}</time></div><p>{{ row.replies[-1].message }}</p></div>{% endif %}
         <button type="button" class="fc-reply" data-type="complaint" data-id="{{ row.id }}" data-student="{{ row.student.full_name|e }}" data-ref="{{ row.ref_number }}"><i class="fa-solid fa-reply"></i> Reply</button>
+        <button type="button" class="fc-delete" data-type="complaint" data-id="{{ row.id }}" data-ref="{{ row.ref_number }}" aria-label="Tirtir cabashada"><i class="fa-solid fa-trash-can"></i></button>
       </article>
       {% else %}<div class="fc-empty"><i class="fa-regular fa-flag"></i> Weli cabasho lama helin.</div>{% endfor %}
     </div>
   </section>
 </main>
 
-<div class="fc-modal" id="fcReplyModal" hidden><div class="fc-modal-card" role="dialog" aria-modal="true" aria-labelledby="fcReplyTitle"><button type="button" class="fc-close" aria-label="Xir"><i class="fa-solid fa-xmark"></i></button><span class="fc-modal-icon"><i class="fa-solid fa-reply"></i></span><p>JAWAAB XAFIIS</p><h2 id="fcReplyTitle">Jawaab u dir ardayga</h2><small id="fcReplyContext"></small><label>Xafiiska<input id="fcOfficeName" value="Xafiiska Waxbarashada" maxlength="150"></label><label>Jawaabta<textarea id="fcReplyMessage" rows="5" maxlength="5000" placeholder="Qor jawaab cad oo xushmad leh..."></textarea></label><button type="button" id="fcReplySubmit" class="fc-send"><i class="fa-solid fa-paper-plane"></i> Dir Jawaabta</button></div></div>
+<div class="fc-modal" id="fcReplyModal" hidden><div class="fc-modal-card" role="dialog" aria-modal="true" aria-labelledby="fcReplyTitle"><button type="button" class="fc-close" aria-label="Xir"><i class="fa-solid fa-xmark"></i></button><span class="fc-modal-icon"><i class="fa-solid fa-reply"></i></span><p>JAWAAB XAFIIS</p><h2 id="fcReplyTitle">Jawaab u dir ardayga</h2><small id="fcReplyContext"></small><label>Xafiiska<input id="fcOfficeName" value="Xafiiska Imtixaannada" maxlength="150"></label><label>Jawaabta<textarea id="fcReplyMessage" rows="5" maxlength="5000" placeholder="Qor jawaab cad oo xushmad leh..."></textarea></label><button type="button" id="fcReplySubmit" class="fc-send"><i class="fa-solid fa-paper-plane"></i> Dir Jawaabta</button></div></div>
 <div class="fc-modal" id="fcSignatureModal" hidden><div class="fc-modal-card signature-card"><button type="button" class="fc-close" aria-label="Xir"><i class="fa-solid fa-xmark"></i></button><span class="fc-modal-icon"><i class="fa-solid fa-signature"></i></span><h2>Saxeexa Ardayga</h2><img id="fcSignatureImage" alt="Student signature"></div></div>
+<div class="fc-modal" id="fcDeleteModal" hidden><div class="fc-modal-card fc-delete-card"><button type="button" class="fc-close" aria-label="Xir"><i class="fa-solid fa-xmark"></i></button><span class="fc-delete-icon"><i class="fa-solid fa-trash-can"></i></span><h2>Ma tirtirtaa fariintan?</h2><p id="fcDeleteContext"></p><div class="fc-delete-actions"><button type="button" class="fc-cancel" id="fcDeleteCancel">Jooji</button><button type="button" class="fc-confirm-delete" id="fcDeleteConfirm"><i class="fa-solid fa-trash-can"></i> Tirtir</button></div></div></div>
+<div class="fc-success-toast" id="fcDeleteSuccess" hidden><span><i class="fa-solid fa-circle-check"></i></span><div><strong>Si guul leh ayaa loo tirtiray</strong><small>Fariinta waa laga saaray nidaamka.</small></div></div>
 
 <script>
 (() => {
@@ -73,6 +101,27 @@
     document.getElementById('fcReplyMessage').focus();
   }));
   document.querySelectorAll('.fc-signature').forEach(button => button.addEventListener('click', () => { document.getElementById('fcSignatureImage').src = button.dataset.signature; signatureModal.hidden = false; }));
+  let deleteTarget = null;
+  const deleteModal = document.getElementById('fcDeleteModal');
+  const deleteSuccess = document.getElementById('fcDeleteSuccess');
+  document.querySelectorAll('.fc-delete').forEach(button => button.addEventListener('click', () => {
+    deleteTarget = button;
+    document.getElementById('fcDeleteContext').textContent = `Tixraac: ${button.dataset.ref}. Tallaabadan dib looma celin karo.`;
+    deleteModal.hidden = false;
+  }));
+  document.getElementById('fcDeleteCancel').addEventListener('click', () => { deleteModal.hidden = true; deleteTarget = null; });
+  document.getElementById('fcDeleteConfirm').addEventListener('click', async () => {
+    if (!deleteTarget) return;
+    const button = deleteTarget, confirmButton = document.getElementById('fcDeleteConfirm');
+    confirmButton.disabled = true; confirmButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Tirtiraya...';
+    try {
+      const response = await fetch(`/admin/falcelin-cabasho/${button.dataset.type}/${button.dataset.id}/delete`, {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token() }}'}});
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.message || 'Tirtiristu way fashilantay.');
+      deleteModal.hidden = true; button.closest('.fc-entry').remove(); deleteTarget = null;
+      deleteSuccess.hidden = false; setTimeout(() => { deleteSuccess.hidden = true; }, 3200);
+    } catch (error) { confirmButton.disabled = false; confirmButton.innerHTML = '<i class="fa-solid fa-trash-can"></i> Tirtir'; document.getElementById('fcDeleteContext').textContent = error.message; deleteModal.hidden = false; }
+  });
   document.getElementById('fcReplySubmit').addEventListener('click', async function () {
     if (!replyTarget) return;
     const button = this, message = document.getElementById('fcReplyMessage').value.trim();
@@ -84,6 +133,14 @@
       window.location.reload();
     } catch (error) { button.disabled = false; button.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Dir Jawaabta'; alert(error.message); }
   });
+  const filterForm = document.querySelector('.fc-filters');
+  if (filterForm) {
+    let timer;
+    const autoSubmit = () => { clearTimeout(timer); timer = setTimeout(() => filterForm.submit(), 300); };
+    filterForm.querySelectorAll('select').forEach(control => control.addEventListener('change', autoSubmit));
+    const search = filterForm.querySelector('input[name="q"]');
+    if (search) search.addEventListener('input', autoSubmit);
+  }
 })();
 </script>
 {% endblock %}
