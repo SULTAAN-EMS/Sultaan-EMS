@@ -108,7 +108,7 @@
     <div class="fc-section-title"><span class="fc-section-icon teal"><i class="fa-solid fa-heart"></i></span><div><h2>Falcelinta Ardayda</h2><p>Xiddigaha, reactions-ka, iyo faallooyinka natiijada.</p></div><b id="fcFeedbackSectionCount">{{ feedback_rows|length }}</b></div>
     <div class="fc-list">
       {% for row in feedback_rows %}
-      <article class="fc-entry">
+      <article class="fc-entry" data-entry-type="feedback" data-entry-id="{{ row.id }}" data-delivery-status="{{ 'read' if row.read_at else 'delivered' if row.delivered_at else 'sent' }}">
         <div class="fc-entry-main"><span class="fc-avatar">{% if row.student.photo_path %}<img src="{{ asset_url(row.student.photo_path) }}" alt="{{ row.student.full_name }}">{% else %}{{ row.student.full_name[:1] }}{% endif %}</span><div><strong>{{ row.student.full_name }}</strong><small>{{ row.student.academic_class.name if row.student.academic_class else row.student.level or 'Fasal lama diiwaangelin' }} · {{ row.student.student_code }}</small></div></div>
         <div class="fc-rating" aria-label="{{ row.reaction|title }}; {{ row.rating }} out of 5 stars"><span class="fc-reaction-sticker {{ row.reaction if row.reaction in ['like','love','care','wow'] else 'like' }}" title="{{ row.reaction|title }}">{% if row.reaction == 'love' %}<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="17" fill="#F4325C"/><path d="M18 27S8 21 8 14.5C8 10 13.5 8 18 13c4.5-5 10-3 10 1.5C28 21 18 27 18 27Z" fill="#fff"/></svg>{% elif row.reaction == 'care' %}<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="17" fill="#FFC531"/><path d="M11 17c1.5-3 4-3 7 0 3-3 5.5-3 7 0" fill="none" stroke="#8A5A12" stroke-width="2" stroke-linecap="round"/><path d="M18 28s-5-3-5-6c0-2 2.5-3 5 0 2.5-3 5-2 5 0 0 3-5 6-5 6Z" fill="#F02D55"/></svg>{% elif row.reaction == 'wow' %}<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="17" fill="#F2994A"/><circle cx="12" cy="14" r="2" fill="#7C3F08"/><circle cx="24" cy="14" r="2" fill="#7C3F08"/><ellipse cx="18" cy="24" rx="3.5" ry="5" fill="#7C3F08"/></svg>{% else %}<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="17" fill="#2E86F0"/><path d="M10 16h6v13h-6zM16 16l3-10c.6-2 3.5-1.5 3.2.7L21 13h6c1.5 0 2.5 1.4 2 2.8l-2.5 9.5c-.3 1-1.2 1.7-2.3 1.7H16Z" fill="#fff"/></svg>{% endif %}</span><span class="fc-stars">{{ '★' * row.rating }}<em>{{ '★' * (5 - row.rating) }}</em></span></div>
         <div class="fc-student-message"><strong><i class="fa-solid fa-message"></i> Fariinta ardayga ka timid</strong>{{ row.comment }}</div>
@@ -125,7 +125,7 @@
     <div class="fc-section-title"><span class="fc-section-icon brick"><i class="fa-solid fa-flag"></i></span><div><h2>Cabashooyinka</h2><p>Cabashooyinka saxeexan iyo xaaladdooda.</p></div><b id="fcComplaintSectionCount">{{ complaint_rows|length }}</b></div>
     <div class="fc-list">
       {% for row in complaint_rows %}
-      <article class="fc-entry complaint">
+      <article class="fc-entry complaint" data-entry-type="complaint" data-entry-id="{{ row.id }}" data-delivery-status="{{ 'read' if row.read_at else 'delivered' if row.delivered_at else 'sent' }}">
         <div class="fc-entry-main"><span class="fc-avatar brick-avatar">{% if row.student.photo_path %}<img src="{{ asset_url(row.student.photo_path) }}" alt="{{ row.student.full_name }}">{% else %}{{ row.student.full_name[:1] }}{% endif %}</span><div><strong>{{ row.student.full_name }}</strong><small>{{ row.student.academic_class.name if row.student.academic_class else row.student.level or 'Fasal lama diiwaangelin' }} · {{ row.student.student_code }}</small></div></div>
         <span class="fc-type">{{ row.complaint_type }}{% if row.subject_name %} · {{ row.subject_name }}{% endif %}</span>
         <div class="fc-student-message"><strong><i class="fa-solid fa-message"></i> Fariinta ardayga ka timid</strong>{{ row.details }}</div>
@@ -200,6 +200,23 @@
       window.setTimeout(() => window.location.reload(), 1500);
     } catch (error) { button.disabled = false; button.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Dir Jawaabta'; alert(error.message); }
   });
+  const markMessageRead = entry => {
+    if (!entry || entry.dataset.deliveryStatus === 'read' || entry.dataset.readPending === '1') return;
+    entry.dataset.readPending = '1';
+    fetch(`/admin/falcelin-cabasho/${entry.dataset.entryType}/${entry.dataset.entryId}/read`, { method:'POST', headers:{'X-CSRFToken':'{{ csrf_token() }}'} })
+      .then(response => response.json())
+      .then(data => { if (data.ok) { entry.dataset.deliveryStatus = 'read'; } })
+      .catch(() => { entry.dataset.readPending = '0'; });
+  };
+  if ('IntersectionObserver' in window) {
+    const readObserver = new IntersectionObserver(entries => entries.forEach(observed => {
+      if (observed.isIntersecting && observed.intersectionRatio >= .65) {
+        window.setTimeout(() => markMessageRead(observed.target), 700);
+        readObserver.unobserve(observed.target);
+      }
+    }), { threshold:[.65] });
+    document.querySelectorAll('.fc-entry[data-entry-id]').forEach(entry => readObserver.observe(entry));
+  }
   const filterForm = document.querySelector('.fc-filters');
   if (filterForm) {
     let timer;

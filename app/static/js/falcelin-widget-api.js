@@ -43,6 +43,54 @@
     return '/static/' + path.replace(/\\/g, '/').replace(/^\/+/, '');
   }
 
+  function parseMessageDate(value) {
+    var date = new Date(value || '');
+    return isNaN(date.getTime()) ? null : date;
+  }
+
+  function relativeTime(value) {
+    var date = parseMessageDate(value);
+    if (!date) return '';
+    var seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+    if (seconds < 60) return seconds + ' ' + (seconds === 1 ? 'second' : 'seconds') + ' ago';
+    var minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return minutes + ' ' + (minutes === 1 ? 'minute' : 'minutes') + ' ago';
+    var hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours + ' ' + (hours === 1 ? 'hour' : 'hours') + ' ago';
+    return new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(date);
+  }
+
+  function deliveryMarkup(item) {
+    var state = item.delivery_status === 'read' ? 'read' : item.delivery_status === 'delivered' ? 'delivered' : 'sent';
+    var ticks = state === 'sent' ? '✓' : '✓✓';
+    var explanation = state === 'sent'
+      ? 'Fariintaada waa la diray. Xafiiska Imtixaannada hadda ma online aha.'
+      : state === 'delivered'
+        ? 'Fariintaada waxay gaartay Xafiiska Imtixaannada, laakiin wali lama akhrin.'
+        : 'Fariintaada waxaa arkay Xafiiska Imtixaannada.';
+    return '<button type="button" class="message-status message-status--' + state + '" aria-label="' + explanation + '"><span class="ticks">' + ticks + '</span><span class="message-status__tip" role="tooltip">' + explanation + '</span></button>';
+  }
+
+  function refreshRelativeTimes() {
+    document.querySelectorAll('[data-relative-time]').forEach(function (node) {
+      node.textContent = relativeTime(node.getAttribute('data-relative-time'));
+    });
+  }
+
+  function bindMessageStatus() {
+    document.querySelectorAll('.message-status').forEach(function (button) {
+      button.addEventListener('click', function (event) {
+        event.stopPropagation();
+        document.querySelectorAll('.message-status.is-open').forEach(function (other) {
+          if (other !== button) other.classList.remove('is-open');
+        });
+        button.classList.toggle('is-open');
+      });
+    });
+  }
+
+  window.setInterval(refreshRelativeTimes, 1000);
+
   function applyReplyLogos(items) {
     msgList.querySelectorAll('.msg').forEach(function (node, index) {
       var item = items[index];
@@ -102,15 +150,15 @@
     var typeText = { cabasho: 'CABASHO', falcelin: 'FALCELIN' };
     var html = '<details class="msg"><summary><div class="msg__main">' +
       '<span class="msg__type">' + (typeText[item.type] || 'FALCELIN') + (item.subject ? ' · ' + escapeHtml(item.subject) : '') + '</span>' +
-      '<span class="msg__ref">' + escapeHtml(item.ref) + '</span>' +
+      '<span class="msg__ref">' + escapeHtml(item.ref) + '</span><span class="msg__time" data-relative-time="' + escapeHtml(item.created_at) + '"></span>' +
       '<span class="msg__excerpt">' + escapeHtml(item.excerpt) + '</span></div>' +
       '<span class="badge ' + (badgeClass[item.status] || 'badge--received') + '">' + (badgeText[item.status] || 'La Diray') + '</span>' +
       '<span class="msg__chevron" aria-hidden="true">▾</span></summary><div class="msg__body">' +
-      '<p class="msg__original">' + escapeHtml(item.details) + '</p>';
+      '<p class="msg__original">' + escapeHtml(item.details) + deliveryMarkup(item) + '</p>';
     if (item.reply) {
       html += '<div class="reply-slip"><div class="reply-slip__head"><span class="reply-slip__seal">✓</span>' +
         '<span class="reply-slip__office-lockup"><span class="reply-slip__office">' + escapeHtml(item.reply.office) + '</span><span class="reply-slip__verified" aria-label="Xafiis la xaqiijiyey"><span class="seal-shape"></span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span>' +
-        '<span class="reply-slip__date">' + escapeHtml(item.reply.date) + '</span></div><p>' + escapeHtml(item.reply.message) + '</p></div>';
+        '<span class="reply-slip__date">' + escapeHtml(item.reply.time || '') + '</span></div><p>' + escapeHtml(item.reply.message) + '</p></div>';
     } else if (item.status === 'pending') {
       html += '<div class="pending-note">⌛ La sugayo jawaabta xafiiska imtixaannada.</div>';
     }
@@ -161,6 +209,8 @@
         : '<div class="empty-state"><span class="empty-state__icon">📭</span><strong>Weli wax falcelin ama cabasho ah ma jirto.</strong><p>Marka aad wax dirto, xaaladdeeda iyo jawaabta xafiiska halkan ayaad ka arki doontaa.</p></div>';
       applyReplyLogos(payload.items);
       applyVerifiedSealShape();
+      refreshRelativeTimes();
+      bindMessageStatus();
       paintReplyBadge(payload.unread_count || 0);
       if (markRead && payload.unread_count) {
         requestJson('/api/falcelin/replies/read', {

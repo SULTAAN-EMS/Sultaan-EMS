@@ -404,6 +404,14 @@ def _feedback_date(value):
     return value.strftime("%d %b %Y") if value else ""
 
 
+def _feedback_iso(value):
+    return f"{value.isoformat()}Z" if value else ""
+
+
+def _feedback_clock(value):
+    return value.strftime("%I:%M %p").lstrip("0") if value else ""
+
+
 def _feedback_reply_payload(reply):
     if not reply:
         return None
@@ -414,6 +422,8 @@ def _feedback_reply_payload(reply):
     return {
         "office": reply.office_name or "Xafiiska Waxbarashada",
         "date": _feedback_date(reply.created_at),
+        "created_at": _feedback_iso(reply.created_at),
+        "time": _feedback_clock(reply.created_at),
         "message": reply.message,
         "logo": logo_path,
     }
@@ -439,10 +449,12 @@ def _feedback_item(entry):
         "ref": entry.ref_number,
         "type": item_type,
         "date": _feedback_date(entry.created_at),
+        "created_at": _feedback_iso(entry.created_at),
         "subject": subject,
         "excerpt": excerpt[:260],
         "details": (entry.details if is_complaint else entry.comment) or "",
         "status": status,
+        "delivery_status": "read" if entry.read_at else "delivered" if entry.delivered_at else "sent",
         "reply": _feedback_reply_payload(latest_reply),
     }
 

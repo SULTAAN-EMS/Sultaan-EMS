@@ -1464,6 +1464,17 @@ def feedback_complaints():
         complaint_rows = [item for item in complaint_rows if item.replies]
         feedback_rows = [item for item in feedback_rows if item.replies]
 
+    # Loading the authorized office inbox is the delivery event.  It does not
+    # mark anything read; that is recorded only by the explicit view endpoint.
+    delivered_now = datetime.utcnow()
+    delivered_changed = False
+    for entry in [*feedback_rows, *complaint_rows]:
+        if entry.delivered_at is None:
+            entry.delivered_at = delivered_now
+            delivered_changed = True
+    if delivered_changed:
+        db.session.commit()
+
     classes = AcademicClass.query.order_by(AcademicClass.sort_order, AcademicClass.name).all()
     return render_template(
         "admin/feedback_complaints.html",
@@ -1491,6 +1502,8 @@ def reply_feedback_complaint(entry_type, entry_id):
         entry.replies.append(StudentComplaintReply(admin_id=current_user.id, office_name=office_name, message=message))
         entry.status = "answered"
         entry.read_by_student = False
+        entry.delivered_at = entry.delivered_at or datetime.utcnow()
+        entry.read_at = entry.read_at or datetime.utcnow()
         reference = entry.ref_number
     elif entry_type == "feedback":
         entry = db.session.get(StudentFeedback, entry_id)
@@ -1498,12 +1511,35 @@ def reply_feedback_complaint(entry_type, entry_id):
             return jsonify(ok=False, message="Falcelinta lama helin."), 404
         entry.replies.append(StudentFeedbackReply(admin_id=current_user.id, office_name=office_name, message=message))
         entry.read_by_student = False
+        entry.delivered_at = entry.delivered_at or datetime.utcnow()
+        entry.read_at = entry.read_at or datetime.utcnow()
         reference = entry.ref_number
     else:
         return jsonify(ok=False, message="Nooca fariinta lama aqoonsan."), 404
     audit("Falcelin/Cabasho Reply", f"Reply sent for {reference}")
     db.session.commit()
     return jsonify(ok=True, message="Jawaabta waa la diray, ardayguna wuu arki karaa.")
+
+
+@admin_bp.route("/falcelin-cabasho/<string:entry_type>/<int:entry_id>/read", methods=["POST"])
+@permission_required("settings")
+def read_feedback_complaint(entry_type, entry_id):
+    """Persist the read event when an authorized office user views a message."""
+    if entry_type == "complaint":
+        entry = db.session.get(StudentComplaint, entry_id)
+    elif entry_type == "feedback":
+        entry = db.session.get(StudentFeedback, entry_id)
+    else:
+        return jsonify(ok=False, message="Nooca fariinta lama aqoonsan."), 404
+    if not entry:
+        return jsonify(ok=False, message="Fariinta lama helin."), 404
+    if entry.delivered_at is None:
+        entry.delivered_at = datetime.utcnow()
+    if entry.read_at is None:
+        entry.read_at = datetime.utcnow()
+    audit("Falcelin/Cabasho Read", f"Message viewed for {entry.ref_number}")
+    db.session.commit()
+    return jsonify(ok=True, status="read", read_at=entry.read_at.isoformat() + "Z")
 
 
 @admin_bp.route("/falcelin-cabasho/<string:entry_type>/<int:entry_id>/delete", methods=["POST"])

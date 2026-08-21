@@ -250,6 +250,8 @@ class StudentFeedback(TimestampMixin, db.Model):
     reaction = db.Column(db.String(20), nullable=False)
     comment = db.Column(db.Text, nullable=False)
     read_by_student = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    delivered_at = db.Column(db.DateTime, nullable=True, index=True)
+    read_at = db.Column(db.DateTime, nullable=True, index=True)
 
     student = db.relationship("Student", backref=db.backref("feedback_entries", cascade="all, delete-orphan"))
     exam = db.relationship("Exam")
@@ -270,6 +272,8 @@ class StudentComplaint(TimestampMixin, db.Model):
     signature_data = db.Column(db.Text, nullable=False)
     status = db.Column(db.String(20), default="pending", nullable=False, index=True)
     read_by_student = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    delivered_at = db.Column(db.DateTime, nullable=True, index=True)
+    read_at = db.Column(db.DateTime, nullable=True, index=True)
 
     student = db.relationship("Student", backref=db.backref("complaint_entries", cascade="all, delete-orphan"))
     exam = db.relationship("Exam")
