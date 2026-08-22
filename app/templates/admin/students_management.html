@@ -256,7 +256,7 @@
               {% if student.photo_path %}
                 <img src="{{ asset_url(student.photo_path) }}" alt="{{ student.full_name }}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
               {% else %}
-                {{ student.student_code[:2] }}
+                <i class="fa-solid {{ 'fa-person-dress' if student.gender == 'Female' else 'fa-person' }}" aria-label="{{ student.gender or 'Student' }} avatar"></i>
               {% endif %}
             </div>
             <div class="sm-info">
@@ -583,14 +583,16 @@ function selectStudent(studentId) {
         return;
       }
       
-      // Update avatar with photo or initials
+      // Update avatar with the photo, then use a gender-aware avatar if the
+      // stored photo is missing or the remote source can no longer load.
       console.log('Photo path from DB:', data.photo_path);
       console.log('Photo URL constructed:', data.photo_url);
-      
+      const fallbackAvatar = () => `<i class="fa-solid ${data.gender === 'Female' ? 'fa-person-dress' : 'fa-person'}" aria-label="${data.gender || 'Student'} avatar"></i>`;
       if (data.photo_url) {
-        avatarLg.innerHTML = `<img src="${data.photo_url}" alt="${data.full_name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'; this.parentElement.textContent='${data.student_code ? data.student_code.substring(0, 2).toUpperCase() : 'AD'}';">`;
+        avatarLg.innerHTML = `<img src="${data.photo_url}" alt="${data.full_name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+        avatarLg.querySelector('img').addEventListener('error', () => { avatarLg.innerHTML = fallbackAvatar(); }, { once: true });
       } else {
-        avatarLg.textContent = data.student_code ? data.student_code.substring(0, 2).toUpperCase() : 'AD';
+        avatarLg.innerHTML = fallbackAvatar();
       }
       
       pname.textContent = data.full_name;

@@ -278,7 +278,7 @@ def fetch_photo_source(photo_source):
         return None, "Photo Source must be a valid HTTP(S) image URL."
 
     try:
-        with urlopen(Request(source, headers={"User-Agent": "SULTAAN-EMS student importer"}), timeout=8) as response:
+        with urlopen(Request(source, headers={"User-Agent": "SULTAAN-EMS student importer"}), timeout=3) as response:
             content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0].lower()
             payload = response.read(PHOTO_SOURCE_MAX_BYTES + 1)
     except Exception:
@@ -298,7 +298,13 @@ def fetch_photo_source(photo_source):
         from flask import current_app
         if current_app.config.get("CLOUDINARY_CLOUD_NAME"):
             from .cloudinary_service import upload_image
-            return upload_image(source, "school/students"), None
+            # Upload the validated bytes we already fetched. This avoids a
+            # second remote fetch by Cloudinary and keeps broken/slow URLs
+            # from holding the import request open unnecessarily.
+            image_file = BytesIO(payload)
+            image_file.content_type = content_type or "application/octet-stream"
+            image_file.filename = "student-photo"
+            return upload_image(image_file, "school/students"), None
     except Exception:
         return None, "Photo Source could not be saved to image storage."
 

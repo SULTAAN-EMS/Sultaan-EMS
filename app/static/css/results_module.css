@@ -3775,6 +3775,16 @@
     flex-shrink: 0;
 }
 
+.sm-avatar > i,
+.profile-card .avatar-lg > i {
+    color: #ffffff;
+    font-size: 18px;
+}
+
+.profile-card .avatar-lg > i {
+    font-size: 26px;
+}
+
 .sm-info {
     flex: 1;
     min-width: 0;
