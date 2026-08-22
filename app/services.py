@@ -1035,6 +1035,36 @@ def grade_for_from_cache(score, scale_cache):
     return {"grade": "-", "comment": "", "grade_point": 0.0, "is_pass": False, "badge_color": "#64748b", "text_color": "#ffffff", "background_color": "#f1f5f9", "border_color": "#cbd5e1"}
 
 
+def performance_tier_for(score, weak_config=None, fail_config=None):
+    """Classify a percentage using the configured weak/fail report tiers.
+
+    Grade-letter metadata (including ``GradeScale.is_pass``) is deliberately
+    not used here.  Grade letters and report color tiers are separate
+    Grade Management settings, so a configured tier is the only authority for
+    weak/fail score-cell styling.
+    """
+    try:
+        score_value = Decimal(str(score or 0))
+    except (TypeError, ValueError):
+        score_value = Decimal("0")
+
+    def matches(config):
+        if not config:
+            return False
+        try:
+            minimum = Decimal(str(config.get("min")))
+            maximum = Decimal(str(config.get("max")))
+        except (AttributeError, TypeError, ValueError):
+            return False
+        return minimum <= score_value <= maximum
+
+    is_fail = matches(fail_config)
+    return {
+        "is_fail": is_fail,
+        "is_weak": not is_fail and matches(weak_config),
+    }
+
+
 def grade_scale_cache_row(scale):
     return {
         "min_score": Decimal(str(scale.min_score or 0)),

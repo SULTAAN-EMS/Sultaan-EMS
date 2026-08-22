@@ -383,21 +383,6 @@
             min-width: 14.8mm;
         }
 
-        .grade-aplus,
-        .pct-aplus { background: var(--green); }
-        .grade-a,
-        .pct-a { background: var(--blue); }
-        .grade-b,
-        .pct-b { background: var(--teal); }
-        .grade-c,
-        .pct-c { background: var(--orange); }
-        .grade-d,
-        .pct-d { background: var(--deep-orange); }
-        .grade-e,
-        .grade-f,
-        .pct-e,
-        .pct-f { background: var(--red); }
-
         .rank-badge {
             min-width: 11mm;
             background: var(--navy-deep);
@@ -695,7 +680,6 @@
                         <tbody>
                             {% for row in page_students %}
                                 {% set grade_text = row.grade.grade %}
-                                {% set grade_class = 'aplus' if grade_text == 'A+' else grade_text[:1]|lower %}
                                 <tr data-mg-token="{{ row.mg_token|e }}">
                                     <td>{{ start_idx + loop.index }}</td>
                                     <td>
@@ -733,7 +717,7 @@
                                         {% elif row.is_weak %}
                                             <span class="badge" style="background-color: {{ weak_config.bg_color if weak_config and weak_config.bg_color else '#f59e0b' }}; color: {{ weak_config.text_color if weak_config and weak_config.text_color else '#ffffff' }} !important;">{{ row.percentage|academic_number(settings) }}%</span>
                                         {% else %}
-                                            <span class="badge percent-badge pct-{{ grade_class }}">{{ row.percentage|academic_number(settings) }}%</span>
+                                            <span class="badge percent-badge" style="background-color: {{ row.grade.background_color }}; color: {{ row.grade.text_color }} !important; border: 1px solid {{ row.grade.border_color }};">{{ row.percentage|academic_number(settings) }}%</span>
                                         {% endif %}
                                     </td>
                                     <td>
@@ -742,7 +726,7 @@
                                         {% elif row.is_weak %}
                                             <span class="badge" style="background-color: {{ weak_config.bg_color if weak_config and weak_config.bg_color else '#f59e0b' }}; color: {{ weak_config.text_color if weak_config and weak_config.text_color else '#ffffff' }} !important;">{{ grade_text }}</span>
                                         {% else %}
-                                            <span class="badge grade-{{ grade_class }}">{{ grade_text }}</span>
+                                            <span class="badge" style="background-color: {{ row.grade.background_color }}; color: {{ row.grade.text_color }} !important; border: 1px solid {{ row.grade.border_color }};">{{ grade_text }}</span>
                                         {% endif %}
                                     </td>
                                     <td>

@@ -130,7 +130,15 @@
                   {% if student_data.student.mother_name %}<span class="mother-name">({{ student_data.student.mother_name }})</span>{% endif %}
                 </td>
                 {% for subject_data in student_data.subject_data %}
-                  <td class="rh-mono">{% if subject_data.is_uf %}<span class="rh-uf" title="Ma Gelin — Examination not taken">⚠️ MG</span>{% else %}{{ subject_data.score|academic_number(settings) }}{% endif %}</td>
+                  {% if subject_data.is_uf %}
+                    <td class="rh-mono"><span class="rh-uf" title="Ma Gelin — Examination not taken">⚠️ MG</span></td>
+                  {% elif subject_data.is_fail %}
+                    <td class="rh-mono" style="background: {{ fail_config.bg_color if fail_config else '#fee2e2' }}; color: {{ fail_config.text_color if fail_config else '#991b1b' }}; font-weight: 800;">{{ subject_data.score|academic_number(settings) }}</td>
+                  {% elif subject_data.is_weak %}
+                    <td class="rh-mono" style="background: {{ weak_config.bg_color if weak_config else '#fef3c7' }}; color: {{ weak_config.text_color if weak_config else '#92400e' }}; font-weight: 800;">{{ subject_data.score|academic_number(settings) }}</td>
+                  {% else %}
+                    <td class="rh-mono">{{ subject_data.score|academic_number(settings) }}</td>
+                  {% endif %}
                 {% endfor %}
                   <td class="rh-mono"><strong>{{ student_data.total_score|academic_number(settings) }}/{{ student_data.total_max|academic_number(settings) }}</strong></td>
                   <td class="rh-mono">{{ student_data.percentage|academic_number(settings) }}%</td>

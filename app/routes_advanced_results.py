@@ -20,7 +20,7 @@ from .import_wizard import process_result_import, process_student_import, result
 from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AttendanceRecord, Exam, ExamType, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, Subject, LabelTranslation
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
-from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, result_payload, subject_display_name
+from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, performance_tier_for, result_payload, subject_display_name
 from .attendance_rules import counts_as_exam_sitting
 
 advanced_results_bp = Blueprint("admin_advanced_results", __name__)
@@ -655,48 +655,20 @@ def class_roster():
                 settings=get_settings(),
             )
         
-        # Load grade scales once to avoid N+1 queries (similar to analytics optimization)
-        exam_scales = GradeScale.query.filter(
-            GradeScale.is_active.is_(True),
-            GradeScale.exam_id == selected_exam.id
-        ).order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
-        
-        global_scales = GradeScale.query.filter(
-            GradeScale.is_active.is_(True),
-            GradeScale.exam_id.is_(None)
-        ).order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
-        
-        # Create in-memory lookup function
+        # Use the shared Grade Management snapshot so legacy NULL-active rows,
+        # exam-specific ranges, and global fallback ranges resolve identically
+        # on the roster, portal, and exported reports.
+        grade_cache = load_grade_scale_cache(selected_exam.id)
+        report_tiers = get_report_tier_configs(
+            year_id=selected_year.id,
+            exam_id=selected_exam.id,
+            level_id=level_id,
+        )
+        weak_config = report_tiers["weak"]
+        fail_config = report_tiers["fail"]
+
         def cached_grade_for(score):
-            """Get grade for a score using cached grade scales"""
-            # Try exam-specific scales first
-            for scale in exam_scales:
-                if scale.min_score <= Decimal(str(score)) <= scale.max_score:
-                    return {
-                        "grade": scale.grade,
-                        "comment": scale.comment,
-                        "grade_point": float(scale.grade_point or 0),
-                        "is_pass": bool(scale.is_pass),
-                        "badge_color": scale.badge_color,
-                        "text_color": scale.text_color,
-                        "background_color": scale.background_color,
-                        "border_color": scale.border_color,
-                    }
-            # Fall back to global scales
-            for scale in global_scales:
-                if scale.min_score <= Decimal(str(score)) <= scale.max_score:
-                    return {
-                        "grade": scale.grade,
-                        "comment": scale.comment,
-                        "grade_point": float(scale.grade_point or 0),
-                        "is_pass": bool(scale.is_pass),
-                        "badge_color": scale.badge_color,
-                        "text_color": scale.text_color,
-                        "background_color": scale.background_color,
-                        "border_color": scale.border_color,
-                    }
-            # Final fallback
-            return {"grade": "-", "comment": "", "grade_point": 0.0, "is_pass": False, "badge_color": "#64748b", "text_color": "#ffffff", "background_color": "#f1f5f9", "border_color": "#cbd5e1"}
+            return grade_for_from_cache(score, grade_cache)
         
         student_query = students_for_scope_query(
             selected_year.id,
@@ -729,7 +701,7 @@ def class_roster():
         roster_data = []
         for student in students:
             # Get results for this student and exam (only published results)
-            results = Result.query.filter_by(student_id=student.id, exam_id=exam_id, is_published=True).all()
+            results = Result.query.filter_by(student_id=student.id, exam_id=selected_exam.id, is_published=True).all()
             results_dict = {r.subject_id: r for r in results}
             
             # Calculate totals and grades
@@ -748,6 +720,7 @@ def class_roster():
                 
                 # Get grade using exam-specific grade scale
                 grade_info = cached_grade_for(percentage)
+                tier = performance_tier_for(percentage, weak_config, fail_config)
                 
                 # Apply grade_override if present
                 if result and result.grade_override:
@@ -761,11 +734,14 @@ def class_roster():
                     "max_score": max_score,
                     "percentage": round(percentage, 2),
                     "grade": grade_info,
+                    "is_fail": tier["is_fail"],
+                    "is_weak": tier["is_weak"],
                     "is_uf": (student.id, subject.id) in attendance_uf_keys,
                 })
             
             overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
             overall_grade = cached_grade_for(overall_percentage)
+            overall_tier = performance_tier_for(overall_percentage, weak_config, fail_config)
             
             # Calculate GP (grade point average)
             total_points = sum(s["grade"]["grade_point"] for s in subject_data if s["grade"]["grade_point"])
@@ -779,6 +755,8 @@ def class_roster():
                 "total_max": total_max,
                 "percentage": overall_percentage,
                 "grade": overall_grade,
+                "is_fail": overall_tier["is_fail"],
+                "is_weak": overall_tier["is_weak"],
                 "gp": gp,
             })
         
@@ -796,6 +774,8 @@ def class_roster():
             sections=sections,
             search_query=search_query,
             settings=get_settings(),
+            weak_config=weak_config,
+            fail_config=fail_config,
         )
     except Exception as e:
         logger.error(f"Class roster error: {str(e)}")
@@ -835,48 +815,11 @@ def student_view():
     results = Result.query.filter_by(student_id=student.id, exam_id=selected_exam.id).all()
     results_dict = {r.subject_id: r for r in results}
     
-    # Load grade scales once to avoid N+1 queries
-    exam_scales = GradeScale.query.filter(
-        GradeScale.is_active.is_(True),
-        GradeScale.exam_id == selected_exam.id
-    ).order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
-    
-    global_scales = GradeScale.query.filter(
-        GradeScale.is_active.is_(True),
-        GradeScale.exam_id.is_(None)
-    ).order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
-    
-    # Create in-memory lookup function
+    # Resolve grades through the shared Grade Management cache.
+    grade_cache = load_grade_scale_cache(selected_exam.id)
+
     def cached_grade_for(score):
-        """Get grade for a score using cached grade scales"""
-        # Try exam-specific scales first
-        for scale in exam_scales:
-            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
-                return {
-                    "grade": scale.grade,
-                    "comment": scale.comment,
-                    "grade_point": float(scale.grade_point or 0),
-                    "is_pass": bool(scale.is_pass),
-                    "badge_color": scale.badge_color,
-                    "text_color": scale.text_color,
-                    "background_color": scale.background_color,
-                    "border_color": scale.border_color,
-                }
-        # Fall back to global scales
-        for scale in global_scales:
-            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
-                return {
-                    "grade": scale.grade,
-                    "comment": scale.comment,
-                    "grade_point": float(scale.grade_point or 0),
-                    "is_pass": bool(scale.is_pass),
-                    "badge_color": scale.badge_color,
-                    "text_color": scale.text_color,
-                    "background_color": scale.background_color,
-                    "border_color": scale.border_color,
-                }
-        # Final fallback
-        return {"grade": "-", "comment": "", "grade_point": 0.0, "is_pass": False, "badge_color": "#64748b", "text_color": "#ffffff", "background_color": "#f1f5f9", "border_color": "#cbd5e1"}
+        return grade_for_from_cache(score, grade_cache)
     
     # Build subject data
     subject_data = []
@@ -1066,48 +1009,11 @@ def export_student_pdf():
     )
     results_dict = {r.subject_id: r for r in results}
     
-    # Load grade scales once to avoid N+1 queries
-    exam_scales = GradeScale.query.filter(
-        GradeScale.is_active.is_(True),
-        GradeScale.exam_id == selected_exam.id
-    ).order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
-    
-    global_scales = GradeScale.query.filter(
-        GradeScale.is_active.is_(True),
-        GradeScale.exam_id.is_(None)
-    ).order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
-    
-    # Create in-memory lookup function
+    # Resolve grades through the shared Grade Management cache.
+    grade_cache = load_grade_scale_cache(selected_exam.id)
+
     def cached_grade_for(score):
-        """Get grade for a score using cached grade scales"""
-        # Try exam-specific scales first
-        for scale in exam_scales:
-            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
-                return {
-                    "grade": scale.grade,
-                    "comment": scale.comment,
-                    "grade_point": float(scale.grade_point or 0),
-                    "is_pass": bool(scale.is_pass),
-                    "badge_color": scale.badge_color,
-                    "text_color": scale.text_color,
-                    "background_color": scale.background_color,
-                    "border_color": scale.border_color,
-                }
-        # Fall back to global scales
-        for scale in global_scales:
-            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
-                return {
-                    "grade": scale.grade,
-                    "comment": scale.comment,
-                    "grade_point": float(scale.grade_point or 0),
-                    "is_pass": bool(scale.is_pass),
-                    "badge_color": scale.badge_color,
-                    "text_color": scale.text_color,
-                    "background_color": scale.background_color,
-                    "border_color": scale.border_color,
-                }
-        # Final fallback
-        return {"grade": "-", "comment": "", "grade_point": 0.0, "is_pass": False, "badge_color": "#64748b", "text_color": "#ffffff", "background_color": "#f1f5f9", "border_color": "#cbd5e1"}
+        return grade_for_from_cache(score, grade_cache)
     
     # Build data
     subject_data = []
@@ -1275,48 +1181,11 @@ def export_class_pdf():
         [subject.id for subject in subjects],
     )
     
-    # Load grade scales once to avoid N+1 queries
-    exam_scales = GradeScale.query.filter(
-        GradeScale.is_active.is_(True),
-        GradeScale.exam_id == selected_exam.id
-    ).order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
-    
-    global_scales = GradeScale.query.filter(
-        GradeScale.is_active.is_(True),
-        GradeScale.exam_id.is_(None)
-    ).order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
-    
-    # Create in-memory lookup function
+    # Resolve grades through the shared Grade Management cache.
+    grade_cache = load_grade_scale_cache(selected_exam.id)
+
     def cached_grade_for(score):
-        """Get grade for a score using cached grade scales"""
-        # Try exam-specific scales first
-        for scale in exam_scales:
-            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
-                return {
-                    "grade": scale.grade,
-                    "comment": scale.comment,
-                    "grade_point": float(scale.grade_point or 0),
-                    "is_pass": bool(scale.is_pass),
-                    "badge_color": scale.badge_color,
-                    "text_color": scale.text_color,
-                    "background_color": scale.background_color,
-                    "border_color": scale.border_color,
-                }
-        # Fall back to global scales
-        for scale in global_scales:
-            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
-                return {
-                    "grade": scale.grade,
-                    "comment": scale.comment,
-                    "grade_point": float(scale.grade_point or 0),
-                    "is_pass": bool(scale.is_pass),
-                    "badge_color": scale.badge_color,
-                    "text_color": scale.text_color,
-                    "background_color": scale.background_color,
-                    "border_color": scale.border_color,
-                }
-        # Final fallback
-        return {"grade": "-", "comment": "", "grade_point": 0.0, "is_pass": False, "badge_color": "#64748b", "text_color": "#ffffff", "background_color": "#f1f5f9", "border_color": "#cbd5e1"}
+        return grade_for_from_cache(score, grade_cache)
     
     report_tiers = get_report_tier_configs(year_id=year_id, exam_id=exam_id, level_id=level_id)
     weak_config = report_tiers["weak"]
@@ -1349,8 +1218,9 @@ def export_class_pdf():
                 grade_info = dict(grade_info)
                 grade_info["grade"] = result.grade_override
 
-            is_fail = (not grade_info.get("is_pass", True)) or (fail_config["min"] <= percentage <= fail_config["max"])
-            is_weak = not is_fail and (weak_config["min"] <= percentage <= weak_config["max"])
+            tier = performance_tier_for(percentage, weak_config, fail_config)
+            is_fail = tier["is_fail"]
+            is_weak = tier["is_weak"]
 
             subject_data.append({
                 "subject_id": subject.id,
@@ -1364,8 +1234,9 @@ def export_class_pdf():
         
         overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
         overall_grade = cached_grade_for(overall_percentage)
-        overall_fail = (not overall_grade.get("is_pass", True)) or (fail_config["min"] <= overall_percentage <= fail_config["max"])
-        overall_weak = not overall_fail and (weak_config["min"] <= overall_percentage <= weak_config["max"])
+        overall_tier = performance_tier_for(overall_percentage, weak_config, fail_config)
+        overall_fail = overall_tier["is_fail"]
+        overall_weak = overall_tier["is_weak"]
 
         roster_data.append({
             "student": student,
@@ -1392,8 +1263,8 @@ def export_class_pdf():
     highest_total = round(max((row["total_score"] for row in roster_data), default=0), 2)
     lowest_total = round(min((row["total_score"] for row in roster_data), default=0), 2)
     average_total = round(sum(row["total_score"] for row in roster_data) / len(roster_data), 2) if roster_data else 0
-    passed_count = sum(1 for row in roster_data if row["grade"].get("is_pass"))
-    failed_count = len(roster_data) - passed_count
+    passed_count = sum(1 for row in roster_data if not row["is_fail"])
+    failed_count = sum(1 for row in roster_data if row["is_fail"])
     pass_rate = round((passed_count / len(roster_data) * 100), 2) if roster_data else 0
     highest_score = round(max((row["percentage"] for row in roster_data), default=0), 2)
     lowest_score = round(min((row["percentage"] for row in roster_data), default=0), 2)
@@ -1484,48 +1355,18 @@ def export_class_excel():
         [subject.id for subject in subjects],
     )
     
-    # Load grade scales once to avoid N+1 queries
-    exam_scales = GradeScale.query.filter(
-        GradeScale.is_active.is_(True),
-        GradeScale.exam_id == selected_exam.id
-    ).order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
-    
-    global_scales = GradeScale.query.filter(
-        GradeScale.is_active.is_(True),
-        GradeScale.exam_id.is_(None)
-    ).order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
-    
-    # Create in-memory lookup function
+    # Resolve grades through the shared Grade Management cache.
+    grade_cache = load_grade_scale_cache(selected_exam.id)
+    report_tiers = get_report_tier_configs(
+        year_id=year_id,
+        exam_id=exam_id,
+        level_id=level_id,
+    )
+    weak_config = report_tiers["weak"]
+    fail_config = report_tiers["fail"]
+
     def cached_grade_for(score):
-        """Get grade for a score using cached grade scales"""
-        # Try exam-specific scales first
-        for scale in exam_scales:
-            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
-                return {
-                    "grade": scale.grade,
-                    "comment": scale.comment,
-                    "grade_point": float(scale.grade_point or 0),
-                    "is_pass": bool(scale.is_pass),
-                    "badge_color": scale.badge_color,
-                    "text_color": scale.text_color,
-                    "background_color": scale.background_color,
-                    "border_color": scale.border_color,
-                }
-        # Fall back to global scales
-        for scale in global_scales:
-            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
-                return {
-                    "grade": scale.grade,
-                    "comment": scale.comment,
-                    "grade_point": float(scale.grade_point or 0),
-                    "is_pass": bool(scale.is_pass),
-                    "badge_color": scale.badge_color,
-                    "text_color": scale.text_color,
-                    "background_color": scale.background_color,
-                    "border_color": scale.border_color,
-                }
-        # Final fallback
-        return {"grade": "-", "comment": "", "grade_point": 0.0, "is_pass": False, "badge_color": "#64748b", "text_color": "#ffffff", "background_color": "#f1f5f9", "border_color": "#cbd5e1"}
+        return grade_for_from_cache(score, grade_cache)
     
     # Create workbook
     wb = Workbook()
@@ -1574,6 +1415,7 @@ def export_class_excel():
         
         overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
         overall_grade = cached_grade_for(overall_percentage)
+        overall_tier = performance_tier_for(overall_percentage, weak_config, fail_config)
         
         total_points = 0
         for subject in subjects:
@@ -1596,12 +1438,14 @@ def export_class_excel():
         percentage_col = len(subjects) + 5  # ID, Name, Mother, Class + subjects + Total
         percentage_cell = ws.cell(row=row_num, column=percentage_col)
         
-        if overall_percentage >= 70:
-            percentage_cell.fill = PatternFill(start_color="E7F1EA", end_color="E7F1EA", fill_type="solid")
-        elif overall_percentage >= 50:
-            percentage_cell.fill = PatternFill(start_color="FBF3DE", end_color="FBF3DE", fill_type="solid")
+        if overall_tier["is_fail"]:
+            fill_color = fail_config.get("bg_color", "#fee2e2")
+        elif overall_tier["is_weak"]:
+            fill_color = weak_config.get("bg_color", "#fef3c7")
         else:
-            percentage_cell.fill = PatternFill(start_color="F7E9E7", end_color="F7E9E7", fill_type="solid")
+            fill_color = overall_grade.get("background_color", "#ffffff")
+        fill_color = str(fill_color).lstrip("#")
+        percentage_cell.fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
         
         row_num += 1
     
@@ -3465,29 +3309,11 @@ def group_results(rows):
 
 
 def build_stats(payloads, rows):
-    # Load global grade scales once to avoid N+1 queries
-    global_scales = GradeScale.query.filter(
-        GradeScale.is_active.is_(True),
-        GradeScale.exam_id.is_(None)
-    ).order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
-    
-    # Create in-memory lookup function
+    # Use the same active/global fallback rules as every result view.
+    grade_cache = load_grade_scale_cache()
+
     def cached_grade_for(score):
-        """Get grade for a score using cached global grade scales"""
-        for scale in global_scales:
-            if scale.min_score <= Decimal(str(score)) <= scale.max_score:
-                return {
-                    "grade": scale.grade,
-                    "comment": scale.comment,
-                    "grade_point": float(scale.grade_point or 0),
-                    "is_pass": bool(scale.is_pass),
-                    "badge_color": scale.badge_color,
-                    "text_color": scale.text_color,
-                    "background_color": scale.background_color,
-                    "border_color": scale.border_color,
-                }
-        # Final fallback
-        return {"grade": "-", "comment": "", "grade_point": 0.0, "is_pass": False, "badge_color": "#64748b", "text_color": "#ffffff", "background_color": "#f1f5f9", "border_color": "#cbd5e1"}
+        return grade_for_from_cache(score, grade_cache)
     
     averages = [Decimal(str(payload["average"])) for payload in payloads if payload.get("subjects")]
     pass_count = sum(1 for avg in averages if cached_grade_for(float(avg)).get("is_pass"))

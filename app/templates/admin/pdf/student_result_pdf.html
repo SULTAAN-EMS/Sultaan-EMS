@@ -364,7 +364,7 @@
                         <td class="mono">{{ subject_data.max_score }}</td>
                         <td class="mono">{{ subject_data.percentage|academic_number(settings) }}%</td>
                         <td>
-                            <span class="grade-pill grade-{{ subject_data.grade.grade|lower }}">
+                            <span class="grade-pill" style="background-color: {{ subject_data.grade.background_color }}; color: {{ subject_data.grade.text_color }}; border-color: {{ subject_data.grade.border_color }};">
                                 {{ subject_data.grade.grade }}
                             </span>
                         </td>
