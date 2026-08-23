@@ -25,9 +25,22 @@
 <body class="{% block body_class %}{% endblock %}">
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-      <div class="toast-stack">
+        <div class="toast-stack">
         {% for category, message in messages %}
-          <div class="toast {{ category }}">{{ _(message) }}</div>
+          {% if category == "transition-success" %}
+            <div class="toast transition-success-toast" role="status">
+              <span class="transition-success-icon" aria-hidden="true"><i class="fa-solid fa-check"></i></span>
+              <span class="transition-success-copy">
+                <strong>Transfer successful</strong>
+                <span>{{ _(message) }}</span>
+              </span>
+              <button type="button" class="transition-success-close" aria-label="Close notification" onclick="this.closest('.transition-success-toast').remove()">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+              </button>
+            </div>
+          {% else %}
+            <div class="toast {{ category }}">{{ _(message) }}</div>
+          {% endif %}
         {% endfor %}
       </div>
     {% endif %}

@@ -300,6 +300,24 @@ class TestPhase2CStudentManagement(unittest.TestCase):
             self.client.get("/admin/advanced-results/student-transitions/class").status_code,
             200,
         )
+        preview = self.client.post(
+            "/admin/advanced-results/student-transitions/class",
+            data={
+                "source_academic_year_id": str(self.year_a.id),
+                "source_academic_year_level_id": str(self.level_a.id),
+                "source_academic_year_class_id": str(self.class_a.id),
+                "source_academic_section_id": str(self.section.id),
+                "destination_academic_year_id": str(self.year_b.id),
+                "destination_academic_year_level_id": str(self.level_b.id),
+                "destination_academic_year_class_id": str(self.class_b.id),
+                "destination_academic_section_id": "",
+                "action": "promotion",
+                "mode": "preview",
+            },
+        )
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn(b"Total source students", preview.data)
+        self.assertNotIn(b"Internal Server Error", preview.data)
 
 
 if __name__ == "__main__":

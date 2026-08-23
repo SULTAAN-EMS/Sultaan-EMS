@@ -3300,7 +3300,7 @@ def student_transition(student_id):
                 db.session.commit()
                 flash(
                     f"{student.full_name} moved successfully to {destination.academic_year.name} — {destination.academic_year_class.name}.",
-                    "success",
+                    "transition-success",
                 )
                 return redirect(url_for("admin_advanced_results.students_management", year_id=destination.academic_year_id))
             except (EnrollmentValidationError, ValueError) as exc:

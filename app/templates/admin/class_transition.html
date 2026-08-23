@@ -61,7 +61,7 @@
       <table class="premium-table">
         <thead><tr><th>Student</th><th>Student ID</th><th>Source</th><th>Preview status</th></tr></thead>
         <tbody>
-        {% for item in preview.items %}
+        {% for item in preview["items"] %}
           <tr>
             <td>{{ item.student.full_name if item.student else 'Missing student' }}</td>
             <td>{{ item.student.student_code if item.student else '-' }}</td>
