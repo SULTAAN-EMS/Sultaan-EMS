@@ -9,12 +9,16 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from sqlalchemy import and_, exists, or_
+
 from . import db
 from .models import (
     AcademicSection,
     AcademicYear,
     AcademicYearClass,
     AcademicYearLevel,
+    AcademicClass,
+    SchoolClass,
     Student,
     StudentEnrollment,
 )
@@ -79,6 +83,100 @@ def get_enrollment_for_student_year(student_id, academic_year_id):
         student_id=_require(student_id, "Student"),
         academic_year_id=_require(academic_year_id, "Academic year"),
     ).first()
+
+
+def student_enrollment_scope_query(
+    academic_year_id,
+    academic_year_level_id=None,
+    academic_year_class_id=None,
+    academic_section_id=None,
+):
+    """Return an enrollment-first Student query for one year-aware scope.
+
+    Legacy students are included only when they have no enrollment for the
+    selected year. This keeps old records visible during the cutover without
+    allowing a different year's placement to leak into the selected scope.
+    """
+    year_id = _require(academic_year_id, "Academic year")
+    year = db.session.get(AcademicYear, year_id)
+    if not year:
+        raise EnrollmentValidationError("Academic year does not exist")
+
+    year_level = None
+    if academic_year_level_id not in (None, ""):
+        year_level = db.session.get(AcademicYearLevel, _require(academic_year_level_id, "Academic year level"))
+        if not year_level or year_level.academic_year_id != year_id:
+            raise EnrollmentValidationError("Academic year level does not belong to the selected academic year")
+
+    year_class = None
+    if academic_year_class_id not in (None, ""):
+        year_class = db.session.get(AcademicYearClass, _require(academic_year_class_id, "Academic year class"))
+        if not year_class:
+            raise EnrollmentValidationError("Academic year class does not exist")
+        if year_level and year_class.academic_year_level_id != year_level.id:
+            raise EnrollmentValidationError("Academic year class does not belong to the selected academic year level")
+        year_level = year_level or year_class.academic_year_level
+        if year_level.academic_year_id != year_id:
+            raise EnrollmentValidationError("Academic year class does not belong to the selected academic year")
+
+    section = None
+    if academic_section_id not in (None, ""):
+        section = db.session.get(AcademicSection, _require(academic_section_id, "Academic section"))
+        if not section:
+            raise EnrollmentValidationError("Academic section does not exist")
+        if year_class and year_class.legacy_class_id != section.academic_class_id:
+            raise EnrollmentValidationError("Academic section does not belong to the selected academic year class")
+
+    enrollment_join = and_(
+        StudentEnrollment.student_id == Student.id,
+        StudentEnrollment.academic_year_id == year_id,
+    )
+    query = Student.query.outerjoin(StudentEnrollment, enrollment_join)
+
+    enrollment_filters = [StudentEnrollment.id.isnot(None)]
+    if year_level:
+        enrollment_filters.append(StudentEnrollment.academic_year_level_id == year_level.id)
+    if year_class:
+        enrollment_filters.append(StudentEnrollment.academic_year_class_id == year_class.id)
+    if section:
+        enrollment_filters.append(StudentEnrollment.academic_section_id == section.id)
+    enrolled_in_scope = and_(*enrollment_filters)
+
+    legacy_filters = [Student.academic_year_id == year_id]
+    if year_class:
+        class_filters = []
+        if year_class.legacy_class_id:
+            class_filters.append(Student.academic_class_id == year_class.legacy_class_id)
+            legacy_class = db.session.get(AcademicClass, year_class.legacy_class_id)
+            school_class = (
+                SchoolClass.query.filter_by(name=legacy_class.name).first()
+                if legacy_class else None
+            )
+            if school_class:
+                class_filters.append(and_(Student.academic_class_id.is_(None), Student.class_id == school_class.id))
+        legacy_filters.append(or_(*class_filters) if class_filters else Student.id == -1)
+    elif year_level:
+        level_filters = []
+        if year_level.legacy_level_id:
+            level_filters.append(Student.academic_level_id == year_level.legacy_level_id)
+        level_filters.append(and_(Student.academic_level_id.is_(None), Student.level == year_level.name))
+        legacy_filters.append(or_(*level_filters))
+    if section:
+        legacy_filters.append(or_(
+            Student.academic_section_id == section.id,
+            and_(Student.academic_section_id.is_(None), Student.section == section.name),
+        ))
+
+    # The outer query already joins StudentEnrollment. Explicitly correlate
+    # only Student so SQLAlchemy keeps StudentEnrollment in the EXISTS FROM
+    # clause when the caller asks for count() or pagination.
+    no_year_enrollment = ~exists().where(
+        and_(
+            StudentEnrollment.student_id == Student.id,
+            StudentEnrollment.academic_year_id == year_id,
+        )
+    ).correlate(Student)
+    return query.filter(or_(enrolled_in_scope, and_(no_year_enrollment, *legacy_filters)))
 
 
 def create_enrollment(
@@ -146,6 +244,27 @@ def create_enrollment(
     db.session.add(enrollment)
     db.session.flush()
     return enrollment
+
+
+def apply_legacy_placement(student, scope):
+    """Mirror a new enrollment into legacy fields for compatibility reads."""
+    year_level = scope["academic_year_level"]
+    year_class = scope["academic_year_class"]
+    section = scope.get("academic_section")
+    student.academic_level_id = year_level.legacy_level_id
+    student.academic_class_id = year_class.legacy_class_id
+    student.academic_section_id = section.id if section else None
+    student.level = year_level.name
+    student.section = section.name if section else None
+    if year_class.legacy_class_id:
+        legacy_class = db.session.get(AcademicClass, year_class.legacy_class_id)
+        if legacy_class:
+            school_class = SchoolClass.query.filter_by(name=legacy_class.name).first()
+            if not school_class:
+                school_class = SchoolClass(name=legacy_class.name)
+                db.session.add(school_class)
+                db.session.flush()
+            student.class_id = school_class.id
 
 
 def _candidate_year_level(student):

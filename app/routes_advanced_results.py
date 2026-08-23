@@ -17,8 +17,16 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, Subject, LabelTranslation
+from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentEnrollment, Subject, LabelTranslation
 from .academic_hierarchy import students_for_year_scope_query, year_classes, year_levels, year_subjects
+from .enrollment_service import (
+    EnrollmentValidationError,
+    apply_legacy_placement,
+    create_enrollment,
+    get_enrollment_for_student_year,
+    student_enrollment_scope_query,
+    validate_enrollment_scope,
+)
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, performance_tier_for, result_payload, subject_display_name
@@ -2872,10 +2880,11 @@ def results_settings():
 
 @advanced_results_bp.route("/students-management")
 def students_management():
-    """Students Management page within Results Hub - consolidated student operations"""
+    """Enrollment-aware Student Management listing with legacy fallback."""
     year_id = int_or_none(request.args.get("year_id"))
     level_id = int_or_none(request.args.get("level_id"))
     class_id = int_or_none(request.args.get("class_id"))
+    section_id = int_or_none(request.args.get("section_id"))
     search_query = request.args.get("q", "").strip()
     status_filter = request.args.get("status_filter", "")
     page = int_or_none(request.args.get("page", 1)) or 1
@@ -2883,13 +2892,38 @@ def students_management():
     
     # Get selected year
     selected_year = db.session.get(AcademicYear, year_id) if year_id else AcademicYear.query.filter_by(is_current=True).first()
+    if year_id and not selected_year:
+        abort(404)
     
     # Get all years for selector
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
     
-    # Get levels and classes for filters
-    levels = AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
-    classes = AcademicClass.query.order_by(AcademicClass.name).all() if not level_id else AcademicClass.query.filter_by(academic_level_id=level_id).all()
+    # Filters use year-aware records. The legacy fields are only a fallback
+    # for students that have not yet been backfilled into StudentEnrollment.
+    levels = year_levels(selected_year.id) if selected_year else []
+    selected_year_level = db.session.get(AcademicYearLevel, level_id) if level_id else None
+    if selected_year_level and (not selected_year or selected_year_level.academic_year_id != selected_year.id):
+        flash("Selected level does not belong to the selected academic year.", "warning")
+        return redirect(url_for("admin_advanced_results.students_management", year_id=selected_year.id if selected_year else None))
+    classes = year_classes(level_id) if selected_year and level_id else (
+        [item for level in levels for item in year_classes(level.id)] if selected_year else []
+    )
+    selected_year_class = db.session.get(AcademicYearClass, class_id) if class_id else None
+    if selected_year_class and (not selected_year or selected_year_class.academic_year_level.academic_year_id != selected_year.id):
+        flash("Selected class does not belong to the selected academic year.", "warning")
+        return redirect(url_for("admin_advanced_results.students_management", year_id=selected_year.id if selected_year else None))
+    if selected_year_class and level_id and selected_year_class.academic_year_level_id != level_id:
+        flash("Selected class does not belong to the selected level.", "warning")
+        return redirect(url_for("admin_advanced_results.students_management", year_id=selected_year.id if selected_year else None, level_id=level_id))
+    sections = []
+    if selected_year_class and selected_year_class.legacy_class_id:
+        sections = AcademicSection.query.filter_by(
+            academic_class_id=selected_year_class.legacy_class_id,
+            is_active=True,
+        ).order_by(AcademicSection.sort_order, AcademicSection.name).all()
+    if section_id and (not selected_year_class or not any(section.id == section_id for section in sections)):
+        flash("Selected section does not belong to the selected academic year class.", "warning")
+        return redirect(url_for("admin_advanced_results.students_management", year_id=selected_year.id if selected_year else None, level_id=level_id, class_id=class_id))
     
     # Calculate statistics for summary cards
     stats = {
@@ -2902,12 +2936,15 @@ def students_management():
     }
     
     if selected_year:
-        # Total students for selected year
-        stats["total_students"] = Student.query.filter_by(academic_year_id=selected_year.id).count()
-        
-        # Students by level
+        scope_query = student_enrollment_scope_query(selected_year.id)
+        stats["total_students"] = scope_query.count()
+
+        # Students by year-aware level
         for level in levels:
-            level_count = Student.query.filter_by(academic_year_id=selected_year.id, academic_level_id=level.id).count()
+            level_count = student_enrollment_scope_query(
+                selected_year.id,
+                academic_year_level_id=level.id,
+            ).count()
             level_name_lower = level.name.lower()
             if "kindergarten" in level_name_lower or "kg" in level_name_lower:
                 stats["kindergarten"] = level_count
@@ -2924,15 +2961,17 @@ def students_management():
                 stats["secondary"] = level_count
         
         # Active students (not locked)
-        stats["active_students"] = Student.query.filter_by(academic_year_id=selected_year.id, is_result_locked=False).count()
+        stats["active_students"] = scope_query.filter(Student.is_result_locked.is_(False)).count()
     
     # Get students with filters
-    students_query = Student.query.filter_by(academic_year_id=selected_year.id) if selected_year else Student.query()
-    
-    if level_id:
-        students_query = students_query.filter_by(academic_level_id=level_id)
-    if class_id:
-        students_query = students_query.filter_by(academic_class_id=class_id)
+    students_query = (
+        student_enrollment_scope_query(
+            selected_year.id,
+            academic_year_level_id=level_id,
+            academic_year_class_id=class_id,
+            academic_section_id=section_id,
+        ) if selected_year else Student.query.filter(Student.id == -1)
+    )
     
     # Apply search filter
     if search_query:
@@ -2957,6 +2996,15 @@ def students_management():
     # Apply pagination
     students = students_query.order_by(Student.student_code).offset((page - 1) * per_page).limit(per_page).all()
     student_ids = [student.id for student in students]
+    enrollments = {}
+    if student_ids and selected_year:
+        enrollments = {
+            enrollment.student_id: enrollment
+            for enrollment in StudentEnrollment.query.filter(
+                StudentEnrollment.student_id.in_(student_ids),
+                StudentEnrollment.academic_year_id == selected_year.id,
+            ).all()
+        }
     incident_counts = {}
     incident_badges = {}
     if student_ids:
@@ -2994,6 +3042,9 @@ def students_management():
         students=students,
         selected_level_id=level_id,
         selected_class_id=class_id,
+        selected_section_id=section_id,
+        sections=sections,
+        enrollments=enrollments,
         q=search_query,
         status_filter=status_filter,
         stats=stats,
@@ -3012,27 +3063,82 @@ def students_management():
 @advanced_results_bp.route("/students/new", methods=["GET", "POST"])
 @advanced_results_bp.route("/students/<int:student_id>/edit", methods=["GET", "POST"])
 def student_form(student_id=None):
-    """Unified Results Hub student create/edit form."""
+    """Create a permanent identity or edit identity-only student fields.
+
+    Academic placement is created as a StudentEnrollment for new students and
+    is intentionally read-only for existing students until the transfer/
+    promotion workflow is introduced in Phase 2D.
+    """
     student = db.session.get(Student, student_id) if student_id else Student()
+    if student_id and not student:
+        abort(404)
+    requested_year_id = int_or_none(request.args.get("year_id"))
+    selected_year = (
+        db.session.get(AcademicYear, requested_year_id)
+        if requested_year_id
+        else (db.session.get(AcademicYear, student.academic_year_id) if student.id and student.academic_year_id else AcademicYear.query.filter_by(is_current=True).first())
+    )
+    if requested_year_id and not selected_year:
+        abort(404)
     if request.method == "POST":
         try:
-            save_student_from_form(student)
+            saved_scope = save_student_from_form(student)
         except ValueError as exc:
+            db.session.rollback()
             flash(str(exc), "danger")
             return redirect(request.url)
-        db.session.add(student)
+        except EnrollmentValidationError as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+            return redirect(request.url)
         audit("Student Updates", f"Saved student {student.student_code}")
         db.session.commit()
         flash("Student saved successfully.", "success")
-        return redirect(url_for("admin_advanced_results.students_management", year_id=student.academic_year_id, level_id=student.academic_level_id, class_id=student.academic_class_id))
+        return redirect(url_for(
+            "admin_advanced_results.students_management",
+            year_id=saved_scope.get("academic_year_id") if saved_scope else student.academic_year_id,
+            level_id=saved_scope.get("academic_year_level_id") if saved_scope else None,
+            class_id=saved_scope.get("academic_year_class_id") if saved_scope else None,
+        ))
 
-    academic_levels = AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
+    selected_enrollment = get_enrollment_for_student_year(student.id, selected_year.id) if student.id and selected_year else None
+    year_levels_for_form = year_levels(selected_year.id) if selected_year else []
+    selected_year_level_id = selected_enrollment.academic_year_level_id if selected_enrollment else None
+    selected_year_class_id = selected_enrollment.academic_year_class_id if selected_enrollment else None
+    selected_section_id = selected_enrollment.academic_section_id if selected_enrollment else None
+    if student.id and not selected_enrollment and selected_year:
+        legacy_level = next((item for item in year_levels_for_form if item.legacy_level_id == student.academic_level_id), None)
+        selected_year_level_id = legacy_level.id if legacy_level else None
+        if selected_year_level_id:
+            legacy_class = db.session.get(AcademicClass, student.academic_class_id) if student.academic_class_id else None
+            year_class = next((item for item in year_classes(selected_year_level_id) if legacy_class and item.legacy_class_id == legacy_class.id), None)
+            selected_year_class_id = year_class.id if year_class else None
+        selected_section_id = student.academic_section_id
+    year_class_map = {
+        level.id: year_classes(level.id)
+        for level in year_levels_for_form
+    }
+    form_sections = []
+    if selected_year_class_id:
+        selected_year_class = db.session.get(AcademicYearClass, selected_year_class_id)
+        if selected_year_class and selected_year_class.legacy_class_id:
+            form_sections = AcademicSection.query.filter_by(
+                academic_class_id=selected_year_class.legacy_class_id,
+                is_active=True,
+            ).order_by(AcademicSection.sort_order, AcademicSection.name).all()
     incident_reports = IncidentReport.query.filter_by(student_id=student.id).order_by(IncidentReport.created_at.desc()).limit(10).all() if student.id else []
     return render_template(
         "admin/student_form.html",
         student=student,
         years=AcademicYear.query.order_by(AcademicYear.name.desc()).all(),
-        academic_levels=academic_levels,
+        selected_year=selected_year,
+        year_levels=year_levels_for_form,
+        year_class_map=year_class_map,
+        form_sections=form_sections,
+        selected_year_level_id=selected_year_level_id,
+        selected_year_class_id=selected_year_class_id,
+        selected_section_id=selected_section_id,
+        placement_locked=bool(student.id),
         incident_reports=incident_reports,
         student_form_action=url_for("admin_advanced_results.student_form", student_id=student.id) if student.id else url_for("admin_advanced_results.student_form"),
     )
@@ -3041,6 +3147,9 @@ def student_form(student_id=None):
 @advanced_results_bp.route("/students/<int:student_id>/delete", methods=["POST"])
 def delete_student(student_id):
     student = db.session.get(Student, student_id) or abort(404)
+    if StudentEnrollment.query.filter_by(student_id=student.id).first():
+        flash("Student has academic enrollment history and cannot be deleted from this screen.", "warning")
+        return redirect(url_for("admin_advanced_results.students_management", year_id=student.academic_year_id))
     deleted_student = {
         "name": student.full_name,
         "code": student.student_code,
@@ -3058,6 +3167,12 @@ def delete_student(student_id):
 def student_data_json(student_id):
     """API endpoint to fetch student data as JSON for AJAX preview"""
     student = db.session.get(Student, student_id) or abort(404)
+    selected_year_id = int_or_none(request.args.get("year_id")) or student.academic_year_id
+    enrollment = get_enrollment_for_student_year(student.id, selected_year_id) if selected_year_id else None
+    year_name = enrollment.academic_year.name if enrollment else (student.academic_year.name if student.academic_year else None)
+    level_name = enrollment.academic_year_level.name if enrollment else (student.academic_level.name if student.academic_level else student.level)
+    class_name = enrollment.academic_year_class.name if enrollment else (student.academic_class.name if student.academic_class else (student.school_class.name if student.school_class else ""))
+    section_name = enrollment.academic_section.name if enrollment and enrollment.academic_section else (student.academic_section.name if student.academic_section else student.section)
     
     return jsonify({
         "id": student.id,
@@ -3068,14 +3183,18 @@ def student_data_json(student_id):
         "gender": student.gender,
         "photo_path": student.photo_path,
         "photo_url": stored_asset_url(student.photo_path),
-        "academic_level_id": student.academic_level_id,
-        "academic_level_name": student.academic_level.name if student.academic_level else None,
-        "academic_class_id": student.academic_class_id,
-        "academic_class_name": student.academic_class.name if student.academic_class else None,
-        "academic_section_id": student.academic_section_id,
-        "academic_section_name": student.academic_section.name if student.academic_section else None,
-        "academic_year_id": student.academic_year_id,
-        "academic_year_name": student.academic_year.name if student.academic_year else None,
+        "academic_year_level_id": enrollment.academic_year_level_id if enrollment else None,
+        "academic_year_level_name": level_name,
+        "academic_year_class_id": enrollment.academic_year_class_id if enrollment else None,
+        "academic_year_class_name": class_name,
+        "academic_section_id": enrollment.academic_section_id if enrollment else student.academic_section_id,
+        "academic_section_name": section_name,
+        "academic_year_id": enrollment.academic_year_id if enrollment else student.academic_year_id,
+        "academic_year_name": year_name,
+        "enrollment_status": enrollment.status if enrollment else None,
+        "academic_outcome": enrollment.academic_outcome if enrollment else None,
+        "legacy_academic_level_id": student.academic_level_id,
+        "legacy_academic_class_id": student.academic_class_id,
         "is_result_locked": student.is_result_locked,
         "is_active": student.is_active,
     })
@@ -3097,7 +3216,14 @@ def toggle_student_lock(student_id):
         audit("Result Locking", f"Unlocked result for {student.student_code}")
     db.session.commit()
     flash("Result lock status updated.", "success")
-    return redirect(url_for("admin_advanced_results.students_management", year_id=student.academic_year_id, level_id=student.academic_level_id, class_id=student.academic_class_id))
+    enrollment = get_enrollment_for_student_year(student.id, student.academic_year_id) if student.academic_year_id else None
+    return redirect(url_for(
+        "admin_advanced_results.students_management",
+        year_id=enrollment.academic_year_id if enrollment else student.academic_year_id,
+        level_id=enrollment.academic_year_level_id if enrollment else None,
+        class_id=enrollment.academic_year_class_id if enrollment else None,
+        section_id=enrollment.academic_section_id if enrollment and enrollment.academic_section_id else None,
+    ))
 
 
 @advanced_results_bp.route("/students/import", methods=["POST"])
@@ -3207,19 +3333,56 @@ def result_import_template():
 
 @advanced_results_bp.route("/students/export")
 def export_students():
+    year_id = int_or_none(request.args.get("year_id"))
+    level_id = int_or_none(request.args.get("level_id"))
+    class_id = int_or_none(request.args.get("class_id"))
+    section_id = int_or_none(request.args.get("section_id"))
+    selected_year = db.session.get(AcademicYear, year_id) if year_id else AcademicYear.query.filter_by(is_current=True).first()
+    if year_id and not selected_year:
+        abort(404)
+    students_query = (
+        student_enrollment_scope_query(selected_year.id, level_id, class_id, section_id)
+        if selected_year else Student.query.filter(Student.id == -1)
+    )
+    students = students_query.order_by(Student.full_name).all()
+    enrollment_by_student = {
+        item.student_id: item
+        for item in StudentEnrollment.query.filter(
+            StudentEnrollment.student_id.in_([student.id for student in students]) if students else StudentEnrollment.id == -1,
+            StudentEnrollment.academic_year_id == selected_year.id if selected_year else StudentEnrollment.id == -1,
+        ).all()
+    }
     wb = Workbook()
     ws = wb.active
     ws.title = "Students"
-    ws.append(["student_id", "full_name", "mother_name", "phone", "gender", "class", "academic_year", "active"])
-    for student in Student.query.order_by(Student.full_name).all():
-        class_name = student.academic_class.name if student.academic_class else (student.school_class.name if student.school_class else "")
-        year_name = student.academic_year.name if student.academic_year else ""
-        ws.append([student.student_code, student.full_name, student.mother_name, student.phone, student.gender or "", class_name, year_name, student.is_active])
-    return workbook_response(wb, "students.xlsx")
+    ws.append(["student_id", "full_name", "mother_name", "phone", "gender", "academic_level", "class", "section", "academic_year", "enrollment_status", "academic_outcome", "active"])
+    for student in students:
+        enrollment = enrollment_by_student.get(student.id)
+        class_name = enrollment.academic_year_class.name if enrollment else (student.academic_class.name if student.academic_class else (student.school_class.name if student.school_class else ""))
+        level_name = enrollment.academic_year_level.name if enrollment else (student.academic_level.name if student.academic_level else student.level or "")
+        section_name = enrollment.academic_section.name if enrollment and enrollment.academic_section else (student.academic_section.name if student.academic_section else student.section or "")
+        year_name = enrollment.academic_year.name if enrollment else (student.academic_year.name if student.academic_year else "")
+        ws.append([
+            student.student_code, student.full_name, student.mother_name, student.phone,
+            student.gender or "", level_name, class_name, section_name, year_name,
+            enrollment.status if enrollment else "legacy", enrollment.academic_outcome if enrollment else "pending",
+            student.is_active,
+        ])
+    filename = f"students-{_safe_download_name_part(selected_year.name if selected_year else 'all-years', 'students')}.xlsx"
+    return workbook_response(wb, filename)
 
 
 def save_student_from_form(student):
+    is_new = student.id is None
     student.student_code = request.form["student_code"].strip()
+    if not student.student_code:
+        raise ValueError("Student ID is required.")
+    duplicate_query = Student.query.filter(Student.student_code == student.student_code)
+    if student.id:
+        duplicate_query = duplicate_query.filter(Student.id != student.id)
+    duplicate = duplicate_query.first()
+    if duplicate:
+        raise ValueError("Student ID already exists.")
     student.full_name = request.form["full_name"].strip()
     student.mother_name = request.form.get("mother_name", "").strip()
     student.phone = request.form.get("phone", "").strip()
@@ -3227,13 +3390,6 @@ def save_student_from_form(student):
     if gender not in {"Male", "Female"}:
         raise ValueError("Please select Male or Female for the results report.")
     student.gender = gender
-    student.academic_year_id = int_or_none(request.form.get("academic_year_id"))
-    student.academic_level_id = int_or_none(request.form.get("academic_level_id"))
-    student.academic_class_id = int_or_none(request.form.get("academic_class_id"))
-    student.academic_section_id = int_or_none(request.form.get("academic_section_id"))
-    if not student.academic_class_id and not student.class_id:
-        raise ValueError("Please select a class for this student.")
-    sync_student_legacy_class(student)
     student.note = request.form.get("note", "").strip()
     student.is_result_locked = bool(request.form.get("is_result_locked"))
     student.lock_reason = request.form.get("lock_reason", "").strip()
@@ -3243,6 +3399,38 @@ def save_student_from_form(student):
         if not allowed_file(photo.filename, ALLOWED_PHOTOS):
             raise ValueError("Photo must be JPG, PNG, or WEBP.")
         student.photo_path = upload_image(photo, "school/students")
+
+    if not is_new:
+        # Existing placement is historical data. Never overwrite it from the
+        # identity edit form; Phase 2D owns transfer/promotion changes.
+        return {
+            "academic_year_id": student.academic_year_id,
+            "academic_year_level_id": None,
+            "academic_year_class_id": None,
+        }
+
+    year_id = int_or_none(request.form.get("academic_year_id"))
+    year_level_id = int_or_none(request.form.get("academic_year_level_id") or request.form.get("academic_level_id"))
+    year_class_id = int_or_none(request.form.get("academic_year_class_id") or request.form.get("academic_class_id"))
+    section_id = int_or_none(request.form.get("academic_section_id"))
+    scope = validate_enrollment_scope(year_id, year_level_id, year_class_id, section_id)
+    student.academic_year_id = scope["academic_year"].id
+    apply_legacy_placement(student, scope)
+    db.session.add(student)
+    db.session.flush()
+    create_enrollment(
+        student.id,
+        year_id,
+        year_level_id,
+        year_class_id,
+        section_id,
+        enrollment_source="manual",
+    )
+    return {
+        "academic_year_id": year_id,
+        "academic_year_level_id": year_level_id,
+        "academic_year_class_id": year_class_id,
+    }
 
 
 def sync_student_legacy_class(student):

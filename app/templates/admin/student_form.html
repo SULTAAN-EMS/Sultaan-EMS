@@ -14,25 +14,35 @@
     <option value="Female" {% if student.gender == 'Female' %}selected{% endif %}>Female</option>
   </select></label>
   
-  <!-- Academic Hierarchy from Setup -->
-  <label><i class="fa-solid fa-calendar-days"></i> Academic Year<select name="academic_year_id" id="academic_year_id" required>
+  <!-- Academic placement is year-aware; existing student placement is read-only here. -->
+  <label><i class="fa-solid fa-calendar-days"></i> Academic Year<select name="academic_year_id" id="academic_year_id" required {% if placement_locked %}disabled{% endif %}>
     <option value="">Select Year</option>
     {% for y in years %}
-    <option value="{{ y.id }}" {% if student.academic_year_id==y.id %}selected{% endif %}>{{ y.name }}</option>
+    <option value="{{ y.id }}" {% if selected_year and selected_year.id==y.id %}selected{% endif %}>{{ y.name }}</option>
     {% endfor %}
   </select></label>
-  <label><i class="fa-solid fa-layer-group"></i> Academic Level<select name="academic_level_id" id="academic_level_id">
+  {% if placement_locked %}<input type="hidden" name="academic_year_id" value="{{ selected_year.id if selected_year else '' }}">{% endif %}
+  <label><i class="fa-solid fa-layer-group"></i> Academic Level<select name="academic_year_level_id" id="academic_level_id" {% if placement_locked %}disabled{% endif %}>
     <option value="">Select Level</option>
-    {% for level in academic_levels %}
-    <option value="{{ level.id }}" {% if student.academic_level_id==level.id %}selected{% endif %}>{{ level.name }}</option>
+    {% for level in year_levels %}
+    <option value="{{ level.id }}" {% if selected_year_level_id==level.id %}selected{% endif %}>{{ level.name }}</option>
     {% endfor %}
   </select></label>
-  <label><i class="fa-solid fa-graduation-cap"></i> Class<select name="academic_class_id" id="academic_class_id" data-selected="{{ student.academic_class_id or '' }}">
+  {% if placement_locked %}<input type="hidden" name="academic_year_level_id" value="{{ selected_year_level_id or '' }}">{% endif %}
+  <label><i class="fa-solid fa-graduation-cap"></i> Class<select name="academic_year_class_id" id="academic_class_id" data-selected="{{ selected_year_class_id or '' }}" {% if placement_locked %}disabled{% endif %}>
     <option value="">Select Class</option>
+    {% for level in year_levels %}
+      {% for cls in year_class_map.get(level.id, []) %}
+      <option value="{{ cls.id }}" data-level-id="{{ level.id }}" {% if selected_year_class_id==cls.id %}selected{% endif %}>{{ cls.name }}</option>
+      {% endfor %}
+    {% endfor %}
   </select></label>
-  <label><i class="fa-solid fa-table-cells"></i> Section<select name="academic_section_id" id="academic_section_id" data-selected="{{ student.academic_section_id or '' }}">
+  {% if placement_locked %}<input type="hidden" name="academic_year_class_id" value="{{ selected_year_class_id or '' }}">{% endif %}
+  <label><i class="fa-solid fa-table-cells"></i> Section<select name="academic_section_id" id="academic_section_id" data-selected="{{ selected_section_id or '' }}" {% if placement_locked %}disabled{% endif %}>
     <option value="">Select Section</option>
+    {% for section in form_sections %}<option value="{{ section.id }}" {% if selected_section_id==section.id %}selected{% endif %}>{{ section.name }}</option>{% endfor %}
   </select></label>
+  {% if placement_locked %}<input type="hidden" name="academic_section_id" value="{{ selected_section_id or '' }}">{% endif %}
   
   <div class="photo-upload-section">
     <label><i class="fa-solid fa-image"></i> Student Photo<input type="file" name="photo" id="photo-input" accept="image/*"></label>
@@ -107,14 +117,14 @@
 <script>
 // Academic hierarchy cascading dropdowns
 const academicClasses = {
-  {% for level in academic_levels %}
+  {% for level in year_levels %}
   {{ level.id }}: [
-    {% for cls in level.classes %}
+    {% for cls in year_class_map.get(level.id, []) %}
     {id: {{ cls.id }}, name: "{{ cls.name }}", sections: [
-      {% for section in cls.sections %}
+      {% if cls.legacy_class_id %}{% for section in cls.legacy_class.sections %}
       {id: {{ section.id }}, name: "{{ section.name }}"}
       {% if not loop.last %},{% endif %}
-      {% endfor %}
+      {% endfor %}{% endif %}
     ]}{% if not loop.last %},{% endif %}
     {% endfor %}
   ]{% if not loop.last %},{% endif %}
@@ -147,7 +157,39 @@ if (photoInput) {
 }
 
 // Academic hierarchy cascading
-levelSelect.addEventListener('change', function() {
+function populateClasses() {
+  const levelId = parseInt(levelSelect.value);
+  const selectedClassId = classSelect.dataset.selected || '';
+  classSelect.innerHTML = '<option value="">Select Class</option>';
+  sectionSelect.innerHTML = '<option value="">Select Section</option>';
+  if (levelId && academicClasses[levelId]) {
+    academicClasses[levelId].forEach(cls => {
+      const option = document.createElement('option');
+      option.value = cls.id;
+      option.textContent = cls.name;
+      if (String(cls.id) === String(selectedClassId)) option.selected = true;
+      classSelect.appendChild(option);
+    });
+  }
+  populateSections();
+}
+
+function populateSections() {
+  const levelId = parseInt(levelSelect.value);
+  const classId = parseInt(classSelect.value);
+  const selectedSectionId = sectionSelect.dataset.selected || '';
+  sectionSelect.innerHTML = '<option value="">Select Section</option>';
+  const selectedClass = academicClasses[levelId]?.find(cls => cls.id === classId);
+  (selectedClass?.sections || []).forEach(section => {
+    const option = document.createElement('option');
+    option.value = section.id;
+    option.textContent = section.name;
+    if (String(section.id) === String(selectedSectionId)) option.selected = true;
+    sectionSelect.appendChild(option);
+  });
+}
+
+{% if not placement_locked %}levelSelect.addEventListener('change', function() {
   const levelId = parseInt(this.value);
   classSelect.innerHTML = '<option value="">Select Class</option>';
   sectionSelect.innerHTML = '<option value="">Select Section</option>';
@@ -160,9 +202,9 @@ levelSelect.addEventListener('change', function() {
       classSelect.appendChild(option);
     });
   }
-});
+});{% endif %}
 
-classSelect.addEventListener('change', function() {
+{% if not placement_locked %}classSelect.addEventListener('change', function() {
   const levelId = parseInt(levelSelect.value);
   const classId = parseInt(this.value);
   sectionSelect.innerHTML = '<option value="">Select Section</option>';
@@ -178,7 +220,9 @@ classSelect.addEventListener('change', function() {
       });
     }
   }
-});
+});{% endif %}
+
+populateClasses();
 
 // Initialize on page load
 if (levelSelect.value) {

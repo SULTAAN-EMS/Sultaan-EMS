@@ -12,13 +12,26 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from PIL import Image
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from . import db
-from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, Exam, Result, SchoolClass, Student, Subject
+from .models import (
+    AcademicClass,
+    AcademicLevel,
+    AcademicSection,
+    AcademicYear,
+    AcademicYearClass,
+    AcademicYearLevel,
+    Exam,
+    Result,
+    SchoolClass,
+    Student,
+    Subject,
+)
+from .enrollment_service import apply_legacy_placement, create_enrollment, validate_enrollment_scope
 
 
 # Keep the download readable for school staff.  The importer normalizes these
 # display headers (and the earlier machine-style headers) to the same fields.
 STUDENT_HEADERS = [
-    "ID", "Name", "Mother", "Mobile", "Class",
+    "ID", "Name", "Mother", "Mobile", "Academic Level", "Class", "Section",
     "Academic Year", "Gender", "Photo Source",
 ]
 STUDENT_REQUIRED_HEADERS = [
@@ -50,23 +63,23 @@ def student_template():
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-    ws["F1"].comment = Comment(
+    ws["H1"].comment = Comment(
         f"Academic Year is optional per row. Blank values automatically use the current year: {active_year_name or 'none configured' }.",
         "SULTAAN EMS",
     )
-    ws["H1"].comment = Comment(
+    ws["J1"].comment = Comment(
         "Optional: direct HTTPS image URL. Invalid or unavailable photos do not reject the student row.",
         "SULTAAN EMS",
     )
     gender_validation = DataValidation(type="list", formula1='"Male,Female"', allow_blank=False)
     ws.add_data_validation(gender_validation)
-    gender_validation.add("G2:G1000")
-    for column, width in {"A": 18, "B": 28, "C": 25, "D": 20, "E": 20, "F": 18, "G": 14, "H": 48}.items():
+    gender_validation.add("I2:I1000")
+    for column, width in {"A": 18, "B": 28, "C": 25, "D": 20, "E": 22, "F": 20, "G": 16, "H": 18, "I": 14, "J": 48}.items():
         ws.column_dimensions[column].width = width
     if active_year_name:
         for row_number in range(2, 1001):
-            ws.cell(row=row_number, column=6, value=active_year_name)
-            ws.cell(row=row_number, column=6).font = Font(color="64748B", italic=True)
+            ws.cell(row=row_number, column=8, value=active_year_name)
+            ws.cell(row=row_number, column=8).font = Font(color="64748B", italic=True)
 
     guide = wb.create_sheet("Instructions")
     guide.append(["SULTAAN EMS - Student Import Guide"])
@@ -78,7 +91,9 @@ def student_template():
         ("Name", "Yes", "Student full name.", "Amina Ali Omar"),
         ("Mother", "Yes", "Mother/guardian name.", "Sahra Jama"),
         ("Mobile", "Yes", "Somali mobile number. Spaces, +, 00, hyphens and parentheses are normalized.", "2526177788474 / +2526177788474 / +252 61 777 8474"),
-        ("Class", "Yes", "Existing class name from Setup.", "Form Four"),
+        ("Academic Level", "Yes when ambiguous", "Year-aware level from Setup.", "Secondary"),
+        ("Class", "Yes", "Existing class name under the selected year and level.", "Form Four"),
+        ("Section", "No", "Optional section under the selected class.", "A"),
         ("Academic Year", "No", f"Leave blank to use the current year ({active_year_name or 'configured active year'}).", active_year_name or "2026-2027"),
         ("Gender", "Yes", "Male or Female.", "Female"),
         ("Photo Source", "No", "Direct HTTPS image URL. A failed photo never rejects the student row.", "https://example.com/photo.jpg"),
@@ -221,6 +236,8 @@ def result_entry_import_template(year_id=None, exam_id=None, level_id=None, clas
 HEADER_ALIASES = {
     "student_id": {"student_id", "student_code", "student_number", "student_no", "id"},
     "class": {"class", "class_name", "school_class", "grade", "fasal"},
+    "academic_level": {"academic_level", "level", "level_name", "heer"},
+    "section": {"section", "section_name", "qayb"},
     "exam_type": {"exam_type", "exam_name", "exam", "exam_title"},
     "academic_year": {"academic_year", "year_name", "academic_year_name", "year", "academic_session"},
     "full_name": {"full_name", "student_name", "name", "student_full_name"},
@@ -419,12 +436,6 @@ def process_student_import(file):
     current_year = AcademicYear.query.filter_by(is_current=True).order_by(AcademicYear.id.desc()).first()
     default_year_name = current_year.name if current_year else ""
 
-    classes_by_name = {}
-    for sc in SchoolClass.query.all():
-        classes_by_name[sc.name.lower()] = sc
-    for ac in AcademicClass.query.all():
-        classes_by_name[ac.name.lower()] = ac
-
     seen_file_ids = set()
     valid_students_to_add = []
     failed_errors = []
@@ -460,7 +471,9 @@ def process_student_import(file):
         mother_name = data.get("mother_name", "")
         phone = data.get("phone", "")
         gender = normalize_student_gender(data.get("gender", ""))
+        academic_level_name = data.get("academic_level", "")
         class_name = data.get("class", "")
+        section_name = data.get("section", "")
         academic_year = data.get("academic_year", "") or default_year_name
         photo_source = data.get("photo_source", "")
         phone = normalize_student_phone(phone)
@@ -498,8 +511,7 @@ def process_student_import(file):
         # 6. class validation
         if not class_name:
             row_errors.append(f"Row {row_idx}: class is required.")
-        elif class_name.lower() not in classes_by_name:
-            row_errors.append(f"Row {row_idx}: class '{class_name}' does not exist.")
+        # Class is resolved only inside the selected academic year and level.
 
         # 7. academic_year validation
         if not academic_year:
@@ -515,7 +527,55 @@ def process_student_import(file):
             row_results.append({"row": row_idx, "status": "invalid", "detail": "; ".join(row_errors)})
         else:
             year_obj = existing_years[academic_year]
-            matched_class = classes_by_name[class_name.lower()]
+            level_candidates = AcademicYearLevel.query.filter(
+                AcademicYearLevel.academic_year_id == year_obj.id,
+                AcademicYearLevel.name.ilike(academic_level_name) if academic_level_name else AcademicYearLevel.id > 0,
+            ).all()
+            if not academic_level_name:
+                level_candidates = AcademicYearLevel.query.filter_by(academic_year_id=year_obj.id).all()
+            class_candidates = []
+            if academic_level_name:
+                class_candidates = AcademicYearClass.query.join(AcademicYearLevel).filter(
+                    AcademicYearLevel.academic_year_id == year_obj.id,
+                    AcademicYearLevel.name.ilike(academic_level_name),
+                    AcademicYearClass.name.ilike(class_name),
+                ).all()
+            else:
+                class_candidates = AcademicYearClass.query.join(AcademicYearLevel).filter(
+                    AcademicYearLevel.academic_year_id == year_obj.id,
+                    AcademicYearClass.name.ilike(class_name),
+                ).all()
+            if len(class_candidates) != 1:
+                row_errors.append(
+                    f"Row {row_idx}: class '{class_name}' is ambiguous or missing for academic year '{academic_year}'. Provide the year-aware Academic Level."
+                )
+            elif academic_level_name and len(level_candidates) != 1:
+                row_errors.append(f"Row {row_idx}: academic level '{academic_level_name}' is missing or ambiguous for academic year '{academic_year}'.")
+            if row_errors:
+                failed_count += 1
+                failed_errors.extend(row_errors)
+                row_results.append({"row": row_idx, "status": "invalid", "detail": "; ".join(row_errors)})
+                continue
+            year_class = class_candidates[0]
+            year_level = year_class.academic_year_level
+            section = None
+            if section_name:
+                if not year_class.legacy_class_id:
+                    row_errors.append(f"Row {row_idx}: section cannot be resolved for class '{class_name}'.")
+                else:
+                    section = AcademicSection.query.filter_by(
+                        academic_class_id=year_class.legacy_class_id,
+                        name=section_name,
+                        is_active=True,
+                    ).first()
+                    if not section:
+                        row_errors.append(f"Row {row_idx}: section '{section_name}' does not belong to class '{class_name}'.")
+            if row_errors:
+                failed_count += 1
+                failed_errors.extend(row_errors)
+                row_results.append({"row": row_idx, "status": "invalid", "detail": "; ".join(row_errors)})
+                continue
+            scope = validate_enrollment_scope(year_obj.id, year_level.id, year_class.id, section.id if section else None)
             photo_path = None
             if photo_source:
                 photo_path, photo_error = fetch_photo_source(photo_source)
@@ -538,28 +598,9 @@ def process_student_import(file):
                 photo_path=photo_path,
                 is_active=True
             )
+            apply_legacy_placement(new_student, scope)
 
-            if isinstance(matched_class, AcademicClass):
-                new_student.academic_class = matched_class
-                if matched_class.academic_level:
-                    new_student.academic_level = matched_class.academic_level
-                    new_student.level = matched_class.academic_level.name
-                school_c = SchoolClass.query.filter_by(name=matched_class.name).first()
-                if not school_c:
-                    school_c = SchoolClass(name=matched_class.name)
-                    db.session.add(school_c)
-                    db.session.flush()
-                new_student.school_class = school_c
-            else:
-                new_student.school_class = matched_class
-                ac_c = AcademicClass.query.filter_by(name=matched_class.name).first()
-                if ac_c:
-                    new_student.academic_class = ac_c
-                    if ac_c.academic_level:
-                        new_student.academic_level = ac_c.academic_level
-                        new_student.level = ac_c.academic_level.name
-
-            valid_students_to_add.append(new_student)
+            valid_students_to_add.append((new_student, scope, section.id if section else None))
             success_count += 1
             row_results.append({
                 "row": row_idx,
@@ -569,7 +610,19 @@ def process_student_import(file):
 
     if valid_students_to_add:
         try:
-            db.session.add_all(valid_students_to_add)
+            db.session.add_all([
+                student for student, _scope, _section_id in valid_students_to_add
+            ])
+            db.session.flush()
+            for student, scope, section_id in valid_students_to_add:
+                create_enrollment(
+                    student.id,
+                    scope["academic_year"].id,
+                    scope["academic_year_level"].id,
+                    scope["academic_year_class"].id,
+                    section_id,
+                    enrollment_source="import",
+                )
             db.session.commit()
         except Exception as ex:
             db.session.rollback()

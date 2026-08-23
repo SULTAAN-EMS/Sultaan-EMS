@@ -122,6 +122,15 @@
         </select>
       </div>
       <div class="sm-filter-item">
+        <label for="section-selector"><i class="fa-solid fa-table-cells"></i> Section</label>
+        <select id="section-selector">
+          <option value="">Dhammaan</option>
+          {% for section in sections %}
+            <option value="{{ section.id }}" {% if selected_section_id and selected_section_id == section.id %}selected{% endif %}>{{ section.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="sm-filter-item">
         <label for="status-filter"><i class="fa-solid fa-filter"></i> {{ rh_label("students.status", default="Xaalada") }}</label>
         <select id="status-filter" class="sm-filter">
           <option value="">{{ rh_label("students.status_all", default="Dhammaan") }}</option>
@@ -158,7 +167,7 @@
           <input type="file" name="file" accept=".xlsx" required style="display: none;" onchange="this.form.submit()">
         </label>
       </form>
-      <a href="{{ url_for('admin_advanced_results.export_students') }}" class="btn btn-outline">
+      <a href="{{ url_for('admin_advanced_results.export_students', year_id=selected_year.id if selected_year else '', level_id=selected_level_id or '', class_id=selected_class_id or '', section_id=selected_section_id or '') }}" class="btn btn-outline">
         <i class="fa-solid fa-file-export"></i>
         {{ rh_label("students.export_excel", default="Excel Export") }}
       </a>
@@ -251,7 +260,8 @@
     <div class="sm-grid">
       <div class="sm-list">
         {% for student in students %}
-          <div class="sm-row" data-student-id="{{ student.id }}" data-student-class-id="{{ student.academic_class_id or '' }}" data-student-class-name="{{ (student.academic_class.name if student.academic_class else (student.school_class.name if student.school_class else ''))|e }}" onclick="selectStudent('{{ student.id }}')">
+          {% set enrollment = enrollments.get(student.id) %}
+          <div class="sm-row" data-student-id="{{ student.id }}" data-student-class-id="{{ enrollment.academic_year_class_id if enrollment else '' }}" data-student-class-name="{{ (enrollment.academic_year_class.name if enrollment else (student.academic_class.name if student.academic_class else (student.school_class.name if student.school_class else '')))|e }}" onclick="selectStudent('{{ student.id }}')">
             <div class="sm-avatar">
               {% if student.photo_path %}
                 <img src="{{ asset_url(student.photo_path) }}" alt="{{ student.full_name }}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
@@ -270,6 +280,7 @@
                 {% endif %}
               </div>
               <div class="mt">{{ student.mother_name }}</div>
+              {% if enrollment %}<div class="mt enrollment-meta">{{ enrollment.status|title }} · {{ enrollment.academic_outcome|title }}</div>{% endif %}
             </div>
             <div class="sm-meta">
               <div>{{ student.student_code }}</div>
@@ -279,7 +290,7 @@
               </span>
             </div>
             <div class="sm-actions">
-              <a class="icon-btn small" href="{{ url_for('admin_advanced_results.student_form', student_id=student.id) }}" title="Edit">
+              <a class="icon-btn small" href="{{ url_for('admin_advanced_results.student_form', student_id=student.id, year_id=selected_year.id if selected_year else '') }}" title="Edit">
                 <i class="fa-solid fa-pen"></i>
               </a>
               <form method="post" action="{{ url_for('admin_advanced_results.toggle_student_lock', student_id=student.id) }}" class="inline">
@@ -495,6 +506,7 @@ document.addEventListener('DOMContentLoaded', function() {
       var yearId     = (document.getElementById('year-selector')   || {}).value || '';
       var levelId    = (document.getElementById('level-selector')  || {}).value || '';
       var classId    = (document.getElementById('class-selector')  || {}).value || '';
+      var sectionId  = (document.getElementById('section-selector') || {}).value || '';
       var statusVal  = (document.getElementById('status-filter')   || {}).value || '';
       var query      = (document.getElementById('sm-search-input') || {}).value || '';
 
@@ -505,6 +517,8 @@ document.addEventListener('DOMContentLoaded', function() {
       else          url.searchParams.delete('level_id');
       if (classId)  url.searchParams.set('class_id',     classId);
       else          url.searchParams.delete('class_id');
+      if (sectionId) url.searchParams.set('section_id', sectionId);
+      else           url.searchParams.delete('section_id');
       if (statusVal) url.searchParams.set('status_filter', statusVal);
       else           url.searchParams.delete('status_filter');
       if (query)    url.searchParams.set('q', query);
@@ -555,7 +569,8 @@ function selectStudent(studentId) {
   console.log('selectStudent called with ID:', studentId);
   
   // Load student details into profile panel via AJAX
-  fetch(`{{ url_for('admin_advanced_results.student_data_json', student_id=0) }}`.replace('0', studentId), {
+  const dataUrl = `{{ url_for('admin_advanced_results.student_data_json', student_id=0) }}`.replace('0', studentId) + `?year_id={{ selected_year.id if selected_year else '' }}`;
+  fetch(dataUrl, {
     credentials: 'same-origin',  // Include cookies for authentication
     headers: {
       'Accept': 'application/json',
@@ -596,7 +611,7 @@ function selectStudent(studentId) {
       }
       
       pname.textContent = data.full_name;
-      pid.textContent = `${data.student_code} · ${data.academic_level_name || ''} · ${data.academic_class_name || ''}`;
+      pid.textContent = `${data.student_code} · ${data.academic_year_level_name || ''} · ${data.academic_year_class_name || ''}`;
       
       // Update form fields
       const fieldGrid = document.querySelector('.field-grid');
@@ -611,8 +626,8 @@ function selectStudent(studentId) {
         // Update academic info
         const academicGrid = fieldGrid.nextElementSibling?.nextElementSibling?.querySelectorAll('select');
         if (academicGrid && academicGrid.length >= 2) {
-          academicGrid[0].value = data.academic_level_name || '';
-          academicGrid[1].value = data.academic_class_name || '';
+          academicGrid[0].value = data.academic_year_level_name || '';
+          academicGrid[1].value = data.academic_year_class_name || '';
         }
         
         // Update status
@@ -663,7 +678,7 @@ document.addEventListener('DOMContentLoaded', function() {
 /* Single row filter bar */
 .sm-filters-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(120px, 1fr) minmax(110px, 1fr) minmax(180px, 2fr) 110px;
+  grid-template-columns: repeat(5, minmax(110px, 1fr)) minmax(180px, 2fr) 110px;
   gap: 12px;
   align-items: flex-end;
   background: #ffffff;
