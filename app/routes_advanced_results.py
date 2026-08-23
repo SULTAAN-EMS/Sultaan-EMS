@@ -26,6 +26,8 @@ from .enrollment_service import (
     enrollment_placement_for_student,
     execute_bulk_transition,
     get_enrollment_for_student_year,
+    ensure_legacy_enrollment_for_scope,
+    ensure_legacy_enrollment_for_student,
     plan_bulk_transition,
     student_enrollment_scope_query,
     transition_student_enrollment,
@@ -254,6 +256,12 @@ def subjects_for_scope(exam, level_id=None, class_id=None):
         mapped_subjects = [item for item in mapped_subjects if item]
         if mapped_subjects:
             return mapped_subjects
+        # A year-scoped exam must never fall back to the global Subject table.
+        # An empty year-level subject mapping means the selected context has
+        # no configured subjects yet; showing a legacy subject from another
+        # year would make the Results Hub look valid while saving the wrong
+        # data.
+        return []
     return (
         Subject.query.filter_by(academic_level_id=effective_level_id)
         .order_by(Subject.sort_order, Subject.name, Subject.id)
@@ -1584,7 +1592,16 @@ def result_entry():
 
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
     exams = Exam.query.filter_by(academic_year_id=selected_year.id).order_by(Exam.id.desc()).all() if selected_year else []
-    levels = AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
+    # The Results Hub still submits legacy level/class IDs for compatibility,
+    # but the option lists must be built from the selected year's mappings.
+    # This prevents a level or class created in another academic year from
+    # appearing in this form.
+    year_level_scopes = year_levels(selected_year.id) if selected_year else []
+    levels = [
+        scope.legacy_level
+        for scope in year_level_scopes
+        if scope.legacy_level and scope.legacy_level.is_active
+    ]
     
     # If no exam selected, show exam selection interface
     if not selected_exam:
@@ -1603,11 +1620,35 @@ def result_entry():
             settings=get_settings(),
         )
 
-    level_id = level_id or selected_exam.academic_level_id
-    class_id = class_id or selected_exam.academic_class_id
-    section_id = section_id or selected_exam.academic_section_id
-    classes = AcademicClass.query.filter_by(academic_level_id=level_id, is_active=True).order_by(AcademicClass.sort_order, AcademicClass.name).all() if level_id else []
+    requested_level_id = level_id
+    requested_class_id = class_id
+    requested_section_id = section_id
+    valid_level_ids = {scope.legacy_level_id for scope in year_level_scopes if scope.legacy_level_id}
+    level_id = requested_level_id if requested_level_id in valid_level_ids else None
+    if requested_level_id is None and selected_exam.academic_level_id in valid_level_ids:
+        level_id = selected_exam.academic_level_id
+
+    scope_for_level = next(
+        (scope for scope in year_level_scopes if scope.legacy_level_id == level_id),
+        None,
+    )
+    mapped_classes = [
+        year_class.legacy_class
+        for scope in ([scope_for_level] if scope_for_level else year_level_scopes)
+        for year_class in year_classes(scope.id)
+        if year_class.legacy_class and year_class.legacy_class.is_active
+    ]
+    valid_class_ids = {item.id for item in mapped_classes}
+    class_id = requested_class_id if requested_class_id in valid_class_ids else None
+    if requested_class_id is None and selected_exam.academic_class_id in valid_class_ids:
+        class_id = selected_exam.academic_class_id
+    classes = [item for item in mapped_classes if not level_id or item.academic_level_id == level_id]
+    section_id = requested_section_id
+    if section_id and not class_id:
+        section_id = None
     sections = AcademicSection.query.filter_by(academic_class_id=class_id, is_active=True).order_by(AcademicSection.sort_order, AcademicSection.name).all() if class_id else []
+    if section_id and not any(item.id == section_id for item in sections):
+        section_id = None
     
     # Build scope info
     scope_info = {
@@ -3180,6 +3221,13 @@ def student_transition(student_id):
             error = "Please confirm that the source enrollment will be preserved and a new placement will be created."
         else:
             try:
+                # Older records may still have only the legacy Student
+                # placement fields. Convert that one unambiguous source on
+                # submit so the transition remains fully historical without
+                # guessing when the mapping is ambiguous.
+                if not source_id:
+                    source = ensure_legacy_enrollment_for_student(student)
+                    source_id = source.id
                 source, destination = transition_student_enrollment(
                     student.id,
                     source_id,
@@ -3238,7 +3286,7 @@ def class_transition():
     preview = None
 
     def build_plan():
-        return plan_bulk_transition(
+        plan = plan_bulk_transition(
             source_year_id,
             source_level_id,
             source_class_id,
@@ -3248,6 +3296,29 @@ def class_transition():
             source_academic_section_id=source_section_id,
             destination_academic_section_id=destination_section_id,
         )
+        # Previewing a class must include legacy-only students when their
+        # existing placement maps uniquely to the selected source year/class.
+        # This is a controlled, source-scope backfill; unresolved records are
+        # intentionally left out rather than assigned to another year.
+        converted = ensure_legacy_enrollment_for_scope(
+            source_year_id,
+            source_level_id,
+            source_class_id,
+            source_section_id,
+        )
+        if converted:
+            db.session.commit()
+            plan = plan_bulk_transition(
+                source_year_id,
+                source_level_id,
+                source_class_id,
+                destination_year_id,
+                destination_level_id,
+                destination_class_id,
+                source_academic_section_id=source_section_id,
+                destination_academic_section_id=destination_section_id,
+            )
+        return plan
 
     if all(value is not None for value in (
         source_year_id, source_level_id, source_class_id,

@@ -23,8 +23,8 @@
       <fieldset>
         <legend>1. Source enrollment</legend>
         <label>Source placement
-          <select name="source_enrollment_id" id="source-enrollment" required>
-            <option value="">Select source enrollment</option>
+          <select name="source_enrollment_id" id="source-enrollment" {% if source_enrollments %}required{% endif %}>
+            <option value="">{% if source_enrollments %}Select source enrollment{% else %}Legacy placement will be converted on confirmation{% endif %}</option>
             {% for item in source_enrollments %}
             <option value="{{ item.id }}" {% if selected_source and selected_source.id == item.id %}selected{% endif %}>
               {{ item.academic_year.name }} · {{ item.academic_year_level.name }} · {{ item.academic_year_class.name }}{% if item.academic_section %} · {{ item.academic_section.name }}{% endif %} · {{ item.status|title }}
@@ -36,7 +36,10 @@
           {% if selected_source %}
           <strong>FROM</strong><span>{{ selected_source.academic_year.name }} · {{ selected_source.academic_year_class.name }}{% if selected_source.academic_section %} · {{ selected_source.academic_section.name }}{% endif %}</span>
           <small>{{ selected_source.status|title }} · {{ selected_source.academic_outcome|title }}</small>
-          {% else %}<span>No enrollment history is available for this student.</span>{% endif %}
+          {% else %}
+          <strong>FROM LEGACY PLACEMENT</strong>
+          <span>The existing academic year, level, class, and section will be preserved as the source history when you confirm.</span>
+          {% endif %}
         </div>
       </fieldset>
 
@@ -57,6 +60,7 @@
           <label>Class<select name="destination_academic_year_class_id" id="destination-class" required><option value="">Select class</option></select></label>
           <label>Section<select name="destination_academic_section_id" id="destination-section"><option value="">Optional section</option></select></label>
         </div>
+        <div class="hierarchy-note" id="destination-hierarchy-note" hidden></div>
         <label>Notes (optional)<textarea name="notes" rows="2" placeholder="Reason or transition note"></textarea></label>
       </fieldset>
     </div>
@@ -91,6 +95,7 @@ const summaryTo = document.getElementById('summary-to');
 const confirmBox = document.getElementById('confirm-transition');
 const submitButton = document.getElementById('submit-transition');
 const sourceLabels = {{ source_enrollments|map(attribute='id')|list|tojson }};
+const destinationHierarchyNote = document.getElementById('destination-hierarchy-note');
 
 function fillSelect(select, items, placeholder) {
   select.innerHTML = `<option value="">${placeholder}</option>`;
@@ -109,6 +114,10 @@ function refreshDestinationLevels() {
   fillSelect(levelSelect, levels, 'Select level');
   fillSelect(classSelect, [], 'Select class');
   fillSelect(sectionSelect, [], 'Optional section');
+  destinationHierarchyNote.hidden = !yearSelect.value || levels.length > 0;
+  destinationHierarchyNote.textContent = levels.length
+    ? ''
+    : 'Sanadkan weli looma diyaarin levels iyo classes. Marka hore ku samee Configuration Center / Setup.';
   refreshSummary();
 }
 
@@ -129,7 +138,7 @@ function refreshDestinationSections() {
 function refreshSummary() {
   const action = actionSelect.options[actionSelect.selectedIndex]?.textContent || 'Transition';
   summaryAction.textContent = `${action}: {{ student.full_name|e }}`;
-  summaryFrom.textContent = sourceSelect.value ? `FROM ${selectedItem(sourceSelect)}` : 'FROM source enrollment';
+  summaryFrom.textContent = sourceSelect.value ? `FROM ${selectedItem(sourceSelect)}` : 'FROM LEGACY PLACEMENT';
   summaryTo.textContent = yearSelect.value && classSelect.value ? `TO ${selectedItem(yearSelect)} · ${selectedItem(levelSelect)} · ${selectedItem(classSelect)}${sectionSelect.value ? ` · ${selectedItem(sectionSelect)}` : ''}` : 'TO destination placement';
 }
 
@@ -143,6 +152,6 @@ refreshSummary();
 </script>
 
 <style>
-.transition-page{max-width:1100px;margin:0 auto}.transition-identity{display:flex;align-items:center;gap:14px;padding:16px 18px;background:#f8fafc;border:1px solid #dbe4ee;border-radius:14px;margin:20px 0}.transition-identity .avatar{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:#0f766e;color:#fff;font-size:1.25rem}.transition-identity strong,.transition-identity small{display:block}.transition-identity small{color:#64748b;margin-top:4px}.transition-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.transition-grid fieldset{border:1px solid #d6dee8;border-radius:14px;padding:18px;min-width:0}.transition-grid legend{font-weight:800;color:#163660;padding:0 8px}.transition-grid label{display:grid;gap:7px;margin:12px 0;font-weight:700;color:#334155}.transition-grid select,.transition-grid textarea{width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:10px;background:#fff;font:inherit}.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.source-preview{display:grid;gap:6px;padding:13px 14px;background:#eff6ff;border-left:4px solid #2563eb;border-radius:8px;color:#1e3a8a}.source-preview small{color:#475569}.transition-summary{display:grid;gap:7px;margin:20px 0;padding:17px 18px;background:#fffaf0;border:1px solid #e7c981;border-radius:12px}.summary-label{font:700 .72rem/1 monospace;letter-spacing:.12em;color:#956b16}.summary-from,.summary-to{color:#475569}.confirm-line{display:flex;align-items:flex-start;gap:9px;color:#334155;font-weight:600;margin:18px 0}.confirm-line input{margin-top:3px}.transition-actions{display:flex;justify-content:space-between;gap:12px}.transition-actions button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:800px){.transition-grid{grid-template-columns:1fr}.field-row{grid-template-columns:1fr}}
+.transition-page{max-width:1100px;margin:0 auto}.transition-identity{display:flex;align-items:center;gap:14px;padding:16px 18px;background:#f8fafc;border:1px solid #dbe4ee;border-radius:14px;margin:20px 0}.transition-identity .avatar{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:#0f766e;color:#fff;font-size:1.25rem}.transition-identity strong,.transition-identity small{display:block}.transition-identity small{color:#64748b;margin-top:4px}.transition-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.transition-grid fieldset{border:1px solid #d6dee8;border-radius:14px;padding:18px;min-width:0}.transition-grid legend{font-weight:800;color:#163660;padding:0 8px}.transition-grid label{display:grid;gap:7px;margin:12px 0;font-weight:700;color:#334155}.transition-grid select,.transition-grid textarea{width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:10px;background:#fff;font:inherit}.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.source-preview{display:grid;gap:6px;padding:13px 14px;background:#eff6ff;border-left:4px solid #2563eb;border-radius:8px;color:#1e3a8a}.source-preview small{color:#475569}.hierarchy-note{padding:10px 12px;margin:10px 0;color:#7c2d12;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;font-size:.9rem}.transition-summary{display:grid;gap:7px;margin:20px 0;padding:17px 18px;background:#fffaf0;border:1px solid #e7c981;border-radius:12px}.summary-label{font:700 .72rem/1 monospace;letter-spacing:.12em;color:#956b16}.summary-from,.summary-to{color:#475569}.confirm-line{display:flex;align-items:flex-start;gap:9px;color:#334155;font-weight:600;margin:18px 0}.confirm-line input{margin-top:3px}.transition-actions{display:flex;justify-content:space-between;gap:12px}.transition-actions button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:800px){.transition-grid{grid-template-columns:1fr}.field-row{grid-template-columns:1fr}}
 </style>
 {% endblock %}

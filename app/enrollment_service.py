@@ -621,6 +621,75 @@ def _student_mapping(student):
     return base
 
 
+def ensure_legacy_enrollment_for_student(student):
+    """Create one safe source enrollment for a legacy-only student.
+
+    Phase 2D transitions require a real StudentEnrollment source row. Older
+    students may still have only the legacy placement columns, so the
+    transition flow can promote an unambiguous legacy placement into one
+    enrollment without changing the student's identity or inventing a
+    cross-year placement. Ambiguous or incomplete mappings remain blocked with
+    a precise validation error for the administrator to fix in Setup.
+    """
+    if not student or not student.id:
+        raise EnrollmentValidationError("Student does not exist")
+    if not student.academic_year_id:
+        raise EnrollmentValidationError("The student has no source academic year")
+    existing = get_enrollment_for_student_year(student.id, student.academic_year_id)
+    if existing:
+        return existing
+
+    mapping = _student_mapping(student)
+    if mapping["classification"] != "READY_TO_BACKFILL":
+        raise EnrollmentValidationError(
+            "The student's legacy placement is not mapped uniquely to a year-aware source class"
+        )
+    enrollment = create_enrollment(
+        student.id,
+        mapping["academic_year_id"],
+        mapping["candidate_year_level_id"],
+        mapping["candidate_year_class_id"],
+        mapping["legacy_section_id"],
+        enrollment_source="backfill",
+    )
+    return enrollment
+
+
+def ensure_legacy_enrollment_for_scope(
+    academic_year_id,
+    academic_year_level_id,
+    academic_year_class_id,
+    academic_section_id=None,
+):
+    """Backfill only unambiguous legacy students in one selected source class."""
+    validate_enrollment_scope(
+        academic_year_id,
+        academic_year_level_id,
+        academic_year_class_id,
+        academic_section_id,
+    )
+    students = student_enrollment_scope_query(
+        academic_year_id,
+        academic_year_level_id=academic_year_level_id,
+        academic_year_class_id=academic_year_class_id,
+        academic_section_id=academic_section_id,
+    ).all()
+    created = []
+    for student in students:
+        if get_enrollment_for_student_year(student.id, academic_year_id):
+            continue
+        try:
+            created.append(ensure_legacy_enrollment_for_student(student))
+        except EnrollmentValidationError:
+            # Do not guess for incomplete/ambiguous legacy data. The caller's
+            # preview still shows the valid enrollment rows, while unresolved
+            # students remain visible to the existing backfill audit.
+            continue
+    if created:
+        db.session.flush()
+    return created
+
+
 def dry_run_legacy_backfill(report_path=None):
     """Return and optionally write a machine-readable legacy mapping report."""
     entries = [_student_mapping(student) for student in Student.query.order_by(Student.id).all()]

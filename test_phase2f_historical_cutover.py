@@ -2,7 +2,9 @@ import unittest
 
 from app import create_app, db
 from app.academic_hierarchy import students_for_year_scope_query
-from app.enrollment_service import create_enrollment, student_enrollment_scope_query
+from app.enrollment_service import create_enrollment, get_enrollment_for_student_year, student_enrollment_scope_query
+from app.enrollment_service import ensure_legacy_enrollment_for_scope, ensure_legacy_enrollment_for_student
+from app.routes_advanced_results import subjects_for_scope
 from app.models import (
     AcademicClass,
     AcademicLevel,
@@ -14,6 +16,7 @@ from app.models import (
     Result,
     Student,
     Subject,
+    User,
 )
 from app.services import result_payload
 
@@ -24,6 +27,7 @@ class TestPhase2FHistoricalCutover(unittest.TestCase):
         SECRET_KEY = "phase-2f-test"
         SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
         SQLALCHEMY_TRACK_MODIFICATIONS = False
+        WTF_CSRF_ENABLED = False
 
     def setUp(self):
         self.app = create_app(self.TestConfig)
@@ -105,6 +109,90 @@ class TestPhase2FHistoricalCutover(unittest.TestCase):
 
         payload = result_payload(student, exam=exam, public_only=True)
         self.assertEqual([row["subject_id"] for row in payload["subjects"]], [self.subject_a.id])
+
+    def test_legacy_only_student_gets_a_safe_transition_source(self):
+        student = Student(
+            student_code="PHASE2F003",
+            full_name="Legacy Transition Student",
+            academic_year_id=self.year_a.id,
+            academic_level_id=self.level_a.id,
+            academic_class_id=self.class_a.id,
+        )
+        db.session.add(student)
+        db.session.flush()
+
+        source = ensure_legacy_enrollment_for_student(student)
+        db.session.commit()
+
+        self.assertEqual(source.academic_year_id, self.year_a.id)
+        self.assertEqual(source.academic_year_level_id, self.year_level_a.id)
+        self.assertEqual(source.academic_year_class_id, self.year_class_a.id)
+
+    def test_whole_class_scope_backfills_only_legacy_students_in_that_scope(self):
+        student = Student(
+            student_code="PHASE2F004",
+            full_name="Legacy Whole Class Student",
+            academic_year_id=self.year_a.id,
+            academic_level_id=self.level_a.id,
+            academic_class_id=self.class_a.id,
+        )
+        other_year_student = Student(
+            student_code="PHASE2F005",
+            full_name="Other Year Student",
+            academic_year_id=self.year_b.id,
+            academic_level_id=self.level_b.id,
+            academic_class_id=self.class_b.id,
+        )
+        db.session.add_all([student, other_year_student])
+        db.session.flush()
+
+        created = ensure_legacy_enrollment_for_scope(
+            self.year_a.id,
+            self.year_level_a.id,
+            self.year_class_a.id,
+        )
+        db.session.commit()
+
+        self.assertEqual([item.student_id for item in created], [student.id])
+        self.assertIsNotNone(get_enrollment_for_student_year(student.id, self.year_a.id))
+        self.assertIsNone(get_enrollment_for_student_year(other_year_student.id, self.year_a.id))
+
+    def test_year_scoped_subjects_do_not_fall_back_to_global_subjects(self):
+        exam = Exam(name="Year B Exam", academic_year=self.year_b, is_published=True, is_active=True)
+        db.session.add(exam)
+        db.session.commit()
+
+        # The year has a mapped level but no year-aware subject assignment.
+        # A global legacy subject must not leak into this Results context.
+        self.assertEqual(subjects_for_scope(exam, level_id=self.level_a.id), [])
+
+    def test_result_entry_ignores_stale_level_and_class_ids(self):
+        admin = User(username="phase2f-admin", full_name="Phase 2F Admin", role="super_admin")
+        admin.set_password("test-password")
+        exam = Exam(
+            name="Midterm",
+            academic_year=self.year_a,
+            academic_level_id=self.level_a.id,
+            academic_class_id=self.class_a.id,
+            is_published=True,
+            is_active=True,
+        )
+        db.session.add_all([admin, exam])
+        db.session.commit()
+        client = self.app.test_client()
+        login = client.post(
+            "/admin/login",
+            data={"username": "phase2f-admin", "password": "test-password"},
+        )
+        self.assertIn(login.status_code, (302, 303))
+
+        response = client.get(
+            f"/admin/advanced-results/result-entry?year_id={self.year_a.id}"
+            f"&exam_id={exam.id}&level_id={self.level_b.id}&class_id={self.class_b.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"Selected level is not configured for this academic year", response.data)
+        self.assertNotIn(b"Form Four B", response.data)
 
 
 if __name__ == "__main__":
