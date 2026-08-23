@@ -1818,6 +1818,8 @@ def analytics():
             "subject_performance": {"labels": [], "scores": []},
             "exam_trend": {"labels": [], "scores": []},
             "pass_fail_ratio": {"pass": 0, "fail": 0, "total": 0},
+            "completion_rate": {"percentage": 0.0, "actual": 0, "expected": 0},
+            "student_pass_fail": {"pass_count": 0, "fail_count": 0, "total_students": 0, "pass_pct": 0.0, "fail_pct": 0.0},
             "overall_average": 0,
             "top_performers": [],
             "bottom_performers": [],
