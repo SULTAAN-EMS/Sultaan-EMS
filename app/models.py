@@ -316,6 +316,106 @@ class Student(TimestampMixin, db.Model):
         return self.student_code
 
 
+class StudentEnrollment(TimestampMixin, db.Model):
+    """Historical academic placement for a permanent Student identity.
+
+    This is additive during Phase 2B. The legacy placement fields on Student
+    remain authoritative for existing routes until a later cutover phase.
+    """
+
+    __tablename__ = "student_enrollments"
+
+    STATUS_VALUES = ("active", "completed", "transferred", "withdrawn", "archived")
+    OUTCOME_VALUES = ("pending", "passed", "failed", "promoted", "repeated", "graduated")
+    SOURCE_VALUES = ("backfill", "manual", "import", "transfer", "promotion", "repeat")
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(
+        db.Integer,
+        db.ForeignKey("students.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_years.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_levels.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_class_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_classes.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    academic_section_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_sections.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+
+    status = db.Column(db.String(20), nullable=False, default="active", index=True)
+    academic_outcome = db.Column(db.String(20), nullable=False, default="pending", index=True)
+    enrollment_source = db.Column(db.String(20), nullable=False, default="manual", index=True)
+    previous_enrollment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("student_enrollments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    enrolled_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    exited_at = db.Column(db.DateTime, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    student = db.relationship(
+        "Student",
+        backref=db.backref("enrollments", lazy="dynamic"),
+        passive_deletes=True,
+    )
+    academic_year = db.relationship("AcademicYear", backref=db.backref("enrollments", lazy="dynamic"))
+    academic_year_level = db.relationship("AcademicYearLevel")
+    academic_year_class = db.relationship("AcademicYearClass")
+    academic_section = db.relationship("AcademicSection")
+    previous_enrollment = db.relationship(
+        "StudentEnrollment",
+        remote_side=[id],
+        backref=db.backref("next_enrollments", lazy="dynamic"),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "student_id",
+            "academic_year_id",
+            name="uq_student_enrollment_student_year",
+        ),
+        db.CheckConstraint(
+            "status IN ('active', 'completed', 'transferred', 'withdrawn', 'archived')",
+            name="ck_student_enrollment_status",
+        ),
+        db.CheckConstraint(
+            "academic_outcome IN ('pending', 'passed', 'failed', 'promoted', 'repeated', 'graduated')",
+            name="ck_student_enrollment_outcome",
+        ),
+        db.CheckConstraint(
+            "enrollment_source IN ('backfill', 'manual', 'import', 'transfer', 'promotion', 'repeat')",
+            name="ck_student_enrollment_source",
+        ),
+        db.Index(
+            "idx_student_enrollment_year_level_class",
+            "academic_year_id",
+            "academic_year_level_id",
+            "academic_year_class_id",
+        ),
+    )
+
+
 class Result(TimestampMixin, db.Model):
     __tablename__ = "results"
 
