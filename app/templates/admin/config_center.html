@@ -82,19 +82,21 @@
         <i class="fas fa-search config-search-icon"></i>
         <input type="text" placeholder="Search {{ section_title.lower() }}..." id="searchInput">
       </div>
-      {% if section == 'subjects' %}
+      {% if section in ['subjects', 'levels'] %}
       <div class="config-filter-selects">
-        <select class="config-filter-select" id="subjectYearFilter" onchange="changeSubjectFilters()">
+        <select class="config-filter-select" id="subjectYearFilter" onchange="changeHierarchyFilters()">
           {% for year in years %}
           <option value="{{ year.id }}" {% if selected_subject_year_id == year.id %}selected{% endif %}>{{ year.name }}</option>
           {% endfor %}
         </select>
-        <select class="config-filter-select" id="subjectLevelFilter" onchange="changeSubjectFilters()">
-          <option value="">Global Subjects</option>
+        {% if section == 'subjects' %}
+        <select class="config-filter-select" id="subjectLevelFilter" onchange="changeHierarchyFilters()">
+          <option value="">Select academic level</option>
           {% for level in levels %}
           <option value="{{ level.id }}" {% if selected_subject_level_id == level.id %}selected{% endif %}>{{ level.name }}</option>
           {% endfor %}
         </select>
+        {% endif %}
       </div>
       {% endif %}
       {% if section in mutable_sections %}
@@ -167,7 +169,7 @@
           {% elif section == 'levels' %}
             {% for item in items %}
             {% set level_classes = classes_by_level.get(item.id, []) %}
-            <tr data-id="{{ item.id }}" data-item-type="levels" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-sort-order="{{ item.sort_order }}">
+            <tr data-id="{{ item.id }}" data-item-type="levels" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-sort-order="{{ item.sort_order }}" data-academic-year-id="{{ item.academic_year_id }}" data-legacy-level-id="{{ item.legacy_level_id or '' }}">
               <td>
                 <div class="config-hierarchy-cell">
                   <strong>{{ item.name }}</strong>
@@ -188,7 +190,7 @@
               <td>{{ action_menu("levels", item.id, item.is_active, true, true) }}</td>
             </tr>
             {% for cls in level_classes %}
-            <tr data-id="{{ cls.id }}" data-item-type="classes" data-status="{{ 'active' if cls.is_active else 'archived' }}" data-name="{{ cls.name }}" data-academic-level-id="{{ cls.academic_level_id }}" data-sort-order="{{ cls.sort_order }}">
+            <tr data-id="{{ cls.id }}" data-item-type="classes" data-status="{{ 'active' if cls.is_active else 'archived' }}" data-name="{{ cls.name }}" data-academic-year-id="{{ item.academic_year_id }}" data-academic-year-level-id="{{ cls.academic_year_level_id }}" data-legacy-class-id="{{ cls.legacy_class_id or '' }}" data-sort-order="{{ cls.sort_order }}">
               <td>
                 <div class="config-class-row-name">
                   <i class="fas fa-level-up-alt"></i>
@@ -201,7 +203,7 @@
               <td><span class="config-badge {{ 'config-badge-success' if cls.is_active else 'config-badge-neutral' }}">{{ 'Active' if cls.is_active else 'Inactive' }}</span></td>
               <td>Class</td>
               <td>{{ class_student_counts.get(cls.id, 0) }} Students</td>
-              <td>{{ cls.sections.count() if cls.sections else 0 }} Sections</td>
+              <td>{{ cls.legacy_class.sections.count() if cls.legacy_class and cls.legacy_class.sections else 0 }} Sections</td>
               <td>{{ current_user.username }}</td>
               <td>{{ action_menu("classes", cls.id, cls.is_active, true, true) }}</td>
             </tr>
@@ -211,7 +213,7 @@
             {% for item in items %}
             {% set assigned_classes = subject_class_map.get(item.id, []) %}
             {% set icon = subject_icons.get(item.id, {"type": "fa", "value": "fa-book"}) %}
-            <tr data-id="{{ item.id }}" data-item-type="subjects" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-academic-level-id="{{ item.academic_level_id or '' }}" data-sort-order="{{ item.sort_order }}">
+            <tr data-id="{{ item.id }}" data-item-type="subjects" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-academic-year-id="{{ item.academic_year_id }}" data-academic-year-level-id="{{ item.academic_year_level_id }}" data-sort-order="{{ item.sort_order }}">
               <td>
                 <div class="config-subject-cell subject-theme-{{ item.name|lower|replace(' ', '-')|replace('/', '-') }}">
                   <span class="config-subject-icon">
@@ -226,7 +228,7 @@
                 </div>
               </td>
               <td><span class="config-badge {{ 'config-badge-success' if item.is_active else 'config-badge-neutral' }}">{{ 'Active' if item.is_active else 'Archived' }}</span></td>
-              <td>{{ item.academic_level.name if item.academic_level else 'All Levels' }}</td>
+              <td>{{ item.academic_year_level.name if item.academic_year_level else '-' }} ({{ item.academic_year.name if item.academic_year else '-' }})</td>
               <td>
                 {% if assigned_classes %}
                   {{ assigned_classes|map(attribute='name')|join(', ') }}
@@ -301,7 +303,7 @@
         </div>
         <div class="config-form-group js-year-group">
           <label class="config-form-label">Academic Year</label>
-          <select class="config-form-select" id="itemAcademicYearId">
+          <select class="config-form-select" id="itemAcademicYearId" onchange="loadYearLevels(this.value)">
             <option value="">Select academic year</option>
             {% for year in years %}
             <option value="{{ year.id }}">{{ year.name }}</option>
@@ -417,7 +419,7 @@ function setGroup(selector, visible) {
 function configureForm() {
   const apiType = apiTypeForSection();
   setGroup('.js-kind-group', currentSection === 'levels' && !editingItemId);
-  setGroup('.js-year-group', apiType === 'exam-types');
+  setGroup('.js-year-group', ['exam-types', 'levels', 'classes', 'subjects'].includes(apiType));
   setGroup('.js-level-group', apiType === 'subjects' || apiType === 'classes');
   setGroup('.js-code-group', apiType === 'exam-types');
   setGroup('.js-weight-group', apiType === 'exam-types');
@@ -439,6 +441,11 @@ function openAddModal() {
   editingItemType = null;
   document.getElementById('modalTitle').textContent = 'Add New ' + '{{ section_title }}';
   document.getElementById('itemForm').reset();
+  const pageYear = document.getElementById('subjectYearFilter')?.value || '';
+  if (pageYear) {
+    document.getElementById('itemAcademicYearId').value = pageYear;
+    loadYearLevels(pageYear);
+  }
   configureForm();
   document.getElementById('itemModal').classList.add('show');
 }
@@ -466,11 +473,31 @@ function editItem(itemType, itemId) {
   document.getElementById('itemName').value = row.dataset.name || '';
   document.getElementById('itemShortCode').value = row.dataset.shortCode || '';
   document.getElementById('itemWeightPercentage').value = row.dataset.weightPercentage || '';
-  document.getElementById('itemAcademicYearId').value = row.dataset.academicYearId || '';
-  document.getElementById('itemAcademicLevelId').value = row.dataset.academicLevelId || '';
+  const yearId = row.dataset.academicYearId || '';
+  const yearLevelId = row.dataset.academicYearLevelId || '';
+  document.getElementById('itemAcademicYearId').value = yearId;
   document.getElementById('itemSortOrder').value = row.dataset.sortOrder || '';
   configureForm();
+  loadYearLevels(yearId, yearLevelId);
   document.getElementById('itemModal').classList.add('show');
+}
+
+function loadYearLevels(yearId, selectedId = '') {
+  const select = document.getElementById('itemAcademicLevelId');
+  if (!select) return Promise.resolve();
+  select.innerHTML = '<option value="">Select academic level</option>';
+  if (!yearId) return Promise.resolve();
+  return fetch(`/admin/config-center/api/year-levels?year_id=${encodeURIComponent(yearId)}`)
+    .then(response => response.json())
+    .then(data => {
+      (data.data || []).forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.id;
+        option.textContent = item.name;
+        option.selected = String(item.id) === String(selectedId);
+        select.appendChild(option);
+      });
+    });
 }
 
 function deactivateItem(itemType, itemId) { prepareProtectedAction(itemType, itemId, 'deactivate'); }
@@ -614,14 +641,17 @@ function payloadFor(apiType) {
     payload.academic_year_id = document.getElementById('itemAcademicYearId').value;
   }
   if (apiType === 'classes') {
-    payload.academic_level_id = document.getElementById('itemAcademicLevelId').value;
+    payload.academic_year_id = document.getElementById('itemAcademicYearId').value;
+    payload.academic_year_level_id = document.getElementById('itemAcademicLevelId').value;
     payload.sort_order = document.getElementById('itemSortOrder').value;
   }
   if (apiType === 'levels') {
+    payload.academic_year_id = document.getElementById('itemAcademicYearId').value;
     payload.sort_order = document.getElementById('itemSortOrder').value;
   }
   if (apiType === 'subjects') {
-    payload.academic_level_id = document.getElementById('itemAcademicLevelId').value;
+    payload.academic_year_id = document.getElementById('itemAcademicYearId').value;
+    payload.academic_year_level_id = document.getElementById('itemAcademicLevelId').value;
     payload.sort_order = document.getElementById('itemSortOrder').value;
   }
   return payload;
@@ -658,13 +688,16 @@ function applyFilter(event, status) {
   });
 }
 
-function changeSubjectFilters() {
+function changeHierarchyFilters() {
   const yearId = document.getElementById('subjectYearFilter')?.value || '';
   const levelId = document.getElementById('subjectLevelFilter')?.value || '';
   const params = new URLSearchParams();
   if (yearId) params.set('year_id', yearId);
   if (levelId) params.set('level_id', levelId);
-  window.location.href = `{{ url_for('admin.config_subjects') }}?${params.toString()}`;
+  const baseUrl = currentSection === 'levels'
+    ? `{{ url_for('admin.config_levels') }}`
+    : `{{ url_for('admin.config_subjects') }}`;
+  window.location.href = `${baseUrl}?${params.toString()}`;
 }
 
 document.getElementById('searchInput').addEventListener('input', event => {

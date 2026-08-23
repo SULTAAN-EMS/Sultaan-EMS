@@ -368,6 +368,29 @@ function applyAnalyticsFilters() {
   window.location.href = `{{ url_for('admin_advanced_results.analytics') }}?${params.toString()}`;
 }
 
+document.addEventListener('DOMContentLoaded', () => {
+  const year = document.getElementById('year-selector');
+  const exam = document.getElementById('exam-selector');
+  const level = document.getElementById('level-selector');
+  const cls = document.getElementById('class-selector');
+  const section = document.getElementById('section-selector');
+  const subject = document.getElementById('subject-selector');
+  const redirectWith = (updates) => {
+    const url = new URL(window.location.href);
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value) url.searchParams.set(key, value);
+      else url.searchParams.delete(key);
+    });
+    window.location.href = url.toString();
+  };
+  year?.addEventListener('change', () => redirectWith({year_id: year.value, exam_id: '', level_id: '', class_id: '', section_id: '', subject_id: ''}));
+  exam?.addEventListener('change', () => redirectWith({exam_id: exam.value, level_id: '', class_id: '', section_id: '', subject_id: ''}));
+  level?.addEventListener('change', () => redirectWith({level_id: level.value, class_id: '', section_id: '', subject_id: ''}));
+  cls?.addEventListener('change', () => redirectWith({class_id: cls.value, section_id: '', subject_id: ''}));
+  section?.addEventListener('change', () => redirectWith({section_id: section.value, subject_id: ''}));
+  subject?.addEventListener('change', () => redirectWith({subject_id: subject.value}));
+});
+
 function changeTopLimit() {
   const topLimit = document.getElementById('top-limit-selector').value;
   const url = new URL(window.location.href);

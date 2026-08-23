@@ -17,7 +17,8 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AttendanceRecord, Exam, ExamType, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, Subject, LabelTranslation
+from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, Subject, LabelTranslation
+from .academic_hierarchy import students_for_year_scope_query, year_classes, year_levels, year_subjects
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, performance_tier_for, result_payload, subject_display_name
@@ -229,6 +230,20 @@ def subjects_for_scope(exam, level_id=None, class_id=None):
         .order_by(Subject.sort_order, Subject.name, Subject.id)
         .all()
     )
+
+
+def analytics_subject_bridge(academic_year_id, year_level_id=None):
+    """Return year-aware subjects and their legacy Result subjects."""
+    year_items = year_subjects(academic_year_id, year_level_id)
+    legacy_items = []
+    seen = set()
+    for item in year_items:
+        if item.legacy_subject_id and item.legacy_subject_id not in seen:
+            legacy_subject = db.session.get(Subject, item.legacy_subject_id)
+            if legacy_subject:
+                legacy_items.append(legacy_subject)
+                seen.add(legacy_subject.id)
+    return year_items, legacy_items
 
 
 def students_for_scope_query(academic_year_id, level_id=None, class_id=None, section_id=None, exam=None):
@@ -1755,18 +1770,45 @@ def analytics():
         flash("Please select an academic year.", "warning")
         return redirect(url_for("admin_advanced_results.new_dashboard"))
     
-    # Get selected exam from parameter or auto-select most recent
+    # Get selected exam from parameter or auto-select most recent. A stale
+    # exam ID from another year is never accepted into this scope.
     selected_exam = db.session.get(Exam, exam_id) if exam_id else None
+    if selected_exam and selected_exam.academic_year_id != selected_year.id:
+        selected_exam = None
     if not selected_exam:
         selected_exam = Exam.query.filter_by(academic_year_id=selected_year.id).order_by(Exam.id.desc()).first()
     
     # Get filter data for selectors
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
     exams = Exam.query.filter_by(academic_year_id=selected_year.id).order_by(Exam.id.desc()).all() if selected_year else []
-    levels = AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
-    classes = AcademicClass.query.order_by(AcademicClass.name).all()
-    sections = AcademicSection.query.order_by(AcademicSection.name).all()
-    subjects = Subject.query.order_by(Subject.name).all()
+    levels = year_levels(selected_year.id)
+    selected_year_level = db.session.get(AcademicYearLevel, level_id) if level_id else None
+    if selected_year_level and selected_year_level.academic_year_id != selected_year.id:
+        selected_year_level = None
+        level_id = None
+    selected_year_class = db.session.get(AcademicYearClass, class_id) if class_id else None
+    if selected_year_class and (
+        not selected_year_class.academic_year_level
+        or selected_year_class.academic_year_level.academic_year_id != selected_year.id
+        or (selected_year_level and selected_year_class.academic_year_level_id != selected_year_level.id)
+    ):
+        selected_year_class = None
+        class_id = None
+    classes = year_classes(selected_year_level.id) if selected_year_level else [item for level in levels for item in year_classes(level.id)]
+    sections = (
+        AcademicSection.query.filter_by(academic_class_id=selected_year_class.legacy_class_id, is_active=True).order_by(AcademicSection.name).all()
+        if selected_year_class and selected_year_class.legacy_class_id
+        else []
+    )
+    year_scoped_subjects, legacy_scoped_subjects = analytics_subject_bridge(selected_year.id, level_id)
+    selected_year_subject = db.session.get(AcademicYearSubject, subject_id) if subject_id else None
+    if selected_year_subject and (
+        selected_year_subject.academic_year_id != selected_year.id
+        or (level_id and selected_year_subject.academic_year_level_id != level_id)
+    ):
+        selected_year_subject = None
+        subject_id = None
+    subjects = year_scoped_subjects
     
     # If still no exam available, show empty analytics
     if not selected_exam:
@@ -1805,19 +1847,27 @@ def analytics():
         )
     
     # Build scope info
+    selected_section = db.session.get(AcademicSection, section_id) if section_id else None
+    if selected_section and (
+        not selected_year_class
+        or selected_section.academic_class_id != selected_year_class.legacy_class_id
+    ):
+        selected_section = None
+        section_id = None
+
     scope_info = {
-        "level": db.session.get(AcademicLevel, level_id) if level_id else None,
-        "class": db.session.get(AcademicClass, class_id) if class_id else None,
-        "section": db.session.get(AcademicSection, section_id) if section_id else None,
-        "subject": db.session.get(Subject, subject_id) if subject_id else None,
+        "level": selected_year_level,
+        "class": selected_year_class,
+        "section": selected_section,
+        "subject": selected_year_subject,
     }
     
     students = (
-        students_for_scope_query(
+        students_for_year_scope_query(
             selected_year.id,
-            level_id=level_id,
-            class_id=class_id,
-            section_id=section_id,
+            year_level_id=level_id,
+            year_class_id=class_id,
+            section_id=selected_section.id if selected_section else None,
         )
         .options(
             selectinload(Student.academic_class),
@@ -1838,11 +1888,15 @@ def analytics():
         )
     )
     if scope_info["subject"]:
-        results_query = results_query.filter_by(subject_id=scope_info["subject"].id)
+        results_query = results_query.filter_by(subject_id=scope_info["subject"].legacy_subject_id)
     results = results_query.all()
     
     # Scoped subjects for completion rate calculation
-    scoped_subjects = [scope_info["subject"]] if scope_info["subject"] else subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
+    scoped_subjects = (
+        [db.session.get(Subject, scope_info["subject"].legacy_subject_id)]
+        if scope_info["subject"] and scope_info["subject"].legacy_subject_id
+        else ([] if scope_info["subject"] else legacy_scoped_subjects)
+    )
 
     # Calculate analytics data with ranking limits
     analytics_data = build_analytics_data(results, students, selected_exam, top_limit, bottom_limit, scoped_subjects=scoped_subjects)
@@ -1934,16 +1988,14 @@ def _attendance_rows_for_exam_scope(academic_year, exam, student_ids):
 
 def build_analytics_results_report_data(academic_year, exam):
     """Build the reference report's LEVELS payload using published Results Hub data only."""
-    levels = (
-        AcademicLevel.query.filter_by(is_active=True)
-        .order_by(AcademicLevel.sort_order, AcademicLevel.name)
-        .all()
-    )
-    classes = (
-        AcademicClass.query.filter_by(is_active=True)
-        .order_by(AcademicClass.academic_level_id, AcademicClass.sort_order, AcademicClass.name)
-        .all()
-    )
+    year_level_scopes = year_levels(academic_year.id)
+    levels = [scope.legacy_level for scope in year_level_scopes if scope.legacy_level and scope.legacy_level.is_active]
+    classes = [
+        year_class.legacy_class
+        for scope in year_level_scopes
+        for year_class in year_classes(scope.id)
+        if year_class.legacy_class and year_class.legacy_class.is_active
+    ]
     classes_by_id = {academic_class.id: academic_class for academic_class in classes}
     levels_by_name = {level.name.strip().lower(): level.id for level in levels if level.name}
     classes_by_level = defaultdict(list)
@@ -2021,10 +2073,15 @@ def build_analytics_results_report_data(academic_year, exam):
     for (level_id, _class_id), grouped_students in students_by_level_class.items():
         for student in grouped_students:
             student_level_lookup[student.id] = level_id
-    subject_ids_by_level = {
-        level.id: {subject.id for subject in subjects_for_scope(exam, level_id=level.id)}
-        for level in included_levels
-    }
+    subject_ids_by_level = defaultdict(set)
+    for scope in year_level_scopes:
+        if not scope.legacy_level_id:
+            continue
+        subject_ids_by_level[scope.legacy_level_id].update(
+            item.legacy_subject_id
+            for item in year_subjects(academic_year.id, scope.id)
+            if item.legacy_subject_id
+        )
     for result in results:
         level_id = student_level_lookup.get(result.student_id)
         if (

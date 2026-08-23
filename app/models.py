@@ -64,6 +64,115 @@ class AcademicYear(TimestampMixin, db.Model):
     is_current = db.Column(db.Boolean, default=False, nullable=False)
 
 
+class AcademicYearLevel(TimestampMixin, db.Model):
+    """Year-scoped level definition; legacy levels remain the compatibility source."""
+
+    __tablename__ = "academic_year_levels"
+
+    id = db.Column(db.Integer, primary_key=True)
+    academic_year_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_years.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    legacy_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_levels.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    name = db.Column(db.String(100), nullable=False)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    academic_year = db.relationship("AcademicYear", backref=db.backref("year_levels", lazy="dynamic"))
+    legacy_level = db.relationship("AcademicLevel", backref=db.backref("year_scopes", lazy="dynamic"))
+
+    __table_args__ = (
+        UniqueConstraint("academic_year_id", "name", name="uq_academic_year_level_name"),
+    )
+
+
+class AcademicYearClass(TimestampMixin, db.Model):
+    """Year-scoped class definition under an AcademicYearLevel."""
+
+    __tablename__ = "academic_year_classes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    academic_year_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_levels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    legacy_class_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_classes.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    name = db.Column(db.String(100), nullable=False)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    academic_year_level = db.relationship(
+        "AcademicYearLevel",
+        backref=db.backref("year_classes", lazy="dynamic"),
+    )
+    legacy_class = db.relationship("AcademicClass", backref=db.backref("year_scopes", lazy="dynamic"))
+
+    __table_args__ = (
+        UniqueConstraint("academic_year_level_id", "name", name="uq_academic_year_class_name"),
+    )
+
+
+class AcademicYearSubject(TimestampMixin, db.Model):
+    """Year + level scoped subject offering with a legacy result bridge."""
+
+    __tablename__ = "academic_year_subjects"
+
+    id = db.Column(db.Integer, primary_key=True)
+    academic_year_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_years.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_levels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    legacy_subject_id = db.Column(
+        db.Integer,
+        db.ForeignKey("subjects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    name = db.Column(db.String(120), nullable=False)
+    max_score = db.Column(db.Numeric(8, 3), default=100, nullable=False)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    academic_year = db.relationship("AcademicYear", backref=db.backref("year_subjects", lazy="dynamic"))
+    academic_year_level = db.relationship(
+        "AcademicYearLevel",
+        backref=db.backref("year_subjects", lazy="dynamic"),
+    )
+    legacy_subject = db.relationship("Subject", backref=db.backref("year_scopes", lazy="dynamic"))
+
+    __table_args__ = (
+        UniqueConstraint(
+            "academic_year_id",
+            "academic_year_level_id",
+            "name",
+            name="uq_academic_year_subject_name",
+        ),
+    )
+
+
 class AcademicLevel(TimestampMixin, db.Model):
     __tablename__ = "academic_levels"
 

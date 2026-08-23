@@ -5,7 +5,7 @@ from functools import wraps
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
 from openpyxl import Workbook
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.utils import secure_filename
 
@@ -13,7 +13,8 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
+from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
+from .academic_hierarchy import validate_year_level, year_classes, year_levels, year_subjects
 from .permissions import PERMISSIONS, can, enforce_endpoint_permission, permission_required
 from .security import ALLOWED_AUDIO, ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import (
@@ -2135,9 +2136,9 @@ CONFIG_CENTER_SECTIONS = {
 CONFIG_CENTER_MODEL_MAP = {
     'academic-years': AcademicYear,
     'exam-types': Exam,
-    'levels': AcademicLevel,
-    'classes': AcademicClass,
-    'subjects': Subject,
+    'levels': AcademicYearLevel,
+    'classes': AcademicYearClass,
+    'subjects': AcademicYearSubject,
 }
 
 CONFIG_CENTER_MUTABLE_TYPES = {'academic-years', 'exam-types', 'levels', 'classes', 'subjects'}
@@ -2210,9 +2211,16 @@ def _config_dependencies(item_type, item_id):
         if grade_count:
             dependencies.append(f'Grade Scales: {grade_count}')
     elif item_type == 'levels':
-        class_count = AcademicClass.query.filter_by(academic_level_id=item_id).count()
-        student_count = Student.query.filter_by(academic_level_id=item_id).count()
-        subject_count = Subject.query.filter_by(academic_level_id=item_id).count()
+        class_count = AcademicYearClass.query.filter_by(academic_year_level_id=item_id).count()
+        subject_count = AcademicYearSubject.query.filter_by(academic_year_level_id=item_id).count()
+        item = db.session.get(AcademicYearLevel, item_id)
+        student_count = 0
+        if item:
+            filters = [Student.academic_level_id == item.legacy_level_id]
+            if item.legacy_level_id:
+                legacy_level = db.session.get(AcademicLevel, item.legacy_level_id)
+            filters.append(and_(Student.academic_level_id.is_(None), Student.level == (legacy_level.name if legacy_level else item.name)))
+            student_count = Student.query.filter(Student.academic_year_id == item.academic_year_id, or_(*filters)).count()
         if class_count:
             dependencies.append(f'Classes: {class_count}')
         if student_count:
@@ -2220,9 +2228,11 @@ def _config_dependencies(item_type, item_id):
         if subject_count:
             dependencies.append(f'Subjects: {subject_count}')
     elif item_type == 'classes':
-        section_count = AcademicSection.query.filter_by(academic_class_id=item_id).count()
-        student_count = Student.query.filter_by(academic_class_id=item_id).count()
-        exam_count = Exam.query.filter_by(academic_class_id=item_id).count()
+        item = db.session.get(AcademicYearClass, item_id)
+        legacy_class_id = item.legacy_class_id if item else None
+        section_count = AcademicSection.query.filter_by(academic_class_id=legacy_class_id).count() if legacy_class_id else 0
+        student_count = Student.query.filter_by(academic_year_id=item.academic_year_level.academic_year_id, academic_class_id=legacy_class_id).count() if item and legacy_class_id else 0
+        exam_count = Exam.query.filter_by(academic_year_id=item.academic_year_level.academic_year_id, academic_class_id=legacy_class_id).count() if item and legacy_class_id else 0
         if section_count:
             dependencies.append(f'Sections: {section_count}')
         if student_count:
@@ -2230,8 +2240,11 @@ def _config_dependencies(item_type, item_id):
         if exam_count:
             dependencies.append(f'Exams: {exam_count}')
     elif item_type == 'subjects':
-        result_count = Result.query.filter_by(subject_id=item_id).count()
-        incident_count = IncidentReport.query.filter_by(subject_id=item_id).count()
+        item = db.session.get(AcademicYearSubject, item_id)
+        legacy_subject_id = item.legacy_subject_id if item else None
+        year_id = item.academic_year_id if item else None
+        result_count = Result.query.join(Exam, Result.exam_id == Exam.id).filter(Result.subject_id == legacy_subject_id, Exam.academic_year_id == year_id).count() if legacy_subject_id else 0
+        incident_count = IncidentReport.query.filter_by(subject_id=legacy_subject_id).count() if legacy_subject_id else 0
         if result_count:
             dependencies.append(f'Results: {result_count}')
         if incident_count:
@@ -2271,45 +2284,25 @@ def _cascade_delete_config_item(item_type, item_id):
         GradeScale.query.filter_by(exam_id=item_id).delete()
 
     elif item_type == 'levels':
-        # Classes
-        classes = AcademicClass.query.filter_by(academic_level_id=item_id).all()
+        # Phase 1D removes only year-scoped mapping records. Legacy records and
+        # their historical results remain untouched.
+        classes = AcademicYearClass.query.filter_by(academic_year_level_id=item_id).all()
         for cls in classes:
             _cascade_delete_config_item('classes', cls.id)
             db.session.delete(cls)
-        # Subjects
-        subjects = Subject.query.filter_by(academic_level_id=item_id).all()
+        subjects = AcademicYearSubject.query.filter_by(academic_year_level_id=item_id).all()
         for subj in subjects:
-            _cascade_delete_config_item('subjects', subj.id)
             db.session.delete(subj)
-        # Students
-        students = Student.query.filter_by(academic_level_id=item_id).all()
-        for student in students:
-            Result.query.filter_by(student_id=student.id).delete()
-            AttendanceRecord.query.filter_by(student_id=student.id).delete()
-            IdCardIssue.query.filter_by(student_id=student.id).delete()
-            IncidentReport.query.filter_by(student_id=student.id).delete()
-            db.session.delete(student)
 
     elif item_type == 'classes':
-        # Sections
-        AcademicSection.query.filter_by(academic_class_id=item_id).delete()
-        # Students
-        students = Student.query.filter_by(academic_class_id=item_id).all()
-        for student in students:
-            Result.query.filter_by(student_id=student.id).delete()
-            AttendanceRecord.query.filter_by(student_id=student.id).delete()
-            IdCardIssue.query.filter_by(student_id=student.id).delete()
-            IncidentReport.query.filter_by(student_id=student.id).delete()
-            db.session.delete(student)
-        # Exams
-        exams = Exam.query.filter_by(academic_class_id=item_id).all()
-        for exam in exams:
-            _cascade_delete_config_item('exam-types', exam.id)
-            db.session.delete(exam)
+        # A year-scoped class is a mapping only in Phase 1. Do not delete
+        # legacy sections, students, exams, or results from another year.
+        return
 
     elif item_type == 'subjects':
-        Result.query.filter_by(subject_id=item_id).delete()
-        IncidentReport.query.filter_by(subject_id=item_id).delete()
+        # Historical results are bridged through legacy_subject_id and are
+        # never cascade-deleted by a Phase 1 hierarchy action.
+        return
 
 
 def _config_status(item_type, item):
@@ -2397,26 +2390,24 @@ def config_center():
     elif section == 'exam-types':
         items = Exam.query.order_by(Exam.academic_year_id.desc(), Exam.sort_order, Exam.name).all()
     elif section == 'levels':
-        items = AcademicLevel.query.order_by(AcademicLevel.sort_order, AcademicLevel.name).all()
-        level_ids = [level.id for level in items]
-        classes = AcademicClass.query.filter(AcademicClass.academic_level_id.in_(level_ids)).order_by(AcademicClass.sort_order, AcademicClass.name).all() if level_ids else []
+        items = year_levels(selected_subject_year_id)
+        classes = []
         classes_by_level = {level.id: [] for level in items}
-        for academic_class in classes:
-            classes_by_level.setdefault(academic_class.academic_level_id, []).append(academic_class)
-            class_student_counts[academic_class.id] = Student.query.filter_by(academic_class_id=academic_class.id).count()
+        for level in items:
+            level_classes = year_classes(level.id)
+            classes.extend(level_classes)
+            classes_by_level[level.id] = level_classes
+            for year_class in level_classes:
+                legacy_class_id = year_class.legacy_class_id
+                count_query = Student.query.filter_by(academic_year_id=selected_subject_year_id)
+                if legacy_class_id:
+                    count_query = count_query.filter(Student.academic_class_id == legacy_class_id)
+                class_student_counts[year_class.id] = count_query.count()
     elif section == 'subjects':
-        subject_query = Subject.query
-        if selected_subject_level_id:
-            subject_query = subject_query.filter_by(academic_level_id=selected_subject_level_id)
-        else:
-            subject_query = subject_query.filter(Subject.academic_level_id.is_(None))
-        items = subject_query.order_by(Subject.academic_level_id, Subject.sort_order, Subject.name).all()
+        items = year_subjects(selected_subject_year_id, selected_subject_level_id)
         for subject in items:
             subject_icons[subject.id] = subject_icon(subject.name, settings)
-            if subject.academic_level_id:
-                subject_class_map[subject.id] = AcademicClass.query.filter_by(academic_level_id=subject.academic_level_id, is_active=True).order_by(AcademicClass.sort_order, AcademicClass.name).all()
-            else:
-                subject_class_map[subject.id] = []
+            subject_class_map[subject.id] = year_classes(subject.academic_year_level_id)
     elif section == 'audit-logs':
         items = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(50).all()
     elif section == 'archive':
@@ -2425,10 +2416,12 @@ def config_center():
             items.append({'id': item.id, 'item_type': 'academic-years', 'name': item.name, 'status': 'archived', 'archived_at': item.updated_at})
         for item in Exam.query.filter_by(is_active=False).order_by(Exam.updated_at.desc()).all():
             items.append({'id': item.id, 'item_type': 'exam-types', 'name': item.name, 'status': 'archived', 'archived_at': item.updated_at})
-        for item in AcademicLevel.query.filter_by(is_active=False).order_by(AcademicLevel.sort_order, AcademicLevel.name).all():
+        for item in AcademicYearLevel.query.filter_by(is_active=False).order_by(AcademicYearLevel.academic_year_id, AcademicYearLevel.sort_order, AcademicYearLevel.name).all():
             items.append({'id': item.id, 'item_type': 'levels', 'name': item.name, 'status': 'archived', 'archived_at': item.updated_at})
-        for item in AcademicClass.query.filter_by(is_active=False).order_by(AcademicClass.sort_order, AcademicClass.name).all():
+        for item in AcademicYearClass.query.filter_by(is_active=False).order_by(AcademicYearClass.academic_year_level_id, AcademicYearClass.sort_order, AcademicYearClass.name).all():
             items.append({'id': item.id, 'item_type': 'classes', 'name': item.name, 'status': 'archived', 'archived_at': item.updated_at})
+        for item in AcademicYearSubject.query.filter_by(is_active=False).order_by(AcademicYearSubject.academic_year_id, AcademicYearSubject.sort_order, AcademicYearSubject.name).all():
+            items.append({'id': item.id, 'item_type': 'subjects', 'name': item.name, 'status': 'archived', 'archived_at': item.updated_at})
 
     # Calculate counts
     total_count = len(items)
@@ -2449,7 +2442,7 @@ def config_center():
                          archived_count=archived_count,
                          filter_status='all',
                          years=AcademicYear.query.order_by(AcademicYear.name.desc()).all(),
-                         levels=AcademicLevel.query.order_by(AcademicLevel.sort_order, AcademicLevel.name).all(),
+                         levels=year_levels(selected_subject_year_id),
                          classes_by_level=classes_by_level,
                          class_student_counts=class_student_counts,
                          subject_class_map=subject_class_map,
@@ -2525,7 +2518,7 @@ def config_exam_types():
 @login_required
 def config_levels():
     """Levels & Classes Management"""
-    return redirect(url_for('admin.config_center', section='levels'))
+    return redirect(url_for('admin.config_center', section='levels', year_id=request.args.get('year_id') or None))
 
 
 @admin_bp.route("/config-center/subjects")
@@ -2712,6 +2705,22 @@ def config_create_exam_type():
         return jsonify({'success': False, 'message': str(e)})
 
 
+@admin_bp.route("/config-center/api/year-levels", methods=["GET"])
+@login_required
+def config_year_levels():
+    """Return year-scoped levels for cascading Setup forms."""
+    year_id = _parse_int(request.args.get("year_id"))
+    if not year_id or not db.session.get(AcademicYear, year_id):
+        return jsonify({'success': False, 'message': 'Academic year is required', 'data': []}), 400
+    return jsonify({
+        'success': True,
+        'data': [
+            {'id': item.id, 'name': item.name, 'academic_year_id': item.academic_year_id}
+            for item in year_levels(year_id)
+        ],
+    })
+
+
 @admin_bp.route("/config-center/api/exam-types/<int:exam_id>", methods=["PUT"])
 @login_required
 def config_update_exam_type(exam_id):
@@ -2784,26 +2793,38 @@ def config_create_level():
     data = request.get_json(silent=True) or {}
     name = data.get('name', '').strip()
     sort_order = _parse_int(data.get('sort_order'))
+    academic_year_id = _parse_int(data.get('academic_year_id'))
 
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'})
+    if not academic_year_id or not db.session.get(AcademicYear, academic_year_id):
+        return jsonify({'success': False, 'message': 'Academic year is required'})
 
     try:
         from sqlalchemy import func
-        if _duplicate_exists(AcademicLevel, {'name': name}):
-            return jsonify({'success': False, 'message': 'Academic level already exists'})
-        max_sort = db.session.query(func.max(AcademicLevel.sort_order)).scalar() or 0
+        if _duplicate_exists(AcademicYearLevel, {'name': name, 'academic_year_id': academic_year_id}):
+            return jsonify({'success': False, 'message': 'Academic level already exists for this academic year'})
+        max_sort = db.session.query(func.max(AcademicYearLevel.sort_order)).filter_by(academic_year_id=academic_year_id).scalar() or 0
 
-        level = AcademicLevel(
+        level = AcademicLevel.query.filter_by(name=name).first()
+        if not level:
+            level = AcademicLevel(
+                name=name, is_active=True, sort_order=sort_order if sort_order is not None else max_sort + 1
+            )
+            db.session.add(level)
+            db.session.flush()
+        year_level = AcademicYearLevel(
+            academic_year_id=academic_year_id,
+            legacy_level_id=level.id,
             name=name,
             is_active=True,
-            sort_order=sort_order if sort_order is not None else max_sort + 1
+            sort_order=sort_order if sort_order is not None else max_sort + 1,
         )
-        db.session.add(level)
+        db.session.add(year_level)
         db.session.commit()
 
         audit("Configuration Center", f"Created academic level: {name}")
-        return jsonify({'success': True, 'message': 'Academic level created successfully', 'data': {'id': level.id, 'name': level.name}})
+        return jsonify({'success': True, 'message': 'Academic level created successfully', 'data': {'id': year_level.id, 'name': year_level.name}})
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)})
@@ -2816,15 +2837,27 @@ def config_update_level(level_id):
     from flask import jsonify
 
     data = request.get_json(silent=True) or {}
-    level = AcademicLevel.query.get_or_404(level_id)
+    level = AcademicYearLevel.query.get_or_404(level_id)
 
     name = data.get('name', level.name).strip()
+    academic_year_id = _parse_int(data.get('academic_year_id'), level.academic_year_id)
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'})
-    if _duplicate_exists(AcademicLevel, {'name': name}, exclude_id=level.id):
-        return jsonify({'success': False, 'message': 'Academic level already exists'})
+    if not academic_year_id or not db.session.get(AcademicYear, academic_year_id):
+        return jsonify({'success': False, 'message': 'Academic year is required'})
+    if academic_year_id != level.academic_year_id and (
+        AcademicYearClass.query.filter_by(academic_year_level_id=level.id).first()
+        or AcademicYearSubject.query.filter_by(academic_year_level_id=level.id).first()
+    ):
+        return jsonify({
+            'success': False,
+            'message': 'Academic level with mapped classes or subjects cannot move to another academic year',
+        })
+    if _duplicate_exists(AcademicYearLevel, {'name': name, 'academic_year_id': academic_year_id}, exclude_id=level.id):
+        return jsonify({'success': False, 'message': 'Academic level already exists for this academic year'})
     old_value = {'name': level.name, 'sort_order': level.sort_order, 'is_active': level.is_active}
     level.name = name
+    level.academic_year_id = academic_year_id
     if 'sort_order' in data:
         level.sort_order = _parse_int(data.get('sort_order'), level.sort_order)
     if 'is_active' in data:
@@ -2845,7 +2878,7 @@ def config_activate_level(level_id):
     """Activate academic level"""
     from flask import jsonify
 
-    level = AcademicLevel.query.get_or_404(level_id)
+    level = AcademicYearLevel.query.get_or_404(level_id)
 
     try:
         level.is_active = True
@@ -2864,7 +2897,7 @@ def config_deactivate_level(level_id):
     """Deactivate academic level"""
     from flask import jsonify
 
-    level = AcademicLevel.query.get_or_404(level_id)
+    level = AcademicYearLevel.query.get_or_404(level_id)
 
     try:
         level.is_active = False
@@ -2883,22 +2916,30 @@ def config_create_class():
     """Create new academic class inside a level"""
     data = request.get_json(silent=True) or {}
     name = data.get('name', '').strip()
-    level_id = _parse_int(data.get('academic_level_id'))
+    academic_year_id = _parse_int(data.get('academic_year_id'))
+    year_level_id = _parse_int(data.get('academic_year_level_id'))
     sort_order = _parse_int(data.get('sort_order'))
 
     if not name:
         return jsonify({'success': False, 'message': 'Class name is required'})
-    if not level_id or not AcademicLevel.query.get(level_id):
-        return jsonify({'success': False, 'message': 'Academic level is required'})
+    year_level = validate_year_level(academic_year_id, year_level_id)
+    if not year_level:
+        return jsonify({'success': False, 'message': 'Academic year and matching academic level are required'})
 
     try:
-        if _duplicate_exists(AcademicClass, {'name': name, 'academic_level_id': level_id}):
-            return jsonify({'success': False, 'message': 'Class already exists in this level'})
+        if _duplicate_exists(AcademicYearClass, {'name': name, 'academic_year_level_id': year_level.id}):
+            return jsonify({'success': False, 'message': 'Class already exists in this academic year level'})
         from sqlalchemy import func
-        max_sort = db.session.query(func.max(AcademicClass.sort_order)).filter_by(academic_level_id=level_id).scalar() or 0
-        academic_class = AcademicClass(
+        max_sort = db.session.query(func.max(AcademicYearClass.sort_order)).filter_by(academic_year_level_id=year_level.id).scalar() or 0
+        legacy_class = AcademicClass.query.filter_by(academic_level_id=year_level.legacy_level_id, name=name).first() if year_level.legacy_level_id else None
+        if not legacy_class and year_level.legacy_level_id:
+            legacy_class = AcademicClass(name=name, academic_level_id=year_level.legacy_level_id, sort_order=sort_order if sort_order is not None else max_sort + 1, is_active=True)
+            db.session.add(legacy_class)
+            db.session.flush()
+        academic_class = AcademicYearClass(
             name=name,
-            academic_level_id=level_id,
+            academic_year_level_id=year_level.id,
+            legacy_class_id=legacy_class.id if legacy_class else None,
             sort_order=sort_order if sort_order is not None else max_sort + 1,
             is_active=True,
         )
@@ -2916,27 +2957,33 @@ def config_create_class():
 def config_update_class(class_id):
     """Update academic class"""
     data = request.get_json(silent=True) or {}
-    academic_class = AcademicClass.query.get_or_404(class_id)
+    academic_class = AcademicYearClass.query.get_or_404(class_id)
     name = data.get('name', academic_class.name).strip()
-    level_id = _parse_int(data.get('academic_level_id'), academic_class.academic_level_id)
+    academic_year_id = _parse_int(data.get('academic_year_id'), academic_class.academic_year_level.academic_year_id)
+    year_level_id = _parse_int(data.get('academic_year_level_id'), academic_class.academic_year_level_id)
 
     if not name:
         return jsonify({'success': False, 'message': 'Class name is required'})
-    if not level_id or not AcademicLevel.query.get(level_id):
-        return jsonify({'success': False, 'message': 'Academic level is required'})
-    if _duplicate_exists(AcademicClass, {'name': name, 'academic_level_id': level_id}, exclude_id=academic_class.id):
-        return jsonify({'success': False, 'message': 'Class already exists in this level'})
+    year_level = validate_year_level(academic_year_id, year_level_id)
+    if not year_level:
+        return jsonify({'success': False, 'message': 'Academic year and matching academic level are required'})
+    if _duplicate_exists(AcademicYearClass, {'name': name, 'academic_year_level_id': year_level.id}, exclude_id=academic_class.id):
+        return jsonify({'success': False, 'message': 'Class already exists in this academic year level'})
 
-    old_value = {'name': academic_class.name, 'academic_level_id': academic_class.academic_level_id, 'sort_order': academic_class.sort_order, 'is_active': academic_class.is_active}
+    old_value = {'name': academic_class.name, 'academic_year_level_id': academic_class.academic_year_level_id, 'sort_order': academic_class.sort_order, 'is_active': academic_class.is_active}
     academic_class.name = name
-    academic_class.academic_level_id = level_id
+    academic_class.academic_year_level_id = year_level.id
+    if academic_class.legacy_class_id:
+        legacy_class = db.session.get(AcademicClass, academic_class.legacy_class_id)
+        if legacy_class and legacy_class.name == academic_class.name:
+            legacy_class.sort_order = _parse_int(data.get('sort_order'), legacy_class.sort_order)
     academic_class.sort_order = _parse_int(data.get('sort_order'), academic_class.sort_order)
     if 'is_active' in data:
         academic_class.is_active = bool(data.get('is_active'))
 
     try:
         db.session.commit()
-        _audit_config_change("Configuration Center Updated", "classes", academic_class, old_value=old_value, new_value={'name': academic_class.name, 'academic_level_id': academic_class.academic_level_id, 'sort_order': academic_class.sort_order, 'is_active': academic_class.is_active})
+        _audit_config_change("Configuration Center Updated", "classes", academic_class, old_value=old_value, new_value={'name': academic_class.name, 'academic_year_level_id': academic_class.academic_year_level_id, 'sort_order': academic_class.sort_order, 'is_active': academic_class.is_active})
         return jsonify({'success': True, 'message': 'Class updated successfully'})
     except Exception as e:
         db.session.rollback()
@@ -2946,7 +2993,7 @@ def config_update_class(class_id):
 @admin_bp.route("/config-center/api/classes/<int:class_id>/activate", methods=["POST"])
 @login_required
 def config_activate_class(class_id):
-    academic_class = AcademicClass.query.get_or_404(class_id)
+    academic_class = AcademicYearClass.query.get_or_404(class_id)
     try:
         academic_class.is_active = True
         db.session.commit()
@@ -2960,7 +3007,7 @@ def config_activate_class(class_id):
 @admin_bp.route("/config-center/api/classes/<int:class_id>/deactivate", methods=["POST"])
 @login_required
 def config_deactivate_class(class_id):
-    academic_class = AcademicClass.query.get_or_404(class_id)
+    academic_class = AcademicYearClass.query.get_or_404(class_id)
     try:
         academic_class.is_active = False
         db.session.commit()
@@ -2974,7 +3021,7 @@ def config_deactivate_class(class_id):
 @admin_bp.route("/config-center/api/subjects/<int:subject_id>/activate", methods=["POST"])
 @login_required
 def config_activate_subject(subject_id):
-    subject = Subject.query.get_or_404(subject_id)
+    subject = AcademicYearSubject.query.get_or_404(subject_id)
     try:
         subject.is_active = True
         db.session.commit()
@@ -2988,7 +3035,7 @@ def config_activate_subject(subject_id):
 @admin_bp.route("/config-center/api/subjects/<int:subject_id>/deactivate", methods=["POST"])
 @login_required
 def config_deactivate_subject(subject_id):
-    subject = Subject.query.get_or_404(subject_id)
+    subject = AcademicYearSubject.query.get_or_404(subject_id)
     try:
         subject.is_active = False
         db.session.commit()
@@ -3007,27 +3054,38 @@ def config_create_subject():
 
     data = request.get_json(silent=True) or {}
     name = data.get('name', '').strip()
-    academic_level_id = _parse_int(data.get('academic_level_id'))
+    academic_year_id = _parse_int(data.get('academic_year_id'))
+    year_level_id = _parse_int(data.get('academic_year_level_id'))
     max_score = _parse_float(data.get('max_score'), 100.0)
     sort_order = _parse_int(data.get('sort_order'))
 
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'})
+    year_level = validate_year_level(academic_year_id, year_level_id)
+    if not year_level:
+        return jsonify({'success': False, 'message': 'Academic year and matching academic level are required'})
 
     try:
         from sqlalchemy import func
-        if _duplicate_exists(Subject, {'name': name, 'academic_level_id': academic_level_id}):
-            return jsonify({'success': False, 'message': 'Subject already exists for this level'})
-        max_sort_query = db.session.query(func.max(Subject.sort_order))
-        if academic_level_id:
-            max_sort_query = max_sort_query.filter_by(academic_level_id=academic_level_id)
+        if _duplicate_exists(AcademicYearSubject, {'name': name, 'academic_year_id': academic_year_id, 'academic_year_level_id': year_level.id}):
+            return jsonify({'success': False, 'message': 'Subject already exists for this academic year level'})
+        max_sort_query = db.session.query(func.max(AcademicYearSubject.sort_order)).filter_by(academic_year_id=academic_year_id, academic_year_level_id=year_level.id)
         max_sort = max_sort_query.scalar() or 0
 
-        subject = Subject(
+        legacy_subject = None
+        if year_level.legacy_level_id:
+            legacy_subject = Subject.query.filter_by(name=name, academic_level_id=year_level.legacy_level_id).first()
+            if not legacy_subject:
+                legacy_subject = Subject(name=name, academic_level_id=year_level.legacy_level_id, max_score=max_score, sort_order=sort_order if sort_order is not None else max_sort + 1)
+                db.session.add(legacy_subject)
+                db.session.flush()
+        subject = AcademicYearSubject(
             name=name,
-            academic_level_id=academic_level_id,
+            academic_year_id=academic_year_id,
+            academic_year_level_id=year_level.id,
+            legacy_subject_id=legacy_subject.id if legacy_subject else None,
             max_score=max_score,
-            sort_order=sort_order if sort_order is not None else max_sort + 1
+            sort_order=sort_order if sort_order is not None else max_sort + 1,
         )
         db.session.add(subject)
         db.session.commit()
@@ -3046,24 +3104,29 @@ def config_update_subject(subject_id):
     from flask import jsonify
 
     data = request.get_json(silent=True) or {}
-    subject = Subject.query.get_or_404(subject_id)
+    subject = AcademicYearSubject.query.get_or_404(subject_id)
 
     name = str(data.get('name', subject.name) or '').strip()
-    academic_level_id = _parse_int(data.get('academic_level_id')) if 'academic_level_id' in data else subject.academic_level_id
+    academic_year_id = _parse_int(data.get('academic_year_id'), subject.academic_year_id)
+    year_level_id = _parse_int(data.get('academic_year_level_id'), subject.academic_year_level_id)
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'})
-    if _duplicate_exists(Subject, {'name': name, 'academic_level_id': academic_level_id}, exclude_id=subject.id):
-        return jsonify({'success': False, 'message': 'Subject already exists for this level'})
+    year_level = validate_year_level(academic_year_id, year_level_id)
+    if not year_level:
+        return jsonify({'success': False, 'message': 'Academic year and matching academic level are required'})
+    if _duplicate_exists(AcademicYearSubject, {'name': name, 'academic_year_id': academic_year_id, 'academic_year_level_id': year_level.id}, exclude_id=subject.id):
+        return jsonify({'success': False, 'message': 'Subject already exists for this academic year level'})
 
-    old_value = {'name': subject.name, 'academic_level_id': subject.academic_level_id, 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order}
+    old_value = {'name': subject.name, 'academic_year_id': subject.academic_year_id, 'academic_year_level_id': subject.academic_year_level_id, 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order}
     subject.name = name
-    subject.academic_level_id = academic_level_id
+    subject.academic_year_id = academic_year_id
+    subject.academic_year_level_id = year_level.id
     subject.max_score = _parse_float(data.get('max_score'), float(subject.max_score or 100))
     subject.sort_order = _parse_int(data.get('sort_order'), subject.sort_order)
 
     try:
         db.session.commit()
-        _audit_config_change("Configuration Center Updated", "subjects", subject, old_value=old_value, new_value={'name': subject.name, 'academic_level_id': subject.academic_level_id, 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order})
+        _audit_config_change("Configuration Center Updated", "subjects", subject, old_value=old_value, new_value={'name': subject.name, 'academic_year_id': subject.academic_year_id, 'academic_year_level_id': subject.academic_year_level_id, 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order})
         return jsonify({'success': True, 'message': 'Subject updated successfully'})
     except Exception as e:
         db.session.rollback()
