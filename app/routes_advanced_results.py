@@ -635,19 +635,54 @@ def new_dashboard():
     selected_exam = db.session.get(Exam, exam_id) if exam_id else get_latest_exam_for_year(selected_year)
     if selected_exam and selected_year and selected_exam.academic_year_id != selected_year.id:
         selected_exam = get_latest_exam_for_year(selected_year)
-    selected_level = db.session.get(AcademicLevel, level_id) if level_id else None
-    
     # Get all years and exams for selectors
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
     exams = Exam.query.filter_by(academic_year_id=selected_year.id).order_by(Exam.id.desc()).all() if selected_year else []
+
+    # Keep the dashboard selectors and every downstream query inside the
+    # selected year's hierarchy. Legacy level IDs are still used by the
+    # existing templates, but only mapped IDs are exposed here.
+    year_level_scopes = year_levels(selected_year.id) if selected_year else []
+    levels = [
+        scope.legacy_level
+        for scope in year_level_scopes
+        if scope.legacy_level and scope.legacy_level.is_active
+    ]
+    valid_level_ids = {level.id for level in levels}
+    selected_level = db.session.get(AcademicLevel, level_id) if level_id in valid_level_ids else None
+
+    exam_scope_ready = True
+    if selected_exam and selected_exam.academic_level_id:
+        exam_year_level = next(
+            (scope for scope in year_level_scopes if scope.legacy_level_id == selected_exam.academic_level_id),
+            None,
+        )
+        exam_scope_ready = exam_year_level is not None
+        if exam_scope_ready and selected_exam.academic_class_id:
+            exam_year_class = next((
+                item for item in year_classes(exam_year_level.id)
+                if item.legacy_class_id == selected_exam.academic_class_id
+            ), None)
+            exam_scope_ready = exam_year_class is not None
+            if exam_scope_ready and selected_exam.academic_section_id:
+                exam_section = db.session.get(AcademicSection, selected_exam.academic_section_id)
+                exam_scope_ready = bool(
+                    exam_section
+                    and exam_year_class.legacy_class_id == exam_section.academic_class_id
+                )
+        elif exam_scope_ready and selected_exam.academic_section_id:
+            exam_section = db.session.get(AcademicSection, selected_exam.academic_section_id)
+            exam_scope_ready = bool(exam_section)
     
-    # Get all levels for level selector
-    levels = AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
-    
-    stats = {}
+    stats = {
+        "total_students": 0,
+        "total_subjects": 0,
+        "completion_percentage": 0,
+        "active_classes": 0,
+    }
     class_cards = []
     
-    if selected_exam:
+    if selected_exam and exam_scope_ready:
         stats = build_dashboard_stats(selected_exam)
         class_cards = build_class_cards(selected_exam, level_filter=selected_level)
     
@@ -659,6 +694,7 @@ def new_dashboard():
         selected_year=selected_year,
         selected_exam=selected_exam,
         selected_level=selected_level,
+        exam_scope_ready=exam_scope_ready,
         stats=stats,
         class_cards=class_cards,
         settings=get_settings(),
@@ -692,12 +728,35 @@ def class_roster():
 
         years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
         exams = Exam.query.filter_by(academic_year_id=selected_year.id).order_by(Exam.id.desc()).all() if selected_year else []
-        levels = AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
-        level_id = level_id or (selected_exam.academic_level_id if selected_exam else None)
-        class_id = class_id or (selected_exam.academic_class_id if selected_exam else None)
-        section_id = section_id or (selected_exam.academic_section_id if selected_exam else None)
-        classes = AcademicClass.query.filter_by(academic_level_id=level_id, is_active=True).order_by(AcademicClass.sort_order, AcademicClass.name).all() if level_id else []
+        year_level_scopes = year_levels(selected_year.id) if selected_year else []
+        levels = [
+            scope.legacy_level
+            for scope in year_level_scopes
+            if scope.legacy_level and scope.legacy_level.is_active
+        ]
+        valid_level_ids = {item.id for item in levels}
+        requested_level_id = level_id or (selected_exam.academic_level_id if selected_exam else None)
+        level_id = requested_level_id if requested_level_id in valid_level_ids else None
+        selected_year_level_scope = next(
+            (scope for scope in year_level_scopes if scope.legacy_level_id == level_id),
+            None,
+        )
+        mapped_classes = [
+            item.legacy_class
+            for item in year_classes(selected_year_level_scope.id)
+            if item.legacy_class and item.legacy_class.is_active
+        ] if selected_year_level_scope else []
+        valid_class_ids = {item.id for item in mapped_classes}
+        requested_class_id = class_id or (selected_exam.academic_class_id if selected_exam else None)
+        class_id = requested_class_id if requested_class_id in valid_class_ids else None
+        requested_section_id = section_id or (selected_exam.academic_section_id if selected_exam else None)
+        section_id = requested_section_id
+        classes = mapped_classes
+        if class_id:
+            classes = [item for item in mapped_classes if item.id == class_id]
         sections = AcademicSection.query.filter_by(academic_class_id=class_id, is_active=True).order_by(AcademicSection.sort_order, AcademicSection.name).all() if class_id else []
+        if section_id and not any(item.id == section_id for item in sections):
+            section_id = None
 
         scope_info = {
             "level": db.session.get(AcademicLevel, level_id) if level_id else None,
@@ -3938,7 +3997,21 @@ def build_dashboard_stats(exam):
     completion_percentage = round((actual_results / expected_results * 100), 2) if expected_results > 0 else 0
     
     # Get active classes
-    if exam.academic_class_id:
+    if exam.academic_year_id:
+        mapped_year_levels = year_levels(exam.academic_year_id)
+        if exam.academic_level_id:
+            mapped_level = next(
+                (item for item in mapped_year_levels if item.legacy_level_id == exam.academic_level_id),
+                None,
+            )
+            mapped_classes = year_classes(mapped_level.id) if mapped_level else []
+            if exam.academic_class_id:
+                active_classes = int(any(item.legacy_class_id == exam.academic_class_id for item in mapped_classes))
+            else:
+                active_classes = len(mapped_classes)
+        else:
+            active_classes = sum(len(year_classes(item.id)) for item in mapped_year_levels)
+    elif exam.academic_class_id:
         active_classes = 1
     elif exam.academic_level_id:
         active_classes = AcademicClass.query.filter_by(academic_level_id=exam.academic_level_id, is_active=True).count()
@@ -3958,6 +4031,30 @@ def build_dashboard_stats(exam):
 def build_class_cards(exam, level_filter=None):
     """Build class cards for the dashboard, optionally filtered by level"""
     cards = []
+
+    year_scope_by_level = {}
+    year_scope_classes = {}
+    if exam.academic_year_id:
+        year_scope_by_level = {
+            item.legacy_level_id: item
+            for item in year_levels(exam.academic_year_id)
+            if item.legacy_level_id
+        }
+        year_scope_classes = {
+            item.legacy_class_id: item
+            for scope in year_scope_by_level.values()
+            for item in year_classes(scope.id)
+            if item.legacy_class_id
+        }
+        if exam.academic_level_id and exam.academic_level_id not in year_scope_by_level:
+            return []
+        if exam.academic_class_id and exam.academic_class_id not in year_scope_classes:
+            return []
+        if exam.academic_section_id:
+            exam_section = db.session.get(AcademicSection, exam.academic_section_id)
+            mapped_class = year_scope_classes.get(exam.academic_class_id) if exam.academic_class_id else None
+            if not exam_section or (mapped_class and mapped_class.legacy_class_id != exam_section.academic_class_id):
+                return []
     
     # Determine scope based on exam configuration
     if exam.academic_section_id:
@@ -3974,12 +4071,21 @@ def build_class_cards(exam, level_filter=None):
                 cards.append(build_single_class_card(exam, section=section))
     elif exam.academic_level_id:
         # Single level - show class cards
-        classes = AcademicClass.query.filter_by(academic_level_id=exam.academic_level_id, is_active=True).all()
+        mapped_level = year_scope_by_level.get(exam.academic_level_id)
+        classes = [
+            item.legacy_class
+            for item in year_classes(mapped_level.id)
+            if mapped_level and item.legacy_class and item.legacy_class.is_active
+        ] if mapped_level else AcademicClass.query.filter_by(academic_level_id=exam.academic_level_id, is_active=True).all()
         for cls in classes:
             cards.append(build_single_class_card(exam, academic_class=cls))
     else:
         # No scope - show level cards
-        levels = AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
+        levels = [
+            item.legacy_level
+            for item in year_scope_by_level.values()
+            if item.legacy_level and item.legacy_level.is_active
+        ] if exam.academic_year_id else AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
         for level in levels:
             cards.append(build_single_class_card(exam, academic_level=level))
     

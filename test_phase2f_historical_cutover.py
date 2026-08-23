@@ -194,6 +194,32 @@ class TestPhase2FHistoricalCutover(unittest.TestCase):
         self.assertNotIn(b"Selected level is not configured for this academic year", response.data)
         self.assertNotIn(b"Form Four B", response.data)
 
+    def test_results_dashboard_handles_an_exam_with_a_cross_year_level(self):
+        admin = User(username="phase2f-dashboard-admin", full_name="Phase 2F Dashboard Admin", role="super_admin")
+        admin.set_password("test-password")
+        exam = Exam(
+            name="Cross Year Dashboard Exam",
+            academic_year=self.year_a,
+            academic_level_id=self.level_b.id,
+            is_published=True,
+            is_active=True,
+        )
+        db.session.add_all([admin, exam])
+        db.session.commit()
+        client = self.app.test_client()
+        login = client.post(
+            "/admin/login",
+            data={"username": "phase2f-dashboard-admin", "password": "test-password"},
+        )
+        self.assertIn(login.status_code, (302, 303))
+
+        response = client.get(
+            f"/admin/advanced-results/new-dashboard?year_id={self.year_a.id}&exam_id={exam.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"Selected level is not configured for this academic year", response.data)
+        self.assertIn(b"year-level", response.data)
+
 
 if __name__ == "__main__":
     unittest.main()

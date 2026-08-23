@@ -37,6 +37,9 @@
       </div>
     </div>
     <div class="auto-note" id="autoNote">🔄 Dashboard-ku wuxuu si otomaatig ah u soo bandhigayaa sanadka dugsiyeedka ee <strong>active-ka ah</strong> — waad iska bedeli kartaa si aad u eegto sano hore.</div>
+    {% if selected_exam and not exam_scope_ready %}
+      <div class="auto-note" style="border-color:#f0c36d;background:#fff8e8;color:#7c5612;">Imtixaankan weli looma xiriirin level/class-ka sanad-dugsiyeedka la doortay. Ku samee year-level iyo year-class gudaha Setup ka hor inta aan natiijooyinka la gelin.</div>
+    {% endif %}
     {% if not selected_year.is_current and selected_year %}
       <div class="revert-auto" onclick="revertToActive()">↺ Revert to Active</div>
     {% endif %}
