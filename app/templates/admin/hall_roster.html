@@ -330,13 +330,12 @@ async function loadHalls(preferredHallId=null){
 }
 
 async function loadLevelsAndClasses(){
-  const res=await fetch('/admin/attendance/api/levels-and-classes');
+  const yearId=document.getElementById('selYear').value;
+  const res=await fetch(`/admin/attendance/api/levels-and-classes?academic_year_id=${encodeURIComponent(yearId)}`);
   const data=await res.json();
   levelsData=data.levels||[];
   document.getElementById('selLevel').innerHTML=levelsData.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
   refreshClasses();
-  document.getElementById('selLevel').addEventListener('change',()=>{refreshClasses();loadRosterData();});
-  document.getElementById('selClass').addEventListener('change',loadRosterData);
 }
 
 function refreshClasses(){
@@ -583,12 +582,19 @@ document.getElementById('btnConfirmTransferHall').addEventListener('click',async
   }
 });
 
-document.getElementById('selYear').addEventListener('change',loadExamTypes);
+let rosterScopeListenersBound=false;
+function bindRosterScopeListeners(){
+  if(rosterScopeListenersBound) return;
+  rosterScopeListenersBound=true;
+  document.getElementById('selYear').addEventListener('change',async()=>{await loadLevelsAndClasses();await loadExamTypes();});
+  document.getElementById('selLevel').addEventListener('change',()=>{refreshClasses();loadRosterData();});
+  document.getElementById('selClass').addEventListener('change',loadRosterData);
+}
 document.getElementById('selExamType').addEventListener('change',loadHalls);
 document.getElementById('selHall').addEventListener('change',()=>{trySyncFilterToHall();loadRosterData();});
 document.getElementById('poolSearch').addEventListener('input',loadRosterData);
 document.getElementById('hallSearch').addEventListener('input',loadRosterData);
 
-document.addEventListener('DOMContentLoaded',async()=>{await loadLevelsAndClasses();await loadExamTypes();});
+document.addEventListener('DOMContentLoaded',async()=>{bindRosterScopeListeners();await loadLevelsAndClasses();await loadExamTypes();});
 </script>
 {% endblock %}

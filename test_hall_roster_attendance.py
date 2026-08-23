@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 from app import create_app, db
 from config import Config
 from app.models import (
-    AcademicClass, AcademicLevel, AcademicYear, AttendanceRecord,
+    AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, AttendanceRecord,
     Exam, ExamHall, ExamHallEnrollment, ExamHallSubject, ExamSession,
     ExamSessionSubject, ExamType, SchoolClass, Student, Subject, User
 )
@@ -83,6 +83,52 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         if not self.class_form2:
             self.class_form2 = AcademicClass(academic_level_id=self.level_sec.id, name='Form Two Test')
             db.session.add(self.class_form2)
+        db.session.commit()
+
+        self.year_scope_level = AcademicYearLevel(
+            academic_year_id=self.year.id,
+            legacy_level_id=self.level_sec.id,
+            name=self.level_sec.name,
+            sort_order=1,
+        )
+        self.other_year = AcademicYear(name='2026/2027', is_current=False)
+        self.other_level = AcademicLevel(name='Other Year Level Test', sort_order=2)
+        db.session.add_all([self.other_year, self.other_level])
+        db.session.flush()
+        self.other_scope_level = AcademicYearLevel(
+            academic_year_id=self.other_year.id,
+            legacy_level_id=self.other_level.id,
+            name=self.other_level.name,
+            sort_order=1,
+        )
+        db.session.add(self.year_scope_level)
+        db.session.add(self.other_scope_level)
+        db.session.flush()
+        self.year_scope_class = AcademicYearClass(
+            academic_year_level_id=self.year_scope_level.id,
+            legacy_class_id=self.class_form1.id,
+            name=self.class_form1.name,
+            sort_order=1,
+        )
+        self.year_scope_class_form2 = AcademicYearClass(
+            academic_year_level_id=self.year_scope_level.id,
+            legacy_class_id=self.class_form2.id,
+            name=self.class_form2.name,
+            sort_order=2,
+        )
+        self.other_class = AcademicClass(
+            academic_level_id=self.other_level.id,
+            name='Other Year Class Test',
+        )
+        db.session.add(self.other_class)
+        db.session.flush()
+        self.other_scope_class = AcademicYearClass(
+            academic_year_level_id=self.other_scope_level.id,
+            legacy_class_id=self.other_class.id,
+            name=self.other_class.name,
+            sort_order=1,
+        )
+        db.session.add_all([self.year_scope_class, self.year_scope_class_form2, self.other_scope_class])
         db.session.commit()
 
         # Create subjects
@@ -176,6 +222,24 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(self.student3_form2.id, available_ids2)
         self.assertNotIn(self.student1.id, available_ids2)
         print("[PASS] Test (a): Hall roster filtering by level/class verified.")
+
+    def test_levels_and_classes_are_scoped_to_selected_academic_year(self):
+        self.login()
+
+        response = self.client.get(
+            f'/admin/attendance/api/levels-and-classes?academic_year_id={self.year.id}'
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        level_ids = {level['id'] for level in payload['levels']}
+        self.assertIn(self.level_sec.id, level_ids)
+        self.assertNotIn(self.other_level.id, level_ids)
+
+        selected_level = next(level for level in payload['levels'] if level['id'] == self.level_sec.id)
+        class_ids = {item['id'] for item in selected_level['classes']}
+        self.assertIn(self.class_form1.id, class_ids)
+        self.assertNotIn(self.other_class.id, class_ids)
 
     def test_b_attendance_roster_matches_hall_assigned_students_exactly(self):
         """(b) Attendance roster matches the hall's assigned students exactly."""

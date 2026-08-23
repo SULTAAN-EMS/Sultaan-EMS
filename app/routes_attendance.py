@@ -18,6 +18,7 @@ from .models import (
 from .permissions import enforce_endpoint_permission
 from .services import get_settings
 from .attendance_rules import NON_SAT_STATUSES, SAT_STATUSES, normalize_attendance_status, scheduled_subject_scope_key
+from .academic_hierarchy import year_classes, year_levels
 from .enrollment_service import (
     EnrollmentValidationError,
     enrollment_placement_for_student,
@@ -92,9 +93,9 @@ def attendance_student_scope_query(academic_year_id, *, exam=None, level_id=None
     """Return attendance students from the selected-year enrollment scope."""
     return student_enrollment_legacy_scope_query(
         academic_year_id,
-        legacy_level_id=level_id or (exam.academic_level_id if exam else None),
-        legacy_class_id=class_id or (exam.academic_class_id if exam else None),
-        academic_section_id=section_id or (exam.academic_section_id if exam else None),
+        legacy_level_id=level_id or getattr(exam, "academic_level_id", None),
+        legacy_class_id=class_id or getattr(exam, "academic_class_id", None),
+        academic_section_id=section_id or getattr(exam, "academic_section_id", None),
     )
 
 
@@ -942,14 +943,27 @@ def api_delete_hall():
 
 @attendance_bp.route("/api/levels-and-classes")
 def api_levels_and_classes():
-    levels = AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
+    academic_year_id = request.args.get("academic_year_id", type=int)
+    if not academic_year_id or not db.session.get(AcademicYear, academic_year_id):
+        return jsonify({"success": True, "levels": []})
+
+    # The roster selectors use legacy IDs for compatibility with the hall
+    # endpoints, but the available options must come only from this year's
+    # year-aware hierarchy mappings.
     res = []
-    for l in levels:
-        classes = AcademicClass.query.filter_by(academic_level_id=l.id, is_active=True).order_by(AcademicClass.sort_order).all()
+    for year_level in year_levels(academic_year_id):
+        legacy_level = year_level.legacy_level
+        if not legacy_level or not legacy_level.is_active or not year_level.legacy_level_id:
+            continue
+        classes = []
+        for year_class in year_classes(year_level.id):
+            legacy_class = year_class.legacy_class
+            if legacy_class and legacy_class.is_active and year_class.legacy_class_id:
+                classes.append({"id": year_class.legacy_class_id, "name": year_class.name})
         res.append({
-            "id": l.id,
-            "name": l.name,
-            "classes": [{"id": c.id, "name": c.name} for c in classes]
+            "id": year_level.legacy_level_id,
+            "name": year_level.name,
+            "classes": classes,
         })
     return jsonify({"success": True, "levels": res})
 
