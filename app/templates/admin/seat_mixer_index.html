@@ -5,7 +5,7 @@
 {% block extra_head %}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/seat_mixer.css', v='roster-ux-20260819-2') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/seat_mixer.css', v='year-scope-20260824-1') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-page-heroes.css') }}">
 {% endblock %}
 
@@ -94,6 +94,11 @@
       <!-- Classes to Mix -->
       <div class="sm-card">
         <h2><span class="ico"><i class="fa-solid fa-users"></i></span>Classes to Mix</h2>
+        <div class="sm-year-scope">
+          <label for="smAcademicYear"><i class="fa-solid fa-calendar-days"></i> Academic Year</label>
+          <select id="smAcademicYear" aria-label="Select academic year for classes to mix"></select>
+          <span class="sm-year-scope-note">Levels and classes are loaded only from this academic year.</span>
+        </div>
         <div class="sm-level-block-title">1. Levels (pulled automatically from the system)</div>
         <div class="sm-level-row" id="smLevelRow"></div>
         <div id="smClassesArea" class="sm-classes-scroll"></div>
@@ -209,11 +214,14 @@
 
 <div class="sm-toast-region" id="smToastRegion" aria-live="polite" aria-atomic="true"></div>
 
-<script src="{{ url_for('static', filename='js/seat_mixer.js', v='roster-ux-20260819-2') }}"></script>
+<script src="{{ url_for('static', filename='js/seat_mixer.js', v='year-scope-20260824-1') }}"></script>
 <script>
 window.SM_init({
   halls: {{ halls|tojson }},
   levels: {{ levels|tojson }},
+  academicYears: {{ academic_years|tojson }},
+  academicYearId: {{ academic_year_id|tojson }},
+  levelsByYear: {{ levels_by_year|tojson }},
   classPalette: {{ class_palette|tojson }},
   schoolName: {{ school_name|tojson }},
   csrfToken: {{ csrf_token()|tojson }}

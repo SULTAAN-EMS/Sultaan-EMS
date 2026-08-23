@@ -23,6 +23,9 @@
   var SM = {
     halls: [],
     levels: [],
+    levelsByYear: {},
+    academicYears: [],
+    academicYearId: null,
     classPalette: PALETTE,
     csrfToken: '',
     schoolName: 'School',
@@ -99,6 +102,41 @@
 
   function currentHall() {
     return SM.halls.find(function (h) { return h.id === SM.currentHallId; });
+  }
+
+  function renderAcademicYearSelect() {
+    var select = $('smAcademicYear');
+    if (!select) return;
+    select.innerHTML = SM.academicYears.map(function (year) {
+      return '<option value="' + year.id + '">' + escapeHtml(year.name) + '</option>';
+    }).join('');
+    if (SM.academicYearId) select.value = String(SM.academicYearId);
+  }
+
+  function setAcademicYear(yearId, resetBuilderSelection) {
+    var numericYearId = parseInt(yearId, 10);
+    var scopedLevels = SM.levelsByYear[String(numericYearId)];
+    if (!numericYearId || !scopedLevels) return false;
+    var combo = currentCombo();
+    if (resetBuilderSelection && combo) {
+      combo.activeLevels = new Set();
+      combo.selectedClasses = {};
+      combo.seats = buildSeats(combo.cfg);
+      combo.dirty = false;
+      SM.studentDirectory = {};
+      renderLevels(combo);
+      renderClassesArea(combo);
+      renderHallFromSeats(combo, combo.lastMeta);
+    }
+    SM.academicYearId = numericYearId;
+    SM.levels = scopedLevels;
+    if (combo) {
+      combo.academicYearId = numericYearId;
+      renderLevels(combo);
+      renderClassesArea(combo);
+    }
+    renderAcademicYearSelect();
+    return true;
   }
 
   function notify(message, type) {
@@ -188,6 +226,7 @@
       var cfg = { rows: 3, tablesPerRow: 5, seatsPerTable: 2 };
       SM.store[key] = {
         hallId: hallId, versionId: versionId,
+        academicYearId: SM.academicYearId,
         activeLevels: new Set(),
         selectedClasses: {}, // classId -> {color, uids: Set, collapsed: bool}
         classColorOverrides: {}, // classId -> #RRGGBB, persisted per hall version
@@ -811,7 +850,13 @@
     fetch(builderUrl)
       .then(function (r) { return r.json(); })
       .then(function (data) {
+        if (data.academic_year_id && SM.levelsByYear[String(data.academic_year_id)]) {
+          SM.academicYearId = parseInt(data.academic_year_id, 10);
+          SM.levels = SM.levelsByYear[String(data.academic_year_id)];
+          renderAcademicYearSelect();
+        }
         combo.cfg = data.config;
+        combo.academicYearId = SM.academicYearId;
         combo.classColorOverrides = (data.config && data.config.classColors) || {};
         combo.seats = buildSeats(combo.cfg);
         combo.currentSnapshotId = data.snapshot_id || null;
@@ -1172,6 +1217,7 @@
     var params = new URLSearchParams();
     params.append('class_ids', classId);
     params.append('hall_id', SM.currentHallId || '');
+    params.append('academic_year_id', SM.academicYearId || '');
 
     return fetch('/admin/seat-mixer/api/students?' + params.toString())
       .then(function (r) { return r.json(); })
@@ -1335,6 +1381,7 @@
     params.append('version_id', SM.currentVersionId);
     params.append('hall_id', SM.currentHallId);
     params.append('current_student_id', cur.id);
+    params.append('academic_year_id', SM.academicYearId || '');
 
     fetch('/admin/seat-mixer/api/class-students?' + params.toString())
       .then(function (r) { return r.json(); })
@@ -1557,6 +1604,7 @@
         assignments: assignments,
         config: combo.cfg,
         selected_students: selectedStudents,
+        academic_year_id: combo.academicYearId || SM.academicYearId,
         last_meta: combo.lastMeta || 'Saved layout'
       })
     })
@@ -1681,6 +1729,16 @@
     $('smBackToHallsBtn').addEventListener('click', showHallsScreen);
 
     // Screen 3: Builder
+    $('smAcademicYear').addEventListener('change', function () {
+      var combo = currentCombo();
+      var hasSelection = combo && (Object.keys(combo.selectedClasses).length > 0 || combo.activeLevels.size > 0);
+      if (hasSelection) {
+        renderAcademicYearSelect();
+        notify('Clear the current level/class selection before changing the academic year.', 'info');
+        return;
+      }
+      setAcademicYear(this.value, true);
+    });
     $('smBackToVersionsBtn').addEventListener('click', function () {
       openVersionsScreen(SM.currentHallId);
     });
@@ -2077,7 +2135,10 @@
   // ============================================================
   window.SM_init = function (opts) {
     SM.halls = opts.halls || [];
-    SM.levels = opts.levels || [];
+    SM.academicYears = opts.academicYears || [];
+    SM.levelsByYear = opts.levelsByYear || {};
+    SM.academicYearId = parseInt(opts.academicYearId, 10) || (SM.academicYears[0] && SM.academicYears[0].id) || null;
+    SM.levels = SM.levelsByYear[String(SM.academicYearId)] || opts.levels || [];
     SM.classPalette = opts.classPalette || PALETTE;
     SM.csrfToken = opts.csrfToken || '';
     SM.schoolName = opts.schoolName || 'School';
@@ -2089,6 +2150,7 @@
       SM.worker = null;
     }
 
+    renderAcademicYearSelect();
     initEvents();
     fetch('/admin/seat-mixer/api/appearance')
       .then(function (response) { return response.json(); })

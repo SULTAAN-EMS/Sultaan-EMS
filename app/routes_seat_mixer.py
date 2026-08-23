@@ -33,6 +33,7 @@ from .models import (
     Student,
 )
 from .enrollment_service import EnrollmentValidationError, enrollment_placement_for_student, student_enrollment_legacy_scope_query
+from .academic_hierarchy import year_classes, year_levels
 from .permissions import enforce_endpoint_permission
 from .verification import id_card_qr_payload
 
@@ -122,6 +123,31 @@ def is_expired(hall):
 def get_current_academic_year():
     """Get the current academic year."""
     return AcademicYear.query.filter_by(is_current=True).first()
+
+
+def seat_mixer_levels_for_year(academic_year_id):
+    """Serialize only the year-aware levels/classes for Seat Mixer selectors."""
+    result = []
+    for year_level in year_levels(academic_year_id):
+        legacy_level = year_level.legacy_level
+        if not legacy_level or not legacy_level.is_active or not year_level.legacy_level_id:
+            continue
+        scoped_classes = []
+        for year_class in year_classes(year_level.id):
+            legacy_class = year_class.legacy_class
+            if legacy_class and legacy_class.is_active and year_class.legacy_class_id:
+                scoped_classes.append({
+                    "id": year_class.legacy_class_id,
+                    "name": year_class.name,
+                    "sort_order": year_class.sort_order,
+                })
+        result.append({
+            "id": year_level.legacy_level_id,
+            "name": year_level.name,
+            "sort_order": year_level.sort_order,
+            "classes": scoped_classes,
+        })
+    return result
 
 
 def students_for_current_classes(current_year, class_ids):
@@ -421,17 +447,19 @@ def snapshot_payload(snapshot):
         "assignments": assignments,
         "selected_students": normalized_selected_students(payload.get("selected_students", {})),
         "last_meta": str(payload.get("last_meta") or "Saved layout"),
+        "academic_year_id": payload.get("academic_year_id"),
     }
 
 
-def serialize_saved_assignments(hall, assignments):
+def serialize_saved_assignments(hall, assignments, academic_year_id=None):
     """Hydrate compact snapshot rows from the canonical Student records."""
-    hall_exam = hall.exam
-    hall_exam_type = hall.exam_type
-    academic_year_id = (
-        hall_exam.academic_year_id if hall_exam else
-        hall_exam_type.academic_year_id if hall_exam_type else None
-    )
+    if academic_year_id is None:
+        hall_exam = hall.exam
+        hall_exam_type = hall.exam_type
+        academic_year_id = (
+            hall_exam.academic_year_id if hall_exam else
+            hall_exam_type.academic_year_id if hall_exam_type else None
+        )
     student_ids = [item["student_id"] for item in assignments]
     students = (
         Student.query
@@ -505,19 +533,18 @@ def index():
         .all()
     )
 
-    # Load levels and classes for the builder
-    levels = (
-        AcademicLevel.query
-        .filter_by(is_active=True)
-        .order_by(AcademicLevel.sort_order)
-        .all()
-    )
-    classes = (
-        AcademicClass.query
-        .filter_by(is_active=True)
-        .order_by(AcademicClass.sort_order)
-        .all()
-    )
+    # The builder must use the year-aware hierarchy, not the global legacy
+    # level/class tables. Keep every year's scoped options in the page so the
+    # selector can switch years without changing the seating workflow.
+    academic_years = AcademicYear.query.order_by(
+        AcademicYear.is_current.desc(), AcademicYear.name.desc(), AcademicYear.id.desc()
+    ).all()
+    current_year = get_current_academic_year() or (academic_years[0] if academic_years else None)
+    levels_by_year = {
+        str(academic_year.id): seat_mixer_levels_for_year(academic_year.id)
+        for academic_year in academic_years
+    }
+    levels = levels_by_year.get(str(current_year.id), []) if current_year else []
 
     # Serialize hall data
     hall_data = []
@@ -532,24 +559,13 @@ def index():
             "is_expired": is_expired(h),
         })
 
-    # Serialize level/class data
-    level_data = []
-    for lvl in levels:
-        level_classes = [c for c in classes if c.academic_level_id == lvl.id]
-        level_data.append({
-            "id": lvl.id,
-            "name": lvl.name,
-            "sort_order": lvl.sort_order,
-            "classes": [
-                {"id": c.id, "name": c.name, "sort_order": c.sort_order}
-                for c in level_classes
-            ],
-        })
-
     return render_template(
         "admin/seat_mixer_index.html",
         halls=hall_data,
-        levels=level_data,
+        levels=levels,
+        academic_years=[{"id": year.id, "name": year.name} for year in academic_years],
+        academic_year_id=current_year.id if current_year else None,
+        levels_by_year=levels_by_year,
         class_palette=CLASS_PALETTE,
         school_name=get_school_name(),
     )
@@ -830,7 +846,7 @@ def api_versions(hall_id):
 
 @seat_mixer_bp.route("/api/students")
 def api_students():
-    """Fetch real students for selected classes — scoped by current academic year.
+    """Fetch real students for selected classes — scoped by selected academic year.
 
     Also returns where each student is already assigned (if anywhere).
     """
@@ -840,7 +856,8 @@ def api_students():
     if not class_ids:
         return jsonify({"students": []})
 
-    current_year = get_current_academic_year()
+    academic_year_id = request.args.get("academic_year_id", type=int)
+    current_year = db.session.get(AcademicYear, academic_year_id) if academic_year_id else get_current_academic_year()
     if not current_year:
         return jsonify({"error": "No current academic year found"}), 400
 
@@ -889,6 +906,13 @@ def api_version_data(version_id):
     """Load the active saved revision (or a requested history preview)."""
     version = db.session.get(ExamHallVersion, version_id) or abort(404)
     hall = version.hall
+    hall_exam = hall.exam
+    hall_exam_type = hall.exam_type
+    default_academic_year_id = (
+        hall_exam.academic_year_id if hall_exam else
+        hall_exam_type.academic_year_id if hall_exam_type else None
+    )
+    academic_year_id = default_academic_year_id
     requested_snapshot_id = request.args.get("snapshot_id", type=int)
     current_id = current_snapshot_id(version_id)
     snapshot = None
@@ -919,6 +943,7 @@ def api_version_data(version_id):
             assignment_rows = saved_layout["assignments"]
             selected_students = saved_layout["selected_students"]
             last_meta = saved_layout["last_meta"]
+            academic_year_id = saved_layout.get("academic_year_id") or default_academic_year_id
         else:
             config = normalized_layout_config({})
             assignment_rows = []
@@ -946,8 +971,9 @@ def api_version_data(version_id):
         "version_label": version.label,
         "is_expired": is_expired(hall),
         "config": config,
-        "saved_data": serialize_saved_assignments(hall, assignment_rows),
+        "saved_data": serialize_saved_assignments(hall, assignment_rows, academic_year_id),
         "selected_students": selected_students,
+        "academic_year_id": academic_year_id,
         "snapshot_id": snapshot.id if snapshot else None,
         "is_preview": bool(requested_snapshot_id and snapshot and snapshot.id != current_id),
         "last_meta": last_meta,
@@ -1024,15 +1050,23 @@ def api_save():
 
     selected_students = normalized_selected_students(data.get("selected_students", {}))
     last_meta = str(data.get("last_meta") or "Saved layout").strip()[:160] or "Saved layout"
+    requested_academic_year_id = data.get("academic_year_id")
+    try:
+        requested_academic_year_id = int(requested_academic_year_id) if requested_academic_year_id else None
+    except (TypeError, ValueError):
+        requested_academic_year_id = None
+
+    hall_exam = hall.exam
+    hall_exam_type = hall.exam_type
+    academic_year_id = requested_academic_year_id or (
+        hall_exam.academic_year_id if hall_exam else
+        hall_exam_type.academic_year_id if hall_exam_type else None
+    ) or (get_current_academic_year().id if get_current_academic_year() else None)
+    if not academic_year_id or not db.session.get(AcademicYear, academic_year_id):
+        return jsonify({"error": "Select a valid academic year before saving the arrangement."}), 400
 
     try:
         replace_active_assignments(version_id, normalized_rows, normalized_config)
-        hall_exam = hall.exam
-        hall_exam_type = hall.exam_type
-        academic_year_id = (
-            hall_exam.academic_year_id if hall_exam else
-            hall_exam_type.academic_year_id if hall_exam_type else None
-        )
         metrics = seat_mixer_metrics(normalized_rows, academic_year_id=academic_year_id)
         snapshot = SeatMixerSaveSnapshot(
             version_id=version_id,
@@ -1041,6 +1075,7 @@ def api_save():
                 "assignments": normalized_rows,
                 "selected_students": selected_students,
                 "last_meta": last_meta,
+                "academic_year_id": academic_year_id,
             }, separators=(",", ":"), sort_keys=True),
             integrity_score=metrics["integrity_score"],
             near_adjacency_count=metrics["near_adjacency_count"],
@@ -1206,7 +1241,8 @@ def api_class_students():
     if not class_id:
         return jsonify({"error": "Missing class_id"}), 400
 
-    current_year = get_current_academic_year()
+    academic_year_id = request.args.get("academic_year_id", type=int)
+    current_year = db.session.get(AcademicYear, academic_year_id) if academic_year_id else get_current_academic_year()
     if not current_year:
         return jsonify({"error": "No current academic year found"}), 400
 

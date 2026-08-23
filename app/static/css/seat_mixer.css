@@ -380,6 +380,21 @@
    Classes to Mix: Levels -> Classes -> Roster
    ============================================================ */
 .sm-level-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.sm-year-scope {
+  display: grid; grid-template-columns: auto minmax(180px, 260px) 1fr; align-items: center;
+  gap: 10px; margin: -2px 0 16px; padding: 10px 12px;
+  border: 1px solid var(--sm-border); border-radius: 12px;
+  background: rgba(96,165,250,.08);
+}
+.sm-year-scope label { margin: 0; color: var(--sm-text); white-space: nowrap; }
+.sm-year-scope label i { color: var(--sm-blue2); margin-right: 5px; }
+.sm-year-scope select {
+  width: 100%; background: var(--sm-input-bg); border: 1px solid var(--sm-input-border);
+  border-radius: 9px; padding: 8px 10px; color: var(--sm-text);
+  font: 600 13px 'Inter', sans-serif; outline: none;
+}
+.sm-year-scope select:focus { border-color: var(--sm-blue2); box-shadow: 0 0 0 3px rgba(96,165,250,.2); }
+.sm-year-scope-note { color: var(--sm-muted); font-size: 11px; }
 .sm-level-chip {
   display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--sm-text-dim);
   background: rgba(255,255,255,.06); border: 1.5px solid var(--sm-border); border-radius: 999px;
@@ -585,7 +600,12 @@
 .sm-toast.success { border-color:rgba(52,211,153,.45); }.sm-toast.error { border-color:rgba(251,113,133,.55); }.sm-toast.info { border-color:rgba(96,165,250,.5); }
 .sm-toast i { margin-top:1px; color:var(--sm-good); }.sm-toast.error i { color:var(--sm-bad); }.sm-toast.info i { color:var(--sm-blue2); }
 @keyframes sm-toast-in { from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)} }
-@media (max-width:650px) { .sm-config-title {align-items:flex-start}.sm-config-title small{display:none}.sm-manage-fields.two{grid-template-columns:1fr} }
+@media (max-width:650px) {
+  .sm-config-title {align-items:flex-start}
+  .sm-config-title small{display:none}
+  .sm-manage-fields.two{grid-template-columns:1fr}
+  .sm-year-scope {grid-template-columns:1fr; gap:6px}
+}
 
 /* Mission V2: visual controls for a live, document-like seating workspace. */
 .sm-latest-badge { border:1px solid rgba(52,211,153,.45); background:rgba(52,211,153,.12); color:var(--sm-good); border-radius:999px; padding:4px 8px; font:700 9px 'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.04em; }
