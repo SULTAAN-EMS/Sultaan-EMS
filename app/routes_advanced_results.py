@@ -23,6 +23,7 @@ from .enrollment_service import (
     EnrollmentValidationError,
     apply_legacy_placement,
     create_enrollment,
+    enrollment_placement_for_student,
     execute_bulk_transition,
     get_enrollment_for_student_year,
     plan_bulk_transition,
@@ -225,7 +226,7 @@ def get_latest_exam_for_year(academic_year):
 
 
 def subjects_for_scope(exam, level_id=None, class_id=None):
-    """Return only the subjects explicitly assigned to the effective level."""
+    """Return subjects assigned to the selected year-aware level."""
     # An explicitly requested level must win over an exam's optional default
     # level.  Analytics iterates real levels one by one; using the exam default
     # there would incorrectly reuse one level's subjects for every level.
@@ -236,6 +237,23 @@ def subjects_for_scope(exam, level_id=None, class_id=None):
 
     if not effective_level_id:
         return []
+    if exam and exam.academic_year_id:
+        year_level, _year_class = _year_scope_ids_from_legacy(
+            exam.academic_year_id,
+            effective_level_id,
+            class_id,
+        )
+        if not year_level:
+            return []
+        year_items = year_subjects(exam.academic_year_id, year_level.id)
+        mapped_subjects = [
+            db.session.get(Subject, item.legacy_subject_id)
+            for item in year_items
+            if item.legacy_subject_id
+        ]
+        mapped_subjects = [item for item in mapped_subjects if item]
+        if mapped_subjects:
+            return mapped_subjects
     return (
         Subject.query.filter_by(academic_level_id=effective_level_id)
         .order_by(Subject.sort_order, Subject.name, Subject.id)
@@ -257,43 +275,76 @@ def analytics_subject_bridge(academic_year_id, year_level_id=None):
     return year_items, legacy_items
 
 
-def students_for_scope_query(academic_year_id, level_id=None, class_id=None, section_id=None, exam=None):
-    """Return students using the unified Results Hub academic hierarchy, with legacy compatibility."""
-    query = Student.query.filter_by(academic_year_id=academic_year_id)
+def subjects_for_year_level(exam, year_level_id):
+    """Resolve the subject bridge for an enrollment's exact year-level."""
+    if not exam or not year_level_id:
+        return []
+    year_level = db.session.get(AcademicYearLevel, year_level_id)
+    if not year_level or year_level.academic_year_id != exam.academic_year_id:
+        return []
+    year_items = year_subjects(exam.academic_year_id, year_level.id)
+    subjects = [
+        db.session.get(Subject, item.legacy_subject_id)
+        for item in year_items
+        if item.legacy_subject_id
+    ]
+    subjects = [item for item in subjects if item]
+    if subjects:
+        return subjects
+    # Compatibility-only fallback for a year-level that has not received its
+    # subject bridge yet; it remains restricted to that level's legacy ID.
+    if year_level.legacy_level_id:
+        return Subject.query.filter_by(academic_level_id=year_level.legacy_level_id).order_by(
+            Subject.sort_order, Subject.name, Subject.id
+        ).all()
+    return []
 
+
+def _year_scope_ids_from_legacy(academic_year_id, level_id=None, class_id=None):
+    """Map legacy Results Hub selector IDs to the selected year's scopes."""
+    year_level = None
+    if level_id:
+        year_level = AcademicYearLevel.query.filter_by(
+            academic_year_id=academic_year_id,
+            legacy_level_id=level_id,
+        ).first()
+    year_class = None
+    if class_id:
+        class_query = (
+            AcademicYearClass.query
+            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+            .filter(
+                AcademicYearLevel.academic_year_id == academic_year_id,
+                AcademicYearClass.legacy_class_id == class_id,
+            )
+        )
+        if year_level:
+            class_query = class_query.filter(AcademicYearClass.academic_year_level_id == year_level.id)
+        year_class = class_query.first()
+        year_level = year_level or (year_class.academic_year_level if year_class else None)
+    return year_level, year_class
+
+
+def students_for_scope_query(academic_year_id, level_id=None, class_id=None, section_id=None, exam=None):
+    """Return enrollment-first students for a Results Hub historical scope."""
     effective_level_id = level_id or (exam.academic_level_id if exam else None)
     effective_class_id = class_id or (exam.academic_class_id if exam else None)
     effective_section_id = section_id or (exam.academic_section_id if exam else None)
-
-    section = db.session.get(AcademicSection, effective_section_id) if effective_section_id else None
-    if section and not effective_class_id:
-        effective_class_id = section.academic_class_id
-
-    academic_class = db.session.get(AcademicClass, effective_class_id) if effective_class_id else None
-    if academic_class and not effective_level_id:
-        effective_level_id = academic_class.academic_level_id
-
-    if effective_class_id:
-        class_filters = [Student.academic_class_id == effective_class_id]
-        if academic_class:
-            legacy_class = SchoolClass.query.filter_by(name=academic_class.name).first()
-            if legacy_class:
-                class_filters.append(db_and(Student.academic_class_id.is_(None), Student.class_id == legacy_class.id))
-        query = query.filter(db_or(*class_filters))
-    elif effective_level_id:
-        level_filters = [Student.academic_level_id == effective_level_id]
-        academic_level = db.session.get(AcademicLevel, effective_level_id)
-        if academic_level:
-            level_filters.append(db_and(Student.academic_level_id.is_(None), Student.level == academic_level.name))
-        query = query.filter(db_or(*level_filters))
-
-    if effective_section_id:
-        section_filters = [Student.academic_section_id == effective_section_id]
-        if section:
-            section_filters.append(db_and(Student.academic_section_id.is_(None), Student.section == section.name))
-        query = query.filter(db_or(*section_filters))
-
-    return query
+    year_level, year_class = _year_scope_ids_from_legacy(
+        academic_year_id,
+        effective_level_id,
+        effective_class_id,
+    )
+    if effective_level_id and not year_level:
+        raise EnrollmentValidationError("Selected level is not configured for this academic year")
+    if effective_class_id and not year_class:
+        raise EnrollmentValidationError("Selected class is not configured for this academic year")
+    return student_enrollment_scope_query(
+        academic_year_id,
+        academic_year_level_id=year_level.id if year_level else None,
+        academic_year_class_id=year_class.id if year_class else None,
+        academic_section_id=effective_section_id,
+    )
 
 
 def rank_student_in_scope(student, academic_year_id, exam, subjects, level_id=None, class_id=None, section_id=None):
@@ -830,12 +881,21 @@ def student_view():
     if not selected_exam:
         flash("Please select an exam type.", "warning")
         return redirect(url_for("admin_advanced_results.result_entry", year_id=selected_year.id))
-    
-    subjects = subjects_for_scope(
-        selected_exam,
-        level_id=student.academic_level_id,
-        class_id=student.academic_class_id,
-    )
+
+    selected_enrollment = get_enrollment_for_student_year(student.id, selected_year.id)
+    selected_placement = enrollment_placement_for_student(student, selected_year.id) or {}
+    selected_level_id = selected_placement.get("academic_level_id") or student.academic_level_id
+    selected_class_id = selected_placement.get("academic_class_id") or student.academic_class_id
+    if selected_enrollment:
+        subjects = subjects_for_year_level(selected_exam, selected_enrollment.academic_year_level_id)
+        selected_level_id = selected_enrollment.academic_year_level.legacy_level_id
+        selected_class_id = selected_enrollment.academic_year_class.legacy_class_id
+    else:
+        subjects = subjects_for_scope(
+            selected_exam,
+            level_id=selected_level_id,
+            class_id=selected_class_id,
+        )
     
     # Get results for this student and exam
     results = Result.query.filter_by(student_id=student.id, exam_id=selected_exam.id).all()
@@ -894,8 +954,8 @@ def student_view():
         selected_year.id,
         selected_exam,
         subjects,
-        level_id=student.academic_level_id,
-        class_id=student.academic_class_id,
+        level_id=selected_level_id,
+        class_id=selected_class_id,
         section_id=None,
     )
     
@@ -909,6 +969,7 @@ def student_view():
         selected_year=selected_year,
         selected_exam=selected_exam,
         student=student,
+        selected_placement=selected_placement,
         subject_data=subject_data,
         total_score=total_score,
         total_max=total_max,
@@ -969,12 +1030,13 @@ def export_excel():
     ws.title = "Advanced Results"
     ws.append(["Academic Year", "Exam", "Level", "Class", "Section", "Student ID", "Student Name", "Subject", "Score", "Published", "Locked"])
     for row in result_query(filters).order_by(Result.updated_at.desc()).all():
+        placement = enrollment_placement_for_student(row.student, row.exam.academic_year_id) or {}
         ws.append([
             row.exam.academic_year.name,
             row.exam.name,
-            row.student.level or "",
-            row.student.school_class.name,
-            row.student.section or "",
+            placement.get("level_name") or row.student.level or "",
+            placement.get("class_name") or (row.student.school_class.name if row.student.school_class else ""),
+            placement.get("section_name") or row.student.section or "",
             row.student.student_code,
             row.student.full_name,
             row.subject.name,
@@ -1004,23 +1066,16 @@ def export_student_pdf():
     if not selected_year or not selected_exam or not student:
         abort(404)
     
-    # Use the student's actual level, not an optional exam default or the
-    # complete subjects table.  A same-name subject at another level is a
-    # distinct academic record and must not appear in this student's PDF.
-    student_level_id = student.academic_level_id
-    if not student_level_id and student.academic_class:
-        student_level_id = student.academic_class.academic_level_id
-    if not student_level_id and student.level:
-        legacy_level = AcademicLevel.query.filter_by(name=student.level).first()
-        student_level_id = legacy_level.id if legacy_level else None
+    # Resolve the selected historical enrollment first. The permanent
+    # Student identity may now have a newer placement in another year.
+    selected_enrollment = get_enrollment_for_student_year(student.id, selected_year.id)
+    selected_placement = enrollment_placement_for_student(student, selected_year.id) or {}
+    student_level_id = selected_placement.get("academic_level_id") or student.academic_level_id
+    student_class_id = selected_placement.get("academic_class_id") or student.academic_class_id
     subjects = (
-        subjects_for_scope(
-            selected_exam,
-            level_id=student_level_id,
-            class_id=student.academic_class_id,
-        )
-        if student_level_id
-        else []
+        subjects_for_year_level(selected_exam, selected_enrollment.academic_year_level_id)
+        if selected_enrollment
+        else (subjects_for_scope(selected_exam, level_id=student_level_id, class_id=student_class_id) if student_level_id else [])
     )
     subject_ids = [subject.id for subject in subjects]
     results = (
@@ -1083,6 +1138,7 @@ def export_student_pdf():
         selected_year=selected_year,
         selected_exam=selected_exam,
         student=student,
+        selected_placement=selected_placement,
         subject_data=subject_data,
         total_score=total_score,
         total_max=total_max,
@@ -2379,11 +2435,12 @@ def analytics_grade_drill_down():
         if grade_info.get("grade") != grade_letter:
             continue
 
+        placement = enrollment_placement_for_student(student, selected_year.id) or {}
         rows.append({
             "student_id":    student.student_code or str(student.id),
             "full_name":     student.full_name or "",
             "mother_name":   student.mother_name or "",
-            "class_name":    student.academic_class.name if student.academic_class else "",
+            "class_name":    placement.get("class_name") or (student.academic_class.name if student.academic_class else ""),
             "academic_year": selected_year.name,
             "exam_type":     selected_exam.name,
             "total":         round(total_score, 2),
@@ -2521,27 +2578,29 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
     for student_id, avg in student_avg_list[:top_limit]:
         student = students_by_id.get(student_id)
         if student:
+            placement = enrollment_placement_for_student(student, exam.academic_year_id) or {}
             top_performers.append({
                 "name": student.full_name,
                 "mother_name": student.mother_name,
                 "code": student.student_code,
                 "average": avg,
                 "grade": cached_grade_for(avg)["grade"],
-                "class_name": student.academic_class.name if student.academic_class else None,
-                "section_name": student.academic_section.name if student.academic_section else None,
+                "class_name": placement.get("class_name") or (student.academic_class.name if student.academic_class else None),
+                "section_name": placement.get("section_name") or (student.academic_section.name if student.academic_section else None),
             })
     
     for student_id, avg in student_avg_list[-bottom_limit:]:
         student = students_by_id.get(student_id)
         if student:
+            placement = enrollment_placement_for_student(student, exam.academic_year_id) or {}
             bottom_performers.append({
                 "name": student.full_name,
                 "mother_name": student.mother_name,
                 "code": student.student_code,
                 "average": avg,
                 "grade": cached_grade_for(avg)["grade"],
-                "class_name": student.academic_class.name if student.academic_class else None,
-                "section_name": student.academic_section.name if student.academic_section else None,
+                "class_name": placement.get("class_name") or (student.academic_class.name if student.academic_class else None),
+                "section_name": placement.get("section_name") or (student.academic_section.name if student.academic_section else None),
             })
     
     return {
@@ -3146,9 +3205,11 @@ def student_transition(student_id):
                 error = "The transition could not be saved. No academic placement was changed."
         source = db.session.get(StudentEnrollment, source_id) if source_id else source
 
+    selected_enrollment = source
     return render_template(
         "admin/student_transition.html",
         student=student,
+        selected_enrollment=selected_enrollment,
         years=years,
         source_enrollments=source_enrollments,
         selected_source=source,
@@ -3733,7 +3794,8 @@ def result_query(filters):
 def group_results(rows):
     grouped = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list)))))
     for row in rows:
-        grouped[row.exam.academic_year.name][row.exam.name][row.student.level or "No Level"][row.student.school_class.name][row.student.section or "No Section"].append(row)
+        placement = enrollment_placement_for_student(row.student, row.exam.academic_year_id) or {}
+        grouped[row.exam.academic_year.name][row.exam.name][placement.get("level_name") or row.student.level or "No Level"][placement.get("class_name") or (row.student.school_class.name if row.student.school_class else "No Class")][placement.get("section_name") or row.student.section or "No Section"].append(row)
     return grouped
 
 

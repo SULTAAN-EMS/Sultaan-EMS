@@ -135,11 +135,14 @@
           {% for assignment in table.seats %}
           {% if assignment and assignment.student %}
           {% set student = assignment.student %}
-          {% set color = class_color(student.academic_class_id or student.id) %}
+          {% set placement = placement_for_student(student.id) or {} %}
+          {% set student_class_id = placement.get('academic_class_id') or student.academic_class_id or student.id %}
+          {% set student_class_name = placement.get('class_name') or (student.academic_class.name if student.academic_class else 'Class not recorded') %}
+          {% set color = class_color(student_class_id) %}
           {% set qr = qr_payload(student.id) %}
           <div class="student-card" style="--class-color:{{ color }}">
             <div class="student-visual"><span class="seat-label">Seat {{ assignment.seat_number + 1 }}</span>{% if photo_url(student.photo_path) %}<img class="student-photo" src="{{ photo_url(student.photo_path) }}" alt="{{ student.full_name }} photo">{% else %}<span class="student-photo student-avatar" style="background:{{ color }}">{{ student.full_name[:1] }}</span>{% endif %}</div>
-            <div class="student-copy"><div class="student-name">{{ student.full_name }}</div><div class="student-id">ID: {{ student.student_code }}</div><div class="student-class">{{ student.academic_class.name if student.academic_class else 'Class not recorded' }}</div><div class="seat-ref">Seat No: S{{ assignment.row_number + 1 }}/M{{ assignment.table_number + 1 }}/K{{ assignment.seat_number + 1 }}</div></div>
+            <div class="student-copy"><div class="student-name">{{ student.full_name }}</div><div class="student-id">ID: {{ student.student_code }}</div><div class="student-class">{{ student_class_name }}</div><div class="seat-ref">Seat No: S{{ assignment.row_number + 1 }}/M{{ assignment.table_number + 1 }}/K{{ assignment.seat_number + 1 }}</div></div>
             {% if qr %}<a class="student-qr-link" href="{{ qr.url }}" target="_blank" rel="noopener" aria-label="Verify {{ student.full_name }}"><img class="student-qr" src="{{ qr.qr_code }}" alt="QR verification for {{ student.full_name }}"></a>{% else %}<span class="qr-missing">QR unavailable</span>{% endif %}
           </div>
           {% else %}<div class="empty-seat">Empty seat</div>{% endif %}

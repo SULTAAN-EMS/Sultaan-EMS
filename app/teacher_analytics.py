@@ -6,6 +6,7 @@ from decimal import Decimal
 from . import db
 from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AttendanceRecord, Exam, Result, SchoolClass, Student, Subject
 from .services import grade_for
+from .enrollment_service import EnrollmentValidationError, enrollment_placement_for_student, student_enrollment_legacy_scope_query, student_enrollment_scope_query
 
 
 def _pct(result):
@@ -70,29 +71,51 @@ def scoped_students(teacher, filters):
     """Get students scoped to teacher's assignments using new academic hierarchy with legacy fallback"""
     _, academic_classes, sections, _, _, class_ids, section_ids, _ = teacher_assignments(teacher)
     
-    # Build query using new academic hierarchy fields
-    query = Student.query.filter(Student.is_active.is_(True))
+    # Build the selected-year scope from StudentEnrollment first. Legacy
+    # placement fields remain a compatibility fallback inside the service.
+    selected_year_id = filters.get("academic_year_id")
+    if selected_year_id:
+        scoped_ids = set()
+        requested_class_ids = [filters["class_id"]] if filters.get("class_id") else list(class_ids)
+        if requested_class_ids:
+            for class_id in requested_class_ids:
+                try:
+                    scoped_ids.update(
+                        student.id
+                        for student in student_enrollment_legacy_scope_query(
+                            selected_year_id,
+                            legacy_class_id=class_id,
+                        ).filter(Student.is_active.is_(True)).all()
+                    )
+                except EnrollmentValidationError:
+                    continue
+            query = Student.query.filter(Student.id.in_(scoped_ids)) if scoped_ids else Student.query.filter(Student.id == -1)
+        else:
+            query = student_enrollment_scope_query(selected_year_id).filter(Student.is_active.is_(True))
+    else:
+        query = Student.query.filter(Student.is_active.is_(True))
     
     # Filter by new academic hierarchy
-    if class_ids:
+    if class_ids and not selected_year_id:
         query = query.filter(Student.academic_class_id.in_(class_ids))
-    if section_ids:
+    if section_ids and not selected_year_id:
         query = query.filter(Student.academic_section_id.in_(section_ids))
     
     # Legacy fallback - if no new hierarchy assignments, use legacy class_id
-    if not class_ids and not section_ids:
+    if not selected_year_id and not class_ids and not section_ids:
         # Try to get legacy class IDs from teacher's classes
         legacy_class_ids = {cls.id for cls in academic_classes if hasattr(cls, 'name')}
         if legacy_class_ids:
             query = query.filter(Student.class_id.in_(legacy_class_ids))
     
     # Apply additional filters
-    if filters.get("class_id"):
+    if filters.get("class_id") and not selected_year_id:
         query = query.filter(Student.academic_class_id == filters["class_id"])
-    if filters.get("section"):
+    if filters.get("section") and not selected_year_id:
         query = query.filter(Student.section == filters["section"])
-    if filters.get("academic_year_id"):
-        query = query.filter(Student.academic_year_id == filters["academic_year_id"])
+    if filters.get("academic_year_id") and not class_ids:
+        # The selected-year query above already applies the year-aware scope.
+        pass
     if filters.get("q"):
         q = f"%{filters['q']}%"
         query = query.filter(db.or_(Student.full_name.like(q), Student.student_code.like(q)))
@@ -331,8 +354,9 @@ def _get_class_performance(results, academic_classes):
     """Group classes by performance level"""
     class_averages = {}
     for result in results:
-        if result.student.academic_class_id:
-            class_id = result.student.academic_class_id
+        placement = enrollment_placement_for_student(result.student, result.exam.academic_year_id) or {}
+        class_id = placement.get("academic_class_id") or result.student.academic_class_id
+        if class_id:
             if class_id not in class_averages:
                 class_averages[class_id] = []
             class_averages[class_id].append(_pct(result))
@@ -411,8 +435,9 @@ def _get_class_averages(results, academic_classes):
     """Get average scores for each class for progress bars"""
     class_averages = {}
     for result in results:
-        if result.student.academic_class_id:
-            class_id = result.student.academic_class_id
+        placement = enrollment_placement_for_student(result.student, result.exam.academic_year_id) or {}
+        class_id = placement.get("academic_class_id") or result.student.academic_class_id
+        if class_id:
             if class_id not in class_averages:
                 class_averages[class_id] = []
             class_averages[class_id].append(_pct(result))

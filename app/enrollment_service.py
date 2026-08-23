@@ -179,6 +179,72 @@ def student_enrollment_scope_query(
     return query.filter(or_(enrolled_in_scope, and_(no_year_enrollment, *legacy_filters)))
 
 
+def student_enrollment_legacy_scope_query(
+    academic_year_id,
+    legacy_level_id=None,
+    legacy_class_id=None,
+    academic_section_id=None,
+):
+    """Resolve legacy selector IDs into the canonical year-aware scope."""
+    year_id = _require(academic_year_id, "Academic year")
+    year_level = None
+    if legacy_level_id:
+        year_level = AcademicYearLevel.query.filter_by(
+            academic_year_id=year_id,
+            legacy_level_id=_require(legacy_level_id, "Academic level"),
+        ).first()
+    year_class = None
+    if legacy_class_id:
+        class_query = (
+            AcademicYearClass.query
+            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+            .filter(
+                AcademicYearLevel.academic_year_id == year_id,
+                AcademicYearClass.legacy_class_id == _require(legacy_class_id, "Academic class"),
+            )
+        )
+        if year_level:
+            class_query = class_query.filter(AcademicYearClass.academic_year_level_id == year_level.id)
+        year_class = class_query.first()
+        year_level = year_level or (year_class.academic_year_level if year_class else None)
+    if legacy_level_id and not year_level:
+        raise EnrollmentValidationError("Academic level is not configured for this academic year")
+    if legacy_class_id and not year_class:
+        raise EnrollmentValidationError("Academic class is not configured for this academic year")
+    return student_enrollment_scope_query(
+        year_id,
+        academic_year_level_id=year_level.id if year_level else None,
+        academic_year_class_id=year_class.id if year_class else None,
+        academic_section_id=academic_section_id,
+    )
+
+
+def enrollment_placement_for_student(student, academic_year_id):
+    """Return the selected-year enrollment, or a legacy-compatible placement."""
+    enrollment = get_enrollment_for_student_year(student.id, academic_year_id)
+    if enrollment:
+        return {
+            "enrollment": enrollment,
+            "academic_level_id": enrollment.academic_year_level.legacy_level_id if enrollment.academic_year_level else None,
+            "academic_class_id": enrollment.academic_year_class.legacy_class_id if enrollment.academic_year_class else None,
+            "academic_section_id": enrollment.academic_section_id,
+            "class_name": enrollment.academic_year_class.name if enrollment.academic_year_class else None,
+            "level_name": enrollment.academic_year_level.name if enrollment.academic_year_level else None,
+            "section_name": enrollment.academic_section.name if enrollment.academic_section else None,
+        }
+    if student.academic_year_id == int(academic_year_id):
+        return {
+            "enrollment": None,
+            "academic_level_id": student.academic_level_id,
+            "academic_class_id": student.academic_class_id,
+            "academic_section_id": student.academic_section_id,
+            "class_name": student.academic_class.name if student.academic_class else (student.school_class.name if student.school_class else None),
+            "level_name": student.level,
+            "section_name": student.section,
+        }
+    return None
+
+
 def create_enrollment(
     student_id,
     academic_year_id,

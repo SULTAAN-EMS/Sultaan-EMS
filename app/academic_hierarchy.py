@@ -69,53 +69,18 @@ def validate_year_subject(year_id, year_level_id):
 
 
 def students_for_year_scope_query(year_id, year_level_id=None, year_class_id=None, section_id=None):
-    """Return students in a year-aware scope with legacy fallback matching."""
-    query = Student.query.filter(Student.academic_year_id == year_id)
-    year_class = db.session.get(AcademicYearClass, year_class_id) if year_class_id else None
-    year_level = (
-        db.session.get(AcademicYearLevel, year_level_id)
-        if year_level_id
-        else (year_class.academic_year_level if year_class else None)
+    """Return enrollment-first students in a validated year-aware scope."""
+    # Keep the public helper name used by Analytics and older Results Hub
+    # routes, but centralize the compatibility fallback in Phase 2C's service.
+    # The local import avoids a module cycle during application startup.
+    from .enrollment_service import student_enrollment_scope_query
+
+    return student_enrollment_scope_query(
+        year_id,
+        academic_year_level_id=year_level_id,
+        academic_year_class_id=year_class_id,
+        academic_section_id=section_id,
     )
-
-    if year_class:
-        legacy_class_id = year_class.legacy_class_id
-        class_filters = []
-        if legacy_class_id:
-            class_filters.append(Student.academic_class_id == legacy_class_id)
-            legacy_class = db.session.get(AcademicClass, legacy_class_id)
-            school_class = (
-                SchoolClass.query.filter_by(name=legacy_class.name).first()
-                if legacy_class
-                else None
-            )
-            if school_class:
-                class_filters.append(
-                    and_(Student.academic_class_id.is_(None), Student.class_id == school_class.id)
-                )
-        if class_filters:
-            query = query.filter(or_(*class_filters))
-    elif year_level:
-        legacy_level_id = year_level.legacy_level_id
-        level_filters = []
-        if legacy_level_id:
-            level_filters.append(Student.academic_level_id == legacy_level_id)
-        level_filters.append(
-            and_(Student.academic_level_id.is_(None), Student.level == year_level.name)
-        )
-        query = query.filter(or_(*level_filters))
-
-    if section_id:
-        from .models import AcademicSection
-        section = db.session.get(AcademicSection, section_id)
-        if section:
-            section_filters = [Student.academic_section_id == section.id]
-            section_filters.append(
-                and_(Student.academic_section_id.is_(None), Student.section == section.name)
-            )
-            query = query.filter(or_(*section_filters))
-
-    return query
 
 
 def _get_or_create_year_level(year, legacy_level, report):

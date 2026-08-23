@@ -11,13 +11,20 @@ from uuid import uuid4
 from . import db
 from .audit import audit
 from .models import (
-    AcademicClass, AcademicLevel, AcademicYear, AttendanceRecord,
+    AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, AttendanceRecord,
     Exam, ExamHall, ExamHallEnrollment, ExamHallSubject, ExamSession,
     ExamSessionSubject, ExamType, SchoolClass, Student, Subject
 )
 from .permissions import enforce_endpoint_permission
 from .services import get_settings
 from .attendance_rules import NON_SAT_STATUSES, SAT_STATUSES, normalize_attendance_status, scheduled_subject_scope_key
+from .enrollment_service import (
+    EnrollmentValidationError,
+    enrollment_placement_for_student,
+    get_enrollment_for_student_year,
+    student_enrollment_legacy_scope_query,
+    student_enrollment_scope_query,
+)
 
 attendance_bp = Blueprint("admin_attendance", __name__)
 
@@ -79,6 +86,16 @@ def stored_photo_url(path):
     if value.startswith("uploads/"):
         return url_for("static", filename=value)
     return url_for("static", filename=f"uploads/{value}")
+
+
+def attendance_student_scope_query(academic_year_id, *, exam=None, level_id=None, class_id=None, section_id=None):
+    """Return attendance students from the selected-year enrollment scope."""
+    return student_enrollment_legacy_scope_query(
+        academic_year_id,
+        legacy_level_id=level_id or (exam.academic_level_id if exam else None),
+        legacy_class_id=class_id or (exam.academic_class_id if exam else None),
+        academic_section_id=section_id or (exam.academic_section_id if exam else None),
+    )
 
 
 def hall_context(academic_year_id, exam_id, exam_type_id, exam_hall_id):
@@ -254,12 +271,12 @@ def attendance_record_for(
     return None
 
 
-def legacy_school_class_id(student):
+def legacy_school_class_id(student, class_name=None):
     """Provide the legacy class link required by older attendance schemas."""
-    if student.class_id:
+    if student.class_id and not class_name:
         return student.class_id
 
-    class_name = (
+    class_name = class_name or (
         student.academic_class.name if student.academic_class else None
     ) or student.level or "Unassigned"
     legacy_class = SchoolClass.query.filter_by(name=class_name).first()
@@ -283,13 +300,15 @@ def apply_attendance_values(
 ):
     """Apply the canonical Results Hub scope and selected attendance status."""
     record.academic_year_id = year_id
+    placement = enrollment_placement_for_student(student, year_id) or {}
+    class_name = placement.get("class_name")
     # Some deployed databases predate the nullable class_id model change.
     # Populate both current and legacy class fields so a status click is valid
     # on every supported schema.
-    record.class_id = legacy_school_class_id(student)
-    record.academic_level_id = student.academic_level_id
-    record.academic_class_id = student.academic_class_id
-    record.academic_section_id = student.academic_section_id
+    record.class_id = legacy_school_class_id(student, class_name=class_name)
+    record.academic_level_id = placement.get("academic_level_id") or student.academic_level_id
+    record.academic_class_id = placement.get("academic_class_id") or student.academic_class_id
+    record.academic_section_id = placement.get("academic_section_id") or student.academic_section_id
     if exam:
         record.exam_id = exam.id
     if legacy_exam_type:
@@ -303,8 +322,12 @@ def apply_attendance_values(
     record.marked_by_id = user_id
 
 
-def effective_student_level_id(student):
+def effective_student_level_id(student, academic_year_id=None):
     """Resolve a student's configured academic level without guessing one."""
+    if academic_year_id:
+        placement = enrollment_placement_for_student(student, academic_year_id)
+        if placement:
+            return placement.get("academic_level_id")
     if student.academic_level_id:
         return student.academic_level_id
     if student.academic_class:
@@ -312,7 +335,11 @@ def effective_student_level_id(student):
     return None
 
 
-def student_class_name(student):
+def student_class_name(student, academic_year_id=None):
+    if academic_year_id:
+        placement = enrollment_placement_for_student(student, academic_year_id)
+        if placement and placement.get("class_name"):
+            return placement["class_name"]
     return (
         student.academic_class.name if student.academic_class else None
     ) or (student.school_class.name if student.school_class else None) or student.level or ""
@@ -387,7 +414,9 @@ def session_attendance_payload(hall, session):
     enrollment_rows = ExamHallEnrollment.query.filter_by(exam_hall_id=hall.id).all()
     student_ids = [row.student_id for row in enrollment_rows]
     students = (
-        Student.query.filter(Student.id.in_(student_ids)).all()
+        student_enrollment_scope_query(session.academic_year_id)
+        .filter(Student.id.in_(student_ids))
+        .all()
         if student_ids else []
     )
     records = (
@@ -403,10 +432,12 @@ def session_attendance_payload(hall, session):
     groups = {}
 
     for student in students:
-        level_id = effective_student_level_id(student)
+        placement = enrollment_placement_for_student(student, session.academic_year_id) or {}
+        level_id = placement.get("academic_level_id") or effective_student_level_id(student)
         level = db.session.get(AcademicLevel, level_id) if level_id else None
-        class_name = student_class_name(student)
-        key = (level_id or 0, student.academic_class_id or student.class_id or 0, class_name)
+        class_name = placement.get("class_name") or student_class_name(student)
+        class_id = placement.get("academic_class_id") or student.academic_class_id or student.class_id or 0
+        key = (level_id or 0, class_id, class_name)
         group = groups.setdefault(key, {
             "level_id": level_id,
             "level_name": level.name if level else "Heer lama dejin",
@@ -434,7 +465,7 @@ def session_attendance_payload(hall, session):
             "student_code": student.student_code,
             "full_name": student.full_name,
             "class_name": class_name,
-            "academic_class_id": student.academic_class_id,
+            "academic_class_id": placement.get("academic_class_id") or student.academic_class_id,
             "photo_url": stored_photo_url(student.photo_path),
             "slots": slots,
         })
@@ -965,11 +996,21 @@ def api_hall_roster_data():
     )
     assignment_map = {en.student_id: en.exam_hall for en in same_context_enrollments if en.exam_hall_id != exam_hall_id}
 
+    try:
+        scope_query = attendance_student_scope_query(
+            exam_context.academic_year_id,
+            exam=exam_context,
+            level_id=level_id,
+            class_id=class_id,
+        )
+    except EnrollmentValidationError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+
     assigned_students_raw = {}
     if assigned_student_ids:
         assigned_students_raw = {
             student.id: student
-            for student in Student.query.filter(Student.id.in_(assigned_student_ids)).all()
+            for student in scope_query.filter(Student.id.in_(assigned_student_ids)).all()
         }
     
     # Filter assigned list by search query
@@ -980,13 +1021,16 @@ def api_hall_roster_data():
             continue
         if q and q not in s.student_code.lower() and q not in s.full_name.lower():
             continue
-        cls_name = s.academic_class.name if s.academic_class else (s.school_class.name if s.school_class else (s.level or ""))
+        placement = enrollment_placement_for_student(s, exam_context.academic_year_id)
+        cls_name = (placement or {}).get("class_name") or (
+            s.academic_class.name if s.academic_class else (s.school_class.name if s.school_class else (s.level or ""))
+        )
         assigned_list.append({
             "id": s.id,
             "student_code": s.student_code,
             "full_name": s.full_name,
             "class_name": cls_name,
-            "academic_class_id": s.academic_class_id,
+            "academic_class_id": (placement or {}).get("academic_class_id") or s.academic_class_id,
             "assigned_hall_id": hall.id,
             "assigned_hall_name": hall.name,
             "is_current_hall": True,
@@ -994,24 +1038,7 @@ def api_hall_roster_data():
         })
 
     # Available pool: system students matching level/class filters NOT YET assigned
-    pool_query = Student.query.filter(
-        Student.is_active.is_(True),
-        Student.academic_year_id == exam_context.academic_year_id,
-    )
-
-    if class_id:
-        selected_class = db.session.get(AcademicClass, class_id)
-        class_filters = [Student.academic_class_id == class_id]
-        legacy_class = SchoolClass.query.filter_by(name=selected_class.name).first() if selected_class else None
-        if legacy_class:
-            class_filters.append(and_(Student.academic_class_id.is_(None), Student.class_id == legacy_class.id))
-        pool_query = pool_query.filter(or_(*class_filters))
-    elif level_id:
-        selected_level = db.session.get(AcademicLevel, level_id)
-        level_filters = [Student.academic_level_id == level_id]
-        if selected_level:
-            level_filters.append(and_(Student.academic_level_id.is_(None), Student.level == selected_level.name))
-        pool_query = pool_query.filter(or_(*level_filters))
+    pool_query = scope_query.filter(Student.is_active.is_(True))
 
     if assigned_student_ids:
         pool_query = pool_query.filter(~Student.id.in_(assigned_student_ids))
@@ -1023,14 +1050,15 @@ def api_hall_roster_data():
 
     available_list = []
     for s in available_students_raw:
-        cls_name = s.academic_class.name if s.academic_class else (s.school_class.name if s.school_class else (s.level or ""))
+        placement = enrollment_placement_for_student(s, exam_context.academic_year_id)
+        cls_name = (placement or {}).get("class_name") or (s.academic_class.name if s.academic_class else (s.school_class.name if s.school_class else (s.level or "")))
         assigned_hall = assignment_map.get(s.id)
         available_list.append({
             "id": s.id,
             "student_code": s.student_code,
             "full_name": s.full_name,
             "class_name": cls_name,
-            "academic_class_id": s.academic_class_id,
+            "academic_class_id": (placement or {}).get("academic_class_id") or s.academic_class_id,
             "assigned_hall_id": assigned_hall.id if assigned_hall else None,
             "assigned_hall_name": assigned_hall.name if assigned_hall else "",
             "is_current_hall": False,
@@ -1067,7 +1095,11 @@ def api_assign_student():
     exam_context = hall_exam_context(hall) if hall else None
     if not hall or not exam_context or not student or not student.is_active:
         return jsonify({"success": False, "error": "Hall-ka ama ardayga lama heli karo."}), 404
-    if student.academic_year_id != exam_context.academic_year_id:
+    try:
+        in_scope = student_enrollment_scope_query(exam_context.academic_year_id).filter(Student.id == student.id).first()
+    except EnrollmentValidationError:
+        in_scope = None
+    if not in_scope:
         return jsonify({"success": False, "error": "Ardaygani kuma jiro sanad-dugsiyeedka hall-kan."}), 400
 
     existing = ExamHallEnrollment.query.filter_by(exam_hall_id=exam_hall_id, student_id=student_id).first()
@@ -1109,7 +1141,11 @@ def api_transfer_student():
     exam_context = hall_exam_context(target_hall) if target_hall else None
     if not target_hall or not target_hall.is_active or not exam_context or not student or not student.is_active:
         return jsonify({"success": False, "error": "Hall-ka ama ardayga lama heli karo."}), 404
-    if student.academic_year_id != exam_context.academic_year_id:
+    try:
+        in_scope = student_enrollment_scope_query(exam_context.academic_year_id).filter(Student.id == student.id).first()
+    except EnrollmentValidationError:
+        in_scope = None
+    if not in_scope:
         return jsonify({"success": False, "error": "Ardaygani kuma jiro sanad-dugsiyeedka hall-kan."}), 400
 
     existing_target = ExamHallEnrollment.query.filter_by(
@@ -1185,15 +1221,28 @@ def api_remove_class_from_hall():
     enrollments = ExamHallEnrollment.query.filter_by(exam_hall_id=exam_hall_id).all()
     student_ids = [enrollment.student_id for enrollment in enrollments]
     students = Student.query.filter(Student.id.in_(student_ids)).all() if student_ids else []
-    matched_ids = {
-        student.id for student in students
-        if (academic_class_id and student.academic_class_id == academic_class_id)
-        or (class_name and (
-            (student.academic_class and student.academic_class.name == class_name)
-            or (student.school_class and student.school_class.name == class_name)
-            or (not student.academic_class and not student.school_class and (student.level or "") == class_name)
-        ))
-    }
+    hall_context_obj = hall_exam_context(hall)
+    year_id = hall_context_obj.academic_year_id if hall_context_obj else getattr(hall, "academic_year_id", None)
+    if not year_id:
+        current_year = AcademicYear.query.filter_by(is_current=True).first()
+        year_id = current_year.id if current_year else None
+    if not year_id:
+        return jsonify({"success": False, "error": "Sanad-dugsiyeedka hall-kan lama heli karo."}), 400
+    try:
+        scoped_students = attendance_student_scope_query(
+            year_id,
+            level_id=hall.academic_class.academic_level_id if hall.academic_class else None,
+            class_id=academic_class_id,
+        ).filter(Student.id.in_(student_ids)).all()
+    except EnrollmentValidationError:
+        scoped_students = []
+    matched_ids = set()
+    for student in scoped_students:
+        placement = enrollment_placement_for_student(student, year_id) or {}
+        resolved_class_id = placement.get("academic_class_id") or student.academic_class_id
+        resolved_class_name = placement.get("class_name") or student_class_name(student)
+        if (academic_class_id and resolved_class_id == academic_class_id) or (class_name and resolved_class_name == class_name):
+            matched_ids.add(student.id)
     removed = 0
     for enrollment in enrollments:
         if enrollment.student_id in matched_ids:
@@ -1251,7 +1300,13 @@ def api_attendance_data():
     enrollments = ExamHallEnrollment.query.filter_by(exam_hall_id=exam_hall_id).all()
     enrolled_student_ids = [e.student_id for e in enrollments]
 
-    students_raw = Student.query.filter(Student.id.in_(enrolled_student_ids)).order_by(Student.full_name).all() if enrolled_student_ids else []
+    students_raw = (
+        student_enrollment_scope_query(year_id)
+        .filter(Student.id.in_(enrolled_student_ids))
+        .order_by(Student.full_name)
+        .all()
+        if enrolled_student_ids else []
+    )
 
     # Fetch recorded attendance for this hall & subject
     records = AttendanceRecord.query.filter_by(exam_hall_id=exam_hall_id, subject_id=subject_id).order_by(AttendanceRecord.id.asc()).all() if subject_id else []
@@ -1270,14 +1325,15 @@ def api_attendance_data():
             st_val = None
         if st_val:
             tallies[st_val] += 1
-        cls_name = s.academic_class.name if s.academic_class else (s.school_class.name if s.school_class else (s.level or ""))
+        placement = enrollment_placement_for_student(s, year_id) or {}
+        cls_name = placement.get("class_name") or student_class_name(s)
 
         students_data.append({
             "id": s.id,
             "student_code": s.student_code,
             "full_name": s.full_name,
             "class_name": cls_name,
-            "academic_class_id": s.academic_class_id,
+            "academic_class_id": placement.get("academic_class_id") or s.academic_class_id,
             "photo_url": stored_photo_url(s.photo_path),
             "status": st_val,
         })
@@ -1346,8 +1402,11 @@ def api_mark_status():
     student = db.session.get(Student, student_id)
     if not student:
         return jsonify({"success": False, "error": "Ardaygan lama heli karo."}), 404
+    placement = enrollment_placement_for_student(student, year_id)
+    if not placement:
+        return jsonify({"success": False, "error": "Ardaygani kuma jiro sanad-dugsiyeedka imtixaankan."}), 400
     if exam_session:
-        student_level_id = effective_student_level_id(student)
+        student_level_id = placement.get("academic_level_id") or effective_student_level_id(student)
         session_subject_ids = {
             assignment.subject_id
             for assignment in exam_session.subject_assignments
@@ -1436,7 +1495,12 @@ def mark_session_bulk_attendance(*, hall, exam, legacy_exam_type, session, year_
     """Apply one bulk action to every visible student x subject slot in a sitting."""
     enrollment_rows = ExamHallEnrollment.query.filter_by(exam_hall_id=hall.id).all()
     student_ids = [row.student_id for row in enrollment_rows]
-    students = Student.query.filter(Student.id.in_(student_ids)).all() if student_ids else []
+    students = (
+        student_enrollment_scope_query(year_id)
+        .filter(Student.id.in_(student_ids))
+        .all()
+        if student_ids else []
+    )
     subject_map = subjects_by_session_level(session)
 
     if status_val == "clear":
@@ -1456,7 +1520,8 @@ def mark_session_bulk_attendance(*, hall, exam, legacy_exam_type, session, year_
     updated_count = 0
     try:
         for student in students:
-            for subject in subject_map.get(effective_student_level_id(student), []):
+            placement = enrollment_placement_for_student(student, year_id) or {}
+            for subject in subject_map.get(placement.get("academic_level_id") or effective_student_level_id(student), []):
                 record = attendance_record_for(
                     student.id,
                     hall.id,
@@ -1558,7 +1623,7 @@ def api_mark_bulk():
     student_ids = [e.student_id for e in enrollments]
     students_by_id = {
         student.id: student
-        for student in Student.query.filter(Student.id.in_(student_ids)).all()
+        for student in student_enrollment_scope_query(year_id).filter(Student.id.in_(student_ids)).all()
     } if student_ids else {}
 
     if status_val == "clear":

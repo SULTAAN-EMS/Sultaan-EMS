@@ -11,6 +11,7 @@ from .models import (
     AcademicClass, AcademicLevel, AcademicSection, AcademicYear, Exam, ExamHall,
     SeatAssignment, Student
 )
+from .enrollment_service import EnrollmentValidationError, enrollment_placement_for_student, student_enrollment_legacy_scope_query
 from .permissions import enforce_endpoint_permission
 
 seat_arrangement_bp = Blueprint("seat_arrangement", __name__)
@@ -26,6 +27,40 @@ CLASS_PALETTE = [
 def get_class_color(class_id):
     """Deterministic color assignment based on class ID"""
     return CLASS_PALETTE[class_id % len(CLASS_PALETTE)]
+
+
+def students_for_exam_classes(exam, class_ids):
+    """Resolve seat candidates through the selected exam year's enrollments."""
+    student_ids = set()
+    for class_id in class_ids:
+        try:
+            student_ids.update(
+                student.id
+                for student in student_enrollment_legacy_scope_query(
+                    exam.academic_year_id,
+                    legacy_class_id=class_id,
+                ).filter(Student.is_active.is_(True)).all()
+            )
+        except EnrollmentValidationError:
+            continue
+    students = (
+        Student.query.filter(Student.id.in_(student_ids), Student.is_active.is_(True))
+        .order_by(Student.full_name)
+        .all()
+        if student_ids else []
+    )
+    for student in students:
+        student._seat_exam_placement = enrollment_placement_for_student(student, exam.academic_year_id) or {}
+    return students
+
+
+def seat_student_scope(student):
+    placement = getattr(student, "_seat_exam_placement", {}) or {}
+    return {
+        "class_id": placement.get("academic_class_id") or student.academic_class_id,
+        "class_name": placement.get("class_name") or (student.academic_class.name if student.academic_class else ""),
+        "level": placement.get("level_name") or (student.academic_level.name if student.academic_level else ""),
+    }
 
 
 @seat_arrangement_bp.before_request
@@ -125,11 +160,7 @@ def builder():
     # Build class data with student counts
     class_data = []
     for cls in classes:
-        student_count = Student.query.filter(
-            Student.academic_year_id == exam.academic_year_id,
-            Student.academic_class_id == cls.id,
-            Student.is_active == True
-        ).count()
+        student_count = len(students_for_exam_classes(exam, [cls.id]))
         if student_count > 0:
             class_data.append({
                 'id': cls.id,
@@ -170,21 +201,18 @@ def api_students():
     
     exam = db.session.get(Exam, exam_id) or abort(404)
     
-    students = Student.query.filter(
-        Student.academic_year_id == exam.academic_year_id,
-        Student.academic_class_id.in_(class_ids),
-        Student.is_active == True
-    ).all()
+    students = students_for_exam_classes(exam, class_ids)
     
     student_data = []
     for student in students:
+        scope = seat_student_scope(student)
         student_data.append({
             'id': student.id,
             'student_code': student.student_code,
             'full_name': student.full_name,
-            'class_id': student.academic_class_id,
-            'class_name': student.academic_class.name if student.academic_class else '',
-            'level': student.academic_level.name if student.academic_level else '',
+            'class_id': scope['class_id'],
+            'class_name': scope['class_name'],
+            'level': scope['level'],
             'photo_path': student.photo_path
         })
     
@@ -206,16 +234,12 @@ def api_generate():
     exam = db.session.get(Exam, exam_id) or abort(404)
     
     # Get students for selected classes
-    students = Student.query.filter(
-        Student.academic_year_id == exam.academic_year_id,
-        Student.academic_class_id.in_(class_ids),
-        Student.is_active == True
-    ).all()
+    students = students_for_exam_classes(exam, class_ids)
     
     # Group students by class
     class_pools = {}
     for student in students:
-        class_id = student.academic_class_id
+        class_id = seat_student_scope(student)['class_id'] or student.id
         if class_id not in class_pools:
             class_pools[class_id] = []
         class_pools[class_id].append(student)
@@ -274,13 +298,14 @@ def api_generate():
     assignments = []
     for seat in seats:
         if seat['assigned']:
+            scope = seat_student_scope(seat['assigned'])
             assignments.append({
                 'student_id': seat['assigned'].id,
                 'student_code': seat['assigned'].student_code,
                 'full_name': seat['assigned'].full_name,
-                'class_id': seat['assigned'].academic_class_id,
-                'class_name': seat['assigned'].academic_class.name if seat['assigned'].academic_class else '',
-                'level': seat['assigned'].academic_level.name if seat['assigned'].academic_level else '',
+                'class_id': scope['class_id'],
+                'class_name': scope['class_name'],
+                'level': scope['level'],
                 'photo_path': seat['assigned'].photo_path,
                 'row': seat['row'],
                 'table': seat['table'],
@@ -313,16 +338,12 @@ def api_optimize():
     exam = db.session.get(Exam, exam_id) or abort(404)
     
     # Get students for selected classes
-    students = Student.query.filter(
-        Student.academic_year_id == exam.academic_year_id,
-        Student.academic_class_id.in_(class_ids),
-        Student.is_active == True
-    ).all()
+    students = students_for_exam_classes(exam, class_ids)
     
     # Group students by class
     class_pools = {}
     for student in students:
-        class_id = student.academic_class_id
+        class_id = seat_student_scope(student)['class_id'] or student.id
         if class_id not in class_pools:
             class_pools[class_id] = []
         class_pools[class_id].append(student)
@@ -377,13 +398,14 @@ def api_optimize():
     assignments = []
     for seat in seats:
         if seat['assigned']:
+            scope = seat_student_scope(seat['assigned'])
             assignments.append({
                 'student_id': seat['assigned'].id,
                 'student_code': seat['assigned'].student_code,
                 'full_name': seat['assigned'].full_name,
-                'class_id': seat['assigned'].academic_class_id,
-                'class_name': seat['assigned'].academic_class.name if seat['assigned'].academic_class else '',
-                'level': seat['assigned'].academic_level.name if seat['assigned'].academic_level else '',
+                'class_id': scope['class_id'],
+                'class_name': scope['class_name'],
+                'level': scope['level'],
                 'photo_path': seat['assigned'].photo_path,
                 'row': seat['row'],
                 'table': seat['table'],
@@ -542,11 +564,7 @@ def api_class_students():
     exam = db.session.get(Exam, exam_id) or abort(404)
     
     # Get all students from this class
-    students = Student.query.filter(
-        Student.academic_year_id == exam.academic_year_id,
-        Student.academic_class_id == class_id,
-        Student.is_active == True
-    ).all()
+    students = students_for_exam_classes(exam, [class_id])
     
     # Get existing assignments for this exam + hall
     existing_assignments = SeatAssignment.query.filter_by(
@@ -581,10 +599,10 @@ def api_class_students():
             }
         
         student_data.append({
+            **seat_student_scope(student),
             'id': student.id,
             'student_code': student.student_code,
             'full_name': student.full_name,
-            'class_id': student.academic_class_id,
             'photo_path': student.photo_path,
             'position': position,
             'is_current': student.id == current_student_id

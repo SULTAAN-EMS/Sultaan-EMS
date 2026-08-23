@@ -3,6 +3,7 @@
 {% block title %}Single Student Result Entry{% endblock %}
 {% block page_title %}Single Student Result Entry{% endblock %}
 {% block admin_content %}
+{% set placement = selected_placement or {} %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/results_module.css') }}">
 
 <div class="results-hub">
@@ -16,7 +17,7 @@
         <p class="rh-desc">Enter and manage examination results for an individual student.</p>
       </div>
       <div class="rh-single-actions">
-        <a class="rh-btn outline" href="{{ url_for('admin_advanced_results.result_entry', year_id=selected_year.id, exam_id=selected_exam.id, level_id=student.academic_level_id or '', class_id=student.academic_class_id or '', section_id=student.academic_section_id or '') }}">
+        <a class="rh-btn outline" href="{{ url_for('admin_advanced_results.result_entry', year_id=selected_year.id, exam_id=selected_exam.id, level_id=placement.get('academic_level_id') or '', class_id=placement.get('academic_class_id') or '', section_id=placement.get('academic_section_id') or '') }}">
           <i class="fa-solid fa-arrow-left"></i> Back to Student List
         </a>
         <div class="rh-save-status" id="saveStatus" data-state="idle">
@@ -55,7 +56,7 @@
         <span class="rh-filter-copy">
           <span class="rh-filter-title">Level</span>
           <select disabled>
-            <option selected>{{ student.academic_level.name if student.academic_level else student.level or "-" }}</option>
+            <option selected>{{ placement.get('level_name') or (student.academic_level.name if student.academic_level else student.level or "-") }}</option>
           </select>
         </span>
       </div>
@@ -64,7 +65,7 @@
         <span class="rh-filter-copy">
           <span class="rh-filter-title">Class</span>
           <select disabled>
-            <option selected>{{ student.academic_class.name if student.academic_class else student.school_class.name if student.school_class else "-" }}</option>
+            <option selected>{{ placement.get('class_name') or (student.academic_class.name if student.academic_class else student.school_class.name if student.school_class else "-") }}</option>
           </select>
         </span>
       </div>
@@ -73,9 +74,9 @@
     <input type="hidden" id="csrfToken" value="{{ csrf_token() }}">
     <input type="hidden" id="yearId" value="{{ selected_year.id }}">
     <input type="hidden" id="examId" value="{{ selected_exam.id }}">
-    <input type="hidden" id="levelId" value="{{ student.academic_level_id or '' }}">
-    <input type="hidden" id="classId" value="{{ student.academic_class_id or '' }}">
-    <input type="hidden" id="sectionId" value="{{ student.academic_section_id or '' }}">
+    <input type="hidden" id="levelId" value="{{ placement.get('academic_level_id') or student.academic_level_id or '' }}">
+    <input type="hidden" id="classId" value="{{ placement.get('academic_class_id') or student.academic_class_id or '' }}">
+    <input type="hidden" id="sectionId" value="{{ placement.get('academic_section_id') or student.academic_section_id or '' }}">
 
     <section class="rh-single-layout">
       <aside class="rh-single-right">
@@ -93,9 +94,9 @@
             <div><i class="fa-solid fa-user"></i><span>Mother Name</span><strong>{{ student.mother_name or "-" }}</strong></div>
             <div><i class="fa-solid fa-calendar"></i><span>Academic Year</span><strong>{{ selected_year.name }}</strong></div>
             <div><i class="fa-solid fa-file-lines"></i><span>Exam Type</span><strong>{{ selected_exam.name }}</strong></div>
-            <div><i class="fa-solid fa-layer-group"></i><span>Level</span><strong>{{ student.academic_level.name if student.academic_level else student.level or "-" }}</strong></div>
-            <div><i class="fa-solid fa-chalkboard"></i><span>Class</span><strong>{{ student.academic_class.name if student.academic_class else student.school_class.name if student.school_class else "-" }}</strong></div>
-            <div><i class="fa-solid fa-people-line"></i><span>Section</span><strong>{{ student.academic_section.name if student.academic_section else student.section or "-" }}</strong></div>
+            <div><i class="fa-solid fa-layer-group"></i><span>Level</span><strong>{{ placement.get('level_name') or (student.academic_level.name if student.academic_level else student.level or "-") }}</strong></div>
+            <div><i class="fa-solid fa-chalkboard"></i><span>Class</span><strong>{{ placement.get('class_name') or (student.academic_class.name if student.academic_class else student.school_class.name if student.school_class else "-") }}</strong></div>
+            <div><i class="fa-solid fa-people-line"></i><span>Section</span><strong>{{ placement.get('section_name') or (student.academic_section.name if student.academic_section else student.section or "-") }}</strong></div>
             <div><i class="fa-solid fa-shield-heart"></i><span>Student Status</span><strong>{{ "Active" if student.is_active else "Inactive" }}</strong></div>
             <div><i class="fa-solid fa-ranking-star"></i><span>Rank</span><strong>{{ rank }}</strong></div>
           </div>

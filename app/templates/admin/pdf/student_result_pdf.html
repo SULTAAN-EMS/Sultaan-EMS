@@ -309,10 +309,11 @@
             <div class="info-item">
                 <div class="info-label">Class</div>
                 <div class="info-value">
-                    {% if student.academic_class %}
-                        {{ student.academic_class.name }}
-                        {% if student.academic_section %}
-                            - {{ student.academic_section.name }}
+                    {% set placement = selected_placement or {} %}
+                    {% if placement.get('class_name') or student.academic_class %}
+                        {{ placement.get('class_name') or student.academic_class.name }}
+                        {% if placement.get('section_name') or student.academic_section %}
+                            - {{ placement.get('section_name') or student.academic_section.name }}
                         {% endif %}
                     {% else %}
                         {{ student.level or '-' }}

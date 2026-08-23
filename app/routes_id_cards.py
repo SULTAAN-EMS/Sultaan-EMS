@@ -9,8 +9,9 @@ from sqlalchemy import or_
 
 from . import db
 from .audit import audit
-from .models import AcademicYear, IdCardIssue, SchoolClass, Setting, Student
+from .models import AcademicClass, AcademicYear, IdCardIssue, SchoolClass, Setting, Student
 from .permissions import enforce_endpoint_permission
+from .enrollment_service import EnrollmentValidationError, student_enrollment_legacy_scope_query, student_enrollment_scope_query
 from .services import get_settings
 from .verification import id_card_qr_payload
 
@@ -280,15 +281,17 @@ def draw_id_card_pdf(pdf, issue, settings, x, y, w, h, primary, accent, qrcode, 
     pdf.drawCentredString(card_x + card_w / 2, card_y + 4.5 * mm, contact[:95])
 
 
-def get_or_create_issue(student):
-    issue = IdCardIssue.query.filter_by(student_id=student.id, academic_year_id=student.academic_year_id, status="Active").first()
+def get_or_create_issue(student, academic_year_id=None):
+    """Get/create an ID card in the requested historical year scope."""
+    year_id = academic_year_id or student.academic_year_id
+    issue = IdCardIssue.query.filter_by(student_id=student.id, academic_year_id=year_id, status="Active").first()
     settings = get_settings()
     months = int(settings.get("id_card_issue_months") or 12)
     if not issue:
         issue = IdCardIssue(
             token=secrets.token_urlsafe(32),
             student=student,
-            academic_year=student.academic_year,
+            academic_year_id=year_id,
             issue_date=date.today(),
             expiry_date=add_months(date.today(), months),
             status="Active",
@@ -318,13 +321,29 @@ def card_filters():
 
 def filtered_students(filters):
     query = Student.query
+    if filters["year_id"]:
+        if filters["class_id"]:
+            legacy_school_class = db.session.get(SchoolClass, filters["class_id"])
+            academic_class = (
+                AcademicClass.query.filter_by(name=legacy_school_class.name).first()
+                if legacy_school_class else None
+            )
+            try:
+                query = student_enrollment_legacy_scope_query(
+                    filters["year_id"],
+                    legacy_class_id=academic_class.id if academic_class else None,
+                )
+                if not academic_class:
+                    query = query.filter(Student.class_id == filters["class_id"])
+            except EnrollmentValidationError:
+                query = student_enrollment_scope_query(filters["year_id"]).filter(Student.id == -1)
+        else:
+            query = student_enrollment_scope_query(filters["year_id"])
     if filters["q"]:
         q = f"%{filters['q']}%"
         query = query.filter(or_(Student.student_code.like(q), Student.full_name.like(q), Student.mother_name.like(q)))
-    if filters["class_id"]:
+    if filters["class_id"] and not filters["year_id"]:
         query = query.filter(Student.class_id == filters["class_id"])
-    if filters["year_id"]:
-        query = query.filter(Student.academic_year_id == filters["year_id"])
     if filters["level"]:
         query = query.filter(Student.level == filters["level"])
     if filters["section"]:

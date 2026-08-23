@@ -19,13 +19,14 @@ from .models import (
     AcademicYear,
     AcademicYearClass,
     AcademicYearLevel,
+    AcademicYearSubject,
     Exam,
     Result,
     SchoolClass,
     Student,
     Subject,
 )
-from .enrollment_service import apply_legacy_placement, create_enrollment, validate_enrollment_scope
+from .enrollment_service import apply_legacy_placement, create_enrollment, get_enrollment_for_student_year, student_enrollment_legacy_scope_query, validate_enrollment_scope
 
 
 # Keep the download readable for school staff.  The importer normalizes these
@@ -143,7 +144,26 @@ def result_entry_import_template(year_id=None, exam_id=None, level_id=None, clas
 
     # ── resolve subjects for scope ───────────────────────────────────
     effective_level_id = selected_level.id if selected_level else None
-    if effective_level_id:
+    if effective_level_id and selected_year:
+        year_level = AcademicYearLevel.query.filter_by(
+            academic_year_id=selected_year.id,
+            legacy_level_id=effective_level_id,
+        ).first()
+        mapped_ids = [
+            row.legacy_subject_id
+            for row in AcademicYearSubject.query.filter_by(
+                academic_year_id=selected_year.id,
+                academic_year_level_id=year_level.id if year_level else -1,
+                is_active=True,
+            ).all()
+            if row.legacy_subject_id
+        ]
+        scoped_subjects = (
+            Subject.query.filter(Subject.id.in_(mapped_ids)).order_by(Subject.sort_order, Subject.name).all()
+            if mapped_ids else
+            Subject.query.filter_by(academic_level_id=effective_level_id).order_by(Subject.sort_order, Subject.name).all()
+        )
+    elif effective_level_id:
         scoped_subjects = Subject.query.filter_by(academic_level_id=effective_level_id).order_by(Subject.sort_order, Subject.name).all()
     else:
         scoped_subjects = []
@@ -174,17 +194,19 @@ def result_entry_import_template(year_id=None, exam_id=None, level_id=None, clas
 
     if selected_year and selected_class:
         # Build student query identical to the result entry grid
-        query = Student.query.filter_by(academic_year_id=selected_year.id)
-        query = query.filter(
-            (Student.academic_class_id == selected_class.id) |
-            (Student.class_id == SchoolClass.query.filter_by(name=selected_class.name).first().id
-             if SchoolClass.query.filter_by(name=selected_class.name).first() else False)
-        )
-        if selected_section:
-            query = query.filter(
-                (Student.academic_section_id == selected_section.id) |
-                (Student.section == selected_section.name)
+        try:
+            query = student_enrollment_legacy_scope_query(
+                selected_year.id,
+                legacy_class_id=selected_class.id,
+                academic_section_id=selected_section.id if selected_section else None,
             )
+        except Exception:
+            # Compatibility fallback for a year whose bridge has not yet been
+            # backfilled; do not change the old template behavior for it.
+            query = Student.query.filter_by(academic_year_id=selected_year.id)
+            query = query.filter(Student.academic_class_id == selected_class.id)
+            if selected_section:
+                query = query.filter(Student.academic_section_id == selected_section.id)
         students = query.order_by(Student.full_name).all()
 
         locked_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
@@ -735,6 +757,7 @@ def process_result_import(file):
             academic_year = row_map.get("academic_year", "")
 
             row_errors = []
+            year_obj = existing_years.get(academic_year) if academic_year else None
 
             # 1. student_id check
             student_obj = None
@@ -747,11 +770,13 @@ def process_result_import(file):
 
             # 2. class check (must match student's actual class)
             if student_obj:
-                student_actual_class = ""
-                if student_obj.academic_class:
-                    student_actual_class = student_obj.academic_class.name
-                elif student_obj.school_class:
-                    student_actual_class = student_obj.school_class.name
+                placement = get_enrollment_for_student_year(student_obj.id, year_obj.id) if year_obj else None
+                student_actual_class = (
+                    placement.academic_year_class.name
+                    if placement and placement.academic_year_class
+                    else student_obj.academic_class.name if student_obj.academic_class
+                    else student_obj.school_class.name if student_obj.school_class else ""
+                )
 
                 if not provided_class:
                     row_errors.append(f"Row {row_idx}: class is required.")
@@ -766,7 +791,6 @@ def process_result_import(file):
                 row_errors.append(f"Row {row_idx}: exam_type is required.")
 
             # 4. academic_year check
-            year_obj = None
             if not academic_year:
                 row_errors.append(f"Row {row_idx}: academic_year is required.")
             elif not YEAR_REGEX.match(academic_year):
@@ -789,14 +813,33 @@ def process_result_import(file):
                 # Header names can legitimately exist on more than one level.
                 # Only an exact level match is safe; global/other-level subjects
                 # must never receive marks for this student's result.
-                student_level_id = student_obj.academic_level_id
+                placement = get_enrollment_for_student_year(student_obj.id, year_obj.id) if student_obj and year_obj else None
+                student_level_id = (
+                    placement.academic_year_level.legacy_level_id
+                    if placement and placement.academic_year_level
+                    else student_obj.academic_level_id
+                )
+                year_subject_ids = set()
+                if placement:
+                    year_subject_ids = {
+                        row.legacy_subject_id
+                        for row in AcademicYearSubject.query.filter_by(
+                            academic_year_id=year_obj.id,
+                            academic_year_level_id=placement.academic_year_level_id,
+                            is_active=True,
+                        ).all()
+                        if row.legacy_subject_id
+                    }
                 if not student_level_id and student_obj.academic_class:
                     student_level_id = student_obj.academic_class.academic_level_id
                 if not student_level_id and student_obj.level:
                     legacy_level = AcademicLevel.query.filter_by(name=student_obj.level).first()
                     student_level_id = legacy_level.id if legacy_level else None
                 subj_obj = next(
-                    (subject for subject in subject_candidates if subject.academic_level_id == student_level_id),
+                    (
+                        subject for subject in subject_candidates
+                        if (subject.id in year_subject_ids if year_subject_ids else subject.academic_level_id == student_level_id)
+                    ),
                     None,
                 )
                 if not subj_obj:

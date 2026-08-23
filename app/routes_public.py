@@ -2,7 +2,7 @@ import secrets
 from io import BytesIO
 from datetime import date, datetime
 
-from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
@@ -10,9 +10,10 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from . import csrf, db
 from .i18n import language_redirect
-from .models import AcademicLevel, AcademicYear, Exam, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject
+from .models import AcademicLevel, AcademicYear, AcademicYearSubject, Exam, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, StudentEnrollment, Subject
 from .services import active_exam_for_student, attendance_uf_record, get_settings, result_payload, result_success_overlay_config, top_students_for_class
 from .attendance_rules import normalize_attendance_status
+from .enrollment_service import enrollment_placement_for_student, get_enrollment_for_student_year
 from .verification import verification_payload
 
 public_bp = Blueprint("public", __name__)
@@ -89,13 +90,30 @@ def submitted_incident_category_ids():
     return category_ids
 
 
-def incident_subjects_for_student(student):
+def incident_subjects_for_student(student, academic_year_id=None):
     """Return only the configured subjects for the identified student's level."""
-    level_id = student.academic_level_id
+    enrollment = get_enrollment_for_student_year(student.id, academic_year_id) if academic_year_id else None
+    level_id = (
+        enrollment.academic_year_level.legacy_level_id
+        if enrollment and enrollment.academic_year_level
+        else student.academic_level_id
+    )
     if not level_id and student.academic_class:
         level_id = student.academic_class.academic_level_id
     if not level_id:
         return []
+    if enrollment:
+        mapped_ids = [
+            row.legacy_subject_id
+            for row in AcademicYearSubject.query.filter_by(
+                academic_year_id=academic_year_id,
+                academic_year_level_id=enrollment.academic_year_level_id,
+                is_active=True,
+            ).all()
+            if row.legacy_subject_id
+        ]
+        if mapped_ids:
+            return Subject.query.filter(Subject.id.in_(mapped_ids), Subject.is_active.is_(True)).order_by(Subject.sort_order, Subject.name).all()
     return (
         Subject.query
         .filter(Subject.academic_level_id == level_id)
@@ -222,6 +240,35 @@ def result():
 # =========================
 # PRINT REPORT
 # =========================
+def _published_exam_for_student(student, requested_exam_id=None):
+    """Resolve a published exam without using the student's mutable legacy year."""
+    query = (
+        Exam.query.join(Result, Result.exam_id == Exam.id)
+        .filter(Result.student_id == student.id, Result.is_published.is_(True))
+    )
+    if requested_exam_id:
+        return query.filter(Exam.id == requested_exam_id).order_by(Exam.id.desc()).first()
+
+    year_ids = [
+        year_id
+        for year_id, in (
+            StudentEnrollment.query
+            .filter_by(student_id=student.id)
+            .with_entities(StudentEnrollment.academic_year_id)
+            .order_by(StudentEnrollment.academic_year_id.desc(), StudentEnrollment.id.desc())
+            .all()
+        )
+        if year_id
+    ]
+    if student.academic_year_id and student.academic_year_id not in year_ids:
+        year_ids.append(student.academic_year_id)
+    for year_id in year_ids:
+        exam = query.filter(Exam.academic_year_id == year_id).order_by(Exam.id.desc()).first()
+        if exam:
+            return exam
+    return query.order_by(Exam.id.desc()).first()
+
+
 @public_bp.route("/print/<student_code>")
 def print_report(student_code):
     student_code = student_code.strip()
@@ -239,18 +286,7 @@ def print_report(student_code):
         ), 403
 
     requested_exam_id = request.args.get("exam_id", type=int)
-    exam_query = (
-        Exam.query.join(Result, Result.exam_id == Exam.id)
-        .filter(
-            Result.student_id == student.id,
-            Result.is_published.is_(True),
-        )
-    )
-    if requested_exam_id:
-        exam_query = exam_query.filter(Exam.id == requested_exam_id)
-    else:
-        exam_query = exam_query.filter(Exam.academic_year_id == student.academic_year_id)
-    exam = exam_query.order_by(Exam.id.desc()).first_or_404()
+    exam = _published_exam_for_student(student, requested_exam_id) or abort(404)
 
     payload = result_payload(student, exam=exam, public_only=True)
     payload["verification"] = verification_payload(student, exam)
@@ -290,15 +326,7 @@ def download_report(student_code):
         return render_template("locked_result.html", settings=settings, student=student), 403
 
     requested_exam_id = request.args.get("exam_id", type=int)
-    exam_query = (
-        Exam.query.join(Result, Result.exam_id == Exam.id)
-        .filter(Result.student_id == student.id, Result.is_published.is_(True))
-    )
-    if requested_exam_id:
-        exam_query = exam_query.filter(Exam.id == requested_exam_id)
-    else:
-        exam_query = exam_query.filter(Exam.academic_year_id == student.academic_year_id)
-    exam = exam_query.order_by(Exam.id.desc()).first_or_404()
+    exam = _published_exam_for_student(student, requested_exam_id) or abort(404)
     payload = result_payload(student, exam=exam, public_only=True)
 
     buffer = BytesIO()
@@ -402,29 +430,21 @@ def api_result(student_code):
             "reason": student.lock_reason
         }), 423
 
-    exam = (
-        Exam.query.join(Result, Result.exam_id == Exam.id)
-        .filter(
-            Result.student_id == student.id,
-            Result.is_published.is_(True),
-            Exam.academic_year_id == student.academic_year_id,
-        )
-        .order_by(Exam.id.desc())
-        .first()
-    )
+    exam = _published_exam_for_student(student)
 
     if not exam:
         return jsonify({"ok": False, "message": "No published result."}), 404
 
     payload = result_payload(student, exam=exam, public_only=True)
 
+    placement = enrollment_placement_for_student(student, exam.academic_year_id) or {}
     return jsonify({
         "ok": True,
         "student": {
             "id": student.student_code,
             "name": student.full_name,
             "mother_name": student.mother_name,
-            "class": student.school_class.name,
+            "class": placement.get("class_name") or (student.school_class.name if student.school_class else student.level or "-"),
             "academic_year": student.academic_year.name,
         },
         "exam": payload["exam"].name if payload.get("exam") else None,
@@ -589,24 +609,43 @@ def feedback_subjects():
     student, exam, error = _feedback_context_from_request()
     if error:
         return error
-    level_id = student.academic_level_id
+    enrollment = get_enrollment_for_student_year(student.id, exam.academic_year_id)
+    mapped_ids = []
+    if enrollment:
+        mapped_ids = [
+            row.legacy_subject_id
+            for row in AcademicYearSubject.query.filter_by(
+                academic_year_id=exam.academic_year_id,
+                academic_year_level_id=enrollment.academic_year_level_id,
+                is_active=True,
+            ).all()
+            if row.legacy_subject_id
+        ]
+    level_id = (
+        enrollment.academic_year_level.legacy_level_id
+        if enrollment and enrollment.academic_year_level
+        else student.academic_level_id
+    )
     if not level_id and student.academic_class:
         level_id = student.academic_class.academic_level_id
     if not level_id:
         return jsonify(ok=True, subjects=[])
-    subjects = (
+    subject_query = (
         Subject.query.join(Result, Result.subject_id == Subject.id)
         .filter(
             Result.student_id == student.id,
             Result.exam_id == exam.id,
             Result.is_published.is_(True),
-            Subject.academic_level_id == level_id,
             Subject.is_active.is_(True),
         )
-        .order_by(Subject.sort_order, Subject.name)
-        .distinct()
-        .all()
     )
+    if mapped_ids:
+        subject_query = subject_query.filter(Subject.id.in_(mapped_ids))
+    elif level_id:
+        subject_query = subject_query.filter(Subject.academic_level_id == level_id)
+    else:
+        return jsonify(ok=True, subjects=[])
+    subjects = subject_query.order_by(Subject.sort_order, Subject.name).distinct().all()
     return jsonify(ok=True, subjects=[subject.name for subject in subjects])
 
 
@@ -631,14 +670,28 @@ def feedback_mg_details():
     if error:
         return error
 
-    student_level_id = student.academic_level_id or (
-        student.academic_class.academic_level_id if student.academic_class else None
+    enrollment = get_enrollment_for_student_year(student.id, exam.academic_year_id)
+    student_level_id = (
+        enrollment.academic_year_level.legacy_level_id
+        if enrollment and enrollment.academic_year_level
+        else student.academic_level_id or (
+            student.academic_class.academic_level_id if student.academic_class else None
+        )
     )
     if not student_level_id and student.level:
         legacy_level = AcademicLevel.query.filter_by(name=student.level).first()
         student_level_id = legacy_level.id if legacy_level else None
     subject_id = request.args.get("subject_id", type=int)
     subject = db.session.get(Subject, subject_id) if subject_id else None
+    mapped_subject_ids = {
+        row.legacy_subject_id
+        for row in AcademicYearSubject.query.filter_by(
+            academic_year_id=exam.academic_year_id,
+            academic_year_level_id=enrollment.academic_year_level_id,
+            is_active=True,
+        ).all()
+        if enrollment and row.legacy_subject_id
+    } if enrollment else set()
     if not subject and request.args.get("subject") and student_level_id:
         subject = (
             Subject.query
@@ -653,7 +706,9 @@ def feedback_mg_details():
     if not subject or subject.is_active is False:
         return jsonify(ok=False, message="Macluumaadka maaddadan lama heli karo."), 404
 
-    if not student_level_id or subject.academic_level_id != student_level_id:
+    if mapped_subject_ids and subject.id not in mapped_subject_ids:
+        return jsonify(ok=False, message="Maaddadani kuma jirto sanadkan iyo heerka ardeygan."), 404
+    if not mapped_subject_ids and (not student_level_id or subject.academic_level_id != student_level_id):
         return jsonify(ok=False, message="Maaddadani kuma jirto heerka ardeygan."), 404
 
     record = attendance_uf_record(exam, student.id, subject.id)
@@ -895,7 +950,7 @@ def incident_report_form(token):
         return render_template("qr_landing.html", settings=settings, token=token, student=None), 404
     
     student = issue.student
-    student_subjects = incident_subjects_for_student(student)
+    student_subjects = incident_subjects_for_student(student, issue.academic_year_id)
     student_subject_ids = {subject.id for subject in student_subjects}
     
     # Debug logging - Student details

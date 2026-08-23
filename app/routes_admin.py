@@ -33,6 +33,7 @@ from .services import (
     validate_admin_password,
 )
 from .services import slug
+from .enrollment_service import EnrollmentValidationError, enrollment_placement_for_student, student_enrollment_legacy_scope_query, student_enrollment_scope_query
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -213,12 +214,6 @@ def incidents():
     if exam_filter:
         query = query.filter(IncidentReport.exam_id == int(exam_filter))
 
-    if level_filter:
-        query = query.filter(Student.academic_level_id == int(level_filter))
-
-    if class_filter:
-        query = query.filter(Student.academic_class_id == int(class_filter))
-
     if date_from:
         query = query.filter(IncidentReport.incident_date >= datetime.strptime(date_from, "%Y-%m-%d").date())
 
@@ -226,6 +221,24 @@ def incidents():
         query = query.filter(IncidentReport.incident_date <= datetime.strptime(date_to, "%Y-%m-%d").date())
 
     reports = query.distinct().order_by(IncidentReport.created_at.desc()).all()
+    if level_filter or class_filter:
+        selected_level_id = int(level_filter) if level_filter else None
+        selected_class_id = int(class_filter) if class_filter else None
+
+        def matches_historical_placement(report):
+            year_id = (
+                report.exam.academic_year_id if report.exam
+                else int(academic_year_filter) if academic_year_filter.isdigit()
+                else report.student.academic_year_id
+            )
+            placement = enrollment_placement_for_student(report.student, year_id) if year_id else None
+            placement = placement or {}
+            return (
+                (selected_level_id is None or placement.get("academic_level_id") == selected_level_id)
+                and (selected_class_id is None or placement.get("academic_class_id") == selected_class_id)
+            )
+
+        reports = [report for report in reports if matches_historical_placement(report)]
     # Statistics reflect the currently filtered report set.
     stats = {
         "total": len(reports),
@@ -1434,9 +1447,6 @@ def feedback_complaints():
         search = f"%{query}%"
         feedback_query = feedback_query.filter(or_(Student.full_name.ilike(search), Student.student_code.ilike(search), StudentFeedback.ref_number.ilike(search)))
         complaint_query = complaint_query.filter(or_(Student.full_name.ilike(search), Student.student_code.ilike(search), StudentComplaint.ref_number.ilike(search)))
-    if class_id:
-        feedback_query = feedback_query.filter(Student.academic_class_id == class_id)
-        complaint_query = complaint_query.filter(Student.academic_class_id == class_id)
     if complaint_type:
         complaint_query = complaint_query.filter(StudentComplaint.complaint_type == complaint_type)
     if date_from:
@@ -1458,12 +1468,27 @@ def feedback_complaints():
     complaint_ordering = StudentComplaint.created_at.asc() if sort_order == "oldest" else StudentComplaint.created_at.desc()
     feedback_rows = feedback_query.order_by(ordering).all()
     complaint_rows = complaint_query.order_by(complaint_ordering).all()
+    if class_id:
+        def matches_selected_class(entry):
+            # Feedback/complaint rows with an exam carry their historical year.
+            # Resolve that year's enrollment instead of using the student's
+            # mutable current placement. Nullable exam rows retain legacy fallback.
+            year_id = entry.exam.academic_year_id if entry.exam else entry.student.academic_year_id
+            placement = enrollment_placement_for_student(entry.student, year_id) if year_id else None
+            return (placement or {}).get("academic_class_id") == class_id
+
+        feedback_rows = [entry for entry in feedback_rows if matches_selected_class(entry)]
+        complaint_rows = [entry for entry in complaint_rows if matches_selected_class(entry)]
     if status == "pending":
         complaint_rows = [item for item in complaint_rows if not item.replies]
         feedback_rows = [item for item in feedback_rows if not item.replies]
     elif status == "answered":
         complaint_rows = [item for item in complaint_rows if item.replies]
         feedback_rows = [item for item in feedback_rows if item.replies]
+
+    for entry in [*feedback_rows, *complaint_rows]:
+        year_id = entry.exam.academic_year_id if entry.exam else entry.student.academic_year_id
+        entry._display_placement = enrollment_placement_for_student(entry.student, year_id) if year_id else {}
 
     # Loading the authorized office inbox is the delivery event.  It does not
     # mark anything read; that is recorded only by the explicit view endpoint.
@@ -2189,7 +2214,10 @@ def _config_dependencies(item_type, item_id):
     dependencies = []
     if item_type == 'academic-years':
         exam_count = Exam.query.filter_by(academic_year_id=item_id).count()
-        student_count = Student.query.filter_by(academic_year_id=item_id).count()
+        try:
+            student_count = student_enrollment_scope_query(item_id).count()
+        except EnrollmentValidationError:
+            student_count = 0
         attendance_count = AttendanceRecord.query.filter_by(academic_year_id=item_id).count()
         if exam_count:
             dependencies.append(f'Exam Types: {exam_count}')
@@ -2216,11 +2244,13 @@ def _config_dependencies(item_type, item_id):
         item = db.session.get(AcademicYearLevel, item_id)
         student_count = 0
         if item:
-            filters = [Student.academic_level_id == item.legacy_level_id]
-            if item.legacy_level_id:
-                legacy_level = db.session.get(AcademicLevel, item.legacy_level_id)
-            filters.append(and_(Student.academic_level_id.is_(None), Student.level == (legacy_level.name if legacy_level else item.name)))
-            student_count = Student.query.filter(Student.academic_year_id == item.academic_year_id, or_(*filters)).count()
+            try:
+                student_count = student_enrollment_scope_query(
+                    item.academic_year_id,
+                    academic_year_level_id=item.id,
+                ).count()
+            except EnrollmentValidationError:
+                student_count = 0
         if class_count:
             dependencies.append(f'Classes: {class_count}')
         if student_count:
@@ -2231,7 +2261,13 @@ def _config_dependencies(item_type, item_id):
         item = db.session.get(AcademicYearClass, item_id)
         legacy_class_id = item.legacy_class_id if item else None
         section_count = AcademicSection.query.filter_by(academic_class_id=legacy_class_id).count() if legacy_class_id else 0
-        student_count = Student.query.filter_by(academic_year_id=item.academic_year_level.academic_year_id, academic_class_id=legacy_class_id).count() if item and legacy_class_id else 0
+        try:
+            student_count = student_enrollment_scope_query(
+                item.academic_year_level.academic_year_id,
+                academic_year_class_id=item.id,
+            ).count() if item else 0
+        except EnrollmentValidationError:
+            student_count = 0
         exam_count = Exam.query.filter_by(academic_year_id=item.academic_year_level.academic_year_id, academic_class_id=legacy_class_id).count() if item and legacy_class_id else 0
         if section_count:
             dependencies.append(f'Sections: {section_count}')
@@ -2399,10 +2435,13 @@ def config_center():
             classes_by_level[level.id] = level_classes
             for year_class in level_classes:
                 legacy_class_id = year_class.legacy_class_id
-                count_query = Student.query.filter_by(academic_year_id=selected_subject_year_id)
-                if legacy_class_id:
-                    count_query = count_query.filter(Student.academic_class_id == legacy_class_id)
-                class_student_counts[year_class.id] = count_query.count()
+                try:
+                    class_student_counts[year_class.id] = student_enrollment_scope_query(
+                        selected_subject_year_id,
+                        academic_year_class_id=year_class.id,
+                    ).count()
+                except EnrollmentValidationError:
+                    class_student_counts[year_class.id] = 0
     elif section == 'subjects':
         items = year_subjects(selected_subject_year_id, selected_subject_level_id)
         for subject in items:

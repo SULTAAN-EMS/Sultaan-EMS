@@ -32,6 +32,7 @@ from .models import (
     Setting,
     Student,
 )
+from .enrollment_service import EnrollmentValidationError, enrollment_placement_for_student, student_enrollment_legacy_scope_query
 from .permissions import enforce_endpoint_permission
 from .verification import id_card_qr_payload
 
@@ -121,6 +122,29 @@ def is_expired(hall):
 def get_current_academic_year():
     """Get the current academic year."""
     return AcademicYear.query.filter_by(is_current=True).first()
+
+
+def students_for_current_classes(current_year, class_ids):
+    """Resolve Seat Mixer candidates through the selected year's enrollments."""
+    student_ids = set()
+    for class_id in class_ids:
+        try:
+            student_ids.update(
+                student.id
+                for student in student_enrollment_legacy_scope_query(
+                    current_year.id,
+                    legacy_class_id=class_id,
+                ).filter(Student.is_active.is_(True)).all()
+            )
+        except EnrollmentValidationError:
+            continue
+    return (
+        Student.query.options(joinedload(Student.academic_class), joinedload(Student.academic_level))
+        .filter(Student.id.in_(student_ids), Student.is_active.is_(True))
+        .order_by(Student.full_name)
+        .all()
+        if student_ids else []
+    )
 
 
 def get_school_name():
@@ -222,18 +246,22 @@ def hall_frequency_counts(student_ids, hall_id):
     )
 
 
-def serialize_student(student, hall_frequency=0, elsewhere=None):
+def serialize_student(student, hall_frequency=0, elsewhere=None, academic_year_id=None):
     """Seat Mixer student projection sourced directly from central Student records."""
     full_name = student.full_name or ""
+    placement = enrollment_placement_for_student(student, academic_year_id) if academic_year_id else None
+    class_id = (placement or {}).get("academic_class_id") or student.academic_class_id
+    class_name = (placement or {}).get("class_name") or (student.academic_class.name if student.academic_class else "")
+    level_name = (placement or {}).get("level_name") or (student.academic_level.name if student.academic_level else "")
     return {
         "id": student.id,
         "full_name": full_name,
         "first_name": full_name.split()[0] if full_name else "Student",
-        "class_id": student.academic_class_id,
-        "class_name": student.academic_class.name if student.academic_class else "",
-        "level": student.academic_level.name if student.academic_level else "",
+        "class_id": class_id,
+        "class_name": class_name,
+        "level": level_name,
         "gender": student.gender or "Not recorded",
-        "class_color": get_class_color(student.academic_class_id or student.id),
+        "class_color": get_class_color(class_id or student.id),
         "photo_path": stored_photo_url(student.photo_path),
         # Compatibility alias for existing clients. This is now the true
         # examination frequency in this physical hall, not a global layout count.
@@ -322,13 +350,14 @@ def normalized_selected_students(raw_selection):
     return selected
 
 
-def seat_mixer_metrics(assignments):
+def seat_mixer_metrics(assignments, academic_year_id=None):
     """Calculate the same class-separation metrics used by the live map."""
     student_ids = [item["student_id"] for item in assignments]
-    class_ids = {
-        student.id: student.academic_class_id
-        for student in Student.query.filter(Student.id.in_(student_ids)).all()
-    } if student_ids else {}
+    class_ids = {}
+    if student_ids:
+        for student in Student.query.filter(Student.id.in_(student_ids)).all():
+            placement = enrollment_placement_for_student(student, academic_year_id) if academic_year_id else None
+            class_ids[student.id] = (placement or {}).get("academic_class_id") or student.academic_class_id
     grouped = {}
     for item in assignments:
         class_id = class_ids.get(item["student_id"])
@@ -397,6 +426,12 @@ def snapshot_payload(snapshot):
 
 def serialize_saved_assignments(hall, assignments):
     """Hydrate compact snapshot rows from the canonical Student records."""
+    hall_exam = hall.exam
+    hall_exam_type = hall.exam_type
+    academic_year_id = (
+        hall_exam.academic_year_id if hall_exam else
+        hall_exam_type.academic_year_id if hall_exam_type else None
+    )
     student_ids = [item["student_id"] for item in assignments]
     students = (
         Student.query
@@ -413,7 +448,11 @@ def serialize_saved_assignments(hall, assignments):
             continue
         saved_data.append({
             "student_id": student.id,
-            **serialize_student(student, assignment_counts.get(student.id, 0)),
+            **serialize_student(
+                student,
+                assignment_counts.get(student.id, 0),
+                academic_year_id=academic_year_id,
+            ),
             "row": assignment["row"],
             "table": assignment["table"],
             "seat": assignment["seat"],
@@ -806,20 +845,7 @@ def api_students():
         return jsonify({"error": "No current academic year found"}), 400
 
     # Single query with eager loading — no N+1
-    students = (
-        Student.query
-        .options(
-            joinedload(Student.academic_class),
-            joinedload(Student.academic_level),
-        )
-        .filter(
-            Student.academic_year_id == current_year.id,
-            Student.academic_class_id.in_(class_ids),
-            Student.is_active == True,  # noqa: E712
-        )
-        .order_by(Student.full_name)
-        .all()
-    )
+    students = students_for_current_classes(current_year, class_ids)
 
     # The live roster remains the source of truth. Hall frequency is queried
     # separately against exam-scoped history for the currently selected hall.
@@ -851,7 +877,7 @@ def api_students():
         }
 
     student_data = [
-        serialize_student(s, counts.get(s.id, 0), assignment_map.get(s.id))
+        serialize_student(s, counts.get(s.id, 0), assignment_map.get(s.id), current_year.id)
         for s in students
     ]
 
@@ -1001,7 +1027,13 @@ def api_save():
 
     try:
         replace_active_assignments(version_id, normalized_rows, normalized_config)
-        metrics = seat_mixer_metrics(normalized_rows)
+        hall_exam = hall.exam
+        hall_exam_type = hall.exam_type
+        academic_year_id = (
+            hall_exam.academic_year_id if hall_exam else
+            hall_exam_type.academic_year_id if hall_exam_type else None
+        )
+        metrics = seat_mixer_metrics(normalized_rows, academic_year_id=academic_year_id)
         snapshot = SeatMixerSaveSnapshot(
             version_id=version_id,
             snapshot_json=json.dumps({
@@ -1179,17 +1211,7 @@ def api_class_students():
         return jsonify({"error": "No current academic year found"}), 400
 
     # Single query for students in this class
-    students = (
-        Student.query
-        .options(joinedload(Student.academic_class), joinedload(Student.academic_level))
-        .filter(
-            Student.academic_year_id == current_year.id,
-            Student.academic_class_id == class_id,
-            Student.is_active == True,  # noqa: E712
-        )
-        .order_by(Student.full_name)
-        .all()
-    )
+    students = students_for_current_classes(current_year, [class_id])
 
     # Single query for existing seat positions in this version
     seat_positions = {}
@@ -1223,7 +1245,7 @@ def api_class_students():
             position = {"row": None, "table": None, "seat": None, "label": "Not Assigned"}
 
         student_data.append({
-            **serialize_student(s, assignment_counts.get(s.id, 0)),
+            **serialize_student(s, assignment_counts.get(s.id, 0), academic_year_id=current_year.id),
             "position": position,
             "is_current": s.id == current_student_id,
         })
@@ -1277,13 +1299,25 @@ def print_arrangement():
                 "seats": [seat_map.get((row_number, table_number, seat_number)) for seat_number in range(seats_per_table)],
             })
         print_rows.append(tables)
+    hall_exam = hall.exam
+    hall_exam_type = hall.exam_type
+    academic_year_id = (
+        hall_exam.academic_year_id if hall_exam else
+        hall_exam_type.academic_year_id if hall_exam_type else None
+    )
+    print_placements = {}
     print_classes = {}
     class_counts = {}
     for assignment in assignments:
         student = assignment.student
-        if student and student.academic_class_id and student.academic_class:
-            print_classes.setdefault(student.academic_class_id, student.academic_class.name)
-            class_counts[student.academic_class_id] = class_counts.get(student.academic_class_id, 0) + 1
+        if student:
+            placement = enrollment_placement_for_student(student, academic_year_id) or {}
+            print_placements[student.id] = placement
+            class_id = placement.get("academic_class_id") or student.academic_class_id
+            class_name = placement.get("class_name") or (student.academic_class.name if student.academic_class else "")
+            if class_id and class_name:
+                print_classes.setdefault(class_id, class_name)
+                class_counts[class_id] = class_counts.get(class_id, 0) + 1
 
     class_colors = version_class_colors(version_id)
     # Reuse the ID-card verification token/QR mechanism. Existing active
@@ -1298,18 +1332,16 @@ def print_arrangement():
             continue
         issue = IdCardIssue.query.filter_by(
             student_id=student.id,
-            academic_year_id=student.academic_year_id,
+            academic_year_id=academic_year_id or student.academic_year_id,
             status="Active",
         ).first()
         if not issue:
-            issue = get_or_create_issue(student)
+            issue = get_or_create_issue(student, academic_year_id=academic_year_id)
             issues_created = True
         student_qr[str(student.id)] = id_card_qr_payload(issue)
     if issues_created:
         db.session.commit()
 
-    hall_exam = hall.exam
-    hall_exam_type = hall.exam_type
     academic_year_name = (
         hall_exam.academic_year.name if hall_exam and hall_exam.academic_year
         else hall_exam_type.academic_year.name if hall_exam_type and hall_exam_type.academic_year
@@ -1329,6 +1361,7 @@ def print_arrangement():
         class_color=lambda class_id: class_colors.get(str(class_id), get_class_color(class_id)),
         photo_url=stored_photo_url,
         qr_payload=lambda student_id: student_qr.get(str(student_id)),
+        placement_for_student=lambda student_id: print_placements.get(student_id, {}),
         school_name=get_school_name(),
         school_logo=stored_photo_url(logo_setting.value) if logo_setting and logo_setting.value else None,
         academic_year_name=academic_year_name,

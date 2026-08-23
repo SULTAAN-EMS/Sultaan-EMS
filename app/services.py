@@ -19,8 +19,11 @@ from .models import (
     Student,
     Setting,
     LabelTranslation,
+    AcademicYearSubject,
+    StudentEnrollment,
 )
 from .attendance_rules import NON_SAT_STATUSES, normalize_attendance_status
+from .enrollment_service import get_enrollment_for_student_year, student_enrollment_scope_query
 
 
 DEFAULT_SETTINGS = {
@@ -777,7 +780,12 @@ def top_students_for_class(student, exam, limit=10):
     if not student or not exam:
         return []
 
-    level_id = student.academic_level_id
+    selected_enrollment = get_enrollment_for_student_year(student.id, exam.academic_year_id)
+    level_id = (
+        selected_enrollment.academic_year_level.legacy_level_id
+        if selected_enrollment and selected_enrollment.academic_year_level
+        else student.academic_level_id
+    )
     if not level_id and student.academic_class:
         level_id = student.academic_class.academic_level_id
     if not level_id and student.level:
@@ -786,27 +794,53 @@ def top_students_for_class(student, exam, limit=10):
     if not level_id:
         return []
 
-    classmates_query = Student.query.filter_by(academic_year_id=exam.academic_year_id, is_active=True)
-    if student.academic_class_id:
-        class_filters = [Student.academic_class_id == student.academic_class_id]
-        if student.class_id:
-            class_filters.append((Student.academic_class_id.is_(None)) & (Student.class_id == student.class_id))
-        classmates_query = classmates_query.filter(or_(*class_filters))
-    elif student.class_id:
-        classmates_query = classmates_query.filter(Student.class_id == student.class_id)
+    if selected_enrollment:
+        classmates_query = student_enrollment_scope_query(
+            exam.academic_year_id,
+            academic_year_level_id=selected_enrollment.academic_year_level_id,
+            academic_year_class_id=selected_enrollment.academic_year_class_id,
+            academic_section_id=selected_enrollment.academic_section_id,
+        ).filter(Student.is_active.is_(True))
     else:
-        classmates_query = classmates_query.filter(Student.academic_level_id == level_id)
+        classmates_query = Student.query.filter_by(academic_year_id=exam.academic_year_id, is_active=True)
+    class_id = (
+        selected_enrollment.academic_year_class.legacy_class_id
+        if selected_enrollment and selected_enrollment.academic_year_class
+        else student.academic_class_id
+    )
+    if not selected_enrollment:
+        if class_id:
+            class_filters = [Student.academic_class_id == class_id]
+            if student.class_id:
+                class_filters.append((Student.academic_class_id.is_(None)) & (Student.class_id == student.class_id))
+            classmates_query = classmates_query.filter(or_(*class_filters))
+        elif student.class_id:
+            classmates_query = classmates_query.filter(Student.class_id == student.class_id)
+        else:
+            classmates_query = classmates_query.filter(Student.academic_level_id == level_id)
 
     classmates = classmates_query.order_by(Student.full_name, Student.id).all()
     if not classmates:
         return []
 
-    subject_ids = [
-        subject.id
-        for subject in Subject.query.filter_by(academic_level_id=level_id)
-        .order_by(Subject.sort_order, Subject.name, Subject.id)
-        .all()
-    ]
+    subject_ids = []
+    if selected_enrollment:
+        subject_ids = [
+            row.legacy_subject_id
+            for row in AcademicYearSubject.query.filter_by(
+                academic_year_id=exam.academic_year_id,
+                academic_year_level_id=selected_enrollment.academic_year_level_id,
+                is_active=True,
+            ).order_by(AcademicYearSubject.sort_order, AcademicYearSubject.name, AcademicYearSubject.id).all()
+            if row.legacy_subject_id
+        ]
+    if not subject_ids:
+        subject_ids = [
+            subject.id
+            for subject in Subject.query.filter_by(academic_level_id=level_id)
+            .order_by(Subject.sort_order, Subject.name, Subject.id)
+            .all()
+        ]
     if not subject_ids:
         return []
 
@@ -837,7 +871,9 @@ def top_students_for_class(student, exam, limit=10):
 
     ranks = competition_rank_lookup(averages)
     class_name = (
-        student.academic_class.name if student.academic_class
+        selected_enrollment.academic_year_class.name
+        if selected_enrollment and selected_enrollment.academic_year_class
+        else student.academic_class.name if student.academic_class
         else student.school_class.name if student.school_class
         else student.level or "Class"
     )
@@ -1096,6 +1132,20 @@ def active_exam_for_student(student, preferred_year_id=None):
     year_ids = []
     if preferred_year_id:
         year_ids.append(preferred_year_id)
+    enrollment_year_ids = [
+        year_id
+        for year_id, in (
+            StudentEnrollment.query
+            .filter_by(student_id=student.id)
+            .with_entities(StudentEnrollment.academic_year_id)
+            .order_by(StudentEnrollment.academic_year_id.desc(), StudentEnrollment.id.desc())
+            .all()
+        )
+        if year_id
+    ]
+    for year_id in enrollment_year_ids:
+        if year_id not in year_ids:
+            year_ids.append(year_id)
     if student.academic_year_id:
         if student.academic_year_id not in year_ids:
             year_ids.append(student.academic_year_id)
@@ -1139,17 +1189,23 @@ def active_exam_for_student(student, preferred_year_id=None):
 
     def score(exam):
         value = 0
+        enrollment = get_enrollment_for_student_year(student.id, exam.academic_year_id)
+        enrollment_level_id = enrollment.academic_year_level.legacy_level_id if enrollment and enrollment.academic_year_level else None
+        enrollment_class_id = enrollment.academic_year_class.legacy_class_id if enrollment and enrollment.academic_year_class else None
+        enrollment_section_id = enrollment.academic_section_id if enrollment else None
         if preferred_year_id and exam.academic_year_id == preferred_year_id:
             value += 20
-        if student.academic_year_id and exam.academic_year_id == student.academic_year_id:
+        if enrollment:
+            value += 16
+        elif student.academic_year_id and exam.academic_year_id == student.academic_year_id:
             value += 16
         elif current_year and exam.academic_year_id == current_year.id:
             value += 12
-        if exam.academic_section_id and exam.academic_section_id == student.academic_section_id:
+        if exam.academic_section_id and exam.academic_section_id == enrollment_section_id:
             value += 8
-        if exam.academic_class_id and exam.academic_class_id == student.academic_class_id:
+        elif exam.academic_class_id and exam.academic_class_id == enrollment_class_id:
             value += 4
-        if exam.academic_level_id and exam.academic_level_id == student.academic_level_id:
+        if exam.academic_level_id and exam.academic_level_id == enrollment_level_id:
             value += 2
         if not exam.academic_section_id and not exam.academic_class_id and not exam.academic_level_id:
             value += 1
@@ -1295,7 +1351,12 @@ def result_payload(student, exam=None, public_only=True):
     # A result subject is valid only for the student's actual level.  This
     # prevents same-name records from another level (for example English) from
     # leaking into the student portal or its printable counterpart.
-    student_level_id = student.academic_level_id
+    selected_enrollment = get_enrollment_for_student_year(student.id, exam.academic_year_id) if exam else None
+    student_level_id = (
+        selected_enrollment.academic_year_level.legacy_level_id
+        if selected_enrollment and selected_enrollment.academic_year_level
+        else student.academic_level_id
+    )
     if not student_level_id and student.academic_class:
         student_level_id = student.academic_class.academic_level_id
     if not student_level_id and student.level:
@@ -1306,8 +1367,24 @@ def result_payload(student, exam=None, public_only=True):
         legacy_level = AcademicLevel.query.filter_by(name=student.level).first()
         student_level_id = legacy_level.id if legacy_level else None
     query = query.join(Result.subject)
+    selected_subject_ids = []
+    if selected_enrollment:
+        selected_subject_ids = [
+            row.legacy_subject_id
+            for row in AcademicYearSubject.query.filter_by(
+                academic_year_id=exam.academic_year_id,
+                academic_year_level_id=selected_enrollment.academic_year_level_id,
+                is_active=True,
+            ).all()
+            if row.legacy_subject_id
+        ]
+    subject_scope_filter = (
+        Subject.id.in_(selected_subject_ids)
+        if selected_subject_ids
+        else Subject.academic_level_id == student_level_id
+    )
     rows = (
-        query.filter(Subject.academic_level_id == student_level_id)
+        query.filter(subject_scope_filter)
         .order_by(Result.subject_id.asc())
         .all()
         if student_level_id
@@ -1368,11 +1445,13 @@ def result_payload(student, exam=None, public_only=True):
         if student_id == student.id and subject_id not in {row.subject_id for row in rows}
     }
     if missing_uf_subject_ids and student_level_id:
+        missing_subject_query = Subject.query.filter(Subject.id.in_(missing_uf_subject_ids))
+        if selected_subject_ids:
+            missing_subject_query = missing_subject_query.filter(Subject.id.in_(selected_subject_ids))
+        else:
+            missing_subject_query = missing_subject_query.filter(Subject.academic_level_id == student_level_id)
         for subject in (
-            Subject.query.filter(
-                Subject.id.in_(missing_uf_subject_ids),
-                Subject.academic_level_id == student_level_id,
-            )
+            missing_subject_query
             .order_by(Subject.id.asc())
             .all()
         ):
@@ -1397,27 +1476,37 @@ def result_payload(student, exam=None, public_only=True):
     if rows and active_exam:
         # Rank against the student's own class first.  Older student records that
         # only have the legacy class/level fields remain in the same scope.
-        peer_query = Student.query.filter_by(
-            academic_year_id=active_exam.academic_year_id or student.academic_year_id,
-        )
-        if student.academic_class_id:
-            class_filters = [Student.academic_class_id == student.academic_class_id]
-            if student.class_id:
-                class_filters.append(
-                    (Student.academic_class_id.is_(None)) & (Student.class_id == student.class_id)
-                )
-            peer_query = peer_query.filter(or_(*class_filters))
-        elif student.class_id:
-            peer_query = peer_query.filter(Student.class_id == student.class_id)
-        elif student.academic_level_id:
-            level_filters = [Student.academic_level_id == student.academic_level_id]
-            if student.level:
-                level_filters.append(
-                    (Student.academic_level_id.is_(None)) & (Student.level == student.level)
-                )
-            peer_query = peer_query.filter(or_(*level_filters))
-        elif student.level:
-            peer_query = peer_query.filter(Student.level == student.level)
+        peer_year_id = active_exam.academic_year_id or student.academic_year_id
+        peer_enrollment = get_enrollment_for_student_year(student.id, peer_year_id) if peer_year_id else None
+        if peer_enrollment:
+            peer_query = student_enrollment_scope_query(
+                peer_year_id,
+                academic_year_level_id=peer_enrollment.academic_year_level_id,
+                academic_year_class_id=peer_enrollment.academic_year_class_id,
+                academic_section_id=peer_enrollment.academic_section_id,
+            ).filter(Student.is_active.is_(True))
+        else:
+            peer_query = Student.query.filter_by(academic_year_id=peer_year_id)
+        if not peer_enrollment:
+            peer_class_id = student.academic_class_id
+            if peer_class_id:
+                class_filters = [Student.academic_class_id == peer_class_id]
+                if student.class_id:
+                    class_filters.append(
+                        (Student.academic_class_id.is_(None)) & (Student.class_id == student.class_id)
+                    )
+                peer_query = peer_query.filter(or_(*class_filters))
+            elif student.class_id:
+                peer_query = peer_query.filter(Student.class_id == student.class_id)
+            elif student.academic_level_id:
+                level_filters = [Student.academic_level_id == student.academic_level_id]
+                if student.level:
+                    level_filters.append(
+                        (Student.academic_level_id.is_(None)) & (Student.level == student.level)
+                    )
+                peer_query = peer_query.filter(or_(*level_filters))
+            elif student.level:
+                peer_query = peer_query.filter(Student.level == student.level)
 
         peers = peer_query.all()
         subject_maxima = {row.subject_id: Decimal(row.subject.max_score) for row in rows}
