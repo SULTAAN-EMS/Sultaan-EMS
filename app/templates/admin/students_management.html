@@ -155,6 +155,10 @@
         <i class="fa-solid fa-plus"></i>
         {{ rh_label("students.add_student", default="Cali Arday Cusub") }}
       </a>
+      <a href="{{ url_for('admin_advanced_results.class_transition') }}" class="btn btn-outline">
+        <i class="fa-solid fa-users-gear"></i>
+        Transfer / Promote Class
+      </a>
       <a href="{{ url_for('admin_advanced_results.student_import_template') }}" class="btn btn-outline">
         <i class="fa-solid fa-file-lines"></i>
         {{ rh_label("students.template", default="Template") }}
@@ -290,6 +294,9 @@
               </span>
             </div>
             <div class="sm-actions">
+              <a class="icon-btn small" href="{{ url_for('admin_advanced_results.student_transition', student_id=student.id) }}" title="Transfer or promote">
+                <i class="fa-solid fa-right-left"></i>
+              </a>
               <a class="icon-btn small" href="{{ url_for('admin_advanced_results.student_form', student_id=student.id, year_id=selected_year.id if selected_year else '') }}" title="Edit">
                 <i class="fa-solid fa-pen"></i>
               </a>

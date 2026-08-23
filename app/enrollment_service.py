@@ -246,6 +246,200 @@ def create_enrollment(
     return enrollment
 
 
+TRANSITION_ACTIONS = {
+    "transfer": {
+        "source_status": "transferred",
+        "source_outcome": "pending",
+        "destination_source": "transfer",
+    },
+    "promotion": {
+        "source_status": "completed",
+        "source_outcome": "promoted",
+        "destination_source": "promotion",
+    },
+    "repeat": {
+        "source_status": "completed",
+        "source_outcome": "repeated",
+        "destination_source": "repeat",
+    },
+}
+
+
+def _transition_action(action):
+    action = str(action or "").strip().lower()
+    if action not in TRANSITION_ACTIONS:
+        raise EnrollmentValidationError("Choose transfer, promotion, or repeat")
+    return action, TRANSITION_ACTIONS[action]
+
+
+def _close_source_enrollment(source, action):
+    """Close a source placement without changing its academic history."""
+    _, settings = _transition_action(action)
+    source.status = settings["source_status"]
+    source.academic_outcome = settings["source_outcome"]
+    source.exited_at = datetime.utcnow()
+
+
+def transition_student_enrollment(
+    student_id,
+    source_enrollment_id,
+    destination_academic_year_id,
+    destination_academic_year_level_id,
+    destination_academic_year_class_id,
+    destination_academic_section_id=None,
+    *,
+    action="transfer",
+    notes=None,
+):
+    """Create one destination enrollment and preserve the source enrollment.
+
+    The caller owns the outer transaction/commit. A savepoint protects the
+    multi-write operation so a failed flush cannot leave a half-transition.
+    """
+    action, settings = _transition_action(action)
+    student_id = _require(student_id, "Student")
+    source_id = _require(source_enrollment_id, "Source enrollment")
+    student = db.session.get(Student, student_id)
+    source = db.session.get(StudentEnrollment, source_id)
+    if not student:
+        raise EnrollmentValidationError("Student does not exist")
+    if not source or source.student_id != student.id:
+        raise EnrollmentValidationError("Source enrollment does not belong to this student")
+    if source.status not in ("active", "completed"):
+        raise EnrollmentValidationError("Source enrollment is not eligible for an academic transition")
+
+    destination_scope = validate_enrollment_scope(
+        destination_academic_year_id,
+        destination_academic_year_level_id,
+        destination_academic_year_class_id,
+        destination_academic_section_id,
+    )
+    destination_year_id = destination_scope["academic_year"].id
+    if source.academic_year_id == destination_year_id:
+        raise EnrollmentValidationError("Destination must be a different academic year")
+    if get_enrollment_for_student_year(student.id, destination_year_id):
+        raise EnrollmentValidationError("Student already has an enrollment for the destination academic year")
+
+    with db.session.begin_nested():
+        destination = create_enrollment(
+            student.id,
+            destination_year_id,
+            destination_scope["academic_year_level"].id,
+            destination_scope["academic_year_class"].id,
+            destination_scope["academic_section"].id if destination_scope["academic_section"] else None,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source=settings["destination_source"],
+            previous_enrollment_id=source.id,
+            notes=notes,
+        )
+        _close_source_enrollment(source, action)
+        db.session.flush()
+    return source, destination
+
+
+def plan_bulk_transition(
+    source_academic_year_id,
+    source_academic_year_level_id,
+    source_academic_year_class_id,
+    destination_academic_year_id,
+    destination_academic_year_level_id,
+    destination_academic_year_class_id,
+    *,
+    source_academic_section_id=None,
+    destination_academic_section_id=None,
+):
+    """Build a read-only bulk transition plan before any writes."""
+    validate_enrollment_scope(
+        source_academic_year_id,
+        source_academic_year_level_id,
+        source_academic_year_class_id,
+        source_academic_section_id,
+    )
+    destination_scope = validate_enrollment_scope(
+        destination_academic_year_id,
+        destination_academic_year_level_id,
+        destination_academic_year_class_id,
+        destination_academic_section_id,
+    )
+    source_year_id = _require(source_academic_year_id, "Source academic year")
+    destination_year_id = destination_scope["academic_year"].id
+    if source_year_id == destination_year_id:
+        raise EnrollmentValidationError("Destination must be a different academic year")
+
+    query = StudentEnrollment.query.filter_by(
+        academic_year_id=source_year_id,
+        academic_year_level_id=_require(source_academic_year_level_id, "Source academic year level"),
+        academic_year_class_id=_require(source_academic_year_class_id, "Source academic year class"),
+    )
+    if source_academic_section_id not in (None, ""):
+        query = query.filter_by(academic_section_id=_require(source_academic_section_id, "Source academic section"))
+    source_enrollments = query.order_by(StudentEnrollment.id).all()
+
+    plan = []
+    for source in source_enrollments:
+        student = db.session.get(Student, source.student_id)
+        existing = get_enrollment_for_student_year(source.student_id, destination_year_id)
+        if existing:
+            plan.append({
+                "student": student,
+                "source": source,
+                "eligible": False,
+                "reason": "already_enrolled",
+                "existing_destination": existing,
+            })
+        elif not student:
+            plan.append({
+                "student": None,
+                "source": source,
+                "eligible": False,
+                "reason": "missing_student",
+                "existing_destination": None,
+            })
+        else:
+            plan.append({
+                "student": student,
+                "source": source,
+                "eligible": True,
+                "reason": None,
+                "existing_destination": None,
+            })
+    return {
+        "source_enrollments": source_enrollments,
+        "destination_scope": destination_scope,
+        "items": plan,
+    }
+
+
+def execute_bulk_transition(plan, *, action="transfer", notes=None):
+    """Execute a previously validated bulk plan atomically at the session level."""
+    action, settings = _transition_action(action)
+    created = []
+    with db.session.begin_nested():
+        for item in plan["items"]:
+            if not item["eligible"]:
+                continue
+            source = item["source"]
+            student = item["student"]
+            scope = plan["destination_scope"]
+            destination = create_enrollment(
+                student.id,
+                scope["academic_year"].id,
+                scope["academic_year_level"].id,
+                scope["academic_year_class"].id,
+                scope["academic_section"].id if scope["academic_section"] else None,
+                status="active",
+                academic_outcome="pending",
+                enrollment_source=settings["destination_source"],
+                previous_enrollment_id=source.id,
+                notes=notes,
+            )
+            _close_source_enrollment(source, action)
+            created.append(destination)
+        db.session.flush()
+    return created
+
+
 def apply_legacy_placement(student, scope):
     """Mirror a new enrollment into legacy fields for compatibility reads."""
     year_level = scope["academic_year_level"]

@@ -23,8 +23,11 @@ from .enrollment_service import (
     EnrollmentValidationError,
     apply_legacy_placement,
     create_enrollment,
+    execute_bulk_transition,
     get_enrollment_for_student_year,
+    plan_bulk_transition,
     student_enrollment_scope_query,
+    transition_student_enrollment,
     validate_enrollment_scope,
 )
 from .permissions import can, enforce_endpoint_permission
@@ -3056,6 +3059,185 @@ def students_management():
         has_next=has_next,
         incident_counts=incident_counts,
         incident_badges=incident_badges,
+        settings=get_settings(),
+    )
+
+
+def _transition_hierarchy_payload(years):
+    """Serialize the year-aware hierarchy for transfer form cascading selects."""
+    payload = {}
+    for year in years:
+        year_levels_payload = []
+        for level in year_levels(year.id):
+            class_payload = []
+            for year_class in year_classes(level.id):
+                sections = []
+                if year_class.legacy_class_id:
+                    sections = AcademicSection.query.filter_by(
+                        academic_class_id=year_class.legacy_class_id,
+                        is_active=True,
+                    ).order_by(AcademicSection.sort_order, AcademicSection.name).all()
+                class_payload.append({
+                    "id": year_class.id,
+                    "name": year_class.name,
+                    "sections": [{"id": item.id, "name": item.name} for item in sections],
+                })
+            year_levels_payload.append({
+                "id": level.id,
+                "name": level.name,
+                "classes": class_payload,
+            })
+        payload[str(year.id)] = year_levels_payload
+    return payload
+
+
+def _transition_source_enrollments(student):
+    return StudentEnrollment.query.filter_by(student_id=student.id).order_by(
+        StudentEnrollment.academic_year_id.desc(),
+        StudentEnrollment.id.desc(),
+    ).all()
+
+
+@advanced_results_bp.route("/students/<int:student_id>/transition", methods=["GET", "POST"])
+def student_transition(student_id):
+    """Move one permanent Student identity to a new year-aware placement."""
+    student = db.session.get(Student, student_id)
+    if not student:
+        abort(404)
+    years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
+    source_enrollments = _transition_source_enrollments(student)
+    source_id = int_or_none(request.values.get("source_enrollment_id"))
+    source = db.session.get(StudentEnrollment, source_id) if source_id else (source_enrollments[0] if source_enrollments else None)
+    error = None
+
+    if request.method == "POST":
+        source_id = int_or_none(request.form.get("source_enrollment_id"))
+        action = request.form.get("action", "transfer")
+        destination_year_id = int_or_none(request.form.get("destination_academic_year_id"))
+        destination_level_id = int_or_none(request.form.get("destination_academic_year_level_id"))
+        destination_class_id = int_or_none(request.form.get("destination_academic_year_class_id"))
+        destination_section_id = int_or_none(request.form.get("destination_academic_section_id"))
+        if request.form.get("confirm_transition") != "on":
+            error = "Please confirm that the source enrollment will be preserved and a new placement will be created."
+        else:
+            try:
+                source, destination = transition_student_enrollment(
+                    student.id,
+                    source_id,
+                    destination_year_id,
+                    destination_level_id,
+                    destination_class_id,
+                    destination_section_id,
+                    action=action,
+                    notes=request.form.get("notes") or None,
+                )
+                db.session.commit()
+                flash(
+                    f"{student.full_name} moved successfully to {destination.academic_year.name} — {destination.academic_year_class.name}.",
+                    "success",
+                )
+                return redirect(url_for("admin_advanced_results.students_management", year_id=destination.academic_year_id))
+            except (EnrollmentValidationError, ValueError) as exc:
+                db.session.rollback()
+                error = str(exc)
+            except Exception:
+                db.session.rollback()
+                current_app.logger.exception("Student transition failed")
+                error = "The transition could not be saved. No academic placement was changed."
+        source = db.session.get(StudentEnrollment, source_id) if source_id else source
+
+    return render_template(
+        "admin/student_transition.html",
+        student=student,
+        years=years,
+        source_enrollments=source_enrollments,
+        selected_source=source,
+        hierarchy=_transition_hierarchy_payload(years),
+        error=error,
+        settings=get_settings(),
+    )
+
+
+@advanced_results_bp.route("/student-transitions/class", methods=["GET", "POST"])
+def class_transition():
+    """Preview and execute a controlled whole-class transition."""
+    years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
+    values = request.form if request.method == "POST" else request.args
+    source_year_id = int_or_none(values.get("source_academic_year_id"))
+    source_level_id = int_or_none(values.get("source_academic_year_level_id"))
+    source_class_id = int_or_none(values.get("source_academic_year_class_id"))
+    source_section_id = int_or_none(values.get("source_academic_section_id"))
+    destination_year_id = int_or_none(values.get("destination_academic_year_id"))
+    destination_level_id = int_or_none(values.get("destination_academic_year_level_id"))
+    destination_class_id = int_or_none(values.get("destination_academic_year_class_id"))
+    destination_section_id = int_or_none(values.get("destination_academic_section_id"))
+    action = values.get("action", "promotion")
+    error = None
+    plan = None
+    preview = None
+
+    def build_plan():
+        return plan_bulk_transition(
+            source_year_id,
+            source_level_id,
+            source_class_id,
+            destination_year_id,
+            destination_level_id,
+            destination_class_id,
+            source_academic_section_id=source_section_id,
+            destination_academic_section_id=destination_section_id,
+        )
+
+    if all(value is not None for value in (
+        source_year_id, source_level_id, source_class_id,
+        destination_year_id, destination_level_id, destination_class_id,
+    )):
+        try:
+            plan = build_plan()
+            items = plan["items"]
+            preview = {
+                "total": len(items),
+                "ready": sum(item["eligible"] for item in items),
+                "skipped": sum(item["reason"] == "already_enrolled" for item in items),
+                "excluded": sum(not item["eligible"] and item["reason"] != "already_enrolled" for item in items),
+                "items": items,
+            }
+            if request.method == "POST" and request.form.get("mode") == "execute":
+                if request.form.get("confirm_transition") != "on":
+                    error = "Please confirm the reviewed student list before executing the transition."
+                else:
+                    created = execute_bulk_transition(plan, action=action, notes=request.form.get("notes") or None)
+                    db.session.commit()
+                    flash(
+                        f"Class transition completed: {len(created)} created, {preview['skipped']} skipped, {preview['excluded']} excluded.",
+                        "success",
+                    )
+                    return redirect(url_for("admin_advanced_results.students_management", year_id=destination_year_id))
+        except (EnrollmentValidationError, ValueError) as exc:
+            db.session.rollback()
+            error = str(exc)
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Whole-class transition failed")
+            error = "The class transition could not be prepared. No records were changed."
+
+    return render_template(
+        "admin/class_transition.html",
+        years=years,
+        hierarchy=_transition_hierarchy_payload(years),
+        values={
+            "source_year_id": source_year_id,
+            "source_level_id": source_level_id,
+            "source_class_id": source_class_id,
+            "source_section_id": source_section_id,
+            "destination_year_id": destination_year_id,
+            "destination_level_id": destination_level_id,
+            "destination_class_id": destination_class_id,
+            "destination_section_id": destination_section_id,
+            "action": action,
+        },
+        preview=preview,
+        error=error,
         settings=get_settings(),
     )
 

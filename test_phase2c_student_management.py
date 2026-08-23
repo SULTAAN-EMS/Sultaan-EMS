@@ -5,7 +5,14 @@ from werkzeug.datastructures import FileStorage
 from openpyxl import Workbook
 
 from app import create_app, db
-from app.enrollment_service import create_enrollment, get_enrollment_for_student_year
+from app.enrollment_service import (
+    EnrollmentValidationError,
+    create_enrollment,
+    execute_bulk_transition,
+    get_enrollment_for_student_year,
+    plan_bulk_transition,
+    transition_student_enrollment,
+)
 from app.import_wizard import process_student_import
 from app.models import (
     AcademicClass,
@@ -197,6 +204,102 @@ class TestPhase2CStudentManagement(unittest.TestCase):
         self.assertEqual(summary["failed_count"], 0)
         student = Student.query.filter_by(student_code="TIS-002").one()
         self.assertIsNotNone(get_enrollment_for_student_year(student.id, self.year_a.id))
+
+    def test_single_promotion_preserves_source_and_links_destination(self):
+        student = self._create_student("TIS-PROMOTE")
+        source = get_enrollment_for_student_year(student.id, self.year_a.id)
+
+        source, destination = transition_student_enrollment(
+            student.id,
+            source.id,
+            self.year_b.id,
+            self.level_b.id,
+            self.class_b.id,
+            self.section.id,
+            action="promotion",
+        )
+        db.session.commit()
+
+        self.assertEqual(Student.query.filter_by(student_code="TIS-PROMOTE").count(), 1)
+        self.assertEqual(source.status, "completed")
+        self.assertEqual(source.academic_outcome, "promoted")
+        self.assertEqual(destination.enrollment_source, "promotion")
+        self.assertEqual(destination.previous_enrollment_id, source.id)
+        self.assertEqual(destination.academic_year_id, self.year_b.id)
+
+    def test_transfer_rejects_duplicate_destination_without_partial_update(self):
+        student = self._create_student("TIS-DUPLICATE")
+        source = get_enrollment_for_student_year(student.id, self.year_a.id)
+        create_enrollment(student.id, self.year_b.id, self.level_b.id, self.class_b.id, self.section.id)
+        db.session.commit()
+
+        with self.assertRaises(EnrollmentValidationError):
+            transition_student_enrollment(
+                student.id,
+                source.id,
+                self.year_b.id,
+                self.level_b.id,
+                self.class_b.id,
+                self.section.id,
+                action="transfer",
+            )
+        db.session.rollback()
+        self.assertEqual(db.session.get(StudentEnrollment, source.id).status, "active")
+        self.assertEqual(StudentEnrollment.query.filter_by(student_id=student.id).count(), 2)
+
+    def test_invalid_cross_year_destination_is_rejected(self):
+        student = self._create_student("TIS-INVALID")
+        source = get_enrollment_for_student_year(student.id, self.year_a.id)
+
+        with self.assertRaises(EnrollmentValidationError):
+            transition_student_enrollment(
+                student.id,
+                source.id,
+                self.year_b.id,
+                self.level_a.id,
+                self.class_b.id,
+                self.section.id,
+            )
+        db.session.rollback()
+        self.assertEqual(db.session.get(StudentEnrollment, source.id).status, "active")
+
+    def test_whole_class_promotion_preview_and_execution_preserve_history(self):
+        first = self._create_student("TIS-BULK-1")
+        second = self._create_student("TIS-BULK-2")
+        plan = plan_bulk_transition(
+            self.year_a.id,
+            self.level_a.id,
+            self.class_a.id,
+            self.year_b.id,
+            self.level_b.id,
+            self.class_b.id,
+            source_academic_section_id=self.section.id,
+            destination_academic_section_id=self.section.id,
+        )
+        self.assertEqual(len(plan["items"]), 2)
+        self.assertEqual(sum(item["eligible"] for item in plan["items"]), 2)
+
+        created = execute_bulk_transition(plan, action="promotion")
+        db.session.commit()
+        self.assertEqual(len(created), 2)
+        self.assertEqual(Student.query.filter(Student.student_code.like("TIS-BULK-%")).count(), 2)
+        for student in (first, second):
+            source = get_enrollment_for_student_year(student.id, self.year_a.id)
+            destination = get_enrollment_for_student_year(student.id, self.year_b.id)
+            self.assertEqual(source.status, "completed")
+            self.assertEqual(source.academic_outcome, "promoted")
+            self.assertEqual(destination.previous_enrollment_id, source.id)
+
+    def test_transition_pages_render(self):
+        student = self._create_student("TIS-UI")
+        self.assertEqual(
+            self.client.get(f"/admin/advanced-results/students/{student.id}/transition").status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.get("/admin/advanced-results/student-transitions/class").status_code,
+            200,
+        )
 
 
 if __name__ == "__main__":

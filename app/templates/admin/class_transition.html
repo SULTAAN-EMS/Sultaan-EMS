@@ -1,0 +1,139 @@
+{% extends "admin/base.html" %}
+{% block page_title %}Class Transfer / Promotion{% endblock %}
+{% block admin_content %}
+<section class="panel transition-page">
+  <div class="section-heading wide">
+    <span><i class="fa-solid fa-users-gear"></i></span>
+    <div>
+      <h2>Whole-Class Transfer / Promotion</h2>
+      <p>Review the year-aware source roster before creating new destination enrollments.</p>
+    </div>
+  </div>
+
+  {% if error %}<div class="alert alert-danger"><i class="fa-solid fa-circle-exclamation"></i> {{ error }}</div>{% endif %}
+
+  <form method="post" id="class-transition-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="transition-grid">
+      <fieldset>
+        <legend>1. Source class</legend>
+        <div class="field-row">
+          <label>Academic Year<select name="source_academic_year_id" id="source-year" required><option value="">Select year</option>{% for year in years %}<option value="{{ year.id }}">{{ year.name }}</option>{% endfor %}</select></label>
+          <label>Level<select name="source_academic_year_level_id" id="source-level" required><option value="">Select level</option></select></label>
+        </div>
+        <div class="field-row">
+          <label>Class<select name="source_academic_year_class_id" id="source-class" required><option value="">Select class</option></select></label>
+          <label>Section<select name="source_academic_section_id" id="source-section"><option value="">All sections</option></select></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>2. Destination class</legend>
+        <div class="field-row">
+          <label>Academic Year<select name="destination_academic_year_id" id="destination-year" required><option value="">Select year</option>{% for year in years %}<option value="{{ year.id }}">{{ year.name }}</option>{% endfor %}</select></label>
+          <label>Level<select name="destination_academic_year_level_id" id="destination-level" required><option value="">Select level</option></select></label>
+        </div>
+        <div class="field-row">
+          <label>Class<select name="destination_academic_year_class_id" id="destination-class" required><option value="">Select class</option></select></label>
+          <label>Section<select name="destination_academic_section_id" id="destination-section"><option value="">All sections</option></select></label>
+        </div>
+      </fieldset>
+    </div>
+    <div class="field-row transition-options">
+      <label>Action<select name="action" id="transition-action"><option value="promotion">Promote</option><option value="transfer">Transfer</option><option value="repeat">Repeat</option></select></label>
+      <label>Notes (optional)<input name="notes" placeholder="Reason or transition note"></label>
+    </div>
+
+    <div class="transition-actions" style="justify-content:flex-end;margin-top:18px;">
+      <button class="btn btn-outline" type="submit" name="mode" value="preview"><i class="fa-solid fa-eye"></i> Preview students</button>
+    </div>
+  </form>
+
+  {% if preview %}
+  <section class="bulk-preview">
+    <div class="bulk-summary">
+      <div><strong>{{ preview.total }}</strong><span>Total source students</span></div>
+      <div class="ready"><strong>{{ preview.ready }}</strong><span>Ready</span></div>
+      <div class="skipped"><strong>{{ preview.skipped }}</strong><span>Already enrolled</span></div>
+      <div class="excluded"><strong>{{ preview.excluded }}</strong><span>Excluded</span></div>
+    </div>
+    <div class="table-wrap">
+      <table class="premium-table">
+        <thead><tr><th>Student</th><th>Student ID</th><th>Source</th><th>Preview status</th></tr></thead>
+        <tbody>
+        {% for item in preview.items %}
+          <tr>
+            <td>{{ item.student.full_name if item.student else 'Missing student' }}</td>
+            <td>{{ item.student.student_code if item.student else '-' }}</td>
+            <td>{{ item.source.academic_year.name }} · {{ item.source.academic_year_class.name }}{% if item.source.academic_section %} · {{ item.source.academic_section.name }}{% endif %}</td>
+            <td><span class="status-pill {{ 'active' if item.eligible else 'warn' }}">{{ 'Ready' if item.eligible else ('Already enrolled' if item.reason == 'already_enrolled' else 'Excluded') }}</span></td>
+          </tr>
+        {% else %}<tr><td colspan="4">No students match the selected source class.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if preview.ready %}
+    <form method="post" class="execute-box">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="source_academic_year_id" value="{{ values.source_year_id }}">
+      <input type="hidden" name="source_academic_year_level_id" value="{{ values.source_level_id }}">
+      <input type="hidden" name="source_academic_year_class_id" value="{{ values.source_class_id }}">
+      <input type="hidden" name="source_academic_section_id" value="{{ values.source_section_id or '' }}">
+      <input type="hidden" name="destination_academic_year_id" value="{{ values.destination_year_id }}">
+      <input type="hidden" name="destination_academic_year_level_id" value="{{ values.destination_level_id }}">
+      <input type="hidden" name="destination_academic_year_class_id" value="{{ values.destination_class_id }}">
+      <input type="hidden" name="destination_academic_section_id" value="{{ values.destination_section_id or '' }}">
+      <input type="hidden" name="action" value="{{ values.action }}">
+      <input type="hidden" name="notes" value="">
+      <label class="confirm-line"><input type="checkbox" name="confirm_transition" required> I reviewed the list and understand that source enrollments will be preserved.</label>
+      <button class="btn btn-gold" type="submit" name="mode" value="execute"><i class="fa-solid fa-check-double"></i> Confirm and execute {{ preview.ready }} transitions</button>
+    </form>
+    {% endif %}
+  </section>
+  {% endif %}
+</section>
+
+<script>
+const classTransitionHierarchy = {{ hierarchy|tojson }};
+const initialTransitionValues = {{ values|tojson }};
+const sourceYear = document.getElementById('source-year');
+const sourceLevel = document.getElementById('source-level');
+const sourceClass = document.getElementById('source-class');
+const sourceSection = document.getElementById('source-section');
+const destinationYear = document.getElementById('destination-year');
+const destinationLevel = document.getElementById('destination-level');
+const destinationClass = document.getElementById('destination-class');
+const destinationSection = document.getElementById('destination-section');
+const action = document.getElementById('transition-action');
+
+function fill(select, items, placeholder) {
+  select.innerHTML = `<option value="">${placeholder}</option>`;
+  (items || []).forEach(item => { const option=document.createElement('option'); option.value=item.id; option.textContent=item.name; select.appendChild(option); });
+}
+function levelsFor(year) { return classTransitionHierarchy[year] || []; }
+function setLevels(yearSelect, levelSelect, classSelect, sectionSelect, levelValue, classValue, sectionValue) {
+  fill(levelSelect, levelsFor(yearSelect.value), 'Select level');
+  levelSelect.value = levelValue || '';
+  const level = levelsFor(yearSelect.value).find(item => String(item.id) === String(levelSelect.value));
+  fill(classSelect, level?.classes || [], 'Select class');
+  classSelect.value = classValue || '';
+  const cls = (level?.classes || []).find(item => String(item.id) === String(classSelect.value));
+  fill(sectionSelect, cls?.sections || [], sectionSelect === sourceSection ? 'All sections' : 'All sections');
+  sectionSelect.value = sectionValue || '';
+}
+sourceYear.addEventListener('change', () => setLevels(sourceYear, sourceLevel, sourceClass, sourceSection, '', '', ''));
+sourceLevel.addEventListener('change', () => setLevels(sourceYear, sourceLevel, sourceClass, sourceSection, sourceLevel.value, '', ''));
+sourceClass.addEventListener('change', () => setLevels(sourceYear, sourceLevel, sourceClass, sourceSection, sourceLevel.value, sourceClass.value, ''));
+destinationYear.addEventListener('change', () => setLevels(destinationYear, destinationLevel, destinationClass, destinationSection, '', '', ''));
+destinationLevel.addEventListener('change', () => setLevels(destinationYear, destinationLevel, destinationClass, destinationSection, destinationLevel.value, '', ''));
+destinationClass.addEventListener('change', () => setLevels(destinationYear, destinationLevel, destinationClass, destinationSection, destinationLevel.value, destinationClass.value, ''));
+action.value = initialTransitionValues.action || 'promotion';
+sourceYear.value = initialTransitionValues.source_year_id || '';
+destinationYear.value = initialTransitionValues.destination_year_id || '';
+setLevels(sourceYear, sourceLevel, sourceClass, sourceSection, initialTransitionValues.source_level_id, initialTransitionValues.source_class_id, initialTransitionValues.source_section_id);
+setLevels(destinationYear, destinationLevel, destinationClass, destinationSection, initialTransitionValues.destination_level_id, initialTransitionValues.destination_class_id, initialTransitionValues.destination_section_id);
+</script>
+
+<style>
+.transition-page{max-width:1200px;margin:0 auto}.transition-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.transition-grid fieldset{border:1px solid #d6dee8;border-radius:14px;padding:18px;min-width:0}.transition-grid legend{font-weight:800;color:#163660;padding:0 8px}.transition-grid label,.transition-options label{display:grid;gap:7px;margin:10px 0;font-weight:700;color:#334155}.transition-grid select,.transition-options select,.transition-options input{width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:10px;background:#fff;font:inherit}.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.transition-options{max-width:720px;margin-top:8px}.bulk-preview{margin-top:24px;border-top:1px solid #dbe4ee;padding-top:22px}.bulk-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.bulk-summary>div{padding:15px;border-radius:12px;background:#f8fafc;border:1px solid #dbe4ee}.bulk-summary strong,.bulk-summary span{display:block}.bulk-summary strong{font-size:1.5rem;color:#163660}.bulk-summary span{color:#64748b;font-size:.85rem}.bulk-summary .ready{background:#ecfdf5;border-color:#86efac}.bulk-summary .skipped{background:#fff7ed;border-color:#fdba74}.bulk-summary .excluded{background:#fef2f2;border-color:#fecaca}.table-wrap{overflow-x:auto;margin-top:18px}.execute-box{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:17px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;margin-top:18px}.confirm-line{display:flex;align-items:flex-start;gap:9px;color:#334155;font-weight:600}.confirm-line input{margin-top:3px}@media(max-width:800px){.transition-grid{grid-template-columns:1fr}.field-row,.bulk-summary{grid-template-columns:1fr}.execute-box{align-items:stretch;flex-direction:column}}
+</style>
+{% endblock %}
