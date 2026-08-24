@@ -416,6 +416,78 @@ class StudentEnrollment(TimestampMixin, db.Model):
     )
 
 
+class StudentEnrollmentMovement(TimestampMixin, db.Model):
+    """Immutable audit trail for enrollment placement movements.
+
+    A local transfer updates one ``StudentEnrollment`` in place, while a
+    cross-year move creates a new enrollment. This ledger preserves both
+    placements in either case without changing result or attendance history.
+    """
+
+    __tablename__ = "student_enrollment_movements"
+
+    MOVEMENT_VALUES = (
+        "local_transfer",
+        "cross_year_transfer",
+        "promotion",
+        "repeat",
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(
+        db.Integer,
+        db.ForeignKey("students.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    enrollment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("student_enrollments.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    movement_type = db.Column(db.String(30), nullable=False, index=True)
+
+    from_academic_year_id = db.Column(db.Integer, db.ForeignKey("academic_years.id", ondelete="RESTRICT"), nullable=False)
+    from_academic_year_level_id = db.Column(db.Integer, db.ForeignKey("academic_year_levels.id", ondelete="RESTRICT"), nullable=False)
+    from_academic_year_class_id = db.Column(db.Integer, db.ForeignKey("academic_year_classes.id", ondelete="RESTRICT"), nullable=False)
+    from_academic_section_id = db.Column(db.Integer, db.ForeignKey("academic_sections.id", ondelete="SET NULL"), nullable=True)
+
+    to_academic_year_id = db.Column(db.Integer, db.ForeignKey("academic_years.id", ondelete="RESTRICT"), nullable=False)
+    to_academic_year_level_id = db.Column(db.Integer, db.ForeignKey("academic_year_levels.id", ondelete="RESTRICT"), nullable=False)
+    to_academic_year_class_id = db.Column(db.Integer, db.ForeignKey("academic_year_classes.id", ondelete="RESTRICT"), nullable=False)
+    to_academic_section_id = db.Column(db.Integer, db.ForeignKey("academic_sections.id", ondelete="SET NULL"), nullable=True)
+
+    reason = db.Column(db.String(255), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    moved_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    performed_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    student = db.relationship("Student")
+    enrollment = db.relationship("StudentEnrollment", backref=db.backref("movements", lazy="dynamic"))
+    from_academic_year = db.relationship("AcademicYear", foreign_keys=[from_academic_year_id])
+    from_academic_year_level = db.relationship("AcademicYearLevel", foreign_keys=[from_academic_year_level_id])
+    from_academic_year_class = db.relationship("AcademicYearClass", foreign_keys=[from_academic_year_class_id])
+    from_academic_section = db.relationship("AcademicSection", foreign_keys=[from_academic_section_id])
+    to_academic_year = db.relationship("AcademicYear", foreign_keys=[to_academic_year_id])
+    to_academic_year_level = db.relationship("AcademicYearLevel", foreign_keys=[to_academic_year_level_id])
+    to_academic_year_class = db.relationship("AcademicYearClass", foreign_keys=[to_academic_year_class_id])
+    to_academic_section = db.relationship("AcademicSection", foreign_keys=[to_academic_section_id])
+    performer = db.relationship("User", foreign_keys=[performed_by])
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "movement_type IN ('local_transfer', 'cross_year_transfer', 'promotion', 'repeat')",
+            name="ck_student_enrollment_movement_type",
+        ),
+        db.Index(
+            "idx_student_enrollment_movement_student_time",
+            "student_id",
+            "moved_at",
+        ),
+    )
+
+
 class Result(TimestampMixin, db.Model):
     __tablename__ = "results"
 

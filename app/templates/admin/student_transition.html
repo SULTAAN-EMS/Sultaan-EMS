@@ -47,13 +47,14 @@
         <legend>2. Action and destination</legend>
         <label>Action
           <select name="action" id="transition-action">
+            <option value="local_transfer">Local Transfer (same academic year)</option>
+            <option value="transfer">Transfer to a different academic year</option>
             <option value="promotion">Promote</option>
-            <option value="transfer">Transfer</option>
             <option value="repeat">Repeat</option>
           </select>
         </label>
         <div class="field-row">
-          <label>Academic Year<select name="destination_academic_year_id" id="destination-year" required><option value="">Select year</option>{% for year in years %}<option value="{{ year.id }}">{{ year.name }}</option>{% endfor %}</select></label>
+          <label>Academic Year<select name="destination_academic_year_id" id="destination-year" required><option value="">Select year</option>{% for year in years %}<option value="{{ year.id }}">{{ year.name }}</option>{% endfor %}</select><input type="hidden" id="destination-year-fixed"></label>
           <label>Level<select name="destination_academic_year_level_id" id="destination-level" required><option value="">Select level</option></select></label>
         </div>
         <div class="field-row">
@@ -72,12 +73,33 @@
       <span id="summary-to"></span>
     </div>
 
-    <label class="confirm-line"><input type="checkbox" name="confirm_transition" id="confirm-transition"> I understand the source enrollment will remain in history and a new destination enrollment will be created.</label>
+    <label class="confirm-line"><input type="checkbox" name="confirm_transition" id="confirm-transition"> <span id="confirm-copy">I understand the current enrollment will be updated and the movement will be recorded in history.</span></label>
     <div class="transition-actions">
       <a class="btn btn-outline" href="{{ url_for('admin_advanced_results.students_management') }}"><i class="fa-solid fa-arrow-left"></i> Back</a>
       <button class="btn btn-gold" type="submit" id="submit-transition" disabled><i class="fa-solid fa-check"></i> Confirm transition</button>
     </div>
   </form>
+
+  {% if movement_history %}
+  <section class="movement-history" aria-labelledby="movement-history-title">
+    <h3 id="movement-history-title"><i class="fa-solid fa-clock-rotate-left"></i> Enrollment movement history</h3>
+    <div class="table-wrap">
+      <table class="premium-table">
+        <thead><tr><th>Type</th><th>From</th><th>To</th><th>Date</th></tr></thead>
+        <tbody>
+        {% for movement in movement_history %}
+          <tr>
+            <td>{{ movement.movement_type.replace('_', ' ')|title }}</td>
+            <td>{{ movement.from_academic_year.name }} · {{ movement.from_academic_year_class.name }}</td>
+            <td>{{ movement.to_academic_year.name }} · {{ movement.to_academic_year_class.name }}</td>
+            <td>{{ movement.moved_at.strftime('%Y-%m-%d %H:%M') if movement.moved_at else '-' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
 </section>
 
 <script>
@@ -96,6 +118,13 @@ const confirmBox = document.getElementById('confirm-transition');
 const submitButton = document.getElementById('submit-transition');
 const sourceLabels = {{ source_enrollments|map(attribute='id')|list|tojson }};
 const destinationHierarchyNote = document.getElementById('destination-hierarchy-note');
+const destinationYearFixed = document.getElementById('destination-year-fixed');
+const confirmCopy = document.getElementById('confirm-copy');
+const initialTransitionAction = {{ initial_action|tojson }};
+const sourceYears = {
+  {% for item in source_enrollments %}{{ item.id|tojson }}: {{ item.academic_year_id|tojson }},{% endfor %}
+};
+const legacySourceYearId = {{ student.academic_year_id|tojson }};
 
 function fillSelect(select, items, placeholder) {
   select.innerHTML = `<option value="">${placeholder}</option>`;
@@ -142,16 +171,35 @@ function refreshSummary() {
   summaryTo.textContent = yearSelect.value && classSelect.value ? `TO ${selectedItem(yearSelect)} · ${selectedItem(levelSelect)} · ${selectedItem(classSelect)}${sectionSelect.value ? ` · ${selectedItem(sectionSelect)}` : ''}` : 'TO destination placement';
 }
 
+function syncActionMode() {
+  const localTransfer = actionSelect.value === 'local_transfer';
+  const sourceYearId = sourceYears[sourceSelect.value] || legacySourceYearId || '';
+  yearSelect.disabled = localTransfer;
+  destinationYearFixed.name = localTransfer ? 'destination_academic_year_id' : '';
+  destinationYearFixed.value = localTransfer ? sourceYearId : '';
+  if (localTransfer) {
+    yearSelect.value = sourceYearId;
+    refreshDestinationLevels();
+    confirmCopy.textContent = 'I understand the current enrollment will be updated and the local movement will be recorded in history.';
+  } else {
+    confirmCopy.textContent = 'I understand the source enrollment will remain in history and a new destination enrollment will be created.';
+    refreshSummary();
+  }
+}
+
 yearSelect.addEventListener('change', refreshDestinationLevels);
 levelSelect.addEventListener('change', refreshDestinationClasses);
 classSelect.addEventListener('change', refreshDestinationSections);
 actionSelect.addEventListener('change', refreshSummary);
-sourceSelect.addEventListener('change', refreshSummary);
+actionSelect.addEventListener('change', syncActionMode);
+sourceSelect.addEventListener('change', syncActionMode);
 confirmBox.addEventListener('change', () => { submitButton.disabled = !confirmBox.checked; });
+actionSelect.value = initialTransitionAction || 'local_transfer';
 refreshSummary();
+syncActionMode();
 </script>
 
 <style>
-.transition-page{max-width:1100px;margin:0 auto}.transition-identity{display:flex;align-items:center;gap:14px;padding:16px 18px;background:#f8fafc;border:1px solid #dbe4ee;border-radius:14px;margin:20px 0}.transition-identity .avatar{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:#0f766e;color:#fff;font-size:1.25rem}.transition-identity strong,.transition-identity small{display:block}.transition-identity small{color:#64748b;margin-top:4px}.transition-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.transition-grid fieldset{border:1px solid #d6dee8;border-radius:14px;padding:18px;min-width:0}.transition-grid legend{font-weight:800;color:#163660;padding:0 8px}.transition-grid label{display:grid;gap:7px;margin:12px 0;font-weight:700;color:#334155}.transition-grid select,.transition-grid textarea{width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:10px;background:#fff;font:inherit}.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.source-preview{display:grid;gap:6px;padding:13px 14px;background:#eff6ff;border-left:4px solid #2563eb;border-radius:8px;color:#1e3a8a}.source-preview small{color:#475569}.hierarchy-note{padding:10px 12px;margin:10px 0;color:#7c2d12;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;font-size:.9rem}.transition-summary{display:grid;gap:7px;margin:20px 0;padding:17px 18px;background:#fffaf0;border:1px solid #e7c981;border-radius:12px}.summary-label{font:700 .72rem/1 monospace;letter-spacing:.12em;color:#956b16}.summary-from,.summary-to{color:#475569}.confirm-line{display:flex;align-items:flex-start;gap:9px;color:#334155;font-weight:600;margin:18px 0}.confirm-line input{margin-top:3px}.transition-actions{display:flex;justify-content:space-between;gap:12px}.transition-actions button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:800px){.transition-grid{grid-template-columns:1fr}.field-row{grid-template-columns:1fr}}
+.transition-page{max-width:1100px;margin:0 auto}.transition-identity{display:flex;align-items:center;gap:14px;padding:16px 18px;background:#f8fafc;border:1px solid #dbe4ee;border-radius:14px;margin:20px 0}.transition-identity .avatar{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:#0f766e;color:#fff;font-size:1.25rem}.transition-identity strong,.transition-identity small{display:block}.transition-identity small{color:#64748b;margin-top:4px}.transition-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.transition-grid fieldset{border:1px solid #d6dee8;border-radius:14px;padding:18px;min-width:0}.transition-grid legend{font-weight:800;color:#163660;padding:0 8px}.transition-grid label{display:grid;gap:7px;margin:12px 0;font-weight:700;color:#334155}.transition-grid select,.transition-grid textarea{width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:10px;background:#fff;font:inherit}.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.source-preview{display:grid;gap:6px;padding:13px 14px;background:#eff6ff;border-left:4px solid #2563eb;border-radius:8px;color:#1e3a8a}.source-preview small{color:#475569}.hierarchy-note{padding:10px 12px;margin:10px 0;color:#7c2d12;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;font-size:.9rem}.transition-summary{display:grid;gap:7px;margin:20px 0;padding:17px 18px;background:#fffaf0;border:1px solid #e7c981;border-radius:12px}.summary-label{font:700 .72rem/1 monospace;letter-spacing:.12em;color:#956b16}.summary-from,.summary-to{color:#475569}.confirm-line{display:flex;align-items:flex-start;gap:9px;color:#334155;font-weight:600;margin:18px 0}.confirm-line input{margin-top:3px}.transition-actions{display:flex;justify-content:space-between;gap:12px}.transition-actions button:disabled{opacity:.45;cursor:not-allowed}.movement-history{margin-top:24px;padding-top:20px;border-top:1px solid #dbe4ee}.movement-history h3{color:#163660}.movement-history .table-wrap{overflow-x:auto}@media(max-width:800px){.transition-grid{grid-template-columns:1fr}.field-row{grid-template-columns:1fr}}
 </style>
 {% endblock %}

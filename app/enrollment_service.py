@@ -21,6 +21,7 @@ from .models import (
     SchoolClass,
     Student,
     StudentEnrollment,
+    StudentEnrollmentMovement,
 )
 
 
@@ -313,20 +314,31 @@ def create_enrollment(
 
 
 TRANSITION_ACTIONS = {
+    "local_transfer": {
+        "destination_source": "transfer",
+        "movement_type": "local_transfer",
+        "requires_different_year": False,
+    },
     "transfer": {
+        "destination_source": "transfer",
+        "movement_type": "cross_year_transfer",
+        "requires_different_year": True,
         "source_status": "transferred",
         "source_outcome": "pending",
-        "destination_source": "transfer",
     },
     "promotion": {
         "source_status": "completed",
         "source_outcome": "promoted",
         "destination_source": "promotion",
+        "movement_type": "promotion",
+        "requires_different_year": True,
     },
     "repeat": {
         "source_status": "completed",
         "source_outcome": "repeated",
         "destination_source": "repeat",
+        "movement_type": "repeat",
+        "requires_different_year": True,
     },
 }
 
@@ -346,6 +358,42 @@ def _close_source_enrollment(source, action):
     source.exited_at = datetime.utcnow()
 
 
+def _record_movement(
+    *,
+    student_id,
+    enrollment_id,
+    movement_type,
+    source,
+    destination_scope,
+    performed_by=None,
+    reason=None,
+    notes=None,
+):
+    """Write one complete from/to placement record before any mutation."""
+    destination_year = destination_scope["academic_year"]
+    destination_level = destination_scope["academic_year_level"]
+    destination_class = destination_scope["academic_year_class"]
+    destination_section = destination_scope.get("academic_section")
+    movement = StudentEnrollmentMovement(
+        student_id=student_id,
+        enrollment_id=enrollment_id,
+        movement_type=movement_type,
+        from_academic_year_id=source.academic_year_id,
+        from_academic_year_level_id=source.academic_year_level_id,
+        from_academic_year_class_id=source.academic_year_class_id,
+        from_academic_section_id=source.academic_section_id,
+        to_academic_year_id=destination_year.id,
+        to_academic_year_level_id=destination_level.id,
+        to_academic_year_class_id=destination_class.id,
+        to_academic_section_id=destination_section.id if destination_section else None,
+        performed_by=performed_by,
+        reason=reason,
+        notes=notes,
+    )
+    db.session.add(movement)
+    return movement
+
+
 def transition_student_enrollment(
     student_id,
     source_enrollment_id,
@@ -356,8 +404,9 @@ def transition_student_enrollment(
     *,
     action="transfer",
     notes=None,
+    performed_by=None,
 ):
-    """Create one destination enrollment and preserve the source enrollment.
+    """Apply one validated local or cross-year enrollment movement.
 
     The caller owns the outer transaction/commit. A savepoint protects the
     multi-write operation so a failed flush cannot leave a half-transition.
@@ -374,6 +423,9 @@ def transition_student_enrollment(
     if source.status not in ("active", "completed"):
         raise EnrollmentValidationError("Source enrollment is not eligible for an academic transition")
 
+    if action == "repeat" and source.academic_outcome != "failed":
+        raise EnrollmentValidationError("Repeat is available only for a failed academic-year outcome")
+
     destination_scope = validate_enrollment_scope(
         destination_academic_year_id,
         destination_academic_year_level_id,
@@ -381,25 +433,67 @@ def transition_student_enrollment(
         destination_academic_section_id,
     )
     destination_year_id = destination_scope["academic_year"].id
-    if source.academic_year_id == destination_year_id:
-        raise EnrollmentValidationError("Destination must be a different academic year")
-    if get_enrollment_for_student_year(student.id, destination_year_id):
+    same_year = source.academic_year_id == destination_year_id
+    if settings["requires_different_year"] and same_year:
+        raise EnrollmentValidationError("This action requires a different academic year")
+    if not settings["requires_different_year"] and not same_year:
+        raise EnrollmentValidationError("Local Transfer must stay within the source academic year")
+
+    existing_destination = get_enrollment_for_student_year(student.id, destination_year_id)
+    if same_year:
+        if existing_destination is not source:
+            raise EnrollmentValidationError("Student already has another enrollment for this academic year")
+        if (
+            source.academic_year_level_id == destination_scope["academic_year_level"].id
+            and source.academic_year_class_id == destination_scope["academic_year_class"].id
+            and source.academic_section_id == (destination_scope["academic_section"].id if destination_scope["academic_section"] else None)
+        ):
+            raise EnrollmentValidationError("Destination placement is the same as the current placement")
+    elif existing_destination:
         raise EnrollmentValidationError("Student already has an enrollment for the destination academic year")
 
     with db.session.begin_nested():
-        destination = create_enrollment(
-            student.id,
-            destination_year_id,
-            destination_scope["academic_year_level"].id,
-            destination_scope["academic_year_class"].id,
-            destination_scope["academic_section"].id if destination_scope["academic_section"] else None,
-            status="active",
-            academic_outcome="pending",
-            enrollment_source=settings["destination_source"],
-            previous_enrollment_id=source.id,
-            notes=notes,
-        )
-        _close_source_enrollment(source, action)
+        if same_year:
+            _record_movement(
+                student_id=student.id,
+                enrollment_id=source.id,
+                movement_type=settings["movement_type"],
+                source=source,
+                destination_scope=destination_scope,
+                performed_by=performed_by,
+                reason="Local academic-year transfer",
+                notes=notes,
+            )
+            source.academic_year_level_id = destination_scope["academic_year_level"].id
+            source.academic_year_class_id = destination_scope["academic_year_class"].id
+            source.academic_section_id = destination_scope["academic_section"].id if destination_scope["academic_section"] else None
+            destination = source
+        else:
+            destination = create_enrollment(
+                student.id,
+                destination_year_id,
+                destination_scope["academic_year_level"].id,
+                destination_scope["academic_year_class"].id,
+                destination_scope["academic_section"].id if destination_scope["academic_section"] else None,
+                status="active",
+                academic_outcome="pending",
+                enrollment_source=settings["destination_source"],
+                previous_enrollment_id=source.id,
+                notes=notes,
+            )
+            _record_movement(
+                student_id=student.id,
+                enrollment_id=destination.id,
+                movement_type=settings["movement_type"],
+                source=source,
+                destination_scope=destination_scope,
+                performed_by=performed_by,
+                reason=f"{action.replace('_', ' ').title()} to a different academic year",
+                notes=notes,
+            )
+            _close_source_enrollment(source, action)
+        student.academic_year_id = destination_year_id
+        apply_legacy_placement(student, destination_scope)
         db.session.flush()
     return source, destination
 
@@ -414,8 +508,12 @@ def plan_bulk_transition(
     *,
     source_academic_section_id=None,
     destination_academic_section_id=None,
+    action=None,
 ):
     """Build a read-only bulk transition plan before any writes."""
+    action_was_explicit = action is not None
+    action = action or "transfer"
+    action, settings = _transition_action(action)
     validate_enrollment_scope(
         source_academic_year_id,
         source_academic_year_level_id,
@@ -430,8 +528,11 @@ def plan_bulk_transition(
     )
     source_year_id = _require(source_academic_year_id, "Source academic year")
     destination_year_id = destination_scope["academic_year"].id
-    if source_year_id == destination_year_id:
-        raise EnrollmentValidationError("Destination must be a different academic year")
+    same_year = source_year_id == destination_year_id
+    if settings["requires_different_year"] and same_year:
+        raise EnrollmentValidationError("This action requires a different academic year")
+    if not settings["requires_different_year"] and not same_year:
+        raise EnrollmentValidationError("Local Transfer must stay within the source academic year")
 
     query = StudentEnrollment.query.filter_by(
         academic_year_id=source_year_id,
@@ -446,7 +547,39 @@ def plan_bulk_transition(
     for source in source_enrollments:
         student = db.session.get(Student, source.student_id)
         existing = get_enrollment_for_student_year(source.student_id, destination_year_id)
-        if existing:
+        target_section_id = destination_scope["academic_section"].id if destination_scope["academic_section"] else None
+        same_placement = (
+            same_year
+            and existing is source
+            and source.academic_year_level_id == destination_scope["academic_year_level"].id
+            and source.academic_year_class_id == destination_scope["academic_year_class"].id
+            and source.academic_section_id == target_section_id
+        )
+        if action == "repeat" and source.academic_outcome != "failed":
+            plan.append({
+                "student": student,
+                "source": source,
+                "eligible": False,
+                "reason": "repeat_requires_failed",
+                "existing_destination": existing,
+            })
+        elif same_placement:
+            plan.append({
+                "student": student,
+                "source": source,
+                "eligible": False,
+                "reason": "same_placement",
+                "existing_destination": existing,
+            })
+        elif existing and not same_year:
+            plan.append({
+                "student": student,
+                "source": source,
+                "eligible": False,
+                "reason": "already_enrolled",
+                "existing_destination": existing,
+            })
+        elif same_year and existing is not source:
             plan.append({
                 "student": student,
                 "source": source,
@@ -471,15 +604,20 @@ def plan_bulk_transition(
                 "existing_destination": None,
             })
     return {
+        "action": action,
+        "action_explicit": action_was_explicit,
+        "same_year": same_year,
         "source_enrollments": source_enrollments,
         "destination_scope": destination_scope,
         "items": plan,
     }
 
 
-def execute_bulk_transition(plan, *, action="transfer", notes=None):
+def execute_bulk_transition(plan, *, action=None, notes=None, performed_by=None):
     """Execute a previously validated bulk plan atomically at the session level."""
-    action, settings = _transition_action(action)
+    action, settings = _transition_action(action or plan.get("action"))
+    if plan.get("action_explicit") and action != plan.get("action"):
+        raise EnrollmentValidationError("The transition preview no longer matches the selected action")
     created = []
     with db.session.begin_nested():
         for item in plan["items"]:
@@ -488,19 +626,48 @@ def execute_bulk_transition(plan, *, action="transfer", notes=None):
             source = item["source"]
             student = item["student"]
             scope = plan["destination_scope"]
-            destination = create_enrollment(
-                student.id,
-                scope["academic_year"].id,
-                scope["academic_year_level"].id,
-                scope["academic_year_class"].id,
-                scope["academic_section"].id if scope["academic_section"] else None,
-                status="active",
-                academic_outcome="pending",
-                enrollment_source=settings["destination_source"],
-                previous_enrollment_id=source.id,
-                notes=notes,
-            )
-            _close_source_enrollment(source, action)
+            same_year = plan["same_year"]
+            if same_year:
+                _record_movement(
+                    student_id=student.id,
+                    enrollment_id=source.id,
+                    movement_type=settings["movement_type"],
+                    source=source,
+                    destination_scope=scope,
+                    performed_by=performed_by,
+                    reason="Local academic-year transfer",
+                    notes=notes,
+                )
+                source.academic_year_level_id = scope["academic_year_level"].id
+                source.academic_year_class_id = scope["academic_year_class"].id
+                source.academic_section_id = scope["academic_section"].id if scope["academic_section"] else None
+                destination = source
+            else:
+                destination = create_enrollment(
+                    student.id,
+                    scope["academic_year"].id,
+                    scope["academic_year_level"].id,
+                    scope["academic_year_class"].id,
+                    scope["academic_section"].id if scope["academic_section"] else None,
+                    status="active",
+                    academic_outcome="pending",
+                    enrollment_source=settings["destination_source"],
+                    previous_enrollment_id=source.id,
+                    notes=notes,
+                )
+                _record_movement(
+                    student_id=student.id,
+                    enrollment_id=destination.id,
+                    movement_type=settings["movement_type"],
+                    source=source,
+                    destination_scope=scope,
+                    performed_by=performed_by,
+                    reason=f"{action.replace('_', ' ').title()} to a different academic year",
+                    notes=notes,
+                )
+                _close_source_enrollment(source, action)
+            student.academic_year_id = scope["academic_year"].id
+            apply_legacy_placement(student, scope)
             created.append(destination)
         db.session.flush()
     return created

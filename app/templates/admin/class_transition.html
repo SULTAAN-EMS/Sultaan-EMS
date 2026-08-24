@@ -29,7 +29,7 @@
       <fieldset>
         <legend>2. Destination class</legend>
         <div class="field-row">
-          <label>Academic Year<select name="destination_academic_year_id" id="destination-year" required><option value="">Select year</option>{% for year in years %}<option value="{{ year.id }}">{{ year.name }}</option>{% endfor %}</select></label>
+          <label>Academic Year<select name="destination_academic_year_id" id="destination-year" required><option value="">Select year</option>{% for year in years %}<option value="{{ year.id }}">{{ year.name }}</option>{% endfor %}</select><input type="hidden" id="destination-year-fixed"></label>
           <label>Level<select name="destination_academic_year_level_id" id="destination-level" required><option value="">Select level</option></select></label>
         </div>
         <div class="field-row">
@@ -40,7 +40,7 @@
       </fieldset>
     </div>
     <div class="field-row transition-options">
-      <label>Action<select name="action" id="transition-action"><option value="promotion">Promote</option><option value="transfer">Transfer</option><option value="repeat">Repeat</option></select></label>
+      <label>Action<select name="action" id="transition-action"><option value="local_transfer">Local Transfer (same academic year)</option><option value="transfer">Transfer to a different academic year</option><option value="promotion">Promote</option><option value="repeat">Repeat</option></select></label>
       <label>Notes (optional)<input name="notes" placeholder="Reason or transition note"></label>
     </div>
 
@@ -106,6 +106,7 @@ const destinationClass = document.getElementById('destination-class');
 const destinationSection = document.getElementById('destination-section');
 const action = document.getElementById('transition-action');
 const destinationHierarchyNote = document.getElementById('destination-hierarchy-note');
+const destinationYearFixed = document.getElementById('destination-year-fixed');
 
 function fill(select, items, placeholder) {
   select.innerHTML = `<option value="">${placeholder}</option>`;
@@ -129,17 +130,29 @@ function setLevels(yearSelect, levelSelect, classSelect, sectionSelect, levelVal
   fill(sectionSelect, cls?.sections || [], sectionSelect === sourceSection ? 'All sections' : 'All sections');
   sectionSelect.value = sectionValue || '';
 }
-sourceYear.addEventListener('change', () => setLevels(sourceYear, sourceLevel, sourceClass, sourceSection, '', '', ''));
+function syncActionMode() {
+  const localTransfer = action.value === 'local_transfer';
+  destinationYear.disabled = localTransfer;
+  destinationYearFixed.name = localTransfer ? 'destination_academic_year_id' : '';
+  destinationYearFixed.value = localTransfer ? sourceYear.value : '';
+  if (localTransfer) {
+    destinationYear.value = sourceYear.value;
+    setLevels(destinationYear, destinationLevel, destinationClass, destinationSection, '', '', '');
+  }
+}
+sourceYear.addEventListener('change', () => { setLevels(sourceYear, sourceLevel, sourceClass, sourceSection, '', '', ''); syncActionMode(); });
 sourceLevel.addEventListener('change', () => setLevels(sourceYear, sourceLevel, sourceClass, sourceSection, sourceLevel.value, '', ''));
 sourceClass.addEventListener('change', () => setLevels(sourceYear, sourceLevel, sourceClass, sourceSection, sourceLevel.value, sourceClass.value, ''));
 destinationYear.addEventListener('change', () => setLevels(destinationYear, destinationLevel, destinationClass, destinationSection, '', '', ''));
 destinationLevel.addEventListener('change', () => setLevels(destinationYear, destinationLevel, destinationClass, destinationSection, destinationLevel.value, '', ''));
 destinationClass.addEventListener('change', () => setLevels(destinationYear, destinationLevel, destinationClass, destinationSection, destinationLevel.value, destinationClass.value, ''));
+action.addEventListener('change', syncActionMode);
 action.value = initialTransitionValues.action || 'promotion';
 sourceYear.value = initialTransitionValues.source_year_id || '';
 destinationYear.value = initialTransitionValues.destination_year_id || '';
 setLevels(sourceYear, sourceLevel, sourceClass, sourceSection, initialTransitionValues.source_level_id, initialTransitionValues.source_class_id, initialTransitionValues.source_section_id);
 setLevels(destinationYear, destinationLevel, destinationClass, destinationSection, initialTransitionValues.destination_level_id, initialTransitionValues.destination_class_id, initialTransitionValues.destination_section_id);
+syncActionMode();
 </script>
 
 <style>

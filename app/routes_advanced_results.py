@@ -17,7 +17,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentEnrollment, Subject, LabelTranslation
+from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentEnrollment, StudentEnrollmentMovement, Subject, LabelTranslation
 from .academic_hierarchy import students_for_year_scope_query, year_classes, year_levels, year_subjects
 from .enrollment_service import (
     EnrollmentValidationError,
@@ -3267,11 +3267,12 @@ def student_transition(student_id):
     source_enrollments = _transition_source_enrollments(student)
     source_id = int_or_none(request.values.get("source_enrollment_id"))
     source = db.session.get(StudentEnrollment, source_id) if source_id else (source_enrollments[0] if source_enrollments else None)
+    action = request.values.get("action", "local_transfer")
     error = None
 
     if request.method == "POST":
         source_id = int_or_none(request.form.get("source_enrollment_id"))
-        action = request.form.get("action", "transfer")
+        action = request.form.get("action", action)
         destination_year_id = int_or_none(request.form.get("destination_academic_year_id"))
         destination_level_id = int_or_none(request.form.get("destination_academic_year_level_id"))
         destination_class_id = int_or_none(request.form.get("destination_academic_year_class_id"))
@@ -3296,6 +3297,7 @@ def student_transition(student_id):
                     destination_section_id,
                     action=action,
                     notes=request.form.get("notes") or None,
+                    performed_by=current_user.id if current_user.is_authenticated else None,
                 )
                 db.session.commit()
                 flash(
@@ -3321,6 +3323,11 @@ def student_transition(student_id):
         source_enrollments=source_enrollments,
         selected_source=source,
         hierarchy=_transition_hierarchy_payload(years),
+        initial_action=action,
+        movement_history=StudentEnrollmentMovement.query.filter_by(student_id=student.id)
+        .order_by(StudentEnrollmentMovement.moved_at.desc(), StudentEnrollmentMovement.id.desc())
+        .limit(50)
+        .all(),
         error=error,
         settings=get_settings(),
     )
@@ -3354,6 +3361,7 @@ def class_transition():
             destination_class_id,
             source_academic_section_id=source_section_id,
             destination_academic_section_id=destination_section_id,
+            action=action,
         )
         # Previewing a class must include legacy-only students when their
         # existing placement maps uniquely to the selected source year/class.
@@ -3376,6 +3384,7 @@ def class_transition():
                 destination_class_id,
                 source_academic_section_id=source_section_id,
                 destination_academic_section_id=destination_section_id,
+                action=action,
             )
         return plan
 
@@ -3397,7 +3406,12 @@ def class_transition():
                 if request.form.get("confirm_transition") != "on":
                     error = "Please confirm the reviewed student list before executing the transition."
                 else:
-                    created = execute_bulk_transition(plan, action=action, notes=request.form.get("notes") or None)
+                    created = execute_bulk_transition(
+                        plan,
+                        action=action,
+                        notes=request.form.get("notes") or None,
+                        performed_by=current_user.id if current_user.is_authenticated else None,
+                    )
                     db.session.commit()
                     flash(
                         f"Class transition completed: {len(created)} created, {preview['skipped']} skipped, {preview['excluded']} excluded.",
