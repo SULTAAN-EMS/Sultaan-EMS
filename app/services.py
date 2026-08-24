@@ -20,6 +20,11 @@ from .models import (
     Setting,
     LabelTranslation,
     AcademicYearSubject,
+    AcademicYearLevel,
+    ExamHall,
+    ExamHallEnrollment,
+    ExamHallSubject,
+    ExamSessionSubject,
     StudentEnrollment,
 )
 from .attendance_rules import NON_SAT_STATUSES, normalize_attendance_status
@@ -1253,6 +1258,61 @@ def seed_grade_scales():
         #   → admin-saved score ranges; must never be reset.
 
 
+def _attendance_record_is_in_current_exam_scope(record, exam, *, year_aware):
+    """Reject stale/unattached attendance rows before deriving MG.
+
+    In the year-aware attendance flow, a non-sitting status is meaningful only
+    when the row belongs to this exact exam and is still connected to the
+    student's current hall roster and scheduled subject. Legacy-only years
+    retain the historical exam-level behavior below for compatibility.
+    """
+    if not record or not exam or record.exam_id != exam.id:
+        return False
+    if record.academic_year_id != exam.academic_year_id:
+        return False
+    if not year_aware:
+        return True
+    if not record.exam_hall_id:
+        return False
+    hall = record.exam_hall
+    if not hall:
+        return False
+    if hall.exam_id not in (None, exam.id):
+        return False
+    if hall.academic_year_id not in (None, exam.academic_year_id):
+        return False
+    if not ExamHallEnrollment.query.filter_by(
+        exam_hall_id=record.exam_hall_id,
+        student_id=record.student_id,
+    ).first():
+        return False
+    if record.exam_session_id:
+        session = record.exam_session
+        if not session or session.exam_id not in (None, exam.id):
+            return False
+        return bool(
+            ExamSessionSubject.query.filter_by(
+                exam_session_id=record.exam_session_id,
+                subject_id=record.subject_id,
+            ).first()
+        )
+    return bool(
+        ExamHallSubject.query.filter_by(
+            exam_hall_id=record.exam_hall_id,
+            subject_id=record.subject_id,
+        ).first()
+    )
+
+
+def _exam_uses_year_aware_attendance(exam):
+    return bool(
+        AcademicYearLevel.query.filter_by(
+            academic_year_id=exam.academic_year_id,
+            is_active=True,
+        ).first()
+    )
+
+
 def attendance_uf_subject_keys(exam, student_ids, subject_ids=None):
     """Return exact student/subject pairs that did not sit one examination.
 
@@ -1265,16 +1325,20 @@ def attendance_uf_subject_keys(exam, student_ids, subject_ids=None):
     if not exam or not student_ids:
         return set()
 
+    year_aware = _exam_uses_year_aware_attendance(exam)
     scope_filters = [AttendanceRecord.exam_id == exam.id]
-    legacy_exam_type = ExamType.query.filter_by(
-        academic_year_id=exam.academic_year_id,
-        name=exam.name,
-    ).first()
-    if legacy_exam_type:
-        scope_filters.append(
-            (AttendanceRecord.exam_id.is_(None))
-            & (AttendanceRecord.exam_type_id == legacy_exam_type.id)
-        )
+    # A year-aware exam must never inherit an old exam-type-only row. That
+    # fallback is retained only for legacy years without year-aware scopes.
+    if not year_aware:
+        legacy_exam_type = ExamType.query.filter_by(
+            academic_year_id=exam.academic_year_id,
+            name=exam.name,
+        ).first()
+        if legacy_exam_type:
+            scope_filters.append(
+                (AttendanceRecord.exam_id.is_(None))
+                & (AttendanceRecord.exam_type_id == legacy_exam_type.id)
+            )
 
     query = AttendanceRecord.query.filter(
         AttendanceRecord.academic_year_id == exam.academic_year_id,
@@ -1296,6 +1360,10 @@ def attendance_uf_subject_keys(exam, student_ids, subject_ids=None):
     ).all():
         if record.subject_id is None:
             continue
+        if not _attendance_record_is_in_current_exam_scope(
+            record, exam, year_aware=year_aware
+        ):
+            continue
         latest_by_pair.setdefault((record.student_id, record.subject_id), record)
 
     return {
@@ -1310,16 +1378,18 @@ def attendance_uf_record(exam, student_id, subject_id):
     if not exam or not student_id or not subject_id:
         return None
 
+    year_aware = _exam_uses_year_aware_attendance(exam)
     scope_filters = [AttendanceRecord.exam_id == exam.id]
-    legacy_exam_type = ExamType.query.filter_by(
-        academic_year_id=exam.academic_year_id,
-        name=exam.name,
-    ).first()
-    if legacy_exam_type:
-        scope_filters.append(
-            (AttendanceRecord.exam_id.is_(None))
-            & (AttendanceRecord.exam_type_id == legacy_exam_type.id)
-        )
+    if not year_aware:
+        legacy_exam_type = ExamType.query.filter_by(
+            academic_year_id=exam.academic_year_id,
+            name=exam.name,
+        ).first()
+        if legacy_exam_type:
+            scope_filters.append(
+                (AttendanceRecord.exam_id.is_(None))
+                & (AttendanceRecord.exam_type_id == legacy_exam_type.id)
+            )
 
     record = (
         AttendanceRecord.query
@@ -1332,7 +1402,11 @@ def attendance_uf_record(exam, student_id, subject_id):
         .order_by(AttendanceRecord.recorded_at.desc(), AttendanceRecord.id.desc())
         .first()
     )
-    return record if record and normalize_attendance_status(record.status) in NON_SAT_STATUSES else None
+    if not record or not _attendance_record_is_in_current_exam_scope(
+        record, exam, year_aware=year_aware
+    ):
+        return None
+    return record if normalize_attendance_status(record.status) in NON_SAT_STATUSES else None
 
 
 def result_payload(student, exam=None, public_only=True):
