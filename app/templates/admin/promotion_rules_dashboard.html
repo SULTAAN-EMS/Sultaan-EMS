@@ -37,7 +37,7 @@
   <section class="promotion-section">
     <div class="promotion-section__header">
       <div><span class="promotion-kicker"><i class="fa-solid fa-layer-group"></i> Year-aware configuration</span><h2>Rules by Academic Year and Level</h2><p>Each row is isolated to one Academic Year + Academic Year Level scope.</p></div>
-      <div class="promotion-header-actions"><a class="promotion-button promotion-button--ghost" href="{{ url_for('admin.promotion_rules_evaluate') }}"><i class="fa-solid fa-play"></i> Evaluate Outcome</a><a class="promotion-button promotion-button--primary" href="{{ url_for('admin.promotion_rules_configure') }}"><i class="fa-solid fa-plus"></i> Configure Rule</a></div>
+      <div class="promotion-header-actions"><a class="promotion-button promotion-button--ghost" href="{{ url_for('admin.promotion_rules_evaluate') }}"><i class="fa-solid fa-play"></i> Evaluate Outcome</a><a class="promotion-button promotion-button--ghost" href="{{ url_for('admin.promotion_rules_bulk_transition') }}"><i class="fa-solid fa-route"></i> Apply Outcomes</a><a class="promotion-button promotion-button--primary" href="{{ url_for('admin.promotion_rules_configure') }}"><i class="fa-solid fa-plus"></i> Configure Rule</a></div>
     </div>
     {% if rules %}
     <div class="promotion-table-wrap">

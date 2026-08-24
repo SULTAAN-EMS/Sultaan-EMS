@@ -13,7 +13,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, PromotionEvaluation, PromotionRule, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentEnrollment, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
+from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, PromotionEvaluation, PromotionOutcomeApplication, PromotionRule, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentEnrollment, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
 from .academic_hierarchy import validate_year_level, year_classes, year_levels, year_subjects
 from .permissions import PERMISSIONS, can, enforce_endpoint_permission, permission_required
 from .security import ALLOWED_AUDIO, ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
@@ -36,10 +36,15 @@ from .services import slug
 from .enrollment_service import EnrollmentValidationError, enrollment_placement_for_student, student_enrollment_legacy_scope_query, student_enrollment_scope_query
 from .promotion_service import (
     PromotionValidationError,
+    apply_academic_outcome,
     evaluate_promotion_scope,
+    execute_evaluation_transition_plan,
     get_promotion_rule,
+    is_final_academic_year_level,
+    plan_evaluation_transition,
     promotion_rules_enabled,
     set_promotion_rules_enabled,
+    transition_applied_outcome,
     upsert_promotion_rule,
     valid_critical_subjects,
 )
@@ -2893,7 +2898,7 @@ def promotion_rules_evaluations():
 @login_required
 @config_center_required
 def promotion_rules_evaluation_detail(evaluation_id):
-    """Read-only detail view for one immutable Phase 3C snapshot."""
+    """Show one immutable snapshot and its explicit Phase 3D action controls."""
     evaluation = db.session.get(PromotionEvaluation, evaluation_id)
     if not evaluation:
         abort(404)
@@ -2909,12 +2914,162 @@ def promotion_rules_evaluation_detail(evaluation_id):
         context_snapshot = json.loads(evaluation.evaluation_context_json or "{}")
     except (TypeError, ValueError):
         context_snapshot = {}
+    application = PromotionOutcomeApplication.query.filter_by(
+        promotion_evaluation_id=evaluation.id,
+    ).first()
     return render_template(
         "admin/promotion_rules_evaluation_detail.html",
         evaluation=evaluation,
+        application=application,
+        is_final_level=is_final_academic_year_level(evaluation.academic_year_level_id),
+        destination_years=_promotion_rules_years(),
+        destination_levels=AcademicYearLevel.query.filter_by(is_active=True).order_by(AcademicYearLevel.academic_year_id, AcademicYearLevel.sort_order, AcademicYearLevel.name).all(),
+        destination_classes=AcademicYearClass.query.filter_by(is_active=True).order_by(AcademicYearClass.academic_year_level_id, AcademicYearClass.sort_order, AcademicYearClass.name).all(),
         critical_results=critical_results,
         rule_snapshot=rule_snapshot,
         context_snapshot=context_snapshot,
+    )
+
+
+@admin_bp.route("/promotion-rules/evaluations/<int:evaluation_id>/apply", methods=["POST"])
+@login_required
+@config_center_required
+def promotion_rules_apply_outcome(evaluation_id):
+    """Apply only the evaluated PASS/FAIL outcome; never move enrollment."""
+    try:
+        apply_academic_outcome(
+            evaluation_id,
+            applied_by=current_user.id if current_user.is_authenticated else None,
+            notes=request.form.get("notes") or None,
+        )
+        audit("Promotion Outcome", f"Applied evaluation {evaluation_id}; enrollment was not transitioned")
+        db.session.commit()
+        flash("Academic outcome applied. Enrollment was not moved; choose an explicit next action.", "success")
+    except (PromotionValidationError, ValueError) as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Promotion outcome application failed")
+        flash("The academic outcome could not be applied. No changes were saved.", "danger")
+    return redirect(url_for("admin.promotion_rules_evaluation_detail", evaluation_id=evaluation_id))
+
+
+@admin_bp.route("/promotion-rules/evaluations/<int:evaluation_id>/transition", methods=["POST"])
+@login_required
+@config_center_required
+def promotion_rules_transition_outcome(evaluation_id):
+    """Execute promotion, repeat, or final-level graduation after approval."""
+    action = (request.form.get("action") or "").strip().lower()
+    try:
+        transition_applied_outcome(
+            evaluation_id,
+            action=action,
+            destination_academic_year_id=request.form.get("destination_academic_year_id", type=int),
+            destination_academic_year_level_id=request.form.get("destination_academic_year_level_id", type=int),
+            destination_academic_year_class_id=request.form.get("destination_academic_year_class_id", type=int),
+            destination_academic_section_id=request.form.get("destination_academic_section_id", type=int),
+            performed_by=current_user.id if current_user.is_authenticated else None,
+            notes=request.form.get("notes") or None,
+        )
+        audit("Promotion Transition", f"Executed {action} from evaluation {evaluation_id}")
+        db.session.commit()
+        flash("The approved academic outcome was executed and recorded.", "success")
+    except (PromotionValidationError, ValueError) as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Promotion outcome transition failed")
+        flash("The academic transition could not be completed. No changes were saved.", "danger")
+    return redirect(url_for("admin.promotion_rules_evaluation_detail", evaluation_id=evaluation_id))
+
+
+@admin_bp.route("/promotion-rules/bulk-transition", methods=["GET", "POST"])
+@login_required
+@config_center_required
+def promotion_rules_bulk_transition():
+    """Preview and atomically execute exact-evaluation whole-class outcomes."""
+    values = request.form if request.method == "POST" else request.args
+    year_id = values.get("source_academic_year_id", type=int)
+    level_id = values.get("source_academic_year_level_id", type=int)
+    class_id = values.get("source_academic_year_class_id", type=int)
+    exam_id = values.get("exam_id", type=int)
+    action = (values.get("action") or "promotion").strip().lower()
+    destination_year_id = values.get("destination_academic_year_id", type=int)
+    destination_level_id = values.get("destination_academic_year_level_id", type=int)
+    destination_class_id = values.get("destination_academic_year_class_id", type=int)
+    destination_section_id = values.get("destination_academic_section_id", type=int)
+    years = _promotion_rules_years()
+    levels = year_levels(year_id) if year_id else []
+    classes = year_classes(level_id) if level_id else []
+    exams = (
+        Exam.query.filter_by(academic_year_id=year_id, is_active=True)
+        .order_by(Exam.sort_order, Exam.name, Exam.id).all()
+        if year_id else []
+    )
+    destination_levels = year_levels(destination_year_id) if destination_year_id else []
+    destination_classes = year_classes(destination_level_id) if destination_level_id else []
+    plan = None
+    error_message = None
+    mode = values.get("mode")
+    has_scope = year_id and level_id and class_id and exam_id and (
+        action == "graduation" or (destination_year_id and destination_level_id and destination_class_id)
+    )
+    if mode in {"preview", "execute"} and has_scope:
+        try:
+            plan = plan_evaluation_transition(
+                year_id, level_id, class_id, exam_id,
+                action=action,
+                destination_academic_year_id=destination_year_id,
+                destination_academic_year_level_id=destination_level_id,
+                destination_academic_year_class_id=destination_class_id,
+                destination_academic_section_id=destination_section_id,
+            )
+            if mode == "execute":
+                if request.form.get("confirm_transition") != "on":
+                    raise PromotionValidationError("Confirm the reviewed exact-evaluation list before execution")
+                created = execute_evaluation_transition_plan(
+                    plan,
+                    performed_by=current_user.id if current_user.is_authenticated else None,
+                    notes=request.form.get("notes") or None,
+                )
+                audit("Promotion Bulk Outcome", f"Executed {action} for {len(created)} students from exam {exam_id}")
+                db.session.commit()
+                flash(f"{len(created)} exact evaluated outcome(s) were executed atomically.", "success")
+                return redirect(url_for("admin.promotion_rules_bulk_transition"))
+        except (PromotionValidationError, ValueError) as exc:
+            db.session.rollback()
+            error_message = str(exc)
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Bulk evaluation transition failed")
+            error_message = "The reviewed bulk outcome could not be completed. No records were changed."
+    elif mode in {"preview", "execute"}:
+        error_message = "Select the complete source scope, exact exam, action, and destination where required."
+    if error_message:
+        flash(error_message, "danger")
+    return render_template(
+        "admin/promotion_rules_bulk_transition.html",
+        years=years,
+        levels=levels,
+        classes=classes,
+        exams=exams,
+        destination_levels=destination_levels,
+        destination_classes=destination_classes,
+        plan=plan,
+        error_message=error_message,
+        values={
+            "year_id": year_id,
+            "level_id": level_id,
+            "class_id": class_id,
+            "exam_id": exam_id,
+            "action": action,
+            "destination_year_id": destination_year_id,
+            "destination_level_id": destination_level_id,
+            "destination_class_id": destination_class_id,
+            "destination_section_id": destination_section_id,
+        },
     )
 
 

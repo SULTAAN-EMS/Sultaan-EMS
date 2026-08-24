@@ -18,10 +18,12 @@ from .models import (
     AcademicYearSubject,
     Exam,
     PromotionEvaluation,
+    PromotionOutcomeApplication,
     PromotionRule,
     PromotionRuleCriticalSubject,
     Result,
     Setting,
+    StudentEnrollmentMovement,
     StudentEnrollment,
 )
 from .services import get_settings
@@ -656,3 +658,324 @@ def evaluate_promotion_scope(
         "preview_rows": preview_rows,
         "counts": counts,
     }
+
+
+# ---------------------------------------------------------------------------
+# Phase 3D: explicit outcome application and transition integration
+# ---------------------------------------------------------------------------
+
+def _authorizable_evaluation(evaluation_id):
+    """Load one exact, explicit-exam evaluation that may be used once."""
+    evaluation = db.session.get(PromotionEvaluation, evaluation_id)
+    if not evaluation:
+        raise PromotionValidationError("Promotion evaluation was not found")
+    if evaluation.exam_id is None:
+        raise PromotionValidationError("This legacy evaluation has no explicit exam and cannot authorize a transition")
+    if evaluation.evaluation_status != "EVALUATED" or evaluation.final_outcome not in PromotionEvaluation.OUTCOME_VALUES:
+        raise PromotionValidationError("Only a complete PASS/FAIL evaluation can authorize an academic outcome")
+    exam = db.session.get(Exam, evaluation.exam_id)
+    if not exam or exam.academic_year_id != evaluation.academic_year_id:
+        raise PromotionValidationError("Evaluation exam does not belong to the evaluated Academic Year")
+    source = db.session.get(StudentEnrollment, evaluation.student_enrollment_id)
+    if (
+        not source
+        or source.student_id != evaluation.student_id
+        or source.academic_year_id != evaluation.academic_year_id
+        or source.academic_year_level_id != evaluation.academic_year_level_id
+    ):
+        raise PromotionValidationError("Evaluation source enrollment is outside its immutable Year + Level scope")
+    if source.status not in ("active", "completed"):
+        raise PromotionValidationError("The source enrollment is no longer eligible for an outcome")
+    try:
+        from .enrollment_service import validate_enrollment_scope
+        validate_enrollment_scope(
+            source.academic_year_id,
+            source.academic_year_level_id,
+            source.academic_year_class_id,
+            source.academic_section_id,
+        )
+    except Exception as exc:
+        if isinstance(exc, PromotionValidationError):
+            raise
+        raise PromotionValidationError("Evaluation source enrollment has an invalid academic scope") from exc
+    return evaluation, source
+
+
+def _application_for(evaluation_id):
+    return PromotionOutcomeApplication.query.filter_by(
+        promotion_evaluation_id=evaluation_id,
+    ).first()
+
+
+def _create_outcome_application(evaluation, source, *, applied_by=None, notes=None):
+    existing = _application_for(evaluation.id)
+    if existing:
+        raise PromotionValidationError("This evaluation has already been applied")
+    if source.academic_outcome != "pending":
+        raise PromotionValidationError("The source enrollment already has an academic outcome")
+    applied_outcome = "passed" if evaluation.final_outcome == "PASS" else "failed"
+    source.academic_outcome = applied_outcome
+    application = PromotionOutcomeApplication(
+        promotion_evaluation_id=evaluation.id,
+        student_id=evaluation.student_id,
+        source_enrollment_id=source.id,
+        applied_outcome=applied_outcome,
+        action="outcome",
+        application_status="APPLIED",
+        applied_by=applied_by,
+        notes=notes,
+    )
+    db.session.add(application)
+    db.session.flush()
+    return application
+
+
+def apply_academic_outcome(evaluation_id, *, applied_by=None, notes=None):
+    """Explicitly apply PASS/FAIL to the source enrollment, without moving it."""
+    evaluation, source = _authorizable_evaluation(evaluation_id)
+    return _create_outcome_application(
+        evaluation,
+        source,
+        applied_by=applied_by,
+        notes=notes,
+    )
+
+
+def is_final_academic_year_level(academic_year_level_id):
+    """Return whether a year-aware level is the final configured level."""
+    level = db.session.get(AcademicYearLevel, academic_year_level_id)
+    if not level:
+        return False
+    levels = (
+        AcademicYearLevel.query
+        .filter_by(academic_year_id=level.academic_year_id, is_active=True)
+        .order_by(AcademicYearLevel.sort_order, AcademicYearLevel.name, AcademicYearLevel.id)
+        .all()
+    )
+    return bool(levels and levels[-1].id == level.id)
+
+
+def transition_applied_outcome(
+    evaluation_id,
+    *,
+    action,
+    destination_academic_year_id=None,
+    destination_academic_year_level_id=None,
+    destination_academic_year_class_id=None,
+    destination_academic_section_id=None,
+    performed_by=None,
+    notes=None,
+):
+    """Use an applied outcome for promotion, repeat, or final-level graduation."""
+    action = str(action or "").strip().lower()
+    if action not in {"promotion", "repeat", "graduation"}:
+        raise PromotionValidationError("Choose promotion, repeat, or graduation")
+    evaluation, source = _authorizable_evaluation(evaluation_id)
+    application = _application_for(evaluation.id)
+    if not application or application.application_status != "APPLIED":
+        raise PromotionValidationError("Apply the academic outcome before executing a transition")
+    if application.source_enrollment_id != source.id:
+        raise PromotionValidationError("Outcome application source does not match the evaluation")
+    expected = "passed" if evaluation.final_outcome == "PASS" else "failed"
+    if application.applied_outcome != expected or source.academic_outcome != expected:
+        raise PromotionValidationError("Applied outcome no longer matches the immutable evaluation")
+
+    if action == "graduation":
+        if evaluation.final_outcome != "PASS" or not is_final_academic_year_level(source.academic_year_level_id):
+            raise PromotionValidationError("Graduation requires a PASS evaluation at the final configured level")
+        source.status = "completed"
+        source.academic_outcome = "graduated"
+        application.action = "graduation"
+        application.application_status = "GRADUATED"
+        application.completed_at = datetime.utcnow()
+        db.session.flush()
+        return source, None, application
+
+    if action == "promotion" and evaluation.final_outcome != "PASS":
+        raise PromotionValidationError("Promotion requires a PASS evaluation")
+    if action == "repeat" and evaluation.final_outcome != "FAIL":
+        raise PromotionValidationError("Repeat requires a FAIL evaluation")
+
+    from .enrollment_service import transition_student_enrollment
+
+    try:
+        source, destination = transition_student_enrollment(
+            evaluation.student_id,
+            source.id,
+            destination_academic_year_id,
+            destination_academic_year_level_id,
+            destination_academic_year_class_id,
+            destination_academic_section_id,
+            action=action,
+            notes=notes,
+            performed_by=performed_by,
+        )
+    except Exception as exc:
+        from .enrollment_service import EnrollmentValidationError
+        if isinstance(exc, EnrollmentValidationError):
+            raise PromotionValidationError(str(exc)) from exc
+        raise
+    movement = (
+        StudentEnrollmentMovement.query
+        .filter_by(enrollment_id=destination.id, movement_type=action)
+        .order_by(StudentEnrollmentMovement.id.desc())
+        .first()
+    )
+    application.action = action
+    application.application_status = "TRANSITIONED"
+    application.destination_enrollment_id = destination.id
+    application.movement_id = movement.id if movement else None
+    application.completed_at = datetime.utcnow()
+    db.session.flush()
+    return source, destination, application
+
+
+def _evaluation_for_enrollment(enrollment, exam_id):
+    return (
+        PromotionEvaluation.query
+        .filter_by(
+            student_id=enrollment.student_id,
+            student_enrollment_id=enrollment.id,
+            academic_year_id=enrollment.academic_year_id,
+            academic_year_level_id=enrollment.academic_year_level_id,
+            exam_id=exam_id,
+            evaluation_status="EVALUATED",
+        )
+        .filter(PromotionEvaluation.final_outcome.in_(PromotionEvaluation.OUTCOME_VALUES))
+        .order_by(PromotionEvaluation.evaluated_at.desc(), PromotionEvaluation.id.desc())
+        .first()
+    )
+
+
+def plan_evaluation_transition(
+    source_academic_year_id,
+    source_academic_year_level_id,
+    source_academic_year_class_id,
+    exam_id,
+    *,
+    action,
+    destination_academic_year_id=None,
+    destination_academic_year_level_id=None,
+    destination_academic_year_class_id=None,
+    destination_academic_section_id=None,
+):
+    """Create a read-only whole-class plan from exact evaluation snapshots."""
+    from .enrollment_service import validate_enrollment_scope, EnrollmentValidationError
+
+    action = str(action or "").strip().lower()
+    if action not in {"promotion", "repeat", "graduation"}:
+        raise PromotionValidationError("Choose promotion, repeat, or graduation")
+    source_scope = validate_enrollment_scope(
+        source_academic_year_id,
+        source_academic_year_level_id,
+        source_academic_year_class_id,
+    )
+    year, level, exam = resolve_evaluation_context(
+        source_scope["academic_year"].id,
+        source_scope["academic_year_level"].id,
+        exam_id,
+    )
+    destination_scope = None
+    if action != "graduation":
+        if None in (destination_academic_year_id, destination_academic_year_level_id, destination_academic_year_class_id):
+            raise PromotionValidationError("Destination Academic Year, Level, and Class are required")
+        destination_scope = validate_enrollment_scope(
+            destination_academic_year_id,
+            destination_academic_year_level_id,
+            destination_academic_year_class_id,
+            destination_academic_section_id,
+        )
+        if destination_scope["academic_year"].id == year.id:
+            raise PromotionValidationError("Promotion and repeat require a different Academic Year")
+    elif not is_final_academic_year_level(level.id):
+        raise PromotionValidationError("Graduation is available only for the final configured Academic Year Level")
+
+    source_enrollments = (
+        StudentEnrollment.query
+        .filter_by(
+            academic_year_id=year.id,
+            academic_year_level_id=level.id,
+            academic_year_class_id=source_scope["academic_year_class"].id,
+        )
+        .filter(StudentEnrollment.status.in_(("active", "completed")))
+        .order_by(StudentEnrollment.id)
+        .all()
+    )
+    items = []
+    expected_outcome = "PASS" if action in {"promotion", "graduation"} else "FAIL"
+    for enrollment in source_enrollments:
+        evaluation = _evaluation_for_enrollment(enrollment, exam.id)
+        application = _application_for(evaluation.id) if evaluation else None
+        classification = "ELIGIBLE"
+        reason = None
+        if not evaluation:
+            classification, reason = "INVALID", "No complete exact-exam evaluation snapshot exists"
+        elif evaluation.final_outcome != expected_outcome:
+            classification, reason = "INVALID", f"Action requires a final {expected_outcome} evaluation"
+        elif application and application.application_status != "APPLIED":
+            classification, reason = "INVALID", "This evaluation has already been transitioned"
+        elif not application and enrollment.academic_outcome != "pending":
+            classification, reason = "INVALID", "Source enrollment already has an academic outcome"
+        elif destination_scope and StudentEnrollment.query.filter_by(
+            student_id=enrollment.student_id,
+            academic_year_id=destination_scope["academic_year"].id,
+        ).first():
+            classification, reason = "INVALID", "Student already has an enrollment in the destination Academic Year"
+        items.append({
+            "student": enrollment.student,
+            "source": enrollment,
+            "evaluation": evaluation,
+            "application": application,
+            "eligible": classification == "ELIGIBLE",
+            "classification": classification,
+            "reason": reason,
+            "destination": destination_scope,
+        })
+    return {
+        "action": action,
+        "year": year,
+        "level": level,
+        "exam": exam,
+        "source_scope": source_scope,
+        "destination_scope": destination_scope,
+        "items": items,
+        "counts": {
+            "total": len(items),
+            "eligible": sum(item["eligible"] for item in items),
+            "invalid": sum(item["classification"] == "INVALID" for item in items),
+        },
+    }
+
+
+def execute_evaluation_transition_plan(plan, *, performed_by=None, notes=None):
+    """Atomically apply each eligible exact evaluation in a reviewed plan."""
+    created = []
+    eligible_items = [item for item in plan.get("items", []) if item.get("eligible")]
+    with db.session.begin_nested():
+        for item in eligible_items:
+            evaluation = db.session.get(PromotionEvaluation, item["evaluation"].id)
+            source = db.session.get(StudentEnrollment, item["source"].id)
+            application = _application_for(evaluation.id)
+            if application is None:
+                application = _create_outcome_application(
+                    evaluation,
+                    source,
+                    applied_by=performed_by,
+                    notes=notes,
+                )
+            elif application.application_status != "APPLIED":
+                raise PromotionValidationError("A reviewed evaluation was already transitioned")
+            destination_scope = plan.get("destination_scope") or {}
+            _, destination, application = transition_applied_outcome(
+                evaluation.id,
+                action=plan["action"],
+                destination_academic_year_id=destination_scope.get("academic_year").id if destination_scope else None,
+                destination_academic_year_level_id=destination_scope.get("academic_year_level").id if destination_scope else None,
+                destination_academic_year_class_id=destination_scope.get("academic_year_class").id if destination_scope else None,
+                destination_academic_section_id=destination_scope.get("academic_section").id if destination_scope and destination_scope.get("academic_section") else None,
+                performed_by=performed_by,
+                notes=notes,
+            )
+            created.append({"student": item["student"], "destination": destination, "application": application})
+        db.session.flush()
+    return created

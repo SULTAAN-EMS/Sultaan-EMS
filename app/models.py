@@ -671,6 +671,86 @@ class PromotionEvaluation(TimestampMixin, db.Model):
     )
 
 
+class PromotionOutcomeApplication(TimestampMixin, db.Model):
+    """Explicit, auditable use of one immutable promotion evaluation.
+
+    A snapshot is evidence only.  This ledger records the separate action an
+    authorized administrator took after reviewing that evidence, so applying
+    an outcome can never rewrite the snapshot or be silently repeated.
+    """
+
+    __tablename__ = "promotion_outcome_applications"
+
+    OUTCOME_VALUES = ("passed", "failed")
+    ACTION_VALUES = ("outcome", "promotion", "repeat", "graduation")
+    STATUS_VALUES = ("APPLIED", "TRANSITIONED", "GRADUATED")
+
+    id = db.Column(db.Integer, primary_key=True)
+    promotion_evaluation_id = db.Column(
+        db.Integer,
+        db.ForeignKey("promotion_evaluations.id", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    student_id = db.Column(
+        db.Integer,
+        db.ForeignKey("students.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    source_enrollment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("student_enrollments.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    applied_outcome = db.Column(db.String(10), nullable=False)
+    action = db.Column(db.String(20), nullable=False, default="outcome")
+    application_status = db.Column(db.String(20), nullable=False, default="APPLIED", index=True)
+    destination_enrollment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("student_enrollments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    movement_id = db.Column(
+        db.Integer,
+        db.ForeignKey("student_enrollment_movements.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    applied_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    applied_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    promotion_evaluation = db.relationship(
+        "PromotionEvaluation",
+        backref=db.backref("outcome_application", uselist=False),
+    )
+    student = db.relationship("Student")
+    source_enrollment = db.relationship("StudentEnrollment", foreign_keys=[source_enrollment_id])
+    destination_enrollment = db.relationship("StudentEnrollment", foreign_keys=[destination_enrollment_id])
+    movement = db.relationship("StudentEnrollmentMovement")
+    performer = db.relationship("User", foreign_keys=[applied_by])
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "applied_outcome IN ('passed', 'failed')",
+            name="ck_promotion_outcome_application_outcome",
+        ),
+        db.CheckConstraint(
+            "action IN ('outcome', 'promotion', 'repeat', 'graduation')",
+            name="ck_promotion_outcome_application_action",
+        ),
+        db.CheckConstraint(
+            "application_status IN ('APPLIED', 'TRANSITIONED', 'GRADUATED')",
+            name="ck_promotion_outcome_application_status",
+        ),
+    )
+
+
 class Result(TimestampMixin, db.Model):
     __tablename__ = "results"
 
