@@ -75,7 +75,7 @@
         </div>
       </div>
       <div class="tis-print-exam">
-        <strong>{{ result.student.academic_year.name }}</strong>
+        <strong>{{ result_scope.academic_year_name }}</strong>
       </div>
     </header>
 
@@ -95,7 +95,7 @@
           <div><span><i class="fa-solid fa-user"></i></span><small>Magaca Ardeyga</small><strong>{{ result.student.full_name }}</strong></div>
           <div><span><i class="fa-solid fa-person-dress"></i></span><small>Magaca Hooyada</small><strong>{{ result.student.mother_name }}</strong></div>
           <div><span><i class="fa-solid fa-id-card"></i></span><small>Tirataxaane (ID)</small><strong>{{ result.student.student_code }}</strong></div>
-          <div><span><i class="fa-solid fa-graduation-cap"></i></span><small>Fasalka</small><strong>{{ result.student.school_class.name }}</strong></div>
+          <div><span><i class="fa-solid fa-graduation-cap"></i></span><small>Fasalka</small><strong>{{ result_scope.class_name }}</strong></div>
           <div class="download-date-row"><span><i class="fa-solid fa-calendar-day"></i></span><small>Download Date</small><strong>{{ download_date_text }}</strong></div>
         </div>
         <div class="tis-verify-qr">

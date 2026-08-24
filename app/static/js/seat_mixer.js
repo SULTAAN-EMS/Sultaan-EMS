@@ -615,7 +615,7 @@
       var expired = isExpired(h);
       return '<div class="sm-hall-card" data-hall="' + h.id + '">' +
         '<div><div class="hname">' + escapeHtml(h.name) + '</div>' +
-        '<div class="hmeta">' + fmtRange(h.start_time, h.end_time) + ' · ' + h.version_count + ' version' + (h.version_count > 1 ? 's' : '') + '</div></div>' +
+        '<div class="hmeta">' + fmtRange(h.start_time, h.end_time) + ' · ' + h.version_count + ' version' + (h.version_count > 1 ? 's' : '') + (h.academic_year_name ? ' · ' + escapeHtml(h.academic_year_name) : '') + '</div></div>' +
         '<span class="sm-badge ' + (expired ? 'b-expired' : 'b-active') + '">' + (expired ? 'Expired' : 'Active') + '</span>' +
         '<div class="sm-card-actions"><button class="sm-menu-btn" data-menu-kind="hall" data-menu-id="' + h.id + '" aria-label="Manage hall"><i class="fa-solid fa-ellipsis"></i></button></div>' +
         '</div>';
@@ -667,7 +667,7 @@
     fetch('/admin/seat-mixer/api/create-hall', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': SM.csrfToken },
-      body: JSON.stringify({ name: name, start: start || null, end: end || null })
+      body: JSON.stringify({ name: name, start: start || null, end: end || null, academic_year_id: SM.academicYearId })
     })
       .then(function (r) { return r.json(); })
       .then(function (data) {
@@ -699,7 +699,7 @@
     $('smHallStatusBadge').innerHTML = '<span class="sm-badge ' + (expired ? 'b-expired' : 'b-active') + '">' + (expired ? 'Expired' : 'Active') + '</span>';
 
     // Fetch versions from API
-    fetch('/admin/seat-mixer/api/hall/' + hallId + '/versions')
+    fetch('/admin/seat-mixer/api/hall/' + hallId + '/versions?academic_year_id=' + encodeURIComponent(SM.academicYearId || ''))
       .then(function (r) { return r.json(); })
       .then(function (data) {
         SM.currentVersions = data.versions || [];
@@ -1728,16 +1728,13 @@
 
     $('smBackToHallsBtn').addEventListener('click', showHallsScreen);
 
-    // Screen 3: Builder
+    // The year selector lives on the entry screen. Changing it reloads the
+    // server-filtered hall list so halls and versions cannot cross years.
     $('smAcademicYear').addEventListener('change', function () {
-      var combo = currentCombo();
-      var hasSelection = combo && (Object.keys(combo.selectedClasses).length > 0 || combo.activeLevels.size > 0);
-      if (hasSelection) {
-        renderAcademicYearSelect();
-        notify('Clear the current level/class selection before changing the academic year.', 'info');
-        return;
-      }
-      setAcademicYear(this.value, true);
+      var url = new URL(window.location.href);
+      ['hall_id', 'version_id', 'snapshot_id'].forEach(function (key) { url.searchParams.delete(key); });
+      url.searchParams.set('academic_year_id', this.value);
+      window.location.assign(url.pathname + url.search + url.hash);
     });
     $('smBackToVersionsBtn').addEventListener('click', function () {
       openVersionsScreen(SM.currentHallId);

@@ -79,6 +79,7 @@ def ensure_schema_compatibility():
     add_column_if_missing("exam_halls", "exam_id", column_sql(dialect, "exam_id", "INTEGER"))
     add_column_if_missing("exam_halls", "exam_type_id", column_sql(dialect, "exam_type_id", "INTEGER"))
     add_column_if_missing("exam_halls", "academic_class_id", column_sql(dialect, "academic_class_id", "INTEGER"))
+    add_column_if_missing("exam_halls", "academic_year_id", column_sql(dialect, "academic_year_id", "INTEGER"))
     add_column_if_missing("attendance_records", "exam_hall_id", column_sql(dialect, "exam_hall_id", "INTEGER"))
     add_column_if_missing("attendance_records", "subject_id", column_sql(dialect, "subject_id", "INTEGER"))
     add_column_if_missing("attendance_records", "exam_session_id", column_sql(dialect, "exam_session_id", "INTEGER"))

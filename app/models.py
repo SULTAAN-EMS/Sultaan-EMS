@@ -1099,6 +1099,15 @@ class ExamHall(TimestampMixin, db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     sort_order = db.Column(db.Integer, default=0, nullable=False)
 
+    # Seat Mixer halls are independent records, so keep their academic-year
+    # scope on the hall itself instead of inferring it from legacy links.
+    academic_year_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_years.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # Scoping for Hall Exams
     # Canonical Results Hub Setup exam relationship. ``exam_type_id`` remains
     # for backward compatibility with older hall records.
@@ -1113,6 +1122,7 @@ class ExamHall(TimestampMixin, db.Model):
     exam = db.relationship("Exam", backref=db.backref("hall_exams", lazy="dynamic"))
     exam_type = db.relationship("ExamType", backref=db.backref("legacy_halls", lazy="dynamic"))
     academic_class = db.relationship("AcademicClass", backref=db.backref("halls", lazy="dynamic"))
+    academic_year = db.relationship("AcademicYear", backref=db.backref("seat_mixer_halls", lazy="dynamic"))
 
     versions = db.relationship(
         "ExamHallVersion",

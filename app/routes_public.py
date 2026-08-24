@@ -221,10 +221,13 @@ def result():
             error="Natiijada ardaygan wali lama daabicin."
         )
 
+    result_scope = public_result_scope(student, exam)
+
     return render_template(
         "portal.html",
         settings=get_settings(),
         result=payload,
+        result_scope=result_scope,
         generated_at=datetime.now(),
         feedback_access_token=feedback_access_token(student, exam),
         result_success_overlay=result_success_overlay_config(
@@ -269,6 +272,16 @@ def _published_exam_for_student(student, requested_exam_id=None):
     return query.order_by(Exam.id.desc()).first()
 
 
+def public_result_scope(student, exam):
+    """Return the student's placement for the selected exam year only."""
+    placement = enrollment_placement_for_student(student, exam.academic_year_id) or {}
+    return {
+        "class_name": placement.get("class_name") or "-",
+        "level_name": placement.get("level_name") or "-",
+        "academic_year_name": exam.academic_year.name if exam.academic_year else "-",
+    }
+
+
 @public_bp.route("/print/<student_code>")
 def print_report(student_code):
     student_code = student_code.strip()
@@ -291,11 +304,13 @@ def print_report(student_code):
     payload = result_payload(student, exam=exam, public_only=True)
     payload["verification"] = verification_payload(student, exam)
     payload["generated_at"] = datetime.now()
+    result_scope = public_result_scope(student, exam)
     db.session.commit()
 
     return render_template(
         "print_report.html",
         result=payload,
+        result_scope=result_scope,
         settings=settings,
         feedback_token=feedback_access_token(student, exam),
     )
@@ -328,6 +343,7 @@ def download_report(student_code):
     requested_exam_id = request.args.get("exam_id", type=int)
     exam = _published_exam_for_student(student, requested_exam_id) or abort(404)
     payload = result_payload(student, exam=exam, public_only=True)
+    result_scope = public_result_scope(student, exam)
 
     buffer = BytesIO()
     document = SimpleDocTemplate(
@@ -350,7 +366,7 @@ def download_report(student_code):
     ]
     student_info = [
         [Paragraph("Student", body_style), Paragraph(escape(str(student.full_name)), body_style), Paragraph("Student ID", body_style), Paragraph(escape(str(student.student_code)), body_style)],
-        [Paragraph("Class", body_style), Paragraph(escape(str(getattr(student.school_class, "name", "-"))), body_style), Paragraph("Academic Year", body_style), Paragraph(escape(str(exam.academic_year.name)), body_style)],
+        [Paragraph("Class", body_style), Paragraph(escape(str(result_scope["class_name"])), body_style), Paragraph("Academic Year", body_style), Paragraph(escape(str(result_scope["academic_year_name"])), body_style)],
     ]
     info_table = Table(student_info, colWidths=[24 * mm, 64 * mm, 30 * mm, 58 * mm])
     info_table.setStyle(TableStyle([
@@ -437,15 +453,15 @@ def api_result(student_code):
 
     payload = result_payload(student, exam=exam, public_only=True)
 
-    placement = enrollment_placement_for_student(student, exam.academic_year_id) or {}
+    result_scope = public_result_scope(student, exam)
     return jsonify({
         "ok": True,
         "student": {
             "id": student.student_code,
             "name": student.full_name,
             "mother_name": student.mother_name,
-            "class": placement.get("class_name") or (student.school_class.name if student.school_class else student.level or "-"),
-            "academic_year": student.academic_year.name,
+            "class": result_scope["class_name"],
+            "academic_year": result_scope["academic_year_name"],
         },
         "exam": payload["exam"].name if payload.get("exam") else None,
         "subjects": payload["subjects"],

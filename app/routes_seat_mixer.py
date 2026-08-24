@@ -125,6 +125,17 @@ def get_current_academic_year():
     return AcademicYear.query.filter_by(is_current=True).first()
 
 
+def seat_mixer_hall_year_id(hall, fallback_year_id=None):
+    """Resolve a hall's year without leaking legacy records across years."""
+    if getattr(hall, "academic_year_id", None):
+        return hall.academic_year_id
+    if hall.exam and hall.exam.academic_year_id:
+        return hall.exam.academic_year_id
+    if hall.exam_type and hall.exam_type.academic_year_id:
+        return hall.exam_type.academic_year_id
+    return fallback_year_id
+
+
 def seat_mixer_levels_for_year(academic_year_id):
     """Serialize only the year-aware levels/classes for Seat Mixer selectors."""
     result = []
@@ -454,12 +465,7 @@ def snapshot_payload(snapshot):
 def serialize_saved_assignments(hall, assignments, academic_year_id=None):
     """Hydrate compact snapshot rows from the canonical Student records."""
     if academic_year_id is None:
-        hall_exam = hall.exam
-        hall_exam_type = hall.exam_type
-        academic_year_id = (
-            hall_exam.academic_year_id if hall_exam else
-            hall_exam_type.academic_year_id if hall_exam_type else None
-        )
+        academic_year_id = seat_mixer_hall_year_id(hall)
     student_ids = [item["student_id"] for item in assignments]
     students = (
         Student.query
@@ -525,26 +531,37 @@ def index():
     Screen 2: Versions list per hall
     Screen 3: Builder (per Hall + Version)
     """
-    # Load all exam halls
-    halls = (
+    academic_years = AcademicYear.query.order_by(
+        AcademicYear.is_current.desc(), AcademicYear.name.desc(), AcademicYear.id.desc()
+    ).all()
+    current_year = get_current_academic_year() or (academic_years[0] if academic_years else None)
+    requested_year_id = request.args.get("academic_year_id", type=int)
+    selected_year = db.session.get(AcademicYear, requested_year_id) if requested_year_id else current_year
+    if requested_year_id and not selected_year:
+        abort(404)
+
+    # Legacy halls without an explicit scope remain visible only in the
+    # current-year bucket. New halls always carry their selected year.
+    legacy_fallback_year_id = current_year.id if current_year else None
+    all_halls = (
         ExamHall.query
         .filter_by(is_active=True)
         .order_by(ExamHall.sort_order, ExamHall.name)
         .all()
     )
+    halls = [
+        hall for hall in all_halls
+        if seat_mixer_hall_year_id(hall, legacy_fallback_year_id) == (selected_year.id if selected_year else None)
+    ]
 
     # The builder must use the year-aware hierarchy, not the global legacy
     # level/class tables. Keep every year's scoped options in the page so the
-    # selector can switch years without changing the seating workflow.
-    academic_years = AcademicYear.query.order_by(
-        AcademicYear.is_current.desc(), AcademicYear.name.desc(), AcademicYear.id.desc()
-    ).all()
-    current_year = get_current_academic_year() or (academic_years[0] if academic_years else None)
+    # front-page selector can reload a clean year-specific hall list.
     levels_by_year = {
         str(academic_year.id): seat_mixer_levels_for_year(academic_year.id)
         for academic_year in academic_years
     }
-    levels = levels_by_year.get(str(current_year.id), []) if current_year else []
+    levels = levels_by_year.get(str(selected_year.id), []) if selected_year else []
 
     # Serialize hall data
     hall_data = []
@@ -553,6 +570,13 @@ def index():
             "id": h.id,
             "name": h.name,
             "code": h.code,
+            "academic_year_id": seat_mixer_hall_year_id(h, legacy_fallback_year_id),
+            "academic_year_name": (
+                h.academic_year.name if h.academic_year else
+                h.exam.academic_year.name if h.exam and h.exam.academic_year else
+                h.exam_type.academic_year.name if h.exam_type and h.exam_type.academic_year else
+                (current_year.name if current_year and seat_mixer_hall_year_id(h, legacy_fallback_year_id) == current_year.id else None)
+            ),
             "start_time": h.start_time.strftime("%Y-%m-%dT%H:%M") if h.start_time else None,
             "end_time": h.end_time.strftime("%Y-%m-%dT%H:%M") if h.end_time else None,
             "version_count": len(h.versions),
@@ -564,7 +588,7 @@ def index():
         halls=hall_data,
         levels=levels,
         academic_years=[{"id": year.id, "name": year.name} for year in academic_years],
-        academic_year_id=current_year.id if current_year else None,
+        academic_year_id=selected_year.id if selected_year else None,
         levels_by_year=levels_by_year,
         class_palette=CLASS_PALETTE,
         school_name=get_school_name(),
@@ -578,9 +602,17 @@ def api_create_hall():
     name = (data.get("name") or "").strip()
     start = data.get("start")
     end = data.get("end")
+    requested_year_id = data.get("academic_year_id")
+    try:
+        requested_year_id = int(requested_year_id) if requested_year_id else None
+    except (TypeError, ValueError):
+        requested_year_id = None
+    academic_year = db.session.get(AcademicYear, requested_year_id) if requested_year_id else get_current_academic_year()
 
     if not name:
         return jsonify({"error": "Hall name is required"}), 400
+    if not academic_year:
+        return jsonify({"error": "Select a valid academic year before creating an exam hall."}), 400
 
     # Parse datetimes
     try:
@@ -605,6 +637,7 @@ def api_create_hall():
         start_time=start_dt,
         end_time=end_dt,
         sort_order=existing_count,
+        academic_year_id=academic_year.id,
     )
     db.session.add(hall)
     db.session.flush()
@@ -625,6 +658,11 @@ def api_create_hall():
             "id": hall.id,
             "name": hall.name,
             "code": hall.code,
+            "academic_year_id": seat_mixer_hall_year_id(
+                hall,
+                get_current_academic_year().id if get_current_academic_year() else None,
+            ),
+            "academic_year_name": hall.academic_year.name if hall.academic_year else None,
             "start_time": hall.start_time.strftime("%Y-%m-%dT%H:%M") if hall.start_time else None,
             "end_time": hall.end_time.strftime("%Y-%m-%dT%H:%M") if hall.end_time else None,
             "version_count": 1,
@@ -683,6 +721,11 @@ def api_manage_hall(hall_id):
             "id": hall.id,
             "name": hall.name,
             "code": hall.code,
+            "academic_year_id": seat_mixer_hall_year_id(
+                hall,
+                get_current_academic_year().id if get_current_academic_year() else None,
+            ),
+            "academic_year_name": hall.academic_year.name if hall.academic_year else None,
             "start_time": hall.start_time.strftime("%Y-%m-%dT%H:%M") if hall.start_time else None,
             "end_time": hall.end_time.strftime("%Y-%m-%dT%H:%M") if hall.end_time else None,
             "version_count": len(hall.versions),
@@ -806,6 +849,14 @@ def api_appearance():
 def api_versions(hall_id):
     """List all versions for a hall with their saved status."""
     hall = db.session.get(ExamHall, hall_id) or abort(404)
+    selected_year_id = request.args.get("academic_year_id", type=int)
+    if selected_year_id:
+        effective_year_id = seat_mixer_hall_year_id(
+            hall,
+            get_current_academic_year().id if get_current_academic_year() else None,
+        )
+        if effective_year_id != selected_year_id:
+            return jsonify({"error": "This exam hall belongs to a different academic year."}), 409
 
     ordered_versions = sorted(
         hall.versions,
@@ -836,6 +887,11 @@ def api_versions(hall_id):
         "hall": {
             "id": hall.id,
             "name": hall.name,
+            "academic_year_id": seat_mixer_hall_year_id(
+                hall,
+                get_current_academic_year().id if get_current_academic_year() else None,
+            ),
+            "academic_year_name": hall.academic_year.name if hall.academic_year else None,
             "start_time": hall.start_time.strftime("%Y-%m-%dT%H:%M") if hall.start_time else None,
             "end_time": hall.end_time.strftime("%Y-%m-%dT%H:%M") if hall.end_time else None,
             "is_expired": is_expired(hall),
@@ -908,9 +964,9 @@ def api_version_data(version_id):
     hall = version.hall
     hall_exam = hall.exam
     hall_exam_type = hall.exam_type
-    default_academic_year_id = (
-        hall_exam.academic_year_id if hall_exam else
-        hall_exam_type.academic_year_id if hall_exam_type else None
+    hall_scope_year_id = seat_mixer_hall_year_id(hall)
+    default_academic_year_id = hall_scope_year_id or (
+        get_current_academic_year().id if get_current_academic_year() else None
     )
     academic_year_id = default_academic_year_id
     requested_snapshot_id = request.args.get("snapshot_id", type=int)
@@ -943,7 +999,9 @@ def api_version_data(version_id):
             assignment_rows = saved_layout["assignments"]
             selected_students = saved_layout["selected_students"]
             last_meta = saved_layout["last_meta"]
-            academic_year_id = saved_layout.get("academic_year_id") or default_academic_year_id
+            # An explicitly scoped hall is authoritative. Only legacy halls
+            # may recover their year from an older snapshot.
+            academic_year_id = hall_scope_year_id or saved_layout.get("academic_year_id") or default_academic_year_id
         else:
             config = normalized_layout_config({})
             assignment_rows = []
@@ -1056,12 +1114,12 @@ def api_save():
     except (TypeError, ValueError):
         requested_academic_year_id = None
 
-    hall_exam = hall.exam
-    hall_exam_type = hall.exam_type
-    academic_year_id = requested_academic_year_id or (
-        hall_exam.academic_year_id if hall_exam else
-        hall_exam_type.academic_year_id if hall_exam_type else None
-    ) or (get_current_academic_year().id if get_current_academic_year() else None)
+    hall_scope_year_id = seat_mixer_hall_year_id(hall)
+    if hall_scope_year_id and requested_academic_year_id and requested_academic_year_id != hall_scope_year_id:
+        return jsonify({"error": "This exam hall is scoped to a different academic year."}), 400
+    academic_year_id = hall_scope_year_id or requested_academic_year_id or (
+        get_current_academic_year().id if get_current_academic_year() else None
+    )
     if not academic_year_id or not db.session.get(AcademicYear, academic_year_id):
         return jsonify({"error": "Select a valid academic year before saving the arrangement."}), 400
 
@@ -1337,9 +1395,9 @@ def print_arrangement():
         print_rows.append(tables)
     hall_exam = hall.exam
     hall_exam_type = hall.exam_type
-    academic_year_id = (
-        hall_exam.academic_year_id if hall_exam else
-        hall_exam_type.academic_year_id if hall_exam_type else None
+    academic_year_id = seat_mixer_hall_year_id(
+        hall,
+        get_current_academic_year().id if get_current_academic_year() else None,
     )
     print_placements = {}
     print_classes = {}
@@ -1378,11 +1436,8 @@ def print_arrangement():
     if issues_created:
         db.session.commit()
 
-    academic_year_name = (
-        hall_exam.academic_year.name if hall_exam and hall_exam.academic_year
-        else hall_exam_type.academic_year.name if hall_exam_type and hall_exam_type.academic_year
-        else ""
-    )
+    academic_year = db.session.get(AcademicYear, academic_year_id) if academic_year_id else None
+    academic_year_name = academic_year.name if academic_year else ""
     exam_name = hall_exam.name if hall_exam else hall_exam_type.name if hall_exam_type else ""
     logo_setting = db.session.get(Setting, "logo_path")
     return render_template(

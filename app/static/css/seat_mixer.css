@@ -395,6 +395,7 @@
 }
 .sm-year-scope select:focus { border-color: var(--sm-blue2); box-shadow: 0 0 0 3px rgba(96,165,250,.2); }
 .sm-year-scope-note { color: var(--sm-muted); font-size: 11px; }
+.sm-year-scope-front { margin: 0 0 18px; }
 .sm-level-chip {
   display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--sm-text-dim);
   background: rgba(255,255,255,.06); border: 1.5px solid var(--sm-border); border-radius: 999px;

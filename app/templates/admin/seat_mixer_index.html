@@ -5,7 +5,7 @@
 {% block extra_head %}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/seat_mixer.css', v='year-scope-20260824-1') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/seat_mixer.css', v='year-scope-20260824-2') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-page-heroes.css') }}">
 {% endblock %}
 
@@ -30,6 +30,11 @@
     <!-- ============ SCREEN 1: Exam Halls list + Create ============ -->
     <div class="sm-screen active" id="smHallsScreen">
       <div class="sm-card">
+        <div class="sm-year-scope sm-year-scope-front">
+          <label for="smAcademicYear"><i class="fa-solid fa-calendar-days"></i> Academic Year</label>
+          <select id="smAcademicYear" aria-label="Select academic year for exam halls"></select>
+          <span class="sm-year-scope-note">Exam halls, versions, levels and classes are isolated to the selected academic year.</span>
+        </div>
         <h2><span class="ico"><i class="fa-solid fa-building-columns"></i></span>Exam Halls</h2>
         <div class="sm-hall-list" id="smHallList"></div>
         <div class="sm-actions" style="margin:14px 0 0;">
@@ -94,11 +99,6 @@
       <!-- Classes to Mix -->
       <div class="sm-card">
         <h2><span class="ico"><i class="fa-solid fa-users"></i></span>Classes to Mix</h2>
-        <div class="sm-year-scope">
-          <label for="smAcademicYear"><i class="fa-solid fa-calendar-days"></i> Academic Year</label>
-          <select id="smAcademicYear" aria-label="Select academic year for classes to mix"></select>
-          <span class="sm-year-scope-note">Levels and classes are loaded only from this academic year.</span>
-        </div>
         <div class="sm-level-block-title">1. Levels (pulled automatically from the system)</div>
         <div class="sm-level-row" id="smLevelRow"></div>
         <div id="smClassesArea" class="sm-classes-scroll"></div>
@@ -214,7 +214,7 @@
 
 <div class="sm-toast-region" id="smToastRegion" aria-live="polite" aria-atomic="true"></div>
 
-<script src="{{ url_for('static', filename='js/seat_mixer.js', v='year-scope-20260824-1') }}"></script>
+<script src="{{ url_for('static', filename='js/seat_mixer.js', v='year-scope-20260824-2') }}"></script>
 <script>
 window.SM_init({
   halls: {{ halls|tojson }},

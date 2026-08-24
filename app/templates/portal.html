@@ -280,11 +280,11 @@
           <span class="reference-photo-logo">{% if settings.logo_path %}<img src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">{% else %}<i class="fa-solid fa-school"></i>{% endif %}</span>
         </div>
         <h2>{{ result.student.full_name }}{{ verified_name_badge(label='Verified', variant='white') }}</h2>
-        <p>{{ result.student.school_class.name }}</p>
+        <p>{{ result_scope.class_name }}</p>
         <div class="reference-side-lines">
           <div class="side-parent"><span><i class="fa-solid fa-user"></i></span><small>{{ settings.result_label_mother_name }}</small><strong>{{ result.student.mother_name }}</strong></div>
           <div class="side-student-id"><span><i class="fa-solid fa-id-card"></i></span><small>{{ settings.result_label_student_id }}</small><strong>{{ result.student.student_code }}</strong></div>
-          <div class="side-student-class"><span><i class="fa-solid fa-people-roof"></i></span><small>{{ settings.result_label_student_class }}</small><strong>{{ result.student.school_class.name }}</strong></div>
+          <div class="side-student-class"><span><i class="fa-solid fa-people-roof"></i></span><small>{{ settings.result_label_student_class }}</small><strong>{{ result_scope.class_name }}</strong></div>
           <div class="side-exam"><span><i class="fa-solid fa-file-lines"></i></span><small>{{ settings.result_label_exam_type }}</small><strong>{{ result.exam.name if result.exam else 'Final Examination' }}</strong></div>
           <div class="side-download-date"><span><i class="fa-solid fa-calendar-check"></i></span><small>{{ settings.result_label_date_issued }}</small><strong>{{ download_date_text }}</strong></div>
           <div class="side-percentage"><span><i class="fa-solid fa-percent"></i></span><small>{{ settings.result_label_subject_percentage }}</small><strong>{{ result.average|academic_number(settings) }}%</strong></div>
@@ -300,7 +300,7 @@
         <header class="reference-result-header">
           <div>
             <h2>{{ settings.result_online_title_primary }} <span>{{ settings.result_online_title_accent }}</span></h2>
-            <p>Academic Year {{ result.student.academic_year.name }}</p>
+            <p>Academic Year {{ result_scope.academic_year_name }}</p>
           </div>
         </header>
 
