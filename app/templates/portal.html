@@ -332,7 +332,7 @@
               <div><span><i class="fa-solid fa-chart-pie"></i> Average Percentage</span><strong>{{ result.average|academic_number(settings) }}%</strong></div>
               <div><span><i class="fa-solid fa-star"></i> Overall Grade</span><strong class="pill" style="background: {{ result.overall_grade.badge_color }}; color: {{ result.overall_grade.text_color }};">{{ result.overall_grade.grade }}</strong></div>
               <div><span><i class="fa-solid fa-ranking-star"></i> Position in Class</span><strong>{{ result.rank or '-' }}</strong></div>
-              <div><span><i class="fa-solid fa-arrow-up-right-dots"></i> Final Status</span><strong class="final-status-value">{{ 'PROMOTED' if result.overall_grade.is_pass else 'NOT PROMOTED' }}</strong></div>
+              <div><span><i class="fa-solid fa-arrow-up-right-dots"></i> Final Status</span><strong class="final-status-value">{{ result.portal_outcome.label }}</strong></div>
             </section>
 
             <section class="reference-comments">

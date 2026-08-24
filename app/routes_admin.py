@@ -14,7 +14,7 @@ from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
 from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, PromotionEvaluation, PromotionOutcomeApplication, PromotionRule, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentEnrollment, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
-from .academic_hierarchy import validate_year_level, year_classes, year_levels, year_subjects
+from .academic_hierarchy import validate_year_level, year_classes, year_classes_for_year, year_levels, year_subjects
 from .permissions import PERMISSIONS, can, enforce_endpoint_permission, permission_required
 from .security import ALLOWED_AUDIO, ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import (
@@ -2831,7 +2831,10 @@ def _promotion_evaluation_page_data(year_id=None, level_id=None, exam_id=None, c
     selected_level = next((level for level in levels if level.id == level_id), None)
     if level_id and selected_level is None:
         level_id = None
-    classes = year_classes(level_id) if level_id else []
+    if level_id and not validate_year_level(year_id, level_id):
+        level_id = None
+        class_id = None
+    classes = year_classes_for_year(year_id, level_id) if level_id else []
     selected_class = next((item for item in classes if item.id == class_id), None)
     if class_id and selected_class is None:
         class_id = None
@@ -3085,14 +3088,14 @@ def promotion_rules_bulk_transition():
     destination_section_id = values.get("destination_academic_section_id", type=int)
     years = _promotion_rules_years()
     levels = year_levels(year_id) if year_id else []
-    classes = year_classes(level_id) if level_id else []
+    classes = year_classes_for_year(year_id, level_id) if level_id else []
     exams = (
         Exam.query.filter_by(academic_year_id=year_id, is_active=True)
         .order_by(Exam.sort_order, Exam.name, Exam.id).all()
         if year_id else []
     )
     destination_levels = year_levels(destination_year_id) if destination_year_id else []
-    destination_classes = year_classes(destination_level_id) if destination_level_id else []
+    destination_classes = year_classes_for_year(destination_year_id, destination_level_id) if destination_level_id else []
     plan = None
     error_message = None
     mode = values.get("mode")

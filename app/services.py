@@ -1460,6 +1460,15 @@ def result_payload(student, exam=None, public_only=True):
     average = round(float(total / max_total * 100), 2) if max_total else 0
     settings = dict(get_settings())
     active_exam = exam or (rows[0].exam if rows else None)
+    portal_outcome = {"code": "NOT_EVALUATED", "label": "NOT EVALUATED", "tone": "muted"}
+    if active_exam and selected_placement and selected_placement.get("enrollment"):
+        # Local import avoids the promotion_service -> services import cycle.
+        from .promotion_service import portal_academic_outcome
+
+        portal_outcome = portal_academic_outcome(
+            selected_placement["enrollment"],
+            exam_id=active_exam.id,
+        )
     if active_exam:
         ex_title = active_exam.name.strip().upper()
         if "RESULT" not in ex_title:
@@ -1636,6 +1645,7 @@ def result_payload(student, exam=None, public_only=True):
         "rank": rank,
         "comment": overall.get("comment") or "",
         "settings": settings,
+        "portal_outcome": portal_outcome,
     }
 
 

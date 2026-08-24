@@ -41,6 +41,14 @@ def year_classes(year_level_id, active_only=True):
     return query.order_by(AcademicYearClass.sort_order, AcademicYearClass.name, AcademicYearClass.id).all()
 
 
+def year_classes_for_year(year_id, year_level_id, active_only=True):
+    """Return classes only when the selected year-level belongs to the year."""
+    year_level = validate_year_level(year_id, year_level_id)
+    if not year_level:
+        return []
+    return year_classes(year_level.id, active_only=active_only)
+
+
 def year_subjects(year_id, year_level_id=None, active_only=True):
     query = AcademicYearSubject.query.filter_by(academic_year_id=year_id)
     if year_level_id:

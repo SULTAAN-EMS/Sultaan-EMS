@@ -749,6 +749,48 @@ def promotion_operational_status(enrollment, *, exam_id=None):
     return result
 
 
+def portal_academic_outcome(enrollment, *, exam_id=None):
+    """Resolve the student-facing outcome from exact evaluation evidence.
+
+    ``StudentEnrollment.academic_outcome`` is a transition ledger value, not
+    evidence that an exam was evaluated.  The portal therefore starts from a
+    neutral state and only exposes GUDBAY/HADHAY after an exact, complete
+    evaluation exists.  PROMOTED/REPEATED/GRADUATED are exposed only after the
+    linked outcome application records a completed transition.
+    """
+    result = {"code": "NOT_EVALUATED", "label": "NOT EVALUATED", "tone": "muted"}
+    if not isinstance(enrollment, StudentEnrollment) or exam_id in (None, ""):
+        return result
+
+    evaluation = latest_promotion_evaluation(enrollment, exam_id=exam_id)
+    if (
+        not evaluation
+        or evaluation.evaluation_status != "EVALUATED"
+        or evaluation.final_outcome not in PromotionEvaluation.OUTCOME_VALUES
+        or not evaluation.exam
+        or evaluation.exam.academic_year_id != enrollment.academic_year_id
+    ):
+        return result
+
+    application = _application_for(evaluation.id)
+    if application and (
+        application.student_id != enrollment.student_id
+        or application.source_enrollment_id != enrollment.id
+    ):
+        application = None
+    if application and application.application_status == "TRANSITIONED":
+        if application.action == "promotion":
+            return {"code": "PROMOTED", "label": "PROMOTED", "tone": "success"}
+        if application.action == "repeat":
+            return {"code": "REPEATED", "label": "REPEATED", "tone": "warning"}
+    if application and application.application_status == "GRADUATED":
+        return {"code": "GRADUATED", "label": "GRADUATED", "tone": "success"}
+
+    if evaluation.final_outcome == "PASS":
+        return {"code": "PASSED", "label": "GUDBAY", "tone": "success"}
+    return {"code": "FAILED", "label": "HADHAY", "tone": "danger"}
+
+
 def promotion_scope_summary(academic_year_id, academic_year_level_id, *, academic_year_class_id=None, exam_id=None):
     """Build a strictly year + level (+ class) scoped operational summary."""
     year, level = validate_rule_scope(academic_year_id, academic_year_level_id)

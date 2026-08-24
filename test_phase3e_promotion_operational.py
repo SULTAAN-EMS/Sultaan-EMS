@@ -1,11 +1,12 @@
 import unittest
 
 from app import db
-from app.models import PromotionOutcomeApplication, StudentEnrollment, StudentEnrollmentMovement
+from app.models import Exam, PromotionOutcomeApplication, StudentEnrollment, StudentEnrollmentMovement, User
 from app.promotion_service import (
     PromotionValidationError,
     apply_academic_outcome,
     plan_evaluation_transition,
+    portal_academic_outcome,
     promotion_consistency_audit,
     promotion_operational_status,
     promotion_scope_summary,
@@ -168,6 +169,74 @@ class TestPhase3EOperationalWorkflow(TestPhase3DPromotionIntegration):
         summary = promotion_scope_summary(self.year.id, self.year_level.id)
         self.assertEqual(summary["counts"]["evaluated"], 1)
         self.assertEqual(summary["counts"]["total_students"], 1)
+
+    def test_20_portal_does_not_infer_promoted_from_stale_enrollment(self):
+        self.source.academic_outcome = "promoted"
+        self.assertEqual(
+            portal_academic_outcome(self.source, exam_id=self.exam.id)["code"],
+            "NOT_EVALUATED",
+        )
+
+    def test_21_portal_uses_gudbay_for_exact_pass_evaluation(self):
+        self._evaluation(self.source, outcome="PASS")
+        outcome = portal_academic_outcome(self.source, exam_id=self.exam.id)
+        self.assertEqual(outcome["code"], "PASSED")
+        self.assertEqual(outcome["label"], "GUDBAY")
+
+    def test_22_portal_uses_hadhay_for_critical_subject_fail_before_apply(self):
+        self._evaluation(self.source, outcome="FAIL")
+        outcome = portal_academic_outcome(self.source, exam_id=self.exam.id)
+        self.assertEqual(outcome["code"], "FAILED")
+        self.assertEqual(outcome["label"], "HADHAY")
+
+    def test_23_portal_shows_promoted_only_after_completed_transition(self):
+        evaluation = self._evaluation(self.source, outcome="PASS")
+        apply_academic_outcome(evaluation.id)
+        transition_applied_outcome(
+            evaluation.id,
+            action="promotion",
+            destination_academic_year_id=self.next_year.id,
+            destination_academic_year_level_id=self.next_level.id,
+            destination_academic_year_class_id=self.next_class.id,
+        )
+        outcome = portal_academic_outcome(self.source, exam_id=self.exam.id)
+        self.assertEqual(outcome["code"], "PROMOTED")
+
+    def test_24_portal_requires_the_selected_exam_evaluation(self):
+        self._evaluation(self.source, outcome="PASS", exam=self.other_exam)
+        outcome = portal_academic_outcome(self.source, exam_id=self.exam.id)
+        self.assertEqual(outcome["code"], "NOT_EVALUATED")
+
+    def test_25_apply_outcomes_resolves_source_class_after_year_and_level(self):
+        user = User.query.filter_by(username="admin").first()
+        if user is None:
+            user = User(username="admin", full_name="Test Admin", role="super_admin", is_active=True)
+            user.set_password("test-password")
+            db.session.add(user)
+            db.session.commit()
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(user.id)
+            session["_fresh"] = True
+            session["config_center_authenticated"] = True
+        response = client.post(
+            "/admin/promotion-rules/bulk-transition",
+            data={
+                "source_academic_year_id": self.year.id,
+                "source_academic_year_level_id": self.year_level.id,
+                "exam_id": self.exam.id,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Form Four", response.data)
+
+    def test_26_portal_rejects_evaluation_exam_from_another_year(self):
+        next_exam = Exam(name="Next Year Exam", academic_year_id=self.next_year.id)
+        db.session.add(next_exam)
+        db.session.flush()
+        self._evaluation(self.source, outcome="PASS", exam=next_exam)
+        outcome = portal_academic_outcome(self.source, exam_id=next_exam.id)
+        self.assertEqual(outcome["code"], "NOT_EVALUATED")
 
 
 class TestPhase3EPassFailConsistency(TestPhase3CPromotionEvaluation):
