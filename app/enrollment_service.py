@@ -220,30 +220,105 @@ def student_enrollment_legacy_scope_query(
     )
 
 
-def enrollment_placement_for_student(student, academic_year_id):
-    """Return the selected-year enrollment, or a legacy-compatible placement."""
-    enrollment = get_enrollment_for_student_year(student.id, academic_year_id)
+def resolve_student_academic_context(student, academic_year_id):
+    """Resolve one student's placement for exactly one academic year.
+
+    An enrollment is authoritative whenever it exists.  The legacy Student
+    placement is a compatibility source only when its own academic year is
+    the requested year.  In particular, a newer value on ``Student`` can
+    never be used to describe an older result, report, or attendance record.
+    This function is read-only: it never creates or commits an enrollment.
+    """
+    if not student or academic_year_id in (None, ""):
+        return None
+
+    year_id = _require(academic_year_id, "Academic year")
+    enrollment = get_enrollment_for_student_year(student.id, year_id)
     if enrollment:
+        year_level = enrollment.academic_year_level
+        year_class = enrollment.academic_year_class
+        section = enrollment.academic_section
         return {
+            "source": "enrollment",
+            "academic_year_id": year_id,
             "enrollment": enrollment,
-            "academic_level_id": enrollment.academic_year_level.legacy_level_id if enrollment.academic_year_level else None,
-            "academic_class_id": enrollment.academic_year_class.legacy_class_id if enrollment.academic_year_class else None,
+            "academic_year_level_id": enrollment.academic_year_level_id,
+            "academic_year_class_id": enrollment.academic_year_class_id,
+            "academic_level_id": year_level.legacy_level_id if year_level else None,
+            "academic_class_id": year_class.legacy_class_id if year_class else None,
             "academic_section_id": enrollment.academic_section_id,
-            "class_name": enrollment.academic_year_class.name if enrollment.academic_year_class else None,
-            "level_name": enrollment.academic_year_level.name if enrollment.academic_year_level else None,
-            "section_name": enrollment.academic_section.name if enrollment.academic_section else None,
+            "class_name": year_class.name if year_class else None,
+            "level_name": year_level.name if year_level else None,
+            "section_name": section.name if section else None,
         }
-    if student.academic_year_id == int(academic_year_id):
-        return {
-            "enrollment": None,
-            "academic_level_id": student.academic_level_id,
-            "academic_class_id": student.academic_class_id,
-            "academic_section_id": student.academic_section_id,
-            "class_name": student.academic_class.name if student.academic_class else (student.school_class.name if student.school_class else None),
-            "level_name": student.level,
-            "section_name": student.section,
-        }
-    return None
+
+    # Legacy compatibility is deliberately strict.  A legacy-only student is
+    # visible for the year stored on Student, but not for an unrelated year.
+    if student.academic_year_id != year_id:
+        return None
+
+    legacy_level_id = student.academic_level_id
+    legacy_class_id = student.academic_class_id
+    if not legacy_level_id and student.academic_class:
+        legacy_level_id = student.academic_class.academic_level_id
+
+    year_level = None
+    if legacy_level_id:
+        year_level = AcademicYearLevel.query.filter_by(
+            academic_year_id=year_id,
+            legacy_level_id=legacy_level_id,
+        ).first()
+    if not year_level and student.level:
+        year_level = AcademicYearLevel.query.filter_by(
+            academic_year_id=year_id,
+            name=student.level,
+        ).first()
+
+    year_class = None
+    if legacy_class_id and year_level:
+        year_class = AcademicYearClass.query.filter_by(
+            academic_year_level_id=year_level.id,
+            legacy_class_id=legacy_class_id,
+        ).first()
+    if not year_class and legacy_class_id:
+        year_class = (
+            AcademicYearClass.query
+            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+            .filter(
+                AcademicYearLevel.academic_year_id == year_id,
+                AcademicYearClass.legacy_class_id == legacy_class_id,
+            )
+            .first()
+        )
+        year_level = year_level or (year_class.academic_year_level if year_class else None)
+
+    section = None
+    if student.academic_section_id:
+        section = db.session.get(AcademicSection, student.academic_section_id)
+
+    class_name = (
+        year_class.name if year_class else
+        (student.academic_class.name if student.academic_class else
+         (student.school_class.name if student.school_class else None))
+    )
+    return {
+        "source": "legacy",
+        "academic_year_id": year_id,
+        "enrollment": None,
+        "academic_year_level_id": year_level.id if year_level else None,
+        "academic_year_class_id": year_class.id if year_class else None,
+        "academic_level_id": legacy_level_id,
+        "academic_class_id": legacy_class_id,
+        "academic_section_id": student.academic_section_id,
+        "class_name": class_name,
+        "level_name": year_level.name if year_level else student.level,
+        "section_name": section.name if section else student.section,
+    }
+
+
+def enrollment_placement_for_student(student, academic_year_id):
+    """Return the selected-year placement through the centralized resolver."""
+    return resolve_student_academic_context(student, academic_year_id)
 
 
 def create_enrollment(

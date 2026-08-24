@@ -2,8 +2,15 @@ import unittest
 
 from app import create_app, db
 from app.academic_hierarchy import students_for_year_scope_query
-from app.enrollment_service import create_enrollment, get_enrollment_for_student_year, student_enrollment_scope_query
+from app.enrollment_service import (
+    create_enrollment,
+    get_enrollment_for_student_year,
+    resolve_student_academic_context,
+    student_enrollment_scope_query,
+)
 from app.enrollment_service import ensure_legacy_enrollment_for_scope, ensure_legacy_enrollment_for_student
+from app.routes_attendance import attendance_student_scope_query
+from app.routes_public import public_result_scope
 from app.routes_advanced_results import subjects_for_scope
 from app.models import (
     AcademicClass,
@@ -60,6 +67,24 @@ class TestPhase2FHistoricalCutover(unittest.TestCase):
             academic_year_level=self.year_level_a,
             legacy_subject=self.subject_a,
             name="Mathematics A",
+        ))
+        self.year_level_b_current = AcademicYearLevel(
+            academic_year=self.year_b,
+            legacy_level=self.level_b,
+            name="Secondary B",
+        )
+        self.year_class_b_current = AcademicYearClass(
+            academic_year_level=self.year_level_b_current,
+            legacy_class=self.class_b,
+            name="Form Four B",
+        )
+        db.session.add_all([self.year_level_b_current, self.year_class_b_current])
+        db.session.flush()
+        db.session.add(AcademicYearSubject(
+            academic_year=self.year_b,
+            academic_year_level=self.year_level_b_current,
+            legacy_subject=self.subject_b,
+            name="Mathematics B",
         ))
         db.session.commit()
 
@@ -219,6 +244,103 @@ class TestPhase2FHistoricalCutover(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(b"Selected level is not configured for this academic year", response.data)
         self.assertIn(b"year-level", response.data)
+
+    def test_historical_and_current_reports_use_the_matching_enrollment(self):
+        student = Student(
+            student_code="PHASE2F006",
+            full_name="Two Year Student",
+            academic_year_id=self.year_b.id,
+            academic_level_id=self.level_b.id,
+            academic_class_id=self.class_b.id,
+        )
+        exam_a = Exam(name="Midterm A", academic_year=self.year_a, is_published=True, is_active=True)
+        exam_b = Exam(name="Midterm B", academic_year=self.year_b, is_published=True, is_active=True)
+        db.session.add_all([student, exam_a, exam_b])
+        db.session.flush()
+        create_enrollment(student.id, self.year_a.id, self.year_level_a.id, self.year_class_a.id)
+        create_enrollment(student.id, self.year_b.id, self.year_level_b_current.id, self.year_class_b_current.id)
+        db.session.add_all([
+            Result(student_id=student.id, exam_id=exam_a.id, subject_id=self.subject_a.id, score=81, is_published=True),
+            Result(student_id=student.id, exam_id=exam_b.id, subject_id=self.subject_b.id, score=92, is_published=True),
+        ])
+        db.session.commit()
+
+        old_payload = result_payload(student, exam=exam_a, public_only=True)
+        new_payload = result_payload(student, exam=exam_b, public_only=True)
+        self.assertEqual([row["subject_id"] for row in old_payload["subjects"]], [self.subject_a.id])
+        self.assertEqual([row["subject_id"] for row in new_payload["subjects"]], [self.subject_b.id])
+        self.assertEqual(public_result_scope(student, exam_a)["class_name"], "Form Four A")
+        self.assertEqual(public_result_scope(student, exam_b)["class_name"], "Form Four B")
+
+    def test_ranking_isolated_by_historical_enrollment(self):
+        student = Student(
+            student_code="PHASE2F007",
+            full_name="Ranked Student",
+            academic_year_id=self.year_b.id,
+            academic_level_id=self.level_b.id,
+            academic_class_id=self.class_b.id,
+        )
+        old_peer = Student(
+            student_code="PHASE2F008",
+            full_name="Old Year Peer",
+            academic_year_id=self.year_a.id,
+            academic_level_id=self.level_a.id,
+            academic_class_id=self.class_a.id,
+        )
+        current_peer = Student(
+            student_code="PHASE2F009",
+            full_name="Current Year Peer",
+            academic_year_id=self.year_b.id,
+            academic_level_id=self.level_b.id,
+            academic_class_id=self.class_b.id,
+        )
+        exam_a = Exam(name="Rank A", academic_year=self.year_a, is_published=True, is_active=True)
+        exam_b = Exam(name="Rank B", academic_year=self.year_b, is_published=True, is_active=True)
+        db.session.add_all([student, old_peer, current_peer, exam_a, exam_b])
+        db.session.flush()
+        create_enrollment(student.id, self.year_a.id, self.year_level_a.id, self.year_class_a.id)
+        create_enrollment(student.id, self.year_b.id, self.year_level_b_current.id, self.year_class_b_current.id)
+        create_enrollment(old_peer.id, self.year_a.id, self.year_level_a.id, self.year_class_a.id)
+        create_enrollment(current_peer.id, self.year_b.id, self.year_level_b_current.id, self.year_class_b_current.id)
+        db.session.add_all([
+            Result(student_id=student.id, exam_id=exam_a.id, subject_id=self.subject_a.id, score=80, is_published=True),
+            Result(student_id=old_peer.id, exam_id=exam_a.id, subject_id=self.subject_a.id, score=90, is_published=True),
+            Result(student_id=student.id, exam_id=exam_b.id, subject_id=self.subject_b.id, score=95, is_published=True),
+            Result(student_id=current_peer.id, exam_id=exam_b.id, subject_id=self.subject_b.id, score=60, is_published=True),
+        ])
+        db.session.commit()
+
+        self.assertEqual(result_payload(student, exam=exam_a, public_only=True)["rank"], 2)
+        self.assertEqual(result_payload(student, exam=exam_b, public_only=True)["rank"], 1)
+
+    def test_attendance_scope_uses_the_selected_year_enrollment(self):
+        student = Student(
+            student_code="PHASE2F010",
+            full_name="Attendance Student",
+            academic_year_id=self.year_b.id,
+            academic_level_id=self.level_b.id,
+            academic_class_id=self.class_b.id,
+        )
+        db.session.add(student)
+        db.session.flush()
+        create_enrollment(student.id, self.year_a.id, self.year_level_a.id, self.year_class_a.id)
+        create_enrollment(student.id, self.year_b.id, self.year_level_b_current.id, self.year_class_b_current.id)
+        db.session.commit()
+
+        old_ids = [row.id for row in attendance_student_scope_query(
+            self.year_a.id,
+            level_id=self.level_a.id,
+            class_id=self.class_a.id,
+        ).all()]
+        new_ids = [row.id for row in attendance_student_scope_query(
+            self.year_b.id,
+            level_id=self.level_b.id,
+            class_id=self.class_b.id,
+        ).all()]
+        self.assertEqual(old_ids, [student.id])
+        self.assertEqual(new_ids, [student.id])
+        self.assertEqual(resolve_student_academic_context(student, self.year_a.id)["class_name"], "Form Four A")
+        self.assertEqual(resolve_student_academic_context(student, self.year_b.id)["class_name"], "Form Four B")
 
 
 if __name__ == "__main__":

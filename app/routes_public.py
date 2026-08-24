@@ -13,7 +13,11 @@ from .i18n import language_redirect
 from .models import AcademicLevel, AcademicYear, AcademicYearSubject, Exam, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, StudentEnrollment, Subject
 from .services import active_exam_for_student, attendance_uf_record, get_settings, result_payload, result_success_overlay_config, top_students_for_class
 from .attendance_rules import normalize_attendance_status
-from .enrollment_service import enrollment_placement_for_student, get_enrollment_for_student_year
+from .enrollment_service import (
+    enrollment_placement_for_student,
+    get_enrollment_for_student_year,
+    resolve_student_academic_context,
+)
 from .verification import verification_payload
 
 public_bp = Blueprint("public", __name__)
@@ -92,28 +96,28 @@ def submitted_incident_category_ids():
 
 def incident_subjects_for_student(student, academic_year_id=None):
     """Return only the configured subjects for the identified student's level."""
-    enrollment = get_enrollment_for_student_year(student.id, academic_year_id) if academic_year_id else None
-    level_id = (
-        enrollment.academic_year_level.legacy_level_id
-        if enrollment and enrollment.academic_year_level
-        else student.academic_level_id
-    )
-    if not level_id and student.academic_class:
-        level_id = student.academic_class.academic_level_id
+    placement = resolve_student_academic_context(student, academic_year_id) if academic_year_id else None
+    if academic_year_id and not placement:
+        return []
+    enrollment = placement.get("enrollment") if placement else None
+    level_id = placement.get("academic_level_id") if placement else student.academic_level_id
     if not level_id:
         return []
-    if enrollment:
+    if placement and placement.get("academic_year_level_id"):
         mapped_ids = [
             row.legacy_subject_id
             for row in AcademicYearSubject.query.filter_by(
                 academic_year_id=academic_year_id,
-                academic_year_level_id=enrollment.academic_year_level_id,
+                academic_year_level_id=placement.get("academic_year_level_id"),
                 is_active=True,
             ).all()
             if row.legacy_subject_id
         ]
-        if mapped_ids:
-            return Subject.query.filter(Subject.id.in_(mapped_ids), Subject.is_active.is_(True)).order_by(Subject.sort_order, Subject.name).all()
+        # A year-aware scope with no subject bridge is incomplete setup; do
+        # not silently widen it to the global subject table.
+        if not mapped_ids:
+            return []
+        return Subject.query.filter(Subject.id.in_(mapped_ids), Subject.is_active.is_(True)).order_by(Subject.sort_order, Subject.name).all()
     return (
         Subject.query
         .filter(Subject.academic_level_id == level_id)
@@ -625,25 +629,22 @@ def feedback_subjects():
     student, exam, error = _feedback_context_from_request()
     if error:
         return error
-    enrollment = get_enrollment_for_student_year(student.id, exam.academic_year_id)
+    placement = resolve_student_academic_context(student, exam.academic_year_id)
+    if not placement:
+        return jsonify(ok=True, subjects=[])
+    enrollment = placement.get("enrollment")
     mapped_ids = []
-    if enrollment:
+    if placement.get("academic_year_level_id"):
         mapped_ids = [
             row.legacy_subject_id
             for row in AcademicYearSubject.query.filter_by(
                 academic_year_id=exam.academic_year_id,
-                academic_year_level_id=enrollment.academic_year_level_id,
+                academic_year_level_id=placement.get("academic_year_level_id"),
                 is_active=True,
             ).all()
             if row.legacy_subject_id
         ]
-    level_id = (
-        enrollment.academic_year_level.legacy_level_id
-        if enrollment and enrollment.academic_year_level
-        else student.academic_level_id
-    )
-    if not level_id and student.academic_class:
-        level_id = student.academic_class.academic_level_id
+    level_id = placement.get("academic_level_id")
     if not level_id:
         return jsonify(ok=True, subjects=[])
     subject_query = (
@@ -655,7 +656,9 @@ def feedback_subjects():
             Subject.is_active.is_(True),
         )
     )
-    if mapped_ids:
+    if placement.get("academic_year_level_id"):
+        if not mapped_ids:
+            return jsonify(ok=True, subjects=[])
         subject_query = subject_query.filter(Subject.id.in_(mapped_ids))
     elif level_id:
         subject_query = subject_query.filter(Subject.academic_level_id == level_id)
@@ -686,28 +689,22 @@ def feedback_mg_details():
     if error:
         return error
 
-    enrollment = get_enrollment_for_student_year(student.id, exam.academic_year_id)
-    student_level_id = (
-        enrollment.academic_year_level.legacy_level_id
-        if enrollment and enrollment.academic_year_level
-        else student.academic_level_id or (
-            student.academic_class.academic_level_id if student.academic_class else None
-        )
-    )
-    if not student_level_id and student.level:
-        legacy_level = AcademicLevel.query.filter_by(name=student.level).first()
-        student_level_id = legacy_level.id if legacy_level else None
+    placement = resolve_student_academic_context(student, exam.academic_year_id)
+    if not placement:
+        return jsonify(ok=False, message="Ardaygani kuma jiro sanadkan natiijada."), 404
+    enrollment = placement.get("enrollment")
+    student_level_id = placement.get("academic_level_id")
     subject_id = request.args.get("subject_id", type=int)
     subject = db.session.get(Subject, subject_id) if subject_id else None
     mapped_subject_ids = {
         row.legacy_subject_id
         for row in AcademicYearSubject.query.filter_by(
             academic_year_id=exam.academic_year_id,
-            academic_year_level_id=enrollment.academic_year_level_id,
+            academic_year_level_id=placement.get("academic_year_level_id"),
             is_active=True,
         ).all()
-        if enrollment and row.legacy_subject_id
-    } if enrollment else set()
+        if row.legacy_subject_id
+    } if placement.get("academic_year_level_id") else set()
     if not subject and request.args.get("subject") and student_level_id:
         subject = (
             Subject.query
@@ -724,6 +721,8 @@ def feedback_mg_details():
 
     if mapped_subject_ids and subject.id not in mapped_subject_ids:
         return jsonify(ok=False, message="Maaddadani kuma jirto sanadkan iyo heerka ardeygan."), 404
+    if placement.get("academic_year_level_id") and not mapped_subject_ids:
+        return jsonify(ok=False, message="Maaddooyinka sanadkan lama dejin."), 404
     if not mapped_subject_ids and (not student_level_id or subject.academic_level_id != student_level_id):
         return jsonify(ok=False, message="Maaddadani kuma jirto heerka ardeygan."), 404
 
@@ -876,12 +875,16 @@ def api_top_students(student_code):
     if not exam:
         return jsonify(ok=False, message="Published examination not found."), 404
 
+    placement = resolve_student_academic_context(student, exam.academic_year_id)
+    if not placement:
+        return jsonify(ok=False, message="Ardaygani kuma jiro sanadkan natiijada."), 404
+
     settings = get_settings()
     students = top_students_for_class(student, exam)
     for entry in students:
         entry["photo"] = _public_asset_url(entry.pop("photo_path", "")) or _public_asset_url(settings.get("result_dashboard_default_avatar"))
     class_name = students[0]["class_name"] if students else (
-        student.academic_class.name if student.academic_class else student.level or "Class"
+        placement.get("class_name") or placement.get("level_name") or "Class"
     )
     return jsonify(
         ok=True,

@@ -28,6 +28,7 @@ from .enrollment_service import (
     get_enrollment_for_student_year,
     ensure_legacy_enrollment_for_student,
     plan_bulk_transition,
+    resolve_student_academic_context,
     student_enrollment_scope_query,
     transition_student_enrollment,
     validate_enrollment_scope,
@@ -296,15 +297,9 @@ def subjects_for_year_level(exam, year_level_id):
         if item.legacy_subject_id
     ]
     subjects = [item for item in subjects if item]
-    if subjects:
-        return subjects
-    # Compatibility-only fallback for a year-level that has not received its
-    # subject bridge yet; it remains restricted to that level's legacy ID.
-    if year_level.legacy_level_id:
-        return Subject.query.filter_by(academic_level_id=year_level.legacy_level_id).order_by(
-            Subject.sort_order, Subject.name, Subject.id
-        ).all()
-    return []
+    # A year-level without a subject bridge is incomplete setup.  Do not
+    # widen the report/result view to the legacy global subject set.
+    return subjects
 
 
 def _year_scope_ids_from_legacy(academic_year_id, level_id=None, class_id=None):
@@ -1131,16 +1126,19 @@ def export_student_pdf():
     
     if not selected_year or not selected_exam or not student:
         abort(404)
+    if selected_exam.academic_year_id != selected_year.id:
+        abort(400)
     
     # Resolve the selected historical enrollment first. The permanent
     # Student identity may now have a newer placement in another year.
-    selected_enrollment = get_enrollment_for_student_year(student.id, selected_year.id)
-    selected_placement = enrollment_placement_for_student(student, selected_year.id) or {}
-    student_level_id = selected_placement.get("academic_level_id") or student.academic_level_id
-    student_class_id = selected_placement.get("academic_class_id") or student.academic_class_id
+    selected_placement = enrollment_placement_for_student(student, selected_year.id)
+    if not selected_placement:
+        abort(404)
+    student_level_id = selected_placement.get("academic_level_id")
+    student_class_id = selected_placement.get("academic_class_id")
     subjects = (
-        subjects_for_year_level(selected_exam, selected_enrollment.academic_year_level_id)
-        if selected_enrollment
+        subjects_for_year_level(selected_exam, selected_placement.get("academic_year_level_id"))
+        if selected_placement.get("academic_year_level_id")
         else (subjects_for_scope(selected_exam, level_id=student_level_id, class_id=student_class_id) if student_level_id else [])
     )
     subject_ids = [subject.id for subject in subjects]
@@ -2157,13 +2155,44 @@ def _attendance_rows_for_exam_scope(academic_year, exam, student_ids):
 def build_analytics_results_report_data(academic_year, exam):
     """Build the reference report's LEVELS payload using published Results Hub data only."""
     year_level_scopes = year_levels(academic_year.id)
-    levels = [scope.legacy_level for scope in year_level_scopes if scope.legacy_level and scope.legacy_level.is_active]
-    classes = [
-        year_class.legacy_class
-        for scope in year_level_scopes
-        for year_class in year_classes(scope.id)
-        if year_class.legacy_class and year_class.legacy_class.is_active
-    ]
+    legacy_report_mode = not year_level_scopes
+    if legacy_report_mode:
+        # A year with no Phase 1D bridge is an explicit legacy-only
+        # compatibility case. Keep it readable without allowing this fallback
+        # once any year-aware level exists.
+        legacy_students = Student.query.filter_by(academic_year_id=academic_year.id).all()
+        legacy_level_ids = {
+            student.academic_level_id
+            or (student.academic_class.academic_level_id if student.academic_class else None)
+            for student in legacy_students
+        }
+        if exam.academic_level_id:
+            legacy_level_ids.add(exam.academic_level_id)
+        legacy_level_ids.discard(None)
+        levels = (
+            AcademicLevel.query
+            .filter(AcademicLevel.id.in_(legacy_level_ids))
+            .filter(AcademicLevel.is_active.is_(True))
+            .order_by(AcademicLevel.sort_order, AcademicLevel.name, AcademicLevel.id)
+            .all()
+            if legacy_level_ids else []
+        )
+        classes = (
+            AcademicClass.query
+            .filter(AcademicClass.academic_level_id.in_(legacy_level_ids))
+            .filter(AcademicClass.is_active.is_(True))
+            .order_by(AcademicClass.sort_order, AcademicClass.name, AcademicClass.id)
+            .all()
+            if legacy_level_ids else []
+        )
+    else:
+        levels = [scope.legacy_level for scope in year_level_scopes if scope.legacy_level and scope.legacy_level.is_active]
+        classes = [
+            year_class.legacy_class
+            for scope in year_level_scopes
+            for year_class in year_classes(scope.id)
+            if year_class.legacy_class and year_class.legacy_class.is_active
+        ]
     classes_by_id = {academic_class.id: academic_class for academic_class in classes}
     levels_by_name = {level.name.strip().lower(): level.id for level in levels if level.name}
     classes_by_level = defaultdict(list)
@@ -2172,8 +2201,11 @@ def build_analytics_results_report_data(academic_year, exam):
         classes_by_level[academic_class.academic_level_id].append(academic_class)
         legacy_class_matches[academic_class.name.strip().lower()].append(academic_class)
 
+    # Results reports must start from the selected year's enrollment scope.
+    # The mutable legacy placement on Student is only a compatibility source
+    # for students that have no enrollment for this year.
     students = (
-        Student.query.filter_by(academic_year_id=academic_year.id)
+        students_for_year_scope_query(academic_year.id)
         .options(
             selectinload(Student.academic_level),
             selectinload(Student.academic_class),
@@ -2183,21 +2215,24 @@ def build_analytics_results_report_data(academic_year, exam):
         .all()
     )
     students_by_level_class = defaultdict(list)
+    scoped_students = []
     for student in students:
-        level_id = _analytics_report_student_level_id(
-            student, classes_by_id, levels_by_name, legacy_class_matches
-        )
-        class_id = _analytics_report_student_class_id(
-            student, classes_by_id, legacy_class_matches, level_id
-        )
-        if level_id and class_id:
+        placement = resolve_student_academic_context(student, academic_year.id)
+        level_id = placement.get("academic_level_id") if placement else None
+        class_id = placement.get("academic_class_id") if placement else None
+        if (
+            level_id in classes_by_level
+            and class_id in classes_by_id
+            and classes_by_id[class_id].academic_level_id == level_id
+        ):
             students_by_level_class[(level_id, class_id)].append(student)
+            scoped_students.append(student)
 
     included_levels = [
         level for level in levels
         if any(students_by_level_class.get((level.id, academic_class.id)) for academic_class in classes_by_level[level.id])
     ]
-    student_ids = [student.id for student in students]
+    student_ids = [student.id for student in scoped_students]
     if not student_ids:
         return []
 
@@ -2242,14 +2277,21 @@ def build_analytics_results_report_data(academic_year, exam):
         for student in grouped_students:
             student_level_lookup[student.id] = level_id
     subject_ids_by_level = defaultdict(set)
-    for scope in year_level_scopes:
-        if not scope.legacy_level_id:
-            continue
-        subject_ids_by_level[scope.legacy_level_id].update(
-            item.legacy_subject_id
-            for item in year_subjects(academic_year.id, scope.id)
-            if item.legacy_subject_id
-        )
+    if legacy_report_mode:
+        for level in levels:
+            subject_ids_by_level[level.id].update(
+                subject.id
+                for subject in Subject.query.filter_by(academic_level_id=level.id, is_active=True).all()
+            )
+    else:
+        for scope in year_level_scopes:
+            if not scope.legacy_level_id:
+                continue
+            subject_ids_by_level[scope.legacy_level_id].update(
+                item.legacy_subject_id
+                for item in year_subjects(academic_year.id, scope.id)
+                if item.legacy_subject_id
+            )
     for result in results:
         level_id = student_level_lookup.get(result.student_id)
         if (
@@ -2328,7 +2370,14 @@ def build_analytics_results_report_data(academic_year, exam):
             class_rows.append(row)
 
         subject_rows = []
-        level_subjects = {subject.id: subject for subject in subjects_for_scope(exam, level_id=level.id)}
+        level_subjects = {
+            subject.id: subject
+            for subject in (
+                Subject.query.filter_by(academic_level_id=level.id, is_active=True).all()
+                if legacy_report_mode
+                else subjects_for_scope(exam, level_id=level.id)
+            )
+        }
         for subject in sorted(level_subjects.values(), key=lambda item: (item.sort_order, item.name)):
             scores = [score for _subject, score in results_by_level_subject[level.id].get(subject.id, [])]
             sat_count = len(subject_sitting_student_ids.get(subject.id, set()))
@@ -3487,7 +3536,12 @@ def student_form(student_id=None):
     selected_year_level_id = selected_enrollment.academic_year_level_id if selected_enrollment else None
     selected_year_class_id = selected_enrollment.academic_year_class_id if selected_enrollment else None
     selected_section_id = selected_enrollment.academic_section_id if selected_enrollment else None
-    if student.id and not selected_enrollment and selected_year:
+    if (
+        student.id
+        and not selected_enrollment
+        and selected_year
+        and student.academic_year_id == selected_year.id
+    ):
         legacy_level = next((item for item in year_levels_for_form if item.legacy_level_id == student.academic_level_id), None)
         selected_year_level_id = legacy_level.id if legacy_level else None
         if selected_year_level_id:
@@ -3549,11 +3603,13 @@ def student_data_json(student_id):
     """API endpoint to fetch student data as JSON for AJAX preview"""
     student = db.session.get(Student, student_id) or abort(404)
     selected_year_id = int_or_none(request.args.get("year_id")) or student.academic_year_id
-    enrollment = get_enrollment_for_student_year(student.id, selected_year_id) if selected_year_id else None
-    year_name = enrollment.academic_year.name if enrollment else (student.academic_year.name if student.academic_year else None)
-    level_name = enrollment.academic_year_level.name if enrollment else (student.academic_level.name if student.academic_level else student.level)
-    class_name = enrollment.academic_year_class.name if enrollment else (student.academic_class.name if student.academic_class else (student.school_class.name if student.school_class else ""))
-    section_name = enrollment.academic_section.name if enrollment and enrollment.academic_section else (student.academic_section.name if student.academic_section else student.section)
+    placement = resolve_student_academic_context(student, selected_year_id) if selected_year_id else None
+    enrollment = placement.get("enrollment") if placement else None
+    selected_year = db.session.get(AcademicYear, selected_year_id) if selected_year_id else None
+    year_name = selected_year.name if placement and selected_year else None
+    level_name = placement.get("level_name") if placement else None
+    class_name = placement.get("class_name") if placement else ""
+    section_name = placement.get("section_name") if placement else None
     
     return jsonify({
         "id": student.id,
@@ -3564,16 +3620,16 @@ def student_data_json(student_id):
         "gender": student.gender,
         "photo_path": student.photo_path,
         "photo_url": stored_asset_url(student.photo_path),
-        "academic_year_level_id": enrollment.academic_year_level_id if enrollment else None,
+        "academic_year_level_id": placement.get("academic_year_level_id") if placement else None,
         "academic_year_level_name": level_name,
-        "academic_year_class_id": enrollment.academic_year_class_id if enrollment else None,
+        "academic_year_class_id": placement.get("academic_year_class_id") if placement else None,
         "academic_year_class_name": class_name,
-        "academic_section_id": enrollment.academic_section_id if enrollment else student.academic_section_id,
+        "academic_section_id": placement.get("academic_section_id") if placement else None,
         "academic_section_name": section_name,
-        "academic_year_id": enrollment.academic_year_id if enrollment else student.academic_year_id,
+        "academic_year_id": placement.get("academic_year_id") if placement else None,
         "academic_year_name": year_name,
-        "enrollment_status": enrollment.status if enrollment else None,
-        "academic_outcome": enrollment.academic_outcome if enrollment else None,
+        "enrollment_status": enrollment.status if enrollment else ("legacy" if placement else None),
+        "academic_outcome": enrollment.academic_outcome if enrollment else ("pending" if placement else None),
         "legacy_academic_level_id": student.academic_level_id,
         "legacy_academic_class_id": student.academic_class_id,
         "is_result_locked": student.is_result_locked,
