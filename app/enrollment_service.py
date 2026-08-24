@@ -509,6 +509,7 @@ def plan_bulk_transition(
     source_academic_section_id=None,
     destination_academic_section_id=None,
     action=None,
+    excluded_student_ids=None,
 ):
     """Build a read-only bulk transition plan before any writes."""
     action_was_explicit = action is not None
@@ -534,6 +535,10 @@ def plan_bulk_transition(
     if not settings["requires_different_year"] and not same_year:
         raise EnrollmentValidationError("Local Transfer must stay within the source academic year")
 
+    excluded_ids = set()
+    for excluded_id in excluded_student_ids or ():
+        excluded_ids.add(_require(excluded_id, "Excluded student"))
+
     query = StudentEnrollment.query.filter_by(
         academic_year_id=source_year_id,
         academic_year_level_id=_require(source_academic_year_level_id, "Source academic year level"),
@@ -543,9 +548,59 @@ def plan_bulk_transition(
         query = query.filter_by(academic_section_id=_require(source_academic_section_id, "Source academic section"))
     source_enrollments = query.order_by(StudentEnrollment.id).all()
 
+    # Resolve the complete year-aware source roster without creating a
+    # backfill enrollment. Legacy-only students remain visible as INVALID so
+    # the administrator can fix the mapping explicitly rather than Preview
+    # mutating data behind the scenes.
+    source_students = student_enrollment_scope_query(
+        source_year_id,
+        academic_year_level_id=source_academic_year_level_id,
+        academic_year_class_id=source_academic_year_class_id,
+        academic_section_id=source_academic_section_id,
+    ).order_by(Student.id).all()
+    source_by_student = {source.student_id: source for source in source_enrollments}
+    source_student_ids = {student.id for student in source_students}
+    invalid_exclusions = excluded_ids - source_student_ids
+    if invalid_exclusions:
+        raise EnrollmentValidationError(
+            "Excluded student is not part of the selected source class"
+        )
+
     plan = []
-    for source in source_enrollments:
-        student = db.session.get(Student, source.student_id)
+    destination_details = {
+        "academic_year": destination_scope["academic_year"],
+        "academic_year_level": destination_scope["academic_year_level"],
+        "academic_year_class": destination_scope["academic_year_class"],
+        "academic_section": destination_scope.get("academic_section"),
+    }
+    for student in source_students:
+        source = source_by_student.get(student.id)
+        if not source:
+            plan.append({
+                "student": student,
+                "source": None,
+                "eligible": False,
+                "classification": "INVALID",
+                "reason": "No StudentEnrollment exists for the selected academic year",
+                "existing_destination": None,
+                "destination": destination_details,
+                "excluded": False,
+            })
+            continue
+
+        if student.id in excluded_ids:
+            plan.append({
+                "student": student,
+                "source": source,
+                "eligible": False,
+                "classification": "EXCLUDED",
+                "reason": "Excluded by administrator",
+                "existing_destination": None,
+                "destination": destination_details,
+                "excluded": True,
+            })
+            continue
+
         existing = get_enrollment_for_student_year(source.student_id, destination_year_id)
         target_section_id = destination_scope["academic_section"].id if destination_scope["academic_section"] else None
         same_placement = (
@@ -560,48 +615,66 @@ def plan_bulk_transition(
                 "student": student,
                 "source": source,
                 "eligible": False,
+                "classification": "INVALID",
                 "reason": "repeat_requires_failed",
                 "existing_destination": existing,
+                "destination": destination_details,
+                "excluded": False,
+            })
+        elif source.status not in ("active", "completed"):
+            plan.append({
+                "student": student,
+                "source": source,
+                "eligible": False,
+                "classification": "INVALID",
+                "reason": "source_enrollment_inactive",
+                "existing_destination": existing,
+                "destination": destination_details,
+                "excluded": False,
             })
         elif same_placement:
             plan.append({
                 "student": student,
                 "source": source,
                 "eligible": False,
+                "classification": "SKIPPED",
                 "reason": "same_placement",
                 "existing_destination": existing,
+                "destination": destination_details,
+                "excluded": False,
             })
         elif existing and not same_year:
             plan.append({
                 "student": student,
                 "source": source,
                 "eligible": False,
+                "classification": "SKIPPED",
                 "reason": "already_enrolled",
                 "existing_destination": existing,
+                "destination": destination_details,
+                "excluded": False,
             })
         elif same_year and existing is not source:
             plan.append({
                 "student": student,
                 "source": source,
                 "eligible": False,
+                "classification": "SKIPPED",
                 "reason": "already_enrolled",
                 "existing_destination": existing,
-            })
-        elif not student:
-            plan.append({
-                "student": None,
-                "source": source,
-                "eligible": False,
-                "reason": "missing_student",
-                "existing_destination": None,
+                "destination": destination_details,
+                "excluded": False,
             })
         else:
             plan.append({
                 "student": student,
                 "source": source,
                 "eligible": True,
+                "classification": "ELIGIBLE",
                 "reason": None,
                 "existing_destination": None,
+                "destination": destination_details,
+                "excluded": False,
             })
     return {
         "action": action,
@@ -610,6 +683,7 @@ def plan_bulk_transition(
         "source_enrollments": source_enrollments,
         "destination_scope": destination_scope,
         "items": plan,
+        "excluded_student_ids": sorted(excluded_ids),
     }
 
 
@@ -619,9 +693,10 @@ def execute_bulk_transition(plan, *, action=None, notes=None, performed_by=None)
     if plan.get("action_explicit") and action != plan.get("action"):
         raise EnrollmentValidationError("The transition preview no longer matches the selected action")
     created = []
+    expected_count = sum(item.get("classification") == "ELIGIBLE" for item in plan["items"])
     with db.session.begin_nested():
         for item in plan["items"]:
-            if not item["eligible"]:
+            if not item["eligible"] or item.get("classification") != "ELIGIBLE":
                 continue
             source = item["source"]
             student = item["student"]
@@ -670,6 +745,8 @@ def execute_bulk_transition(plan, *, action=None, notes=None, performed_by=None)
             apply_legacy_placement(student, scope)
             created.append(destination)
         db.session.flush()
+        if len(created) != expected_count:
+            raise EnrollmentValidationError("Bulk transition count validation failed; no changes were applied")
     return created
 
 

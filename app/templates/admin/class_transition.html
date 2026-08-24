@@ -43,6 +43,7 @@
       <label>Action<select name="action" id="transition-action"><option value="local_transfer">Local Transfer (same academic year)</option><option value="transfer">Transfer to a different academic year</option><option value="promotion">Promote</option><option value="repeat">Repeat</option></select></label>
       <label>Notes (optional)<input name="notes" placeholder="Reason or transition note"></label>
     </div>
+    <div class="action-guidance" id="action-guidance" role="status"></div>
 
     <div class="transition-actions" style="justify-content:flex-end;margin-top:18px;">
       <button class="btn btn-outline" type="submit" name="mode" value="preview"><i class="fa-solid fa-eye"></i> Preview students</button>
@@ -54,24 +55,45 @@
     <div class="bulk-summary">
       <div><strong>{{ preview.total }}</strong><span>Total source students</span></div>
       <div class="ready"><strong>{{ preview.ready }}</strong><span>Ready</span></div>
-      <div class="skipped"><strong>{{ preview.skipped }}</strong><span>Already enrolled</span></div>
+      <div class="skipped"><strong>{{ preview.skipped }}</strong><span>Skipped</span></div>
       <div class="excluded"><strong>{{ preview.excluded }}</strong><span>Excluded</span></div>
+      <div class="invalid"><strong>{{ preview.invalid }}</strong><span>Invalid</span></div>
     </div>
-    <div class="table-wrap">
+    <form method="post" class="preview-review-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="source_academic_year_id" value="{{ values.source_year_id }}">
+      <input type="hidden" name="source_academic_year_level_id" value="{{ values.source_level_id }}">
+      <input type="hidden" name="source_academic_year_class_id" value="{{ values.source_class_id }}">
+      <input type="hidden" name="source_academic_section_id" value="{{ values.source_section_id or '' }}">
+      <input type="hidden" name="destination_academic_year_id" value="{{ values.destination_year_id }}">
+      <input type="hidden" name="destination_academic_year_level_id" value="{{ values.destination_level_id }}">
+      <input type="hidden" name="destination_academic_year_class_id" value="{{ values.destination_class_id }}">
+      <input type="hidden" name="destination_academic_section_id" value="{{ values.destination_section_id or '' }}">
+      <input type="hidden" name="action" value="{{ values.action }}">
+      <input type="hidden" name="notes" value="">
+      <div class="table-wrap">
       <table class="premium-table">
-        <thead><tr><th>Student</th><th>Student ID</th><th>Source</th><th>Preview status</th></tr></thead>
+        <thead><tr><th>Exclude</th><th>Student</th><th>Student ID</th><th>Current placement</th><th>Destination</th><th>Action</th><th>Status / reason</th></tr></thead>
         <tbody>
         {% for item in preview["items"] %}
           <tr>
+            <td>{% if item.student and item.source %}<input type="checkbox" name="excluded_student_ids" value="{{ item.student.id }}" {% if item.excluded %}checked{% endif %} aria-label="Exclude {{ item.student.full_name }}">{% else %}<span aria-hidden="true">—</span>{% endif %}</td>
             <td>{{ item.student.full_name if item.student else 'Missing student' }}</td>
             <td>{{ item.student.student_code if item.student else '-' }}</td>
-            <td>{{ item.source.academic_year.name }} · {{ item.source.academic_year_class.name }}{% if item.source.academic_section %} · {{ item.source.academic_section.name }}{% endif %}</td>
-            <td><span class="status-pill {{ 'active' if item.eligible else 'warn' }}">{{ 'Ready' if item.eligible else ('Already enrolled' if item.reason == 'already_enrolled' else 'Excluded') }}</span></td>
+            <td>{% if item.source %}{{ item.source.academic_year.name }} · {{ item.source.academic_year_level.name }} · {{ item.source.academic_year_class.name }}{% if item.source.academic_section %} · {{ item.source.academic_section.name }}{% endif %}{% else %}Legacy placement only{% endif %}</td>
+            <td>{{ item.destination.academic_year.name }} · {{ item.destination.academic_year_level.name }} · {{ item.destination.academic_year_class.name }}{% if item.destination.academic_section %} · {{ item.destination.academic_section.name }}{% endif %}</td>
+            <td>{{ values.action|replace('_', ' ')|title }}</td>
+            <td><span class="status-pill {{ item.classification|lower }}">{{ item.classification }}</span>{% if item.reason %}<small class="preview-reason">{{ item.reason|replace('_', ' ')|capitalize }}</small>{% endif %}</td>
           </tr>
-        {% else %}<tr><td colspan="4">No students match the selected source class.</td></tr>{% endfor %}
+        {% else %}<tr><td colspan="7">No students match the selected source class.</td></tr>{% endfor %}
         </tbody>
       </table>
-    </div>
+      </div>
+      <div class="preview-actions">
+        <p>Check students to exclude them from this operation. Exclusions do not change enrollment status or movement history.</p>
+        <button class="btn btn-outline" type="submit" name="mode" value="preview"><i class="fa-solid fa-arrows-rotate"></i> Apply exclusions and re-preview</button>
+      </div>
+    </form>
     {% if preview.ready %}
     <form method="post" class="execute-box">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -85,6 +107,7 @@
       <input type="hidden" name="destination_academic_section_id" value="{{ values.destination_section_id or '' }}">
       <input type="hidden" name="action" value="{{ values.action }}">
       <input type="hidden" name="notes" value="">
+      {% for item in preview["items"] if item.excluded %}<input type="hidden" name="excluded_student_ids" value="{{ item.student.id }}">{% endfor %}
       <label class="confirm-line"><input type="checkbox" name="confirm_transition" required> I reviewed the list and understand that source enrollments will be preserved.</label>
       <button class="btn btn-gold" type="submit" name="mode" value="execute"><i class="fa-solid fa-check-double"></i> Confirm and execute {{ preview.ready }} transitions</button>
     </form>
@@ -107,6 +130,7 @@ const destinationSection = document.getElementById('destination-section');
 const action = document.getElementById('transition-action');
 const destinationHierarchyNote = document.getElementById('destination-hierarchy-note');
 const destinationYearFixed = document.getElementById('destination-year-fixed');
+const actionGuidance = document.getElementById('action-guidance');
 
 function fill(select, items, placeholder) {
   select.innerHTML = `<option value="">${placeholder}</option>`;
@@ -139,6 +163,13 @@ function syncActionMode() {
     destinationYear.value = sourceYear.value;
     setLevels(destinationYear, destinationLevel, destinationClass, destinationSection, '', '', '');
   }
+  const guidance = {
+    local_transfer: 'Local Transfer: destination year must be the same as the source year.',
+    transfer: 'Cross-Year Transfer: destination year must be different from the source year.',
+    promotion: 'Promotion: destination year must be different from the source year.',
+    repeat: 'Repeat: destination year must be different, and only failed source enrollments are eligible.'
+  };
+  actionGuidance.textContent = guidance[action.value] || '';
 }
 sourceYear.addEventListener('change', () => { setLevels(sourceYear, sourceLevel, sourceClass, sourceSection, '', '', ''); syncActionMode(); });
 sourceLevel.addEventListener('change', () => setLevels(sourceYear, sourceLevel, sourceClass, sourceSection, sourceLevel.value, '', ''));
@@ -157,5 +188,6 @@ syncActionMode();
 
 <style>
 .transition-page{max-width:1200px;margin:0 auto}.transition-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.transition-grid fieldset{border:1px solid #d6dee8;border-radius:14px;padding:18px;min-width:0}.transition-grid legend{font-weight:800;color:#163660;padding:0 8px}.transition-grid label,.transition-options label{display:grid;gap:7px;margin:10px 0;font-weight:700;color:#334155}.transition-grid select,.transition-options select,.transition-options input{width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:10px;background:#fff;font:inherit}.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.hierarchy-note{padding:10px 12px;margin:10px 0;color:#7c2d12;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;font-size:.9rem}.transition-options{max-width:720px;margin-top:8px}.bulk-preview{margin-top:24px;border-top:1px solid #dbe4ee;padding-top:22px}.bulk-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.bulk-summary>div{padding:15px;border-radius:12px;background:#f8fafc;border:1px solid #dbe4ee}.bulk-summary strong,.bulk-summary span{display:block}.bulk-summary strong{font-size:1.5rem;color:#163660}.bulk-summary span{color:#64748b;font-size:.85rem}.bulk-summary .ready{background:#ecfdf5;border-color:#86efac}.bulk-summary .skipped{background:#fff7ed;border-color:#fdba74}.bulk-summary .excluded{background:#fef2f2;border-color:#fecaca}.table-wrap{overflow-x:auto;margin-top:18px}.execute-box{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:17px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;margin-top:18px}.confirm-line{display:flex;align-items:flex-start;gap:9px;color:#334155;font-weight:600}.confirm-line input{margin-top:3px}@media(max-width:800px){.transition-grid{grid-template-columns:1fr}.field-row,.bulk-summary{grid-template-columns:1fr}.execute-box{align-items:stretch;flex-direction:column}}
+ .action-guidance{margin-top:10px;padding:11px 14px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc;color:#334155;font-size:.92rem;font-weight:700}.preview-review-form{margin-top:18px}.preview-review-form table{min-width:1120px}.preview-review-form td:first-child,.preview-review-form th:first-child{text-align:center;width:70px}.preview-review-form td{vertical-align:top}.preview-reason{display:block;margin-top:5px;color:#64748b;font-size:.78rem}.preview-actions{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:15px;background:#f8fafc;border:1px solid #dbe4ee;border-radius:12px;margin-top:14px}.preview-actions p{margin:0;color:#475569;font-size:.9rem}.status-pill{display:inline-block;padding:5px 9px;border-radius:999px;font-size:.72rem;font-weight:800;letter-spacing:.04em}.status-pill.eligible{color:#166534;background:#dcfce7}.status-pill.excluded{color:#1d4ed8;background:#dbeafe}.status-pill.skipped{color:#92400e;background:#fef3c7}.status-pill.invalid{color:#991b1b;background:#fee2e2}.bulk-summary{grid-template-columns:repeat(5,1fr)}.bulk-summary .invalid{background:#fef2f2;border-color:#fecaca}@media(max-width:800px){.preview-actions{align-items:stretch;flex-direction:column}.bulk-summary{grid-template-columns:1fr}}
 </style>
 {% endblock %}

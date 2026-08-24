@@ -26,7 +26,6 @@ from .enrollment_service import (
     enrollment_placement_for_student,
     execute_bulk_transition,
     get_enrollment_for_student_year,
-    ensure_legacy_enrollment_for_scope,
     ensure_legacy_enrollment_for_student,
     plan_bulk_transition,
     student_enrollment_scope_query,
@@ -3346,13 +3345,14 @@ def class_transition():
     destination_level_id = int_or_none(values.get("destination_academic_year_level_id"))
     destination_class_id = int_or_none(values.get("destination_academic_year_class_id"))
     destination_section_id = int_or_none(values.get("destination_academic_section_id"))
-    action = values.get("action", "promotion")
+    action = values.get("action") or "promotion"
+    excluded_student_ids = []
     error = None
     plan = None
     preview = None
 
     def build_plan():
-        plan = plan_bulk_transition(
+        return plan_bulk_transition(
             source_year_id,
             source_level_id,
             source_class_id,
@@ -3362,44 +3362,33 @@ def class_transition():
             source_academic_section_id=source_section_id,
             destination_academic_section_id=destination_section_id,
             action=action,
+            excluded_student_ids=excluded_student_ids,
         )
-        # Previewing a class must include legacy-only students when their
-        # existing placement maps uniquely to the selected source year/class.
-        # This is a controlled, source-scope backfill; unresolved records are
-        # intentionally left out rather than assigned to another year.
-        converted = ensure_legacy_enrollment_for_scope(
-            source_year_id,
-            source_level_id,
-            source_class_id,
-            source_section_id,
-        )
-        if converted:
-            db.session.commit()
-            plan = plan_bulk_transition(
-                source_year_id,
-                source_level_id,
-                source_class_id,
-                destination_year_id,
-                destination_level_id,
-                destination_class_id,
-                source_academic_section_id=source_section_id,
-                destination_academic_section_id=destination_section_id,
-                action=action,
-            )
-        return plan
+
+    def parse_exclusions():
+        parsed = []
+        for raw_id in values.getlist("excluded_student_ids"):
+            student_id = int_or_none(raw_id)
+            if student_id is None:
+                raise EnrollmentValidationError("Excluded student ID must be valid")
+            parsed.append(student_id)
+        return sorted(set(parsed))
 
     if all(value is not None for value in (
         source_year_id, source_level_id, source_class_id,
         destination_year_id, destination_level_id, destination_class_id,
     )):
         try:
+            excluded_student_ids = parse_exclusions()
             plan = build_plan()
             items = plan["items"]
             preview = {
                 "total": len(items),
-                "ready": sum(item["eligible"] for item in items),
-                "skipped": sum(item["reason"] == "already_enrolled" for item in items),
-                "excluded": sum(not item["eligible"] and item["reason"] != "already_enrolled" for item in items),
+                "ready": sum(item["classification"] == "ELIGIBLE" for item in items),
+                "eligible": sum(item["classification"] == "ELIGIBLE" for item in items),
+                "skipped": sum(item["classification"] == "SKIPPED" for item in items),
+                "excluded": sum(item["classification"] == "EXCLUDED" for item in items),
+                "invalid": sum(item["classification"] == "INVALID" for item in items),
                 "items": items,
             }
             if request.method == "POST" and request.form.get("mode") == "execute":
@@ -3414,7 +3403,9 @@ def class_transition():
                     )
                     db.session.commit()
                     flash(
-                        f"Class transition completed: {len(created)} created, {preview['skipped']} skipped, {preview['excluded']} excluded.",
+                        f"Class transition completed: {len(created)} transitioned, "
+                        f"{preview['skipped']} skipped, {preview['excluded']} excluded, "
+                        f"{preview['invalid']} invalid.",
                         "success",
                     )
                     return redirect(url_for("admin_advanced_results.students_management", year_id=destination_year_id))
@@ -3425,6 +3416,8 @@ def class_transition():
             db.session.rollback()
             current_app.logger.exception("Whole-class transition failed")
             error = "The class transition could not be prepared. No records were changed."
+    elif request.method == "POST" and request.form.get("mode") == "preview":
+        error = "Select the complete source and destination hierarchy before previewing the transition."
 
     return render_template(
         "admin/class_transition.html",
@@ -3440,6 +3433,7 @@ def class_transition():
             "destination_class_id": destination_class_id,
             "destination_section_id": destination_section_id,
             "action": action,
+            "excluded_student_ids": excluded_student_ids,
         },
         preview=preview,
         error=error,
