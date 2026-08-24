@@ -173,6 +173,91 @@ class AcademicYearSubject(TimestampMixin, db.Model):
     )
 
 
+class PromotionRule(TimestampMixin, db.Model):
+    """Year-aware promotion policy for one academic level.
+
+    This is intentionally separate from ``StudentEnrollment.academic_outcome``.
+    Enrollment outcomes describe lifecycle transitions; this model describes
+    the policy used when an academic evaluation is performed.
+    """
+
+    __tablename__ = "promotion_rules"
+
+    id = db.Column(db.Integer, primary_key=True)
+    academic_year_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_years.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_levels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    overall_pass_threshold = db.Column(db.Numeric(6, 3), default=50, nullable=False)
+    critical_subject_pass_threshold = db.Column(db.Numeric(6, 3), default=50, nullable=False)
+
+    academic_year = db.relationship("AcademicYear", backref=db.backref("promotion_rules", lazy="dynamic"))
+    academic_year_level = db.relationship("AcademicYearLevel", backref=db.backref("promotion_rule", uselist=False))
+    critical_subjects = db.relationship(
+        "PromotionRuleCriticalSubject",
+        back_populates="promotion_rule",
+        cascade="all, delete-orphan",
+        order_by="PromotionRuleCriticalSubject.id",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "academic_year_id",
+            "academic_year_level_id",
+            name="uq_promotion_rule_year_level",
+        ),
+        db.CheckConstraint(
+            "overall_pass_threshold >= 0 AND overall_pass_threshold <= 100",
+            name="ck_promotion_rule_overall_threshold",
+        ),
+        db.CheckConstraint(
+            "critical_subject_pass_threshold >= 0 AND critical_subject_pass_threshold <= 100",
+            name="ck_promotion_rule_critical_threshold",
+        ),
+    )
+
+
+class PromotionRuleCriticalSubject(db.Model):
+    """One year-aware subject selected as critical for a promotion rule."""
+
+    __tablename__ = "promotion_rule_critical_subjects"
+
+    id = db.Column(db.Integer, primary_key=True)
+    promotion_rule_id = db.Column(
+        db.Integer,
+        db.ForeignKey("promotion_rules.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_subject_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_subjects.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    promotion_rule = db.relationship("PromotionRule", back_populates="critical_subjects")
+    academic_year_subject = db.relationship("AcademicYearSubject")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "promotion_rule_id",
+            "academic_year_subject_id",
+            name="uq_promotion_rule_critical_subject",
+        ),
+    )
+
+
 class AcademicLevel(TimestampMixin, db.Model):
     __tablename__ = "academic_levels"
 
@@ -487,6 +572,81 @@ class StudentEnrollmentMovement(TimestampMixin, db.Model):
             "idx_student_enrollment_movement_student_time",
             "student_id",
             "moved_at",
+        ),
+    )
+
+
+class PromotionEvaluation(TimestampMixin, db.Model):
+    """Immutable evidence snapshot for one promotion evaluation attempt."""
+
+    __tablename__ = "promotion_evaluations"
+
+    OUTCOME_VALUES = ("PASS", "FAIL")
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(
+        db.Integer,
+        db.ForeignKey("students.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    student_enrollment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("student_enrollments.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_years.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_levels.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    promotion_rule_id = db.Column(
+        db.Integer,
+        db.ForeignKey("promotion_rules.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    promotion_rule_snapshot_json = db.Column(db.Text, nullable=False, default="{}")
+    evaluation_context_json = db.Column(db.Text, nullable=False, default="{}")
+    overall_percentage = db.Column(db.Numeric(8, 3), nullable=False)
+    base_outcome = db.Column(db.String(4), nullable=False)
+    final_outcome = db.Column(db.String(4), nullable=False)
+    critical_subject_results_json = db.Column(db.Text, nullable=False, default="[]")
+    override_reason = db.Column(db.String(80), nullable=True)
+    evaluated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    student = db.relationship("Student", backref=db.backref("promotion_evaluations", lazy="dynamic"))
+    student_enrollment = db.relationship(
+        "StudentEnrollment",
+        backref=db.backref("promotion_evaluations", lazy="dynamic"),
+    )
+    academic_year = db.relationship("AcademicYear")
+    academic_year_level = db.relationship("AcademicYearLevel")
+    promotion_rule = db.relationship("PromotionRule")
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "base_outcome IN ('PASS', 'FAIL')",
+            name="ck_promotion_evaluation_base_outcome",
+        ),
+        db.CheckConstraint(
+            "final_outcome IN ('PASS', 'FAIL')",
+            name="ck_promotion_evaluation_final_outcome",
+        ),
+        db.Index(
+            "idx_promotion_evaluation_scope",
+            "academic_year_id",
+            "academic_year_level_id",
+            "student_id",
+            "evaluated_at",
         ),
     )
 

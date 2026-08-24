@@ -13,7 +13,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
+from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, PromotionEvaluation, PromotionRule, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
 from .academic_hierarchy import validate_year_level, year_classes, year_levels, year_subjects
 from .permissions import PERMISSIONS, can, enforce_endpoint_permission, permission_required
 from .security import ALLOWED_AUDIO, ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
@@ -34,6 +34,14 @@ from .services import (
 )
 from .services import slug
 from .enrollment_service import EnrollmentValidationError, enrollment_placement_for_student, student_enrollment_legacy_scope_query, student_enrollment_scope_query
+from .promotion_service import (
+    PromotionValidationError,
+    get_promotion_rule,
+    promotion_rules_enabled,
+    set_promotion_rules_enabled,
+    upsert_promotion_rule,
+    valid_critical_subjects,
+)
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -2575,8 +2583,182 @@ def config_subjects():
 @admin_bp.route("/config-center/promotion-rules")
 @login_required
 def config_promotion_rules():
-    """Promotion Rules Management"""
-    return redirect(url_for('admin.config_center', section='promotion-rules'))
+    """Compatibility entry point for the dedicated Promotion Rules module."""
+    return promotion_rules_dashboard()
+
+
+def _promotion_rules_years():
+    return AcademicYear.query.order_by(
+        AcademicYear.is_current.desc(),
+        AcademicYear.name.desc(),
+        AcademicYear.id.desc(),
+    ).all()
+
+
+@admin_bp.route("/promotion-rules")
+@login_required
+@config_center_required
+def promotion_rules_dashboard():
+    """Dedicated Promotion Rules landing page and scope overview."""
+    years = _promotion_rules_years()
+    rules = PromotionRule.query.order_by(
+        PromotionRule.academic_year_id.desc(),
+        PromotionRule.academic_year_level_id,
+    ).all()
+    recent_evaluations = PromotionEvaluation.query.order_by(
+        PromotionEvaluation.evaluated_at.desc(),
+        PromotionEvaluation.id.desc(),
+    ).limit(8).all()
+    return render_template(
+        "admin/promotion_rules_dashboard.html",
+        years=years,
+        rules=rules,
+        recent_evaluations=recent_evaluations,
+        rules_enabled=promotion_rules_enabled(),
+        total_rules=len(rules),
+        active_rules=sum(1 for rule in rules if rule.is_active),
+        evaluation_count=PromotionEvaluation.query.count(),
+    )
+
+
+@admin_bp.route("/promotion-rules/global-settings", methods=["GET", "POST"])
+@login_required
+@config_center_required
+def promotion_rules_global_settings():
+    """Dedicated page for the one global Promotion Rules feature switch."""
+    if request.method == "POST":
+        try:
+            enabled = request.form.get("enabled") == "on"
+            set_promotion_rules_enabled(enabled)
+            audit("Promotion Rules", f"Global feature {'enabled' if enabled else 'disabled'}")
+            db.session.commit()
+            flash(
+                "Promotion Rules are now ON." if enabled else "Promotion Rules are now OFF; baseline evaluation remains active.",
+                "success",
+            )
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Promotion Rules global setting failed")
+            flash("The Promotion Rules global setting could not be saved.", "danger")
+        return redirect(url_for("admin.promotion_rules_global_settings"))
+    return render_template(
+        "admin/promotion_rules_global_settings.html",
+        rules_enabled=promotion_rules_enabled(),
+    )
+
+
+@admin_bp.route("/promotion-rules/configure", methods=["GET", "POST"])
+@login_required
+@config_center_required
+def promotion_rules_configure():
+    """Configure one rule using the selected year-aware level scope."""
+    years = _promotion_rules_years()
+    selected_year_id = request.args.get("year_id", type=int)
+    selected_level_id = request.args.get("level_id", type=int)
+    if request.method == "POST":
+        selected_year_id = request.form.get("academic_year_id", type=int)
+        selected_level_id = request.form.get("academic_year_level_id", type=int)
+        try:
+            critical_subject_ids = request.form.getlist("critical_subject_ids")
+            upsert_promotion_rule(
+                selected_year_id,
+                selected_level_id,
+                is_active=request.form.get("is_active") == "on",
+                overall_pass_threshold=request.form.get("overall_pass_threshold"),
+                critical_subject_pass_threshold=request.form.get("critical_subject_pass_threshold"),
+                critical_subject_ids=critical_subject_ids,
+            )
+            audit(
+                "Promotion Rules",
+                f"Saved rule for academic year {selected_year_id}, year level {selected_level_id}",
+            )
+            db.session.commit()
+            flash("Promotion Rule saved for the selected Academic Year and Level.", "success")
+            return redirect(url_for(
+                "admin.promotion_rules_configure",
+                year_id=selected_year_id,
+                level_id=selected_level_id,
+            ))
+        except (PromotionValidationError, ValueError) as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Promotion Rule save failed")
+            flash("The Promotion Rule could not be saved.", "danger")
+
+    selected_year = db.session.get(AcademicYear, selected_year_id) if selected_year_id else None
+    if selected_year is None and years:
+        selected_year = years[0]
+        selected_year_id = selected_year.id
+    levels = year_levels(selected_year_id) if selected_year_id else []
+    selected_level = next((level for level in levels if level.id == selected_level_id), None)
+    subjects = valid_critical_subjects(selected_year_id, selected_level_id) if selected_level else []
+    rule = get_promotion_rule(selected_year_id, selected_level_id) if selected_level else None
+    selected_subject_ids = {
+        item.academic_year_subject_id for item in rule.critical_subjects
+    } if rule else set()
+    return render_template(
+        "admin/promotion_rules_configure.html",
+        years=years,
+        levels=levels,
+        subjects=subjects,
+        selected_year=selected_year,
+        selected_level=selected_level,
+        rule=rule,
+        selected_subject_ids=selected_subject_ids,
+        rules_enabled=promotion_rules_enabled(),
+    )
+
+
+@admin_bp.route("/promotion-rules/rules/<int:rule_id>/toggle", methods=["POST"])
+@login_required
+@config_center_required
+def promotion_rules_toggle(rule_id):
+    """Activate/deactivate a rule without touching historical snapshots."""
+    rule = db.session.get(PromotionRule, rule_id)
+    if not rule:
+        flash("Promotion Rule not found.", "danger")
+        return redirect(url_for("admin.promotion_rules_dashboard"))
+    rule.is_active = not rule.is_active
+    audit("Promotion Rules", f"{'Activated' if rule.is_active else 'Deactivated'} rule {rule.id}")
+    db.session.commit()
+    flash("Promotion Rule status updated. Existing evaluations were not changed.", "success")
+    return redirect(url_for(
+        "admin.promotion_rules_configure",
+        year_id=rule.academic_year_id,
+        level_id=rule.academic_year_level_id,
+    ))
+
+
+@admin_bp.route("/promotion-rules/evaluations")
+@login_required
+@config_center_required
+def promotion_rules_evaluations():
+    """Read-only historical PromotionEvaluation snapshot history."""
+    year_id = request.args.get("year_id", type=int)
+    level_id = request.args.get("level_id", type=int)
+    years = _promotion_rules_years()
+    levels = year_levels(year_id) if year_id else []
+    if level_id and not any(level.id == level_id for level in levels):
+        level_id = None
+    query = PromotionEvaluation.query
+    if year_id:
+        query = query.filter_by(academic_year_id=year_id)
+    if level_id:
+        query = query.filter_by(academic_year_level_id=level_id)
+    evaluations = query.order_by(
+        PromotionEvaluation.evaluated_at.desc(),
+        PromotionEvaluation.id.desc(),
+    ).limit(200).all()
+    return render_template(
+        "admin/promotion_rules_evaluations.html",
+        years=years,
+        levels=levels,
+        selected_year_id=year_id,
+        selected_level_id=level_id,
+        evaluations=evaluations,
+    )
 
 
 @admin_bp.route("/config-center/result-settings")

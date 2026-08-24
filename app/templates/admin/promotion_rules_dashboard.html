@@ -1,0 +1,76 @@
+{% extends "admin/base.html" %}
+{% block title %}Promotion Rules{% endblock %}
+{% block page_title %}Promotion Rules{% endblock %}
+{% block admin_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/promotion_rules.css') }}">
+
+<div class="promotion-page">
+  <header class="promotion-hero">
+    <div>
+      <span class="promotion-eyebrow"><i class="fa-solid fa-scale-balanced"></i> Academic progression</span>
+      <h1>Promotion Rules</h1>
+      <p>Manage year-aware promotion policies without changing historical results or enrollment history.</p>
+    </div>
+    <div class="promotion-hero__status {% if rules_enabled %}is-on{% endif %}">
+      <i class="fa-solid {% if rules_enabled %}fa-toggle-on{% else %}fa-toggle-off{% endif %}"></i>
+      <span>{{ 'ON' if rules_enabled else 'OFF' }}</span>
+      <small>Global feature</small>
+    </div>
+  </header>
+
+  {% include "admin/_promotion_rules_nav.html" %}
+
+  {% if not rules_enabled %}
+  <div class="promotion-notice promotion-notice--warning">
+    <i class="fa-solid fa-circle-info"></i>
+    <div><strong>Promotion Rules are currently OFF.</strong><span>Configured rules are preserved but do not affect evaluation until the global feature is enabled.</span></div>
+    <a class="promotion-button promotion-button--dark" href="{{ url_for('admin.promotion_rules_global_settings') }}"><i class="fa-solid fa-power-off"></i> Open Global Settings</a>
+  </div>
+  {% endif %}
+
+  <section class="promotion-stat-grid" aria-label="Promotion Rules summary">
+    <article class="promotion-stat promotion-stat--navy"><i class="fa-solid fa-list-check"></i><strong>{{ total_rules }}</strong><span>Total rules</span></article>
+    <article class="promotion-stat promotion-stat--teal"><i class="fa-solid fa-circle-check"></i><strong>{{ active_rules }}</strong><span>Active rules</span></article>
+    <article class="promotion-stat promotion-stat--gold"><i class="fa-solid fa-clock-rotate-left"></i><strong>{{ evaluation_count }}</strong><span>Saved evaluations</span></article>
+  </section>
+
+  <section class="promotion-section">
+    <div class="promotion-section__header">
+      <div><span class="promotion-kicker"><i class="fa-solid fa-layer-group"></i> Year-aware configuration</span><h2>Rules by Academic Year and Level</h2><p>Each row is isolated to one Academic Year + Academic Year Level scope.</p></div>
+      <a class="promotion-button promotion-button--primary" href="{{ url_for('admin.promotion_rules_configure') }}"><i class="fa-solid fa-plus"></i> Configure Rule</a>
+    </div>
+    {% if rules %}
+    <div class="promotion-table-wrap">
+      <table class="promotion-table">
+        <thead><tr><th>Academic Year</th><th>Academic Level</th><th>Critical Subjects</th><th>Thresholds</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        {% for rule in rules %}
+          <tr>
+            <td><span class="promotion-chip promotion-chip--year"><i class="fa-regular fa-calendar"></i>{{ rule.academic_year.name }}</span></td>
+            <td><strong>{{ rule.academic_year_level.name }}</strong></td>
+            <td>{% if rule.critical_subjects %}<div class="promotion-subject-list">{% for item in rule.critical_subjects %}<span>{{ item.academic_year_subject.name }}</span>{% endfor %}</div>{% else %}<span class="promotion-muted">None configured</span>{% endif %}</td>
+            <td><span class="promotion-threshold">Overall {{ rule.overall_pass_threshold }}%</span><span class="promotion-threshold">Critical {{ rule.critical_subject_pass_threshold }}%</span></td>
+            <td><span class="promotion-status {% if rule.is_active %}is-active{% endif %}"><i class="fa-solid {% if rule.is_active %}fa-check{% else %}fa-pause{% endif %}"></i>{{ 'Active' if rule.is_active else 'Inactive' }}</span></td>
+            <td><a class="promotion-icon-button" title="Edit rule" aria-label="Edit rule" href="{{ url_for('admin.promotion_rules_configure', year_id=rule.academic_year_id, level_id=rule.academic_year_level_id) }}"><i class="fa-solid fa-pen"></i></a></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="promotion-empty"><i class="fa-solid fa-sliders"></i><strong>No promotion rule configured yet.</strong><span>Choose an Academic Year and Level to create the first scoped rule.</span><a class="promotion-button promotion-button--primary" href="{{ url_for('admin.promotion_rules_configure') }}">Start configuration</a></div>
+    {% endif %}
+  </section>
+
+  <section class="promotion-section promotion-section--history">
+    <div class="promotion-section__header"><div><span class="promotion-kicker"><i class="fa-solid fa-chart-line"></i> Evidence snapshots</span><h2>Recent Evaluation History</h2></div><a class="promotion-button promotion-button--ghost" href="{{ url_for('admin.promotion_rules_evaluations') }}">View all <i class="fa-solid fa-arrow-right"></i></a></div>
+    {% if recent_evaluations %}
+    <div class="promotion-history-list">
+      {% for evaluation in recent_evaluations %}
+      <div class="promotion-history-row"><span class="promotion-history-icon"><i class="fa-solid {% if evaluation.final_outcome == 'PASS' %}fa-check{% else %}fa-xmark{% endif %}"></i></span><div><strong>{{ evaluation.student.full_name }}</strong><span>{{ evaluation.academic_year.name }} · {{ evaluation.academic_year_level.name }}</span></div><b class="promotion-outcome promotion-outcome--{{ evaluation.final_outcome|lower }}">{{ evaluation.final_outcome }}</b><time>{{ evaluation.evaluated_at.strftime('%b %d, %Y %I:%M %p') }}</time></div>
+      {% endfor %}
+    </div>
+    {% else %}<div class="promotion-empty promotion-empty--small"><i class="fa-solid fa-clock-rotate-left"></i><span>No evaluation snapshots have been recorded.</span></div>{% endif %}
+  </section>
+</div>
+{% endblock %}

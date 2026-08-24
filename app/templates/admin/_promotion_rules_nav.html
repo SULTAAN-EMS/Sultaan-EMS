@@ -1,0 +1,23 @@
+<nav class="promotion-module-nav" aria-label="Promotion Rules navigation">
+  <a class="promotion-module-nav__link {% if request.endpoint == 'admin.promotion_rules_dashboard' or request.endpoint == 'admin.config_promotion_rules' %}is-active{% endif %}" href="{{ url_for('admin.promotion_rules_dashboard') }}">
+    <i class="fa-solid fa-scale-balanced" aria-hidden="true"></i><span>Promotion Rules</span>
+  </a>
+  <a class="promotion-module-nav__link {% if request.endpoint == 'admin.promotion_rules_global_settings' %}is-active{% endif %}" href="{{ url_for('admin.promotion_rules_global_settings') }}">
+    <i class="fa-solid fa-power-off" aria-hidden="true"></i><span>Global Settings</span>
+  </a>
+  <a class="promotion-module-nav__link {% if request.endpoint == 'admin.promotion_rules_configure' %}is-active{% endif %}" href="{{ url_for('admin.promotion_rules_configure') }}#academic-year">
+    <i class="fa-regular fa-calendar" aria-hidden="true"></i><span>Academic Year</span>
+  </a>
+  <a class="promotion-module-nav__link {% if request.endpoint == 'admin.promotion_rules_configure' %}is-active{% endif %}" href="{{ url_for('admin.promotion_rules_configure') }}#academic-level">
+    <i class="fa-solid fa-graduation-cap" aria-hidden="true"></i><span>Academic Level</span>
+  </a>
+  <a class="promotion-module-nav__link {% if request.endpoint == 'admin.promotion_rules_configure' %}is-active{% endif %}" href="{{ url_for('admin.promotion_rules_configure') }}#rule-configuration">
+    <i class="fa-solid fa-layer-group" aria-hidden="true"></i><span>Rule Configuration</span>
+  </a>
+  <a class="promotion-module-nav__link {% if request.endpoint == 'admin.promotion_rules_configure' %}is-active{% endif %}" href="{{ url_for('admin.promotion_rules_configure') }}#rule-configuration">
+    <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Critical Subjects</span>
+  </a>
+  <a class="promotion-module-nav__link {% if request.endpoint == 'admin.promotion_rules_evaluations' %}is-active{% endif %}" href="{{ url_for('admin.promotion_rules_evaluations') }}">
+    <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>Evaluation History</span>
+  </a>
+</nav>

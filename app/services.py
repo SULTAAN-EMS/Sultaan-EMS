@@ -50,6 +50,10 @@ DEFAULT_SETTINGS = {
     "admin_password_composition": "letters_numbers",
     "admin_password_min_length": "8",
     "admin_session_timeout_minutes": "60",
+    # Phase 3B: global switch for year/level-scoped promotion rules.
+    # Keep it off by default so existing result and transition behavior is
+    # unchanged until an administrator explicitly enables the feature.
+    "promotion_rules_enabled": "false",
     "dashboard_background": "",
     "visible_cards": "students,classes,exams,published,subjects,locked",
     "homepage_widgets": "search,quick_links,social",
