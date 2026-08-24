@@ -2713,7 +2713,9 @@ def promotion_rules_global_settings():
     """Dedicated page for the one global Promotion Rules feature switch."""
     if request.method == "POST":
         try:
-            enabled = request.form.get("enabled") == "on"
+            enabled = str(request.form.get("enabled", "")).strip().lower() in {
+                "1", "true", "yes", "on"
+            }
             set_promotion_rules_enabled(enabled)
             audit("Promotion Rules", f"Global feature {'enabled' if enabled else 'disabled'}")
             db.session.commit()
@@ -2748,7 +2750,9 @@ def promotion_rules_configure():
             upsert_promotion_rule(
                 selected_year_id,
                 selected_level_id,
-                is_active=request.form.get("is_active") == "on",
+                is_active=str(request.form.get("is_active", "")).strip().lower() in {
+                    "1", "true", "yes", "on"
+                },
                 overall_pass_threshold=request.form.get("overall_pass_threshold"),
                 critical_subject_pass_threshold=request.form.get("critical_subject_pass_threshold"),
                 critical_subject_ids=critical_subject_ids,

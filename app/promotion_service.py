@@ -176,10 +176,15 @@ def upsert_promotion_rule(
     rule.is_active = bool(is_active)
     rule.overall_pass_threshold = overall_threshold
     rule.critical_subject_pass_threshold = critical_threshold
-    rule.critical_subjects = [
+    # Flush removals before inserting the replacement mappings.  Without this
+    # ordering, saving the same rule twice can hit the unique constraint while
+    # SQLAlchemy still has the old subject mappings in the database.
+    rule.critical_subjects.clear()
+    db.session.flush()
+    rule.critical_subjects.extend(
         PromotionRuleCriticalSubject(academic_year_subject_id=subject.id)
         for subject in subjects
-    ]
+    )
     db.session.flush()
     return rule
 

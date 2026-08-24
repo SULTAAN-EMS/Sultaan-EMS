@@ -14,11 +14,13 @@ from app.models import (
     PromotionRule,
     Student,
     StudentEnrollment,
+    User,
 )
 from app.promotion_service import (
     PromotionValidationError,
     evaluate_promotion,
     get_promotion_rule,
+    promotion_rules_enabled,
     set_promotion_rules_enabled,
     upsert_promotion_rule,
     valid_critical_subjects,
@@ -228,6 +230,77 @@ class TestPhase3BPromotionRules(unittest.TestCase):
         db.session.commit()
         self.assertEqual(first.id, second.id)
         self.assertEqual(PromotionRule.query.count(), 1)
+
+    def test_rule_active_checkbox_save_persists_on_and_off(self):
+        user = User.query.filter_by(username="admin").first()
+        if user is None:
+            user = User(username="admin", full_name="Test Admin", role="super_admin", is_active=True)
+            user.set_password("test-password")
+            db.session.add(user)
+            db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(user.id)
+            session["_fresh"] = True
+            session["config_center_authenticated"] = True
+
+        form = {
+            "academic_year_id": str(self.year_a.id),
+            "academic_year_level_id": str(self.level_a.id),
+            "overall_pass_threshold": "50",
+            "critical_subject_pass_threshold": "50",
+            "critical_subject_ids": [str(self.subject_a.id)],
+        }
+        response = client.post(
+            "/admin/promotion-rules/configure",
+            data={**form, "is_active": "on"},
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302)
+        db.session.expire_all()
+        rule = get_promotion_rule(self.year_a.id, self.level_a.id)
+        self.assertIsNotNone(rule)
+        self.assertTrue(rule.is_active)
+
+        response = client.post(
+            "/admin/promotion-rules/configure",
+            data=form,
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302)
+        db.session.expire_all()
+        self.assertFalse(get_promotion_rule(self.year_a.id, self.level_a.id).is_active)
+
+    def test_global_settings_save_persists_on_and_off(self):
+        user = User.query.filter_by(username="admin").first()
+        if user is None:
+            user = User(username="admin", full_name="Test Admin", role="super_admin", is_active=True)
+            user.set_password("test-password")
+            db.session.add(user)
+            db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(user.id)
+            session["_fresh"] = True
+            session["config_center_authenticated"] = True
+
+        response = client.post(
+            "/admin/promotion-rules/global-settings",
+            data={"enabled": "on"},
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(promotion_rules_enabled())
+
+        response = client.post(
+            "/admin/promotion-rules/global-settings",
+            data={},
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(promotion_rules_enabled())
 
 
 if __name__ == "__main__":
