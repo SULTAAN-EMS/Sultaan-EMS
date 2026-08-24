@@ -33,6 +33,7 @@ from .enrollment_service import (
     transition_student_enrollment,
     validate_enrollment_scope,
 )
+from .promotion_service import promotion_operational_status
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, performance_tier_for, result_payload, subject_display_name
@@ -3215,6 +3216,11 @@ def students_management():
                 StudentEnrollment.academic_year_id == selected_year.id,
             ).all()
         }
+    promotion_statuses = {}
+    for student in students:
+        enrollment = enrollments.get(student.id)
+        if enrollment:
+            promotion_statuses[student.id] = promotion_operational_status(enrollment)
     incident_counts = {}
     incident_badges = {}
     if student_ids:
@@ -3255,6 +3261,7 @@ def students_management():
         selected_section_id=section_id,
         sections=sections,
         enrollments=enrollments,
+        promotion_statuses=promotion_statuses,
         q=search_query,
         status_filter=status_filter,
         stats=stats,

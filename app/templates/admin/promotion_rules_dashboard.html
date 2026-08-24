@@ -34,6 +34,60 @@
     <article class="promotion-stat promotion-stat--gold"><i class="fa-solid fa-clock-rotate-left"></i><strong>{{ evaluation_count }}</strong><span>Saved evaluations</span></article>
   </section>
 
+  <section class="promotion-section promotion-section--operations">
+    <div class="promotion-section__header">
+      <div><span class="promotion-kicker"><i class="fa-solid fa-filter-circle-check"></i> Operational scope</span><h2>Evaluation and Transition Summary</h2><p>Choose one Academic Year and Academic Level. Every count below is scoped to that year-aware placement.</p></div>
+      <a class="promotion-button promotion-button--ghost" href="{{ url_for('admin.promotion_rules_audit', year_id=selected_year_id) }}"><i class="fa-solid fa-shield-halved"></i> Open Historical Audit</a>
+    </div>
+    <form class="promotion-scope-picker promotion-scope-picker--dashboard" method="get" action="{{ url_for('admin.promotion_rules_dashboard') }}">
+      <label><i class="fa-regular fa-calendar"></i> Academic Year
+        <select name="year_id" onchange="this.form.submit()">
+          {% for year in years %}<option value="{{ year.id }}" {% if selected_year_id == year.id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label><i class="fa-solid fa-layer-group"></i> Academic Level
+        <select name="level_id" onchange="this.form.submit()">
+          <option value="">Choose a year level</option>
+          {% for level in levels %}<option value="{{ level.id }}" {% if selected_level_id == level.id %}selected{% endif %}>{{ level.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label><i class="fa-solid fa-chalkboard-user"></i> Class (optional)
+        <select name="class_id">
+          <option value="">All classes in this level</option>
+          {% for academic_class in classes %}<option value="{{ academic_class.id }}" {% if selected_class_id == academic_class.id %}selected{% endif %}>{{ academic_class.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label><i class="fa-solid fa-file-signature"></i> Exam (optional)
+        <select name="exam_id">
+          <option value="">All exact-exam evaluations</option>
+          {% for exam in exams %}<option value="{{ exam.id }}" {% if selected_exam_id == exam.id %}selected{% endif %}>{{ exam.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <button class="promotion-button promotion-button--primary" type="submit"><i class="fa-solid fa-chart-simple"></i> View Summary</button>
+    </form>
+    {% if summary_error %}
+      <div class="promotion-notice promotion-notice--warning"><i class="fa-solid fa-triangle-exclamation"></i><div><strong>Scope could not be loaded.</strong><span>{{ summary_error }}</span></div></div>
+    {% elif summary %}
+      <div class="promotion-summary-scope"><i class="fa-regular fa-calendar"></i><strong>{{ summary.year.name }}</strong><span>·</span><i class="fa-solid fa-layer-group"></i><strong>{{ summary.level.name }}</strong>{% if summary.academic_class %}<span>·</span><i class="fa-solid fa-chalkboard-user"></i><strong>{{ summary.academic_class.name }}</strong>{% endif %}</div>
+      <div class="promotion-operational-grid" aria-label="Scoped operational summary">
+        <article class="promotion-operational-card tone-navy"><strong>{{ summary.counts.total_students }}</strong><span>Total students</span></article>
+        <article class="promotion-operational-card tone-teal"><strong>{{ summary.counts.evaluated }}</strong><span>Evaluated</span></article>
+        <article class="promotion-operational-card tone-muted"><strong>{{ summary.counts.not_evaluated }}</strong><span>Not evaluated</span></article>
+        <article class="promotion-operational-card tone-success"><strong>{{ summary.counts.passed }}</strong><span>Passed</span></article>
+        <article class="promotion-operational-card tone-danger"><strong>{{ summary.counts.failed }}</strong><span>Failed</span></article>
+        <article class="promotion-operational-card tone-warning"><strong>{{ summary.counts.incomplete }}</strong><span>Incomplete</span></article>
+        <article class="promotion-operational-card tone-danger"><strong>{{ summary.counts.invalid }}</strong><span>Invalid</span></article>
+        <article class="promotion-operational-card tone-info"><strong>{{ summary.counts.outcome_applied }}</strong><span>Outcome applied</span></article>
+        <article class="promotion-operational-card tone-success"><strong>{{ summary.counts.eligible_promotion }}</strong><span>Eligible promotion</span></article>
+        <article class="promotion-operational-card tone-warning"><strong>{{ summary.counts.eligible_repeat }}</strong><span>Eligible repeat</span></article>
+        <article class="promotion-operational-card tone-gold"><strong>{{ summary.counts.eligible_graduation }}</strong><span>Eligible graduation</span></article>
+        <article class="promotion-operational-card tone-teal"><strong>{{ summary.counts.transition_completed }}</strong><span>Transition completed</span></article>
+      </div>
+    {% else %}
+      <div class="promotion-empty promotion-empty--small"><i class="fa-solid fa-chart-pie"></i><span>Select an Academic Level to view the scoped operational summary.</span></div>
+    {% endif %}
+  </section>
+
   <section class="promotion-section">
     <div class="promotion-section__header">
       <div><span class="promotion-kicker"><i class="fa-solid fa-layer-group"></i> Year-aware configuration</span><h2>Rules by Academic Year and Level</h2><p>Each row is isolated to one Academic Year + Academic Year Level scope.</p></div>

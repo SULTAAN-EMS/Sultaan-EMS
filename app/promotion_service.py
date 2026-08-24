@@ -660,6 +660,274 @@ def evaluate_promotion_scope(
     }
 
 
+def latest_promotion_evaluation(enrollment, *, exam_id=None):
+    """Return the latest snapshot for one exact enrollment scope.
+
+    The enrollment is the anchor for the lookup.  This prevents a current
+    student placement from accidentally picking up a snapshot from another
+    academic year, level, or historical enrollment.
+    """
+    if not isinstance(enrollment, StudentEnrollment):
+        return None
+    query = PromotionEvaluation.query.filter_by(
+        student_id=enrollment.student_id,
+        student_enrollment_id=enrollment.id,
+        academic_year_id=enrollment.academic_year_id,
+        academic_year_level_id=enrollment.academic_year_level_id,
+    )
+    if exam_id not in (None, ""):
+        query = query.filter_by(exam_id=int(exam_id))
+    return query.order_by(
+        PromotionEvaluation.evaluated_at.desc(),
+        PromotionEvaluation.id.desc(),
+    ).first()
+
+
+def promotion_operational_status(enrollment, *, exam_id=None):
+    """Derive one administrator-facing status from authoritative records."""
+    evaluation = latest_promotion_evaluation(enrollment, exam_id=exam_id)
+    application = _application_for(evaluation.id) if evaluation else None
+    result = {
+        "code": "NOT_EVALUATED",
+        "eligibility_code": None,
+        "label": "Not evaluated",
+        "tone": "muted",
+        "reason": "No exact evaluation snapshot exists for this enrollment.",
+        "evaluation": evaluation,
+        "application": application,
+        "eligible_actions": [],
+    }
+    if evaluation is None:
+        return result
+
+    if evaluation.evaluation_status != "EVALUATED" or evaluation.final_outcome not in PromotionEvaluation.OUTCOME_VALUES:
+        result.update({
+            "code": "BLOCKED",
+            "label": evaluation.evaluation_status.replace("_", " ").title(),
+            "tone": "danger" if evaluation.evaluation_status == "INVALID" else "warning",
+            "reason": "The evaluation is incomplete or invalid and cannot authorize a transition.",
+        })
+        return result
+
+    if application and application.application_status in {"TRANSITIONED", "GRADUATED"}:
+        result.update({
+            "code": "TRANSITION_COMPLETED",
+            "label": application.action.title() + " completed",
+            "tone": "success",
+            "reason": "The approved outcome has already been completed.",
+        })
+        return result
+
+    if application and application.application_status == "APPLIED":
+        if application.applied_outcome == "passed":
+            eligible_actions = [
+                "graduation" if is_final_academic_year_level(enrollment.academic_year_level_id) else "promotion"
+            ]
+        else:
+            eligible_actions = ["repeat"]
+        result.update({
+            "code": "OUTCOME_APPLIED",
+            "eligibility_code": "ELIGIBLE_FOR_TRANSITION",
+            "label": "Outcome applied",
+            "tone": "success",
+            "reason": "The PASS/FAIL outcome is applied and ready for the next action.",
+            "eligible_actions": eligible_actions,
+        })
+        return result
+
+    result.update({
+        "code": "EVALUATED_NOT_APPLIED",
+        "label": "Evaluated — not applied",
+        "tone": "info",
+        "reason": "A complete evaluation exists, but its academic outcome is not yet applied.",
+    })
+    return result
+
+
+def promotion_scope_summary(academic_year_id, academic_year_level_id, *, academic_year_class_id=None, exam_id=None):
+    """Build a strictly year + level (+ class) scoped operational summary."""
+    year, level = validate_rule_scope(academic_year_id, academic_year_level_id)
+    year_class = None
+    if academic_year_class_id not in (None, ""):
+        year_class = db.session.get(AcademicYearClass, int(academic_year_class_id))
+        if not year_class or year_class.academic_year_level_id != level.id:
+            raise PromotionValidationError("Academic Year Class does not belong to the selected Academic Year Level")
+    if exam_id not in (None, ""):
+        exam = db.session.get(Exam, int(exam_id))
+        if not exam or exam.academic_year_id != year.id:
+            raise PromotionValidationError("The selected exam does not belong to the selected Academic Year")
+
+    query = StudentEnrollment.query.filter(
+        StudentEnrollment.academic_year_id == year.id,
+        StudentEnrollment.academic_year_level_id == level.id,
+        StudentEnrollment.status.in_(("active", "completed")),
+    )
+    if year_class:
+        query = query.filter(StudentEnrollment.academic_year_class_id == year_class.id)
+    enrollments = query.order_by(StudentEnrollment.id).all()
+    counts = {
+        "total_students": len(enrollments),
+        "evaluated": 0,
+        "not_evaluated": 0,
+        "passed": 0,
+        "failed": 0,
+        "incomplete": 0,
+        "invalid": 0,
+        "outcome_applied": 0,
+        "eligible_promotion": 0,
+        "eligible_repeat": 0,
+        "eligible_graduation": 0,
+        "transition_completed": 0,
+    }
+    rows = []
+    for enrollment in enrollments:
+        status = promotion_operational_status(enrollment, exam_id=exam_id)
+        evaluation = status["evaluation"]
+        application = status["application"]
+        if evaluation is None:
+            counts["not_evaluated"] += 1
+        elif evaluation.evaluation_status == "EVALUATED" and evaluation.final_outcome in PromotionEvaluation.OUTCOME_VALUES:
+            counts["evaluated"] += 1
+            counts["passed" if evaluation.final_outcome == "PASS" else "failed"] += 1
+        elif evaluation.evaluation_status == "INCOMPLETE":
+            counts["incomplete"] += 1
+        elif evaluation.evaluation_status == "INVALID":
+            counts["invalid"] += 1
+        if application:
+            if application.application_status == "APPLIED":
+                counts["outcome_applied"] += 1
+            elif application.application_status in {"TRANSITIONED", "GRADUATED"}:
+                counts["transition_completed"] += 1
+        for action in status["eligible_actions"]:
+            counts[f"eligible_{action}"] += 1
+        rows.append({"student": enrollment.student, "enrollment": enrollment, "status": status})
+    return {
+        "year": year,
+        "level": level,
+        "academic_class": year_class,
+        "exam": db.session.get(Exam, int(exam_id)) if exam_id not in (None, "") else None,
+        "counts": counts,
+        "rows": rows,
+    }
+
+
+def promotion_consistency_audit(*, academic_year_id=None, academic_year_level_id=None, limit=1000):
+    """Read-only audit for broken promotion/evaluation/movement linkage."""
+    query = PromotionEvaluation.query
+    if academic_year_id:
+        query = query.filter_by(academic_year_id=int(academic_year_id))
+    if academic_year_level_id:
+        query = query.filter_by(academic_year_level_id=int(academic_year_level_id))
+    evaluations = query.order_by(PromotionEvaluation.id).limit(limit).all()
+    evaluation_ids = {evaluation.id for evaluation in evaluations}
+    applications_query = PromotionOutcomeApplication.query.order_by(PromotionOutcomeApplication.id)
+    if academic_year_id or academic_year_level_id:
+        applications_query = applications_query.filter(
+            PromotionOutcomeApplication.promotion_evaluation_id.in_(evaluation_ids or {-1})
+        )
+    applications = applications_query.all()
+    movements_query = StudentEnrollmentMovement.query.order_by(StudentEnrollmentMovement.id)
+    if academic_year_id:
+        movements_query = movements_query.filter(
+            StudentEnrollmentMovement.from_academic_year_id == int(academic_year_id)
+        )
+    elif academic_year_level_id:
+        movements_query = movements_query.filter(
+            StudentEnrollmentMovement.from_academic_year_level_id == int(academic_year_level_id)
+        )
+    movements = movements_query.all()
+    anomalies = []
+
+    def add(code, message, *, evaluation=None, application=None, movement=None):
+        anomalies.append({
+            "code": code,
+            "message": message,
+            "evaluation_id": evaluation.id if evaluation else None,
+            "application_id": application.id if application else None,
+            "movement_id": movement.id if movement else None,
+        })
+
+    for evaluation in evaluations:
+        year_level = db.session.get(AcademicYearLevel, evaluation.academic_year_level_id)
+        if not year_level or year_level.academic_year_id != evaluation.academic_year_id:
+            add("EVALUATION_YEAR_LEVEL_MISMATCH", "Evaluation level does not belong to its Academic Year.", evaluation=evaluation)
+        source = db.session.get(StudentEnrollment, evaluation.student_enrollment_id)
+        if not source or source.student_id != evaluation.student_id:
+            add("EVALUATION_ENROLLMENT_MISMATCH", "Evaluation does not match its source StudentEnrollment.", evaluation=evaluation)
+        elif source.academic_year_id != evaluation.academic_year_id or source.academic_year_level_id != evaluation.academic_year_level_id:
+            add("EVALUATION_SCOPE_MISMATCH", "Evaluation and source enrollment have different year/level scope.", evaluation=evaluation)
+        if evaluation.exam_id:
+            exam = db.session.get(Exam, evaluation.exam_id)
+            if not exam or exam.academic_year_id != evaluation.academic_year_id:
+                add("EVALUATION_EXAM_YEAR_MISMATCH", "Evaluation exam does not belong to its Academic Year.", evaluation=evaluation)
+
+    apps_by_eval = {}
+    for application in applications:
+        apps_by_eval.setdefault(application.promotion_evaluation_id, []).append(application)
+        evaluation = db.session.get(PromotionEvaluation, application.promotion_evaluation_id)
+        if not evaluation:
+            add("APPLICATION_INVALID_EVALUATION", "Outcome application references a missing evaluation.", application=application)
+            continue
+        if application.student_id != evaluation.student_id or application.source_enrollment_id != evaluation.student_enrollment_id:
+            add("APPLICATION_SOURCE_MISMATCH", "Outcome application does not match evaluation student/enrollment.", evaluation=evaluation, application=application)
+        if application.applied_outcome == "passed" and application.action == "repeat":
+            add("PASS_LINKED_TO_REPEAT", "PASS evaluation is linked to Repeat.", evaluation=evaluation, application=application)
+        if application.applied_outcome == "failed" and application.action == "promotion":
+            add("FAIL_LINKED_TO_PROMOTION", "FAIL evaluation is linked to Promotion.", evaluation=evaluation, application=application)
+        source = db.session.get(StudentEnrollment, application.source_enrollment_id)
+        if application.action == "graduation" and source and not is_final_academic_year_level(source.academic_year_level_id):
+            add("GRADUATION_NON_FINAL_LEVEL", "Graduation is linked to a non-final Academic Year Level.", evaluation=evaluation, application=application)
+        if application.action in {"promotion", "repeat"} and application.application_status == "TRANSITIONED":
+            if not application.destination_enrollment_id or not application.movement_id:
+                add("BROKEN_TRANSITION_LINK", "Completed transition is missing destination or movement linkage.", evaluation=evaluation, application=application)
+        if application.application_status == "GRADUATED" and application.destination_enrollment_id:
+            add("GRADUATION_HAS_DESTINATION", "Graduation must not have a destination enrollment.", evaluation=evaluation, application=application)
+        if application.movement_id:
+            movement = db.session.get(StudentEnrollmentMovement, application.movement_id)
+            expected = application.action
+            if not movement or movement.student_id != application.student_id or movement.movement_type != expected:
+                add("BROKEN_MOVEMENT_LINK", "Outcome application movement link is missing or inconsistent.", evaluation=evaluation, application=application, movement=movement)
+
+    for evaluation_id, linked in apps_by_eval.items():
+        if len(linked) > 1:
+            for application in linked[1:]:
+                add("DUPLICATE_OUTCOME_APPLICATION", "More than one outcome application exists for one evaluation.", application=application)
+
+    enrollment_query = StudentEnrollment.query
+    if academic_year_id:
+        enrollment_query = enrollment_query.filter_by(academic_year_id=int(academic_year_id))
+    if academic_year_level_id:
+        enrollment_query = enrollment_query.filter_by(academic_year_level_id=int(academic_year_level_id))
+    destination_groups = {}
+    for enrollment in enrollment_query.order_by(StudentEnrollment.id).all():
+        destination_groups.setdefault((enrollment.student_id, enrollment.academic_year_id), []).append(enrollment)
+    for key, grouped in destination_groups.items():
+        if len(grouped) > 1:
+            add("DUPLICATE_DESTINATION_ENROLLMENT", f"Student {key[0]} has duplicate enrollment rows in Academic Year {key[1]}.")
+
+    linked_movement_ids = {application.movement_id for application in applications if application.movement_id}
+    for movement in movements:
+        if movement.movement_type in {"promotion", "repeat"} and movement.id not in linked_movement_ids:
+            add("TRANSITION_WITHOUT_APPLICATION", "Promotion/Repeat movement has no outcome application.", movement=movement)
+        destination = movement.enrollment
+        if destination is None:
+            add("BROKEN_MOVEMENT_LINK", "Movement references a missing destination enrollment.", movement=movement)
+            continue
+        if (
+            movement.to_academic_year_id != destination.academic_year_id
+            or movement.to_academic_year_level_id != destination.academic_year_level_id
+            or movement.to_academic_year_class_id != destination.academic_year_class_id
+        ):
+            add("MOVEMENT_DESTINATION_MISMATCH", "Movement destination does not match its enrollment.", movement=movement)
+        if movement.movement_type in {"promotion", "repeat"} and movement.from_academic_year_id == movement.to_academic_year_id:
+            add("CROSS_YEAR_LEAKAGE", "Promotion/Repeat movement stayed inside the same Academic Year.", movement=movement)
+
+    return {
+        "anomalies": anomalies,
+        "counts": {"evaluations": len(evaluations), "applications": len(applications), "movements": len(movements), "anomalies": len(anomalies)},
+    }
+
+
 # ---------------------------------------------------------------------------
 # Phase 3D: explicit outcome application and transition integration
 # ---------------------------------------------------------------------------
@@ -906,27 +1174,35 @@ def plan_evaluation_transition(
     for enrollment in source_enrollments:
         evaluation = _evaluation_for_enrollment(enrollment, exam.id)
         application = _application_for(evaluation.id) if evaluation else None
-        classification = "ELIGIBLE"
+        classification = "READY"
         reason = None
         if not evaluation:
-            classification, reason = "INVALID", "No complete exact-exam evaluation snapshot exists"
+            classification, reason = "NOT_EVALUATED", "No complete exact-exam evaluation snapshot exists"
+        elif evaluation.evaluation_status == "INCOMPLETE":
+            classification, reason = "INCOMPLETE", "Required result or attendance context is incomplete"
+        elif evaluation.evaluation_status == "INVALID":
+            classification, reason = "INVALID", "The evaluation snapshot is invalid and cannot authorize a transition"
+        elif evaluation.evaluation_status != "EVALUATED" or evaluation.final_outcome not in PromotionEvaluation.OUTCOME_VALUES:
+            classification, reason = "INVALID", "The evaluation does not contain a valid PASS/FAIL outcome"
         elif evaluation.final_outcome != expected_outcome:
             classification, reason = "INVALID", f"Action requires a final {expected_outcome} evaluation"
         elif application and application.application_status != "APPLIED":
-            classification, reason = "INVALID", "This evaluation has already been transitioned"
+            classification, reason = "ALREADY_TRANSITIONED", "This evaluation has already been transitioned"
         elif not application and enrollment.academic_outcome != "pending":
             classification, reason = "INVALID", "Source enrollment already has an academic outcome"
         elif destination_scope and StudentEnrollment.query.filter_by(
             student_id=enrollment.student_id,
             academic_year_id=destination_scope["academic_year"].id,
         ).first():
-            classification, reason = "INVALID", "Student already has an enrollment in the destination Academic Year"
+            classification, reason = "DESTINATION_CONFLICT", "Student already has an enrollment in the destination Academic Year"
+        elif not application:
+            classification, reason = "OUTCOME_NOT_APPLIED", "Apply the academic outcome before executing a transition"
         items.append({
             "student": enrollment.student,
             "source": enrollment,
             "evaluation": evaluation,
             "application": application,
-            "eligible": classification == "ELIGIBLE",
+            "eligible": classification == "READY",
             "classification": classification,
             "reason": reason,
             "destination": destination_scope,
@@ -942,7 +1218,13 @@ def plan_evaluation_transition(
         "counts": {
             "total": len(items),
             "eligible": sum(item["eligible"] for item in items),
+            "ready": sum(item["classification"] == "READY" for item in items),
+            "not_evaluated": sum(item["classification"] == "NOT_EVALUATED" for item in items),
+            "incomplete": sum(item["classification"] == "INCOMPLETE" for item in items),
             "invalid": sum(item["classification"] == "INVALID" for item in items),
+            "outcome_not_applied": sum(item["classification"] == "OUTCOME_NOT_APPLIED" for item in items),
+            "already_transitioned": sum(item["classification"] == "ALREADY_TRANSITIONED" for item in items),
+            "destination_conflict": sum(item["classification"] == "DESTINATION_CONFLICT" for item in items),
         },
     }
 
@@ -957,13 +1239,8 @@ def execute_evaluation_transition_plan(plan, *, performed_by=None, notes=None):
             source = db.session.get(StudentEnrollment, item["source"].id)
             application = _application_for(evaluation.id)
             if application is None:
-                application = _create_outcome_application(
-                    evaluation,
-                    source,
-                    applied_by=performed_by,
-                    notes=notes,
-                )
-            elif application.application_status != "APPLIED":
+                raise PromotionValidationError("Apply the academic outcome before executing a whole-class transition")
+            if application.application_status != "APPLIED":
                 raise PromotionValidationError("A reviewed evaluation was already transitioned")
             destination_scope = plan.get("destination_scope") or {}
             _, destination, application = transition_applied_outcome(

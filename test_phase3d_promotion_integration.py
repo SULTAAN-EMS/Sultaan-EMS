@@ -218,7 +218,7 @@ class TestPhase3DPromotionIntegration(unittest.TestCase):
     def test_18_bulk_plan_requires_exact_evaluation(self):
         plan = plan_evaluation_transition(self.year.id, self.year_level.id, self.source_class.id, self.exam.id, action="promotion", destination_academic_year_id=self.next_year.id, destination_academic_year_level_id=self.next_level.id, destination_academic_year_class_id=self.next_class.id)
         self.assertEqual(plan["counts"]["eligible"], 0)
-        self.assertEqual(plan["items"][0]["classification"], "INVALID")
+        self.assertEqual(plan["items"][0]["classification"], "NOT_EVALUATED")
 
     def test_19_bulk_plan_is_year_and_exam_isolated(self):
         evaluation = self._evaluation(self.source, exam=self.other_exam)
@@ -236,6 +236,7 @@ class TestPhase3DPromotionIntegration(unittest.TestCase):
 
     def test_21_bulk_execute_applies_and_transitions_atomically(self):
         evaluation = self._evaluation(self.source)
+        apply_academic_outcome(evaluation.id)
         plan = plan_evaluation_transition(self.year.id, self.year_level.id, self.source_class.id, self.exam.id, action="promotion", destination_academic_year_id=self.next_year.id, destination_academic_year_level_id=self.next_level.id, destination_academic_year_class_id=self.next_class.id)
         created = execute_evaluation_transition_plan(plan)
         self.assertEqual(len(created), 1)

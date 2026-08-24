@@ -26,4 +26,7 @@
   <a class="promotion-module-nav__link {% if request.endpoint == 'admin.promotion_rules_bulk_transition' %}is-active{% endif %}" href="{{ url_for('admin.promotion_rules_bulk_transition') }}">
     <i class="fa-solid fa-route" aria-hidden="true"></i><span>Apply Outcomes</span>
   </a>
+  <a class="promotion-module-nav__link {% if request.endpoint == 'admin.promotion_rules_audit' %}is-active{% endif %}" href="{{ url_for('admin.promotion_rules_audit') }}">
+    <i class="fa-solid fa-shield-halved" aria-hidden="true"></i><span>Historical Audit</span>
+  </a>
 </nav>

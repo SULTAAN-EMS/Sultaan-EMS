@@ -1,0 +1,67 @@
+{% extends "admin/base.html" %}
+{% block title %}Promotion Rules Audit{% endblock %}
+{% block page_title %}Promotion Rules Audit{% endblock %}
+{% block admin_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/promotion_rules.css') }}">
+
+<div class="promotion-page">
+  <header class="promotion-hero promotion-hero--compact">
+    <div>
+      <span class="promotion-eyebrow"><i class="fa-solid fa-shield-halved"></i> Read-only integrity check</span>
+      <h1>Historical Consistency Audit</h1>
+      <p>Review evaluation, outcome application, enrollment, and movement linkages without changing historical records.</p>
+    </div>
+    <div class="promotion-hero__status {% if audit_result.counts.anomalies == 0 %}is-on{% endif %}">
+      <i class="fa-solid {% if audit_result.counts.anomalies == 0 %}fa-circle-check{% else %}fa-triangle-exclamation{% endif %}"></i>
+      <span>{{ audit_result.counts.anomalies }}</span>
+      <small>Issues found</small>
+    </div>
+  </header>
+
+  {% include "admin/_promotion_rules_nav.html" %}
+
+  <section class="promotion-section">
+    <div class="promotion-section__header">
+      <div><span class="promotion-kicker"><i class="fa-solid fa-filter"></i> Optional scope</span><h2>Audit Scope</h2><p>Leave both selectors empty to inspect all promotion records.</p></div>
+    </div>
+    <form class="promotion-scope-picker promotion-scope-picker--dashboard" method="get" action="{{ url_for('admin.promotion_rules_audit') }}">
+      <label><i class="fa-regular fa-calendar"></i> Academic Year
+        <select name="year_id" onchange="this.form.submit()">
+          <option value="">All academic years</option>
+          {% for year in years %}<option value="{{ year.id }}" {% if selected_year_id == year.id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label><i class="fa-solid fa-layer-group"></i> Academic Level
+        <select name="level_id">
+          <option value="">All levels in scope</option>
+          {% for level in levels %}<option value="{{ level.id }}" {% if selected_level_id == level.id %}selected{% endif %}>{{ level.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <button class="promotion-button promotion-button--primary" type="submit"><i class="fa-solid fa-magnifying-glass-chart"></i> Run Read-only Audit</button>
+    </form>
+  </section>
+
+  <section class="promotion-stat-grid promotion-audit-stat-grid" aria-label="Audit totals">
+    <article class="promotion-stat promotion-stat--navy"><i class="fa-solid fa-camera"></i><strong>{{ audit_result.counts.evaluations }}</strong><span>Evaluations inspected</span></article>
+    <article class="promotion-stat promotion-stat--teal"><i class="fa-solid fa-file-circle-check"></i><strong>{{ audit_result.counts.applications }}</strong><span>Applications inspected</span></article>
+    <article class="promotion-stat promotion-stat--gold"><i class="fa-solid fa-route"></i><strong>{{ audit_result.counts.movements }}</strong><span>Movements inspected</span></article>
+  </section>
+
+  <section class="promotion-section">
+    <div class="promotion-section__header"><div><span class="promotion-kicker"><i class="fa-solid fa-list-check"></i> No automatic repairs</span><h2>Audit Findings</h2><p>Each finding is a read-only signal for administrator review.</p></div></div>
+    {% if audit_result.anomalies %}
+      <div class="promotion-audit-list">
+        {% for item in audit_result.anomalies %}
+        <article class="promotion-audit-row">
+          <span class="promotion-audit-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+          <div><strong>{{ item.code|replace('_', ' ')|title }}</strong><p>{{ item.message }}</p></div>
+          <small>{% if item.evaluation_id %}Evaluation #{{ item.evaluation_id }}{% endif %}{% if item.application_id %} · Application #{{ item.application_id }}{% endif %}{% if item.movement_id %} · Movement #{{ item.movement_id }}{% endif %}</small>
+        </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="promotion-empty promotion-empty--large"><i class="fa-solid fa-shield-check"></i><strong>No anomalies found in this scope.</strong><span>No automatic changes were made.</span></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

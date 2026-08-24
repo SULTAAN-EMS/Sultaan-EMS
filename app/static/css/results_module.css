@@ -4045,3 +4045,4 @@
     .decimal-precision-card { align-items: stretch; flex-direction: column; }
     .decimal-precision-options { justify-content: flex-start; }
 }
+.sm-promotion-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:6px}.sm-promotion-status,.sm-promotion-eligibility{display:inline-flex;align-items:center;gap:5px;padding:4px 7px;border:1px solid;border-radius:7px;font-size:10px;font-weight:800;line-height:1.1}.sm-promotion-status--muted{border-color:#dbe2ea;background:#f5f7f9;color:#687a91}.sm-promotion-status--info{border-color:#c7dbf2;background:#eff6ff;color:#326aa5}.sm-promotion-status--success{border-color:#b9dfca;background:#effaf2;color:#23734d}.sm-promotion-status--warning{border-color:#ead9a7;background:#fff9e8;color:#89651e}.sm-promotion-status--danger{border-color:#efc7bf;background:#fff4f1;color:#a2473c}.sm-promotion-eligibility{border-color:#b9ded6;background:#effaf7;color:#267768}

@@ -42,7 +42,9 @@ from .promotion_service import (
     get_promotion_rule,
     is_final_academic_year_level,
     plan_evaluation_transition,
+    promotion_consistency_audit,
     promotion_rules_enabled,
+    promotion_scope_summary,
     set_promotion_rules_enabled,
     transition_applied_outcome,
     upsert_promotion_rule,
@@ -2607,6 +2609,41 @@ def _promotion_rules_years():
 def promotion_rules_dashboard():
     """Dedicated Promotion Rules landing page and scope overview."""
     years = _promotion_rules_years()
+    selected_year_id = request.args.get("year_id", type=int)
+    selected_level_id = request.args.get("level_id", type=int)
+    selected_class_id = request.args.get("class_id", type=int)
+    selected_exam_id = request.args.get("exam_id", type=int)
+    selected_year = db.session.get(AcademicYear, selected_year_id) if selected_year_id else None
+    if selected_year is None and years:
+        selected_year = years[0]
+        selected_year_id = selected_year.id
+    levels = year_levels(selected_year_id) if selected_year_id else []
+    selected_level = next((level for level in levels if level.id == selected_level_id), None)
+    if selected_level_id and selected_level is None:
+        selected_level_id = None
+    classes = year_classes(selected_level_id) if selected_level_id else []
+    selected_class = next((item for item in classes if item.id == selected_class_id), None)
+    if selected_class_id and selected_class is None:
+        selected_class_id = None
+    exams = (
+        Exam.query.filter_by(academic_year_id=selected_year_id, is_active=True)
+        .order_by(Exam.sort_order, Exam.name, Exam.id).all()
+        if selected_year_id else []
+    )
+    if selected_exam_id and not any(exam.id == selected_exam_id for exam in exams):
+        selected_exam_id = None
+    summary = None
+    summary_error = None
+    if selected_year_id and selected_level_id:
+        try:
+            summary = promotion_scope_summary(
+                selected_year_id,
+                selected_level_id,
+                academic_year_class_id=selected_class_id,
+                exam_id=selected_exam_id,
+            )
+        except PromotionValidationError as exc:
+            summary_error = str(exc)
     rules = PromotionRule.query.order_by(
         PromotionRule.academic_year_id.desc(),
         PromotionRule.academic_year_level_id,
@@ -2618,12 +2655,54 @@ def promotion_rules_dashboard():
     return render_template(
         "admin/promotion_rules_dashboard.html",
         years=years,
+        selected_year=selected_year,
+        selected_year_id=selected_year_id,
+        levels=levels,
+        selected_level=selected_level,
+        selected_level_id=selected_level_id,
+        classes=classes,
+        selected_class=selected_class,
+        selected_class_id=selected_class_id,
+        exams=exams,
+        selected_exam_id=selected_exam_id,
+        summary=summary,
+        summary_error=summary_error,
         rules=rules,
         recent_evaluations=recent_evaluations,
         rules_enabled=promotion_rules_enabled(),
         total_rules=len(rules),
         active_rules=sum(1 for rule in rules if rule.is_active),
         evaluation_count=PromotionEvaluation.query.count(),
+    )
+
+
+@admin_bp.route("/promotion-rules/audit")
+@login_required
+@config_center_required
+def promotion_rules_audit():
+    """Read-only historical consistency audit for promotion linkages."""
+    years = _promotion_rules_years()
+    selected_year_id = request.args.get("year_id", type=int)
+    selected_level_id = request.args.get("level_id", type=int)
+    selected_year = db.session.get(AcademicYear, selected_year_id) if selected_year_id else None
+    if selected_year_id and selected_year is None:
+        selected_year_id = None
+    levels = year_levels(selected_year_id) if selected_year_id else []
+    if selected_level_id and not any(level.id == selected_level_id for level in levels):
+        selected_level_id = None
+    audit_result = promotion_consistency_audit(
+        academic_year_id=selected_year_id,
+        academic_year_level_id=selected_level_id,
+    )
+    return render_template(
+        "admin/promotion_rules_audit.html",
+        years=years,
+        levels=levels,
+        selected_year=selected_year,
+        selected_year_id=selected_year_id,
+        selected_level_id=selected_level_id,
+        audit_result=audit_result,
+        rules_enabled=promotion_rules_enabled(),
     )
 
 

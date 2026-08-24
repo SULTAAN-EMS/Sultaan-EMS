@@ -285,6 +285,13 @@
               </div>
               <div class="mt">{{ student.mother_name }}</div>
               {% if enrollment %}<div class="mt enrollment-meta">{{ enrollment.status|title }} · {{ enrollment.academic_outcome|title }}</div>{% endif %}
+              {% set promotion_status = promotion_statuses.get(student.id) %}
+              {% if promotion_status %}
+                <div class="sm-promotion-meta" title="{{ promotion_status.reason }}">
+                  <span class="sm-promotion-status sm-promotion-status--{{ promotion_status.tone }}"><i class="fa-solid {% if promotion_status.code == 'NOT_EVALUATED' %}fa-hourglass-start{% elif promotion_status.code == 'TRANSITION_COMPLETED' %}fa-circle-check{% elif promotion_status.code == 'BLOCKED' %}fa-ban{% elif promotion_status.code == 'OUTCOME_APPLIED' %}fa-file-circle-check{% else %}fa-clipboard-check{% endif %}"></i>{{ promotion_status.label }}</span>
+                  {% if promotion_status.eligible_actions %}<span class="sm-promotion-eligibility"><i class="fa-solid fa-route"></i>{{ promotion_status.eligible_actions|join(' / ')|title }}</span>{% endif %}
+                </div>
+              {% endif %}
             </div>
             <div class="sm-meta">
               <div>{{ student.student_code }}</div>
