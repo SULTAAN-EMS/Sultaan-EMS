@@ -319,8 +319,11 @@ class Student(TimestampMixin, db.Model):
 class StudentEnrollment(TimestampMixin, db.Model):
     """Historical academic placement for a permanent Student identity.
 
-    This is additive during Phase 2B. The legacy placement fields on Student
-    remain authoritative for existing routes until a later cutover phase.
+    This is the authoritative placement history for a requested academic
+    year.  The legacy placement fields on ``Student`` are intentionally kept
+    as a compatibility snapshot for older imports, integrations, and display
+    paths; they must not override a matching enrollment or describe a
+    different historical year.
     """
 
     __tablename__ = "student_enrollments"

@@ -1,8 +1,9 @@
-"""Phase 2B StudentEnrollment foundation services.
+"""Year-aware enrollment services and the legacy compatibility boundary.
 
-These helpers intentionally do not change Student's legacy placement fields
-or switch any existing route to the new enrollment layer. They provide one
-validated API for later phases and a conservative legacy backfill report.
+``StudentEnrollment`` is the authoritative academic placement history.  The
+placement columns on ``Student`` are retained as a compatibility snapshot for
+older records and integrations, but read paths must resolve a requested year
+through :func:`resolve_student_academic_context` before using them.
 """
 
 import json
@@ -220,6 +221,40 @@ def student_enrollment_legacy_scope_query(
     )
 
 
+def _unresolved_student_context(
+    academic_year_id,
+    *,
+    origin,
+    enrollment=None,
+    legacy_level_id=None,
+    legacy_class_id=None,
+    legacy_section_id=None,
+):
+    """Build a safe context that cannot be mistaken for a valid placement."""
+    context = {
+        "source": "unresolved",
+        "origin": origin,
+        "context_status": "unresolved",
+        "academic_year_id": academic_year_id,
+        "enrollment": enrollment,
+        "academic_year_level_id": None,
+        "academic_year_class_id": None,
+        "academic_level_id": None,
+        "academic_class_id": None,
+        "academic_section_id": None,
+        "class_name": None,
+        "level_name": None,
+        "section_name": None,
+    }
+    if origin == "legacy":
+        context.update(
+            legacy_academic_level_id=legacy_level_id,
+            legacy_academic_class_id=legacy_class_id,
+            legacy_academic_section_id=legacy_section_id,
+        )
+    return context
+
+
 def resolve_student_academic_context(student, academic_year_id):
     """Resolve one student's placement for exactly one academic year.
 
@@ -235,11 +270,29 @@ def resolve_student_academic_context(student, academic_year_id):
     year_id = _require(academic_year_id, "Academic year")
     enrollment = get_enrollment_for_student_year(student.id, year_id)
     if enrollment:
-        year_level = enrollment.academic_year_level
-        year_class = enrollment.academic_year_class
-        section = enrollment.academic_section
+        # Foreign keys alone do not guarantee that the three hierarchy rows
+        # belong to the same academic year.  Refuse an inconsistent row rather
+        # than exposing a plausible-looking but cross-year placement.
+        try:
+            scope = validate_enrollment_scope(
+                enrollment.academic_year_id,
+                enrollment.academic_year_level_id,
+                enrollment.academic_year_class_id,
+                enrollment.academic_section_id,
+            )
+        except EnrollmentValidationError:
+            return _unresolved_student_context(
+                year_id,
+                origin="enrollment",
+                enrollment=enrollment,
+            )
+
+        year_level = scope["academic_year_level"]
+        year_class = scope["academic_year_class"]
+        section = scope["academic_section"]
         return {
             "source": "enrollment",
+            "context_status": "enrollment",
             "academic_year_id": year_id,
             "enrollment": enrollment,
             "academic_year_level_id": enrollment.academic_year_level_id,
@@ -261,40 +314,62 @@ def resolve_student_academic_context(student, academic_year_id):
     legacy_class_id = student.academic_class_id
     if not legacy_level_id and student.academic_class:
         legacy_level_id = student.academic_class.academic_level_id
+    if not legacy_class_id and student.academic_class:
+        legacy_class_id = student.academic_class.id
 
-    year_level = None
+    year_level_candidates = []
     if legacy_level_id:
-        year_level = AcademicYearLevel.query.filter_by(
+        year_level_candidates = AcademicYearLevel.query.filter_by(
             academic_year_id=year_id,
             legacy_level_id=legacy_level_id,
-        ).first()
-    if not year_level and student.level:
-        year_level = AcademicYearLevel.query.filter_by(
+        ).all()
+    if not year_level_candidates and student.level:
+        year_level_candidates = AcademicYearLevel.query.filter_by(
             academic_year_id=year_id,
             name=student.level,
-        ).first()
+        ).all()
+
+    if len(year_level_candidates) != 1:
+        return _unresolved_student_context(
+            year_id,
+            origin="legacy",
+            legacy_level_id=legacy_level_id,
+            legacy_class_id=legacy_class_id,
+            legacy_section_id=student.academic_section_id,
+        )
+    year_level = year_level_candidates[0]
 
     year_class = None
-    if legacy_class_id and year_level:
-        year_class = AcademicYearClass.query.filter_by(
+    year_class_candidates = []
+    if legacy_class_id:
+        # The class must belong to the already-resolved level.  Never repair a
+        # mismatch by selecting the first class with the same legacy id from a
+        # different year-level branch.
+        year_class_candidates = AcademicYearClass.query.filter_by(
             academic_year_level_id=year_level.id,
             legacy_class_id=legacy_class_id,
-        ).first()
-    if not year_class and legacy_class_id:
-        year_class = (
-            AcademicYearClass.query
-            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
-            .filter(
-                AcademicYearLevel.academic_year_id == year_id,
-                AcademicYearClass.legacy_class_id == legacy_class_id,
+        ).all()
+        if len(year_class_candidates) != 1:
+            return _unresolved_student_context(
+                year_id,
+                origin="legacy",
+                legacy_level_id=legacy_level_id,
+                legacy_class_id=legacy_class_id,
+                legacy_section_id=student.academic_section_id,
             )
-            .first()
-        )
-        year_level = year_level or (year_class.academic_year_level if year_class else None)
+        year_class = year_class_candidates[0]
 
     section = None
     if student.academic_section_id:
         section = db.session.get(AcademicSection, student.academic_section_id)
+        if not year_class or not section or year_class.legacy_class_id != section.academic_class_id:
+            return _unresolved_student_context(
+                year_id,
+                origin="legacy",
+                legacy_level_id=legacy_level_id,
+                legacy_class_id=legacy_class_id,
+                legacy_section_id=student.academic_section_id,
+            )
 
     class_name = (
         year_class.name if year_class else
@@ -303,15 +378,19 @@ def resolve_student_academic_context(student, academic_year_id):
     )
     return {
         "source": "legacy",
+        "context_status": "legacy_compatible",
         "academic_year_id": year_id,
         "enrollment": None,
-        "academic_year_level_id": year_level.id if year_level else None,
+        "academic_year_level_id": year_level.id,
         "academic_year_class_id": year_class.id if year_class else None,
         "academic_level_id": legacy_level_id,
         "academic_class_id": legacy_class_id,
         "academic_section_id": student.academic_section_id,
+        "legacy_academic_level_id": legacy_level_id,
+        "legacy_academic_class_id": legacy_class_id,
+        "legacy_academic_section_id": student.academic_section_id,
         "class_name": class_name,
-        "level_name": year_level.name if year_level else student.level,
+        "level_name": year_level.name,
         "section_name": section.name if section else student.section,
     }
 
@@ -938,6 +1017,105 @@ def _student_mapping(student):
         recommended_action="Safe for controlled backfill",
     )
     return base
+
+
+def audit_student_enrollment_consistency():
+    """Return a read-only consistency report for the compatibility boundary.
+
+    The audit deliberately performs no backfill, repair, commit, or delete.
+    It compares the current ``Student`` compatibility snapshot with the
+    enrollment for that student's snapshot year, while also checking that an
+    enrollment's year-level, class, and optional section belong to one valid
+    hierarchy.  The returned IDs make the report actionable without exposing
+    student names or any credentials.
+    """
+    students = Student.query.order_by(Student.id).all()
+    enrollments = StudentEnrollment.query.order_by(StudentEnrollment.id).all()
+    enrollments_by_student = {}
+    for enrollment in enrollments:
+        enrollments_by_student.setdefault(enrollment.student_id, []).append(enrollment)
+
+    students_with_enrollment = {
+        student_id for student_id, rows in enrollments_by_student.items() if rows
+    }
+    legacy_only_review_ids = []
+    disagreement_ids = []
+    for student in students:
+        rows = enrollments_by_student.get(student.id, [])
+        if not rows:
+            mapping = _student_mapping(student)
+            if mapping.get("classification") != "READY_TO_BACKFILL":
+                legacy_only_review_ids.append(student.id)
+            continue
+
+        relevant = next(
+            (row for row in rows if row.academic_year_id == student.academic_year_id),
+            None,
+        )
+        if not relevant:
+            continue
+        year_level = relevant.academic_year_level
+        year_class = relevant.academic_year_class
+        section = relevant.academic_section
+        expected = {
+            "academic_level_id": year_level.legacy_level_id if year_level else None,
+            "academic_class_id": year_class.legacy_class_id if year_class else None,
+            "academic_section_id": section.id if section else None,
+            "level": year_level.name if year_level else None,
+            "section": section.name if section else None,
+        }
+        actual = {
+            "academic_level_id": student.academic_level_id,
+            "academic_class_id": student.academic_class_id,
+            "academic_section_id": student.academic_section_id,
+            "level": student.level,
+            "section": student.section,
+        }
+        if any(
+            actual[field] != expected[field]
+            for field in expected
+        ):
+            disagreement_ids.append(student.id)
+
+    missing_hierarchy_ids = []
+    invalid_relationship_ids = []
+    for enrollment in enrollments:
+        year = enrollment.academic_year
+        year_level = enrollment.academic_year_level
+        year_class = enrollment.academic_year_class
+        section = enrollment.academic_section
+        if not year or not year_level or not year_class:
+            missing_hierarchy_ids.append(enrollment.id)
+            continue
+        if (
+            year_level.academic_year_id != enrollment.academic_year_id
+            or year_class.academic_year_level_id != enrollment.academic_year_level_id
+            or (section is not None and year_class.legacy_class_id != section.academic_class_id)
+        ):
+            invalid_relationship_ids.append(enrollment.id)
+
+    duplicate_counts = {}
+    for enrollment in enrollments:
+        key = (enrollment.student_id, enrollment.academic_year_id)
+        duplicate_counts[key] = duplicate_counts.get(key, 0) + 1
+    duplicate_rows = sum(max(0, count - 1) for count in duplicate_counts.values())
+
+    return {
+        "student_count": len(students),
+        "students_with_enrollment": len(students_with_enrollment),
+        "students_without_enrollment": len(students) - len(students_with_enrollment),
+        "legacy_placement_disagreements": len(set(disagreement_ids)),
+        "legacy_placement_disagreement_student_ids": sorted(set(disagreement_ids)),
+        "enrollments_missing_hierarchy_references": len(missing_hierarchy_ids),
+        "enrollments_missing_hierarchy_ids": sorted(missing_hierarchy_ids),
+        "enrollments_with_invalid_cross_year_relationships": len(set(invalid_relationship_ids)),
+        "invalid_enrollment_ids": sorted(set(invalid_relationship_ids)),
+        "legacy_only_records_requiring_review": len(legacy_only_review_ids),
+        "legacy_only_review_student_ids": sorted(legacy_only_review_ids),
+        "duplicate_enrollment_rows": duplicate_rows,
+        "duplicate_enrollment_constraint": "uq_student_enrollment_student_year",
+        "repairs_performed": 0,
+    }
 
 
 def ensure_legacy_enrollment_for_student(student):
