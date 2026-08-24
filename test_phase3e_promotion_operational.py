@@ -238,6 +238,38 @@ class TestPhase3EOperationalWorkflow(TestPhase3DPromotionIntegration):
         outcome = portal_academic_outcome(self.source, exam_id=next_exam.id)
         self.assertEqual(outcome["code"], "NOT_EVALUATED")
 
+    def test_27_apply_outcomes_preview_renders_plan_items_without_method_collision(self):
+        """The read-only preview must render the plan's ``items`` key."""
+        self._evaluation(self.source, outcome="PASS")
+        user = User.query.filter_by(username="admin").first()
+        if user is None:
+            user = User(username="admin", full_name="Test Admin", role="super_admin", is_active=True)
+            user.set_password("test-password")
+            db.session.add(user)
+            db.session.commit()
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(user.id)
+            session["_fresh"] = True
+            session["config_center_authenticated"] = True
+        response = client.post(
+            "/admin/promotion-rules/bulk-transition",
+            data={
+                "source_academic_year_id": self.year.id,
+                "source_academic_year_level_id": self.year_level.id,
+                "source_academic_year_class_id": self.source_class.id,
+                "exam_id": self.exam.id,
+                "action": "promotion",
+                "destination_academic_year_id": self.next_year.id,
+                "destination_academic_year_level_id": self.next_level.id,
+                "destination_academic_year_class_id": self.next_class.id,
+                "mode": "preview",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Read-only preview", response.data)
+        self.assertNotIn(b"Internal Server Error", response.data)
+
 
 class TestPhase3EPassFailConsistency(TestPhase3CPromotionEvaluation):
     """Phase 3E regression anchors for the approved PASS/FAIL rules."""
