@@ -20,4 +20,7 @@
   <a class="promotion-module-nav__link {% if request.endpoint == 'admin.promotion_rules_evaluations' %}is-active{% endif %}" href="{{ url_for('admin.promotion_rules_evaluations') }}">
     <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>Evaluation History</span>
   </a>
+  <a class="promotion-module-nav__link {% if request.endpoint == 'admin.promotion_rules_evaluate' %}is-active{% endif %}" href="{{ url_for('admin.promotion_rules_evaluate') }}">
+    <i class="fa-solid fa-play" aria-hidden="true"></i><span>Evaluate Outcome</span>
+  </a>
 </nav>

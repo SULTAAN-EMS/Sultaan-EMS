@@ -22,6 +22,25 @@ def ensure_schema_compatibility():
     add_column_if_missing("student_feedback", "read_at", column_sql(dialect, "read_at", "DATETIME"))
     add_column_if_missing("student_complaints", "delivered_at", column_sql(dialect, "delivered_at", "DATETIME"))
     add_column_if_missing("student_complaints", "read_at", column_sql(dialect, "read_at", "DATETIME"))
+    # Phase 3C evaluation snapshots: keep the selected exam and an explicit
+    # evaluation status on legacy Phase 3B databases.
+    add_column_if_missing("promotion_evaluations", "exam_id", column_sql(dialect, "exam_id", "INTEGER"))
+    add_column_if_missing(
+        "promotion_evaluations",
+        "evaluation_status",
+        column_sql(dialect, "evaluation_status", "VARCHAR(20) NOT NULL DEFAULT 'EVALUATED'"),
+    )
+    add_index_if_missing("promotion_evaluations", "idx_promotion_evaluations_exam_id", ["exam_id"])
+    add_index_if_missing("promotion_evaluations", "idx_promotion_evaluations_status", ["evaluation_status"])
+    add_foreign_key_if_missing(
+        "promotion_evaluations",
+        "fk_promotion_evaluations_exam_id",
+        ["exam_id"],
+        "exams",
+        ["id"],
+        ondelete="SET NULL",
+    )
+    migrate_promotion_evaluation_schema()
     add_column_if_missing("exam_invigilators", "visible_password", column_sql(dialect, "visible_password", "VARCHAR(255)"))
     add_column_if_missing("exam_invigilators", "signature_data", column_sql(dialect, "signature_data", "TEXT"))
     widen_varchar_if_needed("results", "grade_override", 20)
@@ -269,6 +288,122 @@ def remove_obsolete_subject_short_name_settings():
             (Setting.key.in_(keys)) | (Setting.key.like("subject_short_name_%"))
         ).delete(synchronize_session=False)
         db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def migrate_promotion_evaluation_schema():
+    """Make Phase 3C nullable outcomes safe on existing databases.
+
+    Phase 3B required PASS/FAIL values.  Phase 3C must also retain an
+    explicit INCOMPLETE/INVALID status without inventing a final outcome.
+    PostgreSQL can alter this in place; SQLite receives a data-preserving
+    table rebuild because it cannot drop old NOT NULL/check constraints.
+    """
+    inspector = inspect(db.engine)
+    if not inspector.has_table("promotion_evaluations"):
+        return
+    columns = {item["name"]: item for item in inspector.get_columns("promotion_evaluations")}
+    needs_nullable_outcomes = any(
+        not columns.get(name, {}).get("nullable", True)
+        for name in ("overall_percentage", "base_outcome", "final_outcome")
+    )
+    if not needs_nullable_outcomes:
+        return
+    dialect = db.engine.dialect.name
+    if dialect == "postgresql":
+        try:
+            db.session.execute(text(
+                "ALTER TABLE promotion_evaluations "
+                "ALTER COLUMN overall_percentage DROP NOT NULL, "
+                "ALTER COLUMN base_outcome DROP NOT NULL, "
+                "ALTER COLUMN final_outcome DROP NOT NULL"
+            ))
+            constraints = db.session.execute(text(
+                "SELECT conname FROM pg_constraint "
+                "WHERE conrelid = 'promotion_evaluations'::regclass"
+            ))
+            names = {row[0] for row in constraints}
+            for name in ("ck_promotion_evaluation_base_outcome", "ck_promotion_evaluation_final_outcome"):
+                if name in names:
+                    db.session.execute(text(f"ALTER TABLE promotion_evaluations DROP CONSTRAINT {name}"))
+            db.session.execute(text(
+                "ALTER TABLE promotion_evaluations ADD CONSTRAINT "
+                "ck_promotion_evaluation_base_outcome CHECK "
+                "(base_outcome IS NULL OR base_outcome IN ('PASS', 'FAIL'))"
+            ))
+            db.session.execute(text(
+                "ALTER TABLE promotion_evaluations ADD CONSTRAINT "
+                "ck_promotion_evaluation_final_outcome CHECK "
+                "(final_outcome IS NULL OR final_outcome IN ('PASS', 'FAIL'))"
+            ))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return
+    if dialect != "sqlite":
+        return
+    existing = set(columns)
+    try:
+        with db.engine.begin() as connection:
+            connection.execute(text("PRAGMA foreign_keys=OFF"))
+            connection.execute(text(
+                "CREATE TABLE promotion_evaluations_phase3c ("
+                "id INTEGER PRIMARY KEY, "
+                "student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE RESTRICT, "
+                "student_enrollment_id INTEGER NOT NULL REFERENCES student_enrollments(id) ON DELETE RESTRICT, "
+                "academic_year_id INTEGER NOT NULL REFERENCES academic_years(id) ON DELETE RESTRICT, "
+                "academic_year_level_id INTEGER NOT NULL REFERENCES academic_year_levels(id) ON DELETE RESTRICT, "
+                "exam_id INTEGER REFERENCES exams(id) ON DELETE SET NULL, "
+                "promotion_rule_id INTEGER REFERENCES promotion_rules(id) ON DELETE SET NULL, "
+                "promotion_rule_snapshot_json TEXT NOT NULL DEFAULT '{}', "
+                "evaluation_context_json TEXT NOT NULL DEFAULT '{}', "
+                "overall_percentage NUMERIC(8, 3), "
+                "base_outcome VARCHAR(4), "
+                "final_outcome VARCHAR(4), "
+                "evaluation_status VARCHAR(20) NOT NULL DEFAULT 'EVALUATED', "
+                "critical_subject_results_json TEXT NOT NULL DEFAULT '[]', "
+                "override_reason VARCHAR(80), "
+                "evaluated_at DATETIME NOT NULL, "
+                "created_at DATETIME NOT NULL, "
+                "updated_at DATETIME NOT NULL, "
+                "CONSTRAINT ck_promotion_evaluation_base_outcome CHECK "
+                "(base_outcome IS NULL OR base_outcome IN ('PASS', 'FAIL')), "
+                "CONSTRAINT ck_promotion_evaluation_final_outcome CHECK "
+                "(final_outcome IS NULL OR final_outcome IN ('PASS', 'FAIL')), "
+                "CONSTRAINT ck_promotion_evaluation_status CHECK "
+                "(evaluation_status IN ('EVALUATED', 'INCOMPLETE', 'INVALID', 'NOT_EVALUATED'))"
+                ")"
+            ))
+            status_expr = "evaluation_status" if "evaluation_status" in existing else "'EVALUATED'"
+            exam_expr = "exam_id" if "exam_id" in existing else "NULL"
+            connection.execute(text(
+                "INSERT INTO promotion_evaluations_phase3c "
+                "(id, student_id, student_enrollment_id, academic_year_id, "
+                "academic_year_level_id, exam_id, promotion_rule_id, "
+                "promotion_rule_snapshot_json, evaluation_context_json, "
+                "overall_percentage, base_outcome, final_outcome, evaluation_status, "
+                "critical_subject_results_json, override_reason, evaluated_at, created_at, updated_at) "
+                "SELECT id, student_id, student_enrollment_id, academic_year_id, "
+                f"academic_year_level_id, {exam_expr}, promotion_rule_id, "
+                "promotion_rule_snapshot_json, evaluation_context_json, overall_percentage, "
+                "base_outcome, final_outcome, " + status_expr + ", critical_subject_results_json, "
+                "override_reason, evaluated_at, created_at, updated_at "
+                "FROM promotion_evaluations"
+            ))
+            connection.execute(text("DROP TABLE promotion_evaluations"))
+            connection.execute(text("ALTER TABLE promotion_evaluations_phase3c RENAME TO promotion_evaluations"))
+            for name, columns_sql in {
+                "ix_promotion_evaluations_student_id": "student_id",
+                "ix_promotion_evaluations_student_enrollment_id": "student_enrollment_id",
+                "ix_promotion_evaluations_academic_year_id": "academic_year_id",
+                "ix_promotion_evaluations_academic_year_level_id": "academic_year_level_id",
+                "ix_promotion_evaluations_exam_id": "exam_id",
+                "ix_promotion_evaluations_evaluation_status": "evaluation_status",
+                "ix_promotion_evaluations_evaluated_at": "evaluated_at",
+            }.items():
+                connection.execute(text(f"CREATE INDEX IF NOT EXISTS {name} ON promotion_evaluations ({columns_sql})"))
+            connection.execute(text("PRAGMA foreign_keys=ON"))
     except Exception:
         db.session.rollback()
 

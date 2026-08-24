@@ -13,7 +13,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, PromotionEvaluation, PromotionRule, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
+from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, PromotionEvaluation, PromotionRule, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentEnrollment, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
 from .academic_hierarchy import validate_year_level, year_classes, year_levels, year_subjects
 from .permissions import PERMISSIONS, can, enforce_endpoint_permission, permission_required
 from .security import ALLOWED_AUDIO, ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
@@ -36,6 +36,7 @@ from .services import slug
 from .enrollment_service import EnrollmentValidationError, enrollment_placement_for_student, student_enrollment_legacy_scope_query, student_enrollment_scope_query
 from .promotion_service import (
     PromotionValidationError,
+    evaluate_promotion_scope,
     get_promotion_rule,
     promotion_rules_enabled,
     set_promotion_rules_enabled,
@@ -2731,6 +2732,112 @@ def promotion_rules_toggle(rule_id):
     ))
 
 
+def _promotion_evaluation_page_data(year_id=None, level_id=None, exam_id=None, class_id=None):
+    """Build strictly year-aware selector data for the Phase 3C page."""
+    years = _promotion_rules_years()
+    selected_year = db.session.get(AcademicYear, year_id) if year_id else None
+    if year_id is None and years:
+        selected_year = years[0]
+        year_id = selected_year.id
+    levels = year_levels(year_id) if year_id else []
+    selected_level = next((level for level in levels if level.id == level_id), None)
+    if level_id and selected_level is None:
+        level_id = None
+    classes = year_classes(level_id) if level_id else []
+    selected_class = next((item for item in classes if item.id == class_id), None)
+    if class_id and selected_class is None:
+        class_id = None
+    exams = []
+    if year_id:
+        exams = (
+            Exam.query
+            .filter_by(academic_year_id=year_id, is_active=True)
+            .order_by(Exam.sort_order, Exam.name, Exam.id)
+            .all()
+        )
+    selected_exam = next((exam for exam in exams if exam.id == exam_id), None)
+    subjects = valid_critical_subjects(year_id, level_id) if selected_level else []
+    return {
+        "years": years,
+        "selected_year": selected_year,
+        "levels": levels,
+        "selected_level": selected_level,
+        "classes": classes,
+        "selected_class": selected_class,
+        "exams": exams,
+        "selected_exam": selected_exam,
+        "subjects": subjects,
+        "selected_year_id": year_id,
+        "selected_level_id": level_id,
+        "selected_exam_id": exam_id,
+        "selected_class_id": class_id,
+    }
+
+
+@admin_bp.route("/promotion-rules/evaluate", methods=["GET", "POST"])
+@login_required
+@config_center_required
+def promotion_rules_evaluate():
+    """Preview or explicitly persist one Year + Level + Exam evaluation run."""
+    if request.method == "POST":
+        year_id = request.form.get("academic_year_id", type=int)
+        level_id = request.form.get("academic_year_level_id", type=int)
+        exam_id = request.form.get("exam_id", type=int)
+        class_id = request.form.get("academic_year_class_id", type=int)
+        raw_subject_ids = request.form.getlist("subject_ids")
+        subject_ids = raw_subject_ids if "subject_ids" in request.form else None
+        action = request.form.get("action", "preview")
+    else:
+        year_id = request.args.get("year_id", type=int)
+        level_id = request.args.get("level_id", type=int)
+        exam_id = request.args.get("exam_id", type=int)
+        class_id = request.args.get("class_id", type=int)
+        subject_ids = request.args.getlist("subject_id") or None
+        action = "preview" if request.args.get("preview") else None
+
+    page_data = _promotion_evaluation_page_data(year_id, level_id, exam_id, class_id)
+    preview_result = None
+    error_message = None
+    if action in {"preview", "execute"}:
+        try:
+            if not (page_data["selected_year_id"] and page_data["selected_level_id"] and exam_id):
+                raise PromotionValidationError("Select an Academic Year, Academic Year Level, and explicit Evaluation Exam")
+            preview_result = evaluate_promotion_scope(
+                page_data["selected_year_id"],
+                page_data["selected_level_id"],
+                exam_id,
+                academic_year_class_id=class_id,
+                subject_ids=subject_ids,
+                persist=action == "execute",
+            )
+            if action == "execute":
+                audit(
+                    "Promotion Evaluation",
+                    f"Evaluated {preview_result['counts']['evaluated']} students for exam {exam_id}",
+                )
+                db.session.commit()
+                flash(
+                    "Promotion evaluation saved. Enrollment outcomes and transitions were not changed.",
+                    "success",
+                )
+        except (PromotionValidationError, ValueError) as exc:
+            db.session.rollback()
+            error_message = str(exc)
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Promotion evaluation failed")
+            error_message = "The promotion evaluation could not be completed. No records were saved."
+    if error_message:
+        flash(error_message, "danger")
+    return render_template(
+        "admin/promotion_rules_evaluate.html",
+        **page_data,
+        preview_result=preview_result,
+        error_message=error_message,
+        rules_enabled=promotion_rules_enabled(),
+    )
+
+
 @admin_bp.route("/promotion-rules/evaluations")
 @login_required
 @config_center_required
@@ -2738,6 +2845,11 @@ def promotion_rules_evaluations():
     """Read-only historical PromotionEvaluation snapshot history."""
     year_id = request.args.get("year_id", type=int)
     level_id = request.args.get("level_id", type=int)
+    exam_id = request.args.get("exam_id", type=int)
+    student_id = request.args.get("student_id", type=int)
+    evaluation_status = request.args.get("evaluation_status", "")
+    base_outcome = request.args.get("base_outcome", "")
+    final_outcome = request.args.get("final_outcome", "")
     years = _promotion_rules_years()
     levels = year_levels(year_id) if year_id else []
     if level_id and not any(level.id == level_id for level in levels):
@@ -2747,6 +2859,16 @@ def promotion_rules_evaluations():
         query = query.filter_by(academic_year_id=year_id)
     if level_id:
         query = query.filter_by(academic_year_level_id=level_id)
+    if exam_id:
+        query = query.filter_by(exam_id=exam_id)
+    if student_id:
+        query = query.filter_by(student_id=student_id)
+    if evaluation_status:
+        query = query.filter_by(evaluation_status=evaluation_status)
+    if base_outcome in {"PASS", "FAIL"}:
+        query = query.filter_by(base_outcome=base_outcome)
+    if final_outcome in {"PASS", "FAIL"}:
+        query = query.filter_by(final_outcome=final_outcome)
     evaluations = query.order_by(
         PromotionEvaluation.evaluated_at.desc(),
         PromotionEvaluation.id.desc(),
@@ -2757,7 +2879,42 @@ def promotion_rules_evaluations():
         levels=levels,
         selected_year_id=year_id,
         selected_level_id=level_id,
+        selected_exam_id=exam_id,
+        selected_student_id=student_id,
+        selected_evaluation_status=evaluation_status,
+        selected_base_outcome=base_outcome,
+        selected_final_outcome=final_outcome,
+        exams=(Exam.query.filter_by(academic_year_id=year_id, is_active=True).order_by(Exam.sort_order, Exam.name).all() if year_id else []),
         evaluations=evaluations,
+    )
+
+
+@admin_bp.route("/promotion-rules/evaluations/<int:evaluation_id>")
+@login_required
+@config_center_required
+def promotion_rules_evaluation_detail(evaluation_id):
+    """Read-only detail view for one immutable Phase 3C snapshot."""
+    evaluation = db.session.get(PromotionEvaluation, evaluation_id)
+    if not evaluation:
+        abort(404)
+    try:
+        critical_results = json.loads(evaluation.critical_subject_results_json or "[]")
+    except (TypeError, ValueError):
+        critical_results = []
+    try:
+        rule_snapshot = json.loads(evaluation.promotion_rule_snapshot_json or "{}")
+    except (TypeError, ValueError):
+        rule_snapshot = {}
+    try:
+        context_snapshot = json.loads(evaluation.evaluation_context_json or "{}")
+    except (TypeError, ValueError):
+        context_snapshot = {}
+    return render_template(
+        "admin/promotion_rules_evaluation_detail.html",
+        evaluation=evaluation,
+        critical_results=critical_results,
+        rule_snapshot=rule_snapshot,
+        context_snapshot=context_snapshot,
     )
 
 

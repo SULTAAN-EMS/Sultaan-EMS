@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 
 from flask import Flask, flash, redirect, request, session, url_for
@@ -39,6 +40,14 @@ def create_app(config_class=Config):
     @app.template_filter("academic_number")
     def academic_number_filter(value, settings=None):
         return format_academic_number(value, settings=settings)
+
+    @app.template_filter("fromjson")
+    def fromjson_filter(value):
+        try:
+            parsed = json.loads(value or "[]")
+        except (TypeError, ValueError):
+            return []
+        return parsed if isinstance(parsed, list) else []
 
     @login_manager.user_loader
     def load_user(user_id):

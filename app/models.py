@@ -582,6 +582,7 @@ class PromotionEvaluation(TimestampMixin, db.Model):
     __tablename__ = "promotion_evaluations"
 
     OUTCOME_VALUES = ("PASS", "FAIL")
+    STATUS_VALUES = ("EVALUATED", "INCOMPLETE", "INVALID", "NOT_EVALUATED")
 
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(
@@ -608,6 +609,14 @@ class PromotionEvaluation(TimestampMixin, db.Model):
         nullable=False,
         index=True,
     )
+    # The selected exam is the explicit evaluation context.  It is nullable
+    # only for legacy Phase 3B snapshots created before Phase 3C.
+    exam_id = db.Column(
+        db.Integer,
+        db.ForeignKey("exams.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     promotion_rule_id = db.Column(
         db.Integer,
         db.ForeignKey("promotion_rules.id", ondelete="SET NULL"),
@@ -616,9 +625,15 @@ class PromotionEvaluation(TimestampMixin, db.Model):
     )
     promotion_rule_snapshot_json = db.Column(db.Text, nullable=False, default="{}")
     evaluation_context_json = db.Column(db.Text, nullable=False, default="{}")
-    overall_percentage = db.Column(db.Numeric(8, 3), nullable=False)
-    base_outcome = db.Column(db.String(4), nullable=False)
-    final_outcome = db.Column(db.String(4), nullable=False)
+    overall_percentage = db.Column(db.Numeric(8, 3), nullable=True)
+    base_outcome = db.Column(db.String(4), nullable=True)
+    final_outcome = db.Column(db.String(4), nullable=True)
+    evaluation_status = db.Column(
+        db.String(20),
+        nullable=False,
+        default="NOT_EVALUATED",
+        index=True,
+    )
     critical_subject_results_json = db.Column(db.Text, nullable=False, default="[]")
     override_reason = db.Column(db.String(80), nullable=True)
     evaluated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
@@ -630,16 +645,21 @@ class PromotionEvaluation(TimestampMixin, db.Model):
     )
     academic_year = db.relationship("AcademicYear")
     academic_year_level = db.relationship("AcademicYearLevel")
+    exam = db.relationship("Exam")
     promotion_rule = db.relationship("PromotionRule")
 
     __table_args__ = (
         db.CheckConstraint(
-            "base_outcome IN ('PASS', 'FAIL')",
+            "base_outcome IS NULL OR base_outcome IN ('PASS', 'FAIL')",
             name="ck_promotion_evaluation_base_outcome",
         ),
         db.CheckConstraint(
-            "final_outcome IN ('PASS', 'FAIL')",
+            "final_outcome IS NULL OR final_outcome IN ('PASS', 'FAIL')",
             name="ck_promotion_evaluation_final_outcome",
+        ),
+        db.CheckConstraint(
+            "evaluation_status IN ('EVALUATED', 'INCOMPLETE', 'INVALID', 'NOT_EVALUATED')",
+            name="ck_promotion_evaluation_status",
         ),
         db.Index(
             "idx_promotion_evaluation_scope",
