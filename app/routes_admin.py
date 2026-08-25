@@ -2909,10 +2909,17 @@ def promotion_rules_evaluate():
     page_data = _promotion_evaluation_page_data(year_id, level_id, exam_id, class_id)
     preview_result = None
     error_message = None
+    save_confirmed = False
     if action in {"preview", "execute"}:
         try:
-            if not (page_data["selected_year_id"] and page_data["selected_level_id"] and exam_id):
-                raise PromotionValidationError("Select an Academic Year, Academic Year Level, and explicit Evaluation Exam")
+            if not page_data["selected_year_id"]:
+                raise PromotionValidationError("Academic Year is required. Select the year whose enrollments should be evaluated.")
+            if not page_data["selected_level_id"]:
+                raise PromotionValidationError("Academic Level is required. Select a level configured inside the selected Academic Year.")
+            if not exam_id:
+                raise PromotionValidationError("Exact Exam is required. Select the exam whose results should be evaluated.")
+            if not page_data["selected_exam"] or page_data["selected_exam"].id != exam_id:
+                raise PromotionValidationError("The selected Exam does not belong to the selected Academic Year. Choose an exam from that year.")
             preview_result = evaluate_promotion_scope(
                 page_data["selected_year_id"],
                 page_data["selected_level_id"],
@@ -2922,26 +2929,45 @@ def promotion_rules_evaluate():
                 persist=action == "execute",
             )
             if action == "execute":
+                counts = preview_result["counts"]
+                if counts["eligible"] == 0:
+                    raise PromotionValidationError(
+                        "No eligible StudentEnrollments were found for the selected Academic Year + Level + Class scope."
+                    )
+                if page_data["selected_exam"].is_final_evaluation and (
+                    counts["incomplete"] or counts["invalid"]
+                ):
+                    raise PromotionValidationError(
+                        "Evaluation was not saved because the selected final scope contains "
+                        f"{counts['incomplete']} incomplete and {counts['invalid']} invalid enrollment(s). "
+                        "Complete the required results and correct invalid data, then try again."
+                    )
                 audit(
                     "Promotion Evaluation",
-                    f"Evaluated {preview_result['counts']['evaluated']} students for exam {exam_id}",
+                    f"Evaluated {counts['evaluated']} students for exam {exam_id}",
                 )
                 db.session.commit()
+                save_confirmed = True
                 flash(
                     "Evaluation saved successfully: "
-                    f"{preview_result['counts']['evaluated']} evaluated, "
-                    f"{preview_result['counts']['outcomes_saved']} academic outcome(s) saved "
-                    f"({preview_result['counts']['pass']} PASS / {preview_result['counts']['fail']} FAIL). "
-                    "No promotion, repeat, transfer, or graduation was performed.",
+                    f"{counts['evaluated']} evaluated; "
+                    f"{counts['pass']} GUDBAY / {counts['fail']} HADHAY; "
+                    f"{counts['outcomes_confirmed']} matching academic outcome(s) confirmed. "
+                    "Apply Outcomes is now available for this exact Final Evaluation." if page_data["selected_exam"].is_final_evaluation else
+                    "Session evaluation saved successfully: "
+                    f"{counts['evaluated']} evaluated; {counts['pass']} GUDBAY / {counts['fail']} HADHAY. "
+                    "This non-final evaluation is history-only; enrollment outcomes and transitions were not changed.",
                     "success",
                 )
         except (PromotionValidationError, ValueError) as exc:
             db.session.rollback()
             error_message = str(exc)
+            preview_result = None
         except Exception:
             db.session.rollback()
             current_app.logger.exception("Promotion evaluation failed")
             error_message = "The promotion evaluation could not be completed. No records were saved."
+            preview_result = None
     if error_message:
         flash(error_message, "danger")
     return render_template(
@@ -2949,6 +2975,7 @@ def promotion_rules_evaluate():
         **page_data,
         preview_result=preview_result,
         error_message=error_message,
+        save_confirmed=save_confirmed,
         rules_enabled=promotion_rules_enabled(),
     )
 

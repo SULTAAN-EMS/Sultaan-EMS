@@ -3,12 +3,13 @@
 import unittest
 
 from app import db
-from app.models import PromotionEvaluation, PromotionOutcomeApplication, StudentEnrollmentMovement
+from app.models import PromotionEvaluation, PromotionOutcomeApplication, StudentEnrollmentMovement, User
 from app.promotion_service import (
     PromotionValidationError,
     apply_academic_outcome,
     evaluate_promotion_scope,
     evaluate_student_promotion,
+    plan_evaluation_transition,
     portal_academic_outcome,
     promotion_operational_status,
     promotion_scope_summary,
@@ -103,6 +104,127 @@ class TestPhase4BSessionEvaluation(TestPhase4AExamAwarePromotion):
         self.assertEqual(executed["counts"]["outcomes_saved"], 0)
         self.assertEqual(self.enrollment.academic_outcome, "pending")
         self.assertEqual(StudentEnrollmentMovement.query.count(), 0)
+
+    def test_final_scope_save_persists_exact_outcome_and_makes_apply_ready(self):
+        self._result(self.final_exam, self.math, 90)
+        self._result(self.final_exam, self.english, 90)
+        executed = evaluate_promotion_scope(
+            self.year.id,
+            self.level.id,
+            self.final_exam.id,
+            academic_year_class_id=self.year_class.id,
+            subject_ids=[self.math.id, self.english.id],
+            persist=True,
+        )
+        self.assertEqual(executed["counts"]["evaluated"], 1)
+        self.assertEqual(executed["counts"]["outcomes_saved"], 1)
+        self.assertEqual(self.enrollment.academic_outcome, "passed")
+        db.session.commit()
+
+        saved = PromotionEvaluation.query.filter_by(
+            student_enrollment_id=self.enrollment.id,
+            academic_year_id=self.year.id,
+            academic_year_level_id=self.level.id,
+            exam_id=self.final_exam.id,
+        ).one()
+        self.assertEqual(saved.final_outcome, "PASS")
+        plan = plan_evaluation_transition(
+            self.year.id,
+            self.level.id,
+            self.year_class.id,
+            self.final_exam.id,
+            action="promotion",
+            destination_academic_year_id=self.next_year.id,
+            destination_academic_year_level_id=self.next_level.id,
+            destination_academic_year_class_id=self.next_class.id,
+        )
+        self.assertEqual(plan["items"][0]["classification"], "READY")
+        self.assertTrue(plan["items"][0]["eligible"])
+
+    def test_final_scope_fail_persists_failed_outcome_and_makes_repeat_ready(self):
+        self._result(self.final_exam, self.math, 40)
+        self._result(self.final_exam, self.english, 40)
+        evaluate_promotion_scope(
+            self.year.id,
+            self.level.id,
+            self.final_exam.id,
+            academic_year_class_id=self.year_class.id,
+            subject_ids=[self.math.id, self.english.id],
+            persist=True,
+        )
+        db.session.commit()
+        self.assertEqual(self.enrollment.academic_outcome, "failed")
+        plan = plan_evaluation_transition(
+            self.year.id,
+            self.level.id,
+            self.year_class.id,
+            self.final_exam.id,
+            action="repeat",
+            destination_academic_year_id=self.next_year.id,
+            destination_academic_year_level_id=self.next_level.id,
+            destination_academic_year_class_id=self.next_class.id,
+        )
+        self.assertEqual(plan["items"][0]["classification"], "READY")
+
+    def test_final_scope_incomplete_is_atomic_and_creates_no_partial_rows(self):
+        with self.assertRaisesRegex(PromotionValidationError, "No evaluation or academic outcome was committed"):
+            evaluate_promotion_scope(
+                self.year.id,
+                self.level.id,
+                self.final_exam.id,
+                academic_year_class_id=self.year_class.id,
+                subject_ids=[self.math.id, self.english.id],
+                persist=True,
+            )
+        db.session.rollback()
+        self.assertEqual(PromotionEvaluation.query.count(), 0)
+        self.assertEqual(self.enrollment.academic_outcome, "pending")
+
+    def test_repeated_final_scope_save_does_not_duplicate_outcome_ledger(self):
+        self._result(self.final_exam, self.math, 90)
+        self._result(self.final_exam, self.english, 90)
+        for _ in range(2):
+            evaluate_promotion_scope(
+                self.year.id,
+                self.level.id,
+                self.final_exam.id,
+                academic_year_class_id=self.year_class.id,
+                subject_ids=[self.math.id, self.english.id],
+                persist=True,
+            )
+            db.session.commit()
+        self.assertEqual(self.enrollment.academic_outcome, "passed")
+        self.assertEqual(PromotionOutcomeApplication.query.count(), 0)
+        self.assertEqual(PromotionEvaluation.query.count(), 2)
+
+    def test_final_evaluate_route_returns_confirmed_feedback_after_commit(self):
+        self._result(self.final_exam, self.math, 90)
+        self._result(self.final_exam, self.english, 90)
+        user = User(username="phase4b-admin", full_name="Phase 4B Admin", role="super_admin", is_active=True)
+        user.set_password("phase4b-password")
+        db.session.add(user)
+        db.session.commit()
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(user.id)
+            session["_fresh"] = True
+            session["config_center_authenticated"] = True
+        response = client.post(
+            "/admin/promotion-rules/evaluate",
+            data={
+                "academic_year_id": self.year.id,
+                "academic_year_level_id": self.level.id,
+                "exam_id": self.final_exam.id,
+                "academic_year_class_id": self.year_class.id,
+                "subject_ids": [str(self.math.id), str(self.english.id)],
+                "action": "execute",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Evaluation saved successfully", response.data)
+        self.assertIn(b"matching academic outcome", response.data)
+        self.assertIn(b"Apply Outcomes is now available", response.data)
+        self.assertEqual(self.enrollment.academic_outcome, "passed")
 
     def test_session_apply_outcome_is_blocked_even_if_called_directly(self):
         self._result(self.midterm, self.math, 90)

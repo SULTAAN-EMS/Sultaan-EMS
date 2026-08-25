@@ -696,18 +696,57 @@ def evaluate_promotion_scope(
         "subject_ids": [subject.id for subject in subjects],
     }
     snapshots = []
-    # Kept for response/template compatibility. Phase 4B deliberately leaves
-    # StudentEnrollment untouched until an explicit Final Evaluation apply.
+    # A session/non-final evaluation is immutable history only.  A Final
+    # Evaluation is the one workflow that also persists the canonical
+    # PASS/FAIL outcome on the exact source enrollment.  The explicit outcome
+    # application ledger remains separate and is still created only when the
+    # administrator applies or transitions that saved result.
     outcomes_saved = 0
+    outcomes_confirmed = 0
     preview_rows = []
     for enrollment in enrollments:
         snapshot = evaluate_student_promotion(enrollment, context, persist=persist)
         snapshots.append(snapshot)
+        if persist and exam.is_final_evaluation and snapshot.evaluation_status == "EVALUATED":
+            expected_outcome = "passed" if snapshot.final_outcome == "PASS" else "failed"
+            terminal_outcomes = {
+                "passed": {"passed", "promoted", "graduated"},
+                "failed": {"failed", "repeated"},
+            }
+            if enrollment.academic_outcome == "pending":
+                enrollment.academic_outcome = expected_outcome
+                outcomes_saved += 1
+            elif enrollment.academic_outcome not in terminal_outcomes[expected_outcome]:
+                raise PromotionValidationError(
+                    "The saved final evaluation conflicts with the existing academic outcome "
+                    f"for student {enrollment.student.student_code}"
+                )
+            outcomes_confirmed += 1
         preview_rows.append({
             "evaluation": snapshot,
             "student": enrollment.student,
             "enrollment": enrollment,
         })
+    if persist and exam.is_final_evaluation:
+        incomplete = sum(item.evaluation_status == "INCOMPLETE" for item in snapshots)
+        invalid = sum(item.evaluation_status == "INVALID" for item in snapshots)
+        if incomplete or invalid:
+            raise PromotionValidationError(
+                "Final Evaluation was not saved because the selected scope contains "
+                f"{incomplete} incomplete and {invalid} invalid enrollment(s). "
+                "No evaluation or academic outcome was committed."
+            )
+    if persist:
+        verify_evaluation_scope_persistence(
+            {
+                "year": year,
+                "level": level,
+                "exam": exam,
+                "enrollments": enrollments,
+                "snapshots": snapshots,
+            },
+            require_final_outcomes=exam.is_final_evaluation,
+        )
     counts = {
         "eligible": len(snapshots),
         "evaluated": sum(item.evaluation_status == "EVALUATED" for item in snapshots),
@@ -717,6 +756,7 @@ def evaluate_promotion_scope(
         "fail": sum(item.final_outcome == "FAIL" for item in snapshots),
         "skipped": 0,
         "outcomes_saved": outcomes_saved,
+        "outcomes_confirmed": outcomes_confirmed,
     }
     return {
         "year": year,
@@ -728,6 +768,46 @@ def evaluate_promotion_scope(
         "preview_rows": preview_rows,
         "counts": counts,
     }
+
+
+def verify_evaluation_scope_persistence(scope_result, *, require_final_outcomes=False):
+    """Verify flushed evaluation rows and their exact enrollment scope.
+
+    This runs inside the caller's transaction before commit.  It deliberately
+    checks the canonical enrollment row instead of trusting an in-memory
+    object, so a successful response cannot be produced for a partial or
+    cross-scope save.
+    """
+    year = scope_result["year"]
+    level = scope_result["level"]
+    exam = scope_result["exam"]
+    enrollments = {item.id: item for item in scope_result["enrollments"]}
+    for snapshot in scope_result["snapshots"]:
+        persisted = db.session.get(PromotionEvaluation, snapshot.id)
+        source = enrollments.get(snapshot.student_enrollment_id) or db.session.get(
+            StudentEnrollment, snapshot.student_enrollment_id
+        )
+        if not persisted or not source:
+            raise PromotionValidationError("Evaluation persistence verification failed; no changes were committed")
+        if (
+            persisted.student_id != source.student_id
+            or persisted.student_enrollment_id != source.id
+            or persisted.academic_year_id != year.id
+            or persisted.academic_year_level_id != level.id
+            or persisted.exam_id != exam.id
+            or source.academic_year_id != year.id
+            or source.academic_year_level_id != level.id
+        ):
+            raise PromotionValidationError("Evaluation persistence verification found a scope mismatch; no changes were committed")
+        if require_final_outcomes and persisted.evaluation_status == "EVALUATED":
+            expected = "passed" if persisted.final_outcome == "PASS" else "failed"
+            allowed = {
+                "passed": {"passed", "promoted", "graduated"},
+                "failed": {"failed", "repeated"},
+            }
+            if persisted.final_outcome not in PromotionEvaluation.OUTCOME_VALUES or source.academic_outcome not in allowed[expected]:
+                raise PromotionValidationError("Academic outcome persistence verification failed; no changes were committed")
+    return True
 
 
 def latest_promotion_evaluation(enrollment, *, exam_id=None):
