@@ -176,6 +176,12 @@ class TestAcademicYearDependencyAudit(unittest.TestCase):
         db.session.commit()
         self.assertEqual(_config_dependencies("academic-years", self.year.id), [])
 
+        # The normal delete path can now remove the archived year; no special
+        # password, force flag, or alternate deletion workflow is involved.
+        db.session.delete(self.year)
+        db.session.commit()
+        self.assertIsNone(db.session.get(AcademicYear, self.year.id))
+
 
 if __name__ == "__main__":
     unittest.main()
