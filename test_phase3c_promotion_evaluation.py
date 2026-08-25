@@ -191,7 +191,7 @@ class TestPhase3CPromotionEvaluation(unittest.TestCase):
         self._result(self.student, self.exam_a, self.subject_math, 40)
         self._result(self.student, self.exam_a, self.subject_english, 100)
         set_promotion_rules_enabled(False)
-        upsert_promotion_rule(self.year_a.id, self.level_a.id, critical_subject_ids=[self.math_a.id])
+        upsert_promotion_rule(self.year_a.id, self.level_a.id, exam_id=self.exam_a.id, critical_subject_ids=[self.math_a.id])
         snapshot = evaluate_student_promotion(
             self.enrollment,
             self._context(subjects=[self.math_a, self.english_a]),
@@ -204,7 +204,7 @@ class TestPhase3CPromotionEvaluation(unittest.TestCase):
         self._result(self.student, self.exam_a, self.subject_math, 40)
         self._result(self.student, self.exam_a, self.subject_english, 100)
         set_promotion_rules_enabled(True)
-        rule = upsert_promotion_rule(self.year_a.id, self.level_a.id, critical_subject_ids=[self.math_a.id])
+        rule = upsert_promotion_rule(self.year_a.id, self.level_a.id, exam_id=self.exam_a.id, critical_subject_ids=[self.math_a.id])
         snapshot = evaluate_student_promotion(
             self.enrollment,
             self._context(subjects=[self.math_a, self.english_a]),
@@ -272,11 +272,11 @@ class TestPhase3CPromotionEvaluation(unittest.TestCase):
         self._result(self.student, self.exam_a, self.subject_math, 40)
         self._result(self.student, self.exam_a, self.subject_english, 100)
         set_promotion_rules_enabled(True)
-        upsert_promotion_rule(self.year_a.id, self.level_a.id, critical_subject_ids=[self.math_a.id], critical_subject_pass_threshold=50)
+        upsert_promotion_rule(self.year_a.id, self.level_a.id, exam_id=self.exam_a.id, critical_subject_ids=[self.math_a.id], critical_subject_pass_threshold=50)
         first = evaluate_student_promotion(self.enrollment, self._context(subjects=[self.math_a, self.english_a]), persist=True)
         db.session.commit()
         first_rule_snapshot = first.promotion_rule_snapshot_json
-        upsert_promotion_rule(self.year_a.id, self.level_a.id, critical_subject_ids=[], critical_subject_pass_threshold=30)
+        upsert_promotion_rule(self.year_a.id, self.level_a.id, exam_id=self.exam_a.id, critical_subject_ids=[], critical_subject_pass_threshold=30)
         second = evaluate_student_promotion(self.enrollment, self._context(subjects=[self.math_a, self.english_a]), persist=True)
         db.session.commit()
         self.assertEqual(PromotionEvaluation.query.count(), 2)

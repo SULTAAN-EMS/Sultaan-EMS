@@ -156,9 +156,10 @@
             {% endfor %}
           {% elif section == 'exam-types' %}
             {% for item in items %}
-            <tr data-id="{{ item.id }}" data-item-type="exam-types" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-short-code="{{ item.short_code or '' }}" data-weight-percentage="{{ item.weight_percentage or 0 }}" data-academic-year-id="{{ item.academic_year_id or '' }}">
+            <tr data-id="{{ item.id }}" data-item-type="exam-types" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-short-code="{{ item.short_code or '' }}" data-weight-percentage="{{ item.weight_percentage or 0 }}" data-final-evaluation="{{ 'true' if item.is_final_evaluation else 'false' }}" data-academic-year-id="{{ item.academic_year_id or '' }}">
               <td><strong>{{ item.name }}</strong></td>
               <td><span class="config-badge {{ 'config-badge-success' if item.is_active else 'config-badge-neutral' }}">{{ 'Active' if item.is_active else 'Inactive' }}</span></td>
+              <td><span class="config-badge {{ 'config-badge-success' if item.is_final_evaluation else 'config-badge-neutral' }}">{{ 'Yes' if item.is_final_evaluation else 'No' }}</span></td>
               <td>{{ item.short_code or '-' }}</td>
               <td>{{ item.weight_percentage or 0 }}%</td>
               <td>{{ item.academic_year.name if item.academic_year else '-' }}</td>
@@ -327,6 +328,13 @@
           <label class="config-form-label">Weight Percentage</label>
           <input type="number" min="0" max="100" step="0.01" class="config-form-input" id="itemWeightPercentage" placeholder="0">
         </div>
+        <div class="config-form-group js-final-evaluation-group">
+          <label class="promotion-inline-check" for="itemFinalEvaluation">
+            <input type="checkbox" id="itemFinalEvaluation">
+            <span>Is Final Evaluation?</span>
+          </label>
+          <small class="config-form-help">Only a final evaluation can authorize promotion, repeat, or graduation.</small>
+        </div>
         <div class="config-form-group js-sort-group">
           <label class="config-form-label">Sort Order</label>
           <input type="number" min="0" step="1" class="config-form-input" id="itemSortOrder" placeholder="Auto">
@@ -423,6 +431,7 @@ function configureForm() {
   setGroup('.js-level-group', apiType === 'subjects' || apiType === 'classes');
   setGroup('.js-code-group', apiType === 'exam-types');
   setGroup('.js-weight-group', apiType === 'exam-types');
+  setGroup('.js-final-evaluation-group', apiType === 'exam-types');
   setGroup('.js-max-score-group', apiType === 'subjects');
   setGroup('.js-sort-group', apiType === 'levels' || apiType === 'classes' || apiType === 'subjects');
 
@@ -473,6 +482,7 @@ function editItem(itemType, itemId) {
   document.getElementById('itemName').value = row.dataset.name || '';
   document.getElementById('itemShortCode').value = row.dataset.shortCode || '';
   document.getElementById('itemWeightPercentage').value = row.dataset.weightPercentage || '';
+  document.getElementById('itemFinalEvaluation').checked = row.dataset.finalEvaluation === 'true';
   const yearId = row.dataset.academicYearId || '';
   const yearLevelId = row.dataset.academicYearLevelId || '';
   document.getElementById('itemAcademicYearId').value = yearId;
@@ -639,6 +649,7 @@ function payloadFor(apiType) {
     payload.short_code = document.getElementById('itemShortCode').value.trim();
     payload.weight_percentage = document.getElementById('itemWeightPercentage').value;
     payload.academic_year_id = document.getElementById('itemAcademicYearId').value;
+    payload.is_final_evaluation = document.getElementById('itemFinalEvaluation').checked;
   }
   if (apiType === 'classes') {
     payload.academic_year_id = document.getElementById('itemAcademicYearId').value;

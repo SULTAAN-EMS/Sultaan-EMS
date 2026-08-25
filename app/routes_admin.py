@@ -2149,7 +2149,7 @@ CONFIG_CENTER_SECTIONS = {
     'exam-types': {
         'title': 'Exam Types',
         'description': 'Manage examination types and their configurations',
-        'columns': ['Exam Type', 'Status', 'Code', 'Weight %', 'Academic Year', 'Created By']
+        'columns': ['Exam Type', 'Status', 'Final Evaluation', 'Code', 'Weight %', 'Academic Year', 'Created By']
     },
     'levels': {
         'title': 'Levels & Classes',
@@ -2738,18 +2738,21 @@ def promotion_rules_global_settings():
 @login_required
 @config_center_required
 def promotion_rules_configure():
-    """Configure one rule using the selected year-aware level scope."""
+    """Configure one rule using the selected year + level + exam scope."""
     years = _promotion_rules_years()
     selected_year_id = request.args.get("year_id", type=int)
     selected_level_id = request.args.get("level_id", type=int)
+    selected_exam_id = request.args.get("exam_id", type=int)
     if request.method == "POST":
         selected_year_id = request.form.get("academic_year_id", type=int)
         selected_level_id = request.form.get("academic_year_level_id", type=int)
+        selected_exam_id = request.form.get("exam_id", type=int)
         try:
             critical_subject_ids = request.form.getlist("critical_subject_ids")
             upsert_promotion_rule(
                 selected_year_id,
                 selected_level_id,
+                exam_id=selected_exam_id,
                 is_active=str(request.form.get("is_active", "")).strip().lower() in {
                     "1", "true", "yes", "on"
                 },
@@ -2767,6 +2770,7 @@ def promotion_rules_configure():
                 "admin.promotion_rules_configure",
                 year_id=selected_year_id,
                 level_id=selected_level_id,
+                exam_id=selected_exam_id,
             ))
         except (PromotionValidationError, ValueError) as exc:
             db.session.rollback()
@@ -2782,8 +2786,20 @@ def promotion_rules_configure():
         selected_year_id = selected_year.id
     levels = year_levels(selected_year_id) if selected_year_id else []
     selected_level = next((level for level in levels if level.id == selected_level_id), None)
+    exams = (
+        Exam.query.filter_by(academic_year_id=selected_year_id, is_active=True)
+        .order_by(Exam.sort_order, Exam.name, Exam.id).all()
+        if selected_year_id else []
+    )
+    selected_exam = next((exam for exam in exams if exam.id == selected_exam_id), None)
+    if selected_exam_id and selected_exam is None:
+        selected_exam_id = None
     subjects = valid_critical_subjects(selected_year_id, selected_level_id) if selected_level else []
-    rule = get_promotion_rule(selected_year_id, selected_level_id) if selected_level else None
+    rule = get_promotion_rule(
+        selected_year_id,
+        selected_level_id,
+        exam_id=selected_exam_id,
+    ) if selected_level and selected_exam else None
     selected_subject_ids = {
         item.academic_year_subject_id for item in rule.critical_subjects
     } if rule else set()
@@ -2791,9 +2807,12 @@ def promotion_rules_configure():
         "admin/promotion_rules_configure.html",
         years=years,
         levels=levels,
+        exams=exams,
         subjects=subjects,
         selected_year=selected_year,
         selected_level=selected_level,
+        selected_exam=selected_exam,
+        selected_exam_id=selected_exam_id,
         rule=rule,
         selected_subject_ids=selected_subject_ids,
         rules_enabled=promotion_rules_enabled(),
@@ -2817,6 +2836,7 @@ def promotion_rules_toggle(rule_id):
         "admin.promotion_rules_configure",
         year_id=rule.academic_year_id,
         level_id=rule.academic_year_level_id,
+        exam_id=rule.exam_id,
     ))
 
 
@@ -3012,6 +3032,7 @@ def promotion_rules_evaluation_detail(evaluation_id):
         evaluation=evaluation,
         application=application,
         is_final_level=is_final_academic_year_level(evaluation.academic_year_level_id),
+        is_final_evaluation=bool(evaluation.exam and evaluation.exam.is_final_evaluation),
         destination_years=_promotion_rules_years(),
         destination_levels=AcademicYearLevel.query.filter_by(is_active=True).order_by(AcademicYearLevel.academic_year_id, AcademicYearLevel.sort_order, AcademicYearLevel.name).all(),
         destination_classes=AcademicYearClass.query.filter_by(is_active=True).order_by(AcademicYearClass.academic_year_level_id, AcademicYearClass.sort_order, AcademicYearClass.name).all(),
@@ -3302,6 +3323,7 @@ def config_create_exam_type():
     short_code = data.get('short_code', '').strip()
     weight_percentage = _parse_float(data.get('weight_percentage'), 0.0)
     academic_year_id = _parse_int(data.get('academic_year_id'))
+    is_final_evaluation = data.get('is_final_evaluation') in {True, 1, '1', 'true', 'on', 'yes'}
 
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'})
@@ -3316,7 +3338,8 @@ def config_create_exam_type():
             short_code=short_code,
             weight_percentage=weight_percentage,
             academic_year_id=academic_year_id,
-            is_active=True
+            is_active=True,
+            is_final_evaluation=is_final_evaluation,
         )
         db.session.add(exam)
         db.session.commit()
@@ -3362,15 +3385,37 @@ def config_update_exam_type(exam_id):
     if _duplicate_exists(Exam, {'name': name, 'academic_year_id': academic_year_id}, exclude_id=exam.id):
         return jsonify({'success': False, 'message': 'Exam type already exists for this academic year'})
 
-    old_value = {'name': exam.name, 'academic_year_id': exam.academic_year_id, 'short_code': exam.short_code, 'weight_percentage': exam.weight_percentage}
+    is_final_evaluation = data.get(
+        'is_final_evaluation', exam.is_final_evaluation
+    ) in {True, 1, '1', 'true', 'on', 'yes'}
+    old_value = {
+        'name': exam.name,
+        'academic_year_id': exam.academic_year_id,
+        'short_code': exam.short_code,
+        'weight_percentage': exam.weight_percentage,
+        'is_final_evaluation': exam.is_final_evaluation,
+    }
     exam.name = name
     exam.short_code = data.get('short_code', exam.short_code)
     exam.weight_percentage = _parse_float(data.get('weight_percentage'), exam.weight_percentage)
     exam.academic_year_id = academic_year_id
+    exam.is_final_evaluation = is_final_evaluation
 
     try:
         db.session.commit()
-        _audit_config_change("Configuration Center Updated", "exam-types", exam, old_value=old_value, new_value={'name': exam.name, 'academic_year_id': exam.academic_year_id, 'short_code': exam.short_code, 'weight_percentage': exam.weight_percentage})
+        _audit_config_change(
+            "Configuration Center Updated",
+            "exam-types",
+            exam,
+            old_value=old_value,
+            new_value={
+                'name': exam.name,
+                'academic_year_id': exam.academic_year_id,
+                'short_code': exam.short_code,
+                'weight_percentage': exam.weight_percentage,
+                'is_final_evaluation': exam.is_final_evaluation,
+            },
+        )
         return jsonify({'success': True, 'message': 'Exam type updated successfully'})
     except Exception as e:
         db.session.rollback()

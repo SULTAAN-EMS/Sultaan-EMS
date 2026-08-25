@@ -94,6 +94,22 @@ def validate_rule_scope(academic_year_id, academic_year_level_id):
     return year, level
 
 
+def validate_exam_scope(academic_year_id, academic_year_level_id, exam_id):
+    """Resolve an explicit Results exam inside the exact year-level scope."""
+    year, level = validate_rule_scope(academic_year_id, academic_year_level_id)
+    try:
+        exam_id = int(exam_id)
+    except (TypeError, ValueError):
+        raise PromotionValidationError("An explicit Exam Type is required")
+    exam = db.session.get(Exam, exam_id)
+    if not exam or exam.academic_year_id != year.id:
+        raise PromotionValidationError("The selected Exam Type does not belong to the selected Academic Year")
+    if exam.academic_level_id is not None:
+        if level.legacy_level_id is None or level.legacy_level_id != exam.academic_level_id:
+            raise PromotionValidationError("The selected Exam Type does not belong to the selected Academic Year Level")
+    return year, level, exam
+
+
 def valid_critical_subjects(academic_year_id, academic_year_level_id):
     """Return only active subjects belonging to the selected year-level."""
     validate_rule_scope(academic_year_id, academic_year_level_id)
@@ -126,13 +142,22 @@ def _validate_critical_subject_ids(academic_year_id, academic_year_level_id, sub
     return [valid_by_id[subject_id] for subject_id in normalized]
 
 
-def get_promotion_rule(academic_year_id, academic_year_level_id, *, active_only=False):
-    """Load a rule only from its exact year-aware scope."""
+def get_promotion_rule(academic_year_id, academic_year_level_id, *, exam_id=None, active_only=False):
+    """Load a rule from its exact year + level + exam scope.
+
+    ``exam_id=None`` intentionally addresses only legacy Phase 3B rows. New
+    explicit-exam evaluations never fall back to those rows.
+    """
     validate_rule_scope(academic_year_id, academic_year_level_id)
     query = PromotionRule.query.filter_by(
         academic_year_id=academic_year_id,
         academic_year_level_id=academic_year_level_id,
     )
+    if exam_id in (None, ""):
+        query = query.filter(PromotionRule.exam_id.is_(None))
+    else:
+        _, _, exam = validate_exam_scope(academic_year_id, academic_year_level_id, exam_id)
+        query = query.filter_by(exam_id=exam.id)
     if active_only:
         query = query.filter_by(is_active=True)
     rule = query.first()
@@ -141,13 +166,14 @@ def get_promotion_rule(academic_year_id, academic_year_level_id, *, active_only=
     return rule
 
 
-def promotion_rules_active_for_enrollment(enrollment):
+def promotion_rules_active_for_enrollment(enrollment, *, exam_id=None):
     """Return whether the exact enrollment scope is controlled by Promotion Rules."""
     if not isinstance(enrollment, StudentEnrollment) or not promotion_rules_enabled():
         return False
     return get_promotion_rule(
         enrollment.academic_year_id,
         enrollment.academic_year_level_id,
+        exam_id=exam_id,
         active_only=True,
     ) is not None
 
@@ -156,13 +182,24 @@ def upsert_promotion_rule(
     academic_year_id,
     academic_year_level_id,
     *,
+    exam_id=None,
     is_active=True,
     overall_pass_threshold=DEFAULT_PROMOTION_THRESHOLD,
     critical_subject_pass_threshold=DEFAULT_PROMOTION_THRESHOLD,
     critical_subject_ids=None,
 ):
-    """Create/update one rule while validating every year-aware relationship."""
-    validate_rule_scope(academic_year_id, academic_year_level_id)
+    """Create/update one rule while validating every year-aware relationship.
+
+    ``exam_id`` remains optional for the legacy service API, but the admin UI
+    always supplies it so new rules cannot be shared across exam types.
+    """
+    if exam_id in (None, ""):
+        validate_rule_scope(academic_year_id, academic_year_level_id)
+        resolved_exam = None
+    else:
+        _, _, resolved_exam = validate_exam_scope(
+            academic_year_id, academic_year_level_id, exam_id
+        )
     overall_threshold = _decimal(
         overall_pass_threshold,
         field="Overall PASS Threshold",
@@ -178,11 +215,16 @@ def upsert_promotion_rule(
         academic_year_level_id,
         critical_subject_ids,
     )
-    rule = get_promotion_rule(academic_year_id, academic_year_level_id)
+    rule = get_promotion_rule(
+        academic_year_id,
+        academic_year_level_id,
+        exam_id=resolved_exam.id if resolved_exam else None,
+    )
     if rule is None:
         rule = PromotionRule(
             academic_year_id=academic_year_id,
             academic_year_level_id=academic_year_level_id,
+            exam_id=resolved_exam.id if resolved_exam else None,
         )
         db.session.add(rule)
         db.session.flush()
@@ -208,6 +250,7 @@ def promotion_rule_snapshot(rule, *, enabled):
         return {
             "feature_enabled": bool(enabled),
             "rule_id": None,
+            "exam_id": None,
             "overall_pass_threshold": float(DEFAULT_PROMOTION_THRESHOLD),
             "critical_subject_pass_threshold": float(DEFAULT_PROMOTION_THRESHOLD),
             "critical_subjects": [],
@@ -217,6 +260,8 @@ def promotion_rule_snapshot(rule, *, enabled):
         "rule_id": rule.id,
         "academic_year_id": rule.academic_year_id,
         "academic_year_level_id": rule.academic_year_level_id,
+        "exam_id": rule.exam_id,
+        "exam_name": rule.exam.name if rule.exam else None,
         "is_active": bool(rule.is_active),
         "overall_pass_threshold": float(rule.overall_pass_threshold),
         "critical_subject_pass_threshold": float(rule.critical_subject_pass_threshold),
@@ -309,7 +354,12 @@ def evaluate_promotion(student_enrollment, evaluation_context, *, persist=True):
     )
 
     enabled = promotion_rules_enabled()
-    rule = get_promotion_rule(year.id, level.id, active_only=True) if enabled else None
+    rule = get_promotion_rule(
+        year.id,
+        level.id,
+        exam_id=exam.id if exam else None,
+        active_only=True,
+    ) if enabled else None
     overall_threshold = (
         Decimal(str(rule.overall_pass_threshold))
         if rule
@@ -393,20 +443,11 @@ def resolve_evaluation_context(academic_year_id, academic_year_level_id, exam_id
     ``Exam.academic_level_id`` bridge is checked when present; a null bridge is
     accepted because older exams do not carry that field.
     """
-    year, level = validate_rule_scope(academic_year_id, academic_year_level_id)
-    try:
-        exam_id = int(exam_id)
-    except (TypeError, ValueError):
-        raise PromotionValidationError("An explicit evaluation exam is required")
-    exam = db.session.get(Exam, exam_id)
-    if not exam:
-        raise PromotionValidationError("The selected evaluation exam was not found")
-    if exam.academic_year_id != year.id:
-        raise PromotionValidationError("The selected exam does not belong to the selected Academic Year")
-    if exam.academic_level_id is not None:
-        if level.legacy_level_id is None or level.legacy_level_id != exam.academic_level_id:
-            raise PromotionValidationError("The selected exam does not belong to the selected Academic Year Level")
-    return year, level, exam
+    return validate_exam_scope(
+        academic_year_id,
+        academic_year_level_id,
+        exam_id,
+    )
 
 
 def evaluation_subjects(academic_year_id, academic_year_level_id, subject_ids=None):
@@ -527,7 +568,14 @@ def evaluate_student_promotion(student_enrollment, evaluation_context, *, persis
     final_outcome = None
     override_reason = data_reason
     enabled = promotion_rules_enabled()
-    rule = get_promotion_rule(year.id, level.id, active_only=True) if enabled else None
+    # Explicit evaluations must use only the rule for this exact exam. A
+    # legacy year-level rule is preserved for history but never leaks here.
+    rule = get_promotion_rule(
+        year.id,
+        level.id,
+        exam_id=exam.id,
+        active_only=True,
+    ) if enabled else None
     overall_threshold = Decimal(str(rule.overall_pass_threshold)) if rule else DEFAULT_PROMOTION_THRESHOLD
     critical_threshold = Decimal(str(rule.critical_subject_pass_threshold)) if rule else DEFAULT_PROMOTION_THRESHOLD
     if evaluation_status == "EVALUATED":
@@ -732,7 +780,10 @@ def promotion_operational_status(enrollment, *, exam_id=None):
         "evaluation": evaluation,
         "application": application,
         "eligible_actions": [],
-        "rules_active": promotion_rules_active_for_enrollment(enrollment),
+        "rules_active": promotion_rules_active_for_enrollment(
+            enrollment,
+            exam_id=exam_id,
+        ),
     }
     if evaluation is None:
         return result
@@ -744,6 +795,33 @@ def promotion_operational_status(enrollment, *, exam_id=None):
             "tone": "danger" if evaluation.evaluation_status == "INVALID" else "warning",
             "reason": "The evaluation is incomplete or invalid and cannot authorize a transition.",
         })
+        return result
+
+    # Non-final exams produce a real immutable PASS/FAIL academic result, but
+    # they are never authorization evidence for promotion, repeat, or
+    # graduation.
+    if evaluation.exam and not evaluation.exam.is_final_evaluation:
+        if application and application.action != "outcome":
+            result.update({
+                "code": "BLOCKED",
+                "label": "Invalid non-final transition",
+                "tone": "danger",
+                "reason": "A non-final evaluation cannot authorize a transition.",
+            })
+        elif application:
+            result.update({
+                "code": "NON_FINAL_OUTCOME_APPLIED",
+                "label": "Non-final outcome applied",
+                "tone": "info",
+                "reason": "This exam records PASS/FAIL only; no promotion, repeat, or graduation is available.",
+            })
+        else:
+            result.update({
+                "code": "NON_FINAL_EVALUATED",
+                "label": "Non-final evaluation saved",
+                "tone": "info",
+                "reason": "This exam records PASS/FAIL only; no promotion, repeat, or graduation is available.",
+            })
         return result
 
     if application and application.application_status in {"TRANSITIONED", "GRADUATED"}:
@@ -1152,6 +1230,10 @@ def transition_applied_outcome(
     if action not in {"promotion", "repeat", "graduation"}:
         raise PromotionValidationError("Choose promotion, repeat, or graduation")
     evaluation, source = _authorizable_evaluation(evaluation_id)
+    if not evaluation.exam or not evaluation.exam.is_final_evaluation:
+        raise PromotionValidationError(
+            "This evaluation is not marked as a Final Evaluation and cannot authorize promotion, repeat, or graduation"
+        )
     application = _application_for(evaluation.id)
     if not application or application.application_status != "APPLIED":
         raise PromotionValidationError("Apply the academic outcome before executing a transition")
@@ -1257,6 +1339,10 @@ def plan_evaluation_transition(
         source_scope["academic_year_level"].id,
         exam_id,
     )
+    if not exam.is_final_evaluation:
+        raise PromotionValidationError(
+            "Only an Exam Type marked as Final Evaluation can authorize promotion, repeat, or graduation"
+        )
     destination_scope = None
     if action != "graduation":
         if None in (destination_academic_year_id, destination_academic_year_level_id, destination_academic_year_class_id):

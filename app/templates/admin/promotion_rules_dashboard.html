@@ -90,22 +90,23 @@
 
   <section class="promotion-section">
     <div class="promotion-section__header">
-      <div><span class="promotion-kicker"><i class="fa-solid fa-layer-group"></i> Year-aware configuration</span><h2>Rules by Academic Year and Level</h2><p>Each row is isolated to one Academic Year + Academic Year Level scope.</p></div>
+      <div><span class="promotion-kicker"><i class="fa-solid fa-layer-group"></i> Exam-aware configuration</span><h2>Rules by Academic Year, Level, and Exam</h2><p>Each row is isolated to one Academic Year + Academic Year Level + Exam Type scope.</p></div>
       <div class="promotion-header-actions"><a class="promotion-button promotion-button--ghost" href="{{ url_for('admin.promotion_rules_evaluate') }}"><i class="fa-solid fa-play"></i> Evaluate Outcome</a><a class="promotion-button promotion-button--ghost" href="{{ url_for('admin.promotion_rules_bulk_transition') }}"><i class="fa-solid fa-route"></i> Apply Outcomes</a><a class="promotion-button promotion-button--primary" href="{{ url_for('admin.promotion_rules_configure') }}"><i class="fa-solid fa-plus"></i> Configure Rule</a></div>
     </div>
     {% if rules %}
     <div class="promotion-table-wrap">
       <table class="promotion-table">
-        <thead><tr><th>Academic Year</th><th>Academic Level</th><th>Critical Subjects</th><th>Thresholds</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Academic Year</th><th>Academic Level</th><th>Exam Type</th><th>Critical Subjects</th><th>Thresholds</th><th>Status</th><th></th></tr></thead>
         <tbody>
         {% for rule in rules %}
           <tr>
             <td><span class="promotion-chip promotion-chip--year"><i class="fa-regular fa-calendar"></i>{{ rule.academic_year.name }}</span></td>
             <td><strong>{{ rule.academic_year_level.name }}</strong></td>
+            <td>{% if rule.exam %}<strong>{{ rule.exam.name }}</strong><small class="promotion-muted">{{ 'Final Evaluation' if rule.exam.is_final_evaluation else 'Non-final Evaluation' }}</small>{% else %}<span class="promotion-muted">Legacy year-level rule</span>{% endif %}</td>
             <td>{% if rule.critical_subjects %}<div class="promotion-subject-list">{% for item in rule.critical_subjects %}<span>{{ item.academic_year_subject.name }}</span>{% endfor %}</div>{% else %}<span class="promotion-muted">None configured</span>{% endif %}</td>
             <td><span class="promotion-threshold">Overall {{ rule.overall_pass_threshold }}%</span><span class="promotion-threshold">Critical {{ rule.critical_subject_pass_threshold }}%</span></td>
             <td><span class="promotion-status {% if rule.is_active %}is-active{% endif %}"><i class="fa-solid {% if rule.is_active %}fa-check{% else %}fa-pause{% endif %}"></i>{{ 'Active' if rule.is_active else 'Inactive' }}</span></td>
-            <td><a class="promotion-icon-button" title="Edit rule" aria-label="Edit rule" href="{{ url_for('admin.promotion_rules_configure', year_id=rule.academic_year_id, level_id=rule.academic_year_level_id) }}"><i class="fa-solid fa-pen"></i></a></td>
+            <td><a class="promotion-icon-button" title="Edit rule" aria-label="Edit rule" href="{{ url_for('admin.promotion_rules_configure', year_id=rule.academic_year_id, level_id=rule.academic_year_level_id, exam_id=rule.exam_id) }}"><i class="fa-solid fa-pen"></i></a></td>
           </tr>
         {% endfor %}
         </tbody>

@@ -316,7 +316,7 @@ class TestPhase3EPassFailConsistency(TestPhase3CPromotionEvaluation):
         self._result(self.student, self.exam_a, self.subject_english, 100)
         from app.promotion_service import set_promotion_rules_enabled, upsert_promotion_rule, evaluate_student_promotion
         set_promotion_rules_enabled(True)
-        upsert_promotion_rule(self.year_a.id, self.level_a.id, critical_subject_ids=[self.math_a.id])
+        upsert_promotion_rule(self.year_a.id, self.level_a.id, exam_id=self.exam_a.id, critical_subject_ids=[self.math_a.id])
         snapshot = evaluate_student_promotion(self.enrollment, self._context(subjects=[self.math_a, self.english_a]), persist=False)
         self.assertEqual(snapshot.final_outcome, "FAIL")
         self.assertEqual(snapshot.override_reason, "FAILED_CRITICAL_SUBJECT")

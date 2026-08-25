@@ -55,7 +55,7 @@ class TestPhase3DPromotionIntegration(unittest.TestCase):
         self.source_class = AcademicYearClass(academic_year_level_id=self.year_level.id, legacy_class_id=self.legacy_class.id, name="Form Four")
         self.final_class = AcademicYearClass(academic_year_level_id=self.year_final_level.id, legacy_class_id=self.final_legacy_class.id, name="Final")
         self.next_class = AcademicYearClass(academic_year_level_id=self.next_level.id, legacy_class_id=self.legacy_class.id, name="Form Four")
-        self.exam = Exam(name="Final Exam", academic_year_id=self.year.id)
+        self.exam = Exam(name="Final Exam", academic_year_id=self.year.id, is_final_evaluation=True)
         self.other_exam = Exam(name="Other Exam", academic_year_id=self.year.id)
         db.session.add_all([self.source_class, self.final_class, self.next_class, self.exam, self.other_exam])
         db.session.flush()

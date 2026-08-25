@@ -174,7 +174,7 @@ class AcademicYearSubject(TimestampMixin, db.Model):
 
 
 class PromotionRule(TimestampMixin, db.Model):
-    """Year-aware promotion policy for one academic level.
+    """Exam-aware promotion policy for one year-aware academic level.
 
     This is intentionally separate from ``StudentEnrollment.academic_outcome``.
     Enrollment outcomes describe lifecycle transitions; this model describes
@@ -196,12 +196,21 @@ class PromotionRule(TimestampMixin, db.Model):
         nullable=False,
         index=True,
     )
+    # Nullable only for legacy Phase 3B rules. New rules created through the
+    # admin workflow must always be tied to one explicit Results Exam.
+    exam_id = db.Column(
+        db.Integer,
+        db.ForeignKey("exams.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     overall_pass_threshold = db.Column(db.Numeric(6, 3), default=50, nullable=False)
     critical_subject_pass_threshold = db.Column(db.Numeric(6, 3), default=50, nullable=False)
 
     academic_year = db.relationship("AcademicYear", backref=db.backref("promotion_rules", lazy="dynamic"))
-    academic_year_level = db.relationship("AcademicYearLevel", backref=db.backref("promotion_rule", uselist=False))
+    academic_year_level = db.relationship("AcademicYearLevel", backref=db.backref("promotion_rules", lazy="dynamic"))
+    exam = db.relationship("Exam")
     critical_subjects = db.relationship(
         "PromotionRuleCriticalSubject",
         back_populates="promotion_rule",
@@ -213,7 +222,8 @@ class PromotionRule(TimestampMixin, db.Model):
         UniqueConstraint(
             "academic_year_id",
             "academic_year_level_id",
-            name="uq_promotion_rule_year_level",
+            "exam_id",
+            name="uq_promotion_rule_year_level_exam",
         ),
         db.CheckConstraint(
             "overall_pass_threshold >= 0 AND overall_pass_threshold <= 100",
@@ -336,6 +346,9 @@ class Exam(TimestampMixin, db.Model):
     weight_percentage = db.Column(db.Float, default=0.0)  # Weight in final grade calculation
     sort_order = db.Column(db.Integer, default=0)  # Order in which exams appear
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    # Explicit administrator-controlled final-evaluation flag. It is never
+    # inferred from the exam name or sort order.
+    is_final_evaluation = db.Column(db.Boolean, default=False, nullable=False)
     
     # New academic hierarchy fields
     academic_level_id = db.Column(db.Integer, db.ForeignKey("academic_levels.id"), nullable=True)
