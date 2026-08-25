@@ -409,9 +409,12 @@ def new_setup():
     # Get all data for Setup wizard
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
     exams = Exam.query.filter_by(academic_year_id=selected_year.id).order_by(Exam.id.desc()).all() if selected_year else []
-    levels = AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
-    subjects = Subject.query.order_by(Subject.sort_order).all()
-    classes = AcademicClass.query.order_by(AcademicClass.name).all()
+    # The dashboard cards must reflect the selected year-aware Setup graph.
+    # Legacy AcademicLevel/AcademicClass/Subject rows are shared compatibility
+    # records and must not leak into this year-scoped summary.
+    levels = year_levels(selected_year.id) if selected_year else []
+    classes = [year_class for level in levels for year_class in year_classes(level.id)]
+    subjects = year_subjects(selected_year.id) if selected_year else []
     
     # Get last configuration update info
     from .models import AuditLog
@@ -436,7 +439,7 @@ def new_setup():
     # Check if any level has at least one class
     total_classes = 0
     for level in levels:
-        class_count = level.classes.count()
+        class_count = len(year_classes(level.id))
         total_classes += class_count
         if class_count > 0:
             step_states['levels_classes'] = True
