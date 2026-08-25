@@ -5,7 +5,7 @@ from functools import wraps
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
 from openpyxl import Workbook
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.utils import secure_filename
 
@@ -13,7 +13,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, AuditLog, Exam, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, PromotionEvaluation, PromotionOutcomeApplication, PromotionRule, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentEnrollment, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
+from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, AuditLog, Exam, ExamHall, ExamSession, ExamSessionSubject, ExamType, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, PromotionEvaluation, PromotionOutcomeApplication, PromotionRule, PromotionRuleCriticalSubject, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentEnrollment, StudentEnrollmentMovement, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
 from .academic_hierarchy import validate_year_level, year_classes, year_classes_for_year, year_levels, year_subjects
 from .permissions import PERMISSIONS, can, enforce_endpoint_permission, permission_required
 from .security import ALLOWED_AUDIO, ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
@@ -2229,18 +2229,121 @@ def _config_item_is_active(item_type, item):
 def _config_dependencies(item_type, item_id):
     dependencies = []
     if item_type == 'academic-years':
-        exam_count = Exam.query.filter_by(academic_year_id=item_id).count()
-        try:
-            student_count = student_enrollment_scope_query(item_id).count()
-        except EnrollmentValidationError:
-            student_count = 0
-        attendance_count = AttendanceRecord.query.filter_by(academic_year_id=item_id).count()
-        if exam_count:
-            dependencies.append(f'Exam Types: {exam_count}')
-        if student_count:
-            dependencies.append(f'Students: {student_count}')
-        if attendance_count:
-            dependencies.append(f'Attendance Records: {attendance_count}')
+        def add_statused(label, query, status_column=None, active_column=None, historical=False):
+            total = query.count()
+            if not total:
+                return
+            if active_column is not None:
+                active_count = query.filter(active_column.is_(True)).count()
+                archived_count = total - active_count
+                dependencies.append(f'{label}: {total} ({active_count} active, {archived_count} archived)')
+                return
+            if status_column is not None:
+                status_rows = query.with_entities(status_column, func.count()).group_by(status_column).all()
+                breakdown = ', '.join(
+                    f'{status or "unknown"}={count}' for status, count in status_rows
+                )
+                dependencies.append(f'{label}: {total} ({breakdown})')
+                return
+            suffix = ' (historical)' if historical else ''
+            dependencies.append(f'{label}: {total}{suffix}')
+
+        # Keep archived rows in the audit. CASCADE relationships are still
+        # real database dependencies until the administrator removes them.
+        add_statused(
+            'Academic Levels',
+            AcademicYearLevel.query.filter_by(academic_year_id=item_id),
+            active_column=AcademicYearLevel.is_active,
+        )
+        add_statused(
+            'Academic Classes',
+            AcademicYearClass.query.join(
+                AcademicYearLevel,
+                AcademicYearClass.academic_year_level_id == AcademicYearLevel.id,
+            ).filter(AcademicYearLevel.academic_year_id == item_id),
+            active_column=AcademicYearClass.is_active,
+        )
+        add_statused(
+            'Academic Subjects',
+            AcademicYearSubject.query.filter_by(academic_year_id=item_id),
+            active_column=AcademicYearSubject.is_active,
+        )
+        add_statused(
+            'Exam Types',
+            ExamType.query.filter_by(academic_year_id=item_id),
+            active_column=ExamType.is_active,
+        )
+        add_statused(
+            'Exams',
+            Exam.query.filter_by(academic_year_id=item_id),
+            active_column=Exam.is_active,
+        )
+        add_statused('Exam Sessions', ExamSession.query.filter_by(academic_year_id=item_id), historical=True)
+        add_statused(
+            'Promotion Rules',
+            PromotionRule.query.filter_by(academic_year_id=item_id),
+            active_column=PromotionRule.is_active,
+        )
+        add_statused(
+            'Critical Subject Links',
+            PromotionRuleCriticalSubject.query.join(
+                AcademicYearSubject,
+                PromotionRuleCriticalSubject.academic_year_subject_id == AcademicYearSubject.id,
+            ).filter(AcademicYearSubject.academic_year_id == item_id),
+            historical=True,
+        )
+
+        # These are historical/operational records and must never disappear
+        # merely because the source year was archived.
+        add_statused(
+            'Student Enrollments',
+            StudentEnrollment.query.filter_by(academic_year_id=item_id),
+            status_column=StudentEnrollment.status,
+            historical=True,
+        )
+        add_statused(
+            'Enrollment Movements',
+            StudentEnrollmentMovement.query.filter(or_(
+                StudentEnrollmentMovement.from_academic_year_id == item_id,
+                StudentEnrollmentMovement.to_academic_year_id == item_id,
+            )),
+            historical=True,
+        )
+        add_statused(
+            'Promotion Evaluation History',
+            PromotionEvaluation.query.filter_by(academic_year_id=item_id),
+            status_column=PromotionEvaluation.evaluation_status,
+            historical=True,
+        )
+        year_enrollment_ids = StudentEnrollment.query.with_entities(StudentEnrollment.id).filter_by(
+            academic_year_id=item_id,
+        )
+        add_statused(
+            'Promotion Outcome Applications',
+            PromotionOutcomeApplication.query.filter(or_(
+                PromotionOutcomeApplication.source_enrollment_id.in_(year_enrollment_ids),
+                PromotionOutcomeApplication.destination_enrollment_id.in_(year_enrollment_ids),
+            )),
+            status_column=PromotionOutcomeApplication.application_status,
+            historical=True,
+        )
+
+        add_statused(
+            'Students',
+            Student.query.filter_by(academic_year_id=item_id),
+            active_column=Student.is_active,
+        )
+        add_statused('Attendance Records', AttendanceRecord.query.filter_by(academic_year_id=item_id), historical=True)
+        add_statused('ID Card Issues', IdCardIssue.query.filter_by(academic_year_id=item_id), historical=True)
+        add_statused('Exam Halls', ExamHall.query.filter_by(academic_year_id=item_id), historical=True)
+
+        # Show records reached through an exam so the administrator can see
+        # the actual historical blocker, not only the parent Exam count.
+        exams_for_year = Exam.query.with_entities(Exam.id).filter_by(academic_year_id=item_id)
+        add_statused('Results', Result.query.filter(Result.exam_id.in_(exams_for_year)), historical=True)
+        add_statused('Report Verifications', ReportVerification.query.filter(ReportVerification.exam_id.in_(exams_for_year)), historical=True)
+        add_statused('Grade Scales', GradeScale.query.filter(GradeScale.exam_id.in_(exams_for_year)), historical=True)
+        add_statused('Incident Reports', IncidentReport.query.filter(IncidentReport.exam_id.in_(exams_for_year)), historical=True)
     elif item_type == 'exam-types':
         result_count = Result.query.filter_by(exam_id=item_id).count()
         verification_count = ReportVerification.query.filter_by(exam_id=item_id).count()
