@@ -122,6 +122,13 @@ def ensure_schema_compatibility():
     migrate_attendance_session_unique_constraint()
     migrate_exam_schedule_subject_scope_constraint()
 
+    # Phase 4C: the final archived-year purge may remove a student identity
+    # only when it has no surviving enrollment. PostgreSQL production schemas
+    # created before Phase 4C still have this legacy snapshot marked NOT NULL.
+    # Apply the additive, idempotent compatibility change during startup so
+    # Render Free services do not require a shell or paid pre-deploy command.
+    ensure_phase4c_student_year_nullable()
+
     # Update teacher_classes foreign key to reference academic_classes instead of school_classes
     # This requires manual migration for existing data
 
@@ -131,6 +138,32 @@ def ensure_schema_compatibility():
     sync_all_model_columns()
     seed_legacy_student_genders()
     remove_obsolete_subject_short_name_settings()
+
+
+def ensure_phase4c_student_year_nullable():
+    """Allow the legacy student year snapshot to be cleared by final purge."""
+    if db.engine.dialect.name != "postgresql":
+        return
+    inspector = inspect(db.engine)
+    if not inspector.has_table("students"):
+        return
+    column = next(
+        (item for item in inspector.get_columns("students") if item["name"] == "academic_year_id"),
+        None,
+    )
+    if not column or column.get("nullable", True):
+        return
+    try:
+        db.session.execute(
+            text(
+                "ALTER TABLE students "
+                "ALTER COLUMN academic_year_id DROP NOT NULL"
+            )
+        )
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"Warning: Phase 4C student schema sync failed: {exc}")
 
 
 def seed_legacy_student_genders():
