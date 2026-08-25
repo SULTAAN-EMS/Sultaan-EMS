@@ -626,7 +626,7 @@ function openHugeForceDelete(itemType, itemId) {
         <div class="config-purge-summary"><span>Records to purge</span><strong>${Number(report.total_affected_records || 0).toLocaleString()}</strong></div>
         <div class="config-purge-summary"><span>Student identities retained</span><strong>${Number(report.retained_student_identities || 0).toLocaleString()}</strong></div>
         <div class="config-purge-report-list">${dependencyRows || '<p class="config-muted">No dependent records found.</p>'}</div>
-        ${unsupported ? '<p class="config-purge-blocked">This purge is blocked until every direct dependency has a safe handler.</p>' : ''}`;
+        ${unsupported ? '<p class="config-dependency-note">All linked records are included in this dependency-aware purge. They are not blockers.</p>' : ''}`;
       document.getElementById('hugeForceDeleteAcknowledgement').checked = false;
       document.getElementById('hugeForceDeletePhrase').value = '';
       document.getElementById('hugeForceDeletePassword').value = '';

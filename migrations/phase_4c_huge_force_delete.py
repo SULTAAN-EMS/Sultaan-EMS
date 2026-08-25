@@ -9,7 +9,7 @@ import argparse
 import os
 import sys
 
-from sqlalchemy import MetaData, inspect, text
+from sqlalchemy import inspect, text
 from sqlalchemy.schema import CreateIndex, CreateTable
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -31,22 +31,30 @@ def _sqlite_make_nullable(connection):
         return
 
     old_table = "students__phase_4c_old"
+    index_names = [item["name"] for item in inspector.get_indexes("students")]
     connection.execute(text("PRAGMA foreign_keys=OFF"))
     connection.execute(text(f"ALTER TABLE students RENAME TO {old_table}"))
 
-    metadata = MetaData()
-    new_table = Student.__table__.to_metadata(metadata)
-    connection.execute(CreateTable(new_table).compile(connection))
+    students_table = Student.__table__
+    academic_year_column = students_table.c.academic_year_id
+    previous_nullable = academic_year_column.nullable
+    academic_year_column.nullable = True
+    try:
+        ddl = CreateTable(students_table).compile(dialect=connection.dialect)
+    finally:
+        academic_year_column.nullable = previous_nullable
+    connection.exec_driver_sql(str(ddl))
     columns = ", ".join(column.name for column in Student.__table__.columns)
-    connection.execute(
-        text(
-            f"INSERT INTO students ({columns}) "
-            f"SELECT {columns} FROM {old_table}"
-        )
+    connection.exec_driver_sql(
+        f"INSERT INTO students ({columns}) SELECT {columns} FROM {old_table}"
     )
-    connection.execute(text(f"DROP TABLE {old_table}"))
-    for index in new_table.indexes:
-        connection.execute(CreateIndex(index).compile(connection))
+    connection.exec_driver_sql(f"DROP TABLE {old_table}")
+    existing_indexes = {item["name"] for item in inspect(connection).get_indexes("students")}
+    for index in Student.__table__.indexes:
+        if index.name in index_names and index.name not in existing_indexes:
+            connection.exec_driver_sql(
+                str(CreateIndex(index).compile(dialect=connection.dialect))
+            )
     connection.execute(text("PRAGMA foreign_keys=ON"))
 
 

@@ -170,7 +170,7 @@ class TestHugeForceDelete(unittest.TestCase):
         self.assertEqual(categories["Promotion rules"], 1)
         self.assertEqual(categories["Promotion evaluation history"], 1)
         self.assertEqual(categories["Student enrollments"], 1)
-        self.assertEqual(categories["Student master identities retained"], 1)
+        self.assertEqual(categories["Student identities retained (other academic years)"], 1)
         self.assertTrue(report["eligible"])
 
     def test_successful_purge_preserves_student_and_other_year_enrollment(self):
@@ -190,8 +190,33 @@ class TestHugeForceDelete(unittest.TestCase):
         self.assertIsNone(surviving.previous_enrollment_id)
         self.assertEqual(report["target_name"], "2025-2026")
 
+    def test_purge_deletes_student_owned_only_by_archived_year(self):
+        orphan = Student(
+            student_code="PURGE-ONLY-001",
+            full_name="Archived Year Only",
+            academic_year_id=self.target_id,
+        )
+        db.session.add(orphan)
+        db.session.flush()
+        orphan_enrollment = StudentEnrollment(
+            student_id=orphan.id,
+            academic_year_id=self.target_id,
+            academic_year_level_id=self.target_level.id,
+            academic_year_class_id=self.target_class.id,
+            status="completed",
+        )
+        db.session.add(orphan_enrollment)
+        db.session.commit()
+        orphan_id = orphan.id
+
+        report, _ = purge_academic_year(self.target_id)
+        db.session.commit()
+
+        self.assertEqual(report["deletable_student_identities"], 1)
+        self.assertIsNone(db.session.get(Student, orphan_id))
+
     def test_failure_is_rollback_safe(self):
-        with patch("app.deletion_service._delete_ids", side_effect=RuntimeError("simulated failure")):
+        with patch("app.deletion_service._delete_fk_graph", side_effect=RuntimeError("simulated failure")):
             with self.assertRaises(RuntimeError):
                 purge_academic_year(self.target_id)
         db.session.rollback()

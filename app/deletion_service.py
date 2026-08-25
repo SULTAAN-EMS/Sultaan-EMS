@@ -6,7 +6,7 @@ dependency graph and transaction boundary cannot be confused with a normal
 delete.
 """
 
-from sqlalchemy import or_, select, func
+from sqlalchemy import inspect, or_, select, func
 
 from . import db
 from .models import (
@@ -313,6 +313,182 @@ def _unknown_direct_dependencies(year_id):
     return unknown
 
 
+_PURGE_SEED_TABLES = {
+    "academic_year_levels": "year_level_ids",
+    "academic_year_classes": "year_class_ids",
+    "academic_year_subjects": "year_subject_ids",
+    "exam_types": "exam_type_ids",
+    "exams": "exam_ids",
+    "exam_sessions": "session_ids",
+    "exam_halls": "hall_ids",
+    "exam_hall_versions": "version_ids",
+    "exam_session_subjects": "session_subject_ids",
+    "exam_hall_subjects": "hall_subject_ids",
+    "exam_hall_enrollments": "hall_enrollment_ids",
+    "seat_assignments": "seat_assignment_ids",
+    "student_enrollments": "enrollment_ids",
+    "student_enrollment_movements": "movement_ids",
+    "promotion_rules": "rule_ids",
+    "promotion_evaluations": "evaluation_ids",
+    "promotion_outcome_applications": "outcome_ids",
+    "results": "result_ids",
+    "report_verifications": "verification_ids",
+    "grade_scales": "grade_scale_ids",
+    "attendance_records": "attendance_ids",
+    "id_card_issues": "id_card_ids",
+    "student_feedback": "feedback_ids",
+    "student_complaints": "complaint_ids",
+    "incident_reports": "incident_ids",
+}
+
+_PURGE_LABELS = {
+    "academic_years": "Academic years",
+    "academic_year_levels": "Academic year levels",
+    "academic_year_classes": "Academic year classes",
+    "academic_year_subjects": "Academic year subjects",
+    "students": "Student identities deleted",
+    "student_enrollments": "Student enrollments",
+    "student_enrollment_movements": "Enrollment movements",
+    "promotion_rules": "Promotion rules",
+    "promotion_evaluations": "Promotion evaluation history",
+    "promotion_outcome_applications": "Promotion outcome applications",
+}
+
+
+def _row_ids_for_fk(table, fk_column, parent_ids):
+    if not parent_ids or "id" not in table.c:
+        return set()
+    return {
+        row[0]
+        for row in db.session.execute(
+            select(table.c.id).where(fk_column.in_(parent_ids))
+        ).all()
+    }
+
+
+def _collect_fk_descendants(seed):
+    """Collect all child rows reachable through actual SQLAlchemy foreign keys."""
+    graph = {name: set(ids) for name, ids in seed.items() if ids}
+    changed = True
+    while changed:
+        changed = False
+        for child in db.metadata.tables.values():
+            if "id" not in child.c:
+                continue
+            for column in child.columns:
+                for fk in column.foreign_keys:
+                    parent_name = fk.column.table.name
+                    parent_ids = graph.get(parent_name)
+                    if not parent_ids:
+                        continue
+                    # A surviving destination enrollment may point back to a
+                    # source enrollment; that history must not be purged.
+                    if (
+                        child.name == "student_enrollments"
+                        and column.name == "previous_enrollment_id"
+                    ):
+                        continue
+                    child_ids = _row_ids_for_fk(child, column, parent_ids)
+                    if not child_ids:
+                        continue
+                    before = len(graph.setdefault(child.name, set()))
+                    graph[child.name].update(child_ids)
+                    changed |= len(graph[child.name]) != before
+    return graph
+
+
+def _delete_fk_graph(graph):
+    """Delete leaf rows first using the database's actual FK graph."""
+    remaining = {name: set(ids) for name, ids in graph.items() if ids}
+    deleted = 0
+    while remaining:
+        leaves = []
+        for parent_name in remaining:
+            has_child = False
+            for child in db.metadata.tables.values():
+                if child.name not in remaining:
+                    continue
+                for column in child.columns:
+                    for fk in column.foreign_keys:
+                        if fk.column.table.name != parent_name:
+                            continue
+                        if (
+                            child.name == "student_enrollments"
+                            and column.name == "previous_enrollment_id"
+                        ):
+                            continue
+                        if db.session.execute(
+                            select(child.c.id)
+                            .where(column.in_(remaining[parent_name]))
+                            .limit(1)
+                        ).first():
+                            has_child = True
+                            break
+                    if has_child:
+                        break
+                if has_child:
+                    break
+            if not has_child:
+                leaves.append(parent_name)
+        if not leaves:
+            raise RuntimeError("The purge dependency graph contains an unresolved cycle.")
+        for table_name in leaves:
+            table = db.metadata.tables[table_name]
+            result = db.session.execute(
+                table.delete().where(table.c.id.in_(remaining.pop(table_name)))
+            )
+            deleted += int(result.rowcount or 0)
+    return deleted
+
+
+def _student_identity_split(student_ids, year_id):
+    removable, retained = set(), set()
+    for student_id in student_ids:
+        has_other_year = db.session.execute(
+            select(StudentEnrollment.id)
+            .where(
+                StudentEnrollment.student_id == student_id,
+                StudentEnrollment.academic_year_id != year_id,
+            )
+            .limit(1)
+        ).first()
+        (retained if has_other_year else removable).add(student_id)
+    return removable, retained
+
+
+def _build_purge_graph(year_id, scope):
+    seed = {"academic_years": {year_id}}
+    for table_name, scope_key in _PURGE_SEED_TABLES.items():
+        ids = scope.get(scope_key, set())
+        if ids:
+            seed[table_name] = set(ids)
+    removable, retained = _student_identity_split(scope["student_ids"], year_id)
+    if removable:
+        seed["students"] = removable
+    graph = _collect_fk_descendants(seed)
+    # The source-year enrollment set is authoritative. Never widen it through
+    # the self-referential enrollment history relationship.
+    graph["student_enrollments"] = set(scope["enrollment_ids"])
+    graph["students"] = removable
+    graph["academic_years"] = {year_id}
+    return graph, removable, retained
+
+
+def _purge_schema_issues():
+    inspector = inspect(db.engine)
+    if not inspector.has_table("students"):
+        return []
+    column = next(
+        (item for item in inspector.get_columns("students") if item["name"] == "academic_year_id"),
+        None,
+    )
+    if column and not column.get("nullable", True):
+        return [
+            "Phase 4C migration is required: students.academic_year_id must allow NULL before an archived Academic Year can be purged."
+        ]
+    return []
+
+
 def scan_academic_year(year_id):
     """Return a real dependency report for an AcademicYear purge."""
     year = db.session.get(AcademicYear, year_id)
@@ -320,89 +496,30 @@ def scan_academic_year(year_id):
         raise PurgeValidationError("Academic Year was not found.")
 
     scope = _year_scope_ids(year_id)
+    graph, removable, retained = _build_purge_graph(year_id, scope)
     entries = []
-    _add_entry(entries, "Academic year levels", len(scope["year_level_ids"]))
-    _add_entry(entries, "Academic year classes", len(scope["year_class_ids"]))
-    _add_entry(entries, "Academic year subjects", len(scope["year_subject_ids"]))
-    _add_entry(entries, "Exam types", len(scope["exam_type_ids"]))
-    _add_entry(entries, "Exams", len(scope["exam_ids"]))
-    _add_entry(entries, "Exam sessions", len(scope["session_ids"]))
-    _add_entry(entries, "Exam halls", len(scope["hall_ids"]))
-    _add_entry(entries, "Exam hall versions", len(scope["version_ids"]))
-    _add_entry(entries, "Seat assignments", len(scope["seat_assignment_ids"]))
-    _add_entry(entries, "Exam session subject assignments", len(scope["session_subject_ids"]))
-    _add_entry(entries, "Exam hall subjects", len(scope["hall_subject_ids"]))
-    _add_entry(entries, "Exam hall enrollments", len(scope["hall_enrollment_ids"]))
-    _add_entry(entries, "Seat mixer assignments", _count(SeatMixerAssignment, scope["version_ids"]))
-    _add_entry(entries, "Seat mixer snapshots", _count(SeatMixerSaveSnapshot, scope["version_ids"]))
-    _add_entry(entries, "Promotion rules", len(scope["rule_ids"]))
-    _add_entry(
-        entries,
-        "Critical subject configurations",
-        PromotionRuleCriticalSubject.query.filter(
-            or_(
-                PromotionRuleCriticalSubject.promotion_rule_id.in_(scope["rule_ids"]),
-                PromotionRuleCriticalSubject.academic_year_subject_id.in_(scope["year_subject_ids"]),
-            )
-        ).count(),
-    )
-    _add_entry(entries, "Student enrollments", len(scope["enrollment_ids"]))
-    _add_entry(entries, "Enrollment movements", len(scope["movement_ids"]))
-    _add_entry(entries, "Promotion evaluation history", len(scope["evaluation_ids"]))
-    _add_entry(entries, "Promotion outcome applications", len(scope["outcome_ids"]))
-    _add_entry(entries, "Results", len(scope["result_ids"]))
-    _add_entry(entries, "Report verifications", len(scope["verification_ids"]))
-    _add_entry(entries, "Grade scales", len(scope["grade_scale_ids"]))
-    _add_entry(entries, "Attendance records", len(scope["attendance_ids"]))
-    _add_entry(entries, "ID card issues", len(scope["id_card_ids"]))
-    _add_entry(entries, "Student feedback", len(scope["feedback_ids"]))
-    _add_entry(
-        entries,
-        "Feedback replies",
-        StudentFeedbackReply.query.filter(StudentFeedbackReply.feedback_id.in_(scope["feedback_ids"])).count(),
-    )
-    _add_entry(entries, "Student complaints", len(scope["complaint_ids"]))
-    _add_entry(
-        entries,
-        "Complaint replies",
-        StudentComplaintReply.query.filter(StudentComplaintReply.complaint_id.in_(scope["complaint_ids"])).count(),
-    )
-    _add_entry(entries, "Incident reports", len(scope["incident_ids"]))
-    _add_entry(
-        entries,
-        "Incident report categories",
-        IncidentReportCategory.query.filter(IncidentReportCategory.report_id.in_(scope["incident_ids"])).count(),
-    )
-    _add_entry(
-        entries,
-        "Incident attachments",
-        IncidentAttachment.query.filter(IncidentAttachment.report_id.in_(scope["incident_ids"])).count(),
-    )
-    _add_entry(
-        entries,
-        "Student master identities retained",
-        len(scope["student_ids"]),
-        retained=True,
-    )
-
+    for table_name, ids in graph.items():
+        if table_name == "academic_years":
+            label = _PURGE_LABELS[table_name]
+        else:
+            label = _PURGE_LABELS.get(table_name, table_name.replace("_", " ").title())
+        _add_entry(entries, label, len(ids), retained=False)
+    _add_entry(entries, "Student identities retained (other academic years)", len(retained), retained=True)
+    schema_issues = _purge_schema_issues()
     unknown_direct = _unknown_direct_dependencies(year_id)
-    for item in unknown_direct:
-        _add_entry(
-            entries,
-            f"Unsupported direct dependency: {item['table']}.{item['column']}",
-            item["count"],
-        )
 
     return {
         "entity_type": "academic-years",
         "entity_id": year.id,
         "target_name": year.name,
         "archived": not bool(year.is_current),
-        "eligible": not bool(year.is_current) and not unknown_direct,
+        "eligible": not bool(year.is_current) and not schema_issues,
         "dependencies": entries,
         "total_affected_records": sum(item["count"] for item in entries if not item["retained"]),
-        "retained_student_identities": len(scope["student_ids"]),
+        "retained_student_identities": len(retained),
+        "deletable_student_identities": len(removable),
         "unsupported_direct_dependencies": unknown_direct,
+        "schema_issues": schema_issues,
     }
 
 
@@ -413,10 +530,10 @@ def _delete_ids(model, ids):
 
 
 def purge_academic_year(year_id):
-    """Delete one archived academic year and its graph, without deleting Students.
+    """Delete one archived academic year and every owned dependent row.
 
-    The caller owns the commit.  Any exception must be allowed to propagate so
-    the caller can roll the entire SQLAlchemy transaction back.
+    Student identities shared by another academic year remain intact. The
+    caller owns the commit so any exception rolls back the whole operation.
     """
     year = db.session.get(AcademicYear, year_id, with_for_update=True)
     if not year:
@@ -425,32 +542,28 @@ def purge_academic_year(year_id):
         raise PurgeValidationError("Only archived Academic Years can use HUGE FORCE DELETE.")
 
     report = scan_academic_year(year_id)
-    if report["unsupported_direct_dependencies"]:
-        raise PurgeValidationError(
-            "The purge is blocked because the dependency scanner found an unsupported direct dependency."
-        )
+    if report.get("schema_issues"):
+        raise PurgeValidationError(" ".join(report["schema_issues"]))
     scope = _year_scope_ids(year_id)
 
-    # Preserve the permanent Student identity.  The legacy placement snapshot
-    # is moved to the latest surviving enrollment, or cleared when no placement
-    # remains.  This is why students.academic_year_id is nullable in the model.
-    for student in Student.query.filter(Student.id.in_(scope["student_ids"])).with_for_update().all():
-        if student.academic_year_id != year_id:
+    graph, removable_students, retained_students = _build_purge_graph(year_id, scope)
+    for student_id in retained_students:
+        student = db.session.get(Student, student_id, with_for_update=True)
+        if not student or student.academic_year_id != year_id:
             continue
         surviving = (
             StudentEnrollment.query.filter(
-                StudentEnrollment.student_id == student.id,
+                StudentEnrollment.student_id == student_id,
                 StudentEnrollment.academic_year_id != year_id,
             )
             .order_by(StudentEnrollment.enrolled_at.desc(), StudentEnrollment.id.desc())
             .first()
         )
-        student.academic_year_id = surviving.academic_year_id if surviving else None
-        if surviving is None:
+        if surviving:
+            student.academic_year_id = surviving.academic_year_id
+            student.academic_level_id = surviving.academic_year_level_id
+            student.academic_class_id = surviving.academic_year_class_id
             student.class_id = None
-            student.academic_level_id = None
-            student.academic_class_id = None
-            student.academic_section_id = None
             student.level = None
             student.section = None
 
@@ -459,66 +572,13 @@ def purge_academic_year(year_id):
         StudentEnrollment.previous_enrollment_id.in_(scope["enrollment_ids"])
     ).update({StudentEnrollment.previous_enrollment_id: None}, synchronize_session=False)
 
-    deleted = 0
-    deleted += _delete_ids(StudentFeedbackReply, {
-        row[0] for row in db.session.query(StudentFeedbackReply.id).filter(
-            StudentFeedbackReply.feedback_id.in_(scope["feedback_ids"])
-        ).all()
-    })
-    deleted += _delete_ids(StudentComplaintReply, {
-        row[0] for row in db.session.query(StudentComplaintReply.id).filter(
-            StudentComplaintReply.complaint_id.in_(scope["complaint_ids"])
-        ).all()
-    })
-    deleted += _delete_ids(IncidentAttachment, {
-        row[0] for row in db.session.query(IncidentAttachment.id).filter(
-            IncidentAttachment.report_id.in_(scope["incident_ids"])
-        ).all()
-    })
-    deleted += _delete_ids(IncidentReportCategory, {
-        row[0] for row in db.session.query(IncidentReportCategory.id).filter(
-            IncidentReportCategory.report_id.in_(scope["incident_ids"])
-        ).all()
-    })
-    deleted += _delete_ids(SeatMixerSaveSnapshot, scope["version_ids"])
-    deleted += _delete_ids(SeatMixerAssignment, scope["version_ids"])
-    deleted += _delete_ids(SeatAssignment, scope["seat_assignment_ids"])
-    deleted += _delete_ids(ExamHallEnrollment, scope["hall_enrollment_ids"])
-    deleted += _delete_ids(ExamHallSubject, scope["hall_subject_ids"])
-    deleted += _delete_ids(PromotionOutcomeApplication, scope["outcome_ids"])
-    deleted += _delete_ids(PromotionEvaluation, scope["evaluation_ids"])
-    deleted += _delete_ids(StudentEnrollmentMovement, scope["movement_ids"])
-    deleted += _delete_ids(Result, scope["result_ids"])
-    deleted += _delete_ids(ReportVerification, scope["verification_ids"])
-    deleted += _delete_ids(GradeScale, scope["grade_scale_ids"])
-    deleted += _delete_ids(AttendanceRecord, scope["attendance_ids"])
-    deleted += _delete_ids(IdCardIssue, scope["id_card_ids"])
-    deleted += _delete_ids(StudentFeedback, scope["feedback_ids"])
-    deleted += _delete_ids(StudentComplaint, scope["complaint_ids"])
-    deleted += _delete_ids(IncidentReport, scope["incident_ids"])
-    deleted += _delete_ids(ExamSessionSubject, scope["session_subject_ids"])
-    deleted += _delete_ids(ExamHallVersion, scope["version_ids"])
-    deleted += _delete_ids(ExamHall, scope["hall_ids"])
-    deleted += _delete_ids(ExamSession, scope["session_ids"])
-    deleted += _delete_ids(PromotionRuleCriticalSubject, {
-        row[0] for row in db.session.query(PromotionRuleCriticalSubject.id).filter(
-            or_(
-                PromotionRuleCriticalSubject.promotion_rule_id.in_(scope["rule_ids"]),
-                PromotionRuleCriticalSubject.academic_year_subject_id.in_(scope["year_subject_ids"]),
-            )
-        ).all()
-    })
-    deleted += _delete_ids(PromotionRule, scope["rule_ids"])
-    deleted += _delete_ids(ExamType, scope["exam_type_ids"])
-    deleted += _delete_ids(Exam, scope["exam_ids"])
-    deleted += _delete_ids(StudentEnrollment, scope["enrollment_ids"])
-    deleted += _delete_ids(AcademicYearSubject, scope["year_subject_ids"])
-    deleted += _delete_ids(AcademicYearClass, scope["year_class_ids"])
-    deleted += _delete_ids(AcademicYearLevel, scope["year_level_ids"])
-
-    db.session.delete(year)
+    graph.pop("academic_years", None)
+    deleted = _delete_fk_graph(graph)
     db.session.flush()
-    deleted += 1
+    deleted += db.session.execute(
+        AcademicYear.__table__.delete().where(AcademicYear.id == year_id)
+    ).rowcount or 0
+    db.session.flush()
     return report, deleted
 
 
