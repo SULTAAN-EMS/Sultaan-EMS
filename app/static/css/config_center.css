@@ -1349,3 +1349,59 @@ body {
 .config-default-option small { color: #7a879d; }
 @media (max-width: 900px) { .config-defaults-form { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 620px) { .config-defaults-form { grid-template-columns: 1fr; } }
+
+/* Final-stage archived purge: intentionally distinct from normal deletion. */
+.config-purge-modal { max-width: 650px; }
+.config-purge-icon { color: var(--danger-red); margin-right: var(--space-2); }
+.config-purge-warning {
+  padding: var(--space-4);
+  border: 1px solid #f2b8b5;
+  border-left: 4px solid var(--danger-red);
+  border-radius: var(--radius-lg);
+  background: #fff6f5;
+  color: #7f1d1d;
+}
+.config-purge-warning p { margin: var(--space-2) 0 0; color: #991b1b; }
+.config-purge-report {
+  margin: var(--space-4) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+}
+.config-purge-target,
+.config-purge-summary,
+.config-purge-report-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.config-purge-target,
+.config-purge-summary { padding: var(--space-2) 0; }
+.config-purge-target span,
+.config-purge-summary span { color: var(--text-secondary); }
+.config-purge-report-list { margin-top: var(--space-3); border-top: 1px solid var(--border-light); }
+.config-purge-report-row {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+.config-purge-report-row.retained { color: var(--success-emerald); }
+.config-purge-blocked { margin: var(--space-3) 0 0; color: var(--danger-red); font-weight: 600; }
+.config-purge-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.config-purge-check input { margin-top: 3px; accent-color: var(--danger-red); }
+.config-btn-danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}

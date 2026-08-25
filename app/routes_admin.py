@@ -34,6 +34,7 @@ from .services import (
 )
 from .services import slug
 from .enrollment_service import EnrollmentValidationError, enrollment_placement_for_student, student_enrollment_legacy_scope_query, student_enrollment_scope_query
+from .deletion_service import PurgeValidationError, purge_academic_year, scan_dependencies
 from .promotion_service import (
     PromotionValidationError,
     apply_academic_outcome,
@@ -3942,6 +3943,15 @@ def config_delete_item(item_type, item_id):
     item = Model.query.get_or_404(item_id)
     force = request.args.get('force') == 'true'
 
+    # The old query-string force bypass is intentionally retired.  Normal
+    # delete remains unchanged; irreversible purges use the authenticated,
+    # dependency-aware HUGE FORCE DELETE endpoint below.
+    if force:
+        return jsonify({
+            'success': False,
+            'message': 'Use HUGE FORCE DELETE from the archived record actions.'
+        }), 400
+
     if not force:
         if _config_item_is_active(item_type, item):
             return jsonify({'success': False, 'message': 'Active item protected. Deactivate this item before archive or permanent delete.'})
@@ -4053,3 +4063,101 @@ def config_item_dependencies(item_type, item_id):
         'has_dependencies': bool(dependencies),
         'is_active': _config_item_is_active(item_type, item),
     })
+
+
+@admin_bp.route(
+    "/config-center/api/<string:item_type>/<int:item_id>/huge-force-delete/scan",
+    methods=["GET"],
+)
+@login_required
+def config_huge_force_delete_scan(item_type, item_id):
+    """Run the read-only dependency report for the final purge stage."""
+    if current_user.role not in {"admin", "super_admin"}:
+        return jsonify({'success': False, 'message': 'Administrator authorization is required.'}), 403
+    try:
+        report = scan_dependencies(item_type, item_id)
+        return jsonify({'success': True, 'report': report})
+    except PurgeValidationError as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 400
+    except Exception:
+        current_app.logger.exception("HUGE FORCE DELETE dependency scan failed")
+        return jsonify({'success': False, 'message': 'Dependency scan failed. No data was changed.'}), 500
+
+
+@admin_bp.route(
+    "/config-center/api/<string:item_type>/<int:item_id>/huge-force-delete",
+    methods=["POST"],
+)
+@login_required
+def config_huge_force_delete(item_type, item_id):
+    """Permanently purge one archived configuration entity atomically."""
+    if current_user.role not in {"admin", "super_admin"}:
+        return jsonify({'success': False, 'message': 'Administrator authorization is required.'}), 403
+
+    data = request.get_json(silent=True) or {}
+    if data.get('acknowledged') is not True:
+        return jsonify({'success': False, 'message': 'You must acknowledge that this operation cannot be undone.'}), 400
+    if str(data.get('confirmation', '')).strip().upper() != 'HUGE FORCE DELETE':
+        return jsonify({'success': False, 'message': 'Type HUGE FORCE DELETE exactly to continue.'}), 400
+
+    password = str(data.get('password', '') or '')
+    if not password or not current_user.check_password(password):
+        return jsonify({'success': False, 'message': 'Administrator password is incorrect.'}), 400
+
+    item = _config_model(item_type)
+    if item is None:
+        return jsonify({'success': False, 'message': 'Invalid item type.'}), 404
+    if item_type != 'academic-years':
+        return jsonify({
+            'success': False,
+            'message': 'HUGE FORCE DELETE is currently available for archived Academic Years only.'
+        }), 400
+    target = item.query.get_or_404(item_id)
+    target_name = _item_display_name(target)
+
+    try:
+        report, deleted_count = purge_academic_year(item_id)
+        audit(
+            "HUGE FORCE DELETE",
+            json.dumps({
+                'status': 'success',
+                'entity_type': item_type,
+                'entity_id': item_id,
+                'target_name': target_name,
+                'deleted_record_count': deleted_count,
+                'dependency_categories': {
+                    item['category']: item['count']
+                    for item in report['dependencies']
+                    if not item['retained']
+                },
+            }),
+        )
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'message': f'Permanent purge completed successfully. {deleted_count:,} related records were permanently deleted.',
+            'deleted_record_count': deleted_count,
+        })
+    except PurgeValidationError as exc:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(exc)}), 400
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("HUGE FORCE DELETE failed for %s/%s", item_type, item_id)
+        try:
+            audit(
+                "HUGE FORCE DELETE",
+                json.dumps({
+                    'status': 'failed',
+                    'entity_type': item_type,
+                    'entity_id': item_id,
+                    'target_name': target_name,
+                }),
+            )
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': 'Permanent purge failed and the entire transaction was rolled back. No partial deletion was committed.',
+        }), 500

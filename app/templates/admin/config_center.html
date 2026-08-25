@@ -23,6 +23,9 @@
     <div class="config-action-divider"></div>
     {% if archive_mode %}
       <button class="config-action-item" onclick="restoreItem('{{ item_type }}', {{ item_id }})"><i class="fas fa-undo"></i> Restore</button>
+      {% if item_type == 'academic-years' %}
+      <button class="config-action-item danger" onclick="openHugeForceDelete('{{ item_type }}', {{ item_id }})"><i class="fas fa-radiation-alt"></i> HUGE FORCE DELETE</button>
+      {% endif %}
       <button class="config-action-item danger" onclick="deleteItem('{{ item_type }}', {{ item_id }})"><i class="fas fa-trash"></i> Delete Permanently</button>
     {% elif subject_mode %}
       {% if is_active %}
@@ -377,8 +380,39 @@
     <div class="config-modal-body" id="dependencyContent"></div>
     <div class="config-modal-footer">
       <button class="config-btn config-btn-secondary" onclick="closeDependencyModal()">Close</button>
-      <button class="config-btn config-btn-danger" id="dependencyForceDeleteBtn" onclick="triggerForceDelete()" style="display: none;">Delete Anyway</button>
       <button class="config-btn config-btn-danger" id="dependencyProceedBtn" onclick="openPasswordForPendingAction()">Continue</button>
+    </div>
+  </div>
+</div>
+
+<div class="config-modal-overlay" id="hugeForceDeleteModal">
+  <div class="config-modal config-purge-modal">
+    <div class="config-modal-header">
+      <h3 class="config-modal-title"><i class="fas fa-radiation-alt config-purge-icon"></i> HUGE FORCE DELETE</h3>
+      <button class="config-modal-close" onclick="closeHugeForceDelete()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="config-modal-body">
+      <div class="config-purge-warning">
+        <strong>This is an irreversible administrative purge.</strong>
+        <p>The archived record and all related dependent records will be permanently deleted. Student master identities will remain.</p>
+      </div>
+      <div id="hugeForceDeleteReport" class="config-purge-report"></div>
+      <label class="config-purge-check">
+        <input type="checkbox" id="hugeForceDeleteAcknowledgement" onchange="updateHugeForceDeleteButton()">
+        <span>I understand this operation cannot be undone.</span>
+      </label>
+      <div class="config-form-group">
+        <label class="config-form-label" for="hugeForceDeletePhrase">Type <strong>HUGE FORCE DELETE</strong></label>
+        <input type="text" class="config-form-input" id="hugeForceDeletePhrase" autocomplete="off" oninput="updateHugeForceDeleteButton()" placeholder="HUGE FORCE DELETE">
+      </div>
+      <div class="config-form-group">
+        <label class="config-form-label" for="hugeForceDeletePassword">Administrator Password</label>
+        <input type="password" class="config-form-input" id="hugeForceDeletePassword" autocomplete="current-password" oninput="updateHugeForceDeleteButton()" placeholder="Enter your password">
+      </div>
+    </div>
+    <div class="config-modal-footer">
+      <button class="config-btn config-btn-secondary" onclick="closeHugeForceDelete()">Cancel</button>
+      <button class="config-btn config-btn-danger" id="hugeForceDeleteSubmit" onclick="submitHugeForceDelete()" disabled><i class="fas fa-radiation-alt"></i> Permanently Purge</button>
     </div>
   </div>
 </div>
@@ -551,32 +585,104 @@ function checkDependencies(itemType, itemId, action) {
       }
       if (dependencies.length) {
         canContinue = false;
-        content += `<div class="config-dependency-warning"><strong>Linked records found.</strong><p>This item is used by:</p><ul>${dependencies.map(dep => `<li>${dep}</li>`).join('')}</ul></div>`;
+        content += `<div class="config-dependency-warning"><strong>Linked records found.</strong><p>This item is used by:</p><ul>${dependencies.map(dep => `<li>${dep}</li>`).join('')}</ul>${isDelete ? '<p>Use the archived record action <strong>HUGE FORCE DELETE</strong> only when a complete irreversible purge is intentionally required.</p>' : ''}</div>`;
       }
       if (!content) {
         content = `<div class="config-dependency-safe"><strong>No blocking dependencies found.</strong><p>You can continue after password confirmation.</p></div>`;
       }
       document.getElementById('dependencyContent').innerHTML = content;
       document.getElementById('dependencyProceedBtn').style.display = canContinue ? '' : 'none';
-      document.getElementById('dependencyForceDeleteBtn').style.display = (isDelete && !canContinue) ? '' : 'none';
       document.getElementById('dependencyModal').classList.add('show');
     })
     .catch(() => showNotification('error', 'Error', 'Could not check dependencies.'));
 }
 
-function triggerForceDelete() {
-  let depListText = '';
-  if (currentDependencies && currentDependencies.length > 0) {
-    depListText = '\n\nThis will also permanently delete all linked records:\n' + currentDependencies.map(d => ' - ' + d).join('\n');
-  }
-  const confirmMsg = `WARNING: Are you sure you want to force delete this item?${depListText}\n\nThis action cannot be undone. Continue?`;
-  if (confirm(confirmMsg)) {
-    closeDependencyModal();
-    if (pendingAction) {
-      pendingAction.force = true;
-      openPasswordModal('Enter your password to force delete this configuration item.');
-    }
-  }
+let hugeForceDeleteTarget = null;
+
+function escapePurgeText(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+  }[char]));
+}
+
+function openHugeForceDelete(itemType, itemId) {
+  hugeForceDeleteTarget = { itemType, itemId };
+  fetch(`/admin/config-center/api/${itemType}/${itemId}/huge-force-delete/scan`)
+    .then(response => response.json())
+    .then(data => {
+      if (!data.success) {
+        showNotification('error', 'Dependency Scan Failed', data.message || 'Could not scan this record.');
+        return;
+      }
+      const report = data.report || {};
+      const dependencyRows = (report.dependencies || []).map(item => `
+        <div class="config-purge-report-row ${item.retained ? 'retained' : ''}">
+          <span>${escapePurgeText(item.category)}</span>
+          <strong>${Number(item.count || 0).toLocaleString()}</strong>
+        </div>`).join('');
+      const unsupported = (report.unsupported_direct_dependencies || []).length;
+      document.getElementById('hugeForceDeleteReport').innerHTML = `
+        <div class="config-purge-target"><span>Target</span><strong>${escapePurgeText(report.target_name || 'Archived record')}</strong></div>
+        <div class="config-purge-summary"><span>Records to purge</span><strong>${Number(report.total_affected_records || 0).toLocaleString()}</strong></div>
+        <div class="config-purge-summary"><span>Student identities retained</span><strong>${Number(report.retained_student_identities || 0).toLocaleString()}</strong></div>
+        <div class="config-purge-report-list">${dependencyRows || '<p class="config-muted">No dependent records found.</p>'}</div>
+        ${unsupported ? '<p class="config-purge-blocked">This purge is blocked until every direct dependency has a safe handler.</p>' : ''}`;
+      document.getElementById('hugeForceDeleteAcknowledgement').checked = false;
+      document.getElementById('hugeForceDeletePhrase').value = '';
+      document.getElementById('hugeForceDeletePassword').value = '';
+      document.getElementById('hugeForceDeleteSubmit').disabled = !report.eligible;
+      document.getElementById('hugeForceDeleteModal').classList.add('show');
+      updateHugeForceDeleteButton();
+    })
+    .catch(() => showNotification('error', 'Error', 'Could not scan this archived record.'));
+}
+
+function updateHugeForceDeleteButton() {
+  const report = document.getElementById('hugeForceDeleteReport');
+  const button = document.getElementById('hugeForceDeleteSubmit');
+  if (!button || !report) return;
+  const acknowledgement = document.getElementById('hugeForceDeleteAcknowledgement').checked;
+  const phrase = document.getElementById('hugeForceDeletePhrase').value.trim().toUpperCase();
+  const password = document.getElementById('hugeForceDeletePassword').value;
+  button.disabled = !hugeForceDeleteTarget || !acknowledgement || phrase !== 'HUGE FORCE DELETE' || !password || report.querySelector('.config-purge-blocked');
+}
+
+function closeHugeForceDelete() {
+  document.getElementById('hugeForceDeleteModal').classList.remove('show');
+  hugeForceDeleteTarget = null;
+}
+
+function submitHugeForceDelete() {
+  if (!hugeForceDeleteTarget) return;
+  const button = document.getElementById('hugeForceDeleteSubmit');
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Purging...';
+  fetch(`/admin/config-center/api/${hugeForceDeleteTarget.itemType}/${hugeForceDeleteTarget.itemId}/huge-force-delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+    body: JSON.stringify({
+      acknowledged: document.getElementById('hugeForceDeleteAcknowledgement').checked,
+      confirmation: document.getElementById('hugeForceDeletePhrase').value,
+      password: document.getElementById('hugeForceDeletePassword').value,
+    }),
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (!data.success) {
+        button.innerHTML = '<i class="fas fa-radiation-alt"></i> Permanently Purge';
+        showNotification('error', 'Purge Blocked', data.message || 'The purge could not be completed.');
+        updateHugeForceDeleteButton();
+        return;
+      }
+      closeHugeForceDelete();
+      showNotification('success', 'Permanent Purge Complete', data.message);
+      setTimeout(() => location.reload(), 1100);
+    })
+    .catch(() => {
+      button.innerHTML = '<i class="fas fa-radiation-alt"></i> Permanently Purge';
+      showNotification('error', 'Purge Failed', 'The transaction was rolled back. No partial deletion was committed.');
+      updateHugeForceDeleteButton();
+    });
 }
 
 function closeDependencyModal() {

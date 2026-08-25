@@ -383,7 +383,10 @@ class Student(TimestampMixin, db.Model):
 
     # Legacy fields for backward compatibility during migration
     class_id = db.Column(db.Integer, db.ForeignKey("school_classes.id"), nullable=True)
-    academic_year_id = db.Column(db.Integer, db.ForeignKey("academic_years.id"), nullable=False)
+    # This is a legacy placement snapshot.  It may be cleared when an
+    # archived Academic Year is permanently purged; StudentEnrollment remains
+    # the authoritative historical placement record.
+    academic_year_id = db.Column(db.Integer, db.ForeignKey("academic_years.id"), nullable=True)
     level = db.Column(db.String(80))
     section = db.Column(db.String(80))
 
