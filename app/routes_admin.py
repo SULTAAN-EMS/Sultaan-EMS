@@ -50,6 +50,8 @@ from .promotion_service import (
     transition_applied_outcome,
     upsert_promotion_rule,
     valid_critical_subjects,
+    verify_committed_evaluation_scope,
+    verify_promotion_rule_persistence,
 )
 
 admin_bp = Blueprint("admin", __name__)
@@ -2869,6 +2871,12 @@ def promotion_rules_configure():
                 f"Saved rule for academic year {selected_year_id}, year level {selected_level_id}",
             )
             db.session.commit()
+            verify_promotion_rule_persistence(
+                selected_year_id,
+                selected_level_id,
+                selected_exam_id,
+                critical_subject_ids,
+            )
             flash("Promotion Rule saved for the selected Academic Year and Level.", "success")
             return redirect(url_for(
                 "admin.promotion_rules_configure",
@@ -2879,10 +2887,14 @@ def promotion_rules_configure():
         except (PromotionValidationError, ValueError) as exc:
             db.session.rollback()
             flash(str(exc), "danger")
-        except Exception:
+        except Exception as exc:
             db.session.rollback()
             current_app.logger.exception("Promotion Rule save failed")
-            flash("The Promotion Rule could not be saved.", "danger")
+            flash(
+                "The Promotion Rule could not be saved. No unverified success was reported. "
+                f"Reason: {exc}",
+                "danger",
+            )
 
     selected_year = db.session.get(AcademicYear, selected_year_id) if selected_year_id else None
     if selected_year is None and years:
@@ -3051,6 +3063,10 @@ def promotion_rules_evaluate():
                     f"Evaluated {counts['evaluated']} students for exam {exam_id}",
                 )
                 db.session.commit()
+                verify_committed_evaluation_scope(
+                    preview_result,
+                    require_final_outcomes=page_data["selected_exam"].is_final_evaluation,
+                )
                 save_confirmed = True
                 flash(
                     "Evaluation saved successfully: "
@@ -3060,17 +3076,20 @@ def promotion_rules_evaluate():
                     "Apply Outcomes is now available for this exact Final Evaluation." if page_data["selected_exam"].is_final_evaluation else
                     "Session evaluation saved successfully: "
                     f"{counts['evaluated']} evaluated; {counts['pass']} GUDBAY / {counts['fail']} HADHAY. "
-                    "This non-final evaluation is history-only; enrollment outcomes and transitions were not changed.",
+                    "This non-final exam-specific GUDBAY/HADHAY outcome was saved for the portal; enrollment transitions were not changed.",
                     "success",
                 )
         except (PromotionValidationError, ValueError) as exc:
             db.session.rollback()
             error_message = str(exc)
             preview_result = None
-        except Exception:
+        except Exception as exc:
             db.session.rollback()
             current_app.logger.exception("Promotion evaluation failed")
-            error_message = "The promotion evaluation could not be completed. No records were saved."
+            error_message = (
+                "Evaluation failed to save. No unverified success was reported. "
+                f"Reason: {exc}"
+            )
             preview_result = None
     if error_message:
         flash(error_message, "danger")

@@ -244,6 +244,36 @@ def upsert_promotion_rule(
     return rule
 
 
+def verify_promotion_rule_persistence(
+    academic_year_id,
+    academic_year_level_id,
+    exam_id,
+    critical_subject_ids,
+):
+    """Re-read one committed rule and prove its exact exam-scoped mappings."""
+    db.session.expire_all()
+    year, level, exam = validate_exam_scope(
+        academic_year_id, academic_year_level_id, exam_id
+    )
+    rule = get_promotion_rule(year.id, level.id, exam_id=exam.id)
+    if rule is None:
+        raise PromotionValidationError(
+            "Promotion Rule persistence verification failed: the selected exam rule was not found after commit"
+        )
+    expected_ids = {int(subject_id) for subject_id in (critical_subject_ids or ())}
+    saved_ids = {
+        item.academic_year_subject_id
+        for item in PromotionRuleCriticalSubject.query.filter_by(
+            promotion_rule_id=rule.id
+        ).all()
+    }
+    if saved_ids != expected_ids:
+        raise PromotionValidationError(
+            "Promotion Rule persistence verification failed: Critical Subjects do not match the selected exam"
+        )
+    return rule
+
+
 def promotion_rule_snapshot(rule, *, enabled):
     """Serialize the mutable rule into a historical-safe JSON payload."""
     if rule is None:
@@ -807,6 +837,56 @@ def verify_evaluation_scope_persistence(scope_result, *, require_final_outcomes=
             }
             if persisted.final_outcome not in PromotionEvaluation.OUTCOME_VALUES or source.academic_outcome not in allowed[expected]:
                 raise PromotionValidationError("Academic outcome persistence verification failed; no changes were committed")
+    return True
+
+
+def verify_committed_evaluation_scope(scope_result, *, require_final_outcomes=False):
+    """Re-read evaluation rows after commit from the exact selected scope."""
+    db.session.expire_all()
+    year = scope_result["year"]
+    level = scope_result["level"]
+    exam = scope_result["exam"]
+    for snapshot in scope_result["snapshots"]:
+        persisted = (
+            PromotionEvaluation.query.filter_by(
+                id=snapshot.id,
+                student_id=snapshot.student_id,
+                student_enrollment_id=snapshot.student_enrollment_id,
+                academic_year_id=year.id,
+                academic_year_level_id=level.id,
+                exam_id=exam.id,
+            ).one_or_none()
+        )
+        if not persisted:
+            raise PromotionValidationError(
+                "Evaluation commit verification failed: the saved exam snapshot could not be re-read"
+            )
+        if persisted.evaluation_status == "EVALUATED" and persisted.final_outcome not in {"PASS", "FAIL"}:
+            raise PromotionValidationError(
+                "Evaluation commit verification failed: the saved outcome is invalid"
+            )
+        source = db.session.get(StudentEnrollment, persisted.student_enrollment_id)
+        if not source or source.academic_year_id != year.id or source.academic_year_level_id != level.id:
+            raise PromotionValidationError(
+                "Evaluation commit verification failed: enrollment scope changed"
+            )
+        if not exam.is_final_evaluation and persisted.evaluation_status == "EVALUATED":
+            portal_outcome = portal_academic_outcome(source, exam_id=exam.id)
+            expected_label = "GUDBAY" if persisted.final_outcome == "PASS" else "HADHAY"
+            if portal_outcome.get("label") != expected_label:
+                raise PromotionValidationError(
+                    "Evaluation commit verification failed: the Student Result Portal could not read the saved exam outcome"
+                )
+        if require_final_outcomes:
+            expected = "passed" if persisted.final_outcome == "PASS" else "failed"
+            allowed = {
+                "passed": {"passed", "promoted", "graduated"},
+                "failed": {"failed", "repeated"},
+            }
+            if source.academic_outcome not in allowed[expected]:
+                raise PromotionValidationError(
+                    "Academic outcome commit verification failed: saved outcome was not confirmed"
+                )
     return True
 
 

@@ -11,6 +11,7 @@ from app.models import (
     Exam,
     PromotionEvaluation,
     PromotionOutcomeApplication,
+    PromotionRuleCriticalSubject,
     Result,
     Student,
     StudentEnrollment,
@@ -24,6 +25,7 @@ from app.promotion_service import (
     set_promotion_rules_enabled,
     transition_applied_outcome,
     upsert_promotion_rule,
+    verify_promotion_rule_persistence,
 )
 
 
@@ -177,6 +179,38 @@ class TestPhase4AExamAwarePromotion(unittest.TestCase):
         self.assertEqual(midterm_rule.exam_id, self.midterm.id)
         self.assertEqual(final_rule.exam_id, self.final_exam.id)
         self.assertEqual(len(self.level.promotion_rules.all()), 2)
+
+    def test_critical_subjects_persist_independently_for_three_exams(self):
+        cases = (
+            (self.midterm, {self.math.id}),
+            (self.named_final_nonfinal, {self.english.id}),
+            (self.final_exam, {self.math.id, self.english.id}),
+        )
+        for exam, expected_ids in cases:
+            upsert_promotion_rule(
+                self.year.id,
+                self.level.id,
+                exam_id=exam.id,
+                critical_subject_ids=sorted(expected_ids),
+            )
+            db.session.commit()
+            verify_promotion_rule_persistence(
+                self.year.id,
+                self.level.id,
+                exam.id,
+                sorted(expected_ids),
+            )
+
+        saved = {
+            rule.exam_id: {
+                item.academic_year_subject_id for item in rule.critical_subjects
+            }
+            for rule in self.level.promotion_rules.all()
+        }
+        self.assertEqual(saved[self.midterm.id], {self.math.id})
+        self.assertEqual(saved[self.named_final_nonfinal.id], {self.english.id})
+        self.assertEqual(saved[self.final_exam.id], {self.math.id, self.english.id})
+        self.assertEqual(PromotionRuleCriticalSubject.query.count(), 4)
 
     def test_non_final_evaluation_saves_session_history_but_cannot_apply_or_transition(self):
         upsert_promotion_rule(

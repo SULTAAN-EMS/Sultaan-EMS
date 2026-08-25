@@ -3,7 +3,14 @@
 import unittest
 
 from app import db
-from app.models import PromotionEvaluation, PromotionOutcomeApplication, StudentEnrollmentMovement, User
+from app.models import (
+    PromotionEvaluation,
+    PromotionOutcomeApplication,
+    PromotionRule,
+    PromotionRuleCriticalSubject,
+    StudentEnrollmentMovement,
+    User,
+)
 from app.promotion_service import (
     PromotionValidationError,
     apply_academic_outcome,
@@ -225,6 +232,82 @@ class TestPhase4BSessionEvaluation(TestPhase4AExamAwarePromotion):
         self.assertIn(b"matching academic outcome", response.data)
         self.assertIn(b"Apply Outcomes is now available", response.data)
         self.assertEqual(self.enrollment.academic_outcome, "passed")
+
+    def test_configure_route_persists_critical_subjects_for_selected_exam(self):
+        user = User(username="phase4b-rule-admin", full_name="Phase 4B Rule Admin", role="super_admin", is_active=True)
+        user.set_password("phase4b-rule-password")
+        db.session.add(user)
+        db.session.commit()
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(user.id)
+            session["_fresh"] = True
+            session["config_center_authenticated"] = True
+
+        response = client.post(
+            "/admin/promotion-rules/configure",
+            data={
+                "academic_year_id": self.year.id,
+                "academic_year_level_id": self.level.id,
+                "exam_id": self.named_final_nonfinal.id,
+                "overall_pass_threshold": "50",
+                "critical_subject_pass_threshold": "50",
+                "critical_subject_ids": [str(self.english.id)],
+                "is_active": "on",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        rule = PromotionRule.query.filter_by(
+            academic_year_id=self.year.id,
+            academic_year_level_id=self.level.id,
+            exam_id=self.named_final_nonfinal.id,
+        ).one()
+        self.assertEqual(
+            {
+                row.academic_year_subject_id
+                for row in PromotionRuleCriticalSubject.query.filter_by(promotion_rule_id=rule.id).all()
+            },
+            {self.english.id},
+        )
+
+    def test_non_final_evaluate_route_confirms_portal_outcome_after_commit(self):
+        upsert_promotion_rule(
+            self.year.id,
+            self.level.id,
+            exam_id=self.midterm.id,
+            critical_subject_ids=[self.math.id],
+        )
+        db.session.commit()
+        self._result(self.midterm, self.math, 40)
+        self._result(self.midterm, self.english, 100)
+        user = User(username="phase4b-session-admin", full_name="Phase 4B Session Admin", role="super_admin", is_active=True)
+        user.set_password("phase4b-session-password")
+        db.session.add(user)
+        db.session.commit()
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(user.id)
+            session["_fresh"] = True
+            session["config_center_authenticated"] = True
+
+        response = client.post(
+            "/admin/promotion-rules/evaluate",
+            data={
+                "academic_year_id": self.year.id,
+                "academic_year_level_id": self.level.id,
+                "exam_id": self.midterm.id,
+                "academic_year_class_id": self.year_class.id,
+                "subject_ids": [str(self.math.id), str(self.english.id)],
+                "action": "execute",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Evaluation saved successfully", response.data)
+        self.assertIn(b"available to the Student Result Portal", response.data)
+        self.assertEqual(
+            portal_academic_outcome(self.enrollment, exam_id=self.midterm.id)["label"],
+            "HADHAY",
+        )
 
     def test_session_apply_outcome_is_blocked_even_if_called_directly(self):
         self._result(self.midterm, self.math, 90)
