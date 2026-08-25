@@ -290,6 +290,7 @@
                 <div class="sm-promotion-meta" title="{{ promotion_status.reason }}">
                   <span class="sm-promotion-status sm-promotion-status--{{ promotion_status.tone }}"><i class="fa-solid {% if promotion_status.code == 'NOT_EVALUATED' %}fa-hourglass-start{% elif promotion_status.code == 'TRANSITION_COMPLETED' %}fa-circle-check{% elif promotion_status.code == 'BLOCKED' %}fa-ban{% elif promotion_status.code == 'OUTCOME_APPLIED' %}fa-file-circle-check{% else %}fa-clipboard-check{% endif %}"></i>{{ promotion_status.label }}</span>
                   {% if promotion_status.eligible_actions %}<span class="sm-promotion-eligibility"><i class="fa-solid fa-route"></i>{{ promotion_status.eligible_actions|join(' / ')|title }}</span>{% endif %}
+                  {% if promotion_status.rules_active %}<a class="sm-promotion-rules-link" href="{{ url_for('admin.promotion_rules_evaluate', year_id=selected_year.id if selected_year else '', level_id=enrollment.academic_year_level_id if enrollment else '') }}" title="Open the exact Year + Level Promotion Rules workflow"><i class="fa-solid fa-shield-halved"></i> Rules ON · Evaluate</a>{% endif %}
                 </div>
               {% endif %}
             </div>

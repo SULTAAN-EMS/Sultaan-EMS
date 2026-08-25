@@ -259,6 +259,7 @@ class TestPhase3DPromotionIntegration(unittest.TestCase):
     def test_24_existing_destination_is_rejected_before_execution(self):
         self._enrollment(self.student, self.next_year, self.next_level, self.next_class)
         evaluation = self._evaluation(self.source)
+        apply_academic_outcome(evaluation.id)
         plan = plan_evaluation_transition(self.year.id, self.year_level.id, self.source_class.id, self.exam.id, action="promotion", destination_academic_year_id=self.next_year.id, destination_academic_year_level_id=self.next_level.id, destination_academic_year_class_id=self.next_class.id)
         self.assertEqual(plan["counts"]["eligible"], 0)
         self.assertIn("already has", plan["items"][0]["reason"])

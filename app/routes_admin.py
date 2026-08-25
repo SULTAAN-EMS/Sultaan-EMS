@@ -2908,7 +2908,11 @@ def promotion_rules_evaluate():
                 )
                 db.session.commit()
                 flash(
-                    "Promotion evaluation saved. Enrollment outcomes and transitions were not changed.",
+                    "Evaluation saved successfully: "
+                    f"{preview_result['counts']['evaluated']} evaluated, "
+                    f"{preview_result['counts']['outcomes_saved']} academic outcome(s) saved "
+                    f"({preview_result['counts']['pass']} PASS / {preview_result['counts']['fail']} FAIL). "
+                    "No promotion, repeat, transfer, or graduation was performed.",
                     "success",
                 )
         except (PromotionValidationError, ValueError) as exc:

@@ -263,9 +263,10 @@ class TestPhase3CPromotionEvaluation(unittest.TestCase):
         )
         db.session.commit()
         self.assertEqual(executed["counts"]["evaluated"], 1)
+        self.assertEqual(executed["counts"]["outcomes_saved"], 1)
         self.assertEqual(PromotionEvaluation.query.count(), 2)
         self.assertEqual(StudentEnrollmentMovement.query.count(), 0)
-        self.assertEqual(self.enrollment.academic_outcome, "pending")
+        self.assertEqual(self.enrollment.academic_outcome, "passed")
 
     def test_rule_edit_and_re_evaluation_preserve_history(self):
         self._result(self.student, self.exam_a, self.subject_math, 40)
@@ -310,6 +311,22 @@ class TestPhase3CPromotionEvaluation(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Read-only preview", response.data)
         self.assertEqual(PromotionEvaluation.query.count(), before)
+
+        response = client.post(
+            "/admin/promotion-rules/evaluate",
+            data={
+                "academic_year_id": self.year_a.id,
+                "academic_year_level_id": self.level_a.id,
+                "exam_id": self.exam_a.id,
+                "academic_year_class_id": self.class_a.id,
+                "subject_ids": [str(self.math_a.id)],
+                "action": "execute",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Outcomes saved", response.data)
+        self.assertIn(b"Evaluation saved successfully", response.data)
+        self.assertEqual(self.enrollment.academic_outcome, "passed")
 
 
 if __name__ == "__main__":

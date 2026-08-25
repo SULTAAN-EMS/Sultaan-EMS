@@ -508,7 +508,11 @@ def _close_source_enrollment(source, action):
     """Close a source placement without changing its academic history."""
     _, settings = _transition_action(action)
     source.status = settings["source_status"]
-    source.academic_outcome = settings["source_outcome"]
+    # Administrative transfer is not an academic decision. Preserve any
+    # already-recorded PASS/FAIL or other outcome on the historical source;
+    # only Promotion/Repeat/Graduation are allowed to write a new outcome.
+    if action != "transfer":
+        source.academic_outcome = settings["source_outcome"]
     source.exited_at = datetime.utcnow()
 
 
@@ -559,6 +563,7 @@ def transition_student_enrollment(
     action="transfer",
     notes=None,
     performed_by=None,
+    promotion_workflow=False,
 ):
     """Apply one validated local or cross-year enrollment movement.
 
@@ -576,6 +581,16 @@ def transition_student_enrollment(
         raise EnrollmentValidationError("Source enrollment does not belong to this student")
     if source.status not in ("active", "completed"):
         raise EnrollmentValidationError("Source enrollment is not eligible for an academic transition")
+
+    if action in {"promotion", "repeat"} and not promotion_workflow:
+        # Manual Student Management actions cannot bypass an active, exact
+        # Year + Level Promotion Rule. Transfer remains independent.
+        from .promotion_service import promotion_rules_active_for_enrollment
+        if promotion_rules_active_for_enrollment(source):
+            raise EnrollmentValidationError(
+                "Promotion Rules are active for this Academic Year and Level. "
+                "Evaluate and apply the Promotion Rules workflow before Promote or Repeat."
+            )
 
     if action == "repeat" and source.academic_outcome != "failed":
         raise EnrollmentValidationError("Repeat is available only for a failed academic-year outcome")

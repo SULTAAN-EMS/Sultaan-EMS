@@ -10,8 +10,12 @@ from app.promotion_service import (
     promotion_consistency_audit,
     promotion_operational_status,
     promotion_scope_summary,
+    set_promotion_rules_enabled,
     transition_applied_outcome,
+    upsert_promotion_rule,
 )
+from app.enrollment_service import transition_student_enrollment
+from app.enrollment_service import EnrollmentValidationError
 from test_phase3c_promotion_evaluation import TestPhase3CPromotionEvaluation
 from test_phase3d_promotion_integration import TestPhase3DPromotionIntegration
 
@@ -42,6 +46,31 @@ class TestPhase3EOperationalWorkflow(TestPhase3DPromotionIntegration):
         evaluation = self._evaluation(self.source, outcome="FAIL")
         apply_academic_outcome(evaluation.id)
         self.assertIn("repeat", promotion_operational_status(self.source)["eligible_actions"])
+
+    def test_06_rules_on_blocks_manual_promotion_but_not_transfer(self):
+        set_promotion_rules_enabled(True)
+        upsert_promotion_rule(self.year.id, self.year_level.id, critical_subject_ids=[])
+        with self.assertRaisesRegex(EnrollmentValidationError, "Promotion Rules are active"):
+            transition_student_enrollment(
+                self.student.id,
+                self.source.id,
+                self.next_year.id,
+                self.next_level.id,
+                self.next_class.id,
+                action="promotion",
+            )
+
+    def test_transfer_preserves_existing_academic_outcome(self):
+        self.source.academic_outcome = "passed"
+        transition_student_enrollment(
+            self.student.id,
+            self.source.id,
+            self.next_year.id,
+            self.next_level.id,
+            self.next_class.id,
+            action="transfer",
+        )
+        self.assertEqual(self.source.academic_outcome, "passed")
 
     def test_06_status_eligible_for_graduation(self):
         student = self._student("P3E-GRAD")

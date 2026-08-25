@@ -1,7 +1,9 @@
-"""Phase 3B promotion-rule configuration and evaluation foundation.
+"""Promotion-rule configuration, evaluation, and outcome workflow helpers.
 
-The evaluator is deliberately independent from enrollment transitions.  It
-creates evidence snapshots and never changes ``StudentEnrollment`` state.
+Evaluation previews are read-only.  An explicit saved evaluation also records
+the authoritative PASS/FAIL outcome on its exact ``StudentEnrollment``; a
+later Apply/Transition action creates the outcome-application ledger and any
+movement record.
 """
 
 from __future__ import annotations
@@ -137,6 +139,17 @@ def get_promotion_rule(academic_year_id, academic_year_level_id, *, active_only=
     if rule and rule.academic_year_level.academic_year_id != rule.academic_year_id:
         raise PromotionValidationError("Promotion Rule scope is internally inconsistent")
     return rule
+
+
+def promotion_rules_active_for_enrollment(enrollment):
+    """Return whether the exact enrollment scope is controlled by Promotion Rules."""
+    if not isinstance(enrollment, StudentEnrollment) or not promotion_rules_enabled():
+        return False
+    return get_promotion_rule(
+        enrollment.academic_year_id,
+        enrollment.academic_year_level_id,
+        active_only=True,
+    ) is not None
 
 
 def upsert_promotion_rule(
@@ -635,9 +648,26 @@ def evaluate_promotion_scope(
         "subject_ids": [subject.id for subject in subjects],
     }
     snapshots = []
+    outcomes_saved = 0
     preview_rows = []
     for enrollment in enrollments:
         snapshot = evaluate_student_promotion(enrollment, context, persist=persist)
+        if persist and snapshot.evaluation_status == "EVALUATED" and snapshot.final_outcome in PromotionEvaluation.OUTCOME_VALUES:
+            expected_outcome = "passed" if snapshot.final_outcome == "PASS" else "failed"
+            if enrollment.academic_outcome == "pending":
+                enrollment.academic_outcome = expected_outcome
+                outcomes_saved += 1
+            elif enrollment.academic_outcome == expected_outcome:
+                # Re-running the same exact evaluation is safe and idempotent.
+                pass
+            elif enrollment.academic_outcome in {"promoted", "repeated", "graduated"}:
+                raise PromotionValidationError(
+                    "This StudentEnrollment already completed an academic transition; its outcome cannot be replaced"
+                )
+            else:
+                raise PromotionValidationError(
+                    "The saved evaluation outcome conflicts with the existing StudentEnrollment outcome"
+                )
         snapshots.append(snapshot)
         preview_rows.append({
             "evaluation": snapshot,
@@ -652,6 +682,7 @@ def evaluate_promotion_scope(
         "pass": sum(item.final_outcome == "PASS" for item in snapshots),
         "fail": sum(item.final_outcome == "FAIL" for item in snapshots),
         "skipped": 0,
+        "outcomes_saved": outcomes_saved,
     }
     return {
         "year": year,
@@ -701,6 +732,7 @@ def promotion_operational_status(enrollment, *, exam_id=None):
         "evaluation": evaluation,
         "application": application,
         "eligible_actions": [],
+        "rules_active": promotion_rules_active_for_enrollment(enrollment),
     }
     if evaluation is None:
         return result
@@ -740,12 +772,28 @@ def promotion_operational_status(enrollment, *, exam_id=None):
         })
         return result
 
-    result.update({
-        "code": "EVALUATED_NOT_APPLIED",
-        "label": "Evaluated — not applied",
-        "tone": "info",
-        "reason": "A complete evaluation exists, but its academic outcome is not yet applied.",
-    })
+    expected_outcome = "passed" if evaluation.final_outcome == "PASS" else "failed"
+    if enrollment.academic_outcome == expected_outcome:
+        eligible_actions = (
+            ["graduation" if is_final_academic_year_level(enrollment.academic_year_level_id) else "promotion"]
+            if expected_outcome == "passed"
+            else ["repeat"]
+        )
+        result.update({
+            "code": "OUTCOME_APPLIED",
+            "eligibility_code": "ELIGIBLE_FOR_TRANSITION",
+            "label": "Outcome saved",
+            "tone": "success",
+            "reason": "The evaluated PASS/FAIL outcome is saved and ready for the next action.",
+            "eligible_actions": eligible_actions,
+        })
+    else:
+        result.update({
+            "code": "EVALUATED_NOT_APPLIED",
+            "label": "Evaluated — not applied",
+            "tone": "info",
+            "reason": "A complete evaluation exists, but its academic outcome is not yet applied.",
+        })
     return result
 
 
@@ -758,7 +806,7 @@ def portal_academic_outcome(enrollment, *, exam_id=None):
     evaluation exists.  PROMOTED/REPEATED/GRADUATED are exposed only after the
     linked outcome application records a completed transition.
     """
-    result = {"code": "NOT_EVALUATED", "label": "NOT EVALUATED", "tone": "muted"}
+    result = {"code": "NOT_EVALUATED", "label": "LAMA QIIMEYN", "tone": "muted"}
     if not isinstance(enrollment, StudentEnrollment) or exam_id in (None, ""):
         return result
 
@@ -780,11 +828,11 @@ def portal_academic_outcome(enrollment, *, exam_id=None):
         application = None
     if application and application.application_status == "TRANSITIONED":
         if application.action == "promotion":
-            return {"code": "PROMOTED", "label": "PROMOTED", "tone": "success"}
+            return {"code": "PROMOTED", "label": "U GUDBAY FASALKA XIGA", "tone": "success"}
         if application.action == "repeat":
-            return {"code": "REPEATED", "label": "REPEATED", "tone": "warning"}
+            return {"code": "REPEATED", "label": "KU CELINAYA FASALKA", "tone": "warning"}
     if application and application.application_status == "GRADUATED":
-        return {"code": "GRADUATED", "label": "GRADUATED", "tone": "success"}
+        return {"code": "GRADUATED", "label": "QALINJABIYEY", "tone": "success"}
 
     if evaluation.final_outcome == "PASS":
         return {"code": "PASSED", "label": "GUDBAY", "tone": "success"}
@@ -1022,14 +1070,19 @@ def _application_for(evaluation_id):
     ).first()
 
 
-def _create_outcome_application(evaluation, source, *, applied_by=None, notes=None):
+def _ensure_outcome_application(evaluation, source, *, applied_by=None, notes=None):
+    """Create the outcome ledger for a saved exact evaluation, idempotently."""
     existing = _application_for(evaluation.id)
     if existing:
-        raise PromotionValidationError("This evaluation has already been applied")
-    if source.academic_outcome != "pending":
-        raise PromotionValidationError("The source enrollment already has an academic outcome")
+        expected = "passed" if evaluation.final_outcome == "PASS" else "failed"
+        if existing.source_enrollment_id != source.id or existing.applied_outcome != expected:
+            raise PromotionValidationError("Outcome application does not match the immutable evaluation")
+        return existing
     applied_outcome = "passed" if evaluation.final_outcome == "PASS" else "failed"
-    source.academic_outcome = applied_outcome
+    if source.academic_outcome == "pending":
+        source.academic_outcome = applied_outcome
+    elif source.academic_outcome != applied_outcome:
+        raise PromotionValidationError("The source enrollment outcome conflicts with the immutable evaluation")
     application = PromotionOutcomeApplication(
         promotion_evaluation_id=evaluation.id,
         student_id=evaluation.student_id,
@@ -1043,6 +1096,19 @@ def _create_outcome_application(evaluation, source, *, applied_by=None, notes=No
     db.session.add(application)
     db.session.flush()
     return application
+
+
+def _create_outcome_application(evaluation, source, *, applied_by=None, notes=None):
+    """Preserve the explicit-apply API while allowing a saved outcome to be applied."""
+    existing = _application_for(evaluation.id)
+    if existing:
+        raise PromotionValidationError("This evaluation has already been applied")
+    return _ensure_outcome_application(
+        evaluation,
+        source,
+        applied_by=applied_by,
+        notes=notes,
+    )
 
 
 def apply_academic_outcome(evaluation_id, *, applied_by=None, notes=None):
@@ -1124,6 +1190,7 @@ def transition_applied_outcome(
             action=action,
             notes=notes,
             performed_by=performed_by,
+            promotion_workflow=True,
         )
     except Exception as exc:
         from .enrollment_service import EnrollmentValidationError
@@ -1235,15 +1302,13 @@ def plan_evaluation_transition(
             classification, reason = "INVALID", f"Action requires a final {expected_outcome} evaluation"
         elif application and application.application_status != "APPLIED":
             classification, reason = "ALREADY_TRANSITIONED", "This evaluation has already been transitioned"
-        elif not application and enrollment.academic_outcome != "pending":
-            classification, reason = "INVALID", "Source enrollment already has an academic outcome"
+        elif enrollment.academic_outcome != ("passed" if expected_outcome == "PASS" else "failed"):
+            classification, reason = "OUTCOME_NOT_APPLIED", "Evaluate & Save the matching academic outcome before executing a transition"
         elif destination_scope and StudentEnrollment.query.filter_by(
             student_id=enrollment.student_id,
             academic_year_id=destination_scope["academic_year"].id,
         ).first():
             classification, reason = "DESTINATION_CONFLICT", "Student already has an enrollment in the destination Academic Year"
-        elif not application:
-            classification, reason = "OUTCOME_NOT_APPLIED", "Apply the academic outcome before executing a transition"
         items.append({
             "student": enrollment.student,
             "source": enrollment,
@@ -1285,10 +1350,15 @@ def execute_evaluation_transition_plan(plan, *, performed_by=None, notes=None):
             evaluation = db.session.get(PromotionEvaluation, item["evaluation"].id)
             source = db.session.get(StudentEnrollment, item["source"].id)
             application = _application_for(evaluation.id)
-            if application is None:
-                raise PromotionValidationError("Apply the academic outcome before executing a whole-class transition")
-            if application.application_status != "APPLIED":
+            if application and application.application_status != "APPLIED":
                 raise PromotionValidationError("A reviewed evaluation was already transitioned")
+            if application is None:
+                application = _ensure_outcome_application(
+                    evaluation,
+                    source,
+                    applied_by=performed_by,
+                    notes=notes,
+                )
             destination_scope = plan.get("destination_scope") or {}
             _, destination, application = transition_applied_outcome(
                 evaluation.id,
