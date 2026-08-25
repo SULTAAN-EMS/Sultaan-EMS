@@ -129,6 +129,11 @@ def ensure_schema_compatibility():
     # Render Free services do not require a shell or paid pre-deploy command.
     ensure_phase4c_student_year_nullable()
 
+    # Phase 4A: promotion rules must be unique per academic year, level, and
+    # exam.  Keep this guarded and transactional so a production database with
+    # unexpected duplicates is left untouched rather than partially migrated.
+    ensure_phase4a_promotion_rule_scope()
+
     # Update teacher_classes foreign key to reference academic_classes instead of school_classes
     # This requires manual migration for existing data
 
@@ -164,6 +169,106 @@ def ensure_phase4c_student_year_nullable():
     except Exception as exc:
         db.session.rollback()
         print(f"Warning: Phase 4C student schema sync failed: {exc}")
+
+
+def ensure_phase4a_promotion_rule_scope():
+    """Repair the legacy PostgreSQL PromotionRule uniqueness scope safely.
+
+    Phase 4A was originally shipped as a standalone migration, which is not
+    enough for existing Render deployments without shell access.  This startup
+    sync applies only the schema change that the application model requires.
+    It refuses to alter the table when the target key already contains
+    duplicates, preserving the database for manual review.
+    """
+    if db.engine.dialect.name != "postgresql":
+        return
+
+    inspector = inspect(db.engine)
+    if not inspector.has_table("promotion_rules"):
+        return
+
+    connection = db.engine.connect()
+    transaction = connection.begin()
+    try:
+        columns = {item["name"] for item in inspector.get_columns("promotion_rules")}
+        if "exam_id" not in columns:
+            connection.execute(
+                text("ALTER TABLE promotion_rules ADD COLUMN exam_id INTEGER")
+            )
+
+        duplicates = connection.execute(
+            text(
+                "SELECT academic_year_id, academic_year_level_id, exam_id, COUNT(*) "
+                "FROM promotion_rules "
+                "GROUP BY academic_year_id, academic_year_level_id, exam_id "
+                "HAVING COUNT(*) > 1 LIMIT 1"
+            )
+        ).first()
+        if duplicates:
+            transaction.rollback()
+            print(
+                "Warning: Phase 4A promotion rule sync skipped; duplicate target "
+                f"scope found: {tuple(duplicates)}"
+            )
+            return
+
+        constraints = {
+            row[0]
+            for row in connection.execute(
+                text(
+                    "SELECT conname FROM pg_constraint "
+                    "WHERE conrelid = 'promotion_rules'::regclass"
+                )
+            )
+        }
+        if "uq_promotion_rule_year_level" in constraints:
+            connection.execute(
+                text(
+                    "ALTER TABLE promotion_rules "
+                    "DROP CONSTRAINT uq_promotion_rule_year_level"
+                )
+            )
+        if "uq_promotion_rule_year_level_exam" not in constraints:
+            connection.execute(
+                text(
+                    "ALTER TABLE promotion_rules ADD CONSTRAINT "
+                    "uq_promotion_rule_year_level_exam UNIQUE "
+                    "(academic_year_id, academic_year_level_id, exam_id)"
+                )
+            )
+        if "fk_promotion_rules_exam_id" not in constraints:
+            connection.execute(
+                text(
+                    "ALTER TABLE promotion_rules ADD CONSTRAINT "
+                    "fk_promotion_rules_exam_id FOREIGN KEY (exam_id) "
+                    "REFERENCES exams(id) ON DELETE SET NULL"
+                )
+            )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_promotion_rules_exam_id "
+                "ON promotion_rules (exam_id)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS schema_migrations "
+                "(version VARCHAR(120) PRIMARY KEY, applied_at TIMESTAMP NOT NULL)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO schema_migrations (version, applied_at) "
+                "VALUES ('phase_4a_exam_aware_promotion_rules_v1', CURRENT_TIMESTAMP) "
+                "ON CONFLICT (version) DO NOTHING"
+            )
+        )
+        transaction.commit()
+    except Exception as exc:
+        transaction.rollback()
+        print(f"Warning: Phase 4A promotion rule sync failed: {exc}")
+    finally:
+        connection.close()
 
 
 def seed_legacy_student_genders():
