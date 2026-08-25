@@ -63,7 +63,25 @@
     if (!form) return;
     form.addEventListener('submit', (event) => {
       const submitter = event.submitter;
-      if (!submitter || submitter.value !== 'execute' || submitter.dataset.submitting === 'true') return;
+      if (submitter && submitter.dataset.submitting === 'true') return;
+
+      // Disabled submit buttons are excluded from native form serialization.
+      // Preserve the clicked action in a hidden field before applying the
+      // loading state, so Preview and Evaluate & Save cannot be conflated.
+      let actionField = form.querySelector('[data-evaluation-action]');
+      if (!actionField) {
+        actionField = document.createElement('input');
+        actionField.type = 'hidden';
+        actionField.name = 'action';
+        actionField.dataset.evaluationAction = 'true';
+        form.appendChild(actionField);
+      }
+      actionField.value = submitter && submitter.value ? submitter.value : 'preview';
+      if (submitter && submitter.name === 'action') {
+        submitter.removeAttribute('name');
+      }
+
+      if (!submitter || submitter.value !== 'execute') return;
       submitter.dataset.submitting = 'true';
       submitter.disabled = true;
       submitter.setAttribute('aria-busy', 'true');
