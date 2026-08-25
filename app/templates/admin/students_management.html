@@ -113,6 +113,15 @@
         </select>
       </div>
       <div class="sm-filter-item">
+        <label for="exam-selector"><i class="fa-solid fa-file-signature"></i> Exam Outcome</label>
+        <select id="exam-selector">
+          <option value="">Current placement only</option>
+          {% for exam in exams %}
+            <option value="{{ exam.id }}" {% if selected_exam_id == exam.id %}selected{% endif %}>{{ exam.name }} · {{ 'Final' if exam.is_final_evaluation else 'Session' }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="sm-filter-item">
         <label for="class-selector"><i class="fa-solid fa-chalkboard-user"></i> {{ rh_label("students.class", default="Fasalka") }}</label>
         <select id="class-selector">
           <option value="">{{ rh_label("students.all_classes", default="Dhammaan") }}</option>
@@ -284,10 +293,11 @@
                 {% endif %}
               </div>
               <div class="mt">{{ student.mother_name }}</div>
-              {% if enrollment %}<div class="mt enrollment-meta">{{ enrollment.status|title }} · {{ enrollment.academic_outcome|title }}</div>{% endif %}
+              {% if enrollment %}<div class="mt enrollment-meta">{% if selected_exam %}{{ selected_exam.name }} · {{ 'Final evaluation' if selected_exam.is_final_evaluation else 'Session evaluation' }}{% else %}{{ enrollment.status|title }} · {{ enrollment.academic_outcome|title }}{% endif %}</div>{% endif %}
               {% set promotion_status = promotion_statuses.get(student.id) %}
               {% if promotion_status %}
                 <div class="sm-promotion-meta" title="{{ promotion_status.reason }}">
+                  {% if selected_exam and promotion_status.evaluation_outcome %}<span class="sm-promotion-status sm-promotion-status--{{ promotion_status.tone }}"><i class="fa-solid fa-flag-checkered"></i>{{ promotion_status.evaluation_outcome }} · {{ selected_exam.name }}</span>{% endif %}
                   <span class="sm-promotion-status sm-promotion-status--{{ promotion_status.tone }}"><i class="fa-solid {% if promotion_status.code == 'NOT_EVALUATED' %}fa-hourglass-start{% elif promotion_status.code == 'TRANSITION_COMPLETED' %}fa-circle-check{% elif promotion_status.code == 'BLOCKED' %}fa-ban{% elif promotion_status.code == 'OUTCOME_APPLIED' %}fa-file-circle-check{% else %}fa-clipboard-check{% endif %}"></i>{{ promotion_status.label }}</span>
                   {% if promotion_status.eligible_actions %}<span class="sm-promotion-eligibility"><i class="fa-solid fa-route"></i>{{ promotion_status.eligible_actions|join(' / ')|title }}</span>{% endif %}
                   {% if promotion_status.rules_active %}<a class="sm-promotion-rules-link" href="{{ url_for('admin.promotion_rules_evaluate', year_id=selected_year.id if selected_year else '', level_id=enrollment.academic_year_level_id if enrollment else '') }}" title="Open the exact Year + Level Promotion Rules workflow"><i class="fa-solid fa-shield-halved"></i> Rules ON · Evaluate</a>{% endif %}
@@ -520,6 +530,7 @@ document.addEventListener('DOMContentLoaded', function() {
     applyBtn.addEventListener('click', function() {
       var yearId     = (document.getElementById('year-selector')   || {}).value || '';
       var levelId    = (document.getElementById('level-selector')  || {}).value || '';
+      var examId     = (document.getElementById('exam-selector')   || {}).value || '';
       var classId    = (document.getElementById('class-selector')  || {}).value || '';
       var sectionId  = (document.getElementById('section-selector') || {}).value || '';
       var statusVal  = (document.getElementById('status-filter')   || {}).value || '';
@@ -530,6 +541,8 @@ document.addEventListener('DOMContentLoaded', function() {
       if (yearId)   url.searchParams.set('year_id',      yearId);
       if (levelId)  url.searchParams.set('level_id',     levelId);
       else          url.searchParams.delete('level_id');
+      if (examId)   url.searchParams.set('exam_id',      examId);
+      else          url.searchParams.delete('exam_id');
       if (classId)  url.searchParams.set('class_id',     classId);
       else          url.searchParams.delete('class_id');
       if (sectionId) url.searchParams.set('section_id', sectionId);

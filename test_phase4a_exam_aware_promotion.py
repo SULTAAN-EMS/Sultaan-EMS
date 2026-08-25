@@ -178,7 +178,7 @@ class TestPhase4AExamAwarePromotion(unittest.TestCase):
         self.assertEqual(final_rule.exam_id, self.final_exam.id)
         self.assertEqual(len(self.level.promotion_rules.all()), 2)
 
-    def test_non_final_evaluation_saves_pass_fail_but_cannot_transition(self):
+    def test_non_final_evaluation_saves_session_history_but_cannot_apply_or_transition(self):
         upsert_promotion_rule(
             self.year.id,
             self.level.id,
@@ -198,12 +198,11 @@ class TestPhase4AExamAwarePromotion(unittest.TestCase):
         self.assertEqual(self.enrollment.academic_outcome, "pending")
         self.assertEqual(StudentEnrollmentMovement.query.count(), 0)
 
-        application = apply_academic_outcome(evaluation.id)
-        db.session.commit()
-        self.assertEqual(application.action, "outcome")
-        self.assertIsNone(application.destination_enrollment_id)
-        self.assertEqual(self.enrollment.academic_outcome, "failed")
-        with self.assertRaisesRegex(PromotionValidationError, "not marked as a Final Evaluation"):
+        with self.assertRaisesRegex(PromotionValidationError, "Only a Final Evaluation"):
+            apply_academic_outcome(evaluation.id)
+        self.assertEqual(PromotionOutcomeApplication.query.count(), 0)
+        self.assertEqual(self.enrollment.academic_outcome, "pending")
+        with self.assertRaisesRegex(PromotionValidationError, "Only a Final Evaluation"):
             transition_applied_outcome(
                 evaluation.id,
                 action="repeat",
@@ -230,7 +229,7 @@ class TestPhase4AExamAwarePromotion(unittest.TestCase):
         self.assertIsNone(evaluation.promotion_rule_id)
         self.assertEqual(evaluation.final_outcome, "PASS")
 
-    def test_non_final_pass_still_records_academic_outcome_when_rules_are_off(self):
+    def test_non_final_pass_records_session_history_when_rules_are_off(self):
         set_promotion_rules_enabled(False)
         self._result(self.midterm, self.math, 90)
         self._result(self.midterm, self.english, 90)
@@ -242,10 +241,10 @@ class TestPhase4AExamAwarePromotion(unittest.TestCase):
         db.session.commit()
         self.assertEqual(evaluation.final_outcome, "PASS")
         self.assertIsNone(evaluation.promotion_rule_id)
-        application = apply_academic_outcome(evaluation.id)
-        db.session.commit()
-        self.assertEqual(application.action, "outcome")
-        self.assertEqual(self.enrollment.academic_outcome, "passed")
+        with self.assertRaisesRegex(PromotionValidationError, "Only a Final Evaluation"):
+            apply_academic_outcome(evaluation.id)
+        self.assertEqual(PromotionOutcomeApplication.query.count(), 0)
+        self.assertEqual(self.enrollment.academic_outcome, "pending")
         self.assertEqual(StudentEnrollmentMovement.query.count(), 0)
 
     def test_exam_from_another_academic_year_is_rejected(self):
@@ -272,9 +271,9 @@ class TestPhase4AExamAwarePromotion(unittest.TestCase):
             persist=True,
         )
         db.session.commit()
-        apply_academic_outcome(evaluation.id)
-        db.session.commit()
-        with self.assertRaises(PromotionValidationError):
+        with self.assertRaisesRegex(PromotionValidationError, "Only a Final Evaluation"):
+            apply_academic_outcome(evaluation.id)
+        with self.assertRaisesRegex(PromotionValidationError, "Only a Final Evaluation"):
             transition_applied_outcome(
                 evaluation.id,
                 action="promotion",

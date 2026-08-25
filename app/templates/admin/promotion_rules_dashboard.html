@@ -69,6 +69,7 @@
       <div class="promotion-notice promotion-notice--warning"><i class="fa-solid fa-triangle-exclamation"></i><div><strong>Scope could not be loaded.</strong><span>{{ summary_error }}</span></div></div>
     {% elif summary %}
       <div class="promotion-summary-scope"><i class="fa-regular fa-calendar"></i><strong>{{ summary.year.name }}</strong><span>·</span><i class="fa-solid fa-layer-group"></i><strong>{{ summary.level.name }}</strong>{% if summary.academic_class %}<span>·</span><i class="fa-solid fa-chalkboard-user"></i><strong>{{ summary.academic_class.name }}</strong>{% endif %}</div>
+      <div class="promotion-notice promotion-notice--{% if summary.workflow == 'FINAL' %}success{% else %}info{% endif %}"><i class="fa-solid {% if summary.workflow == 'FINAL' %}fa-flag-checkered{% else %}fa-circle-info{% endif %}"></i><div><strong>{{ 'Final Academic Evaluation' if summary.workflow == 'FINAL' else 'Session Evaluation' }}</strong><span>{% if summary.workflow == 'FINAL' %}Final results may be applied and then used for promotion, repeat, or graduation.{% else %}This exam is session history only: GUDBAY/HADHAY can be reviewed, but enrollment outcomes and academic transitions remain unchanged.{% endif %}</span></div></div>
       <div class="promotion-operational-grid" aria-label="Scoped operational summary">
         <article class="promotion-operational-card tone-navy"><strong>{{ summary.counts.total_students }}</strong><span>Total students</span></article>
         <article class="promotion-operational-card tone-teal"><strong>{{ summary.counts.evaluated }}</strong><span>Evaluated</span></article>
@@ -77,11 +78,13 @@
         <article class="promotion-operational-card tone-danger"><strong>{{ summary.counts.failed }}</strong><span>Failed</span></article>
         <article class="promotion-operational-card tone-warning"><strong>{{ summary.counts.incomplete }}</strong><span>Incomplete</span></article>
         <article class="promotion-operational-card tone-danger"><strong>{{ summary.counts.invalid }}</strong><span>Invalid</span></article>
-        <article class="promotion-operational-card tone-info"><strong>{{ summary.counts.outcome_applied }}</strong><span>Outcome applied</span></article>
-        <article class="promotion-operational-card tone-success"><strong>{{ summary.counts.eligible_promotion }}</strong><span>Eligible promotion</span></article>
-        <article class="promotion-operational-card tone-warning"><strong>{{ summary.counts.eligible_repeat }}</strong><span>Eligible repeat</span></article>
-        <article class="promotion-operational-card tone-gold"><strong>{{ summary.counts.eligible_graduation }}</strong><span>Eligible graduation</span></article>
-        <article class="promotion-operational-card tone-teal"><strong>{{ summary.counts.transition_completed }}</strong><span>Transition completed</span></article>
+        {% if summary.workflow == 'FINAL' %}
+          <article class="promotion-operational-card tone-info"><strong>{{ summary.counts.outcome_applied }}</strong><span>Outcome applied</span></article>
+          <article class="promotion-operational-card tone-success"><strong>{{ summary.counts.eligible_promotion }}</strong><span>Eligible promotion</span></article>
+          <article class="promotion-operational-card tone-warning"><strong>{{ summary.counts.eligible_repeat }}</strong><span>Eligible repeat</span></article>
+          <article class="promotion-operational-card tone-gold"><strong>{{ summary.counts.eligible_graduation }}</strong><span>Eligible graduation</span></article>
+          <article class="promotion-operational-card tone-teal"><strong>{{ summary.counts.transition_completed }}</strong><span>Transition completed</span></article>
+        {% endif %}
       </div>
     {% else %}
       <div class="promotion-empty promotion-empty--small"><i class="fa-solid fa-chart-pie"></i><span>Select an Academic Level to view the scoped operational summary.</span></div>
@@ -122,7 +125,7 @@
     {% if recent_evaluations %}
     <div class="promotion-history-list">
       {% for evaluation in recent_evaluations %}
-      <div class="promotion-history-row"><span class="promotion-history-icon"><i class="fa-solid {% if evaluation.final_outcome == 'PASS' %}fa-check{% else %}fa-xmark{% endif %}"></i></span><div><strong>{{ evaluation.student.full_name }}</strong><span>{{ evaluation.academic_year.name }} · {{ evaluation.academic_year_level.name }}</span></div><b class="promotion-outcome promotion-outcome--{{ evaluation.final_outcome|lower }}">{{ evaluation.final_outcome }}</b><time>{{ evaluation.evaluated_at.strftime('%b %d, %Y %I:%M %p') }}</time></div>
+      <div class="promotion-history-row"><span class="promotion-history-icon"><i class="fa-solid {% if evaluation.final_outcome == 'PASS' %}fa-check{% else %}fa-xmark{% endif %}"></i></span><div><strong>{{ evaluation.student.full_name }}</strong><span>{{ evaluation.academic_year.name }} · {{ evaluation.academic_year_level.name }}</span></div><b class="promotion-outcome promotion-outcome--{{ evaluation.final_outcome|lower }}">{{ 'GUDBAY' if evaluation.final_outcome == 'PASS' else 'HADHAY' }}</b><time>{{ evaluation.evaluated_at.strftime('%b %d, %Y %I:%M %p') }}</time></div>
       {% endfor %}
     </div>
     {% else %}<div class="promotion-empty promotion-empty--small"><i class="fa-solid fa-clock-rotate-left"></i><span>No evaluation snapshots have been recorded.</span></div>{% endif %}

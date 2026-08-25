@@ -1,9 +1,9 @@
 """Promotion-rule configuration, evaluation, and outcome workflow helpers.
 
-Evaluation previews are read-only.  An explicit saved evaluation also records
-the authoritative PASS/FAIL outcome on its exact ``StudentEnrollment``; a
-later Apply/Transition action creates the outcome-application ledger and any
-movement record.
+Evaluation snapshots are immutable, exam-specific evidence. Saving a session
+evaluation never changes the student's academic placement; only an explicit
+Final Evaluation may be applied to the enrollment and then used for a
+promotion, repeat, or graduation transition.
 """
 
 from __future__ import annotations
@@ -696,26 +696,12 @@ def evaluate_promotion_scope(
         "subject_ids": [subject.id for subject in subjects],
     }
     snapshots = []
+    # Kept for response/template compatibility. Phase 4B deliberately leaves
+    # StudentEnrollment untouched until an explicit Final Evaluation apply.
     outcomes_saved = 0
     preview_rows = []
     for enrollment in enrollments:
         snapshot = evaluate_student_promotion(enrollment, context, persist=persist)
-        if persist and snapshot.evaluation_status == "EVALUATED" and snapshot.final_outcome in PromotionEvaluation.OUTCOME_VALUES:
-            expected_outcome = "passed" if snapshot.final_outcome == "PASS" else "failed"
-            if enrollment.academic_outcome == "pending":
-                enrollment.academic_outcome = expected_outcome
-                outcomes_saved += 1
-            elif enrollment.academic_outcome == expected_outcome:
-                # Re-running the same exact evaluation is safe and idempotent.
-                pass
-            elif enrollment.academic_outcome in {"promoted", "repeated", "graduated"}:
-                raise PromotionValidationError(
-                    "This StudentEnrollment already completed an academic transition; its outcome cannot be replaced"
-                )
-            else:
-                raise PromotionValidationError(
-                    "The saved evaluation outcome conflicts with the existing StudentEnrollment outcome"
-                )
         snapshots.append(snapshot)
         preview_rows.append({
             "evaluation": snapshot,
@@ -775,6 +761,7 @@ def promotion_operational_status(enrollment, *, exam_id=None):
         "code": "NOT_EVALUATED",
         "eligibility_code": None,
         "label": "Not evaluated",
+        "evaluation_outcome": None,
         "tone": "muted",
         "reason": "No exact evaluation snapshot exists for this enrollment.",
         "evaluation": evaluation,
@@ -796,6 +783,8 @@ def promotion_operational_status(enrollment, *, exam_id=None):
             "reason": "The evaluation is incomplete or invalid and cannot authorize a transition.",
         })
         return result
+
+    result["evaluation_outcome"] = "GUDBAY" if evaluation.final_outcome == "PASS" else "HADHAY"
 
     # Non-final exams produce a real immutable PASS/FAIL academic result, but
     # they are never authorization evidence for promotion, repeat, or
@@ -898,6 +887,13 @@ def portal_academic_outcome(enrollment, *, exam_id=None):
     ):
         return result
 
+    # A session result is student-visible history only. It must not inherit a
+    # promotion/repeat/graduation status from the enrollment or an old ledger.
+    if not evaluation.exam.is_final_evaluation:
+        if evaluation.final_outcome == "PASS":
+            return {"code": "PASSED", "label": "GUDBAY", "tone": "success"}
+        return {"code": "FAILED", "label": "HADHAY", "tone": "danger"}
+
     application = _application_for(evaluation.id)
     if application and (
         application.student_id != enrollment.student_id
@@ -925,9 +921,10 @@ def promotion_scope_summary(academic_year_id, academic_year_level_id, *, academi
         year_class = db.session.get(AcademicYearClass, int(academic_year_class_id))
         if not year_class or year_class.academic_year_level_id != level.id:
             raise PromotionValidationError("Academic Year Class does not belong to the selected Academic Year Level")
+    selected_exam = None
     if exam_id not in (None, ""):
-        exam = db.session.get(Exam, int(exam_id))
-        if not exam or exam.academic_year_id != year.id:
+        selected_exam = db.session.get(Exam, int(exam_id))
+        if not selected_exam or selected_exam.academic_year_id != year.id:
             raise PromotionValidationError("The selected exam does not belong to the selected Academic Year")
 
     query = StudentEnrollment.query.filter(
@@ -978,7 +975,12 @@ def promotion_scope_summary(academic_year_id, academic_year_level_id, *, academi
         "year": year,
         "level": level,
         "academic_class": year_class,
-        "exam": db.session.get(Exam, int(exam_id)) if exam_id not in (None, "") else None,
+        "exam": selected_exam,
+        "workflow": (
+            "FINAL" if selected_exam and selected_exam.is_final_evaluation
+            else "SESSION" if selected_exam
+            else "ALL"
+        ),
         "counts": counts,
         "rows": rows,
     }
@@ -1117,6 +1119,10 @@ def _authorizable_evaluation(evaluation_id):
     exam = db.session.get(Exam, evaluation.exam_id)
     if not exam or exam.academic_year_id != evaluation.academic_year_id:
         raise PromotionValidationError("Evaluation exam does not belong to the evaluated Academic Year")
+    if not exam.is_final_evaluation:
+        raise PromotionValidationError(
+            "Only a Final Evaluation can authorize Apply Outcome; this session stores GUDBAY/HADHAY history only"
+        )
     source = db.session.get(StudentEnrollment, evaluation.student_enrollment_id)
     if (
         not source

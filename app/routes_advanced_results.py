@@ -3093,6 +3093,7 @@ def results_settings():
 def students_management():
     """Enrollment-aware Student Management listing with legacy fallback."""
     year_id = int_or_none(request.args.get("year_id"))
+    exam_id = int_or_none(request.args.get("exam_id"))
     level_id = int_or_none(request.args.get("level_id"))
     class_id = int_or_none(request.args.get("class_id"))
     section_id = int_or_none(request.args.get("section_id"))
@@ -3105,6 +3106,21 @@ def students_management():
     selected_year = db.session.get(AcademicYear, year_id) if year_id else AcademicYear.query.filter_by(is_current=True).first()
     if year_id and not selected_year:
         abort(404)
+
+    exams = (
+        Exam.query
+        .filter_by(academic_year_id=selected_year.id, is_active=True)
+        .order_by(Exam.sort_order, Exam.name, Exam.id)
+        .all()
+        if selected_year else []
+    )
+    selected_exam = next((exam for exam in exams if exam.id == exam_id), None)
+    if exam_id and selected_exam is None:
+        flash("Selected exam does not belong to the selected academic year.", "warning")
+        return redirect(url_for(
+            "admin_advanced_results.students_management",
+            year_id=selected_year.id if selected_year else None,
+        ))
     
     # Get all years for selector
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
@@ -3220,7 +3236,10 @@ def students_management():
     for student in students:
         enrollment = enrollments.get(student.id)
         if enrollment:
-            promotion_statuses[student.id] = promotion_operational_status(enrollment)
+            promotion_statuses[student.id] = promotion_operational_status(
+                enrollment,
+                exam_id=selected_exam.id if selected_exam else None,
+            )
     incident_counts = {}
     incident_badges = {}
     if student_ids:
@@ -3253,6 +3272,9 @@ def students_management():
         "admin/students_management.html",
         years=years,
         selected_year=selected_year,
+        exams=exams,
+        selected_exam=selected_exam,
+        selected_exam_id=selected_exam.id if selected_exam else None,
         levels=levels,
         classes=classes,
         students=students,

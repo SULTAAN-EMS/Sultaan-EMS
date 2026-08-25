@@ -263,10 +263,10 @@ class TestPhase3CPromotionEvaluation(unittest.TestCase):
         )
         db.session.commit()
         self.assertEqual(executed["counts"]["evaluated"], 1)
-        self.assertEqual(executed["counts"]["outcomes_saved"], 1)
+        self.assertEqual(executed["counts"]["outcomes_saved"], 0)
         self.assertEqual(PromotionEvaluation.query.count(), 2)
         self.assertEqual(StudentEnrollmentMovement.query.count(), 0)
-        self.assertEqual(self.enrollment.academic_outcome, "passed")
+        self.assertEqual(self.enrollment.academic_outcome, "pending")
 
     def test_rule_edit_and_re_evaluation_preserve_history(self):
         self._result(self.student, self.exam_a, self.subject_math, 40)
@@ -324,9 +324,9 @@ class TestPhase3CPromotionEvaluation(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Outcomes saved", response.data)
+        self.assertIn(b"Enrollment outcomes applied", response.data)
         self.assertIn(b"Evaluation saved successfully", response.data)
-        self.assertEqual(self.enrollment.academic_outcome, "passed")
+        self.assertEqual(self.enrollment.academic_outcome, "pending")
 
 
 if __name__ == "__main__":
