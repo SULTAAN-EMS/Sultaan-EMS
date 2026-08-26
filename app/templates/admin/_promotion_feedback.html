@@ -1,0 +1,81 @@
+{% with promotion_flash_messages = get_flashed_messages(with_categories=true) %}
+<div id="confirmRoot" aria-live="polite" aria-atomic="true"></div>
+<script>
+(() => {
+  const confirmRoot = document.getElementById('confirmRoot');
+  const flashes = {{ promotion_flash_messages|tojson }};
+  if (!confirmRoot) return;
+
+  const kindFor = (category) => {
+    const value = String(category || '').toLowerCase();
+    return ['danger', 'error', 'failed'].includes(value) ? 'error' : 'success';
+  };
+
+  function showToast(title, msg, type = 'success') {
+    confirmRoot.replaceChildren();
+    const isError = type === 'error' || type === 'danger';
+    const iconSvg = isError
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" aria-hidden="true"><line class="draw-line" x1="7" y1="7" x2="17" y2="17" stroke-width="2.6" stroke-dasharray="15" stroke-dashoffset="15"/><line class="draw-line" x1="17" y1="7" x2="7" y2="17" stroke-width="2.6" stroke-dasharray="15" stroke-dashoffset="15" style="animation-delay:.15s"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="draw-line" d="M4.5 12.5 9.5 17.5 19.5 6.5" stroke-width="2.6" stroke-dasharray="40" stroke-dashoffset="40"/></svg>';
+    const backdrop = document.createElement('div');
+    backdrop.className = `confirm-backdrop${isError ? ' confirm-error' : ''}`;
+    backdrop.innerHTML = `
+      <div class="confirm-box" role="dialog" aria-modal="true" aria-label="${String(title).replace(/"/g, '&quot;')}">
+        <button class="close-btn confirm-close" type="button" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+        <div class="confirm-icon-wrap">
+          <div class="confirm-ring"></div><div class="confirm-ring r2"></div>
+          <div class="confirm-icon-circle">${iconSvg}</div>
+        </div>
+        <div class="confirm-title"></div>
+        <div class="confirm-msg"></div>
+        <div class="confirm-bar-track"><div class="confirm-bar-fill"></div></div>
+      </div>`;
+    backdrop.querySelector('.confirm-title').textContent = title;
+    backdrop.querySelector('.confirm-msg').textContent = msg;
+    confirmRoot.appendChild(backdrop);
+    window.requestAnimationFrame(() => backdrop.classList.add('show'));
+
+    let closed = false;
+    const remove = () => {
+      if (closed) return;
+      closed = true;
+      window.clearTimeout(autoTimer);
+      backdrop.classList.remove('show');
+      window.setTimeout(() => backdrop.remove(), 280);
+    };
+    const autoTimer = window.setTimeout(remove, 3600);
+    backdrop.querySelector('.confirm-close').addEventListener('click', remove);
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) remove();
+    });
+    const onEscape = (event) => {
+      if (event.key === 'Escape') {
+        remove();
+        document.removeEventListener('keydown', onEscape);
+      }
+    };
+    document.addEventListener('keydown', onEscape);
+  }
+
+  window.showPromotionToast = showToast;
+  window.showToast = showToast;
+  if (flashes.length) {
+    const [category, message] = flashes[flashes.length - 1];
+    const type = kindFor(category);
+    showToast(type === 'error' ? 'Action could not be completed' : 'Saved successfully', message, type);
+  }
+
+  document.addEventListener('submit', (event) => {
+    const form = event.target.closest('.promotion-page form[method="post"]');
+    const submitter = event.submitter;
+    if (!form || !submitter || !submitter.classList.contains('promotion-button')) return;
+    if (submitter.dataset.loading === 'true') return;
+    submitter.dataset.loading = 'true';
+    submitter.setAttribute('aria-busy', 'true');
+    submitter.classList.add('is-loading');
+    const icon = submitter.querySelector('i');
+    if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+  });
+})();
+</script>
+{% endwith %}
