@@ -700,6 +700,41 @@ def evaluate_student_promotion(student_enrollment, evaluation_context, *, persis
     return snapshot
 
 
+def _normalized_json(value, default):
+    try:
+        payload = json.loads(value or default)
+    except (TypeError, ValueError):
+        payload = json.loads(default)
+    return json.dumps(payload, default=_json_default, sort_keys=True)
+
+
+def evaluation_changed_since(saved_evaluation, current_evaluation):
+    """Compare safe, outcome-bearing parts of two evaluation snapshots."""
+    if not saved_evaluation or not current_evaluation:
+        return False
+    try:
+        saved_context = json.loads(saved_evaluation.evaluation_context_json or "{}")
+    except (TypeError, ValueError):
+        saved_context = {}
+    try:
+        current_context = json.loads(current_evaluation.evaluation_context_json or "{}")
+    except (TypeError, ValueError):
+        current_context = {}
+    return (
+        saved_evaluation.evaluation_status != current_evaluation.evaluation_status
+        or saved_evaluation.base_outcome != current_evaluation.base_outcome
+        or saved_evaluation.final_outcome != current_evaluation.final_outcome
+        or saved_evaluation.overall_percentage != current_evaluation.overall_percentage
+        or _normalized_json(saved_evaluation.critical_subject_results_json, "[]")
+        != _normalized_json(current_evaluation.critical_subject_results_json, "[]")
+        or _normalized_json(saved_evaluation.promotion_rule_snapshot_json, "{}")
+        != _normalized_json(current_evaluation.promotion_rule_snapshot_json, "{}")
+        or saved_context.get("subject_ids") != current_context.get("subject_ids")
+        or _normalized_json(json.dumps(saved_context.get("results", [])), "[]")
+        != _normalized_json(json.dumps(current_context.get("results", [])), "[]")
+    )
+
+
 def evaluate_promotion_scope(
     academic_year_id,
     academic_year_level_id,
@@ -708,8 +743,15 @@ def evaluate_promotion_scope(
     academic_year_class_id=None,
     subject_ids=None,
     persist=False,
+    evaluation_mode="new",
+    reevaluate_enrollment_ids=None,
 ):
-    """Preview or execute every eligible enrollment in one isolated scope."""
+    """Preview a scope or save only new/explicitly selected evaluations.
+
+    Existing snapshots remain immutable history.  A normal save creates rows
+    only for enrollments without an exact exam snapshot; re-evaluation creates
+    a newer snapshot only for explicitly selected existing enrollments.
+    """
     year, level, exam = resolve_evaluation_context(
         academic_year_id, academic_year_level_id, exam_id
     )
@@ -739,6 +781,15 @@ def evaluate_promotion_scope(
         "subject_ids": [subject.id for subject in subjects],
     }
     snapshots = []
+    reevaluated_rows = []
+    reevaluate_ids = set()
+    if reevaluate_enrollment_ids:
+        try:
+            reevaluate_ids = {int(item) for item in reevaluate_enrollment_ids}
+        except (TypeError, ValueError):
+            raise PromotionValidationError("Re-evaluation student selection is invalid")
+    if evaluation_mode not in {"new", "reevaluate"}:
+        raise PromotionValidationError("Evaluation mode is invalid")
     # A session/non-final evaluation is immutable history only.  A Final
     # Evaluation is the one workflow that also persists the canonical
     # PASS/FAIL outcome on the exact source enrollment.  The explicit outcome
@@ -748,9 +799,19 @@ def evaluate_promotion_scope(
     outcomes_confirmed = 0
     preview_rows = []
     for enrollment in enrollments:
-        snapshot = evaluate_student_promotion(enrollment, context, persist=persist)
-        snapshots.append(snapshot)
-        if persist and exam.is_final_evaluation and snapshot.evaluation_status == "EVALUATED":
+        saved_evaluation = latest_promotion_evaluation(enrollment, exam_id=exam.id)
+        should_persist = persist and (
+            (evaluation_mode == "new" and saved_evaluation is None)
+            or (
+                evaluation_mode == "reevaluate"
+                and saved_evaluation is not None
+                and enrollment.id in reevaluate_ids
+            )
+        )
+        snapshot = evaluate_student_promotion(enrollment, context, persist=should_persist)
+        if should_persist:
+            snapshots.append(snapshot)
+        if persist and should_persist and exam.is_final_evaluation and snapshot.evaluation_status == "EVALUATED":
             expected_outcome = "passed" if snapshot.final_outcome == "PASS" else "failed"
             terminal_outcomes = {
                 "passed": {"passed", "promoted", "graduated"},
@@ -765,11 +826,21 @@ def evaluate_promotion_scope(
                     f"for student {enrollment.student.student_code}"
                 )
             outcomes_confirmed += 1
-        preview_rows.append({
+        state = "NOT_YET_EVALUATED" if saved_evaluation is None else (
+            "CHANGED" if evaluation_changed_since(saved_evaluation, snapshot) else "ALREADY_EVALUATED"
+        )
+        row = {
             "evaluation": snapshot,
+            "existing_evaluation": saved_evaluation,
             "student": enrollment.student,
             "enrollment": enrollment,
-        })
+            "state": state,
+            "can_reevaluate": saved_evaluation is not None,
+            "selected_for_reevaluation": enrollment.id in reevaluate_ids,
+        }
+        preview_rows.append(row)
+        if should_persist and saved_evaluation is not None:
+            reevaluated_rows.append(row)
     if persist and exam.is_final_evaluation:
         incomplete = sum(item.evaluation_status == "INCOMPLETE" for item in snapshots)
         invalid = sum(item.evaluation_status == "INVALID" for item in snapshots)
@@ -790,16 +861,28 @@ def evaluate_promotion_scope(
             },
             require_final_outcomes=exam.is_final_evaluation,
         )
+    current_snapshots = [item["evaluation"] for item in preview_rows]
+    persisted_object_ids = {id(item) for item in snapshots}
     counts = {
-        "eligible": len(snapshots),
-        "evaluated": sum(item.evaluation_status == "EVALUATED" for item in snapshots),
-        "incomplete": sum(item.evaluation_status == "INCOMPLETE" for item in snapshots),
-        "invalid": sum(item.evaluation_status == "INVALID" for item in snapshots),
-        "pass": sum(item.final_outcome == "PASS" for item in snapshots),
-        "fail": sum(item.final_outcome == "FAIL" for item in snapshots),
-        "skipped": 0,
+        "eligible": len(preview_rows),
+        "evaluated": sum(item.evaluation_status == "EVALUATED" for item in current_snapshots),
+        "incomplete": sum(item.evaluation_status == "INCOMPLETE" for item in current_snapshots),
+        "invalid": sum(item.evaluation_status == "INVALID" for item in current_snapshots),
+        "pass": sum(item.final_outcome == "PASS" for item in current_snapshots),
+        "fail": sum(item.final_outcome == "FAIL" for item in current_snapshots),
+        "skipped": sum(item["existing_evaluation"] is not None and not item["selected_for_reevaluation"] for item in preview_rows),
+        "already_evaluated": sum(item["state"] == "ALREADY_EVALUATED" for item in preview_rows),
+        "not_yet_evaluated": sum(item["state"] == "NOT_YET_EVALUATED" for item in preview_rows),
+        "changed": sum(item["state"] == "CHANGED" for item in preview_rows),
+        "new_evaluated": sum(
+            item["existing_evaluation"] is None and id(item["evaluation"]) in persisted_object_ids
+            for item in preview_rows
+        ),
+        "reevaluated": len(reevaluated_rows),
         "outcomes_saved": outcomes_saved,
         "outcomes_confirmed": outcomes_confirmed,
+        "save_incomplete": sum(item.evaluation_status == "INCOMPLETE" for item in snapshots),
+        "save_invalid": sum(item.evaluation_status == "INVALID" for item in snapshots),
     }
     return {
         "year": year,
@@ -809,6 +892,7 @@ def evaluate_promotion_scope(
         "enrollments": enrollments,
         "snapshots": snapshots,
         "preview_rows": preview_rows,
+        "reevaluated_rows": reevaluated_rows,
         "counts": counts,
     }
 

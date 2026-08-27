@@ -187,7 +187,7 @@ class TestPhase4BSessionEvaluation(TestPhase4AExamAwarePromotion):
         self.assertEqual(PromotionEvaluation.query.count(), 0)
         self.assertEqual(self.enrollment.academic_outcome, "pending")
 
-    def test_repeated_final_scope_save_does_not_duplicate_outcome_ledger(self):
+    def test_repeated_final_scope_save_does_not_duplicate_evaluation_or_outcome_ledger(self):
         self._result(self.final_exam, self.math, 90)
         self._result(self.final_exam, self.english, 90)
         for _ in range(2):
@@ -202,7 +202,7 @@ class TestPhase4BSessionEvaluation(TestPhase4AExamAwarePromotion):
             db.session.commit()
         self.assertEqual(self.enrollment.academic_outcome, "passed")
         self.assertEqual(PromotionOutcomeApplication.query.count(), 0)
-        self.assertEqual(PromotionEvaluation.query.count(), 2)
+        self.assertEqual(PromotionEvaluation.query.count(), 1)
 
     def test_final_evaluate_route_returns_confirmed_feedback_after_commit(self):
         self._result(self.final_exam, self.math, 90)

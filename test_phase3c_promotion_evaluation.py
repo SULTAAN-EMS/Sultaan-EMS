@@ -20,8 +20,11 @@ from app.models import (
 )
 from app.promotion_service import (
     PromotionValidationError,
+    evaluation_changed_since,
     evaluate_promotion_scope,
     evaluate_student_promotion,
+    latest_promotion_evaluation,
+    portal_academic_outcome,
     set_promotion_rules_enabled,
     upsert_promotion_rule,
 )
@@ -283,6 +286,123 @@ class TestPhase3CPromotionEvaluation(unittest.TestCase):
         self.assertEqual(db.session.get(PromotionEvaluation, first.id).promotion_rule_snapshot_json, first_rule_snapshot)
         self.assertEqual(second.final_outcome, "PASS")
 
+    def test_scope_save_evaluates_student_added_after_original_run(self):
+        self._result(self.student, self.exam_a, self.subject_math, 75)
+        first_run = evaluate_promotion_scope(
+            self.year_a.id,
+            self.level_a.id,
+            self.exam_a.id,
+            academic_year_class_id=self.class_a.id,
+            subject_ids=[self.math_a.id],
+            persist=True,
+        )
+        db.session.commit()
+        original_ids = {
+            row["enrollment"].id: row["evaluation"].id
+            for row in first_run["preview_rows"]
+        }
+
+        later_student = Student(
+            student_code="P3C003",
+            full_name="Later Enrolled Student",
+            academic_year_id=self.year_a.id,
+        )
+        db.session.add(later_student)
+        db.session.flush()
+        later_enrollment = StudentEnrollment(
+            student_id=later_student.id,
+            academic_year_id=self.year_a.id,
+            academic_year_level_id=self.level_a.id,
+            academic_year_class_id=self.class_a.id,
+        )
+        db.session.add(later_enrollment)
+        db.session.flush()
+        self._result(later_student, self.exam_a, self.subject_math, 90)
+
+        preview = evaluate_promotion_scope(
+            self.year_a.id,
+            self.level_a.id,
+            self.exam_a.id,
+            academic_year_class_id=self.class_a.id,
+            subject_ids=[self.math_a.id],
+            persist=False,
+        )
+        self.assertEqual(preview["counts"]["not_yet_evaluated"], 1)
+        self.assertEqual(preview["counts"]["already_evaluated"], 2)
+
+        second_run = evaluate_promotion_scope(
+            self.year_a.id,
+            self.level_a.id,
+            self.exam_a.id,
+            academic_year_class_id=self.class_a.id,
+            subject_ids=[self.math_a.id],
+            persist=True,
+        )
+        db.session.commit()
+        self.assertEqual(second_run["counts"]["new_evaluated"], 1)
+        self.assertEqual(PromotionEvaluation.query.count(), 3)
+        for enrollment_id, evaluation_id in original_ids.items():
+            self.assertEqual(
+                latest_promotion_evaluation(
+                    db.session.get(StudentEnrollment, enrollment_id),
+                    exam_id=self.exam_a.id,
+                ).id,
+                evaluation_id,
+            )
+        self.assertIsNotNone(
+            latest_promotion_evaluation(later_enrollment, exam_id=self.exam_a.id)
+        )
+
+    def test_explicit_re_evaluation_creates_new_authoritative_snapshot(self):
+        self._result(self.student, self.exam_a, self.subject_math, 80)
+        first = evaluate_student_promotion(
+            self.enrollment,
+            self._context(subjects=[self.math_a]),
+            persist=True,
+        )
+        db.session.commit()
+        self.assertEqual(first.final_outcome, "PASS")
+
+        result = Result.query.filter_by(
+            student_id=self.student.id,
+            exam_id=self.exam_a.id,
+            subject_id=self.subject_math.id,
+        ).one()
+        result.score = 20
+        db.session.commit()
+
+        preview = evaluate_promotion_scope(
+            self.year_a.id,
+            self.level_a.id,
+            self.exam_a.id,
+            academic_year_class_id=self.class_a.id,
+            subject_ids=[self.math_a.id],
+            persist=False,
+        )
+        row = next(item for item in preview["preview_rows"] if item["enrollment"].id == self.enrollment.id)
+        self.assertEqual(row["state"], "CHANGED")
+        self.assertTrue(evaluation_changed_since(row["existing_evaluation"], row["evaluation"]))
+
+        updated = evaluate_promotion_scope(
+            self.year_a.id,
+            self.level_a.id,
+            self.exam_a.id,
+            academic_year_class_id=self.class_a.id,
+            subject_ids=[self.math_a.id],
+            persist=True,
+            evaluation_mode="reevaluate",
+            reevaluate_enrollment_ids=[self.enrollment.id],
+        )
+        db.session.commit()
+        self.assertEqual(updated["counts"]["reevaluated"], 1)
+        self.assertEqual(PromotionEvaluation.query.count(), 2)
+        latest = latest_promotion_evaluation(self.enrollment, exam_id=self.exam_a.id)
+        self.assertEqual(latest.final_outcome, "FAIL")
+        self.assertEqual(
+            portal_academic_outcome(self.enrollment, exam_id=self.exam_a.id)["label"],
+            "HADHAY",
+        )
+
     def test_evaluation_page_preview_is_read_only(self):
         self._result(self.student, self.exam_a, self.subject_math, 75)
         user = User.query.filter_by(username="admin").first()
@@ -324,7 +444,6 @@ class TestPhase3CPromotionEvaluation(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Enrollment outcomes applied", response.data)
         self.assertIn(b"Evaluation saved successfully", response.data)
         self.assertEqual(self.enrollment.academic_outcome, "pending")
 

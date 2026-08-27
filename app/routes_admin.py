@@ -3140,6 +3140,11 @@ def promotion_rules_evaluate():
         raw_subject_ids = request.form.getlist("subject_ids")
         subject_ids = raw_subject_ids if "subject_ids" in request.form else None
         action = request.form.get("action", "preview")
+        if action == "execute":
+            # Keep older bookmarked/forms compatible with the new explicit
+            # default mode.
+            action = "execute_new"
+        reevaluate_enrollment_ids = request.form.getlist("reevaluate_enrollment_ids")
     else:
         year_id = request.args.get("year_id", type=int)
         level_id = request.args.get("level_id", type=int)
@@ -3147,12 +3152,14 @@ def promotion_rules_evaluate():
         class_id = request.args.get("class_id", type=int)
         subject_ids = request.args.getlist("subject_id") or None
         action = "preview" if request.args.get("preview") else None
+        reevaluate_enrollment_ids = []
 
     page_data = _promotion_evaluation_page_data(year_id, level_id, exam_id, class_id)
     preview_result = None
     error_message = None
+    warning_message = None
     save_confirmed = False
-    if action in {"preview", "execute"}:
+    if action in {"preview", "execute_new", "reevaluate_selected"}:
         try:
             if not page_data["selected_year_id"]:
                 raise PromotionValidationError("Academic Year is required. Select the year whose enrollments should be evaluated.")
@@ -3168,43 +3175,72 @@ def promotion_rules_evaluate():
                 exam_id,
                 academic_year_class_id=class_id,
                 subject_ids=subject_ids,
-                persist=action == "execute",
+                persist=action != "preview",
+                evaluation_mode="reevaluate" if action == "reevaluate_selected" else "new",
+                reevaluate_enrollment_ids=reevaluate_enrollment_ids,
             )
-            if action == "execute":
+            if action in {"execute_new", "reevaluate_selected"}:
                 counts = preview_result["counts"]
-                if counts["eligible"] == 0:
+                if action == "reevaluate_selected" and counts["reevaluated"] == 0:
+                    raise PromotionValidationError(
+                        "Select at least one previously evaluated student to re-evaluate."
+                    )
+                if action == "execute_new" and counts["new_evaluated"] == 0:
+                    db.session.rollback()
+                    warning_message = (
+                        "There are no new students to evaluate. Previously evaluated students were not changed."
+                    )
+                elif counts["eligible"] == 0:
                     raise PromotionValidationError(
                         "No eligible StudentEnrollments were found for the selected Academic Year + Level + Class scope."
                     )
-                if page_data["selected_exam"].is_final_evaluation and (
-                    counts["incomplete"] or counts["invalid"]
+                elif page_data["selected_exam"].is_final_evaluation and (
+                    counts["save_incomplete"] or counts["save_invalid"]
                 ):
                     raise PromotionValidationError(
                         "Evaluation was not saved because the selected final scope contains "
-                        f"{counts['incomplete']} incomplete and {counts['invalid']} invalid enrollment(s). "
+                        f"{counts['save_incomplete']} incomplete and {counts['save_invalid']} invalid enrollment(s). "
                         "Complete the required results and correct invalid data, then try again."
                     )
-                audit(
-                    "Promotion Evaluation",
-                    f"Evaluated {counts['evaluated']} students for exam {exam_id}",
-                )
-                db.session.commit()
-                verify_committed_evaluation_scope(
-                    preview_result,
-                    require_final_outcomes=page_data["selected_exam"].is_final_evaluation,
-                )
-                save_confirmed = True
-                flash(
-                    "Evaluation saved successfully: "
-                    f"{counts['evaluated']} evaluated; "
-                    f"{counts['pass']} GUDBAY / {counts['fail']} HADHAY; "
-                    f"{counts['outcomes_confirmed']} matching academic outcome(s) confirmed. "
-                    "Apply Outcomes is now available for this exact Final Evaluation." if page_data["selected_exam"].is_final_evaluation else
-                    "Session evaluation saved successfully: "
-                    f"{counts['evaluated']} evaluated; {counts['pass']} GUDBAY / {counts['fail']} HADHAY. "
-                    "This non-final exam-specific GUDBAY/HADHAY outcome was saved for the portal; enrollment transitions were not changed.",
-                    "success",
-                )
+                else:
+                    audit(
+                        "Promotion Evaluation",
+                        f"Evaluated {counts['new_evaluated']} new and {counts['reevaluated']} re-evaluated students for exam {exam_id}",
+                    )
+                    for row in preview_result["reevaluated_rows"]:
+                        previous = row["existing_evaluation"]
+                        current = row["evaluation"]
+                        audit(
+                            "Promotion Evaluation Re-evaluation",
+                            f"Student {row['student'].student_code}; scope year={current.academic_year_id}, level={current.academic_year_level_id}, exam={current.exam_id}; "
+                            f"previous outcome={previous.final_outcome or previous.evaluation_status} at {previous.evaluated_at.isoformat()}; "
+                            f"new outcome={current.final_outcome or current.evaluation_status} at {current.evaluated_at.isoformat()}",
+                        )
+                    db.session.commit()
+                    verify_committed_evaluation_scope(
+                        preview_result,
+                        require_final_outcomes=page_data["selected_exam"].is_final_evaluation,
+                    )
+                    save_confirmed = True
+                    if action == "reevaluate_selected":
+                        flash(
+                            "Re-evaluation completed successfully: "
+                            f"{counts['reevaluated']} student evaluation(s) updated; previous snapshots remain in history.",
+                            "success",
+                        )
+                    else:
+                        flash(
+                            "Evaluation saved successfully: "
+                            f"{counts['new_evaluated']} new student(s) evaluated; "
+                            f"{counts['pass']} GUDBAY / {counts['fail']} HADHAY. "
+                            "Previously evaluated students were not changed." if not page_data["selected_exam"].is_final_evaluation else
+                            "Evaluation saved successfully: "
+                            f"{counts['new_evaluated']} new student(s) evaluated; "
+                            f"{counts['pass']} GUDBAY / {counts['fail']} HADHAY; "
+                            f"{counts['outcomes_confirmed']} matching academic outcome(s) confirmed. "
+                            "Apply Outcomes is now available for this exact Final Evaluation.",
+                            "success",
+                        )
         except (PromotionValidationError, ValueError) as exc:
             db.session.rollback()
             error_message = str(exc)
@@ -3219,11 +3255,14 @@ def promotion_rules_evaluate():
             preview_result = None
     if error_message:
         flash(error_message, "danger")
+    if warning_message:
+        flash(warning_message, "info")
     return render_template(
         "admin/promotion_rules_evaluate.html",
         **page_data,
         preview_result=preview_result,
         error_message=error_message,
+        warning_message=warning_message,
         save_confirmed=save_confirmed,
         rules_enabled=promotion_rules_enabled(),
     )
