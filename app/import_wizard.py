@@ -558,23 +558,35 @@ def process_student_import(file):
             row_results.append({"row": row_idx, "status": "invalid", "detail": "; ".join(row_errors)})
         else:
             year_obj = existing_years[academic_year]
-            level_candidates = AcademicYearLevel.query.filter(
+            # Import only from the currently usable year-aware setup records.
+            # Archived rows must not make an otherwise valid class ambiguous.
+            level_query = AcademicYearLevel.query.filter(
                 AcademicYearLevel.academic_year_id == year_obj.id,
-                AcademicYearLevel.name.ilike(academic_level_name) if academic_level_name else AcademicYearLevel.id > 0,
-            ).all()
+                AcademicYearLevel.is_active.is_(True),
+            )
+            if academic_level_name:
+                level_query = level_query.filter(AcademicYearLevel.name.ilike(academic_level_name))
+            level_candidates = level_query.all()
             if not academic_level_name:
-                level_candidates = AcademicYearLevel.query.filter_by(academic_year_id=year_obj.id).all()
+                level_candidates = AcademicYearLevel.query.filter_by(
+                    academic_year_id=year_obj.id,
+                    is_active=True,
+                ).all()
             class_candidates = []
             if academic_level_name:
                 class_candidates = AcademicYearClass.query.join(AcademicYearLevel).filter(
                     AcademicYearLevel.academic_year_id == year_obj.id,
+                    AcademicYearLevel.is_active.is_(True),
                     AcademicYearLevel.name.ilike(academic_level_name),
                     AcademicYearClass.name.ilike(class_name),
+                    AcademicYearClass.is_active.is_(True),
                 ).all()
             else:
                 class_candidates = AcademicYearClass.query.join(AcademicYearLevel).filter(
                     AcademicYearLevel.academic_year_id == year_obj.id,
+                    AcademicYearLevel.is_active.is_(True),
                     AcademicYearClass.name.ilike(class_name),
+                    AcademicYearClass.is_active.is_(True),
                 ).all()
             if len(class_candidates) != 1:
                 row_errors.append(
