@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Incident Report Submitted{% endblock %}
+{% block title %}Warbixinta Dhacdada si Guul leh baa loo gudbiyey{% endblock %}
 {% block body_class %}public-body incident-success-body{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/incident-success.css') }}">
@@ -10,54 +10,54 @@
     <div class="success-icon">
       <i class="fa-solid fa-circle-check"></i>
     </div>
-    <h1>Incident Report Submitted Successfully</h1>
-    <p class="subtitle">Your report has been recorded and will be reviewed by administration.</p>
+    <h1>Warbixinta Dhacdada si Guul leh baa loo gudbiyey.</h1>
+    <p class="subtitle">Warbixintaada wey gaadhey xafiiska Imtixaannada Dugsiga, isla markaana waxaa dib-u-eegis ku sameynaya maamulka/guddiga imtixaannada.</p>
 
     <div class="report-details">
       <div class="detail-row">
-        <span class="label">Report Number:</span>
+        <span class="label">Lambarka Warbixinta</span>
         <span class="value">{{ report.report_number }}</span>
       </div>
       <div class="detail-row">
-        <span class="label">Student:</span>
+        <span class="label">Ardeyga</span>
         <span class="value">{{ student.full_name }}</span>
       </div>
       <div class="detail-row">
-        <span class="label">Student ID:</span>
+        <span class="label">Tira-taxanaha</span>
         <span class="value">{{ student.student_code }}</span>
       </div>
       <div class="detail-row">
-        <span class="label">Categories:</span>
-        <span class="value">{{ report.selected_categories|map(attribute='name')|join(', ') or 'N/A' }}</span>
+        <span class="label">Qodobada</span>
+        <span class="value">{{ report.selected_categories|map(attribute='name')|join(', ') or 'Lama hayo' }}</span>
       </div>
       <div class="detail-row">
-        <span class="label">Severity:</span>
+        <span class="label">Heerka Cakkirnaanta</span>
         <span class="value severity-badge" style="background: {{ report.severity.color if report.severity else '#64748b' }}; color: white;">
-          {{ report.severity.name if report.severity else 'N/A' }}
+          {{ report.severity.name if report.severity else 'Lama hayo' }}
         </span>
       </div>
       <div class="detail-row">
-        <span class="label">Status:</span>
-        <span class="value status-badge">{{ report.status }}</span>
+        <span class="label">Xaaladda</span>
+        <span class="value status-badge">{{ 'la gudbiyey' if report.status and report.status|lower == 'submitted' else (report.status or 'Lama hayo') }}</span>
       </div>
       <div class="detail-row">
-        <span class="label">Submitted:</span>
-        <span class="value">{{ report.created_at.strftime('%B %d, %Y at %I:%M %p') }}</span>
+        <span class="label">la gudbiyey</span>
+        <span class="value">{{ report.created_at.strftime('%d/%m/%Y, %I:%M %p') }}</span>
       </div>
     </div>
 
     <div class="success-actions">
       <a href="{{ url_for('public.qr_landing', token=token) }}" class="btn-primary">
-        <i class="fa-solid fa-qrcode"></i> Scan Another QR Code
+        <i class="fa-solid fa-qrcode"></i> Scan gareey QR Code kale.
       </a>
       <a href="{{ url_for('invigilator.logout') }}" class="btn-secondary">
-        <i class="fa-solid fa-sign-out-alt"></i> Logout
+        <i class="fa-solid fa-sign-out-alt"></i> Ka bax Gebi ahaan halakan
       </a>
     </div>
 
     <div class="note">
       <i class="fa-solid fa-info-circle"></i>
-      <p>You will be notified when the administration reviews this report.</p>
+      <p>Waad ogaan doontaa markii dhacdadan dib-u-eegis lagu sameeyo. MAHADSANID!</p>
     </div>
   </div>
 </div>

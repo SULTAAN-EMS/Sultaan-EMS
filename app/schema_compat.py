@@ -134,6 +134,10 @@ def ensure_schema_compatibility():
     # unexpected duplicates is left untouched rather than partially migrated.
     ensure_phase4a_promotion_rule_scope()
 
+    # Central exam full-mark defaults.  This is additive and idempotent; the
+    # model table is created without rewriting any existing result records.
+    ensure_exam_marking_configuration_table()
+
     # Update teacher_classes foreign key to reference academic_classes instead of school_classes
     # This requires manual migration for existing data
 
@@ -143,6 +147,17 @@ def ensure_schema_compatibility():
     sync_all_model_columns()
     seed_legacy_student_genders()
     remove_obsolete_subject_short_name_settings()
+
+
+def ensure_exam_marking_configuration_table():
+    """Create the central scoped marking configuration on older databases."""
+    try:
+        from .models import ExamMarkingConfiguration
+
+        ExamMarkingConfiguration.__table__.create(bind=db.engine, checkfirst=True)
+    except Exception as exc:
+        db.session.rollback()
+        print(f"Warning: exam marking configuration schema sync failed: {exc}")
 
 
 def ensure_phase4c_student_year_nullable():

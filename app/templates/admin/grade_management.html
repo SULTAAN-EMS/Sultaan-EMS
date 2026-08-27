@@ -67,6 +67,57 @@
       </div>
     {% endif %}
 
+    <section class="rh-table-card" style="padding: 24px; margin-bottom: 24px; border-radius: 16px; border-left: 5px solid #2563eb; background: linear-gradient(135deg, #eff6ff, #ffffff 58%);">
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px;">
+        <div>
+          <h2 style="margin:0; color:var(--navy); font-size:1.25rem; display:flex; align-items:center; gap:9px;"><i class="fa-solid fa-scale-balanced" style="color:#2563eb;"></i> Exam Marking Configuration</h2>
+          <p style="margin:6px 0 0; color:var(--slate); max-width:720px;">Set the default maximum mark for every subject in one exact Academic Year, Academic Level, and Exam Type context.</p>
+        </div>
+        {% if marking_configuration %}
+          <span style="display:inline-flex; align-items:center; gap:6px; padding:7px 11px; border-radius:999px; background:#dcfce7; color:#166534; font-weight:700; font-size:.82rem;"><i class="fa-solid fa-circle-check"></i> Configured</span>
+        {% else %}
+          <span style="display:inline-flex; align-items:center; gap:6px; padding:7px 11px; border-radius:999px; background:#fef3c7; color:#92400e; font-weight:700; font-size:.82rem;"><i class="fa-solid fa-circle-info"></i> Not configured</span>
+        {% endif %}
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:14px; margin-bottom:18px;">
+        <div style="background:#fff; border:1px solid #dbeafe; border-radius:12px; padding:13px 15px;"><small style="display:block; color:var(--slate); font-weight:700; text-transform:uppercase; font-size:.72rem;">Academic Year</small><strong style="display:block; margin-top:4px; color:var(--navy);">{{ selected_year.name if selected_year else 'Select a year' }}</strong></div>
+        <div style="background:#fff; border:1px solid #dbeafe; border-radius:12px; padding:13px 15px;"><small style="display:block; color:var(--slate); font-weight:700; text-transform:uppercase; font-size:.72rem;">Academic Level</small><strong style="display:block; margin-top:4px; color:var(--navy);">{{ selected_year_level.name if selected_year_level else 'Select a level' }}</strong></div>
+        <div style="background:#fff; border:1px solid #dbeafe; border-radius:12px; padding:13px 15px;"><small style="display:block; color:var(--slate); font-weight:700; text-transform:uppercase; font-size:.72rem;">Exam Type</small><strong style="display:block; margin-top:4px; color:var(--navy);">{{ selected_exam.name if selected_exam else 'Select an exam' }}</strong></div>
+      </div>
+
+      <form method="POST" action="{{ url_for('admin_advanced_results.save_marking_configuration') }}" style="display:grid; grid-template-columns:minmax(220px, 300px) 1fr; gap:16px; align-items:end;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="year_id" value="{{ selected_year.id if selected_year else '' }}">
+        <input type="hidden" name="exam_id" value="{{ selected_exam.id if selected_exam else '' }}">
+        <input type="hidden" name="level_id" value="{{ selected_level_id or '' }}">
+        <label style="color:var(--navy); font-weight:700;">Default Full Marks
+          <input class="rh-input" type="number" name="default_full_marks" min="0.001" step="0.001" required value="{{ marking_max_score|academic_number(settings) if marking_max_score else '' }}" placeholder="e.g. 9.00" style="display:block; width:100%; margin-top:7px; background:#fff;">
+        </label>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
+          <span style="color:var(--slate); font-size:.86rem;"><i class="fa-solid fa-circle-info" style="color:#2563eb;"></i> Applies only to this exact context.</span>
+          <button class="rh-btn primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save Configuration</button>
+        </div>
+      </form>
+
+      {% if selected_exam and selected_year_level %}
+        <div style="margin-top:20px; border-top:1px solid #dbeafe; padding-top:16px;">
+          <h3 style="margin:0 0 10px; color:var(--navy); font-size:1rem;"><i class="fa-solid fa-book-open" style="color:#2563eb;"></i> Affected Subjects</h3>
+          {% if marking_subjects %}
+            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:8px;">
+              {% for subject in marking_subjects %}
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:9px 11px; border:1px solid #dbeafe; border-radius:9px; background:#fff;"><span style="font-weight:650; color:var(--navy);">{{ subject.name }}</span><strong style="color:#1d4ed8; white-space:nowrap;">{{ marking_max_score|academic_number(settings) if marking_max_score else subject.max_score|academic_number(settings) }}</strong></div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p style="margin:0; color:var(--slate);">No subjects are configured for this year-aware level.</p>
+          {% endif %}
+        </div>
+      {% else %}
+        <p style="margin:18px 0 0; color:var(--slate);"><i class="fa-solid fa-filter-circle-xmark"></i> Select a matching Academic Year, Level, and Exam Type above to configure full marks.</p>
+      {% endif %}
+    </section>
+
     <form method="POST" action="{{ url_for('admin_advanced_results.save_grade_scales') }}" class="rh-table-card grade-scale-card">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="year_id" value="{{ selected_year.id if selected_year else '' }}">
@@ -316,4 +367,10 @@ function generateScaleAction() {
   form.submit();
 }
 </script>
+<style>
+@media (max-width: 760px) {
+  .rh-screen form[method="POST"][action*="save-marking-config"] { grid-template-columns: 1fr !important; }
+  .rh-screen section[style*="grid-template-columns:repeat(3"] { grid-template-columns: 1fr !important; }
+}
+</style>
 {% endblock %}

@@ -6,8 +6,9 @@
 
 <div class="promotion-page">
   <header class="promotion-hero">
-    <div>
-      <span class="promotion-eyebrow"><i class="fa-solid fa-scale-balanced"></i> Academic progression</span>
+    <span class="promotion-hero__seal" aria-hidden="true"><i class="fa-solid fa-shield-halved"></i><b>EMS</b></span>
+    <div class="promotion-hero__copy">
+      <span class="promotion-eyebrow"><i class="fa-solid fa-scale-balanced"></i> Academic progression policy</span>
       <h1>Promotion Rules</h1>
       <p>Manage year-aware promotion policies without changing historical results or enrollment history.</p>
     </div>
@@ -32,6 +33,7 @@
     <article class="promotion-stat promotion-stat--navy"><i class="fa-solid fa-list-check"></i><strong>{{ total_rules }}</strong><span>Total rules</span></article>
     <article class="promotion-stat promotion-stat--teal"><i class="fa-solid fa-circle-check"></i><strong>{{ active_rules }}</strong><span>Active rules</span></article>
     <article class="promotion-stat promotion-stat--gold"><i class="fa-solid fa-clock-rotate-left"></i><strong>{{ evaluation_count }}</strong><span>Saved evaluations</span></article>
+    <article class="promotion-stat promotion-stat--red"><i class="fa-solid fa-shield-halved"></i><strong>{{ rules|length }}</strong><span>Exam scopes</span></article>
   </section>
 
   <section class="promotion-section promotion-section--operations">
@@ -94,7 +96,7 @@
   <section class="promotion-section">
     <div class="promotion-section__header">
       <div><span class="promotion-kicker"><i class="fa-solid fa-layer-group"></i> Exam-aware configuration</span><h2>Rules by Academic Year, Level, and Exam</h2><p>Each row is isolated to one Academic Year + Academic Year Level + Exam Type scope.</p></div>
-      <div class="promotion-header-actions"><a class="promotion-button promotion-button--ghost" href="{{ url_for('admin.promotion_rules_evaluate') }}"><i class="fa-solid fa-play"></i> Evaluate Outcome</a><a class="promotion-button promotion-button--ghost" href="{{ url_for('admin.promotion_rules_bulk_transition') }}"><i class="fa-solid fa-route"></i> Apply Outcomes</a><a class="promotion-button promotion-button--primary" href="{{ url_for('admin.promotion_rules_configure') }}"><i class="fa-solid fa-plus"></i> Configure Rule</a></div>
+      <div class="promotion-header-actions"><a class="promotion-button promotion-button--ghost" href="{{ url_for('admin.promotion_rules_evaluate') }}"><i class="fa-solid fa-play"></i> Evaluate Outcome</a><a class="promotion-button promotion-button--ghost" href="{{ url_for('admin.promotion_rules_bulk_transition') }}"><i class="fa-solid fa-route"></i> Apply Outcomes</a><a class="promotion-button promotion-button--primary" href="#newRuleModal" data-new-rule-trigger><i class="fa-solid fa-plus"></i> Configure Rule</a></div>
     </div>
     {% if rules %}
     <div class="promotion-table-wrap">
@@ -116,7 +118,7 @@
       </table>
     </div>
     {% else %}
-    <div class="promotion-empty"><i class="fa-solid fa-sliders"></i><strong>No promotion rule configured yet.</strong><span>Choose an Academic Year and Level to create the first scoped rule.</span><a class="promotion-button promotion-button--primary" href="{{ url_for('admin.promotion_rules_configure') }}">Start configuration</a></div>
+    <div class="promotion-empty"><i class="fa-solid fa-sliders"></i><strong>No promotion rule configured yet.</strong><span>Choose an Academic Year and Level to create the first scoped rule.</span><a class="promotion-button promotion-button--primary" href="#newRuleModal" data-new-rule-trigger>Start configuration</a></div>
     {% endif %}
   </section>
 
@@ -131,4 +133,144 @@
     {% else %}<div class="promotion-empty promotion-empty--small"><i class="fa-solid fa-clock-rotate-left"></i><span>No evaluation snapshots have been recorded.</span></div>{% endif %}
   </section>
 </div>
+<div class="promotion-modal-shell modal-shell" id="newRuleModal" aria-hidden="true">
+  <div class="promotion-modal-box modal-box" role="dialog" aria-modal="true" aria-labelledby="newRuleTitle">
+    <form method="post" action="{{ url_for('admin.promotion_rules_configure') }}" id="newRuleForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="promotion-modal-content">
+        <div class="promotion-modal-header">
+          <div class="promotion-modal-heading">
+            <span class="promotion-modal-icon"><i class="fa-solid fa-plus"></i></span>
+            <div><span class="promotion-kicker">Year-aware policy</span><h2 id="newRuleTitle">Create promotion rule</h2><p>Scoped to one Academic Year + Level + Exam. Non-final rules never authorize promotion on their own.</p></div>
+          </div>
+          <button class="promotion-modal-close close-btn" type="button" data-modal-close aria-label="Close Create promotion rule"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="promotion-modal-scope-grid" data-scope-url="{{ url_for('admin.promotion_rules_scope_data') }}">
+          <label class="promotion-modal-field"><span><i class="fa-regular fa-calendar"></i> Academic year</span><select id="modalYearSelect" name="academic_year_id" required>{% for year in years %}<option value="{{ year.id }}" {% if selected_year_id == year.id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}</select></label>
+          <label class="promotion-modal-field"><span><i class="fa-solid fa-layer-group"></i> Academic level</span><select id="modalLevelSelect" name="academic_year_level_id" required><option value="">Select level</option>{% for level in levels %}<option value="{{ level.id }}" {% if selected_level_id == level.id %}selected{% endif %}>{{ level.name }}</option>{% endfor %}</select></label>
+          <label class="promotion-modal-field"><span><i class="fa-solid fa-file-signature"></i> Exam type</span><select id="modalExamSelect" name="exam_id" required><option value="">Select exam</option>{% for exam in exams %}<option value="{{ exam.id }}" {% if selected_exam_id == exam.id %}selected{% endif %}>{{ exam.name }}{% if exam.is_final_evaluation %} · Final{% endif %}</option>{% endfor %}</select></label>
+        </div>
+
+        <label class="promotion-modal-active"><input type="checkbox" name="is_active" value="1" {% if not modal_rule or modal_rule.is_active %}checked{% endif %}><span class="promotion-modal-toggle" aria-hidden="true"></span><span><strong>Rule is active</strong><small>Enable this scoped rule for future evaluations.</small></span></label>
+
+        <div class="promotion-modal-thresholds">
+          <div class="promotion-modal-threshold"><div><span>Overall pass threshold</span><strong id="modalOverallValue">{{ modal_rule.overall_pass_threshold if modal_rule else 50 }}%</strong></div><div class="promotion-modal-range"><span class="promotion-modal-range-fill" id="modalOverallFill"></span><input id="modalOverallRange" type="range" name="overall_pass_threshold" min="0" max="100" step="0.01" value="{{ modal_rule.overall_pass_threshold if modal_rule else 50 }}" aria-label="Overall pass threshold"></div><small><span>0%</span><span>100%</span></small></div>
+          <div class="promotion-modal-threshold promotion-modal-threshold--violet"><div><span>Critical subject threshold</span><strong id="modalCriticalValue">{{ modal_rule.critical_subject_pass_threshold if modal_rule else 50 }}%</strong></div><div class="promotion-modal-range"><span class="promotion-modal-range-fill" id="modalCriticalFill"></span><input id="modalCriticalRange" type="range" name="critical_subject_pass_threshold" min="0" max="100" step="0.01" value="{{ modal_rule.critical_subject_pass_threshold if modal_rule else 50 }}" aria-label="Critical subject pass threshold"></div><small><span>0%</span><span>100%</span></small></div>
+        </div>
+
+        <div class="promotion-modal-subject-heading"><div><span class="promotion-kicker"><i class="fa-solid fa-flag"></i> Critical subjects</span><p>Mark subjects that must meet the critical threshold.</p></div><b id="modalCriticalCount">{{ modal_selected_subject_ids|length }} selected</b></div>
+        <div class="promotion-modal-subject-grid" id="modalSubjectGrid">
+          {% for subject in modal_subjects %}<label class="promotion-modal-subject {% if subject.id in modal_selected_subject_ids %}is-critical{% endif %}"><input type="checkbox" name="critical_subject_ids" value="{{ subject.id }}" {% if subject.id in modal_selected_subject_ids %}checked{% endif %}><span class="promotion-modal-subject-icon"><i class="fa-solid fa-book-open"></i><i class="fa-solid fa-flag"></i></span><span class="promotion-modal-subject-name">{{ subject.name }}</span><small>Max {{ '%.3f'|format(modal_subject_maxima.get(subject.id, subject.max_score)|float) }}</small></label>{% else %}<div class="promotion-empty promotion-empty--small"><i class="fa-solid fa-book-open"></i><span>Select an Academic Year and Level on the dashboard first to load valid subjects.</span></div>{% endfor %}
+        </div>
+
+        <div class="promotion-modal-actions"><button class="promotion-button promotion-button--ghost" type="button" data-modal-close>Cancel</button><button class="promotion-button promotion-button--primary" type="submit"><i class="fa-solid fa-check"></i> Create rule</button></div>
+      </div>
+    </form>
+  </div>
+</div>
+{% include "admin/_promotion_feedback.html" %}
+<script>
+(() => {
+  const modal = document.getElementById('newRuleModal');
+  if (!modal) return;
+  const closeButtons = modal.querySelectorAll('[data-modal-close]');
+  const openModal = (event) => {
+    if (event) event.preventDefault();
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('promotion-modal-open');
+    const field = modal.querySelector('select');
+    if (field) window.setTimeout(() => field.focus(), 40);
+  };
+  const closeModal = () => {
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('promotion-modal-open');
+  };
+  document.querySelectorAll('[data-new-rule-trigger]').forEach((trigger) => trigger.addEventListener('click', openModal));
+  closeButtons.forEach((button) => button.addEventListener('click', closeModal));
+  modal.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && modal.classList.contains('show')) closeModal(); });
+
+  const bindRange = (id, valueId, fillId) => {
+    const range = document.getElementById(id);
+    const value = document.getElementById(valueId);
+    const fill = document.getElementById(fillId);
+    if (!range || !value || !fill) return;
+    const update = () => { value.textContent = `${Number(range.value).toFixed(2).replace(/\.00$/, '')}%`; fill.style.width = `${range.value}%`; };
+    range.addEventListener('input', update);
+    update();
+  };
+  bindRange('modalOverallRange', 'modalOverallValue', 'modalOverallFill');
+  bindRange('modalCriticalRange', 'modalCriticalValue', 'modalCriticalFill');
+  const scopeGrid = modal.querySelector('[data-scope-url]');
+  const yearSelect = document.getElementById('modalYearSelect');
+  const levelSelect = document.getElementById('modalLevelSelect');
+  const examSelect = document.getElementById('modalExamSelect');
+  const subjectGrid = document.getElementById('modalSubjectGrid');
+  const subjectCount = document.getElementById('modalCriticalCount');
+  const overallRange = document.getElementById('modalOverallRange');
+  const criticalRange = document.getElementById('modalCriticalRange');
+  const activeInput = modal.querySelector('input[name="is_active"]');
+  const option = (value, label) => { const item = document.createElement('option'); item.value = value; item.textContent = label; return item; };
+  const renderSubjects = (subjects, criticalIds = []) => {
+    subjectGrid.replaceChildren();
+    if (!subjects.length) {
+      const empty = document.createElement('div'); empty.className = 'promotion-empty promotion-empty--small'; empty.innerHTML = '<i class="fa-solid fa-book-open"></i><span>No active subjects belong to this Academic Year + Level.</span>'; subjectGrid.append(empty); subjectCount.textContent = '0 selected'; return;
+    }
+    const selected = new Set(criticalIds.map(Number));
+    subjects.forEach((subject) => {
+      const label = document.createElement('label'); label.className = `promotion-modal-subject${selected.has(Number(subject.id)) ? ' is-critical' : ''}`;
+      label.innerHTML = `<input type="checkbox" name="critical_subject_ids" value="${subject.id}" ${selected.has(Number(subject.id)) ? 'checked' : ''}><span class="promotion-modal-subject-icon"><i class="fa-solid fa-book-open"></i><i class="fa-solid fa-flag"></i></span><span class="promotion-modal-subject-name"></span><small></small>`;
+      label.querySelector('.promotion-modal-subject-name').textContent = subject.name;
+      label.querySelector('small').textContent = `Max ${Number(subject.max_score || 0).toFixed(3)}`;
+      subjectGrid.append(label);
+    });
+    subjectCount.textContent = `${selected.size} selected`;
+  };
+  const applyRule = (rule) => {
+    if (!rule) return;
+    overallRange.value = rule.overall_pass_threshold;
+    criticalRange.value = rule.critical_subject_pass_threshold;
+    if (activeInput) activeInput.checked = rule.is_active;
+    overallRange.dispatchEvent(new Event('input'));
+    criticalRange.dispatchEvent(new Event('input'));
+  };
+  const loadScope = async () => {
+    if (!scopeGrid || !yearSelect || !levelSelect || !examSelect) return;
+    const params = new URLSearchParams({ year_id: yearSelect.value });
+    if (levelSelect.value) params.set('level_id', levelSelect.value);
+    if (examSelect.value) params.set('exam_id', examSelect.value);
+    levelSelect.disabled = true; examSelect.disabled = true;
+    try {
+      const response = await fetch(`${scopeGrid.dataset.scopeUrl}?${params}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) throw new Error(payload.message || 'Scope data could not be loaded.');
+      const previousLevel = levelSelect.value;
+      const previousExam = examSelect.value;
+      levelSelect.replaceChildren(option('', 'Select level'));
+      payload.levels.forEach((level) => levelSelect.append(option(level.id, level.name)));
+      levelSelect.value = payload.levels.some((level) => String(level.id) === previousLevel) ? previousLevel : '';
+      examSelect.replaceChildren(option('', 'Select exam'));
+      payload.exams.forEach((exam) => examSelect.append(option(exam.id, `${exam.name}${exam.is_final_evaluation ? ' · Final' : ''}`)));
+      examSelect.value = payload.exams.some((exam) => String(exam.id) === previousExam) ? previousExam : '';
+      renderSubjects(payload.subjects, payload.rule?.critical_subject_ids || []);
+      applyRule(payload.rule);
+    } catch (error) {
+      renderSubjects([], []);
+      subjectCount.textContent = 'Unable to load';
+      console.error('Promotion Rule modal scope load failed:', error);
+    } finally { levelSelect.disabled = false; examSelect.disabled = false; }
+  };
+  yearSelect?.addEventListener('change', () => { levelSelect.value = ''; examSelect.value = ''; loadScope(); });
+  levelSelect?.addEventListener('change', loadScope);
+  examSelect?.addEventListener('change', loadScope);
+  subjectGrid?.addEventListener('change', () => {
+    const inputs = [...subjectGrid.querySelectorAll('input[type="checkbox"]')];
+    inputs.forEach((input) => input.closest('.promotion-modal-subject')?.classList.toggle('is-critical', input.checked));
+    subjectCount.textContent = `${inputs.filter((input) => input.checked).length} selected`;
+  });
+})();
+</script>
 {% endblock %}

@@ -25,6 +25,8 @@ from .services import (
     get_settings,
     grade_for,
     result_payload,
+    resolve_subject_max_score,
+    resolved_subject_maxima,
     result_success_overlay_settings as get_result_success_overlay_settings,
     result_success_overlay_labels,
     result_success_position_tier,
@@ -424,11 +426,18 @@ def results():
 def save_results():
     student = db.session.get(Student, int(request.form["student_id"])) or abort_404()
     exam = db.session.get(Exam, int(request.form["exam_id"])) or abort_404()
+    placement = enrollment_placement_for_student(student, exam.academic_year_id) or {}
     for subject in Subject.query.order_by(Subject.sort_order, Subject.name).all():
         raw = request.form.get(f"subject_{subject.id}", "").strip()
         if raw == "":
             continue
-        score = max(0, min(float(raw), float(subject.max_score)))
+        max_score = resolve_subject_max_score(
+            subject,
+            exam=exam,
+            academic_year_level_id=placement.get("academic_year_level_id"),
+            academic_level_id=placement.get("academic_level_id"),
+        )
+        score = max(0, min(float(raw), float(max_score)))
         result = Result.query.filter_by(student_id=student.id, exam_id=exam.id, subject_id=subject.id).first() or Result(
             student=student, exam=exam, subject=subject
         )
@@ -457,6 +466,7 @@ def edit_result_set(student_id, exam_id):
     exam = db.session.get(Exam, exam_id) or abort_404()
     subjects = Subject.query.order_by(Subject.sort_order, Subject.name).all()
     existing = {row.subject_id: row for row in Result.query.filter_by(student_id=student.id, exam_id=exam.id).all()}
+    placement = enrollment_placement_for_student(student, exam.academic_year_id) or {}
     if request.method == "POST":
         changes = []
         for subject in subjects:
@@ -464,7 +474,13 @@ def edit_result_set(student_id, exam_id):
             result = existing.get(subject.id)
             if raw == "":
                 continue
-            score = max(0, min(float(raw), float(subject.max_score)))
+            max_score = resolve_subject_max_score(
+                subject,
+                exam=exam,
+                academic_year_level_id=placement.get("academic_year_level_id"),
+                academic_level_id=placement.get("academic_level_id"),
+            )
+            score = max(0, min(float(raw), float(max_score)))
             if not result:
                 result = Result(student=student, exam=exam, subject=subject)
             old_score = float(result.score) if result.id and result.score is not None else None
@@ -482,10 +498,25 @@ def edit_result_set(student_id, exam_id):
         flash("Result changes saved. Totals, averages, grades, and status recalculated automatically.", "success")
         return redirect(url_for("admin.edit_result_set", student_id=student.id, exam_id=exam.id))
     payload = result_payload(student, exam=exam, public_only=False)
+    subject_maxima = {
+        subject.id: resolve_subject_max_score(
+            subject,
+            exam=exam,
+            academic_year_level_id=placement.get("academic_year_level_id"),
+            academic_level_id=placement.get("academic_level_id"),
+        )
+        for subject in subjects
+    }
     subject_previews = {}
     for subject in subjects:
         row = existing.get(subject.id)
-        percentage = round(float(row.score) / float(subject.max_score) * 100, 2) if row and subject.max_score else 0
+        max_score = resolve_subject_max_score(
+            subject,
+            exam=exam,
+            academic_year_level_id=placement.get("academic_year_level_id"),
+            academic_level_id=placement.get("academic_level_id"),
+        )
+        percentage = round(float(row.score) / float(max_score) * 100, 2) if row and max_score else 0
         subject_previews[subject.id] = grade_for(percentage)
     return render_template(
         "admin/result_edit.html",
@@ -494,6 +525,7 @@ def edit_result_set(student_id, exam_id):
         subjects=subjects,
         existing=existing,
         subject_previews=subject_previews,
+        subject_maxima=subject_maxima,
         payload=payload,
         scales=GradeScale.query.order_by(GradeScale.min_score.desc()).all(),
     )
@@ -529,8 +561,15 @@ def admin_print_report(student_id, exam_id):
 
     payload["verification"] = verification_payload(student, exam)
     payload["generated_at"] = datetime.now()
+    from .routes_public import feedback_access_token, public_result_scope
+
     db.session.commit()
-    return render_template("print_report.html", result=payload)
+    return render_template(
+        "print_report.html",
+        result=payload,
+        result_scope=public_result_scope(student, exam),
+        feedback_token=feedback_access_token(student, exam),
+    )
 
 
 @admin_bp.route("/classes", methods=["GET", "POST"])
@@ -2736,6 +2775,9 @@ def promotion_rules_dashboard():
         .order_by(Exam.sort_order, Exam.name, Exam.id).all()
         if selected_year_id else []
     )
+    selected_exam = next((exam for exam in exams if exam.id == selected_exam_id), None)
+    if selected_exam_id and selected_exam is None:
+        selected_exam_id = None
     if selected_exam_id and not any(exam.id == selected_exam_id for exam in exams):
         selected_exam_id = None
     summary = None
@@ -2754,6 +2796,23 @@ def promotion_rules_dashboard():
         PromotionRule.academic_year_id.desc(),
         PromotionRule.academic_year_level_id,
     ).all()
+    modal_subjects = (
+        valid_critical_subjects(selected_year_id, selected_level_id)
+        if selected_year_id and selected_level_id else []
+    )
+    modal_subject_maxima = resolved_subject_maxima(
+        modal_subjects,
+        exam=selected_exam,
+        academic_year_level_id=selected_level_id,
+    )
+    modal_rule = next((rule for rule in rules if (
+        rule.academic_year_id == selected_year_id
+        and rule.academic_year_level_id == selected_level_id
+        and rule.exam_id == selected_exam_id
+    )), None)
+    modal_selected_subject_ids = {
+        item.academic_year_subject_id for item in modal_rule.critical_subjects
+    } if modal_rule else set()
     recent_evaluations = PromotionEvaluation.query.order_by(
         PromotionEvaluation.evaluated_at.desc(),
         PromotionEvaluation.id.desc(),
@@ -2770,16 +2829,71 @@ def promotion_rules_dashboard():
         selected_class=selected_class,
         selected_class_id=selected_class_id,
         exams=exams,
+        selected_exam=selected_exam,
         selected_exam_id=selected_exam_id,
         summary=summary,
         summary_error=summary_error,
         rules=rules,
+        modal_subjects=modal_subjects,
+        modal_subject_maxima=modal_subject_maxima,
+        modal_rule=modal_rule,
+        modal_selected_subject_ids=modal_selected_subject_ids,
         recent_evaluations=recent_evaluations,
         rules_enabled=promotion_rules_enabled(),
         total_rules=len(rules),
         active_rules=sum(1 for rule in rules if rule.is_active),
         evaluation_count=PromotionEvaluation.query.count(),
     )
+
+
+@admin_bp.route("/promotion-rules/api/scope", methods=["GET"])
+@login_required
+@config_center_required
+def promotion_rules_scope_data():
+    """Return the exact year-aware data used by the Create Rule modal."""
+    year_id = request.args.get("year_id", type=int)
+    level_id = request.args.get("level_id", type=int)
+    exam_id = request.args.get("exam_id", type=int)
+    year = db.session.get(AcademicYear, year_id) if year_id else None
+    if not year:
+        return jsonify({"success": False, "message": "Academic year is required."}), 400
+
+    levels = year_levels(year.id)
+    level = next((item for item in levels if item.id == level_id), None)
+    exams = Exam.query.filter_by(
+        academic_year_id=year.id,
+        is_active=True,
+    ).order_by(Exam.sort_order, Exam.name, Exam.id).all()
+    exam = next((item for item in exams if item.id == exam_id), None)
+    subjects = year_subjects(year.id, level.id) if level else []
+    maxima = resolved_subject_maxima(
+        subjects,
+        exam=exam,
+        academic_year_level_id=level.id if level else None,
+    )
+    rule = None
+    if level and exam:
+        try:
+            rule = get_promotion_rule(year.id, level.id, exam_id=exam.id)
+        except PromotionValidationError:
+            rule = None
+    return jsonify({
+        "success": True,
+        "year_id": year.id,
+        "levels": [{"id": item.id, "name": item.name} for item in levels],
+        "exams": [{"id": item.id, "name": item.name, "is_final_evaluation": bool(item.is_final_evaluation)} for item in exams],
+        "subjects": [{
+            "id": item.id,
+            "name": item.name,
+            "max_score": float(maxima.get(item.id, 0)),
+        } for item in subjects],
+        "rule": {
+            "overall_pass_threshold": float(rule.overall_pass_threshold),
+            "critical_subject_pass_threshold": float(rule.critical_subject_pass_threshold),
+            "is_active": bool(rule.is_active),
+            "critical_subject_ids": [entry.academic_year_subject_id for entry in rule.critical_subjects],
+        } if rule else None,
+    })
 
 
 @admin_bp.route("/promotion-rules/audit")
@@ -2911,6 +3025,11 @@ def promotion_rules_configure():
     if selected_exam_id and selected_exam is None:
         selected_exam_id = None
     subjects = valid_critical_subjects(selected_year_id, selected_level_id) if selected_level else []
+    subject_maxima = resolved_subject_maxima(
+        subjects,
+        exam=selected_exam,
+        academic_year_level_id=selected_level_id,
+    )
     rule = get_promotion_rule(
         selected_year_id,
         selected_level_id,
@@ -2929,6 +3048,7 @@ def promotion_rules_configure():
         selected_level=selected_level,
         selected_exam=selected_exam,
         selected_exam_id=selected_exam_id,
+        subject_maxima=subject_maxima,
         rule=rule,
         selected_subject_ids=selected_subject_ids,
         rules_enabled=promotion_rules_enabled(),
@@ -2984,6 +3104,11 @@ def _promotion_evaluation_page_data(year_id=None, level_id=None, exam_id=None, c
         )
     selected_exam = next((exam for exam in exams if exam.id == exam_id), None)
     subjects = valid_critical_subjects(year_id, level_id) if selected_level else []
+    subject_maxima = resolved_subject_maxima(
+        subjects,
+        exam=selected_exam,
+        academic_year_level_id=level_id,
+    )
     return {
         "years": years,
         "selected_year": selected_year,
@@ -2998,6 +3123,7 @@ def _promotion_evaluation_page_data(year_id=None, level_id=None, exam_id=None, c
         "selected_level_id": level_id,
         "selected_exam_id": exam_id,
         "selected_class_id": class_id,
+        "subject_maxima": subject_maxima,
     }
 
 

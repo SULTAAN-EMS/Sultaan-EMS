@@ -4,7 +4,7 @@ import math
 import json
 import re
 from tempfile import NamedTemporaryFile
-from datetime import date
+from datetime import date, datetime
 
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
@@ -17,7 +17,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentEnrollment, StudentEnrollmentMovement, Subject, LabelTranslation
+from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, ExamMarkingConfiguration, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentEnrollment, StudentEnrollmentMovement, Subject, LabelTranslation
 from .academic_hierarchy import students_for_year_scope_query, year_classes, year_levels, year_subjects
 from .enrollment_service import (
     EnrollmentValidationError,
@@ -36,7 +36,7 @@ from .enrollment_service import (
 from .promotion_service import promotion_operational_status
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
-from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, performance_tier_for, result_payload, subject_display_name
+from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, critical_subject_badges, get_exam_marking_configuration, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, performance_tier_for, resolved_subject_maxima, result_payload, resolve_subject_max_score, subject_display_name
 from .attendance_rules import counts_as_exam_sitting
 
 advanced_results_bp = Blueprint("admin_advanced_results", __name__)
@@ -375,6 +375,11 @@ def rank_student_in_scope(student, academic_year_id, exam, subjects, level_id=No
     for result in results:
         results_by_student.setdefault(result.student_id, {})[result.subject_id] = result
 
+    subject_maxima = resolved_subject_maxima(
+        subjects,
+        exam=exam,
+        academic_level_id=level_id,
+    )
     ranked = []
     for scoped_student in scoped_students:
         total_score = 0
@@ -383,7 +388,7 @@ def rank_student_in_scope(student, academic_year_id, exam, subjects, level_id=No
         for subject in subjects:
             result = student_results.get(subject.id)
             total_score += float(result.score) if result else 0
-            total_max += float(subject.max_score)
+            total_max += float(subject_maxima.get(subject.id, subject.max_score))
         percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
         ranked.append((scoped_student.id, percentage, total_score))
 
@@ -832,6 +837,12 @@ def class_roster():
         students = student_query.order_by(Student.full_name).all()
         
         subjects = subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
+        subject_maxima = resolved_subject_maxima(
+            subjects,
+            exam=selected_exam,
+            academic_year_level_id=selected_year_level_scope.id if selected_year_level_scope else None,
+            academic_level_id=level_id,
+        )
         attendance_uf_keys = attendance_uf_subject_keys(
             selected_exam,
             [student.id for student in students],
@@ -854,7 +865,7 @@ def class_roster():
             for subject in subjects:
                 result = results_dict.get(subject.id)
                 score = float(result.score) if result else 0
-                max_score = float(subject.max_score)
+                max_score = float(subject_maxima.get(subject.id, subject.max_score))
                 percentage = (score / max_score * 100) if max_score > 0 else 0
                 
                 total_score += score
@@ -961,6 +972,23 @@ def student_view():
             level_id=selected_level_id,
             class_id=selected_class_id,
         )
+
+    year_level_scope = None
+    if selected_enrollment:
+        year_level_id = selected_enrollment.academic_year_level_id
+    else:
+        year_level_scope, _year_class_scope = _year_scope_ids_from_legacy(
+            selected_year.id,
+            selected_level_id,
+            selected_class_id,
+        )
+        year_level_id = year_level_scope.id if year_level_scope else None
+    subject_maxima = resolved_subject_maxima(
+        subjects,
+        exam=selected_exam,
+        academic_year_level_id=year_level_id,
+        academic_level_id=selected_level_id,
+    )
     
     # Get results for this student and exam
     results = Result.query.filter_by(student_id=student.id, exam_id=selected_exam.id).all()
@@ -971,7 +999,7 @@ def student_view():
 
     def cached_grade_for(score):
         return grade_for_from_cache(score, grade_cache)
-    
+
     # Build subject data
     subject_data = []
     total_score = 0
@@ -981,7 +1009,7 @@ def student_view():
     for subject in subjects:
         result = results_dict.get(subject.id)
         score = float(result.score) if result else 0
-        max_score = float(subject.max_score)
+        max_score = float(subject_maxima.get(subject.id, subject.max_score))
         percentage = (score / max_score * 100) if max_score > 0 else 0
         
         total_score += score
@@ -1133,88 +1161,26 @@ def export_student_pdf():
     if selected_exam.academic_year_id != selected_year.id:
         abort(400)
     
-    # Resolve the selected historical enrollment first. The permanent
-    # Student identity may now have a newer placement in another year.
     selected_placement = enrollment_placement_for_student(student, selected_year.id)
     if not selected_placement:
         abort(404)
-    student_level_id = selected_placement.get("academic_level_id")
-    student_class_id = selected_placement.get("academic_class_id")
-    subjects = (
-        subjects_for_year_level(selected_exam, selected_placement.get("academic_year_level_id"))
-        if selected_placement.get("academic_year_level_id")
-        else (subjects_for_scope(selected_exam, level_id=student_level_id, class_id=student_class_id) if student_level_id else [])
-    )
-    subject_ids = [subject.id for subject in subjects]
-    results = (
-        Result.query.filter(
-            Result.student_id == student.id,
-            Result.exam_id == exam_id,
-            Result.is_published.is_(True),
-            Result.subject_id.in_(subject_ids),
-        ).all()
-        if subject_ids
-        else []
-    )
-    results_dict = {r.subject_id: r for r in results}
-    
-    # Resolve grades through the shared Grade Management cache.
-    grade_cache = load_grade_scale_cache(selected_exam.id)
+    from .routes_public import feedback_access_token, public_result_scope
+    from .verification import verification_payload
 
-    def cached_grade_for(score):
-        return grade_for_from_cache(score, grade_cache)
-    
-    # Build data
-    subject_data = []
-    total_score = 0
-    total_max = 0
-    
-    for subject in subjects:
-        result = results_dict.get(subject.id)
-        score = float(result.score) if result else 0
-        max_score = float(subject.max_score)
-        percentage = (score / max_score * 100) if max_score > 0 else 0
-        
-        total_score += score
-        total_max += max_score
-        
-        grade_info = cached_grade_for(percentage)
-        
-        # Apply grade_override if present
-        if result and result.grade_override:
-            grade_info = dict(grade_info)
-            grade_info["grade"] = result.grade_override
-        
-        subject_data.append({
-            "subject": subject,
-            "score": score,
-            "max_score": max_score,
-            "percentage": round(percentage, 2),
-            "grade": grade_info,
-        })
-    
-    overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
-    overall_grade = cached_grade_for(overall_percentage)
-    
-    total_points = sum(s["grade"]["grade_point"] for s in subject_data if s["grade"]["grade_point"])
-    gp = round(total_points / len(subject_data), 2) if subject_data else 0
-    
+    payload = result_payload(student, exam=selected_exam, public_only=False)
+    payload["verification"] = verification_payload(student, selected_exam)
+    payload["generated_at"] = datetime.now()
     settings = get_settings()
-    
+    name_parts = (student.full_name or "Student").split()[:2]
+    filename = f"{_safe_download_name_part(' '.join(name_parts), 'Student')} - {_safe_download_name_part(selected_exam.name, 'Exam')} ({_safe_download_name_part(selected_year.name, 'Academic Year')}).pdf"
     return render_template(
-        "admin/pdf/student_result_pdf.html",
-        selected_year=selected_year,
-        selected_exam=selected_exam,
-        student=student,
-        selected_placement=selected_placement,
-        subject_data=subject_data,
-        total_score=total_score,
-        total_max=total_max,
-        percentage=overall_percentage,
-        grade=overall_grade,
-        gp=gp,
+        "print_report.html",
+        result=payload,
+        result_scope=public_result_scope(student, selected_exam),
         settings=settings,
-        date=date.today(),
+        feedback_token=feedback_access_token(student, selected_exam),
+        download_mode=True,
+        download_filename=filename,
     )
 
 
@@ -1325,10 +1291,25 @@ def export_class_pdf():
         .all()
     )
     subjects = subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
+    year_level_scope, _year_class_scope = _year_scope_ids_from_legacy(
+        selected_year.id,
+        level_id,
+        class_id,
+    )
+    subject_maxima = resolved_subject_maxima(
+        subjects,
+        exam=selected_exam,
+        academic_year_level_id=year_level_scope.id if year_level_scope else None,
+        academic_level_id=level_id,
+    )
     attendance_uf_keys = attendance_uf_subject_keys(
         selected_exam,
         [student.id for student in students],
         [subject.id for subject in subjects],
+    )
+    critical_badges = critical_subject_badges(
+        selected_exam,
+        year_level_scope.id if year_level_scope else None,
     )
     
     # Resolve grades through the shared Grade Management cache.
@@ -1355,7 +1336,7 @@ def export_class_pdf():
         for subject in subjects:
             result = results_dict.get(subject.id)
             score = float(result.score) if result else 0
-            max_score = float(subject.max_score)
+            max_score = float(subject_maxima.get(subject.id, subject.max_score))
             percentage = (score / max_score * 100) if max_score > 0 else 0
             
             total_score += score
@@ -1380,6 +1361,8 @@ def export_class_pdf():
                 "is_fail": is_fail,
                 "is_weak": is_weak,
                 "is_uf": (student.id, subject.id) in attendance_uf_keys,
+                "is_critical": subject.id in critical_badges,
+                "critical_badge": critical_badges.get(subject.id),
             })
         
         overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
@@ -1448,6 +1431,8 @@ def export_class_pdf():
         scope_info=scope_info,
         students=ranked_data,
         subjects=subjects,
+        subject_maxima=subject_maxima,
+        critical_badges=critical_badges,
         subject_stats=subject_stats,
         class_average=class_average,
         highest_total=highest_total,
@@ -1499,6 +1484,13 @@ def export_class_excel():
         .all()
     )
     subjects = subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
+    year_level, _year_class = _year_scope_ids_from_legacy(year_id, level_id, class_id)
+    subject_maxima = resolved_subject_maxima(
+        subjects,
+        exam=selected_exam,
+        academic_year_level_id=year_level.id if year_level else None,
+        academic_level_id=level_id,
+    )
     attendance_uf_keys = attendance_uf_subject_keys(
         selected_exam,
         [student.id for student in students],
@@ -1555,7 +1547,7 @@ def export_class_excel():
         for subject in subjects:
             result = results_dict.get(subject.id)
             score = float(result.score) if result else 0
-            max_score = float(subject.max_score)
+            max_score = float(subject_maxima.get(subject.id, subject.max_score))
             percentage = round((score / max_score * 100), 2) if max_score > 0 else 0
             
             total_score += score
@@ -1571,7 +1563,8 @@ def export_class_excel():
         for subject in subjects:
             result = results_dict.get(subject.id)
             if result:
-                percentage = round((float(result.score) / float(subject.max_score) * 100), 2) if subject.max_score else 0
+                effective_max = float(subject_maxima.get(subject.id, subject.max_score))
+                percentage = round((float(result.score) / effective_max * 100), 2) if effective_max else 0
                 grade_info = cached_grade_for(percentage)
                 # Apply grade_override if present
                 if result.grade_override:
@@ -1718,6 +1711,12 @@ def result_entry():
     }
     
     subjects = subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
+    subject_maxima = resolved_subject_maxima(
+        subjects,
+        exam=selected_exam,
+        academic_year_level_id=scope_for_level.id if scope_for_level else None,
+        academic_level_id=level_id,
+    )
     students = []
     if level_id and class_id:
         students = (
@@ -1765,6 +1764,7 @@ def result_entry():
         levels=levels,
         classes=classes,
         sections=sections,
+        subject_maxima=subject_maxima,
         settings=get_settings(),
     )
 
@@ -1806,7 +1806,13 @@ def autosave_result_entry():
     except ValueError:
         return jsonify({"ok": False, "message": "Invalid score."}), 400
 
-    max_score = float(subject.max_score)
+    year_level, _year_class = _year_scope_ids_from_legacy(selected_year.id, level_id, class_id)
+    max_score = float(resolve_subject_max_score(
+        subject,
+        exam=selected_exam,
+        academic_year_level_id=year_level.id if year_level else None,
+        academic_level_id=level_id,
+    ))
     if score < 0 or score > max_score:
         return jsonify({"ok": False, "message": f"Score must be between 0 and {max_score:g}."}), 400
 
@@ -1846,6 +1852,13 @@ def save_result_entry():
         return redirect(url_for("admin_advanced_results.new_dashboard"))
     
     subjects = subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
+    year_level, _year_class = _year_scope_ids_from_legacy(selected_year.id, level_id, class_id)
+    subject_maxima = resolved_subject_maxima(
+        subjects,
+        exam=selected_exam,
+        academic_year_level_id=year_level.id if year_level else None,
+        academic_level_id=level_id,
+    )
     students = students_for_scope_query(
         selected_year.id,
         level_id=level_id,
@@ -1879,8 +1892,9 @@ def save_result_entry():
             # Validate score against max_score
             try:
                 score = float(raw_score)
-                if score < 0 or score > float(subject.max_score):
-                    validation_errors.append(f"{student.student_code} - {subject.name}: Score {score} exceeds max {subject.max_score}")
+                max_score = float(subject_maxima.get(subject.id, subject.max_score))
+                if score < 0 or score > max_score:
+                    validation_errors.append(f"{student.student_code} - {subject.name}: Score {score} exceeds max {max_score:g}")
                     continue
             except ValueError:
                 validation_errors.append(f"{student.student_code} - {subject.name}: Invalid score '{raw_score}'")
@@ -2069,7 +2083,15 @@ def analytics():
     )
 
     # Calculate analytics data with ranking limits
-    analytics_data = build_analytics_data(results, students, selected_exam, top_limit, bottom_limit, scoped_subjects=scoped_subjects)
+    analytics_data = build_analytics_data(
+        results,
+        students,
+        selected_exam,
+        top_limit,
+        bottom_limit,
+        scoped_subjects=scoped_subjects,
+        academic_year_level_id=selected_year_level.id if selected_year_level else None,
+    )
     
     return render_template(
         "admin/analytics.html",
@@ -2296,17 +2318,29 @@ def build_analytics_results_report_data(academic_year, exam):
                 for item in year_subjects(academic_year.id, scope.id)
                 if item.legacy_subject_id
             )
+    year_level_by_legacy = {
+        scope.legacy_level_id: scope.id
+        for scope in year_level_scopes
+        if scope.legacy_level_id
+    }
     for result in results:
         level_id = student_level_lookup.get(result.student_id)
         if (
             not level_id
             or not result.subject
-            or not result.subject.max_score
             or result.subject_id not in subject_ids_by_level.get(level_id, set())
             or result.student_id not in subject_sitting_student_ids.get(result.subject_id, set())
         ):
             continue
-        result_pct = round(float(result.score or 0) / float(result.subject.max_score) * 100, 4)
+        resolved_max = resolve_subject_max_score(
+            result.subject,
+            exam=exam,
+            academic_year_level_id=year_level_by_legacy.get(level_id),
+            academic_level_id=level_id,
+        )
+        if resolved_max <= 0:
+            continue
+        result_pct = round(float(result.score or 0) / float(resolved_max) * 100, 4)
         results_by_student[result.student_id].append(result_pct)
         results_by_level_subject[level_id][result.subject_id].append((result.subject, result_pct))
 
@@ -2566,13 +2600,12 @@ def analytics_grade_drill_down():
         results_query = results_query.filter_by(subject_id=subject_id)
     results = results_query.all()
 
+    student_map = {s.id: s for s in students}
     by_student = {}
     for r in results:
-        if not r.subject or not r.subject.max_score:
+        if not r.subject:
             continue
         by_student.setdefault(r.student_id, []).append(r)
-
-    student_map = {s.id: s for s in students}
 
     rows = []
     for sid, res_list in by_student.items():
@@ -2580,14 +2613,24 @@ def analytics_grade_drill_down():
         if not student:
             continue
         total_score = sum(float(r.score or 0) for r in res_list)
-        total_max   = sum(float(r.subject.max_score) for r in res_list if r.subject and r.subject.max_score)
+        placement = enrollment_placement_for_student(student, selected_year.id) or {}
+        context_level_id = placement.get("academic_year_level_id") or level_id
+        total_max = sum(
+            float(resolve_subject_max_score(
+                r.subject,
+                exam=selected_exam,
+                academic_year_level_id=context_level_id,
+                academic_level_id=placement.get("academic_level_id"),
+            ))
+            for r in res_list
+            if r.subject
+        )
         avg_pct     = round(total_score / total_max * 100, 2) if total_max else 0
         grade_info  = grade_for_from_cache(avg_pct, grade_cache)
 
         if grade_info.get("grade") != grade_letter:
             continue
 
-        placement = enrollment_placement_for_student(student, selected_year.id) or {}
         rows.append({
             "student_id":    student.student_code or str(student.id),
             "full_name":     student.full_name or "",
@@ -2608,7 +2651,7 @@ def analytics_grade_drill_down():
     return jsonify(rows)
 
 
-def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, scoped_subjects=None):
+def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, scoped_subjects=None, academic_year_level_id=None):
     """Build analytics data for charts using existing grade_for logic"""
     total_students_count = len(students) if students else 0
     num_scoped_subjects = len(scoped_subjects) if scoped_subjects else 0
@@ -2635,12 +2678,30 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
 
     def cached_grade_for(score):
         return grade_for_from_cache(score, grade_cache)
+
+    def result_max_score(result, context_exam=None):
+        context_exam = context_exam or getattr(result, "exam", None) or exam
+        student = students_by_id.get(result.student_id) or result.student
+        placement = (
+            resolve_student_academic_context(student, context_exam.academic_year_id)
+            if student and context_exam
+            else None
+        )
+        return resolve_subject_max_score(
+            result.subject,
+            exam=context_exam,
+            academic_year_level_id=(
+                placement.get("academic_year_level_id") if placement else academic_year_level_id
+            ),
+            academic_level_id=placement.get("academic_level_id") if placement else None,
+        )
     
     # Calculate percentages for each result
     percentages = []
     for result in results:
-        if result.subject.max_score:
-            pct = round(float(result.score) / float(result.subject.max_score) * 100, 2)
+        max_score = result_max_score(result, exam)
+        if max_score > 0:
+            pct = round(float(result.score) / float(max_score) * 100, 2)
             percentages.append(pct)
     
     # Calculate overall average
@@ -2668,7 +2729,8 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
     subject_averages = {}
     for result in results:
         subject_name = result.subject.name
-        pct = round(float(result.score) / float(result.subject.max_score) * 100, 2) if result.subject.max_score else 0
+        max_score = result_max_score(result, exam)
+        pct = round(float(result.score) / float(max_score) * 100, 2) if max_score > 0 else 0
         if subject_name not in subject_averages:
             subject_averages[subject_name] = []
         subject_averages[subject_name].append(pct)
@@ -2688,9 +2750,10 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
     )
     trend_percentages = {}
     for result in trend_results:
-        if result.subject.max_score:
+        max_score = result_max_score(result, result.exam)
+        if max_score > 0:
             trend_percentages.setdefault(result.exam_id, []).append(
-                round(float(result.score) / float(result.subject.max_score) * 100, 2)
+                round(float(result.score) / float(max_score) * 100, 2)
             )
     exam_trend_values = [
         round(sum(trend_percentages.get(year_exam.id, [])) / len(trend_percentages[year_exam.id]), 2)
@@ -2710,7 +2773,8 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
     student_averages = {}
     for result in results:
         student_id = result.student_id
-        pct = round(float(result.score) / float(result.subject.max_score) * 100, 2) if result.subject.max_score else 0
+        max_score = result_max_score(result, exam)
+        pct = round(float(result.score) / float(max_score) * 100, 2) if max_score > 0 else 0
         if student_id not in student_averages:
             student_averages[student_id] = []
         student_averages[student_id].append(pct)
@@ -2806,11 +2870,33 @@ def grade_management():
     # Get selected year and exam
     selected_year = db.session.get(AcademicYear, year_id) if year_id else AcademicYear.query.filter_by(is_current=True).first()
     selected_exam = db.session.get(Exam, exam_id) if exam_id else None
+    if selected_exam and selected_year and selected_exam.academic_year_id != selected_year.id:
+        selected_exam = None
     
     # Get all years, exams, and levels for selectors
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
     exams = Exam.query.filter_by(academic_year_id=selected_year.id).order_by(Exam.id.desc()).all() if selected_year else []
-    levels = AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
+    year_level_scopes = year_levels(selected_year.id) if selected_year else []
+    valid_level_ids = {scope.legacy_level_id for scope in year_level_scopes if scope.legacy_level_id}
+    if level_id not in valid_level_ids:
+        level_id = None
+    levels = [
+        scope.legacy_level
+        for scope in year_level_scopes
+        if scope.legacy_level and scope.legacy_level.is_active
+    ]
+    selected_year_level = next(
+        (scope for scope in year_level_scopes if scope.legacy_level_id == level_id),
+        None,
+    )
+    marking_configuration = get_exam_marking_configuration(
+        selected_exam,
+        academic_year_level_id=selected_year_level.id if selected_year_level else None,
+    )
+    marking_subjects = (
+        subjects_for_scope(selected_exam, level_id=level_id)
+        if selected_exam and selected_year_level else []
+    )
     
     # Get grade scales for the selected exam (or global if no exam selected)
     if selected_exam:
@@ -2834,9 +2920,15 @@ def grade_management():
     
     # Calculate total points for selected exam
     total_points = 0
-    if selected_exam and selected_exam.academic_level_id:
-        subjects = Subject.query.filter_by(academic_level_id=selected_exam.academic_level_id).all()
-        total_points = sum(float(s.max_score) for s in subjects)
+    if selected_exam and selected_year_level:
+        total_points = sum(
+            float(value)
+            for value in resolved_subject_maxima(
+                marking_subjects,
+                exam=selected_exam,
+                academic_year_level_id=selected_year_level.id,
+            ).values()
+        )
 
     report_tiers = get_report_tier_configs(
         year_id=selected_year.id if selected_year else None,
@@ -2854,6 +2946,11 @@ def grade_management():
         selected_year=selected_year,
         selected_exam=selected_exam,
         selected_level_id=level_id,
+        selected_year_level=selected_year_level,
+        selected_year_level_id=selected_year_level.id if selected_year_level else None,
+        marking_configuration=marking_configuration,
+        marking_subjects=marking_subjects,
+        marking_max_score=marking_configuration.default_full_marks if marking_configuration else None,
         grade_scales=grade_scales,
         using_global=using_global,
         exam_status=exam_status,
@@ -2865,6 +2962,54 @@ def grade_management():
         report_tiers=report_tiers,
         settings=get_settings(),
     )
+
+
+@advanced_results_bp.route("/grade-management/save-marking-config", methods=["POST"])
+def save_marking_configuration():
+    """Save one positive default mark for an exact year-level-exam context."""
+    year_id = int_or_none(request.form.get("year_id"))
+    exam_id = int_or_none(request.form.get("exam_id"))
+    level_id = int_or_none(request.form.get("level_id"))
+    raw_full_marks = (request.form.get("default_full_marks") or "").strip()
+    redirect_args = {"year_id": year_id, "exam_id": exam_id, "level_id": level_id}
+
+    try:
+        year = db.session.get(AcademicYear, year_id)
+        exam = db.session.get(Exam, exam_id)
+        year_level, _year_class = _year_scope_ids_from_legacy(year_id, level_id)
+        if not year or not exam or exam.academic_year_id != year.id or not year_level:
+            raise ValueError("Academic Year, Academic Level, and Exam Type must belong to the same context.")
+        if not raw_full_marks:
+            raise ValueError("Default Full Marks is required.")
+        try:
+            full_marks = Decimal(raw_full_marks)
+        except Exception as exc:
+            raise ValueError("Default Full Marks must be numeric.") from exc
+        if not full_marks.is_finite() or full_marks <= 0:
+            raise ValueError("Default Full Marks must be greater than zero.")
+
+        configuration = ExamMarkingConfiguration.query.filter_by(
+            academic_year_id=year.id,
+            academic_year_level_id=year_level.id,
+            exam_id=exam.id,
+        ).first()
+        if configuration:
+            configuration.default_full_marks = full_marks
+        else:
+            db.session.add(ExamMarkingConfiguration(
+                academic_year_id=year.id,
+                academic_year_level_id=year_level.id,
+                exam_id=exam.id,
+                default_full_marks=full_marks,
+            ))
+        audit("Exam Marking Configuration", f"Saved full marks {full_marks} for year {year.id}, level {year_level.id}, exam {exam.id}")
+        db.session.commit()
+        flash("Exam marking configuration saved successfully.", "success")
+    except Exception as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+
+    return redirect(url_for("admin_advanced_results.grade_management", **redirect_args))
 
 
 @advanced_results_bp.route("/grade-management/save-report-tiers", methods=["POST"])
@@ -4036,7 +4181,16 @@ def build_stats(payloads, rows):
     pass_count = sum(1 for avg in averages if cached_grade_for(float(avg)).get("is_pass"))
     subject_totals = defaultdict(list)
     for row in rows:
-        subject_totals[row.subject.name].append(round(float(Decimal(row.score) / Decimal(row.subject.max_score) * 100), 2) if row.subject.max_score else 0)
+        placement = enrollment_placement_for_student(row.student, row.exam.academic_year_id) or {}
+        max_score = resolve_subject_max_score(
+            row.subject,
+            exam=row.exam,
+            academic_year_level_id=placement.get("academic_year_level_id"),
+            academic_level_id=placement.get("academic_level_id"),
+        )
+        subject_totals[row.subject.name].append(
+            round(float(Decimal(row.score) / max_score * 100), 2) if max_score else 0
+        )
     subject_averages = {name: round(sum(values) / len(values), 2) for name, values in subject_totals.items() if values}
     ranked = sorted(payloads, key=lambda item: item.get("average", 0), reverse=True)
     return {

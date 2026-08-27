@@ -21,6 +21,7 @@ from .models import (
     LabelTranslation,
     AcademicYearSubject,
     AcademicYearLevel,
+    ExamMarkingConfiguration,
     ExamHall,
     ExamHallEnrollment,
     ExamHallSubject,
@@ -861,7 +862,20 @@ def top_students_for_class(student, exam, limit=10):
         .all()
     )
     for row in rows:
-        max_score = Decimal(str(row.subject.max_score or 0))
+        row_placement = resolve_student_academic_context(
+            next((peer for peer in classmates if peer.id == row.student_id), None),
+            exam.academic_year_id,
+        )
+        max_score = resolve_subject_max_score(
+            row.subject,
+            exam=exam,
+            academic_year_level_id=(
+                row_placement.get("academic_year_level_id") if row_placement else None
+            ),
+            academic_level_id=(
+                row_placement.get("academic_level_id") if row_placement else level_id
+            ),
+        )
         if max_score > 0:
             marks_by_student[row.student_id].append((Decimal(str(row.score or 0)), max_score))
 
@@ -1409,6 +1423,136 @@ def attendance_uf_record(exam, student_id, subject_id):
     return record if normalize_attendance_status(record.status) in NON_SAT_STATUSES else None
 
 
+def calculate_score_totals(score_max_pairs):
+    """Return totals using each subject's stored maximum mark.
+
+    Keeping this calculation in one place prevents report surfaces from
+    silently assuming that every subject is worth 100 marks.
+    """
+    total = Decimal("0")
+    max_total = Decimal("0")
+    for score, max_score in score_max_pairs:
+        total += Decimal(str(score or 0))
+        max_total += Decimal(str(max_score or 0))
+    percentage = round(float(total / max_total * Decimal("100")), 2) if max_total else 0
+    return total, max_total, percentage
+
+
+def get_exam_marking_configuration(exam, academic_year_level_id=None, academic_level_id=None):
+    """Return the default mark only for an exact year + level + exam scope."""
+    if not exam:
+        return None
+    year_level_id = academic_year_level_id
+    if not year_level_id and academic_level_id:
+        year_level_id = (
+            AcademicYearLevel.query
+            .filter_by(
+                academic_year_id=exam.academic_year_id,
+                legacy_level_id=academic_level_id,
+            )
+            .with_entities(AcademicYearLevel.id)
+            .scalar()
+        )
+    if not year_level_id:
+        return None
+    return ExamMarkingConfiguration.query.filter_by(
+        academic_year_id=exam.academic_year_id,
+        academic_year_level_id=year_level_id,
+        exam_id=exam.id,
+    ).first()
+
+
+def resolve_subject_max_score(subject, exam=None, academic_year_level_id=None, academic_level_id=None):
+    """Resolve a subject maximum from the scoped exam default, then legacy data."""
+    configuration = get_exam_marking_configuration(
+        exam,
+        academic_year_level_id=academic_year_level_id,
+        academic_level_id=academic_level_id,
+    )
+    if configuration:
+        return Decimal(str(configuration.default_full_marks))
+    return Decimal(str(getattr(subject, "max_score", 0) or 0))
+
+
+def resolved_subject_maxima(subjects, exam=None, academic_year_level_id=None, academic_level_id=None):
+    """Return ``{subject_id: maximum}`` using one exact exam context."""
+    return {
+        subject.id: resolve_subject_max_score(
+            subject,
+            exam=exam,
+            academic_year_level_id=academic_year_level_id,
+            academic_level_id=academic_level_id,
+        )
+        for subject in subjects
+    }
+
+
+CRITICAL_STAR_DESIGNS = ("emerald", "gold", "royalblue", "magenta")
+
+
+def critical_subject_badges(exam, academic_year_level_id=None):
+    """Return deterministic critical-subject badge metadata for one exam scope."""
+    if not exam or not academic_year_level_id:
+        return {}
+
+    year_level = db.session.get(AcademicYearLevel, academic_year_level_id)
+    if not year_level or year_level.academic_year_id != exam.academic_year_id:
+        return {}
+
+    # Keep the badge source identical to the exam-aware Promotion Rules scope.
+    from .promotion_service import get_promotion_rule
+
+    rule = get_promotion_rule(
+        exam.academic_year_id,
+        academic_year_level_id,
+        exam_id=exam.id,
+        active_only=True,
+    )
+    if not rule or not rule.critical_subjects:
+        return {}
+
+    critical_year_subject_ids = {
+        item.academic_year_subject_id for item in rule.critical_subjects
+    }
+    scoped_subjects = AcademicYearSubject.query.filter_by(
+        academic_year_id=exam.academic_year_id,
+        academic_year_level_id=academic_year_level_id,
+        is_active=True,
+    ).all()
+    legacy_subject_ids = {
+        item.legacy_subject_id
+        for item in scoped_subjects
+        if item.id in critical_year_subject_ids and item.legacy_subject_id
+    }
+    if not legacy_subject_ids:
+        return {}
+
+    levels = (
+        AcademicYearLevel.query
+        .filter_by(academic_year_id=exam.academic_year_id, is_active=True)
+        .order_by(AcademicYearLevel.sort_order, AcademicYearLevel.name, AcademicYearLevel.id)
+        .all()
+    )
+    level_order = next(
+        (index for index, item in enumerate(levels, start=1) if item.id == academic_year_level_id),
+        None,
+    )
+    if not level_order:
+        return {}
+
+    design = CRITICAL_STAR_DESIGNS[(level_order - 1) % len(CRITICAL_STAR_DESIGNS)]
+    threshold = float(rule.critical_subject_pass_threshold or 0)
+    return {
+        subject_id: {
+            "design": design,
+            "level_order": level_order,
+            "minimum_percentage": threshold,
+            "reason": "Maaddadani waxa ay ka mid tahay maadooyinka ay qasab tahay in uu ardeygu ku gudbo.",
+        }
+        for subject_id in legacy_subject_ids
+    }
+
+
 def result_payload(student, exam=None, public_only=True):
     query = Result.query.filter_by(student_id=student.id)
     if exam:
@@ -1455,11 +1599,19 @@ def result_payload(student, exam=None, public_only=True):
         if student_level_id
         else []
     )
-    total = sum(Decimal(row.score) for row in rows)
-    max_total = sum(Decimal(row.subject.max_score) for row in rows) or Decimal("0")
-    average = round(float(total / max_total * 100), 2) if max_total else 0
+    maxima = resolved_subject_maxima(
+        [row.subject for row in rows],
+        exam=exam,
+        academic_year_level_id=selected_year_level_id,
+        academic_level_id=student_level_id,
+    )
+    total, max_total, average = calculate_score_totals(
+        (row.score, maxima.get(row.subject_id, Decimal(str(row.subject.max_score or 0))))
+        for row in rows
+    )
     settings = dict(get_settings())
     active_exam = exam or (rows[0].exam if rows else None)
+    critical_badges = critical_subject_badges(active_exam, selected_year_level_id)
     portal_outcome = {"code": "NOT_EVALUATED", "label": "LAMA QIIMEYN", "tone": "muted"}
     if active_exam and selected_placement and selected_placement.get("enrollment"):
         # Local import avoids the promotion_service -> services import cycle.
@@ -1488,7 +1640,8 @@ def result_payload(student, exam=None, public_only=True):
     )
     subject_rows = []
     for row in rows:
-        percentage_raw = Decimal(row.score) / Decimal(row.subject.max_score) * 100 if row.subject.max_score else 0
+        max_score = maxima.get(row.subject_id, Decimal(str(row.subject.max_score or 0)))
+        percentage_raw = Decimal(row.score) / max_score * 100 if max_score else 0
         percentage = round(float(percentage_raw), 2)
         automatic_grade = grade_for_from_cache(percentage_raw, grade_cache)
         displayed_grade = dict(automatic_grade)
@@ -1500,13 +1653,15 @@ def result_payload(student, exam=None, public_only=True):
                 "subject_id": row.subject_id,
                 "subject": subject_display_name(row.subject, settings).strip(),
                 "score": float(row.score),
-                "max_score": float(row.subject.max_score),
+                "max_score": float(max_score),
                 "grade": displayed_grade,
                 "automatic_grade": automatic_grade,
                 "status": "Pass" if displayed_grade.get("is_pass", automatic_grade.get("is_pass")) else "Needs Support",
                 "percentage": percentage,
                 "icon": subject_icon(row.subject.name, settings),
                 "is_uf": (student.id, row.subject_id) in uf_subject_keys,
+                "is_critical": row.subject_id in critical_badges,
+                "critical_badge": critical_badges.get(row.subject_id),
             }
         )
 
@@ -1538,13 +1693,20 @@ def result_payload(student, exam=None, public_only=True):
                     "subject_id": subject.id,
                     "subject": subject_display_name(subject, settings).strip(),
                     "score": 0.0,
-                    "max_score": float(subject.max_score),
+                    "max_score": float(resolve_subject_max_score(
+                        subject,
+                        exam=active_exam,
+                        academic_year_level_id=selected_year_level_id,
+                        academic_level_id=student_level_id,
+                    )),
                     "grade": automatic_grade,
                     "automatic_grade": automatic_grade,
                     "status": "Needs Support",
                     "percentage": 0.0,
                     "icon": subject_icon(subject.name, settings),
                     "is_uf": True,
+                    "is_critical": subject.id in critical_badges,
+                    "critical_badge": critical_badges.get(subject.id),
                 }
             )
 
@@ -1591,7 +1753,12 @@ def result_payload(student, exam=None, public_only=True):
                 peer_query = peer_query.filter(Student.level == student.level)
 
         peers = peer_query.all()
-        subject_maxima = {row.subject_id: Decimal(row.subject.max_score) for row in rows}
+        subject_maxima = resolved_subject_maxima(
+            [row.subject for row in rows],
+            exam=active_exam,
+            academic_year_level_id=peer_placement.get("academic_year_level_id") if peer_placement else None,
+            academic_level_id=peer_placement.get("academic_level_id") if peer_placement else None,
+        )
         if peers and subject_maxima:
             peer_rows_query = Result.query.filter(
                 Result.exam_id == active_exam.id,

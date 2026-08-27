@@ -3,7 +3,7 @@
 {% block page_title %}Promotion Evaluation{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/promotion_rules.css') }}">
-<div class="promotion-page">
+<div class="promotion-page promotion-page--evaluate">
   <header class="promotion-hero promotion-hero--compact">
     <div>
       <span class="promotion-eyebrow"><i class="fa-solid fa-play-circle"></i> Explicit evaluation context</span>
@@ -14,6 +14,7 @@
   </header>
 
   {% include "admin/_promotion_rules_nav.html" %}
+  <div class="promotion-stepper" aria-label="Evaluation steps"><span class="is-done"><b>1</b> Scope</span><i></i><span class="is-current"><b>2</b> Evaluate</span><i></i><span><b>3</b> Confirm outcome</span></div>
 
   <section class="promotion-evaluation-panel">
     <div class="promotion-section__header">
@@ -32,7 +33,7 @@
       {% endif %}
 
       {% if subjects %}
-      <fieldset class="promotion-evaluation-subjects"><legend><i class="fa-solid fa-list-check"></i> Subjects included in this evaluation</legend><p>All active subjects are selected by default and remain isolated to the chosen Year + Level.</p><div class="promotion-subject-grid">{% for subject in subjects %}<label class="promotion-subject-option"><input type="checkbox" name="subject_ids" value="{{ subject.id }}" checked><i class="fa-solid fa-book-open"></i><span><b>{{ subject.name }}</b><small>Maximum {{ subject.max_score }}</small></span></label>{% endfor %}</div></fieldset>
+      <fieldset class="promotion-evaluation-subjects"><legend><i class="fa-solid fa-list-check"></i> Subjects included in this evaluation</legend><p>All active subjects are selected by default and remain isolated to the chosen Year + Level.</p><div class="subject-grid promotion-evaluation-subject-grid">{% for subject in subjects %}<label class="subject-chip promotion-evaluation-subject-chip is-selected"><input class="subject-chip__input" type="checkbox" name="subject_ids" value="{{ subject.id }}" checked><div class="stop"><span class="sbook"><i class="fa-solid fa-book-open" aria-hidden="true"></i></span><i class="fa-solid fa-check promotion-subject-check" aria-hidden="true"></i></div><span class="sname">{{ subject.name }}</span><span class="smax">Max {{ '%.3f'|format(subject_maxima.get(subject.id, subject.max_score)|float) }}</span></label>{% endfor %}</div></fieldset>
       {% elif selected_level_id %}<div class="promotion-notice promotion-notice--warning"><i class="fa-solid fa-triangle-exclamation"></i><div><strong>No active subjects are configured for this Year + Level.</strong><span>Evaluation is blocked until the year-aware subject setup is complete.</span></div></div>{% endif %}
 
       <div class="promotion-form-actions promotion-form-actions--evaluation"><button class="promotion-button promotion-button--ghost" type="submit" name="action" value="preview"><i class="fa-solid fa-eye"></i> Preview Evaluation</button><button class="promotion-button promotion-button--primary" type="submit" name="action" value="execute" data-save-evaluation><i class="fa-solid fa-lock"></i> Evaluate &amp; Save</button></div>
@@ -53,7 +54,7 @@
   <section class="promotion-section promotion-section--evaluation-results">
     <div class="promotion-section__header"><div><span class="promotion-kicker"><i class="fa-solid fa-chart-line"></i> Step 2 · {{ 'Saved exam snapshots' if request.form.get('action') == 'execute' else 'Read-only preview' }}</span><h2>{{ preview_result.year.name }} · {{ preview_result.level.name }} · {{ preview_result.exam.name }}</h2><p>{{ preview_result.counts.eligible }} eligible enrollment(s). {% if save_confirmed %}Persistence is confirmed for the exact selected scope.{% else %}Preview only: no snapshot, enrollment outcome, or transition was changed.{% endif %}</p></div></div>
     <div class="promotion-evaluation-counts"><span class="is-total"><b>{{ preview_result.counts.eligible }}</b> Eligible</span><span class="is-evaluated"><b>{{ preview_result.counts.evaluated }}</b> Evaluated</span><span class="is-pass"><b>{{ preview_result.counts.pass }}</b> GUDBAY</span><span class="is-fail"><b>{{ preview_result.counts.fail }}</b> HADHAY</span><span class="is-incomplete"><b>{{ preview_result.counts.incomplete }}</b> Incomplete</span><span class="is-invalid"><b>{{ preview_result.counts.invalid }}</b> Invalid</span>{% if preview_result.exam.is_final_evaluation %}<span class="is-total"><b>{{ preview_result.counts.outcomes_saved }}</b> Academic outcomes saved</span><span class="is-total"><b>{{ preview_result.counts.outcomes_confirmed }}</b> Outcomes confirmed</span>{% endif %}</div>
-    {% if preview_result.preview_rows %}<div class="promotion-table-wrap"><table class="promotion-table promotion-table--evaluation"><thead><tr><th>Student</th><th>Class</th><th>Overall</th><th>Base</th><th>Critical Subjects</th><th>Final</th><th>Status / Reason</th></tr></thead><tbody>{% for row in preview_result.preview_rows %}{% set evaluation = row.evaluation %}<tr><td><strong>{{ row.student.full_name }}</strong><small>{{ row.student.student_code }}</small></td><td>{{ row.enrollment.academic_year_class.name }}</td><td><strong>{% if evaluation.overall_percentage is not none %}{{ evaluation.overall_percentage }}%{% else %}—{% endif %}</strong></td><td>{% if evaluation.base_outcome %}<span class="promotion-outcome promotion-outcome--{{ evaluation.base_outcome|lower }}">{{ 'GUDBAY' if evaluation.base_outcome == 'PASS' else 'HADHAY' }}</span>{% else %}<span class="promotion-outcome promotion-outcome--muted">—</span>{% endif %}</td><td><div class="promotion-critical-summary">{% for item in evaluation.critical_subject_results_json|fromjson %}<span class="promotion-critical-pill promotion-critical-pill--{{ item.status|lower|replace('/', '-') }}">{{ item.subject }} · {{ item.status }}</span>{% else %}<span class="promotion-muted">No critical subjects</span>{% endfor %}</div></td><td>{% if evaluation.final_outcome %}<span class="promotion-outcome promotion-outcome--{{ evaluation.final_outcome|lower }}">{{ 'GUDBAY' if evaluation.final_outcome == 'PASS' else 'HADHAY' }}</span>{% else %}<span class="promotion-outcome promotion-outcome--muted">Not decided</span>{% endif %}</td><td><span class="promotion-evaluation-status promotion-evaluation-status--{{ evaluation.evaluation_status|lower }}">{{ evaluation.evaluation_status }}</span><small>{{ evaluation.override_reason or 'Baseline outcome' }}</small></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="promotion-empty"><i class="fa-solid fa-users-slash"></i><strong>No eligible StudentEnrollments found</strong><span>Check the selected Year + Level + Class scope.</span></div>{% endif %}
+    {% if preview_result.preview_rows %}<div class="promotion-table-wrap"><table class="promotion-table promotion-table--evaluation"><thead><tr><th>Student</th><th>Class</th><th>Overall</th><th>Base</th><th>Critical Subjects</th><th>Final</th><th>Status / Reason</th></tr></thead><tbody>{% for row in preview_result.preview_rows %}{% set evaluation = row.evaluation %}{% set name_parts = row.student.full_name.split() %}{% set initials = (name_parts[0][:1] ~ name_parts[1][:1]) if name_parts|length > 1 else row.student.full_name[:2] %}<tr><td><div class="promotion-student-cell"><span class="promotion-student-avatar">{% if row.student.photo_path %}<img src="{{ asset_url(row.student.photo_path) }}" alt="{{ row.student.full_name }}">{% else %}{{ initials|upper }}{% endif %}</span><div class="promotion-student-names"><span class="promotion-student-name">{{ row.student.full_name }}</span><span class="promotion-student-id">{{ row.student.student_code }}</span></div></div></td><td>{{ row.enrollment.academic_year_class.name }}</td><td><strong>{% if evaluation.overall_percentage is not none %}{{ evaluation.overall_percentage }}%{% else %}—{% endif %}</strong></td><td>{% if evaluation.base_outcome %}<span class="promotion-outcome promotion-outcome--{{ evaluation.base_outcome|lower }}">{{ 'GUDBAY' if evaluation.base_outcome == 'PASS' else 'HADHAY' }}</span>{% else %}<span class="promotion-outcome promotion-outcome--muted">—</span>{% endif %}</td><td><div class="promotion-critical-summary">{% for item in evaluation.critical_subject_results_json|fromjson %}<span class="promotion-critical-pill promotion-critical-pill--{{ item.status|lower|replace('/', '-') }}">{{ item.subject }} · {{ item.status }}</span>{% else %}<span class="promotion-muted">No critical subjects</span>{% endfor %}</div></td><td>{% if evaluation.final_outcome %}<span class="promotion-outcome promotion-outcome--{{ evaluation.final_outcome|lower }}">{{ 'GUDBAY' if evaluation.final_outcome == 'PASS' else 'HADHAY' }}</span>{% else %}<span class="promotion-outcome promotion-outcome--muted">Not decided</span>{% endif %}</td><td><span class="promotion-evaluation-status promotion-evaluation-status--{{ evaluation.evaluation_status|lower }}">{{ evaluation.evaluation_status }}</span><small>{{ evaluation.override_reason or 'Baseline outcome' }}</small></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="promotion-empty"><i class="fa-solid fa-users-slash"></i><strong>No eligible StudentEnrollments found</strong><span>Check the selected Year + Level + Class scope.</span></div>{% endif %}
   </section>
   {% endif %}
 </div>
@@ -81,12 +82,23 @@
         submitter.removeAttribute('name');
       }
 
-      if (!submitter || submitter.value !== 'execute') return;
+    if (!submitter || submitter.value !== 'execute') return;
       submitter.dataset.submitting = 'true';
       submitter.disabled = true;
       submitter.setAttribute('aria-busy', 'true');
       submitter.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving evaluation...';
     });
   })();
+  document.querySelectorAll('.promotion-evaluation-subject-chip').forEach((chip) => {
+    const input = chip.querySelector('input');
+    if (!input) return;
+    input.addEventListener('change', () => {
+      chip.classList.toggle('is-selected', input.checked);
+      chip.classList.remove('chip-settle-trigger');
+      void chip.offsetWidth;
+      chip.classList.add('chip-settle-trigger');
+    });
+  });
 </script>
+{% include "admin/_promotion_feedback.html" %}
 {% endblock %}

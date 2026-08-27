@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Submit Incident Report{% endblock %}
+{% block title %}GUDBI WARBIXIN DHACDO AH EE GUDAHA FASAL IMTIXAAN{% endblock %}
 {% block body_class %}public-body incident-form-body{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/incident-form.css') }}">
@@ -16,13 +16,13 @@
       </div>
       <div class="header-text">
         <div class="header-badge">
-          <i class="fa-solid fa-triangle-exclamation"></i> EXAMINATION INCIDENT REPORT
+          <i class="fa-solid fa-triangle-exclamation"></i> GUDBI WARBIXIN DHACDO AH EE GUDAHA FASAL IMTIXAAN
         </div>
       </div>
     </div>
     <div class="back-link">
       <a href="{{ url_for('public.qr_landing', token=token) }}">
-        <i class="fa-solid fa-arrow-left"></i> Back
+        <i class="fa-solid fa-arrow-left"></i> Dib-u-noqo
       </a>
     </div>
   </div>
@@ -48,43 +48,43 @@
         <div class="identity-item">
           <span class="icon"><i class="fa-solid fa-id-card"></i></span>
           <div class="content">
-            <span class="label">Student ID</span>
+            <span class="label">TIRA-TAXANAHA ARDEYGA</span>
             <span class="value">{{ student.student_code }}</span>
           </div>
         </div>
         <div class="identity-item">
           <span class="icon"><i class="fa-solid fa-graduation-cap"></i></span>
           <div class="content">
-            <span class="label">Class</span>
-            <span class="value">{{ student.school_class.name if student.school_class else 'N/A' }}</span>
+            <span class="label">FASALKA</span>
+            <span class="value">{{ student.school_class.name if student.school_class else 'Lama hayo' }}</span>
           </div>
         </div>
         <div class="identity-item">
           <span class="icon"><i class="fa-solid fa-table-cells"></i></span>
           <div class="content">
-            <span class="label">Section</span>
-            <span class="value">{{ student.section or 'N/A' }}</span>
+            <span class="label">QEYBTA</span>
+            <span class="value">{{ student.section or 'Lama hayo' }}</span>
           </div>
         </div>
         <div class="identity-item">
           <span class="icon"><i class="fa-solid fa-calendar-days"></i></span>
           <div class="content">
-            <span class="label">Academic Year</span>
-            <span class="value">{{ student.academic_year.name if student.academic_year else 'N/A' }}</span>
+            <span class="label">SANAD DUGSIYEEDKA</span>
+            <span class="value">{{ student.academic_year.name if student.academic_year else 'Lama hayo' }}</span>
           </div>
         </div>
         <div class="identity-item">
           <span class="icon"><i class="fa-solid fa-file-alt"></i></span>
           <div class="content">
-            <span class="label">Exam Type</span>
-            <span class="value">{{ exam.name if exam else 'No Active Exam Found' }}</span>
+            <span class="label">NUUCA IMTIXAANKA</span>
+            <span class="value">{{ exam.name if exam else 'Lama helin imtixaan firfircoon' }}</span>
           </div>
         </div>
         <div class="identity-item">
           <span class="icon status-icon"><i class="fa-solid fa-circle-check"></i></span>
           <div class="content">
-            <span class="label">Status</span>
-            <span class="value status-active">ACTIVE STUDENT</span>
+            <span class="label">XAALADDA</span>
+            <span class="value status-active">ARDEY FIRFIRCOON</span>
           </div>
         </div>
       </div>
@@ -105,34 +105,34 @@
       {% endif %}
     </div>
     <div class="invigilator-identity-details">
-      <h3><i class="fa-solid fa-user-shield"></i> Invigilator Information</h3>
+      <h3><i class="fa-solid fa-user-shield"></i> Macluumaadka Ilaaliyaha Fasalka</h3>
       <div class="identity-grid">
         <div class="identity-item">
           <span class="icon"><i class="fa-solid fa-user"></i></span>
           <div class="content">
-            <span class="label">Full Name</span>
-            <span class="value">{{ session.get('invigilator_full_name', 'N/A') }}</span>
+            <span class="label">MAGACA</span>
+            <span class="value">{{ session.get('invigilator_full_name', 'Lama hayo') }}</span>
           </div>
         </div>
         <div class="identity-item">
           <span class="icon"><i class="fa-solid fa-id-badge"></i></span>
           <div class="content">
-            <span class="label">Invigilator ID</span>
-            <span class="value">{{ session.get('invigilator_invigilator_id', 'N/A') }}</span>
+            <span class="label">LAMBARKA ID-GA</span>
+            <span class="value">{{ session.get('invigilator_invigilator_id', 'Lama hayo') }}</span>
           </div>
         </div>
         <div class="identity-item">
           <span class="icon"><i class="fa-solid fa-at"></i></span>
           <div class="content">
-            <span class="label">Username</span>
-            <span class="value">{{ session.get('invigilator_username', 'N/A') }}</span>
+            <span class="label">MAGAC-U-YAAL</span>
+            <span class="value">{{ session.get('invigilator_username', 'Lama hayo') }}</span>
           </div>
         </div>
         <div class="identity-item">
           <span class="icon"><i class="fa-solid fa-crown"></i></span>
           <div class="content">
-            <span class="label">Role</span>
-            <span class="value">{{ session.get('invigilator_role', 'Invigilator') }}</span>
+            <span class="label">DOORKA</span>
+            <span class="value">{{ session.get('invigilator_role', 'Ilaaliyaha Imtixaanka') }}</span>
           </div>
         </div>
       </div>
@@ -144,37 +144,37 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="validation-summary" id="validationSummary" hidden>
       <i class="fa-solid fa-circle-exclamation"></i>
-      <span>Please complete all highlighted required fields before submitting.</span>
+      <span>Fadlan buuxi dhammaan meelaha loo baahan yahay ee la calaamadeeyey ka hor gudbinta.</span>
     </div>
     
     <!-- Incident Details -->
     <div class="form-section glass-card">
-      <h3><i class="fa-solid fa-triangle-exclamation"></i> Incident Details</h3>
+      <h3><i class="fa-solid fa-triangle-exclamation"></i> WARBIXINTA DHACDADA</h3>
       
       <div class="form-row">
         <div class="form-group">
-          <label for="categorySelectorTrigger">Incident Category{% if incident_settings.get('require_category', 'true') == 'true' %} *{% endif %}</label>
-          <input id="categorySelectionValidation" type="hidden" data-required="{{ incident_settings.get('require_category', 'true') }}" data-message="Please select a Category.">
+          <label for="categorySelectorTrigger">Qodobka Dhacdada{% if incident_settings.get('require_category', 'true') == 'true' %} *{% endif %}</label>
+          <input id="categorySelectionValidation" type="hidden" data-required="{{ incident_settings.get('require_category', 'true') }}" data-message="Fadlan xulo Qodob.">
           <div id="selectedCategoryInputs"></div>
           <button id="categorySelectorTrigger" class="category-selector-trigger" type="button" aria-haspopup="dialog" aria-expanded="false">
             <span class="category-selector-main-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
             <span class="category-selector-copy">
-              <span class="category-selector-label">Incident Category</span>
-              <span id="selectedCategoryValue" class="category-selector-value">Select category</span>
+              <span class="category-selector-label">Qodobka Dhacdada</span>
+              <span id="selectedCategoryValue" class="category-selector-value">Xulo Qodob</span>
             </span>
             <i class="fa-solid fa-chevron-right category-selector-arrow" aria-hidden="true"></i>
           </button>
         </div>
         <div id="categoryDescriptionGroup" class="form-group full-width category-description-group" hidden>
-          <label for="category_description">Category Details / Additional Context <span class="required-mark">*</span></label>
-          <textarea id="category_description" name="category_description" rows="3" maxlength="500" data-message="Please describe the Category details." placeholder="Provide details specific to the selected category..."></textarea>
-          <div class="field-meta"><span>Category context is saved independently.</span><span id="categoryDescriptionCount">0 / 500</span></div>
+          <label for="category_description">Faahfaahinta Qodobka <span class="required-mark">*</span></label>
+          <textarea id="category_description" name="category_description" rows="3" maxlength="500" data-message="Fadlan sharax faahfaahinta Qodobka." placeholder="Halkan ku bixi faahfaahinta Qodobka la doortay..."></textarea>
+          <div class="field-meta"><span>Faahfaahinta Qodobka si gaar ah ayaa loo kaydiyaa.</span><span id="categoryDescriptionCount">0 / 500</span></div>
         </div>
       </div>
 
       <div class="form-group">
-        <label>Severity Level{% if incident_settings.get('require_severity', 'true') == 'true' %} *{% endif %}</label>
-        <div class="severity-badges" role="radiogroup" aria-label="Severity Level Selection">
+        <label>Heerka Cakkirnaanta Xaaladda{% if incident_settings.get('require_severity', 'true') == 'true' %} *{% endif %}</label>
+        <div class="severity-badges" role="radiogroup" aria-label="Heerka Cakkirnaanta Xaaladda">
           {% for severity in severities %}
             {% set s_name = severity.name.lower() %}
             {% if 'minor' in s_name %}
@@ -194,7 +194,7 @@
               {% set identity_icon = 'fa-shield-halved' %}
             {% endif %}
             <label class="severity-badge" style="--identity-color: {{ identity_color }};">
-              <input type="radio" name="severity_id" value="{{ severity.id }}" data-required="{{ incident_settings.get('require_severity', 'true') }}" data-message="Please select a Severity Level.">
+              <input type="radio" name="severity_id" value="{{ severity.id }}" data-required="{{ incident_settings.get('require_severity', 'true') }}" data-message="Fadlan xulo Heerka Cakkirnaanta Xaaladda.">
               <div class="liquid-wave">
                 <div class="wave-container">
                   <svg class="wave-svg" viewBox="0 0 240 20" preserveAspectRatio="none">
@@ -221,22 +221,22 @@
       <div class="form-row">
         {% if incident_settings.get('show_exam') == 'true' %}
         <div class="form-group">
-          <label for="exam_id">Exam Type{% if incident_settings.get('require_exam') == 'true' %} *{% endif %}</label>
+          <label for="exam_id">Nuuca Imtixaanka{% if incident_settings.get('require_exam') == 'true' %} *{% endif %}</label>
           <input type="hidden" id="exam_id" name="exam_id" value="{{ exam.id if exam else '' }}">
-          <input type="text" value="{{ exam.name if exam else 'No Active Exam Found' }}" readonly>
+          <input type="text" value="{{ exam.name if exam else 'Lama helin imtixaan firfircoon' }}" readonly>
         </div>
         {% endif %}
         
         {% if incident_settings.get('show_subject') == 'true' %}
         <div class="form-group">
-          <label for="subject_id">Subject{% if incident_settings.get('require_subject') == 'true' %} *{% endif %}</label>
-          <select id="subject_id" name="subject_id" data-required="{{ incident_settings.get('require_subject', 'false') }}" data-message="Please select a Subject.">
-            <option value="">{% if subjects %}Select subject{% else %}No subjects available for this student's level{% endif %}</option>
+          <label for="subject_id">Maaddada{% if incident_settings.get('require_subject') == 'true' %} *{% endif %}</label>
+          <select id="subject_id" name="subject_id" data-required="{{ incident_settings.get('require_subject', 'false') }}" data-message="Fadlan xulo Maaddada.">
+            <option value="">{% if subjects %}Xulo Maaddada{% else %}Maaddooyin looma hayo heerka ardeygan{% endif %}</option>
             {% for subject in subjects %}
             <option value="{{ subject.id }}">{{ subject.name }}</option>
             {% endfor %}
           </select>
-          {% if not subjects %}<p class="help-text">No subjects are configured for this student's level.</p>{% endif %}
+          {% if not subjects %}<p class="help-text">Maaddooyin looma habeeyn heerka ardeygan.</p>{% endif %}
         </div>
         {% endif %}
       </div>
@@ -244,19 +244,19 @@
       {% if incident_settings.get('show_exam_room') == 'true' %}
       <div class="form-row">
         <div class="form-group">
-          <label for="exam_room">{{ incident_settings.get('label_exam_room', 'Exam Room') }}{% if incident_settings.get('require_exam_room') == 'true' %} *{% endif %}</label>
-          <input type="text" id="exam_room" name="exam_room" placeholder="e.g., Room 101" data-required="{{ incident_settings.get('require_exam_room', 'false') }}" data-message="Exam Room is required.">
+          <label for="exam_room">Fasal Imtixaanka{% if incident_settings.get('require_exam_room') == 'true' %} *{% endif %}</label>
+          <input type="text" id="exam_room" name="exam_room" placeholder="Tusaale, Fasal 101" data-required="{{ incident_settings.get('require_exam_room', 'false') }}" data-message="Fasalka Imtixaanka waa loo baahan yahay.">
         </div>
       </div>
       {% endif %}
       
       <div class="form-row">
         <div class="form-group full-width">
-          <label class="sr-only" for="incidentDateTimeTrigger">Incident Date &amp; Time</label>
+          <label class="sr-only" for="incidentDateTimeTrigger">Amminta iyo Taariikhda Dhacdada</label>
           <div id="incidentDateTimePicker" class="incident-datetime-picker">
-            <span class="incident-datetime-badge">Incident Date &amp; Time{% if incident_settings.get('require_incident_date', 'true') == 'true' or incident_settings.get('require_incident_time', 'true') == 'true' %} *{% endif %}</span>
-            <input type="hidden" id="incident_date" name="incident_date" value="{{ current_date_iso }}" data-required="{{ incident_settings.get('require_incident_date', 'true') }}" data-message="Incident Date is required.">
-            <input type="hidden" id="incident_time" name="incident_time" value="{{ current_time_24 }}" data-required="{{ incident_settings.get('require_incident_time', 'true') }}" data-message="Incident Time is required.">
+            <span class="incident-datetime-badge">Amminta iyo Taariikhda Dhacdada{% if incident_settings.get('require_incident_date', 'true') == 'true' or incident_settings.get('require_incident_time', 'true') == 'true' %} *{% endif %}</span>
+            <input type="hidden" id="incident_date" name="incident_date" value="{{ current_date_iso }}" data-required="{{ incident_settings.get('require_incident_date', 'true') }}" data-message="Taariikhda dhacdada waa loo baahan yahay.">
+            <input type="hidden" id="incident_time" name="incident_time" value="{{ current_time_24 }}" data-required="{{ incident_settings.get('require_incident_time', 'true') }}" data-message="Waqtiga dhacdada waa loo baahan yahay.">
             <button id="incidentDateTimeTrigger" class="incident-datetime-trigger" type="button" aria-haspopup="dialog" aria-expanded="false">
               <span class="incident-datetime-field"><i class="fa-regular fa-calendar"></i><span id="incidentDateText">{{ current_date }}</span></span>
               <span class="incident-datetime-divider" aria-hidden="true"></span>
@@ -264,27 +264,27 @@
               <span class="incident-datetime-spacer"></span>
               <span class="incident-datetime-toggle"><i class="fa-solid fa-calendar-clock"></i></span>
             </button>
-            <div id="incidentDateTimePanel" class="incident-datetime-panel" role="dialog" aria-modal="false" aria-label="Choose incident date and time" hidden>
+            <div id="incidentDateTimePanel" class="incident-datetime-panel" role="dialog" aria-modal="false" aria-label="Dooro taariikhda iyo waqtiga dhacdada" hidden>
               <div class="incident-datetime-columns">
                 <div class="incident-calendar">
                   <div class="incident-calendar-head">
-                    <button id="incidentPrevMonth" class="incident-calendar-nav" type="button" aria-label="Previous month"><i class="fa-solid fa-chevron-left"></i></button>
-                    <select id="incidentMonthSelect" class="incident-datetime-select" aria-label="Month"></select>
-                    <select id="incidentYearSelect" class="incident-datetime-select" aria-label="Year"></select>
-                    <button id="incidentNextMonth" class="incident-calendar-nav" type="button" aria-label="Next month"><i class="fa-solid fa-chevron-right"></i></button>
+                    <button id="incidentPrevMonth" class="incident-calendar-nav" type="button" aria-label="Bisha hore"><i class="fa-solid fa-chevron-left"></i></button>
+                    <select id="incidentMonthSelect" class="incident-datetime-select" aria-label="Bisha"></select>
+                    <select id="incidentYearSelect" class="incident-datetime-select" aria-label="Sannadka"></select>
+                    <button id="incidentNextMonth" class="incident-calendar-nav" type="button" aria-label="Bisha xigta"><i class="fa-solid fa-chevron-right"></i></button>
                   </div>
-                  <div class="incident-calendar-weekdays" aria-hidden="true"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+                  <div class="incident-calendar-weekdays" aria-hidden="true"><span>Ax</span><span>Is</span><span>Ta</span><span>Ar</span><span>Kh</span><span>Ju</span><span>Sa</span></div>
                   <div id="incidentCalendarDays" class="incident-calendar-days"></div>
                 </div>
                 <div class="incident-time-control">
-                  <p>Time</p>
+                  <p>Waqtiga</p>
                   <div class="incident-time-columns">
-                    <div><span>Hour</span><button class="incident-time-spin" type="button" data-time-target="hour" data-direction="1" aria-label="Increase hour"><i class="fa-solid fa-chevron-up"></i></button><strong id="incidentHourValue">12</strong><button class="incident-time-spin" type="button" data-time-target="hour" data-direction="-1" aria-label="Decrease hour"><i class="fa-solid fa-chevron-down"></i></button></div>
-                    <div><span>Minute</span><button class="incident-time-spin" type="button" data-time-target="minute" data-direction="1" aria-label="Increase minute"><i class="fa-solid fa-chevron-up"></i></button><strong id="incidentMinuteValue">00</strong><button class="incident-time-spin" type="button" data-time-target="minute" data-direction="-1" aria-label="Decrease minute"><i class="fa-solid fa-chevron-down"></i></button></div>
-                    <div><span>AM / PM</span><button class="incident-time-spin" type="button" data-time-target="ampm" data-direction="1" aria-label="Toggle AM or PM"><i class="fa-solid fa-chevron-up"></i></button><strong id="incidentAmPmValue">AM</strong><button class="incident-time-spin" type="button" data-time-target="ampm" data-direction="-1" aria-label="Toggle AM or PM"><i class="fa-solid fa-chevron-down"></i></button></div>
+                    <div><span>Saacad</span><button class="incident-time-spin" type="button" data-time-target="hour" data-direction="1" aria-label="Kordhi saacadda"><i class="fa-solid fa-chevron-up"></i></button><strong id="incidentHourValue">12</strong><button class="incident-time-spin" type="button" data-time-target="hour" data-direction="-1" aria-label="Yaree saacadda"><i class="fa-solid fa-chevron-down"></i></button></div>
+                    <div><span>Daqiiqo</span><button class="incident-time-spin" type="button" data-time-target="minute" data-direction="1" aria-label="Kordhi daqiiqada"><i class="fa-solid fa-chevron-up"></i></button><strong id="incidentMinuteValue">00</strong><button class="incident-time-spin" type="button" data-time-target="minute" data-direction="-1" aria-label="Yaree daqiiqada"><i class="fa-solid fa-chevron-down"></i></button></div>
+                    <div><span>Saacadda maalinta</span><button class="incident-time-spin" type="button" data-time-target="ampm" data-direction="1" aria-label="Beddel subax ama galab"><i class="fa-solid fa-chevron-up"></i></button><strong id="incidentAmPmValue">AM</strong><button class="incident-time-spin" type="button" data-time-target="ampm" data-direction="-1" aria-label="Beddel subax ama galab"><i class="fa-solid fa-chevron-down"></i></button></div>
                   </div>
-                  <div class="incident-datetime-quick-actions"><button id="incidentTodayButton" type="button">Today</button><button id="incidentNowButton" type="button">Now</button></div>
-                  <button id="incidentDateTimeDone" class="incident-datetime-done" type="button">Done</button>
+                  <div class="incident-datetime-quick-actions"><button id="incidentTodayButton" type="button">Maanta</button><button id="incidentNowButton" type="button">Hadda</button></div>
+                  <button id="incidentDateTimeDone" class="incident-datetime-done" type="button">Dhamee</button>
                 </div>
               </div>
             </div>
@@ -295,38 +295,38 @@
 
     <!-- Description -->
     <div class="form-section glass-card">
-      <h3><i class="fa-solid fa-align-left"></i> {{ incident_settings.get('label_description', 'Incident Description') }}{% if incident_settings.get('require_description', 'true') == 'true' %} *{% endif %}</h3>
+      <h3><i class="fa-solid fa-align-left"></i> Faafahin Dheeraad{% if incident_settings.get('require_description', 'true') == 'true' %} *{% endif %}</h3>
       <div class="form-group full-width">
-        <textarea id="description" name="description" rows="8" placeholder="Please provide a detailed description of what happened during the incident..." data-required="{{ incident_settings.get('require_description', 'true') }}" data-message="Description is required."></textarea>
+        <textarea id="description" name="description" rows="8" placeholder="Fadlan halakan ku bixi faafaahin dheeraad ah oo ku saabsan waxa dhacay intii dhacdadu socotay……." data-required="{{ incident_settings.get('require_description', 'true') }}" data-message="Faafahinta dhacdada waa loo baahan yahay."></textarea>
       </div>
     </div>
 
     <!-- Actions Taken -->
     <div class="form-section glass-card">
-      <h3><i class="fa-solid fa-list-check"></i> {{ incident_settings.get('label_actions_taken', 'Actions Taken') }}</h3>
+      <h3><i class="fa-solid fa-list-check"></i> Ficillada la Qaaday</h3>
       <div class="actions-checkboxes">
         {% for action in actions %}
         <label class="action-checkbox">
-          <input type="checkbox" name="actions_taken" value="{{ action.name }}" data-required="{{ incident_settings.get('require_actions_taken', 'false') }}" data-message="Please select at least one Action Taken.">
+          <input type="checkbox" name="actions_taken" value="{{ action.name }}" data-required="{{ incident_settings.get('require_actions_taken', 'false') }}" data-message="Fadlan xulo ugu yaraan hal Ficil oo la Qaaday.">
           <span>{{ action.name }}</span>
         </label>
         {% endfor %}
       </div>
       <div id="actionDescriptionGroup" class="form-group full-width action-description-group" style="margin-top: 1.25rem;" hidden>
-        <label for="action_description">Action Token Details / Action Notes <span class="required-mark">*</span></label>
-        <textarea id="action_description" name="action_description" rows="3" maxlength="500" data-message="Please describe the Action Token details." placeholder="Provide details specific to the selected action..."></textarea>
-        <div class="field-meta"><span>Action token details are saved independently.</span><span id="actionDescriptionCount">0 / 500</span></div>
+        <label for="action_description">Faahfaahinta Ficilka la Qaaday <span class="required-mark">*</span></label>
+        <textarea id="action_description" name="action_description" rows="3" maxlength="500" data-message="Fadlan faahfaahi Ficilka la qaaday." placeholder="Halkan ku bixi faahfaahinta ficilka la qaaday..."></textarea>
+        <div class="field-meta"><span>Faahfaahinta ficilka si gaar ah ayaa loo kaydiyaa.</span><span id="actionDescriptionCount">0 / 500</span></div>
       </div>
     </div>
 
     <!-- Evidence Upload -->
     {% if incident_settings.get('show_evidence_upload') == 'true' %}
     <div class="form-section glass-card">
-      <h3><i class="fa-solid fa-paperclip"></i> Evidence Upload{% if incident_settings.get('require_evidence') == 'true' %} *{% endif %}</h3>
+    <h3><i class="fa-solid fa-paperclip"></i> Halakan ku xareey Daliilo{% if incident_settings.get('require_evidence') == 'true' %} *{% endif %}</h3>
       <div class="form-group full-width">
-        <label for="evidence">Upload Evidence (Images, Videos, Documents)</label>
-        <input type="file" id="evidence" name="evidence" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx" data-required="{{ incident_settings.get('require_evidence', 'false') }}" data-message="Please upload evidence.">
-        <p class="help-text">Supported formats: JPG, PNG, MP4, MP3, PDF, DOC, DOCX</p>
+        <label for="evidence">Soo geli Daliilo (Sawirro, Muuqaallo, Dukumiintiyo)</label>
+        <input type="file" id="evidence" name="evidence" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx" data-required="{{ incident_settings.get('require_evidence', 'false') }}" data-message="Fadlan soo geli daliil.">
+        <p class="help-text">Noocyada la taageerayo: JPG, PNG, MP4, MP3, PDF, DOC, DOCX</p>
         <div id="upload-preview" class="upload-preview"></div>
       </div>
     </div>
@@ -334,34 +334,34 @@
 
     <!-- Digital Signature -->
     <div class="form-section glass-card signature-section">
-      <h3><i class="fa-solid fa-signature"></i> Digital Signature</h3>
-      <p class="help-text">Sign inside the box below. Your saved signature can be reused when allowed by policy.</p>
-      <input type="hidden" id="signature_data" name="signature_data" value="" data-required="{{ incident_settings.get('require_signature', 'false') }}" data-message="Signature is required.">
+      <h3><i class="fa-solid fa-signature"></i> Saxeex Danabeysan</h3>
+      <p class="help-text">Saxeex gudaha qaanadda hoose. Saxeexa waad kaydsan kartaa, dibna waad u adeegsan kartaa markii siyaasad ahaan laguu oggolaado.</p>
+      <input type="hidden" id="signature_data" name="signature_data" value="" data-required="{{ incident_settings.get('require_signature', 'false') }}" data-message="Saxeexu waa loo baahan yahay.">
       <div class="signature-toolbar">
         <div class="signature-tool-group">
-          <span class="tool-label">Pen Color</span>
-          <button type="button" class="pen-color active" data-color="#0f172a" style="--pen:#0f172a">Slate</button>
-          <button type="button" class="pen-color" data-color="#2563eb" style="--pen:#2563eb">Blue</button>
-          <button type="button" class="pen-color" data-color="#059669" style="--pen:#059669">Emerald</button>
+          <span class="tool-label">Midabka Qalinka</span>
+          <button type="button" class="pen-color active" data-color="#0f172a" style="--pen:#0f172a">Madow</button>
+          <button type="button" class="pen-color" data-color="#2563eb" style="--pen:#2563eb">Buluug</button>
+          <button type="button" class="pen-color" data-color="#059669" style="--pen:#059669">Cagaar</button>
           <button type="button" class="pen-color" data-color="#7c3aed" style="--pen:#7c3aed">Violet</button>
-          <button type="button" class="pen-color" data-color="#e11d48" style="--pen:#e11d48">Rose</button>
+          <button type="button" class="pen-color" data-color="#e11d48" style="--pen:#e11d48">Casaan khafiif ah</button>
         </div>
         <label class="signature-thickness">
-          <span>Thickness</span>
+          <span>Dhumucda</span>
           <select id="signatureThickness">
-            <option value="2">Fine</option>
-            <option value="3" selected>Medium</option>
-            <option value="5">Bold</option>
-            <option value="7">Marker</option>
+            <option value="2">Fudud</option>
+            <option value="3" selected>Dhexdhexaad</option>
+            <option value="5">Mid weyn</option>
+            <option value="7">Calaamadeeye</option>
           </select>
         </label>
-        <button type="button" class="signature-action" id="signatureUndo"><i class="fa-solid fa-rotate-left"></i> Undo</button>
-        <button type="button" class="signature-action" id="signatureRedo"><i class="fa-solid fa-rotate-right"></i> Redo</button>
-        <button type="button" class="signature-action" id="signatureClear"><i class="fa-solid fa-eraser"></i> Clear</button>
+        <button type="button" class="signature-action" id="signatureUndo"><i class="fa-solid fa-rotate-left"></i> Ka noqo</button>
+        <button type="button" class="signature-action" id="signatureRedo"><i class="fa-solid fa-rotate-right"></i> Dib u samee</button>
+        <button type="button" class="signature-action" id="signatureClear"><i class="fa-solid fa-eraser"></i> Nadiifi</button>
         {% if allow_signature_reuse and invigilator and invigilator.signature_data %}
-        <button type="button" class="signature-action reuse" id="signatureReuse"><i class="fa-solid fa-fingerprint"></i> Reuse Saved</button>
+        <button type="button" class="signature-action reuse" id="signatureReuse"><i class="fa-solid fa-fingerprint"></i> Dib u isticmaal Saxeexa la kaydiyey</button>
         {% endif %}
-        <button type="button" class="signature-action primary" id="signatureSave"><i class="fa-solid fa-check"></i> Save Signature</button>
+        <button type="button" class="signature-action primary" id="signatureSave"><i class="fa-solid fa-check"></i> Kaydi Saxeexa</button>
       </div>
       <div class="signature-pad-wrap">
         <canvas id="signatureCanvas"></canvas>
@@ -370,18 +370,18 @@
 
     <!-- Report Preview -->
     <div class="form-section glass-card preview-section">
-      <h3><i class="fa-solid fa-info-circle"></i> Report Information</h3>
+      <h3><i class="fa-solid fa-info-circle"></i> Astaamaha Gaarka ah ee Warbixinta</h3>
       <div class="preview-grid">
         <div class="preview-item">
-          <span class="label">Report Number</span>
+          <span class="label">Tixraaca Warbixinta</span>
           <span class="value">{{ preview_report_num }}</span>
         </div>
         <div class="preview-item">
-          <span class="label">Date</span>
+          <span class="label">Taariikhda</span>
           <span class="value">{{ current_date }}</span>
         </div>
         <div class="preview-item">
-          <span class="label">Time</span>
+          <span class="label">Waqtiga</span>
           <span class="value">{{ current_time }}</span>
         </div>
       </div>
@@ -389,10 +389,10 @@
 
     <div class="form-actions">
       <button type="submit" class="btn-submit">
-        <i class="fa-solid fa-paper-plane"></i> Submit Report
+        <i class="fa-solid fa-paper-plane"></i> GUDBI WARBIXINTA
       </button>
       <a href="{{ url_for('public.qr_landing', token=token) }}" class="btn-cancel">
-        <i class="fa-solid fa-times"></i> Cancel
+        <i class="fa-solid fa-times"></i> Jooji
       </a>
     </div>
   </form>
@@ -405,20 +405,20 @@
           <div class="category-selector-heading">
             <span class="category-selector-header-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
             <span>
-              <strong id="categorySelectorTitle">Select Category</strong>
-              <small>Select one or more incidents</small>
+              <strong id="categorySelectorTitle">Xulo Qodob</strong>
+              <small>Xulo hal ama ka badan oo Qodobo ah</small>
             </span>
           </div>
-          <button id="closeCategorySelector" class="category-selector-close" type="button" aria-label="Close category selector"><i class="fa-solid fa-xmark"></i></button>
+          <button id="closeCategorySelector" class="category-selector-close" type="button" aria-label="Xir xulashada qodobka"><i class="fa-solid fa-xmark"></i></button>
         </div>
       </div>
       <div class="category-selector-search-wrap">
         <label class="category-selector-search" for="categorySearch">
           <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-          <input id="categorySearch" type="search" placeholder="Search category..." autocomplete="off">
+          <input id="categorySearch" type="search" placeholder="Raadi Qodob..." autocomplete="off">
         </label>
       </div>
-      <p id="categorySelectionCount" class="category-selector-count" aria-live="polite">No category selected</p>
+      <p id="categorySelectionCount" class="category-selector-count" aria-live="polite">Wax Qodobo ah lama xulan</p>
       <div id="categorySelectorList" class="category-selector-list">
         {% for category in categories %}
         <button
@@ -436,7 +436,7 @@
         {% endfor %}
       </div>
       <div class="category-selector-footer">
-        <button id="confirmCategorySelection" class="category-selector-confirm" type="button" disabled>Continue</button>
+        <button id="confirmCategorySelection" class="category-selector-confirm" type="button" disabled>Sii wad</button>
       </div>
     </div>
   </div>
@@ -447,16 +447,16 @@
 <div class="incident-submit-overlay" id="incidentSubmitOverlay" aria-hidden="true" role="status" aria-live="polite">
   <div class="incident-submit-dialog">
     <div class="submit-orbit"><i class="fa-solid fa-file-circle-check"></i><span id="submitPercent">0%</span></div>
-    <h2 id="submitTitle">Submitting Report</h2>
-    <p id="submitMessage">Preparing your secure incident record.</p>
+    <h2 id="submitTitle">Warbixinta waa la gudbinayaa</h2>
+    <p id="submitMessage">Waxaa la diyaarinayaa diiwaankaaga ammaan ah ee dhacdada.</p>
     <div class="submit-progress"><span id="submitProgressBar"></span></div>
     <ol class="submit-steps">
-      <li data-step="1"><i class="fa-solid fa-circle"></i><span>Validating information</span></li>
-      <li data-step="2"><i class="fa-solid fa-circle"></i><span>Saving student details</span></li>
-      <li data-step="3"><i class="fa-solid fa-circle"></i><span>Recording incident</span></li>
-      <li data-step="4"><i class="fa-solid fa-circle"></i><span>Finalizing report</span></li>
+      <li data-step="1"><i class="fa-solid fa-circle"></i><span>Xogta ayaa la hubinayaa</span></li>
+      <li data-step="2"><i class="fa-solid fa-circle"></i><span>Xogta ardeyga ayaa la kaydinayaa</span></li>
+      <li data-step="3"><i class="fa-solid fa-circle"></i><span>Dhacdada ayaa la diiwaangelinayaa</span></li>
+      <li data-step="4"><i class="fa-solid fa-circle"></i><span>Warbixinta ayaa la dhammaystirayaa</span></li>
     </ol>
-    <button type="button" class="submit-retry" id="submitRetry" hidden>Try Again</button>
+    <button type="button" class="submit-retry" id="submitRetry" hidden>Mar kale isku day</button>
   </div>
 </div>
 
@@ -628,7 +628,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const formatDate = (value) => {
     if (!value) return '';
     const date = new Date(value + 'T00:00:00');
-    return date.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' });
+    const monthsSomali = ['Janaayo', 'Febraayo', 'Maarso', 'Abriil', 'May', 'Juun', 'Luulyo', 'Agoosto', 'Sebtembar', 'Oktoobar', 'Nofeember', 'Diseembar'];
+    return `${monthsSomali[date.getMonth()]} ${String(date.getDate()).padStart(2, '0')}, ${date.getFullYear()}`;
   };
 
   const formatTime = (value) => {
@@ -648,7 +649,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const timeText = document.getElementById('incidentTimeText');
 
   if (dateInput && timeInput && dateTimePicker && dateTimeTrigger && dateTimePanel) {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const months = ['Janaayo', 'Febraayo', 'Maarso', 'Abriil', 'May', 'Juun', 'Luulyo', 'Agoosto', 'Sebtembar', 'Oktoobar', 'Nofeember', 'Diseembar'];
     const today = new Date();
     const parseDateInput = (value) => {
       const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(value || '');
@@ -689,8 +690,8 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     };
     const renderSummary = () => {
-      if (dateText) dateText.textContent = hasSelectedDate ? formatDate(dateInput.value) : 'Select date';
-      if (timeText) timeText.textContent = hasSelectedTime ? formatTime(timeInput.value) : 'Select time';
+      if (dateText) dateText.textContent = hasSelectedDate ? formatDate(dateInput.value) : 'Xulo taariikh';
+      if (timeText) timeText.textContent = hasSelectedTime ? formatTime(timeInput.value) : 'Xulo waqti';
     };
     const renderTime = () => {
       if (hourValue) hourValue.textContent = pad(hour12);
@@ -892,16 +893,16 @@ document.addEventListener('DOMContentLoaded', function() {
       categoryItems().filter((item) => !selectedCategoryIds.has(String(item.dataset.categoryId)))
         .forEach((item) => item.classList.remove('is-selected'));
       const count = selectedItems.length;
-      const categoryNames = selectedItems.map((item) => item.dataset.categoryName || 'Category');
+      const categoryNames = selectedItems.map((item) => item.dataset.categoryName || 'Qodob');
       if (categorySelectionCount) {
         categorySelectionCount.innerHTML = count
-          ? `<strong>${count}</strong> ${count === 1 ? 'category' : 'categories'} selected`
-          : 'No category selected';
+          ? `<strong>${count}</strong> ${count === 1 ? 'qodob la doortay' : 'qodob ayaa la doortay'}`
+          : 'Wax Qodobo ah lama xulan';
       }
       if (selectedCategoryValue) {
         selectedCategoryValue.textContent = count === 0
-          ? 'Select category'
-          : count === 1 ? categoryNames[0] : `${count} categories selected`;
+          ? 'Xulo Qodob'
+          : count === 1 ? categoryNames[0] : `${count} qodob ayaa la doortay`;
       }
       if (confirmCategorySelection) confirmCategorySelection.disabled = count === 0;
       if (categorySelectionValidation) categorySelectionValidation.value = count ? 'selected' : '';
@@ -1004,7 +1005,7 @@ document.addEventListener('DOMContentLoaded', function() {
         else if (field.type === 'file') invalid = !field.files || field.files.length === 0;
         else invalid = !String(field.value || '').trim();
         if (invalid) {
-          errors.push({ field, message: field.dataset.message || 'This field is required.' });
+          errors.push({ field, message: field.dataset.message || 'Meeshan waa loo baahan yahay.' });
         }
       });
       errors.forEach(({ field, message }) => addError(field, message));
@@ -1044,8 +1045,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const openSubmitOverlay = () => {
       submitOverlay?.classList.add('is-visible');
       submitOverlay?.setAttribute('aria-hidden', 'false');
-      if (submitTitle) submitTitle.textContent = 'Submitting Report';
-      if (submitMessage) submitMessage.textContent = 'Preparing your secure incident record.';
+      if (submitTitle) submitTitle.textContent = 'Warbixinta waa la gudbinayaa';
+      if (submitMessage) submitMessage.textContent = 'Waxaa la diyaarinayaa diiwaankaaga ammaan ah ee dhacdada.';
       if (submitRetry) submitRetry.hidden = true;
       updateProgress(8);
       let progress = 8;
@@ -1057,8 +1058,8 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     const failSubmission = (message) => {
       clearInterval(progressTimer);
-      if (submitTitle) submitTitle.textContent = 'Unable to Submit Report';
-      if (submitMessage) submitMessage.textContent = message || 'The report was not saved. Please review the form and try again.';
+      if (submitTitle) submitTitle.textContent = 'Warbixinta lama gudbin';
+      if (submitMessage) submitMessage.textContent = message || 'Warbixinta lama kaydin. Fadlan dib u hubi foomka oo mar kale isku day.';
       submitOverlay?.classList.add('has-error');
       if (submitRetry) submitRetry.hidden = false;
     };
@@ -1075,7 +1076,7 @@ document.addEventListener('DOMContentLoaded', function() {
       event.preventDefault();
       const button = incidentForm.querySelector('.btn-submit');
       if (button) {
-        button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting...';
+        button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Waa la gudbinayaa...';
         button.disabled = true;
       }
       openSubmitOverlay();
@@ -1088,7 +1089,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || !payload.success) {
-          const errors = payload.errors || [payload.message || 'The server could not save this report.'];
+          const errors = payload.errors || [payload.message || 'Server-ku ma kaydin karin warbixintan.'];
           clearValidation();
           errors.forEach((message) => {
             const field = Array.from(incidentForm.querySelectorAll('[data-message]')).find((item) => item.dataset.message === message);
@@ -1100,12 +1101,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         clearInterval(progressTimer);
         updateProgress(100);
-        if (submitTitle) submitTitle.textContent = 'Report Submitted Successfully';
-        if (submitMessage) submitMessage.textContent = `Reference: ${payload.report_number}`;
+        if (submitTitle) submitTitle.textContent = 'Warbixinta si guul leh ayaa loo gudbiyey';
+        if (submitMessage) submitMessage.textContent = `Tixraac: ${payload.report_number}`;
         submitOverlay?.classList.add('is-success');
         window.setTimeout(() => { window.location.assign(payload.success_url); }, 800);
       } catch (error) {
-        failSubmission('A network error interrupted the submission. Your information is still on this form; please try again.');
+        failSubmission('Cilad shabakad ayaa joojisay gudbinta. Xogtaadu wali waxay ku jirtaa foomkan; fadlan mar kale isku day.');
       }
     });
   }
@@ -1118,7 +1119,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (files.length > 0) {
         const successMessage = document.createElement('div');
         successMessage.className = 'upload-success';
-        successMessage.innerHTML = '<i class="fa-solid fa-check-circle"></i> ' + files.length + ' file(s) selected';
+        successMessage.innerHTML = '<i class="fa-solid fa-check-circle"></i> ' + files.length + ' fayl ayaa la doortay';
         uploadPreview.appendChild(successMessage);
         
         Array.from(files).forEach(function(file, index) {
@@ -1154,11 +1155,11 @@ document.addEventListener('DOMContentLoaded', function() {
           fileInfo.innerHTML = `
             <div class="file-name">${file.name}</div>
             <div class="file-meta">
-              <span class="file-type">${file.type || 'Unknown'}</span>
+              <span class="file-type">${file.type || 'Aan la aqoon'}</span>
               <span class="file-size">${(file.size / 1024).toFixed(1)} KB</span>
             </div>
             <button type="button" class="remove-file" data-index="${index}">
-              <i class="fa-solid fa-times"></i> Remove
+              <i class="fa-solid fa-times"></i> Ka saar
             </button>
           `;
           
@@ -1177,7 +1178,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const remainingCards = uploadPreview.querySelectorAll('.file-preview-card');
         const successMessage = uploadPreview.querySelector('.upload-success');
         if (successMessage) {
-          successMessage.innerHTML = '<i class="fa-solid fa-check-circle"></i> ' + remainingCards.length + ' file(s) selected';
+          successMessage.innerHTML = '<i class="fa-solid fa-check-circle"></i> ' + remainingCards.length + ' fayl ayaa la doortay';
         }
       }
     });
@@ -1319,7 +1320,7 @@ document.addEventListener('DOMContentLoaded', function() {
           toast.className = 'signature-toast';
           canvas.closest('.signature-section').appendChild(toast);
         }
-        toast.innerHTML = '<i class="fa-solid fa-circle-check"></i> Signature saved for this report.';
+        toast.innerHTML = '<i class="fa-solid fa-circle-check"></i> Saxeexa warbixintan waa la kaydiyey.';
         setTimeout(() => toast.remove(), 3500);
       }
     });

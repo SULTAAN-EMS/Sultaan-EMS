@@ -6,9 +6,11 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/top10-tunnel.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/verified-name-badge.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/mg-detail-card.css', v='mg-loading-20260821') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/critical-subject-stars.css', v='critical-stars-20260827-4') }}">
 {% endblock %}
 {% block content %}
 {% from 'partials/verified_name_badge.html' import verified_name_badge %}
+{% from 'partials/critical_subject_badge.html' import critical_subject_badge %}
 <style>
   .premium-homepage {
     --portal-page-title-size: {{ settings.typography_page_title_size }};
@@ -282,12 +284,12 @@
         <h2>{{ result.student.full_name }}{{ verified_name_badge(label='Verified', variant='white') }}</h2>
         <p>{{ result_scope.class_name }}</p>
         <div class="reference-side-lines">
-          <div class="side-parent"><span><i class="fa-solid fa-user"></i></span><small>{{ settings.result_label_mother_name }}</small><strong>{{ result.student.mother_name }}</strong></div>
-          <div class="side-student-id"><span><i class="fa-solid fa-id-card"></i></span><small>{{ settings.result_label_student_id }}</small><strong>{{ result.student.student_code }}</strong></div>
-          <div class="side-student-class"><span><i class="fa-solid fa-people-roof"></i></span><small>{{ settings.result_label_student_class }}</small><strong>{{ result_scope.class_name }}</strong></div>
-          <div class="side-exam"><span><i class="fa-solid fa-file-lines"></i></span><small>{{ settings.result_label_exam_type }}</small><strong>{{ result.exam.name if result.exam else 'Final Examination' }}</strong></div>
-          <div class="side-download-date"><span><i class="fa-solid fa-calendar-check"></i></span><small>{{ settings.result_label_date_issued }}</small><strong>{{ download_date_text }}</strong></div>
-          <div class="side-percentage"><span><i class="fa-solid fa-percent"></i></span><small>{{ settings.result_label_subject_percentage }}</small><strong>{{ result.average|academic_number(settings) }}%</strong></div>
+          <div class="side-parent"><span><i class="fa-solid fa-user"></i></span><small>MAGACA HOOYADA</small><strong>{{ result.student.mother_name }}</strong></div>
+          <div class="side-student-id"><span><i class="fa-solid fa-id-card"></i></span><small>TIRA-TAXANAHA</small><strong>{{ result.student.student_code }}</strong></div>
+          <div class="side-student-class"><span><i class="fa-solid fa-people-roof"></i></span><small>FASALKA ARDEYGA</small><strong>{{ result_scope.class_name }}</strong></div>
+          <div class="side-exam"><span><i class="fa-solid fa-file-lines"></i></span><small>NUUCA IMTIXAANKA</small><strong>{{ result.exam.name if result.exam else 'Final Examination' }}</strong></div>
+          <div class="side-download-date"><span><i class="fa-solid fa-calendar-check"></i></span><small>Taariikhda Daabacidda</small><strong>{{ download_date_text }}</strong></div>
+          <div class="side-percentage"><span><i class="fa-solid fa-percent"></i></span><small>BOQOLLEYDA MAADOOYINKA</small><strong>{{ result.average|academic_number(settings) }}%</strong></div>
         </div>
         <div class="reference-school-mark">
           {% if settings.logo_path %}<img src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">{% else %}<i class="fa-solid fa-school"></i>{% endif %}
@@ -299,24 +301,24 @@
       <div class="reference-result-content">
         <header class="reference-result-header">
           <div>
-            <h2>{{ settings.result_online_title_primary }} <span>{{ settings.result_online_title_accent }}</span></h2>
-            <p>Academic Year {{ result_scope.academic_year_name }}</p>
+            <h2>WARBIXINTA <span>NATIIJADA</span></h2>
+            <p>Sanad Dugsiyeedka {{ result_scope.academic_year_name }}</p>
           </div>
         </header>
 
         <main class="reference-result-grid">
           <section class="reference-table-panel">
             <table class="reference-result-table">
-              <thead><tr><th>No.</th><th>Subject</th><th>Full Mark</th><th>Mark Obtained</th><th>Grade</th><th>Grade Point</th></tr></thead>
+              <thead><tr><th>TT.</th><th>Maaddo</th><th>Dhibcaha Guud</th><th>Dhibcaha la Helay</th><th>Darajo</th><th>Darajo Dhibceed</th></tr></thead>
               <tbody>
                 {% for row in result.subjects %}
                   <tr data-mg-subject-id="{{ row.subject_id or '' }}" data-mg-subject="{{ row.subject|e }}" data-mg-theme-index="{{ loop.index0 % 8 }}">
-                    <td data-label="No.">{{ loop.index }}</td>
-                    <td data-label="Subject">{{ row.subject }}</td>
-                    <td data-label="Full Mark">{{ row.max_score|academic_number(settings) }}</td>
-                    <td data-label="Mark Obtained">{% if row.is_uf %}<span class="dynamic-grade-badge mark-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b><span class="mg-danger-icon" aria-hidden="true">⚠️</span><span>MG</span></b></span>{% else %}<span class="dynamic-grade-badge mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.score|academic_number(settings) }}</b></span>{% endif %}</td>
-                    <td data-label="Grade">{% if row.is_uf %}<span class="dynamic-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b><span class="mg-danger-icon" aria-hidden="true">⚠️</span><span>MG</span></b></span>{% else %}<span class="dynamic-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.grade.grade }}</b></span>{% endif %}</td>
-                    <td data-label="Grade Point">{% if row.is_uf %}<span class="dynamic-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b><span class="mg-danger-icon" aria-hidden="true">⚠️</span><span>MG</span></b></span>{% else %}{{ row.grade.grade_point|academic_number(settings) }}{% endif %}</td>
+                    <td data-label="TT.">{{ loop.index }}</td>
+                    <td data-label="Maaddo" class="result-subject-cell"><span class="subj-cell"><span>{{ row.subject }}</span>{{ critical_subject_badge(row.critical_badge, interactive=true, subject_name=row.subject, score=row.score, max_score=row.max_score) }}</span></td>
+                    <td data-label="Dhibcaha Guud">{{ row.max_score|academic_number(settings) }}</td>
+                    <td data-label="Dhibcaha la Helay">{% if row.is_uf %}<span class="dynamic-grade-badge mark-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b><span class="mg-danger-icon" aria-hidden="true">⚠️</span><span>MG</span></b></span>{% else %}<span class="dynamic-grade-badge mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.score|academic_number(settings) }}</b></span>{% endif %}</td>
+                    <td data-label="Darajo">{% if row.is_uf %}<span class="dynamic-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b><span class="mg-danger-icon" aria-hidden="true">⚠️</span><span>MG</span></b></span>{% else %}<span class="dynamic-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.grade.grade }}</b></span>{% endif %}</td>
+                    <td data-label="Darajo Dhibceed">{% if row.is_uf %}<span class="dynamic-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b><span class="mg-danger-icon" aria-hidden="true">⚠️</span><span>MG</span></b></span>{% else %}{{ row.grade.grade_point|academic_number(settings) }}{% endif %}</td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -326,13 +328,13 @@
           <aside class="reference-right-column">
             <section class="reference-academic-summary">
               <h3>{{ settings.result_academic_summary_title if settings.result_academic_summary_title != 'Academic Summary' else 'SOO KOOBID' }}</h3>
-              <div><span><i class="fa-solid fa-book-open"></i> Total Subjects</span><strong>{{ result.subjects|length }}</strong></div>
-              <div><span><i class="fa-solid fa-list-check"></i> Total Marks</span><strong>{{ result.max_total|academic_number(settings) }}</strong></div>
-              <div><span><i class="fa-solid fa-chart-line"></i> Total Obtained Marks</span><strong>{{ result.total|academic_number(settings) }}</strong></div>
-              <div><span><i class="fa-solid fa-chart-pie"></i> Average Percentage</span><strong>{{ result.average|academic_number(settings) }}%</strong></div>
-              <div><span><i class="fa-solid fa-star"></i> Overall Grade</span><strong class="pill" style="background: {{ result.overall_grade.badge_color }}; color: {{ result.overall_grade.text_color }};">{{ result.overall_grade.grade }}</strong></div>
-              <div><span><i class="fa-solid fa-ranking-star"></i> Position in Class</span><strong>{{ result.rank or '-' }}</strong></div>
-              <div><span><i class="fa-solid fa-arrow-up-right-dots"></i> Final Status</span><strong class="final-status-value">{{ result.portal_outcome.label }}</strong></div>
+              <div><span><i class="fa-solid fa-book-open"></i> Maadooyinka Guud</span><strong>{{ result.subjects|length }}</strong></div>
+              <div><span><i class="fa-solid fa-list-check"></i> Dhibcaha Guud</span><strong>{{ result.max_total|academic_number(settings) }}</strong></div>
+              <div><span><i class="fa-solid fa-chart-line"></i> Dhibcaha Guud ee la helay</span><strong>{{ result.total|academic_number(settings) }}</strong></div>
+              <div><span><i class="fa-solid fa-chart-pie"></i> Celceliska Boqolleyda</span><strong>{{ result.average|academic_number(settings) }}%</strong></div>
+              <div><span><i class="fa-solid fa-star"></i> Darajada</span><strong class="pill" style="background: {{ result.overall_grade.badge_color }}; color: {{ result.overall_grade.text_color }};">{{ result.overall_grade.grade }}</strong></div>
+              <div><span><i class="fa-solid fa-ranking-star"></i> Kaalinta Fasalka</span><strong>{{ result.rank or '-' }}</strong></div>
+              <div><span><i class="fa-solid fa-arrow-up-right-dots"></i> GO'AANKA</span><strong class="final-status-value">{{ result.portal_outcome.label }}</strong></div>
             </section>
 
             <section class="reference-comments">
@@ -342,7 +344,7 @@
               </div>
               <div class="reference-comment-auth">
                 <div class="reference-auth-item">
-                  <strong>SIGNATURE</strong>
+                  <strong>SAXEEXA</strong>
                   {% if settings.principal_signature_path %}
                     <img src="{{ asset_url(settings.principal_signature_path) }}" alt="Official signature">
                   {% else %}
@@ -350,7 +352,7 @@
                   {% endif %}
                 </div>
                 <div class="reference-auth-item">
-                  <strong>STAMP</strong>
+                  <strong>TIIMBARE</strong>
                   {% if settings.school_stamp_path %}
                     <img src="{{ asset_url(settings.school_stamp_path) }}" alt="School stamp">
                   {% else %}
@@ -392,7 +394,7 @@
           <div class="result-download-choice">
             <button type="button" class="result-action-button download js-result-download-toggle" aria-expanded="false" aria-haspopup="menu"><i class="fa-solid fa-file-arrow-down"></i><span>La-dag/Daabac</span><small>PDF / Print</small></button>
             <div class="result-download-menu" role="menu" hidden>
-              <a href="{{ url_for('public.download_report', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}" role="menuitem"><i class="fa-solid fa-file-pdf"></i><span>La dag Natiijadaada (PDF)</span><small>Download</small></a>
+              <a href="{{ url_for('public.download_report', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}" target="_blank" rel="noopener" role="menuitem"><i class="fa-solid fa-file-pdf"></i><span>La dag Natiijadaada (PDF)</span><small>Download</small></a>
               <a href="{{ url_for('public.print_report', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}" target="_blank" rel="noopener" role="menuitem"><i class="fa-solid fa-print"></i><span>Daabac Natiijada</span><small>Print</small></a>
             </div>
           </div>
@@ -421,7 +423,27 @@
         <div class="mg-detail-footer"><div class="mg-footer-message">Maaddadan imtixaankeeda uma aaddan fadhiisan - sidaas awgeed dhibco/darajo lama xisaabin.</div><button type="button" class="mg-close-btn" data-mg-close>Gartay</button></div>
       </article>
     </div>
+    <div class="critical-star-modal" id="criticalStarModal" hidden aria-hidden="true">
+      <article class="critical-star-modal__card" role="dialog" aria-modal="true" aria-labelledby="criticalStarModalTitle">
+        <button type="button" class="critical-star-modal__close" data-critical-modal-close aria-label="Xir">✕</button>
+        <div class="critical-star-modal__head">
+          <div class="critical-star-modal__icon" data-critical-modal-icon aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5v-15Z"/><path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20"/></svg></div>
+          <h3 id="criticalStarModalTitle" data-critical-modal-subject>Maaddo</h3>
+          <p>Maado Muhiim ah, kana mida Shuruudaha Gudbidda.</p>
+        </div>
+        <div class="critical-star-modal__body">
+          <div class="critical-star-modal__facts">
+            <div class="critical-star-modal__fact" data-critical-modal-obtained><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4Z"/><path d="M8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3"/><path d="M12 12v4M10 16h4M9 20h6"/></svg><strong data-critical-modal-score>-</strong><small>Darajada la helay</small></div>
+            <div class="critical-star-modal__fact" data-critical-modal-minimum><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.2"/><circle cx="12" cy="12" r="1.2" fill="#fff" stroke="none"/></svg><strong data-critical-modal-minimum-value>-</strong><small>Ugu Yaraan</small></div>
+          </div>
+          <div class="critical-star-modal__why-wrap">
+            <div class="critical-star-modal__why"><span class="critical-star-modal__why-icon" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5m0 3h.01"/></svg></span><p data-critical-modal-reason></p></div>
+          </div>
+        </div>
+      </article>
+    </div>
     <script src="{{ url_for('static', filename='js/mg-detail-card.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/critical-subject-stars.js', v='critical-stars-20260827-4') }}"></script>
 
     <div class="falcelin-widget-host" id="falcelinWidgetHost" hidden aria-hidden="true">
       <iframe id="falcelinWidgetFrame" title="Falcelin iyo Cabasho" src="{{ url_for('static', filename='falcelin-cabasho-widget.html') }}?token={{ feedback_access_token|urlencode }}&amp;embedded=1&amp;v=3" loading="eager"></iframe>

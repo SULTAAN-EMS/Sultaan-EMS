@@ -1,10 +1,12 @@
 <!DOCTYPE html>
+{% from 'partials/critical_subject_badge.html' import critical_subject_badge %}
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Whole Class Results - {{ selected_exam.name }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/mg-detail-card.css', v='mg-loading-20260821') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/critical-subject-stars.css', v='critical-stars-20260827-4') }}">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
@@ -669,7 +671,7 @@
                                 <th class="col-name">Student Name<small>Mother's Name</small></th>
                                 <th class="col-class">Class</th>
                                 {% for subject in subjects %}
-                                    <th class="col-subject" data-mg-subject-id="{{ subject.id }}" data-mg-subject="{{ subject.name|e }}">{{ subject.name|upper }}</th>
+                                    <th class="col-subject" data-mg-subject-id="{{ subject.id }}" data-mg-subject="{{ subject.name|e }}"><span class="subj-cell"><span>{{ subject.name|upper }}</span>{{ critical_subject_badge(critical_badges.get(subject.id), interactive=false, subject_name=subject.name) }}</span><small>({{ subject_maxima.get(subject.id, subject.max_score)|academic_number(settings) }})</small></th>
                                 {% endfor %}
                                 <th class="col-total">Total<small>({{ page_students[0].total_max|academic_number(settings) if page_students else 0 }})</small></th>
                                 <th class="col-percent">Percentage</th>

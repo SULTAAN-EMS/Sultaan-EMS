@@ -1,0 +1,8 @@
+{% macro critical_subject_badge(badge, interactive=false, subject_name='', score=None, max_score=None) -%}
+  {% if badge %}
+    {% if interactive %}<button type="button" class="critical-star-badge critical-star-badge--{{ badge.design }}" data-critical-star data-subject="{{ subject_name|e }}" data-score="{{ score if score is not none else '' }}" data-max-score="{{ max_score if max_score is not none else '' }}" data-minimum-percentage="{{ badge.minimum_percentage }}" data-reason="{{ badge.reason|e }}" aria-label="{{ subject_name|e }} waa maaddo muhiim ah">{% else %}<span class="critical-star-badge critical-star-badge--{{ badge.design }} critical-star-badge--static" aria-label="{{ subject_name|e }} waa maaddo muhiim ah">{% endif %}
+      <span class="critical-star-badge__ring" aria-hidden="true"></span>
+      <span class="critical-star-badge__core" aria-hidden="true"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2l2.9 6 6.6.8-4.8 4.6 1.2 6.6L12 16.9 6.1 20l1.2-6.6-4.8-4.6 6.6-.8L12 2z"/></svg></span>
+    {% if interactive %}</button>{% else %}</span>{% endif %}
+  {% endif %}
+{%- endmacro %}

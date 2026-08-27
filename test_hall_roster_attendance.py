@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 from app import create_app, db
 from config import Config
 from app.models import (
-    AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, AttendanceRecord,
+    AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord,
     Exam, ExamHall, ExamHallEnrollment, ExamHallSubject, ExamSession,
     ExamSessionSubject, ExamType, SchoolClass, Student, Subject, User
 )
@@ -656,6 +656,22 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         )
         db.session.add_all([primary_subject, primary_student])
         db.session.flush()
+        primary_year_level = AcademicYearLevel(
+            academic_year_id=self.year.id,
+            legacy_level_id=primary_level.id,
+            name=primary_level.name,
+            sort_order=primary_level.sort_order,
+        )
+        db.session.add(primary_year_level)
+        db.session.flush()
+        db.session.add(AcademicYearSubject(
+            academic_year_id=self.year.id,
+            academic_year_level_id=primary_year_level.id,
+            legacy_subject_id=primary_subject.id,
+            name=primary_subject.name,
+            sort_order=primary_subject.sort_order,
+        ))
+        db.session.flush()
         return primary_level, primary_subject, primary_student
 
     def test_m_timetable_session_persists_and_filters_students_by_level(self):
@@ -694,6 +710,37 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertEqual(student_slots[self.student1.id], {self.subject.id})
         self.assertEqual(student_slots[primary_student.id], {primary_subject.id})
         print("[PASS] Test (m): Timetable session persistence + strictly level-specific roster verified.")
+
+    def test_p_timetable_scope_excludes_levels_from_other_academic_years(self):
+        """Timetable options and saves stay inside the selected year's hierarchy."""
+        self.login()
+        payload = self.client.get(
+            f'/admin/attendance/api/timetable-data?academic_year_id={self.year.id}'
+            f'&exam_type_id={self.exam_type.id}'
+        ).get_json()
+        self.assertTrue(payload['success'], payload)
+        visible_level_ids = {item['id'] for item in payload['levels']}
+        self.assertIn(self.level_sec.id, visible_level_ids)
+        self.assertNotIn(self.other_level.id, visible_level_ids)
+
+        session = self.client.post('/admin/attendance/api/sessions', json={
+            'academic_year_id': self.year.id,
+            'exam_type_id': self.exam_type.id,
+            'date': date(2026, 8, 20).isoformat(),
+            'time': '08:00',
+            'sitting_label': 'Year Scope Test',
+        }).get_json()
+        self.assertTrue(session['success'], session)
+        other_subject = Subject(name='Other Year Subject Test', academic_level_id=self.other_level.id)
+        db.session.add(other_subject)
+        db.session.commit()
+        rejected = self.client.put(
+            f"/admin/attendance/api/sessions/{session['session']['id']}/subjects",
+            json={'assignments': [{'level_id': self.other_level.id, 'subject_id': other_subject.id}]},
+        )
+        self.assertEqual(rejected.status_code, 400)
+        self.assertFalse(rejected.get_json()['success'])
+        print("[PASS] Test (p): Timetable year isolation blocks other-year levels and subjects.")
 
     def test_n_delete_session_cascades_subject_assignments(self):
         """The confirmation-backed delete endpoint removes the session and its assignments."""

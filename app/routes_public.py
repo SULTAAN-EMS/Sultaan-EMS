@@ -1,8 +1,7 @@
 import secrets
-from io import BytesIO
 from datetime import date, datetime
 
-from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
@@ -329,15 +328,7 @@ def _safe_pdf_filename_part(value, fallback):
 
 @public_bp.route("/download/<student_code>")
 def download_report(student_code):
-    """Download the currently viewed published result as a real PDF file."""
-    from reportlab.lib import colors
-    from reportlab.lib.enums import TA_CENTER
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.units import mm
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-    from xml.sax.saxutils import escape
-
+    """Render the canonical report and let the browser download it as PDF."""
     student_code = student_code.strip()
     settings = get_settings()
     student = Student.query.filter(func.trim(Student.student_code) == student_code).first_or_404()
@@ -348,84 +339,22 @@ def download_report(student_code):
     exam = _published_exam_for_student(student, requested_exam_id) or abort(404)
     payload = result_payload(student, exam=exam, public_only=True)
     result_scope = public_result_scope(student, exam)
-
-    buffer = BytesIO()
-    document = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=16 * mm,
-        leftMargin=16 * mm,
-        topMargin=14 * mm,
-        bottomMargin=14 * mm,
-        title=f"{student.full_name} - {exam.name}",
-        author=settings.get("school_name") or "SULTAAN EMS",
-    )
-    styles = getSampleStyleSheet()
-    school_style = ParagraphStyle("school", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=16, leading=19, textColor=colors.HexColor("#102A5C"), alignment=TA_CENTER, spaceAfter=3)
-    title_style = ParagraphStyle("title", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=12, leading=15, textColor=colors.HexColor("#102A5C"), alignment=TA_CENTER, spaceAfter=10)
-    body_style = ParagraphStyle("body", parent=styles["BodyText"], fontName="Helvetica", fontSize=9, leading=12, textColor=colors.HexColor("#1E293B"))
-    story = [
-        Paragraph(escape(str(settings.get("school_name") or "SULTAAN EMS")), school_style),
-        Paragraph(escape(f"{exam.name} - {exam.academic_year.name}"), title_style),
-    ]
-    student_info = [
-        [Paragraph("Student", body_style), Paragraph(escape(str(student.full_name)), body_style), Paragraph("Student ID", body_style), Paragraph(escape(str(student.student_code)), body_style)],
-        [Paragraph("Class", body_style), Paragraph(escape(str(result_scope["class_name"])), body_style), Paragraph("Academic Year", body_style), Paragraph(escape(str(result_scope["academic_year_name"])), body_style)],
-    ]
-    info_table = Table(student_info, colWidths=[24 * mm, 64 * mm, 30 * mm, 58 * mm])
-    info_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F7F5EF")),
-        ("BOX", (0, 0), (-1, -1), .7, colors.HexColor("#D8CDAE")),
-        ("INNERGRID", (0, 0), (-1, -1), .35, colors.HexColor("#E7E2D4")),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-        ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-    ]))
-    story.extend([info_table, Spacer(1, 9 * mm)])
-    rows = [[Paragraph("No.", body_style), Paragraph("Subject", body_style), Paragraph("Full Mark", body_style), Paragraph("Mark Obtained", body_style), Paragraph("Grade", body_style)]]
-    for index, item in enumerate(payload.get("subjects", []), 1):
-        grade = item.get("grade") or {}
-        rows.append([
-            str(index),
-            Paragraph(escape(str(item.get("subject") or "-")), body_style),
-            f"{item.get('max_score', 0):g}",
-            "MG" if item.get("is_uf") else f"{item.get('score', 0):g}",
-            "MG" if item.get("is_uf") else str(grade.get("grade") or "-"),
-        ])
-    result_table = Table(rows, colWidths=[14 * mm, 72 * mm, 28 * mm, 38 * mm, 28 * mm], repeatRows=1)
-    result_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#102A5C")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("GRID", (0, 0), (-1, -1), .45, colors.HexColor("#DCE3EC")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (0, 0), (0, -1), "CENTER"), ("ALIGN", (2, 0), (-1, -1), "CENTER"),
-        ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-    ]))
-    story.extend([result_table, Spacer(1, 8 * mm)])
-    summary = Table([
-        [Paragraph("Total", body_style), Paragraph("Average", body_style), Paragraph("Grade", body_style), Paragraph("Rank", body_style)],
-        [f"{payload.get('total', 0):g}/{payload.get('max_total', 0):g}", f"{payload.get('average', 0):.2f}%", str((payload.get("overall_grade") or {}).get("grade") or "-"), str(payload.get("rank") or "-")],
-    ], colWidths=[42 * mm] * 4)
-    summary.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E4EEF7")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#102A5C")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("GRID", (0, 0), (-1, -1), .45, colors.HexColor("#C9D7E6")),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-    ]))
-    story.append(summary)
-    document.build(story)
-    buffer.seek(0)
-
+    payload["verification"] = verification_payload(student, exam)
+    payload["generated_at"] = datetime.now()
     name_parts = (student.full_name or "Student").split()[:2]
     student_name = _safe_pdf_filename_part(" ".join(name_parts), "Student")
     exam_name = _safe_pdf_filename_part(exam.name, "Exam")
     year_name = _safe_pdf_filename_part(exam.academic_year.name, "Academic Year")
     filename = f"{student_name} - {exam_name} ({year_name}).pdf"
-    return send_file(buffer, mimetype="application/pdf", as_attachment=True, download_name=filename)
+    return render_template(
+        "print_report.html",
+        result=payload,
+        result_scope=result_scope,
+        settings=settings,
+        feedback_token=feedback_access_token(student, exam),
+        download_mode=True,
+        download_filename=filename,
+    )
 
 
 # =========================
@@ -1033,29 +962,29 @@ def incident_report_form(token):
 
         validation_errors = []
         if incident_bool_setting(settings_dict, "require_category", True) and not category_ids:
-            validation_errors.append("Please select a Category.")
+            validation_errors.append("Fadlan xulo Qodob.")
         if incident_bool_setting(settings_dict, "require_severity", True) and not severity_id:
-            validation_errors.append("Please select a Severity Level.")
+            validation_errors.append("Fadlan xulo Heerka Cakkirnaanta Xaaladda.")
         if incident_bool_setting(settings_dict, "require_description", True) and not description:
-            validation_errors.append("Description is required.")
+            validation_errors.append("Faafahinta dhacdada waa loo baahan yahay.")
         if incident_bool_setting(settings_dict, "require_signature", False) and not signature_data:
-            validation_errors.append("Signature is required.")
+            validation_errors.append("Saxeexu waa loo baahan yahay.")
         if incident_bool_setting(settings_dict, "require_evidence", False) and not evidence_files:
-            validation_errors.append("Please upload evidence.")
+            validation_errors.append("Fadlan soo geli daliil.")
         if incident_bool_setting(settings_dict, "require_subject", False) and not request.form.get("subject_id"):
-            validation_errors.append("Please select a Subject.")
+            validation_errors.append("Fadlan xulo Maaddada.")
         if incident_bool_setting(settings_dict, "require_actions_taken", False) and not actions_list:
-            validation_errors.append("Please select at least one Action Taken.")
+            validation_errors.append("Fadlan xulo ugu yaraan hal Ficil oo la Qaaday.")
         if incident_bool_setting(settings_dict, "require_incident_date", True) and not request.form.get("incident_date"):
-            validation_errors.append("Incident Date is required.")
+            validation_errors.append("Taariikhda dhacdada waa loo baahan yahay.")
         if incident_bool_setting(settings_dict, "require_incident_time", True) and not request.form.get("incident_time"):
-            validation_errors.append("Incident Time is required.")
+            validation_errors.append("Waqtiga dhacdada waa loo baahan yahay.")
         if validation_errors:
-            return incident_form_error("Please correct the highlighted fields.", validation_errors)
+            return incident_form_error("Fadlan sax meelaha la calaamadeeyey.", validation_errors)
 
         subject_id = request.form.get("subject_id", type=int)
         if subject_id and subject_id not in student_subject_ids:
-            return incident_form_error("Please select a subject assigned to this student's level.")
+            return incident_form_error("Fadlan xulo maaddo loo qoondeeyey heerka ardeygan.")
 
         if not category_ids:
             default_category = IncidentCategory.query.order_by(IncidentCategory.sort_order, IncidentCategory.id).first()
@@ -1064,7 +993,7 @@ def incident_report_form(token):
             default_severity = SeverityLevel.query.order_by(SeverityLevel.sort_order, SeverityLevel.id).first()
             severity_id = default_severity.id if default_severity else None
         if not category_ids or not severity_id:
-            return incident_form_error("Incident categories and severity levels must be configured before submitting reports.")
+            return incident_form_error("Qodobada dhacdada iyo heerarka cakkirnaanta waa in la habeeyaa ka hor gudbinta warbixinta.")
         if not description:
             description = "No description provided."
 
@@ -1079,24 +1008,24 @@ def incident_report_form(token):
             severity = None
         selected_categories = [categories_by_id.get(category_id) for category_id in category_ids]
         if len(selected_categories) != len(category_ids) or any(category is None for category in selected_categories):
-            return incident_form_error("Please select a valid incident category.")
+            return incident_form_error("Fadlan xulo Qodob dhacdo oo sax ah.")
         if not severity:
-            return incident_form_error("Please select a valid severity level.")
+            return incident_form_error("Fadlan xulo Heerka Cakkirnaanta Xaaladda oo sax ah.")
 
         category_is_other = any(is_other_lookup_value(category.name) for category in selected_categories)
         action_has_other = any(is_other_lookup_value(action) for action in actions_list)
 
         if category_is_other and not category_description and not other_description:
-            return incident_form_error("Please describe the specific Category details.")
+            return incident_form_error("Fadlan faahfaahi Qodobka gaarka ah.")
         if action_has_other and not action_description and not other_description:
-            return incident_form_error("Please describe the specific Action details.")
+            return incident_form_error("Fadlan faahfaahi Ficilka gaarka ah.")
 
         if len(category_description) > 500:
-            return incident_form_error("Category description must be 500 characters or fewer.")
+            return incident_form_error("Faahfaahinta Qodobku waa inaysan ka badnaan 500 xaraf.")
         if len(action_description) > 500:
-            return incident_form_error("Action description must be 500 characters or fewer.")
+            return incident_form_error("Faahfaahinta Ficilku waa inaysan ka badnaan 500 xaraf.")
         if len(other_description) > 500:
-            return incident_form_error("The description must be 500 characters or fewer.")
+            return incident_form_error("Faahfaahintu waa inaysan ka badnaan 500 xaraf.")
 
         # Legacy fallback if old form submitted single other_description
         if not category_description and category_is_other and other_description:
@@ -1108,12 +1037,12 @@ def incident_report_form(token):
         legacy_other_combined = other_description or (" / ".join(filter(None, [category_description, action_description]))) or None
 
         if incident_bool_setting(settings_dict, "require_exam", False) and not exam:
-            return incident_form_error("No active exam found for this student.")
+            return incident_form_error("Ardeygan looma helin imtixaan firfircoon.")
         try:
             incident_date = parse_incident_date(request.form.get("incident_date"))
             incident_time = parse_incident_time(request.form.get("incident_time"))
         except ValueError:
-            return incident_form_error("Please enter a valid incident date and time.")
+            return incident_form_error("Fadlan geli taariikh iyo waqti dhacdo oo sax ah.")
         
         report_num = f"{incident_reference_prefix(settings_dict)}-{datetime.now().strftime('%Y%m%d')}-{''.join(random.choices(string.digits, k=4))}"
         
@@ -1156,7 +1085,7 @@ def incident_report_form(token):
         except SQLAlchemyError:
             db.session.rollback()
             current_app.logger.exception("Incident report submission failed")
-            return incident_form_error("Unable to save the report. Please try again.", status=500)
+            return incident_form_error("Warbixinta lama kaydin. Fadlan mar kale isku day.", status=500)
         
         # Handle file uploads if any (optional - report saves even if upload fails)
         if evidence_files:
@@ -1204,7 +1133,8 @@ def incident_report_form(token):
     
     # Pre-compute current date/time for form defaults
     now = datetime.now()
-    current_date = now.strftime('%B %d, %Y')
+    somali_months = ('Janaayo', 'Febraayo', 'Maarso', 'Abriil', 'May', 'Juun', 'Luulyo', 'Agoosto', 'Sebtembar', 'Oktoobar', 'Nofeember', 'Diseembar')
+    current_date = f"{somali_months[now.month - 1]} {now.day:02d}, {now.year}"
     current_time = now.strftime('%I:%M %p')
     current_date_iso = now.strftime('%Y-%m-%d')
     current_time_24 = now.strftime('%H:%M')

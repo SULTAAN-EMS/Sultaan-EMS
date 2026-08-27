@@ -3,9 +3,10 @@
 {% block page_title %}Promotion Rules{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/promotion_rules.css') }}">
-<div class="promotion-page">
+<div class="promotion-page promotion-page--apply">
   <header class="promotion-hero promotion-hero--compact"><div><span class="promotion-eyebrow"><i class="fa-solid fa-route"></i> Phase 3E · Reviewed execution</span><h1>Apply Class Outcomes</h1><p>Preview exact evaluation evidence first. Only READY students are executed, and every other row explains its blocker.</p></div><a class="promotion-button promotion-button--light" href="{{ url_for('admin.promotion_rules_dashboard') }}"><i class="fa-solid fa-arrow-left"></i> Back to module</a></header>
   {% include "admin/_promotion_rules_nav.html" %}
+  <div class="promotion-stepper" aria-label="Apply outcome steps"><span class="is-done"><b>1</b> Select scope</span><i></i><span class="is-current"><b>2</b> Preview</span><i></i><span><b>3</b> Execute</span></div>
   <section class="promotion-evaluation-panel">
     <div class="promotion-section__header"><div><span class="promotion-kicker"><i class="fa-solid fa-filter-circle-dollar"></i> Step 1 · Exact scope</span><h2>Choose source, exam, and action</h2><p>Students are read from the exact year-aware StudentEnrollment class. Legacy or cross-year fallback rows are never included.</p></div></div>
     <form method="post" class="promotion-evaluation-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -30,4 +31,5 @@
   </section>
   {% endif %}
 </div>
+{% include "admin/_promotion_feedback.html" %}
 {% endblock %}

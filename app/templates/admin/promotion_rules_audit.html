@@ -4,9 +4,10 @@
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/promotion_rules.css') }}">
 
-<div class="promotion-page">
+<div class="promotion-page promotion-page--audit">
   <header class="promotion-hero promotion-hero--compact">
-    <div>
+    <span class="promotion-hero__seal" aria-hidden="true"><i class="fa-solid fa-shield-halved"></i><b>AUDIT</b></span>
+    <div class="promotion-hero__copy">
       <span class="promotion-eyebrow"><i class="fa-solid fa-shield-halved"></i> Read-only integrity check</span>
       <h1>Historical Consistency Audit</h1>
       <p>Review evaluation, outcome application, enrollment, and movement linkages without changing historical records.</p>
@@ -37,7 +38,7 @@
           {% for level in levels %}<option value="{{ level.id }}" {% if selected_level_id == level.id %}selected{% endif %}>{{ level.name }}</option>{% endfor %}
         </select>
       </label>
-      <button class="promotion-button promotion-button--primary" type="submit"><i class="fa-solid fa-magnifying-glass-chart"></i> Run Read-only Audit</button>
+      <button class="promotion-button promotion-button--primary" type="submit" name="run" value="1"><i class="fa-solid fa-magnifying-glass-chart"></i> Run Read-only Audit</button>
     </form>
   </section>
 
@@ -64,4 +65,18 @@
     {% endif %}
   </section>
 </div>
+{% include "admin/_promotion_feedback.html" %}
+{% if request.args.get('run') == '1' %}
+<script>
+  window.addEventListener('load', () => {
+    if (typeof window.showPromotionToast !== 'function') return;
+    const findings = {{ audit_result.counts.anomalies|int }};
+    window.showPromotionToast(
+      findings ? 'Audit completed with findings' : 'Audit completed successfully',
+      findings ? `${findings} finding(s) require administrator review.` : 'No historical inconsistencies were found in the selected scope.',
+      findings ? 'info' : 'success'
+    );
+  });
+</script>
+{% endif %}
 {% endblock %}

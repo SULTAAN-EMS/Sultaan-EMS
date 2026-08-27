@@ -173,6 +173,50 @@ class AcademicYearSubject(TimestampMixin, db.Model):
     )
 
 
+class ExamMarkingConfiguration(TimestampMixin, db.Model):
+    """Default maximum mark for one exact year-aware exam context."""
+
+    __tablename__ = "exam_marking_configurations"
+
+    id = db.Column(db.Integer, primary_key=True)
+    academic_year_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_years.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_levels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    exam_id = db.Column(
+        db.Integer,
+        db.ForeignKey("exams.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    default_full_marks = db.Column(db.Numeric(8, 3), nullable=False)
+
+    academic_year = db.relationship("AcademicYear")
+    academic_year_level = db.relationship("AcademicYearLevel")
+    exam = db.relationship("Exam")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "academic_year_id",
+            "academic_year_level_id",
+            "exam_id",
+            name="uq_exam_marking_configuration_scope",
+        ),
+        db.CheckConstraint(
+            "default_full_marks > 0",
+            name="ck_exam_marking_configuration_full_marks_positive",
+        ),
+    )
+
+
 class PromotionRule(TimestampMixin, db.Model):
     """Exam-aware promotion policy for one year-aware academic level.
 

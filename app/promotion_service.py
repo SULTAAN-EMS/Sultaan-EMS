@@ -28,7 +28,7 @@ from .models import (
     StudentEnrollmentMovement,
     StudentEnrollment,
 )
-from .services import get_settings
+from .services import get_settings, resolve_subject_max_score
 
 
 PROMOTION_RULES_SETTING_KEY = "promotion_rules_enabled"
@@ -299,7 +299,11 @@ def promotion_rule_snapshot(rule, *, enabled):
             {
                 "id": item.academic_year_subject_id,
                 "name": item.academic_year_subject.name,
-                "max_score": float(item.academic_year_subject.max_score),
+                "max_score": float(resolve_subject_max_score(
+                    item.academic_year_subject.legacy_subject or item.academic_year_subject,
+                    exam=rule.exam,
+                    academic_year_level_id=rule.academic_year_level_id,
+                )),
             }
             for item in rule.critical_subjects
         ],
@@ -547,7 +551,12 @@ def _result_snapshot_for_student(student_enrollment, exam, subjects):
             issues.append(f"Duplicate result for subject {subject.name}")
             continue
         try:
-            score, maximum, percentage = _subject_percentage(row.score, subject.max_score)
+            configured_maximum = resolve_subject_max_score(
+                subject.legacy_subject or subject,
+                exam=exam,
+                academic_year_level_id=student_enrollment.academic_year_level_id,
+            )
+            score, maximum, percentage = _subject_percentage(row.score, configured_maximum)
         except PromotionValidationError as exc:
             issues.append(f"{subject.name}: {exc}")
             continue
@@ -637,7 +646,11 @@ def evaluate_student_promotion(student_enrollment, evaluation_context, *, persis
                 "academic_year_subject_id": subject.id,
                 "subject": subject.name,
                 "score": result["score"] if result else None,
-                "maximum": result["maximum"] if result else subject.max_score,
+                "maximum": result["maximum"] if result else resolve_subject_max_score(
+                    subject.legacy_subject or subject,
+                    exam=exam,
+                    academic_year_level_id=student_enrollment.academic_year_level_id,
+                ),
                 "percentage": percentage,
                 "threshold": critical_threshold,
                 "status": status,

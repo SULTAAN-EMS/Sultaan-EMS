@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Verified Student ID' if verified else 'Invalid ID Card' }}{% endblock %}
+{% block title %}{{ 'Aqoonsiga Ardeyga waa la Xaqiijiyey' if verified else 'Kaarka Aqoonsiga oo aan sax ahayn' }}{% endblock %}
 {% block body_class %}public-body verification-id-body{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/verification-id.css') }}">
@@ -27,7 +27,8 @@
 {% block content %}
 {% from 'partials/verified_name_badge.html' import verified_name_badge %}
 {% macro long_date(value) -%}
-  {{ value.strftime('%B') }} {{ value.day }}, {{ value.year }}
+  {% set months = ['Janaayo', 'Febraayo', 'Maarso', 'Abriil', 'May', 'Juun', 'Luulyo', 'Agoosto', 'Sebtembar', 'Oktoobar', 'Nofeember', 'Diseembar'] %}
+  {{ months[value.month - 1] }} {{ value.day }}, {{ value.year }}
 {%- endmacro %}
 <main class="verification-id-page">
   <div class="verification-watermark" aria-hidden="true">
@@ -39,17 +40,17 @@
       <div class="school-logo-shell">
         {% if settings.logo_path %}<img class="school-logo" src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">{% else %}<i class="fa-solid fa-school"></i>{% endif %}
       </div>
-      <div class="school-heading"><h1>{{ settings.school_name }}</h1><p class="header-subtitle">Official Student Identity Verification</p></div>
+      <div class="school-heading"><h1>{{ settings.school_name }}</h1><p class="header-subtitle">Xaqiijinta Aqoonsiga Rasmiga ah ee Ardeyga</p></div>
     </header>
 
     {% if verified %}
-      <section class="id-verification-hero" aria-label="Verified student identity">
+      <section class="id-verification-hero" aria-label="Aqoonsiga Ardeyga waa la Xaqiijiyey">
         {% include 'partials/id_verified_badge.html' %}
-        <p>Student identity confirmed</p>
+        <p>Aqoonsiga Ardeyga waa la Xaqiijiyey</p>
       </section>
 
       <section class="student-info-card glass-card">
-        <span class="identity-tag"><i class="fa-solid fa-graduation-cap"></i> Student</span>
+        <span class="identity-tag"><i class="fa-solid fa-graduation-cap"></i> Ardeyga</span>
         {% if settings.verify_id_show_photo != 'off' %}
         <div class="student-photo-section"><div class="photo-frame">
           {% if issue.student.photo_path %}<img src="{{ asset_url(issue.student.photo_path) }}" alt="{{ issue.student.full_name }} photo">{% else %}<div class="photo-placeholder"><i class="fa-solid fa-user-graduate"></i></div>{% endif %}
@@ -57,40 +58,40 @@
         {% endif %}
         <div class="student-details-section">
           {% if settings.verify_id_show_student_name != 'off' %}<h2 class="student-name"><span class="student-name-text">{{ issue.student.full_name }}</span>{{ verified_name_badge() }}</h2>{% endif %}
-          {% set student_level = issue.student.academic_level.name if issue.student.academic_level else issue.student.level or 'Student' %}
+          {% set student_level = issue.student.academic_level.name if issue.student.academic_level else issue.student.level or 'Ardeyga' %}
           {% set normalized_level = student_level|lower %}
           <p class="student-identity-line"><span class="student-id-code">{{ issue.student.student_code }}</span><b></b><span class="student-level-tag {% if 'secondary' in normalized_level or 'sare' in normalized_level %}level-secondary{% elif 'upper' in normalized_level or 'middle' in normalized_level or 'dhexe' in normalized_level %}level-upper{% elif 'lower' in normalized_level or 'hoose' in normalized_level %}level-lower{% elif 'kg' in normalized_level or 'kindergarten' in normalized_level %}level-kg{% else %}level-default{% endif %}">{{ student_level }}</span></p>
         </div>
       </section>
 
-      <section class="info-grid" aria-label="Student identity details">
-        {% if settings.verify_id_show_mother_name != 'off' and issue.student.mother_name %}<div class="info-item wide c-purple"><span class="field-icon"><i class="fa-solid fa-user"></i></span><span class="info-label">Mother's Name</span><span class="info-value">{{ issue.student.mother_name }}</span></div>{% endif %}
-        {% if settings.verify_id_show_class != 'off' %}<div class="info-item c-green"><span class="field-icon"><i class="fa-solid fa-graduation-cap"></i></span><span class="info-label">Class / Grade</span><span class="info-value">{% if issue.student.academic_class %}{{ issue.student.academic_class.name }}{% elif issue.student.school_class %}{{ issue.student.school_class.name }}{% else %}N/A{% endif %}</span></div>{% endif %}
-        {% if settings.verify_id_show_section != 'off' %}<div class="info-item c-amber"><span class="field-icon"><i class="fa-solid fa-layer-group"></i></span><span class="info-label">Section</span><span class="info-value">{% if issue.student.academic_section %}{{ issue.student.academic_section.name }}{% elif issue.student.section %}{{ issue.student.section }}{% else %}N/A{% endif %}</span></div>{% endif %}
-        {% if settings.verify_id_show_academic_year != 'off' %}<div class="info-item c-blue"><span class="field-icon"><i class="fa-solid fa-calendar-days"></i></span><span class="info-label">Academic Year</span><span class="info-value">{{ issue.academic_year.name }}</span></div>{% endif %}
-        {% if settings.verify_id_show_exam_type != 'off' %}<div class="info-item c-sky"><span class="field-icon"><i class="fa-solid fa-file-circle-check"></i></span><span class="info-label">Exam Type</span><span class="info-value">{{ exam.name if exam else 'No Active Exam Found' }}</span></div>{% endif %}
-        {% if settings.verify_id_show_issue_date != 'off' %}<div class="info-item c-indigo"><span class="field-icon"><i class="fa-solid fa-calendar-check"></i></span><span class="info-label">Issue Date</span><span class="info-value">{{ long_date(issue.issue_date) if issue.issue_date else '-' }}</span></div>{% endif %}
-        {% if settings.verify_id_show_expiry_date != 'off' %}<div class="info-item c-red"><span class="field-icon"><i class="fa-solid fa-clock"></i></span><span class="info-label">Expiry Date</span><span class="info-value">{{ long_date(issue.expiry_date) if issue.expiry_date else '-' }}</span></div>{% endif %}
+      <section class="info-grid" aria-label="Faahfaahinta aqoonsiga Ardeyga">
+        {% if settings.verify_id_show_mother_name != 'off' and issue.student.mother_name %}<div class="info-item wide c-purple"><span class="field-icon"><i class="fa-solid fa-user"></i></span><span class="info-label">MAGACA HOOYADA</span><span class="info-value">{{ issue.student.mother_name }}</span></div>{% endif %}
+        {% if settings.verify_id_show_class != 'off' %}<div class="info-item c-green"><span class="field-icon"><i class="fa-solid fa-graduation-cap"></i></span><span class="info-label">FASALKA</span><span class="info-value">{% if issue.student.academic_class %}{{ issue.student.academic_class.name }}{% elif issue.student.school_class %}{{ issue.student.school_class.name }}{% else %}Lama hayo{% endif %}</span></div>{% endif %}
+        {% if settings.verify_id_show_section != 'off' %}<div class="info-item c-amber"><span class="field-icon"><i class="fa-solid fa-layer-group"></i></span><span class="info-label">QEYBTA</span><span class="info-value">{% if issue.student.academic_section %}{{ issue.student.academic_section.name }}{% elif issue.student.section %}{{ issue.student.section }}{% else %}Lama hayo{% endif %}</span></div>{% endif %}
+        {% if settings.verify_id_show_academic_year != 'off' %}<div class="info-item c-blue"><span class="field-icon"><i class="fa-solid fa-calendar-days"></i></span><span class="info-label">SANAD DUGSIYEEDKA</span><span class="info-value">{{ issue.academic_year.name }}</span></div>{% endif %}
+        {% if settings.verify_id_show_exam_type != 'off' %}<div class="info-item c-sky"><span class="field-icon"><i class="fa-solid fa-file-circle-check"></i></span><span class="info-label">NUUCA IMTIXAANKA</span><span class="info-value">{{ exam.name if exam else 'Lama helin imtixaan firfircoon' }}</span></div>{% endif %}
+        {% if settings.verify_id_show_issue_date != 'off' %}<div class="info-item c-indigo"><span class="field-icon"><i class="fa-solid fa-calendar-check"></i></span><span class="info-label">XILLIGA BIXIDDA</span><span class="info-value">{{ long_date(issue.issue_date) if issue.issue_date else '-' }}</span></div>{% endif %}
+        {% if settings.verify_id_show_expiry_date != 'off' %}<div class="info-item c-red"><span class="field-icon"><i class="fa-solid fa-clock"></i></span><span class="info-label">XILLIGA DHICIDDA</span><span class="info-value">{{ long_date(issue.expiry_date) if issue.expiry_date else '-' }}</span></div>{% endif %}
       </section>
 
       <section class="status-card active-status">
         <span class="status-icon"><i class="fa-solid fa-shield-halved"></i></span>
-        <div class="status-content"><h3>Status: {{ display_status }}</h3><p class="status-text">This student is currently active and in good standing.</p></div>
+        <div class="status-content"><h3>Xaaladda: Firfircoon</h3><p class="status-text">Ardeygan waqti xaadirkan wuu firfircoon yahay.</p></div>
       </section>
 
       <section class="verification-area glass-card">
         {% if settings.verify_id_show_stamp != 'off' %}<div class="verification-stamp-container">
-          {% if settings.school_stamp_path %}<img src="{{ asset_url(settings.school_stamp_path) }}" alt="Official Verification Stamp" class="verification-stamp-image">{% else %}<div class="verification-stamp"><i class="fa-solid fa-shield-check"></i><span>Officially<br>Verified</span></div>{% endif %}
+          {% if settings.school_stamp_path %}<img src="{{ asset_url(settings.school_stamp_path) }}" alt="Shaabadda Xaqiijinta Rasmiga ah" class="verification-stamp-image">{% else %}<div class="verification-stamp"><i class="fa-solid fa-shield-check"></i><span>Si rasmi ah<br>loo Xaqiijiyey</span></div>{% endif %}
         </div>{% endif %}
         <div class="verification-details">
-          {% if settings.verify_id_show_verification_code != 'off' %}<div class="verification-item"><span class="verify-icon"><i class="fa-solid fa-fingerprint"></i></span><div><span class="verification-label">Verification Code</span><span class="verification-value">{{ issue.token[:16]|upper }}</span></div></div>{% endif %}
-          {% if settings.verify_id_show_date_time != 'off' %}<div class="verification-item"><span class="verify-icon"><i class="fa-solid fa-calendar-check"></i></span><div><span class="verification-label">Date &amp; Time</span><span class="verification-value">{{ long_date(issue.created_at) ~ ' at ' ~ issue.created_at.strftime('%I:%M %p') if issue.created_at else '-' }}</span></div></div>{% endif %}
+          {% if settings.verify_id_show_verification_code != 'off' %}<div class="verification-item"><span class="verify-icon"><i class="fa-solid fa-fingerprint"></i></span><div><span class="verification-label">Koodhka Xaqiijinta</span><span class="verification-value">{{ issue.token[:16]|upper }}</span></div></div>{% endif %}
+          {% if settings.verify_id_show_date_time != 'off' %}<div class="verification-item"><span class="verify-icon"><i class="fa-solid fa-calendar-check"></i></span><div><span class="verification-label">Taariikh &amp; Waqti</span><span class="verification-value">{{ long_date(issue.created_at) ~ ' ' ~ issue.created_at.strftime('%I:%M %p') if issue.created_at else '-' }}</span></div></div>{% endif %}
         </div>
       </section>
 
-      <footer class="verification-footer"><p>This student ID has been officially verified by {{ settings.school_name }}.</p></footer>
+      <footer class="verification-footer"><p>Aqoonsiga ardeygan waxaa si rasmi ah u ictiraafsan {{ settings.school_name }}.</p></footer>
     {% else %}
-      <section class="invalid-state glass-card"><div class="invalid-icon"><i class="fa-solid fa-triangle-exclamation"></i></div><h2>Invalid ID Card</h2><p>This verification link is invalid or no longer recognized by the system.</p><a class="btn premium" href="{{ url_for('public.portal') }}"><i class="fa-solid fa-arrow-left"></i> Back to Portal</a></section>
+      <section class="invalid-state glass-card"><div class="invalid-icon"><i class="fa-solid fa-triangle-exclamation"></i></div><h2>Kaarka Aqoonsiga oo aan sax ahayn</h2><p>Linkigan xaqiijintu waa khaldan yahay ama nidaamku mar dambe ma aqoonsana.</p><a class="btn premium" href="{{ url_for('public.portal') }}"><i class="fa-solid fa-arrow-left"></i> Ku noqo bogga hore</a></section>
     {% endif %}
   </div>
   {% set f_settings = settings %}

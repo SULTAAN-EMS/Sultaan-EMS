@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from app import create_app, db
@@ -9,6 +10,7 @@ from app.models import (
     AcademicYearLevel,
     AcademicYearSubject,
     Exam,
+    ExamMarkingConfiguration,
     PromotionEvaluation,
     PromotionOutcomeApplication,
     PromotionRuleCriticalSubject,
@@ -161,6 +163,30 @@ class TestPhase4AExamAwarePromotion(unittest.TestCase):
             "exam_id": exam.id,
             "subject_ids": [self.math.id, self.english.id],
         }
+
+    def test_evaluation_uses_exam_marking_configuration_maximum(self):
+        db.session.add(ExamMarkingConfiguration(
+            academic_year_id=self.year.id,
+            academic_year_level_id=self.level.id,
+            exam_id=self.midterm.id,
+            default_full_marks=10,
+        ))
+        db.session.commit()
+        self._result(self.midterm, self.math, 9)
+        self._result(self.midterm, self.english, 10)
+
+        evaluation = evaluate_student_promotion(
+            self.enrollment,
+            self._context(self.midterm),
+            persist=False,
+        )
+
+        self.assertEqual(evaluation.evaluation_status, "EVALUATED")
+        self.assertEqual(evaluation.overall_percentage, 95)
+        self.assertEqual(
+            [row["maximum"] for row in json.loads(evaluation.evaluation_context_json)["results"]],
+            [10, 10],
+        )
 
     def test_rules_are_independent_per_exam_type(self):
         midterm_rule = upsert_promotion_rule(

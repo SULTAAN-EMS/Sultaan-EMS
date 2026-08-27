@@ -6,6 +6,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/print.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/mg-detail-card.css', v='mg-loading-20260821') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/critical-subject-stars.css', v='critical-stars-20260827-4') }}">
   <style>
     :root {
       --report-primary: {{ result.settings.report_primary_color or result.settings.primary_color or '#002060' }};
@@ -50,7 +51,8 @@
     .uf-result-indicator { cursor: pointer; }
   </style>
 </head>
-<body onload="prepareReportPrint()">
+<body{% if not download_mode|default(false) %} onload="prepareReportPrint()"{% endif %}>
+  {% from 'partials/critical_subject_badge.html' import critical_subject_badge %}
   <article class="sheet tis-print-report">
     {% set download_dt = result.generated_at if result.generated_at is defined else none %}
     {% if result.settings.download_datetime_format == 'day_month_year_12' %}
@@ -113,7 +115,7 @@
           {% for row in result.subjects %}
             <tr data-mg-token="{{ feedback_token|e }}" data-mg-subject-id="{{ row.subject_id }}" data-mg-subject="{{ row.subject|e }}">
               <td>{{ loop.index }}</td>
-              <td>{{ row.subject }}</td>
+              <td class="result-subject-cell"><span class="subj-cell"><span>{{ row.subject }}</span>{{ critical_subject_badge(row.critical_badge, interactive=false, subject_name=row.subject) }}</span></td>
               <td>{{ row.max_score|academic_number(settings) }}</td>
               <td>{% if row.is_uf %}<strong class="print-grade-badge print-mark-badge uf-result-indicator" title="Ma Gelin — Examination not taken">⚠️ MG</strong>{% else %}<strong class="print-grade-badge print-mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.score|academic_number(settings) }}</strong>{% endif %}</td>
               <td>{% if row.is_uf %}<strong class="print-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken">⚠️ MG</strong>{% else %}<strong class="print-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.grade.grade }}</strong>{% endif %}</td>
@@ -159,6 +161,24 @@
   </article>
   {% include "partials/mg_detail_modal.html" with context %}
   <script src="{{ url_for('static', filename='js/mg-detail-card.js') }}"></script>
+  {% if download_mode|default(false) %}
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const report = document.querySelector('.sheet');
+      if (!report || typeof html2pdf !== 'function') return;
+      if (document.fonts && document.fonts.ready) await document.fonts.ready;
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      html2pdf().set({
+        margin: 0,
+        filename: {{ download_filename|tojson }},
+        image: {type: 'jpeg', quality: 0.98},
+        html2canvas: {scale: 2, useCORS: true, backgroundColor: '#ffffff'},
+        jsPDF: {unit: 'mm', format: 'a4', orientation: 'portrait'}
+      }).from(report).save();
+    });
+  </script>
+  {% endif %}
   <script>
     function prepareReportPrint() {
       window.print();

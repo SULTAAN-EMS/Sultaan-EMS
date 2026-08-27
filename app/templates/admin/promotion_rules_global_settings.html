@@ -3,8 +3,8 @@
 {% block page_title %}Promotion Rules{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/promotion_rules.css') }}">
-<div class="promotion-page">
-  <header class="promotion-hero promotion-hero--compact"><div><span class="promotion-eyebrow"><i class="fa-solid fa-power-off"></i> System control</span><h1>Global Settings</h1><p>One switch controls whether configured year-level rules affect new evaluations.</p></div><a class="promotion-button promotion-button--light" href="{{ url_for('admin.promotion_rules_dashboard') }}"><i class="fa-solid fa-arrow-left"></i> Back to module</a></header>
+<div class="promotion-page promotion-page--settings">
+  <header class="promotion-hero promotion-hero--compact"><span class="promotion-hero__seal" aria-hidden="true"><i class="fa-solid fa-power-off"></i><b>ON/OFF</b></span><div class="promotion-hero__copy"><span class="promotion-eyebrow"><i class="fa-solid fa-power-off"></i> System control</span><h1>Global Settings</h1><p>One switch controls whether configured year-level rules affect new evaluations.</p></div><a class="promotion-button promotion-button--light" href="{{ url_for('admin.promotion_rules_dashboard') }}"><i class="fa-solid fa-arrow-left"></i> Back to module</a></header>
   {% include "admin/_promotion_rules_nav.html" %}
   <section class="promotion-settings-card">
     <div class="promotion-settings-icon {% if rules_enabled %}is-on{% endif %}"><i class="fa-solid {% if rules_enabled %}fa-toggle-on{% else %}fa-toggle-off{% endif %}"></i></div>
@@ -13,4 +13,5 @@
   </section>
   <div class="promotion-notice promotion-notice--info"><i class="fa-solid fa-shield-halved"></i><div><strong>Safe by design</strong><span>This toggle never edits Results, StudentEnrollment outcomes, transitions, or existing PromotionEvaluation snapshots.</span></div></div>
 </div>
+{% include "admin/_promotion_feedback.html" %}
 {% endblock %}
