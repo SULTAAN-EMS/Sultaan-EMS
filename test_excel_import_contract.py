@@ -186,6 +186,52 @@ class ExcelImportContractTests(unittest.TestCase):
         self.assertEqual(summary["success_count"], 4, summary)
         self.assertFalse(any("phone number invalid" in error for error in summary["errors"]), summary)
 
+    def test_student_import_routes_result_workbook_to_result_import(self):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "All Results"
+        sheet.append([
+            "#", "student_id", "full_name", "mother_name", "class",
+            "exam_type", "academic_year", "Current English",
+        ])
+        sheet.append([
+            1, self.student.student_code, self.student.full_name,
+            self.student.mother_name, self.year_class.name, self.exam.name,
+            self.year.name, 9,
+        ])
+        stream = BytesIO()
+        workbook.save(stream)
+        stream.seek(0)
+
+        summary = process_student_import(stream)
+
+        self.assertEqual(summary["success_count"], 0, summary)
+        self.assertEqual(summary["failed_count"], 0, summary)
+        self.assertIn("Result Entry -> Import Results", summary["errors"][0])
+        self.assertEqual(Student.query.count(), 1)
+
+    def test_result_template_excludes_unbound_year_subjects(self):
+        db.session.add(AcademicYearSubject(
+            academic_year_id=self.year.id,
+            academic_year_level_id=self.year_level.id,
+            legacy_subject_id=None,
+            name="Unbound Subject",
+            max_score=10,
+            sort_order=2,
+        ))
+        db.session.commit()
+
+        workbook = result_entry_import_template(
+            year_id=self.year.id,
+            exam_id=self.exam.id,
+            level_id=self.level.id,
+            class_id=self.legacy_class.id,
+        )
+        headers = [cell.value for cell in workbook["Result Entry"][1]]
+
+        self.assertIn("Current English", headers)
+        self.assertNotIn("Unbound Subject", headers)
+
     def test_result_api_finds_student_id_without_case_matching(self):
         response = self.app.test_client().get("/api/results/tis-001")
         self.assertEqual(response.status_code, 404)

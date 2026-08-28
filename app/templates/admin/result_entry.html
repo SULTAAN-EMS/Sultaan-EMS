@@ -264,7 +264,7 @@
               <th class="rh-id-col">{{ rh_label("entry.id", default="ID") }}</th>
               <th class="rh-sticky-name">{{ rh_label("entry.name", default="Magaca") }}</th>
               {% for subject in subjects %}
-                <th class="mono">{{ subject_display_name(subject, settings) }}{{ selected_year.name[-2:] if selected_year else "" }}</th>
+                <th class="mono">{{ subject_display_name(subject, settings) }}</th>
               {% endfor %}
             </tr>
           </thead>

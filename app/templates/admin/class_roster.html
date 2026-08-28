@@ -113,7 +113,7 @@
               <th style="width:110px;">ID</th>
               <th>{{ rh_label("roster.student_name", default="Magaca") }}</th>
               {% for subject in subjects %}
-                <th class="mono" data-mg-subject-id="{{ subject.id }}" data-mg-subject="{{ subject.name|e }}">{{ subject_display_name(subject, settings) }}{{ selected_year.name[-2:] if selected_year else "" }}</th>
+                <th class="mono" data-mg-subject-id="{{ subject.id }}" data-mg-subject="{{ subject.name|e }}">{{ subject_display_name(subject, settings) }}</th>
               {% endfor %}
               <th>{{ rh_label("roster.total", default="Total") }}</th>
               <th>%</th>

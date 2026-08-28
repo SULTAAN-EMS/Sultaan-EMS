@@ -220,17 +220,12 @@ def result_entry_import_template(year_id=None, exam_id=None, level_id=None, clas
     # ── resolve subjects for scope ───────────────────────────────────
     effective_level_id = selected_level.id if selected_level else None
     if effective_level_id and selected_year and year_level:
-        # Keep the year-aware rows themselves so renamed subjects are written
-        # into the workbook exactly as staff see them in Setup.
-        scoped_subjects = AcademicYearSubject.query.filter_by(
-            academic_year_id=selected_year.id,
-            academic_year_level_id=year_level.id,
-            is_active=True,
-        ).order_by(
-            AcademicYearSubject.sort_order,
-            AcademicYearSubject.name,
-            AcademicYearSubject.id,
-        ).all()
+        # Use the same valid year-aware subject bindings as the importer. This
+        # keeps generated headers and validator resolution on one contract.
+        scoped_subjects = [
+            binding["year_subject"]
+            for binding in _result_import_subject_bindings(selected_year, year_level)
+        ]
     elif effective_level_id and selected_year:
         # An invalid year/level pairing must produce an empty safe template,
         # never a workbook widened to another year's global subjects.
@@ -477,6 +472,20 @@ def get_import_worksheet(wb, target_name="Result Entry"):
     return wb.active
 
 
+def _is_result_entry_workbook(wb):
+    """Identify a result workbook before it reaches Student Import validation."""
+    for sheet in wb.worksheets:
+        if sheet.title.strip().casefold() == "result entry":
+            return True
+        for row in sheet.iter_rows(max_row=10, values_only=True):
+            if not row:
+                continue
+            row_keys = {normalize_header_key(value) for value in row if value is not None}
+            if {"student_id", "full_name", "class", "exam_type", "academic_year"}.issubset(row_keys):
+                return True
+    return False
+
+
 def detect_header_row(ws, required_canonical_keys, max_scan_rows=10):
     best_row_idx = 1
     max_r = getattr(ws, "max_row", 1) or 1
@@ -517,6 +526,18 @@ def process_student_import(file):
     else:
         file_obj = file
     wb = load_workbook(file_obj, data_only=True)
+    has_students_sheet = any(
+        sheet.title.strip().casefold() == "students" for sheet in wb.worksheets
+    )
+    if not has_students_sheet and _is_result_entry_workbook(wb):
+        return {
+            "success_count": 0,
+            "failed_count": 0,
+            "errors": [
+                "This workbook is a Result Entry template. Upload it from Result Entry -> Import Results."
+            ],
+            "kind": "Students",
+        }
     ws = get_import_worksheet(wb, target_name="Students")
 
     header_row_idx, raw_headers, headers_norm = detect_header_row(
