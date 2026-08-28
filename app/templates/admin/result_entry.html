@@ -71,7 +71,7 @@
             <form id="templateSelectionForm" onsubmit="event.preventDefault(); downloadClassTemplate();">
               <div style="margin-bottom: 16px;">
                 <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.88rem; color: #334155;">1. Academic Year</label>
-                <select id="tmplYearSelect" class="form-select" style="border-radius: 8px; padding: 10px 12px; font-size: 0.9rem;">
+                <select id="tmplYearSelect" class="form-select" style="border-radius: 8px; padding: 10px 12px; font-size: 0.9rem;" onchange="reloadTemplateYear(this.value)">
                   {% for year in years %}
                     <option value="{{ year.id }}" {% if selected_year and selected_year.id == year.id %}selected{% endif %}>{{ year.name }}{% if year.is_current %} ✓{% endif %}</option>
                   {% endfor %}
@@ -500,6 +500,17 @@ function downloadClassTemplate() {
   const downloadUrl = "{{ url_for('admin_advanced_results.result_import_template') }}?" + params.toString();
   window.location.href = downloadUrl;
   closeTemplateModal();
+}
+
+function reloadTemplateYear(yearId) {
+  if (!yearId) return;
+  // The server renders exams, levels, classes and sections for one year only.
+  // Reloading the page here prevents a year selector from being combined with
+  // stale options belonging to the previously selected academic year.
+  const url = new URL(window.location.href);
+  url.searchParams.set('year_id', yearId);
+  ['exam_id', 'level_id', 'class_id', 'section_id'].forEach(key => url.searchParams.delete(key));
+  window.location.assign(url.toString());
 }
 
 async function handleResultImport(inputElement) {

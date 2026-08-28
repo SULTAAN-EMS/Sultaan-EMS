@@ -18,6 +18,7 @@ from .enrollment_service import (
     resolve_student_academic_context,
 )
 from .verification import verification_payload
+from .import_wizard import normalize_student_phone
 
 public_bp = Blueprint("public", __name__)
 
@@ -155,7 +156,7 @@ def result():
     selected_exam_id = request.form.get("exam_id", type=int)
 
     student = Student.query.filter(
-        func.trim(Student.student_code) == student_id
+        func.lower(func.trim(Student.student_code)) == student_id.casefold()
     ).first()
 
     if not student:
@@ -166,7 +167,9 @@ def result():
         )
 
     if settings.get("enable_phone_verification") == "on":
-        if not phone or (student.phone or "").strip() != phone:
+        submitted_phone = normalize_student_phone(phone)
+        stored_phone = normalize_student_phone(student.phone)
+        if not submitted_phone or stored_phone != submitted_phone:
             return render_template(
                 "portal.html",
                 settings=settings,
@@ -299,7 +302,7 @@ def print_report(student_code):
     settings = get_settings()
 
     student = Student.query.filter(
-        func.trim(Student.student_code) == student_code
+        func.lower(func.trim(Student.student_code)) == student_code.casefold()
     ).first_or_404()
 
     if student.is_result_locked:
@@ -339,7 +342,9 @@ def download_report(student_code):
     """Render the canonical report and let the browser download it as PDF."""
     student_code = student_code.strip()
     settings = get_settings()
-    student = Student.query.filter(func.trim(Student.student_code) == student_code).first_or_404()
+    student = Student.query.filter(
+        func.lower(func.trim(Student.student_code)) == student_code.casefold()
+    ).first_or_404()
     if student.is_result_locked:
         return render_template("locked_result.html", settings=settings, student=student), 403
 
@@ -373,7 +378,7 @@ def api_result(student_code):
     student_code = student_code.strip()
 
     student = Student.query.filter(
-        func.trim(Student.student_code) == student_code
+        func.lower(func.trim(Student.student_code)) == student_code.casefold()
     ).first()
 
     if not student:
@@ -832,7 +837,10 @@ def mark_feedback_replies_read():
 @public_bp.route("/api/top-students/<student_code>")
 def api_top_students(student_code):
     """Return the published Top 10 for the viewer's class and chosen exam."""
-    student = Student.query.filter(func.trim(Student.student_code) == student_code.strip()).first()
+    normalized_code = student_code.strip()
+    student = Student.query.filter(
+        func.lower(func.trim(Student.student_code)) == normalized_code.casefold()
+    ).first()
     exam_id = request.args.get("exam_id", type=int)
     if not student or not exam_id:
         return jsonify(ok=False, message="Student and examination are required."), 404

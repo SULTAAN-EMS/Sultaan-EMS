@@ -123,6 +123,42 @@ def student_template():
         for cell in row:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
 
+    setup_values = wb.create_sheet("Setup Values")
+    setup_values.append(["Academic Year", "Academic Level", "Class", "Section"])
+    setup_value_rows = []
+    for year in AcademicYear.query.order_by(AcademicYear.name.desc()).all():
+        year_levels = AcademicYearLevel.query.filter_by(
+            academic_year_id=year.id,
+            is_active=True,
+        ).order_by(AcademicYearLevel.sort_order, AcademicYearLevel.name).all()
+        for year_level in year_levels:
+            year_classes = AcademicYearClass.query.filter_by(
+                academic_year_level_id=year_level.id,
+                is_active=True,
+            ).order_by(AcademicYearClass.sort_order, AcademicYearClass.name).all()
+            for year_class in year_classes:
+                sections = AcademicSection.query.filter_by(
+                    academic_class_id=year_class.legacy_class_id,
+                    is_active=True,
+                ).order_by(AcademicSection.sort_order, AcademicSection.name).all()
+                if sections:
+                    setup_value_rows.extend(
+                        [year.name, year_level.name, year_class.name, section.name]
+                        for section in sections
+                    )
+                else:
+                    setup_value_rows.append([year.name, year_level.name, year_class.name, ""])
+    for values in setup_value_rows:
+        setup_values.append(values)
+    setup_values.freeze_panes = "A2"
+    setup_values.auto_filter.ref = f"A1:D{max(1, setup_values.max_row)}"
+    for cell in setup_values[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    for column, width in {"A": 20, "B": 24, "C": 24, "D": 18}.items():
+        setup_values.column_dimensions[column].width = width
+
     # Do not ship fake student rows that can be accidentally imported.
     return wb
 
@@ -144,36 +180,62 @@ def result_entry_import_template(year_id=None, exam_id=None, level_id=None, clas
     selected_level = db.session.get(AcademicLevel, level_id) if level_id else None
     selected_class = db.session.get(AcademicClass, class_id) if class_id else None
     selected_section = db.session.get(AcademicSection, section_id) if section_id else None
+    exam_matches_year = not (
+        selected_year
+        and selected_exam
+        and selected_exam.academic_year_id != selected_year.id
+    )
 
     # Derive level from class if not explicitly given
     if selected_class and not selected_level:
         selected_level = selected_class.academic_level
 
+    # ── resolve the exact year-aware scope ───────────────────────────
+    # The legacy IDs are only selector bridges.  The downloaded workbook must
+    # use the AcademicYearSubject rows that belong to this exact year/level.
+    year_level = None
+    year_class = None
+    if selected_year:
+        if selected_level:
+            year_level = AcademicYearLevel.query.filter_by(
+                academic_year_id=selected_year.id,
+                legacy_level_id=selected_level.id,
+                is_active=True,
+            ).first()
+        if selected_class:
+            class_query = (
+                AcademicYearClass.query
+                .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+                .filter(
+                    AcademicYearLevel.academic_year_id == selected_year.id,
+                    AcademicYearClass.legacy_class_id == selected_class.id,
+                    AcademicYearClass.is_active.is_(True),
+                )
+            )
+            if year_level:
+                class_query = class_query.filter(AcademicYearClass.academic_year_level_id == year_level.id)
+            class_matches = class_query.all()
+            year_class = class_matches[0] if len(class_matches) == 1 else None
+            year_level = year_level or (year_class.academic_year_level if year_class else None)
+
     # ── resolve subjects for scope ───────────────────────────────────
     effective_level_id = selected_level.id if selected_level else None
-    if effective_level_id and selected_year:
-        year_level = AcademicYearLevel.query.filter_by(
+    if effective_level_id and selected_year and year_level:
+        # Keep the year-aware rows themselves so renamed subjects are written
+        # into the workbook exactly as staff see them in Setup.
+        scoped_subjects = AcademicYearSubject.query.filter_by(
             academic_year_id=selected_year.id,
-            legacy_level_id=effective_level_id,
-        ).first()
-        mapped_ids = [
-            row.legacy_subject_id
-            for row in AcademicYearSubject.query.filter_by(
-                academic_year_id=selected_year.id,
-                academic_year_level_id=year_level.id if year_level else -1,
-                is_active=True,
-            ).all()
-            if row.legacy_subject_id
-        ]
-        # Once a year-aware level exists, its subject bridge is authoritative.
-        # An empty bridge is incomplete setup, not permission to widen the
-        # result template to global subjects from another year/level.
-        scoped_subjects = (
-            Subject.query.filter(Subject.id.in_(mapped_ids))
-            .order_by(Subject.sort_order, Subject.name)
-            .all()
-            if year_level and mapped_ids else []
-        )
+            academic_year_level_id=year_level.id,
+            is_active=True,
+        ).order_by(
+            AcademicYearSubject.sort_order,
+            AcademicYearSubject.name,
+            AcademicYearSubject.id,
+        ).all()
+    elif effective_level_id and selected_year:
+        # An invalid year/level pairing must produce an empty safe template,
+        # never a workbook widened to another year's global subjects.
+        scoped_subjects = []
     elif effective_level_id:
         scoped_subjects = Subject.query.filter_by(academic_level_id=effective_level_id).order_by(Subject.sort_order, Subject.name).all()
     else:
@@ -203,7 +265,7 @@ def result_entry_import_template(year_id=None, exam_id=None, level_id=None, clas
     exam_type_name = selected_exam.name if selected_exam else ""
     class_name = selected_class.name if selected_class else ""
 
-    if selected_year and selected_class:
+    if selected_year and selected_exam and exam_matches_year and selected_class and year_class:
         # Build student query identical to the result entry grid
         try:
             query = student_enrollment_legacy_scope_query(
@@ -247,10 +309,13 @@ def result_entry_import_template(year_id=None, exam_id=None, level_id=None, clas
                 cell.font = mark_font
                 cell.alignment = Alignment(horizontal="center")
     else:
-        # Fallback: generic sample row when no scope is provided
-        sample_scores = [85, 90, 78, 88, 92, 85, 95, 80, 96, 91][:len(subject_names)]
-        ws.append([1, "3001", "Amina Ali Omar", "Sahra Jama", "Form One A",
-                   "Midterm", "2025-2026"] + sample_scores)
+        # Never ship fake students or marks.  A template without a selected
+        # scope stays metadata-only and tells the user to choose a real scope.
+        ws["A2"] = "Select a matching Academic Year, Exam Type, Academic Level and Class before downloading a result template."
+        ws["A2"].font = Font(name="Inter", italic=True, color="64748B")
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=max(7, len(headers)))
+        ws["A2"].alignment = Alignment(wrap_text=True, vertical="center")
+        ws.row_dimensions[2].height = 32
 
     # Auto-size columns for readability
     for col in ws.columns:
@@ -269,8 +334,13 @@ HEADER_ALIASES = {
     "class": {"class", "class_name", "school_class", "grade", "fasal"},
     "academic_level": {"academic_level", "level", "level_name", "heer"},
     "section": {"section", "section_name", "qayb"},
-    "exam_type": {"exam_type", "exam_name", "exam", "exam_title"},
-    "academic_year": {"academic_year", "year_name", "academic_year_name", "year", "academic_session"},
+    "exam_type": {
+        "exam_type", "examtype", "exam_name", "exam", "exam_title",
+    },
+    "academic_year": {
+        "academic_year", "academicyear", "year_name", "academic_year_name",
+        "year", "academic_session",
+    },
     "full_name": {"full_name", "student_name", "name", "student_full_name"},
     "mother_name": {"mother_name", "mother", "mother_s_name", "mothers_name"},
     "phone": {"phone", "phone_number", "mobile", "mobile_number", "telephone"},
@@ -462,7 +532,10 @@ def process_student_import(file):
         }
 
     # Pre-fetch lookup data
-    existing_students = {s.student_code: s for s in Student.query.all()}
+    existing_students = {
+        clean_str(s.student_code).casefold(): s
+        for s in Student.query.all()
+    }
     existing_years = {y.name: y for y in AcademicYear.query.all()}
     current_year = AcademicYear.query.filter_by(is_current=True).order_by(AcademicYear.id.desc()).first()
     default_year_name = current_year.name if current_year else ""
@@ -514,12 +587,12 @@ def process_student_import(file):
         # 1. student_id validation
         if not student_id:
             row_errors.append(f"Row {row_idx}: student_id is required.")
-        elif student_id in seen_file_ids:
+        elif student_id.casefold() in seen_file_ids:
             row_errors.append(f"Row {row_idx}: student_id '{student_id}' is duplicated within this file.")
-        elif student_id in existing_students:
+        elif student_id.casefold() in existing_students:
             row_errors.append(f"Row {row_idx}: student_id '{student_id}' already exists in database.")
         else:
-            seen_file_ids.add(student_id)
+            seen_file_ids.add(student_id.casefold())
 
         # 2. full_name validation
         if not full_name:
@@ -588,10 +661,30 @@ def process_student_import(file):
                     AcademicYearClass.name.ilike(class_name),
                     AcademicYearClass.is_active.is_(True),
                 ).all()
+            legacy_only_class = None
             if len(class_candidates) != 1:
-                row_errors.append(
-                    f"Row {row_idx}: class '{class_name}' is ambiguous or missing for academic year '{academic_year}'. Provide the year-aware Academic Level."
-                )
+                # Older installations may have no year-aware hierarchy at all.
+                # Preserve that compatibility path only when the selected year
+                # has zero year-aware levels; never use it to bypass a partial
+                # or conflicting modern setup.
+                year_has_scoped_setup = AcademicYearLevel.query.filter_by(
+                    academic_year_id=year_obj.id,
+                ).first()
+                legacy_candidates = AcademicClass.query.filter_by(
+                    name=class_name,
+                    is_active=True,
+                ).all()
+                legacy_level_matches = [
+                    item for item in legacy_candidates
+                    if not academic_level_name
+                    or (item.academic_level and _import_label_key(item.academic_level.name) == _import_label_key(academic_level_name))
+                ]
+                if not year_has_scoped_setup and len(legacy_level_matches) == 1:
+                    legacy_only_class = legacy_level_matches[0]
+                else:
+                    row_errors.append(
+                        f"Row {row_idx}: class '{class_name}' is ambiguous or missing for academic year '{academic_year}'. Provide the year-aware Academic Level."
+                    )
             elif academic_level_name and len(level_candidates) != 1:
                 row_errors.append(f"Row {row_idx}: academic level '{academic_level_name}' is missing or ambiguous for academic year '{academic_year}'.")
             if row_errors:
@@ -599,15 +692,16 @@ def process_student_import(file):
                 failed_errors.extend(row_errors)
                 row_results.append({"row": row_idx, "status": "invalid", "detail": "; ".join(row_errors)})
                 continue
-            year_class = class_candidates[0]
-            year_level = year_class.academic_year_level
+            year_class = class_candidates[0] if class_candidates else None
+            year_level = year_class.academic_year_level if year_class else None
             section = None
             if section_name:
-                if not year_class.legacy_class_id:
+                section_class_id = year_class.legacy_class_id if year_class else legacy_only_class.id
+                if not section_class_id:
                     row_errors.append(f"Row {row_idx}: section cannot be resolved for class '{class_name}'.")
                 else:
                     section = AcademicSection.query.filter_by(
-                        academic_class_id=year_class.legacy_class_id,
+                        academic_class_id=section_class_id,
                         name=section_name,
                         is_active=True,
                     ).first()
@@ -618,7 +712,9 @@ def process_student_import(file):
                 failed_errors.extend(row_errors)
                 row_results.append({"row": row_idx, "status": "invalid", "detail": "; ".join(row_errors)})
                 continue
-            scope = validate_enrollment_scope(year_obj.id, year_level.id, year_class.id, section.id if section else None)
+            scope = None
+            if not legacy_only_class:
+                scope = validate_enrollment_scope(year_obj.id, year_level.id, year_class.id, section.id if section else None)
             photo_path = None
             if photo_source:
                 photo_path, photo_error = fetch_photo_source(photo_source)
@@ -641,7 +737,21 @@ def process_student_import(file):
                 photo_path=photo_path,
                 is_active=True
             )
-            apply_legacy_placement(new_student, scope)
+            if legacy_only_class:
+                new_student.academic_year_id = year_obj.id
+                new_student.academic_class_id = legacy_only_class.id
+                new_student.academic_level_id = legacy_only_class.academic_level_id
+                new_student.level = legacy_only_class.academic_level.name if legacy_only_class.academic_level else academic_level_name
+                new_student.section = section.name if section else None
+                new_student.academic_section_id = section.id if section else None
+                school_class = SchoolClass.query.filter_by(name=legacy_only_class.name).first()
+                if not school_class:
+                    school_class = SchoolClass(name=legacy_only_class.name)
+                    db.session.add(school_class)
+                    db.session.flush()
+                new_student.class_id = school_class.id
+            else:
+                apply_legacy_placement(new_student, scope)
 
             valid_students_to_add.append((new_student, scope, section.id if section else None))
             success_count += 1
@@ -658,14 +768,15 @@ def process_student_import(file):
             ])
             db.session.flush()
             for student, scope, section_id in valid_students_to_add:
-                create_enrollment(
-                    student.id,
-                    scope["academic_year"].id,
-                    scope["academic_year_level"].id,
-                    scope["academic_year_class"].id,
-                    section_id,
-                    enrollment_source="import",
-                )
+                if scope:
+                    create_enrollment(
+                        student.id,
+                        scope["academic_year"].id,
+                        scope["academic_year_level"].id,
+                        scope["academic_year_class"].id,
+                        section_id,
+                        enrollment_source="import",
+                    )
             db.session.commit()
         except Exception as ex:
             db.session.rollback()
@@ -694,10 +805,121 @@ def process_student_import(file):
         "kind": "Students"
     }
 
-def process_result_import(file):
+def _import_label_key(value):
+    return " ".join(clean_str(value).casefold().split())
+
+
+def _resolve_result_import_scope(year_obj, level_id=None, class_id=None, section_id=None):
+    """Resolve legacy selector IDs into one exact year-aware import scope."""
+    if not year_obj:
+        return None, None, None
+
+    year_level = None
+    if level_id not in (None, ""):
+        year_level = AcademicYearLevel.query.filter_by(
+            academic_year_id=year_obj.id,
+            legacy_level_id=int(level_id),
+            is_active=True,
+        ).one_or_none()
+        if not year_level:
+            raise EnrollmentValidationError("Academic level is not configured for this academic year")
+
+    year_class = None
+    if class_id not in (None, ""):
+        class_query = (
+            AcademicYearClass.query
+            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+            .filter(
+                AcademicYearLevel.academic_year_id == year_obj.id,
+                AcademicYearClass.legacy_class_id == int(class_id),
+                AcademicYearClass.is_active.is_(True),
+            )
+        )
+        if year_level:
+            class_query = class_query.filter(AcademicYearClass.academic_year_level_id == year_level.id)
+        matches = class_query.all()
+        if len(matches) != 1:
+            raise EnrollmentValidationError("Academic class is ambiguous or not configured for this academic year")
+        year_class = matches[0]
+        year_level = year_level or year_class.academic_year_level
+
+    section = None
+    if section_id not in (None, ""):
+        section = db.session.get(AcademicSection, int(section_id))
+        if not section:
+            raise EnrollmentValidationError("Academic section does not exist")
+        if not year_class or year_class.legacy_class_id != section.academic_class_id:
+            raise EnrollmentValidationError("Academic section does not belong to the selected academic class")
+
+    return year_level, year_class, section
+
+
+def _result_import_subject_bindings(year_obj=None, year_level=None):
+    """Return only subjects usable by the selected year/level.
+
+    A binding keeps the year-aware display name/max mark alongside the legacy
+    subject identity used by the existing Result table.
+    """
+    bindings = []
+    if year_obj:
+        query = AcademicYearSubject.query.filter_by(
+            academic_year_id=year_obj.id,
+            is_active=True,
+        )
+        if year_level:
+            query = query.filter_by(academic_year_level_id=year_level.id)
+        for year_subject in query.order_by(
+            AcademicYearSubject.sort_order,
+            AcademicYearSubject.name,
+            AcademicYearSubject.id,
+        ).all():
+            legacy_subject = db.session.get(Subject, year_subject.legacy_subject_id) if year_subject.legacy_subject_id else None
+            if legacy_subject:
+                bindings.append({"year_subject": year_subject, "subject": legacy_subject})
+        return bindings
+
+    return [
+        {"year_subject": None, "subject": subject}
+        for subject in Subject.query.filter(Subject.is_active.is_(True)).all()
+        if subject.name
+    ]
+
+
+def _result_import_max_score(binding, exam, year_level=None):
+    """Resolve the same exam-aware maximum used by Result Entry."""
+    year_subject = binding.get("year_subject")
+    if exam:
+        from .services import get_exam_marking_configuration
+
+        configuration = get_exam_marking_configuration(
+            exam,
+            academic_year_level_id=year_level.id if year_level else None,
+            academic_level_id=binding["subject"].academic_level_id,
+        )
+        if configuration:
+            return float(configuration.default_full_marks)
+    if year_subject:
+        return float(year_subject.max_score or 0)
+    return float(binding["subject"].max_score or 0)
+
+
+def process_result_import(
+    file,
+    *,
+    year_id=None,
+    exam_id=None,
+    level_id=None,
+    class_id=None,
+    section_id=None,
+):
+    """Import results against the exact selected academic context.
+
+    The optional scope arguments are supplied by the Result Entry page.  The
+    no-scope path remains for older integrations, but it still resolves each
+    row's student/year placement before accepting a subject mark.
+    """
     if hasattr(file, "read"):
-        file_content = file.read()
-        file_obj = io.BytesIO(file_content)
+        file_obj = io.BytesIO(file.read())
         if hasattr(file, "seek"):
             file.seek(0)
     else:
@@ -705,254 +927,279 @@ def process_result_import(file):
 
     wb = load_workbook(file_obj, data_only=True)
     ws = get_import_worksheet(wb, target_name="Result Entry")
-
     required_fields = ["student_id", "class", "exam_type", "academic_year"]
     header_row_idx, raw_headers, headers_norm = detect_header_row(ws, required_fields, max_scan_rows=10)
-
-    missing = [f for f in required_fields if f not in headers_norm]
+    missing = [field for field in required_fields if field not in headers_norm]
     if missing:
         return {
             "success_count": 0,
             "failed_count": 0,
             "errors": [f"Missing required headers in file: {', '.join(missing)}"],
-            "kind": "Results"
+            "kind": "Results",
         }
 
-    fixed_header_set = {"#", "student_id", "full_name", "mother_name", "class", "exam_type", "academic_year"}
-    db_subjects = {}
-    for s in Subject.query.all():
-        if s.name:
-            for subject_key in {s.name.lower().strip(), normalize_header_key(s.name)}:
-                if subject_key:
-                    db_subjects.setdefault(subject_key, []).append(s)
-
-    subject_cols = {}
-    unmapped_subject_warnings = []
-    for col_idx, h_name in enumerate(raw_headers):
-        norm_h = headers_norm[col_idx] if col_idx < len(headers_norm) else ""
-        if not h_name or norm_h in fixed_header_set or h_name.lower().strip() in fixed_header_set:
-            continue
-        clean_h = h_name.lower().strip()
-        subject_candidates = db_subjects.get(norm_h) or db_subjects.get(clean_h)
-        
-        # Fallback partial matching (e.g., 'English Filming' -> 'english')
-        if not subject_candidates:
-            first_word = clean_h.split()[0] if clean_h.split() else ""
-            if first_word and len(first_word) > 2 and first_word in db_subjects:
-                subject_candidates = db_subjects[first_word]
-
-        if subject_candidates:
-            subject_cols[col_idx] = subject_candidates
-        else:
-            unmapped_subject_warnings.append(f"Column {col_idx + 1} ('{h_name}'): Subject not found in system (column skipped).")
-
     from sqlalchemy.orm import joinedload
+
+    selected_year = db.session.get(AcademicYear, int(year_id)) if year_id not in (None, "") else None
+    selected_exam = db.session.get(Exam, int(exam_id)) if exam_id not in (None, "") else None
+    if year_id not in (None, "") and not selected_year:
+        return {"success_count": 0, "failed_count": 0, "errors": ["Selected academic year does not exist."], "kind": "Results"}
+    if exam_id not in (None, "") and not selected_exam:
+        return {"success_count": 0, "failed_count": 0, "errors": ["Selected exam type does not exist."], "kind": "Results"}
+    if selected_exam and selected_year and selected_exam.academic_year_id != selected_year.id:
+        return {"success_count": 0, "failed_count": 0, "errors": ["Selected exam type does not belong to the selected academic year."], "kind": "Results"}
+    selected_year = selected_year or (selected_exam.academic_year if selected_exam else None)
+
+    effective_level_id = level_id or (selected_exam.academic_level_id if selected_exam else None)
+    effective_class_id = class_id or (selected_exam.academic_class_id if selected_exam else None)
+    try:
+        selected_year_level, selected_year_class, selected_section = _resolve_result_import_scope(
+            selected_year,
+            effective_level_id,
+            effective_class_id,
+            section_id,
+        )
+    except (EnrollmentValidationError, ValueError) as exc:
+        return {"success_count": 0, "failed_count": 0, "errors": [str(exc)], "kind": "Results"}
+
+    bindings = _result_import_subject_bindings(selected_year, selected_year_level)
+    subject_keys = {}
+    for binding in bindings:
+        year_subject = binding["year_subject"]
+        subject = binding["subject"]
+        names = {subject.name, normalize_header_key(subject.name)}
+        if year_subject:
+            names.update({year_subject.name, normalize_header_key(year_subject.name)})
+        for name in names:
+            key = _import_label_key(name)
+            if key:
+                subject_keys.setdefault(key, []).append(binding)
+
+    fixed_header_set = {"#", "student_id", "full_name", "mother_name", "class", "exam_type", "academic_year"}
+    subject_cols = {}
+    unmapped_subject_columns = {}
+    for col_idx, header in enumerate(raw_headers):
+        normalized = headers_norm[col_idx] if col_idx < len(headers_norm) else ""
+        if not header or normalized in fixed_header_set or _import_label_key(header) in fixed_header_set:
+            continue
+        candidates = subject_keys.get(_import_label_key(header), [])
+        if not candidates:
+            first_word = _import_label_key(header).split(" ", 1)[0]
+            if len(first_word) > 2:
+                candidates = subject_keys.get(first_word, [])
+        if candidates:
+            subject_cols[col_idx] = candidates
+        else:
+            unmapped_subject_columns[col_idx] = header
+
     existing_students = {
-        s.student_code: s
-        for s in Student.query.options(
+        clean_str(student.student_code).casefold(): student
+        for student in Student.query.options(
             joinedload(Student.academic_class),
-            joinedload(Student.school_class)
+            joinedload(Student.school_class),
         ).all()
     }
-    existing_years = {y.name: y for y in AcademicYear.query.all()}
-    existing_exams = {(e.name.lower(), e.academic_year_id): e for e in Exam.query.all()}
+    existing_years = {year.name: year for year in AcademicYear.query.all()}
+    existing_exams = {
+        (_import_label_key(exam.name), exam.academic_year_id): exam
+        for exam in Exam.query.all()
+    }
 
     success_count = 0
     failed_count = 0
-    failed_errors = list(unmapped_subject_warnings)
+    failed_errors = []
     valid_row_entries = []
 
-    for row_idx, row_cells in enumerate(ws.iter_rows(min_row=header_row_idx + 1, values_only=True), start=header_row_idx + 1):
+    for row_idx, row_cells in enumerate(
+        ws.iter_rows(min_row=header_row_idx + 1, values_only=True),
+        start=header_row_idx + 1,
+    ):
         try:
-            if not row_cells or all(c is None or str(c).strip() == "" for c in row_cells):
+            if not row_cells or all(c is None or clean_str(c) == "" for c in row_cells):
                 continue
 
-            row_map = {}
-            for col_idx, val in enumerate(row_cells):
-                if col_idx < len(headers_norm) and headers_norm[col_idx]:
-                    row_map[headers_norm[col_idx]] = clean_str(val)
-
+            row_map = {
+                headers_norm[col_idx]: clean_str(value)
+                for col_idx, value in enumerate(row_cells)
+                if col_idx < len(headers_norm) and headers_norm[col_idx]
+            }
             student_id = row_map.get("student_id", "")
             provided_class = row_map.get("class", "")
-            exam_type = row_map.get("exam_type", "")
-            academic_year = row_map.get("academic_year", "")
-
+            exam_name = row_map.get("exam_type", "")
+            academic_year_name = row_map.get("academic_year", "")
             row_errors = []
-            year_obj = existing_years.get(academic_year) if academic_year else None
 
-            # 1. student_id check
-            student_obj = None
+            year_obj = existing_years.get(academic_year_name) if academic_year_name else None
+            if not academic_year_name:
+                row_errors.append(f"Row {row_idx}: academic_year is required.")
+            elif not YEAR_REGEX.match(academic_year_name):
+                row_errors.append(f"Row {row_idx}: academic_year format invalid (must be YYYY-YYYY).")
+            elif not year_obj:
+                row_errors.append(f"Row {row_idx}: academic_year '{academic_year_name}' does not exist in system.")
+            elif selected_year and year_obj.id != selected_year.id:
+                row_errors.append(
+                    f"Row {row_idx}: academic_year '{academic_year_name}' does not match the selected academic year '{selected_year.name}'."
+                )
+
+            student_obj = existing_students.get(student_id.casefold()) if student_id else None
             if not student_id:
                 row_errors.append(f"Row {row_idx}: student_id is required.")
-            else:
-                student_obj = existing_students.get(student_id)
-                if not student_obj:
-                    row_errors.append(f"Row {row_idx}: student_id '{student_id}' not found in system.")
+            elif not student_obj:
+                row_errors.append(f"Row {row_idx}: student_id '{student_id}' not found in system.")
 
             placement = (
                 resolve_student_academic_context(student_obj, year_obj.id)
                 if student_obj and year_obj else None
             )
 
-            # 2. class check (must match student's actual class)
-            if student_obj and year_obj:
-                if not provided_class:
-                    row_errors.append(f"Row {row_idx}: class is required.")
-                elif not placement:
-                    row_errors.append(
-                        f"Row {row_idx}: student_id '{student_id}' has no enrollment or legacy placement for academic year '{academic_year}'."
-                    )
-                else:
-                    student_actual_class = (placement.get("class_name") or "").strip()
-                    p_cls = provided_class.strip().lower()
-                    a_cls = student_actual_class.strip().lower()
-                    if not a_cls or (p_cls != a_cls and p_cls not in a_cls and a_cls not in p_cls):
-                        row_errors.append(f"Row {row_idx}: class '{provided_class}' does not match student's class '{student_actual_class}'.")
-            elif not provided_class:
+            if not provided_class:
                 row_errors.append(f"Row {row_idx}: class is required.")
+            elif student_obj and year_obj and not placement:
+                row_errors.append(
+                    f"Row {row_idx}: student_id '{student_id}' has no enrollment or legacy placement for academic year '{academic_year_name}'."
+                )
+            elif student_obj and year_obj and placement:
+                if selected_year_class and placement.get("academic_year_class_id") != selected_year_class.id:
+                    row_errors.append(
+                        f"Row {row_idx}: student_id '{student_id}' is not enrolled in the selected academic class."
+                    )
+                elif selected_section and placement.get("academic_section_id") != selected_section.id:
+                    row_errors.append(
+                        f"Row {row_idx}: student_id '{student_id}' is not enrolled in the selected academic section."
+                    )
+                elif not selected_year_class:
+                    actual_class = _import_label_key(placement.get("class_name"))
+                    if actual_class != _import_label_key(provided_class):
+                        row_errors.append(
+                            f"Row {row_idx}: class '{provided_class}' does not match student's class '{placement.get('class_name') or ''}'."
+                        )
 
-            # 3. exam_type check
-            if not exam_type:
+            row_exam = selected_exam
+            if not exam_name:
                 row_errors.append(f"Row {row_idx}: exam_type is required.")
+            elif selected_exam and _import_label_key(exam_name) != _import_label_key(selected_exam.name):
+                row_errors.append(
+                    f"Row {row_idx}: exam_type '{exam_name}' does not match the selected exam '{selected_exam.name}'."
+                )
+            elif not row_exam and year_obj:
+                row_exam = existing_exams.get((_import_label_key(exam_name), year_obj.id))
 
-            # 4. academic_year check
-            if not academic_year:
-                row_errors.append(f"Row {row_idx}: academic_year is required.")
-            elif not YEAR_REGEX.match(academic_year):
-                row_errors.append(f"Row {row_idx}: academic_year format invalid (must be YYYY-YYYY).")
-            else:
-                year_obj = existing_years.get(academic_year)
-                if not year_obj:
-                    row_errors.append(f"Row {row_idx}: academic_year '{academic_year}' does not exist in system.")
+            if selected_year_level and placement and placement.get("academic_year_level_id") != selected_year_level.id:
+                row_errors.append(
+                    f"Row {row_idx}: student_id '{student_id}' is not enrolled in the selected academic level."
+                )
 
-            # 5. subject mark checks
             row_subject_marks = []
             resolved_subject_ids = set()
-            for col_idx, subject_candidates in subject_cols.items():
-                if col_idx >= len(row_cells):
-                    continue
-                cell_val = row_cells[col_idx]
-                if cell_val is None or str(cell_val).strip() == "":
-                    continue
+            student_year_level_id = placement.get("academic_year_level_id") if placement else None
+            effective_year_level = selected_year_level
+            if not effective_year_level and student_year_level_id:
+                effective_year_level = db.session.get(AcademicYearLevel, student_year_level_id)
+            for col_idx, header in unmapped_subject_columns.items():
+                if col_idx < len(row_cells) and clean_str(row_cells[col_idx]) != "":
+                    row_errors.append(
+                        f"Row {row_idx}: subject column '{header}' is not configured for the selected academic year and level."
+                    )
 
-                # Header names can legitimately exist on more than one level.
-                # Only an exact level match is safe; global/other-level subjects
-                # must never receive marks for this student's result.
-                student_level_id = (
-                    placement.get("academic_level_id")
-                    if placement else None
-                )
-                year_subject_ids = set()
-                if placement and placement.get("academic_year_level_id"):
-                    year_subject_ids = {
-                        row.legacy_subject_id
-                        for row in AcademicYearSubject.query.filter_by(
-                            academic_year_id=year_obj.id,
-                            academic_year_level_id=placement.get("academic_year_level_id"),
-                            is_active=True,
-                        ).all()
-                        if row.legacy_subject_id
-                    }
-                subj_obj = next(
-                    (
-                        subject for subject in subject_candidates
-                        if (
-                            subject.id in year_subject_ids
-                            if placement and placement.get("academic_year_level_id")
-                            else subject.academic_level_id == student_level_id
-                        )
-                    ),
-                    None,
-                )
-                if not subj_obj:
+            for col_idx, candidates in subject_cols.items():
+                if col_idx >= len(row_cells) or clean_str(row_cells[col_idx]) == "":
+                    continue
+                eligible = []
+                for binding in candidates:
+                    year_subject = binding["year_subject"]
+                    subject = binding["subject"]
+                    if year_subject:
+                        if not year_obj or year_subject.academic_year_id != year_obj.id:
+                            continue
+                        target_level_id = student_year_level_id or (selected_year_level.id if selected_year_level else None)
+                        if target_level_id and year_subject.academic_year_level_id != target_level_id:
+                            continue
+                    elif selected_year or student_year_level_id:
+                        if not student_year_level_id or subject.academic_level_id != placement.get("academic_level_id"):
+                            continue
+                    eligible.append(binding)
+
+                if len(eligible) != 1:
                     header_name = raw_headers[col_idx] if col_idx < len(raw_headers) else f"column {col_idx + 1}"
                     row_errors.append(
-                        f"Row {row_idx}: subject '{header_name}' is not configured for the student's level."
+                        f"Row {row_idx}: subject '{header_name}' is not uniquely configured for the student's academic year and level."
                     )
                     continue
-                if subj_obj.id in resolved_subject_ids:
-                    row_errors.append(f"Row {row_idx}: subject '{subj_obj.name}' appears more than once in the file.")
-                    continue
-                resolved_subject_ids.add(subj_obj.id)
 
+                binding = eligible[0]
+                subject = binding["subject"]
+                if subject.id in resolved_subject_ids:
+                    row_errors.append(f"Row {row_idx}: subject '{subject.name}' appears more than once in the file.")
+                    continue
+                resolved_subject_ids.add(subject.id)
+                cell_val = row_cells[col_idx]
                 try:
                     score_num = float(cell_val)
-                    max_score = float(subj_obj.max_score or 100)
+                    max_score = _result_import_max_score(binding, row_exam, effective_year_level)
                     if score_num < 0 or score_num > max_score:
-                        row_errors.append(f"Row {row_idx}: mark for '{subj_obj.name}' ({score_num:g}) must be between 0 and {max_score:g}.")
+                        row_errors.append(
+                            f"Row {row_idx}: mark for '{binding['year_subject'].name if binding['year_subject'] else subject.name}' ({score_num:g}) must be between 0 and {max_score:g}."
+                        )
                     else:
-                        row_subject_marks.append((subj_obj, score_num))
+                        row_subject_marks.append((subject, score_num))
                 except (TypeError, ValueError):
-                    row_errors.append(f"Row {row_idx}: mark for '{subj_obj.name}' must be numeric (got '{cell_val}').")
+                    row_errors.append(f"Row {row_idx}: mark for '{subject.name}' must be numeric (got '{cell_val}').")
 
             if row_errors:
                 failed_count += 1
                 failed_errors.extend(row_errors)
-            else:
-                valid_row_entries.append({
-                    "row_idx": row_idx,
-                    "student": student_obj,
-                    "exam_name": exam_type,
-                    "year": year_obj,
-                    "marks": row_subject_marks
-                })
-        except Exception as e:
+                continue
+
+            if not row_exam and year_obj:
+                row_exam = existing_exams.get((_import_label_key(exam_name), year_obj.id))
+            valid_row_entries.append({
+                "row_idx": row_idx,
+                "student": student_obj,
+                "exam_name": exam_name,
+                "exam": row_exam,
+                "year": year_obj,
+                "marks": row_subject_marks,
+            })
+        except Exception as exc:
             failed_count += 1
-            failed_errors.append(f"Row {row_idx}: Unhandled error parsing row ({str(e)})")
+            failed_errors.append(f"Row {row_idx}: Unhandled error parsing row ({str(exc)})")
 
     if valid_row_entries:
-        # Pre-create any missing Exam records upfront
         for entry in valid_row_entries:
-            ex_name = entry["exam_name"]
-            yr = entry["year"]
-            if yr and ex_name:
-                exam_key = (ex_name.lower().strip(), yr.id)
-                if exam_key not in existing_exams:
-                    exam_obj = Exam(
-                        name=ex_name.strip(),
-                        academic_year_id=yr.id,
-                        is_active=True,
-                        is_published=True
-                    )
-                    db.session.add(exam_obj)
-                    db.session.flush()
-                    existing_exams[exam_key] = exam_obj
+            if entry["exam"] or not entry["year"]:
+                continue
+            exam_key = (_import_label_key(entry["exam_name"]), entry["year"].id)
+            exam_obj = existing_exams.get(exam_key)
+            if not exam_obj:
+                exam_obj = Exam(
+                    name=entry["exam_name"].strip(),
+                    academic_year_id=entry["year"].id,
+                    is_active=True,
+                    is_published=True,
+                )
+                db.session.add(exam_obj)
+                db.session.flush()
+                existing_exams[exam_key] = exam_obj
+            entry["exam"] = exam_obj
 
-        # A class template can contain hundreds of marks.  Sending one ORM write
-        # per mark is too slow for a remote MySQL instance and can exceed
-        # Gunicorn's request timeout.  The unique result key lets MySQL apply the
-        # full import atomically as one upsert statement instead.
         result_rows = []
         for entry in valid_row_entries:
-            row_idx = entry["row_idx"]
-            st = entry["student"]
-            ex_name = entry["exam_name"]
-            yr = entry["year"]
-            marks = entry["marks"]
-
-            try:
-                if not yr or not st or not ex_name:
-                    raise ValueError("Missing required objects.")
-
-                exam_key = (ex_name.lower().strip(), yr.id)
-                exam_obj = existing_exams[exam_key]
-
-                now = datetime.utcnow()
-                for subj_obj, score_num in marks:
-                    result_rows.append({
-                        "student_id": st.id,
-                        "exam_id": exam_obj.id,
-                        "subject_id": subj_obj.id,
-                        "score": score_num,
-                        "is_published": True,
-                        "created_at": now,
-                        "updated_at": now,
-                    })
-
-                success_count += 1
-            except Exception as ex:
+            if not entry["year"] or not entry["student"] or not entry["exam"]:
                 failed_count += 1
-                failed_errors.append(f"Row {row_idx}: Error saving results - {str(ex)}")
+                failed_errors.append(f"Row {entry['row_idx']}: Missing required academic context.")
+                continue
+            now = datetime.utcnow()
+            for subject, score_num in entry["marks"]:
+                result_rows.append({
+                    "student_id": entry["student"].id,
+                    "exam_id": entry["exam"].id,
+                    "subject_id": subject.id,
+                    "score": score_num,
+                    "is_published": True,
+                    "created_at": now,
+                    "updated_at": now,
+                })
+            success_count += 1
 
         if result_rows:
             if db.session.get_bind().dialect.name == "mysql":
@@ -963,8 +1210,6 @@ def process_result_import(file):
                     updated_at=statement.inserted.updated_at,
                 ))
             else:
-                # Keep local and non-MySQL deployments compatible while retaining
-                # a bounded number of reads and writes.
                 student_ids = list({row["student_id"] for row in result_rows})
                 exam_ids = list({row["exam_id"] for row in result_rows})
                 existing_results = Result.query.filter(
@@ -990,18 +1235,18 @@ def process_result_import(file):
 
         try:
             db.session.commit()
-        except Exception as ex:
+        except Exception as exc:
             db.session.rollback()
             return {
                 "success_count": 0,
                 "failed_count": success_count + failed_count,
-                "errors": [f"Fatal database error during commit: {str(ex)}"],
-                "kind": "Results"
+                "errors": [f"Fatal database error during commit: {str(exc)}"],
+                "kind": "Results",
             }
 
     return {
         "success_count": success_count,
         "failed_count": failed_count,
         "errors": failed_errors,
-        "kind": "Results"
+        "kind": "Results",
     }

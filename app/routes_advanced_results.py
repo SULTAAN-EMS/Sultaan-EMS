@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
-from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
+from .import_wizard import normalize_student_phone, process_result_import, process_student_import, result_entry_import_template, student_template
 from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, ExamMarkingConfiguration, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentEnrollment, StudentEnrollmentMovement, Subject, LabelTranslation
 from .academic_hierarchy import students_for_year_scope_query, year_classes, year_levels, year_subjects
 from .enrollment_service import (
@@ -3981,7 +3981,14 @@ def import_results():
         return jsonify({"success": False, "error": "Upload a valid .xlsx file."}), 400
 
     try:
-        summary = process_result_import(file)
+        summary = process_result_import(
+            file,
+            year_id=int_or_none(year_id),
+            exam_id=int_or_none(exam_id),
+            level_id=int_or_none(level_id),
+            class_id=int_or_none(class_id),
+            section_id=int_or_none(section_id),
+        )
         session["import_summary"] = summary
         audit("Import Operations", f"Result import: {summary['success_count']} rows saved, {summary['failed_count']} failed")
         db.session.commit()
@@ -4077,7 +4084,9 @@ def save_student_from_form(student):
     student.student_code = request.form["student_code"].strip()
     if not student.student_code:
         raise ValueError("Student ID is required.")
-    duplicate_query = Student.query.filter(Student.student_code == student.student_code)
+    duplicate_query = Student.query.filter(
+        func.lower(func.trim(Student.student_code)) == student.student_code.casefold()
+    )
     if student.id:
         duplicate_query = duplicate_query.filter(Student.id != student.id)
     duplicate = duplicate_query.first()
@@ -4085,7 +4094,7 @@ def save_student_from_form(student):
         raise ValueError("Student ID already exists.")
     student.full_name = request.form["full_name"].strip()
     student.mother_name = request.form.get("mother_name", "").strip()
-    student.phone = request.form.get("phone", "").strip()
+    student.phone = normalize_student_phone(request.form.get("phone", ""))
     gender = request.form.get("gender", "").strip()
     if gender not in {"Male", "Female"}:
         raise ValueError("Please select Male or Female for the results report.")
