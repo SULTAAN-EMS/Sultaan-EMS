@@ -1170,7 +1170,7 @@ def portal_academic_outcome(enrollment, *, exam_id=None):
         application = None
     if application and application.application_status == "TRANSITIONED":
         if application.action == "promotion":
-            return {"code": "PROMOTED", "label": "U GUDBAY FASALKA XIGA", "tone": "success"}
+            return {"code": "PROMOTED", "label": "U GUDUBTAY FASALKA XIGA", "tone": "promoted"}
         if application.action == "repeat":
             return {"code": "REPEATED", "label": "KU CELINAYA FASALKA", "tone": "warning"}
     if application and application.application_status == "GRADUATED":
