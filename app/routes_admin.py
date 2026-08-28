@@ -4120,6 +4120,31 @@ def config_update_subject(subject_id):
     subject.max_score = _parse_float(data.get('max_score'), float(subject.max_score or 100))
     subject.sort_order = _parse_int(data.get('sort_order'), subject.sort_order)
 
+    # A subject moved to another level must not retain a legacy Subject from
+    # its former level.  Results still reference the legacy subject bridge,
+    # so repair/create the bridge before committing the year-aware edit.
+    if year_level.legacy_level_id:
+        legacy_subject = (
+            db.session.get(Subject, subject.legacy_subject_id)
+            if subject.legacy_subject_id
+            else None
+        )
+        if not legacy_subject or legacy_subject.academic_level_id != year_level.legacy_level_id:
+            legacy_subject = Subject.query.filter_by(
+                name=name,
+                academic_level_id=year_level.legacy_level_id,
+            ).first()
+            if not legacy_subject:
+                legacy_subject = Subject(
+                    name=name,
+                    academic_level_id=year_level.legacy_level_id,
+                    max_score=subject.max_score,
+                    sort_order=subject.sort_order,
+                )
+                db.session.add(legacy_subject)
+                db.session.flush()
+            subject.legacy_subject_id = legacy_subject.id
+
     try:
         db.session.commit()
         _audit_config_change("Configuration Center Updated", "subjects", subject, old_value=old_value, new_value={'name': subject.name, 'academic_year_id': subject.academic_year_id, 'academic_year_level_id': subject.academic_year_level_id, 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order})

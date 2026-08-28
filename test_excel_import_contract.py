@@ -97,16 +97,16 @@ class ExcelImportContractTests(unittest.TestCase):
         db.drop_all()
         self.ctx.pop()
 
-    def _workbook(self, score, year_name=None, display_headers=False):
+    def _workbook(self, score, year_name=None, display_headers=False, subject_header="Current English"):
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = "Result Entry"
         sheet.append([
             "#", "Student ID", "Full Name", "Mother Name", "Class",
-            "Exam Type", "Academic Year", "Current English",
+            "Exam Type", "Academic Year", subject_header,
         ] if display_headers else [
             "#", "student_id", "full_name", "mother_name", "class",
-            "exam_type", "academic_year", "Current English",
+            "exam_type", "academic_year", subject_header,
         ])
         sheet.append([
             1, self.student.student_code, self.student.full_name,
@@ -156,6 +156,109 @@ class ExcelImportContractTests(unittest.TestCase):
             class_id=self.legacy_class.id,
         )
         self.assertEqual(summary["success_count"], 1, summary)
+        self.assertEqual(summary["failed_count"], 0, summary)
+
+    def test_result_import_prefers_exact_year_subject_name_over_legacy_alias(self):
+        # This represents a renamed subject plus an old legacy alias still
+        # attached to another YearAcademicSubject.  The generated/current
+        # header must resolve the exact year-aware subject, never both rows.
+        self.year_subject.name = "English"
+        self.old_subject.name = "English"
+        db.session.add(AcademicYearSubject(
+            academic_year_id=self.year.id,
+            academic_year_level_id=self.year_level.id,
+            legacy_subject_id=self.old_subject.id,
+            name="English Language",
+            max_score=10,
+            sort_order=2,
+        ))
+        db.session.commit()
+
+        summary = process_result_import(
+            self._workbook(9, subject_header="English"),
+            year_id=self.year.id,
+            exam_id=self.exam.id,
+            level_id=self.level.id,
+            class_id=self.legacy_class.id,
+        )
+
+        self.assertEqual(summary["success_count"], 1, summary)
+        self.assertEqual(summary["failed_count"], 0, summary)
+
+    def test_result_import_scopes_shared_headers_per_student_level_without_page_scope(self):
+        other_level = AcademicLevel(name="Primary", sort_order=2)
+        other_class = AcademicClass(name="Form One", academic_level=other_level, sort_order=1)
+        other_subject = Subject(name="Current English", academic_level=other_level, max_score=100)
+        db.session.add_all([other_level, other_class, other_subject])
+        db.session.flush()
+        other_year_level = AcademicYearLevel(
+            academic_year_id=self.year.id,
+            legacy_level_id=other_level.id,
+            name="Primary",
+            sort_order=2,
+        )
+        other_year_class = AcademicYearClass(
+            academic_year_level=other_year_level,
+            legacy_class_id=other_class.id,
+            name="Form One",
+            sort_order=1,
+        )
+        other_year_subject = AcademicYearSubject(
+            academic_year_id=self.year.id,
+            academic_year_level=other_year_level,
+            legacy_subject_id=other_subject.id,
+            name="Current English",
+            max_score=10,
+            sort_order=1,
+        )
+        other_student = Student(
+            student_code="TIS-002",
+            full_name="Hodan Ali",
+            mother_name="Asha Jama",
+            gender="Female",
+            academic_year_id=self.year.id,
+            academic_level_id=other_level.id,
+            academic_class_id=other_class.id,
+        )
+        db.session.add_all([other_year_level, other_year_class, other_year_subject, other_student])
+        db.session.flush()
+        create_enrollment(
+            other_student.id,
+            self.year.id,
+            other_year_level.id,
+            other_year_class.id,
+            enrollment_source="import",
+        )
+        db.session.commit()
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "All Results"
+        sheet.append(["#", "student_id", "full_name", "mother_name", "class", "exam_type", "academic_year", "Current English"])
+        for index, student in enumerate((self.student, other_student), start=1):
+            sheet.append([
+                index,
+                student.student_code,
+                student.full_name,
+                student.mother_name,
+                student.academic_class.name,
+                self.exam.name,
+                self.year.name,
+                9,
+            ])
+        stream = BytesIO()
+        workbook.save(stream)
+        stream.seek(0)
+
+        summary = process_result_import(
+            stream,
+            year_id=self.year.id,
+            exam_id=self.exam.id,
+            level_id=self.level.id,
+            class_id=self.legacy_class.id,
+        )
+
+        self.assertEqual(summary["success_count"], 2, summary)
         self.assertEqual(summary["failed_count"], 0, summary)
 
     def test_student_phone_formats_normalize_to_one_value(self):

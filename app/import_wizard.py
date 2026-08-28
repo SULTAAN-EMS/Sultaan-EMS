@@ -950,6 +950,11 @@ def process_result_import(
 
     wb = load_workbook(file_obj, data_only=True)
     ws = get_import_worksheet(wb, target_name="Result Entry")
+    # Whole-class exports use one sheet containing students from multiple
+    # classes/levels.  Their row class and enrolled year-aware level are the
+    # scope for each row; a page-level class selector must not force every row
+    # through one class and make valid subject columns appear ambiguous.
+    is_all_results_workbook = _import_label_key(ws.title) == "all results"
     required_fields = ["student_id", "class", "exam_type", "academic_year"]
     header_row_idx, raw_headers, headers_norm = detect_header_row(ws, required_fields, max_scan_rows=10)
     missing = [field for field in required_fields if field not in headers_norm]
@@ -978,25 +983,37 @@ def process_result_import(
     try:
         selected_year_level, selected_year_class, selected_section = _resolve_result_import_scope(
             selected_year,
-            effective_level_id,
-            effective_class_id,
-            section_id,
+            None if is_all_results_workbook else effective_level_id,
+            None if is_all_results_workbook else effective_class_id,
+            None if is_all_results_workbook else section_id,
         )
     except (EnrollmentValidationError, ValueError) as exc:
         return {"success_count": 0, "failed_count": 0, "errors": [str(exc)], "kind": "Results"}
 
     bindings = _result_import_subject_bindings(selected_year, selected_year_level)
-    subject_keys = {}
+
+    # The YearAcademicSubject name is the canonical Result Entry column name.
+    # A legacy Subject name is only a compatibility alias.  Keeping them in
+    # separate maps prevents an old legacy name from making a valid, renamed
+    # year-aware subject column look ambiguous.
+    year_subject_keys = {}
+    legacy_subject_keys = {}
+
+    def add_subject_key(mapping, label, binding):
+        for candidate in {label, normalize_header_key(label)}:
+            key = _import_label_key(candidate)
+            if not key:
+                continue
+            entries = mapping.setdefault(key, [])
+            if not any(item["year_subject"].id == binding["year_subject"].id for item in entries):
+                entries.append(binding)
+
     for binding in bindings:
         year_subject = binding["year_subject"]
         subject = binding["subject"]
-        names = {subject.name, normalize_header_key(subject.name)}
         if year_subject:
-            names.update({year_subject.name, normalize_header_key(year_subject.name)})
-        for name in names:
-            key = _import_label_key(name)
-            if key:
-                subject_keys.setdefault(key, []).append(binding)
+            add_subject_key(year_subject_keys, year_subject.name, binding)
+        add_subject_key(legacy_subject_keys, subject.name, binding)
 
     fixed_header_set = {"#", "student_id", "full_name", "mother_name", "class", "exam_type", "academic_year"}
     subject_cols = {}
@@ -1005,11 +1022,19 @@ def process_result_import(
         normalized = headers_norm[col_idx] if col_idx < len(headers_norm) else ""
         if not header or normalized in fixed_header_set or _import_label_key(header) in fixed_header_set:
             continue
-        candidates = subject_keys.get(_import_label_key(header), [])
+        header_keys = [_import_label_key(header), _import_label_key(normalize_header_key(header))]
+        candidates = []
+        # Exact year-aware names always win.  Only older workbooks that do not
+        # contain that name use the legacy Subject alias as a fallback.
+        for key in header_keys:
+            if key and year_subject_keys.get(key):
+                candidates = year_subject_keys[key]
+                break
         if not candidates:
-            first_word = _import_label_key(header).split(" ", 1)[0]
-            if len(first_word) > 2:
-                candidates = subject_keys.get(first_word, [])
+            for key in header_keys:
+                if key and legacy_subject_keys.get(key):
+                    candidates = legacy_subject_keys[key]
+                    break
         if candidates:
             subject_cols[col_idx] = candidates
         else:
@@ -1134,7 +1159,15 @@ def process_result_import(
                     if year_subject:
                         if not year_obj or year_subject.academic_year_id != year_obj.id:
                             continue
-                        target_level_id = student_year_level_id or (selected_year_level.id if selected_year_level else None)
+                        # The Result Entry page already selected this year-aware
+                        # level.  Enrollment mismatches are reported separately;
+                        # they must not turn every otherwise-valid subject into a
+                        # misleading "not uniquely configured" error.
+                        target_level_id = (
+                            selected_year_level.id
+                            if selected_year_level
+                            else student_year_level_id
+                        )
                         if target_level_id and year_subject.academic_year_level_id != target_level_id:
                             continue
                     elif selected_year or student_year_level_id:
@@ -1142,10 +1175,16 @@ def process_result_import(
                             continue
                     eligible.append(binding)
 
-                if len(eligible) != 1:
+                if not eligible:
                     header_name = raw_headers[col_idx] if col_idx < len(raw_headers) else f"column {col_idx + 1}"
                     row_errors.append(
-                        f"Row {row_idx}: subject '{header_name}' is not uniquely configured for the student's academic year and level."
+                        f"Row {row_idx}: subject '{header_name}' is not configured for the student's academic year and level."
+                    )
+                    continue
+                if len(eligible) > 1:
+                    header_name = raw_headers[col_idx] if col_idx < len(raw_headers) else f"column {col_idx + 1}"
+                    row_errors.append(
+                        f"Row {row_idx}: subject '{header_name}' has multiple active configurations for the student's academic year and level."
                     )
                     continue
 
