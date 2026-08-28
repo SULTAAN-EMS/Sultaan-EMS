@@ -46,7 +46,6 @@ STUDENT_REQUIRED_HEADERS = [
     "student_id", "full_name", "mother_name", "phone", "class",
     "academic_year", "gender",
 ]
-PHONE_REGEX = re.compile(r"^\+25261\d{7,8}$")
 YEAR_REGEX = re.compile(r"^\d{4}-\d{4}$")
 PHOTO_SOURCE_MAX_BYTES = 8 * 1024 * 1024
 PHOTO_SOURCE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
@@ -98,7 +97,7 @@ def student_template():
         ("ID", "Yes", "Unique student ID; letters, numbers and safe symbols are accepted.", "TIS001"),
         ("Name", "Yes", "Student full name.", "Amina Ali Omar"),
         ("Mother", "Yes", "Mother/guardian name.", "Sahra Jama"),
-        ("Mobile", "Yes", "Somali mobile number. Spaces, +, 00, hyphens and parentheses are normalized.", "2526177788474 / +2526177788474 / +252 61 777 8474"),
+        ("Mobile", "Yes", "Phone number. Spaces, +, 00, hyphens and parentheses are normalized; common Somali formats are accepted.", "2526177788474 / +2526177788474 / +252 61 777 8474"),
         ("Academic Level", "Yes when ambiguous", "Year-aware level from Setup.", "Secondary"),
         ("Class", "Yes", "Existing class name under the selected year and level.", "Form Four"),
         ("Section", "No", "Optional section under the selected class.", "A"),
@@ -361,11 +360,11 @@ def clean_str(val):
 
 
 def normalize_student_phone(value):
-    """Normalize common Somali mobile formats to a canonical +252... value."""
+    """Normalize common phone formats without requiring one operator prefix."""
     raw = clean_str(value)
     if not raw:
         return ""
-    compact = re.sub(r"[\s().-]+", "", raw)
+    compact = re.sub(r"[\s()./-]+", "", raw)
     if compact.startswith("00"):
         compact = compact[2:]
     if compact.startswith("+"):
@@ -376,7 +375,9 @@ def normalize_student_phone(value):
         national = compact[3:]
     else:
         national = compact[1:] if compact.startswith("0") else compact
-    if re.fullmatch(r"61\d{7,8}", national):
+    # Keep the canonical +252 representation for Somali mobile prefixes while
+    # allowing other valid phone/country formats to pass through unchanged.
+    if re.fullmatch(r"6\d\d{7,8}", national) or re.fullmatch(r"7\d\d{7,8}", national):
         return f"+252{national}"
     return f"+{compact}" if raw.strip().startswith("+") else compact
 
@@ -602,11 +603,12 @@ def process_student_import(file):
         if not mother_name:
             row_errors.append(f"Row {row_idx}: mother_name is required.")
 
-        # 4. phone validation
+        # 4. phone validation: accept supplied formats, but reject empty or
+        # clearly non-phone values instead of enforcing a single prefix.
         if not phone:
             row_errors.append(f"Row {row_idx}: phone is required.")
-        elif not PHONE_REGEX.match(phone):
-            row_errors.append(f"Row {row_idx}: phone number invalid (use a Somali +252 61 mobile number).")
+        elif len(re.sub(r"\D", "", phone)) < 5:
+            row_errors.append(f"Row {row_idx}: phone number must contain at least 5 digits.")
 
         # 5. gender validation
         if gender not in {"Male", "Female"}:

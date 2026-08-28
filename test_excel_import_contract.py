@@ -1,11 +1,12 @@
 from io import BytesIO
+import re
 import unittest
 
 from openpyxl import Workbook, load_workbook
 
 from app import create_app, db
 from app.enrollment_service import create_enrollment
-from app.import_wizard import normalize_student_phone, process_result_import, result_entry_import_template, student_template
+from app.import_wizard import normalize_student_phone, process_result_import, process_student_import, result_entry_import_template, student_template
 from app.models import (
     AcademicClass,
     AcademicLevel,
@@ -161,6 +162,29 @@ class ExcelImportContractTests(unittest.TestCase):
         expected = "+252611234567"
         for value in ("+252611234567", "252611234567", "611234567", "0611234567", "00252611234567"):
             self.assertEqual(normalize_student_phone(value), expected)
+
+    def test_student_phone_import_accepts_other_common_prefixes_and_formats(self):
+        for value in ("+252 63 123 4567", "252-65-1234567", "0671234567", "+1 (555) 123-4567"):
+            normalized = normalize_student_phone(value)
+            self.assertGreaterEqual(len(re.sub(r"\D", "", normalized)), 5)
+
+    def test_student_import_accepts_supplied_phone_formats(self):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Students"
+        sheet.append(["ID", "Name", "Mother", "Mobile", "Academic Level", "Class", "Section", "Academic Year", "Gender", "Photo Source"])
+        for index, phone in enumerate(("+252 63 123 4567", "252-65-1234567", "0671234567", "+1 (555) 123-4567"), start=1):
+            sheet.append([
+                f"PHONE-{index}", f"Student {index}", "Parent Name", phone,
+                "Secondary", "Form Four", "", self.year.name, "Female", "",
+            ])
+        stream = BytesIO()
+        workbook.save(stream)
+        stream.seek(0)
+
+        summary = process_student_import(stream)
+        self.assertEqual(summary["success_count"], 4, summary)
+        self.assertFalse(any("phone number invalid" in error for error in summary["errors"]), summary)
 
     def test_result_api_finds_student_id_without_case_matching(self):
         response = self.app.test_client().get("/api/results/tis-001")
