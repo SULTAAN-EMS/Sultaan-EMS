@@ -621,7 +621,13 @@ def feedback_result_summary():
     rows = []
     for item in payload.get("subjects", []):
         grade = item.get("grade") or {}
-        rows.append({"subject": item.get("subject") or "", "score": item.get("score"), "max_score": item.get("max_score"), "grade": grade.get("grade") if isinstance(grade, dict) else str(grade or "")})
+        rows.append({
+            "subject": item.get("subject") or "",
+            "score": item.get("score"),
+            "max_score": item.get("max_score"),
+            "grade": grade.get("grade") if isinstance(grade, dict) else str(grade or ""),
+            "is_uf": bool(item.get("is_uf")),
+        })
     overall = payload.get("overall_grade") or {}
     return jsonify(ok=True, subjects=rows, total=payload.get("total"), max_total=payload.get("max_total"), average=payload.get("average"), grade=overall.get("grade") if isinstance(overall, dict) else str(overall or ""))
 

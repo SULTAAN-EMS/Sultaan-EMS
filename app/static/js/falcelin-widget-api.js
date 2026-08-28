@@ -227,7 +227,8 @@
     return requestJson('/api/falcelin/result-summary?token=' + encodeURIComponent(token)).then(function (payload) {
       var rows = document.getElementById('resultSummaryRows');
       if (rows) rows.innerHTML = payload.subjects.map(function (item) {
-        return '<tr><td>' + escapeHtml(item.subject) + '</td><td>' + escapeHtml(item.score) + '</td><td>' + escapeHtml(item.grade) + '</td></tr>';
+        var mg = '<span class="summary-mg-badge" title="Ma Gelin" aria-label="Ma Gelin"><span aria-hidden="true">⚠️</span> MG</span>';
+        return '<tr><td>' + escapeHtml(item.subject) + '</td><td>' + (item.is_uf ? mg : escapeHtml(item.score)) + '</td><td>' + (item.is_uf ? mg : escapeHtml(item.grade)) + '</td></tr>';
       }).join('') || '<tr><td colspan="3">Natiijo ma jirto.</td></tr>';
       var stats = document.querySelectorAll('.stat-strip__value');
       if (stats[0]) stats[0].textContent = String(payload.total == null ? '--' : payload.total) + '/' + String(payload.max_total == null ? '--' : payload.max_total);
