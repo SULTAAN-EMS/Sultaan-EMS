@@ -36,7 +36,7 @@ from .enrollment_service import (
 from .promotion_service import promotion_operational_status
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
-from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, critical_subject_badges, get_exam_marking_configuration, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, performance_tier_for, resolved_subject_maxima, result_payload, resolve_subject_max_score, scoped_legacy_subjects, subject_display_name
+from .services import DEFAULT_GRADE_SCALES, ScopedSubjectView, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, critical_subject_badges, get_exam_marking_configuration, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, performance_tier_for, resolved_subject_maxima, result_payload, resolve_subject_max_score, scoped_legacy_subjects, subject_display_name
 from .attendance_rules import counts_as_exam_sitting
 
 advanced_results_bp = Blueprint("admin_advanced_results", __name__)
@@ -1964,17 +1964,22 @@ def analytics():
     ):
         selected_year_class = None
         class_id = None
+    effective_year_level_id = (
+        selected_year_level.id
+        if selected_year_level
+        else selected_year_class.academic_year_level_id if selected_year_class else None
+    )
     classes = year_classes(selected_year_level.id) if selected_year_level else [item for level in levels for item in year_classes(level.id)]
     sections = (
         AcademicSection.query.filter_by(academic_class_id=selected_year_class.legacy_class_id, is_active=True).order_by(AcademicSection.name).all()
         if selected_year_class and selected_year_class.legacy_class_id
         else []
     )
-    year_scoped_subjects, legacy_scoped_subjects = analytics_subject_bridge(selected_year.id, level_id)
+    year_scoped_subjects, legacy_scoped_subjects = analytics_subject_bridge(selected_year.id, effective_year_level_id)
     selected_year_subject = db.session.get(AcademicYearSubject, subject_id) if subject_id else None
     if selected_year_subject and (
         selected_year_subject.academic_year_id != selected_year.id
-        or (level_id and selected_year_subject.academic_year_level_id != level_id)
+        or (effective_year_level_id and selected_year_subject.academic_year_level_id != effective_year_level_id)
     ):
         selected_year_subject = None
         subject_id = None
@@ -2061,6 +2066,15 @@ def analytics():
     )
     if scope_info["subject"]:
         results_query = results_query.filter_by(subject_id=scope_info["subject"].legacy_subject_id)
+    else:
+        # Never include a legacy result whose subject is not offered by the
+        # selected academic year (and level, when chosen).
+        allowed_subject_ids = [
+            item.legacy_subject_id
+            for item in year_scoped_subjects
+            if item.legacy_subject_id
+        ]
+        results_query = results_query.filter(Result.subject_id.in_(allowed_subject_ids))
     results = results_query.all()
     
     # Scoped subjects for completion rate calculation
@@ -2078,7 +2092,8 @@ def analytics():
         top_limit,
         bottom_limit,
         scoped_subjects=scoped_subjects,
-        academic_year_level_id=selected_year_level.id if selected_year_level else None,
+        academic_year_level_id=effective_year_level_id,
+        year_scoped_subjects=year_scoped_subjects,
     )
     
     return render_template(
@@ -2567,16 +2582,51 @@ def analytics_grade_drill_down():
 
     selected_year = db.session.get(AcademicYear, year_id)
     selected_exam = db.session.get(Exam, exam_id)
-    if not selected_year or not selected_exam:
+    if not selected_year or not selected_exam or selected_exam.academic_year_id != selected_year.id:
         return jsonify({"error": "Invalid year or exam"}), 404
+
+    # Analytics selectors use year-aware IDs. Validate the complete hierarchy
+    # here before querying results so a stale/cross-year request cannot fall
+    # into the legacy-ID mapper or return an HTML error page to fetch().
+    selected_year_level = None
+    if level_id:
+        selected_year_level = db.session.get(AcademicYearLevel, level_id)
+        if not selected_year_level or selected_year_level.academic_year_id != selected_year.id:
+            return jsonify({"error": "Selected level is not configured for this academic year"}), 400
+
+    selected_year_class = None
+    if class_id:
+        selected_year_class = db.session.get(AcademicYearClass, class_id)
+        if not selected_year_class:
+            return jsonify({"error": "Selected class does not exist"}), 400
+        if selected_year_level and selected_year_class.academic_year_level_id != selected_year_level.id:
+            return jsonify({"error": "Selected class does not belong to the selected level"}), 400
+        if selected_year_class.academic_year_level.academic_year_id != selected_year.id:
+            return jsonify({"error": "Selected class is not configured for this academic year"}), 400
+        selected_year_level = selected_year_level or selected_year_class.academic_year_level
+
+    selected_year_subject = None
+    if subject_id:
+        selected_year_subject = db.session.get(AcademicYearSubject, subject_id)
+        if not selected_year_subject or selected_year_subject.academic_year_id != selected_year.id:
+            return jsonify({"error": "Selected subject is not configured for this academic year"}), 400
+        if selected_year_level and selected_year_subject.academic_year_level_id != selected_year_level.id:
+            return jsonify({"error": "Selected subject does not belong to the selected level"}), 400
+
+    if section_id:
+        selected_section = db.session.get(AcademicSection, section_id)
+        if not selected_section:
+            return jsonify({"error": "Selected section does not exist"}), 400
+        if selected_year_class and selected_section.academic_class_id != selected_year_class.legacy_class_id:
+            return jsonify({"error": "Selected section does not belong to the selected class"}), 400
 
     grade_cache = load_grade_scale_cache(selected_exam.id)
 
     students = (
-        students_for_scope_query(
+        students_for_year_scope_query(
             selected_year.id,
-            level_id=level_id,
-            class_id=class_id,
+            year_level_id=selected_year_level.id if selected_year_level else None,
+            year_class_id=selected_year_class.id if selected_year_class else None,
             section_id=section_id,
         )
         .options(
@@ -2596,8 +2646,20 @@ def analytics_grade_drill_down():
             Result.is_published.is_(True),
         )
     )
-    if subject_id:
-        results_query = results_query.filter_by(subject_id=subject_id)
+    if selected_year_subject:
+        if not selected_year_subject.legacy_subject_id:
+            return jsonify([])
+        results_query = results_query.filter_by(subject_id=selected_year_subject.legacy_subject_id)
+    else:
+        allowed_subject_ids = [
+            item.legacy_subject_id
+            for item in year_subjects(
+                selected_year.id,
+                selected_year_level.id if selected_year_level else None,
+            )
+            if item.legacy_subject_id
+        ]
+        results_query = results_query.filter(Result.subject_id.in_(allowed_subject_ids))
     results = results_query.all()
 
     student_map = {s.id: s for s in students}
@@ -2651,7 +2713,7 @@ def analytics_grade_drill_down():
     return jsonify(rows)
 
 
-def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, scoped_subjects=None, academic_year_level_id=None):
+def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, scoped_subjects=None, academic_year_level_id=None, year_scoped_subjects=None):
     """Build analytics data for charts using existing grade_for logic"""
     total_students_count = len(students) if students else 0
     num_scoped_subjects = len(scoped_subjects) if scoped_subjects else 0
@@ -2678,6 +2740,21 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
     scoped_subject_by_id = {
         subject.id: subject for subject in (scoped_subjects or [])
     }
+    year_subject_candidates = defaultdict(list)
+    for year_subject in year_scoped_subjects or []:
+        if year_subject.legacy_subject_id:
+            year_subject_candidates[year_subject.legacy_subject_id].append(year_subject)
+
+    def display_subject_for(result, placement=None):
+        candidates = year_subject_candidates.get(result.subject_id, [])
+        placement_level_id = placement.get("academic_year_level_id") if placement else academic_year_level_id
+        selected = next(
+            (item for item in candidates if item.academic_year_level_id == placement_level_id),
+            candidates[0] if len(candidates) == 1 else None,
+        )
+        if selected:
+            return ScopedSubjectView(result.subject, selected)
+        return scoped_subject_by_id.get(result.subject_id, result.subject)
 
     def cached_grade_for(score):
         return grade_for_from_cache(score, grade_cache)
@@ -2690,7 +2767,7 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
             if student and context_exam
             else None
         )
-        display_subject = scoped_subject_by_id.get(result.subject_id, result.subject)
+        display_subject = display_subject_for(result, placement)
         return resolve_subject_max_score(
             display_subject,
             exam=context_exam,
@@ -2732,7 +2809,12 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
     # Subject-wise performance
     subject_averages = {}
     for result in results:
-        subject_name = result.subject.name
+        placement = (
+            resolve_student_academic_context(students_by_id.get(result.student_id), exam.academic_year_id)
+            if students_by_id.get(result.student_id)
+            else None
+        )
+        subject_name = display_subject_for(result, placement).name
         max_score = result_max_score(result, exam)
         pct = round(float(result.score) / float(max_score) * 100, 2) if max_score > 0 else 0
         if subject_name not in subject_averages:

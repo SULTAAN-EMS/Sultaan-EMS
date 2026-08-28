@@ -564,7 +564,17 @@ function openGradeDrillDown(grade, color) {
   params.set('grade', grade);
 
   fetch(`{{ url_for('admin_advanced_results.analytics_grade_drill_down') }}?${params.toString()}`)
-    .then(res => res.json())
+    .then(async (res) => {
+      const body = await res.text();
+      let data;
+      try {
+        data = JSON.parse(body);
+      } catch (parseError) {
+        throw new Error(`Request failed (${res.status})`);
+      }
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      return data;
+    })
     .then(data => {
       loader.style.display = 'none';
       if (data.error) {

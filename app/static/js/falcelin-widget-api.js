@@ -164,11 +164,25 @@
     button.textContent = busy ? 'La dirayaa...' : (fallback || button.dataset.originalText);
   }
 
+  function openMessageRefs() {
+    var refs = {};
+    msgList.querySelectorAll('.msg[open][data-message-ref]').forEach(function (node) {
+      refs[node.getAttribute('data-message-ref')] = true;
+    });
+    return refs;
+  }
+
+  function restoreOpenMessages(refs) {
+    msgList.querySelectorAll('.msg[data-message-ref]').forEach(function (node) {
+      node.open = Boolean(refs[node.getAttribute('data-message-ref')]);
+    });
+  }
+
   function itemMarkup(item) {
     var badgeText = { pending: 'Sugaya Jawaab', answered: 'La Jawaabay', received: 'La Diray' };
     var badgeClass = { pending: 'badge--pending', answered: 'badge--answered', received: 'badge--received' };
     var typeText = { cabasho: 'CABASHO', falcelin: 'FALCELIN' };
-    var html = '<details class="msg"><summary><div class="msg__main">' +
+    var html = '<details class="msg" data-message-ref="' + escapeHtml(item.ref) + '"><summary><div class="msg__main">' +
       '<span class="msg__type">' + (typeText[item.type] || 'FALCELIN') + (item.subject ? ' · ' + escapeHtml(item.subject) : '') + '</span>' +
       '<span class="msg__ref">' + escapeHtml(item.ref) + '</span>' +
       '<span class="msg__excerpt">' + escapeHtml(item.excerpt) + '</span></div>' +
@@ -224,9 +238,11 @@
 
   function loadReplies(markRead) {
     return requestJson('/api/falcelin/replies?token=' + encodeURIComponent(token)).then(function (payload) {
+      var expandedRefs = openMessageRefs();
       msgList.innerHTML = payload.items.length
         ? payload.items.map(itemMarkup).join('')
         : '<div class="empty-state"><span class="empty-state__icon">📭</span><strong>Weli wax falcelin ama cabasho ah ma jirto.</strong><p>Marka aad wax dirto, xaaladdeeda iyo jawaabta xafiiska halkan ayaad ka arki doontaa.</p></div>';
+      restoreOpenMessages(expandedRefs);
       applyReplyLogos(payload.items);
       applyVerifiedSealShape();
       refreshRelativeTimes();
