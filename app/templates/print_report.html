@@ -156,7 +156,7 @@
       <div><i class="fa-solid fa-chart-line"></i><span>Marks Obtained</span><strong>{{ result.total|academic_number(settings) }}</strong><small>Out of {{ result.max_total|academic_number(settings) }}</small></div>
       <div><i class="fa-solid fa-chart-pie"></i><span>Percentage</span><strong>{{ result.average|academic_number(settings) }}%</strong></div>
       <div><i class="fa-solid fa-award"></i><span>Grade</span><strong style="color: {{ result.overall_grade.badge_color }};">{{ result.overall_grade.grade }}</strong><small>{{ result.overall_grade.comment }}</small></div>
-      <div><i class="fa-solid fa-trophy"></i><span>Rank</span><strong>{{ result.rank or '-' }}</strong><small>In Class</small></div>
+      <div><i class="fa-solid fa-trophy"></i><span>Rank</span><strong>{% if result.rank %}{{ result.rank }}aad{% else %}-{% endif %}</strong><small>In Class</small></div>
     </section>
 
     <section class="tis-print-bottom">

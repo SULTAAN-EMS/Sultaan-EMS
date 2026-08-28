@@ -333,7 +333,7 @@
               <div><span><i class="fa-solid fa-chart-line"></i> Dhibcaha Guud ee la helay</span><strong>{{ result.total|academic_number(settings) }}</strong></div>
               <div><span><i class="fa-solid fa-chart-pie"></i> Celceliska Boqolleyda</span><strong>{{ result.average|academic_number(settings) }}%</strong></div>
               <div><span><i class="fa-solid fa-star"></i> Darajada</span><strong class="pill" style="background: {{ result.overall_grade.badge_color }}; color: {{ result.overall_grade.text_color }};">{{ result.overall_grade.grade }}</strong></div>
-              <div><span><i class="fa-solid fa-ranking-star"></i> Kaalinta Fasalka</span><strong>{{ result.rank or '-' }}</strong></div>
+              <div><span><i class="fa-solid fa-ranking-star"></i> Kaalinta Fasalka</span><strong>{% if result.rank %}{{ result.rank }}aad{% else %}-{% endif %}</strong></div>
               <div><span><i class="fa-solid fa-arrow-up-right-dots"></i> GO'AANKA</span><strong class="final-status-value final-status-value--{{ result.portal_outcome.tone }}" style="color: {% if result.portal_outcome.code == 'FAILED' %}#dc2626{% elif result.portal_outcome.code == 'PROMOTED' %}#2563eb{% else %}#059669{% endif %} !important;">{{ result.portal_outcome.label }}</strong></div>
             </section>
 
