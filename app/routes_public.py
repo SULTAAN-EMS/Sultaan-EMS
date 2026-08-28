@@ -10,7 +10,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from . import csrf, db
 from .i18n import language_redirect
 from .models import AcademicLevel, AcademicYear, AcademicYearSubject, Exam, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, StudentEnrollment, Subject
-from .services import active_exam_for_student, attendance_uf_record, get_settings, result_payload, result_success_overlay_config, top_students_for_class
+from .services import active_exam_for_student, attendance_uf_record, get_settings, result_payload, result_success_overlay_config, scoped_legacy_subjects, top_students_for_class
 from .attendance_rules import normalize_attendance_status
 from .enrollment_service import (
     enrollment_placement_for_student,
@@ -103,20 +103,28 @@ def incident_subjects_for_student(student, academic_year_id=None):
     if not level_id:
         return []
     if placement and placement.get("academic_year_level_id"):
-        mapped_ids = [
-            row.legacy_subject_id
-            for row in AcademicYearSubject.query.filter_by(
+        year_items = AcademicYearSubject.query.filter_by(
                 academic_year_id=academic_year_id,
                 academic_year_level_id=placement.get("academic_year_level_id"),
                 is_active=True,
+            ).order_by(
+                AcademicYearSubject.sort_order,
+                AcademicYearSubject.name,
+                AcademicYearSubject.id,
             ).all()
-            if row.legacy_subject_id
-        ]
+        mapped_ids = [row.legacy_subject_id for row in year_items if row.legacy_subject_id]
         # A year-aware scope with no subject bridge is incomplete setup; do
         # not silently widen it to the global subject table.
         if not mapped_ids:
             return []
-        return Subject.query.filter(Subject.id.in_(mapped_ids), Subject.is_active.is_(True)).order_by(Subject.sort_order, Subject.name).all()
+        scoped_by_id = {
+            subject.id: subject for subject in scoped_legacy_subjects(year_items)
+        }
+        return [
+            scoped_by_id[subject_id]
+            for subject_id in mapped_ids
+            if subject_id in scoped_by_id
+        ]
     return (
         Subject.query
         .filter(Subject.academic_level_id == level_id)
@@ -563,16 +571,18 @@ def feedback_subjects():
         return jsonify(ok=True, subjects=[])
     enrollment = placement.get("enrollment")
     mapped_ids = []
+    year_items = []
     if placement.get("academic_year_level_id"):
-        mapped_ids = [
-            row.legacy_subject_id
-            for row in AcademicYearSubject.query.filter_by(
+        year_items = AcademicYearSubject.query.filter_by(
                 academic_year_id=exam.academic_year_id,
                 academic_year_level_id=placement.get("academic_year_level_id"),
                 is_active=True,
+            ).order_by(
+                AcademicYearSubject.sort_order,
+                AcademicYearSubject.name,
+                AcademicYearSubject.id,
             ).all()
-            if row.legacy_subject_id
-        ]
+        mapped_ids = [row.legacy_subject_id for row in year_items if row.legacy_subject_id]
     level_id = placement.get("academic_level_id")
     if not level_id:
         return jsonify(ok=True, subjects=[])
@@ -594,6 +604,11 @@ def feedback_subjects():
     else:
         return jsonify(ok=True, subjects=[])
     subjects = subject_query.order_by(Subject.sort_order, Subject.name).distinct().all()
+    if year_items:
+        scoped_by_id = {
+            subject.id: subject for subject in scoped_legacy_subjects(year_items)
+        }
+        subjects = [scoped_by_id[subject.id] for subject in subjects if subject.id in scoped_by_id]
     return jsonify(ok=True, subjects=[subject.name for subject in subjects])
 
 
@@ -624,26 +639,45 @@ def feedback_mg_details():
     enrollment = placement.get("enrollment")
     student_level_id = placement.get("academic_level_id")
     subject_id = request.args.get("subject_id", type=int)
-    subject = db.session.get(Subject, subject_id) if subject_id else None
-    mapped_subject_ids = {
-        row.legacy_subject_id
-        for row in AcademicYearSubject.query.filter_by(
+    year_items = []
+    scoped_subject_by_id = {}
+    if placement.get("academic_year_level_id"):
+        year_items = AcademicYearSubject.query.filter_by(
             academic_year_id=exam.academic_year_id,
             academic_year_level_id=placement.get("academic_year_level_id"),
             is_active=True,
+        ).order_by(
+            AcademicYearSubject.sort_order,
+            AcademicYearSubject.name,
+            AcademicYearSubject.id,
         ).all()
+        scoped_subject_by_id = {
+            item.id: item for item in scoped_legacy_subjects(year_items)
+        }
+    subject = db.session.get(Subject, subject_id) if subject_id else None
+    mapped_subject_ids = {
+        row.legacy_subject_id for row in year_items
         if row.legacy_subject_id
     } if placement.get("academic_year_level_id") else set()
     if not subject and request.args.get("subject") and student_level_id:
-        subject = (
-            Subject.query
-            .filter(
-                Subject.academic_level_id == student_level_id,
-                Subject.name == request.args.get("subject").strip(),
-            )
-            .order_by(Subject.id.asc())
-            .first()
+        requested_subject_name = request.args.get("subject").strip().casefold()
+        subject = next(
+            (
+                item for item in scoped_subject_by_id.values()
+                if (item.name or "").strip().casefold() == requested_subject_name
+            ),
+            None,
         )
+        if subject is None:
+            subject = (
+                Subject.query
+                .filter(
+                    Subject.academic_level_id == student_level_id,
+                    Subject.name == request.args.get("subject").strip(),
+                )
+                .order_by(Subject.id.asc())
+                .first()
+            )
     # Keep legacy setup rows usable when their old nullable flag is NULL.
     if not subject or subject.is_active is False:
         return jsonify(ok=False, message="Macluumaadka maaddadan lama heli karo."), 404
@@ -654,6 +688,9 @@ def feedback_mg_details():
         return jsonify(ok=False, message="Maaddooyinka sanadkan lama dejin."), 404
     if not mapped_subject_ids and (not student_level_id or subject.academic_level_id != student_level_id):
         return jsonify(ok=False, message="Maaddadani kuma jirto heerka ardeygan."), 404
+
+    if scoped_subject_by_id:
+        subject = scoped_subject_by_id.get(subject.id, subject)
 
     record = attendance_uf_record(exam, student.id, subject.id)
     if not record:

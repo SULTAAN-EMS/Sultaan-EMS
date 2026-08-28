@@ -250,12 +250,23 @@ def verify_promotion_rule_persistence(
     exam_id,
     critical_subject_ids,
 ):
-    """Re-read one committed rule and prove its exact exam-scoped mappings."""
+    """Re-read one committed rule and prove its exact scoped mappings.
+
+    ``exam_id`` is optional for the legacy Phase 3B rule API.  New UI flows
+    pass an explicit exam, while older callers must still be verifiable
+    without being forced through the exam-specific validator.
+    """
     db.session.expire_all()
-    year, level, exam = validate_exam_scope(
-        academic_year_id, academic_year_level_id, exam_id
-    )
-    rule = get_promotion_rule(year.id, level.id, exam_id=exam.id)
+    if exam_id in (None, ""):
+        year, level = validate_rule_scope(
+            academic_year_id, academic_year_level_id
+        )
+        rule = get_promotion_rule(year.id, level.id, exam_id=None)
+    else:
+        year, level, exam = validate_exam_scope(
+            academic_year_id, academic_year_level_id, exam_id
+        )
+        rule = get_promotion_rule(year.id, level.id, exam_id=exam.id)
     if rule is None:
         raise PromotionValidationError(
             "Promotion Rule persistence verification failed: the selected exam rule was not found after commit"

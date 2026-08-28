@@ -36,7 +36,7 @@ from .enrollment_service import (
 from .promotion_service import promotion_operational_status
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
-from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, critical_subject_badges, get_exam_marking_configuration, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, performance_tier_for, resolved_subject_maxima, result_payload, resolve_subject_max_score, subject_display_name
+from .services import DEFAULT_GRADE_SCALES, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, critical_subject_badges, get_exam_marking_configuration, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, performance_tier_for, resolved_subject_maxima, result_payload, resolve_subject_max_score, scoped_legacy_subjects, subject_display_name
 from .attendance_rules import counts_as_exam_sitting
 
 advanced_results_bp = Blueprint("admin_advanced_results", __name__)
@@ -249,12 +249,7 @@ def subjects_for_scope(exam, level_id=None, class_id=None):
         if not year_level:
             return []
         year_items = year_subjects(exam.academic_year_id, year_level.id)
-        mapped_subjects = [
-            db.session.get(Subject, item.legacy_subject_id)
-            for item in year_items
-            if item.legacy_subject_id
-        ]
-        mapped_subjects = [item for item in mapped_subjects if item]
+        mapped_subjects = scoped_legacy_subjects(year_items)
         if mapped_subjects:
             return mapped_subjects
         # A year-scoped exam must never fall back to the global Subject table.
@@ -275,12 +270,10 @@ def analytics_subject_bridge(academic_year_id, year_level_id=None):
     year_items = year_subjects(academic_year_id, year_level_id)
     legacy_items = []
     seen = set()
-    for item in year_items:
-        if item.legacy_subject_id and item.legacy_subject_id not in seen:
-            legacy_subject = db.session.get(Subject, item.legacy_subject_id)
-            if legacy_subject:
-                legacy_items.append(legacy_subject)
-                seen.add(legacy_subject.id)
+    for item in scoped_legacy_subjects(year_items):
+        if item.id not in seen:
+            legacy_items.append(item)
+            seen.add(item.id)
     return year_items, legacy_items
 
 
@@ -292,12 +285,7 @@ def subjects_for_year_level(exam, year_level_id):
     if not year_level or year_level.academic_year_id != exam.academic_year_id:
         return []
     year_items = year_subjects(exam.academic_year_id, year_level.id)
-    subjects = [
-        db.session.get(Subject, item.legacy_subject_id)
-        for item in year_items
-        if item.legacy_subject_id
-    ]
-    subjects = [item for item in subjects if item]
+    subjects = scoped_legacy_subjects(year_items)
     # A year-level without a subject bridge is incomplete setup.  Do not
     # widen the report/result view to the legacy global subject set.
     return subjects
@@ -1903,7 +1891,7 @@ def save_result_entry():
             # Get or create result
             result = results_dict.get((student.id, subject.id))
             if not result:
-                result = Result(student=student, exam=selected_exam, subject=subject)
+                result = Result(student=student, exam=selected_exam, subject_id=subject.id)
                 db.session.add(result)
             
             result.score = score
@@ -2323,6 +2311,14 @@ def build_analytics_results_report_data(academic_year, exam):
         for scope in year_level_scopes
         if scope.legacy_level_id
     }
+    scoped_subjects_by_level = {
+        scope.legacy_level_id: {
+            subject.id: subject
+            for subject in scoped_legacy_subjects(year_subjects(academic_year.id, scope.id))
+        }
+        for scope in year_level_scopes
+        if scope.legacy_level_id
+    }
     for result in results:
         level_id = student_level_lookup.get(result.student_id)
         if (
@@ -2332,8 +2328,12 @@ def build_analytics_results_report_data(academic_year, exam):
             or result.student_id not in subject_sitting_student_ids.get(result.subject_id, set())
         ):
             continue
-        resolved_max = resolve_subject_max_score(
+        display_subject = scoped_subjects_by_level.get(level_id, {}).get(
+            result.subject_id,
             result.subject,
+        )
+        resolved_max = resolve_subject_max_score(
+            display_subject,
             exam=exam,
             academic_year_level_id=year_level_by_legacy.get(level_id),
             academic_level_id=level_id,
@@ -2342,7 +2342,7 @@ def build_analytics_results_report_data(academic_year, exam):
             continue
         result_pct = round(float(result.score or 0) / float(resolved_max) * 100, 4)
         results_by_student[result.student_id].append(result_pct)
-        results_by_level_subject[level_id][result.subject_id].append((result.subject, result_pct))
+        results_by_level_subject[level_id][result.subject_id].append((display_subject, result_pct))
 
     student_averages = {
         student_id: round(sum(scores) / len(scores), 4)
@@ -2675,6 +2675,9 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
     
     grade_cache = load_grade_scale_cache(exam.id)
     students_by_id = {student.id: student for student in students}
+    scoped_subject_by_id = {
+        subject.id: subject for subject in (scoped_subjects or [])
+    }
 
     def cached_grade_for(score):
         return grade_for_from_cache(score, grade_cache)
@@ -2687,8 +2690,9 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
             if student and context_exam
             else None
         )
+        display_subject = scoped_subject_by_id.get(result.subject_id, result.subject)
         return resolve_subject_max_score(
-            result.subject,
+            display_subject,
             exam=context_exam,
             academic_year_level_id=(
                 placement.get("academic_year_level_id") if placement else academic_year_level_id
@@ -4182,13 +4186,27 @@ def build_stats(payloads, rows):
     subject_totals = defaultdict(list)
     for row in rows:
         placement = enrollment_placement_for_student(row.student, row.exam.academic_year_id) or {}
+        display_subject = row.subject
+        year_level_id = placement.get("academic_year_level_id")
+        if year_level_id:
+            year_subject = AcademicYearSubject.query.filter_by(
+                academic_year_id=row.exam.academic_year_id,
+                academic_year_level_id=year_level_id,
+                legacy_subject_id=row.subject_id,
+                is_active=True,
+            ).first()
+            if year_subject:
+                display_subject = next(
+                    iter(scoped_legacy_subjects([year_subject])),
+                    display_subject,
+                )
         max_score = resolve_subject_max_score(
-            row.subject,
+            display_subject,
             exam=row.exam,
-            academic_year_level_id=placement.get("academic_year_level_id"),
+            academic_year_level_id=year_level_id,
             academic_level_id=placement.get("academic_level_id"),
         )
-        subject_totals[row.subject.name].append(
+        subject_totals[display_subject.name].append(
             round(float(Decimal(row.score) / max_score * 100), 2) if max_score else 0
         )
     subject_averages = {name: round(sum(values) / len(values), 2) for name, values in subject_totals.items() if values}

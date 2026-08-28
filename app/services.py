@@ -36,6 +36,41 @@ from .enrollment_service import (
 )
 
 
+class ScopedSubjectView:
+    """Read-only year-aware metadata view for a legacy Subject identity."""
+
+    def __init__(self, subject, year_subject):
+        self._subject = subject
+        self.id = subject.id
+        self.name = year_subject.name
+        self.max_score = year_subject.max_score
+        self.sort_order = year_subject.sort_order
+        self.is_active = subject.is_active
+        self.academic_level_id = subject.academic_level_id
+
+    def __getattr__(self, name):
+        return getattr(self._subject, name)
+
+
+def scoped_legacy_subjects(year_subject_items):
+    """Project year-aware subject metadata onto legacy Result identities.
+
+    Result rows still reference ``subjects.id`` for backward compatibility,
+    while Setup owns the year/level-specific name, order, and maximum mark.
+    These request-local values keep every read path aligned without updating
+    a legacy row that may be shared by another academic scope.
+    """
+    subjects = []
+    for year_subject in year_subject_items:
+        if not year_subject.legacy_subject_id:
+            continue
+        legacy_subject = db.session.get(Subject, year_subject.legacy_subject_id)
+        if not legacy_subject:
+            continue
+        subjects.append(ScopedSubjectView(legacy_subject, year_subject))
+    return subjects
+
+
 DEFAULT_SETTINGS = {
     "school_name": "Taysir Schools",
     "school_address": "Mogadishu, Somalia",
@@ -828,16 +863,17 @@ def top_students_for_class(student, exam, limit=10):
         return []
 
     subject_ids = []
+    scoped_subject_by_id = {}
     if selected_placement.get("academic_year_level_id"):
-        subject_ids = [
-            row.legacy_subject_id
-            for row in AcademicYearSubject.query.filter_by(
+        year_subject_items = AcademicYearSubject.query.filter_by(
                 academic_year_id=exam.academic_year_id,
                 academic_year_level_id=selected_placement.get("academic_year_level_id"),
                 is_active=True,
             ).order_by(AcademicYearSubject.sort_order, AcademicYearSubject.name, AcademicYearSubject.id).all()
-            if row.legacy_subject_id
-        ]
+        subject_ids = [row.legacy_subject_id for row in year_subject_items if row.legacy_subject_id]
+        scoped_subject_by_id = {
+            subject.id: subject for subject in scoped_legacy_subjects(year_subject_items)
+        }
         if not subject_ids:
             return []
     else:
@@ -866,8 +902,9 @@ def top_students_for_class(student, exam, limit=10):
             next((peer for peer in classmates if peer.id == row.student_id), None),
             exam.academic_year_id,
         )
+        display_subject = scoped_subject_by_id.get(row.subject_id, row.subject)
         max_score = resolve_subject_max_score(
-            row.subject,
+            display_subject,
             exam=exam,
             academic_year_level_id=(
                 row_placement.get("academic_year_level_id") if row_placement else None
@@ -1572,15 +1609,25 @@ def result_payload(student, exam=None, public_only=True):
     query = query.join(Result.subject)
     selected_subject_ids = []
     if selected_year_level_id and exam:
-        selected_subject_ids = [
-            row.legacy_subject_id
-            for row in AcademicYearSubject.query.filter_by(
+        year_subject_items = AcademicYearSubject.query.filter_by(
                 academic_year_id=exam.academic_year_id,
                 academic_year_level_id=selected_year_level_id,
                 is_active=True,
+            ).order_by(
+                AcademicYearSubject.sort_order,
+                AcademicYearSubject.name,
+                AcademicYearSubject.id,
             ).all()
-            if row.legacy_subject_id
+        selected_subject_ids = [
+            row.legacy_subject_id for row in year_subject_items if row.legacy_subject_id
         ]
+        scoped_subject_by_id = {
+            subject.id: subject for subject in scoped_legacy_subjects(year_subject_items)
+        }
+        scoped_subjects_for_max = list(scoped_subject_by_id.values())
+    else:
+        scoped_subject_by_id = {}
+        scoped_subjects_for_max = []
     if selected_year_level_id:
         # A configured year-level with no subject mappings is incomplete setup,
         # not permission to expose every legacy subject. This applies to both
@@ -1600,13 +1647,19 @@ def result_payload(student, exam=None, public_only=True):
         else []
     )
     maxima = resolved_subject_maxima(
-        [row.subject for row in rows],
+        scoped_subjects_for_max or [row.subject for row in rows],
         exam=exam,
         academic_year_level_id=selected_year_level_id,
         academic_level_id=student_level_id,
     )
     total, max_total, average = calculate_score_totals(
-        (row.score, maxima.get(row.subject_id, Decimal(str(row.subject.max_score or 0))))
+        (
+            row.score,
+            maxima.get(
+                row.subject_id,
+                Decimal(str(scoped_subject_by_id.get(row.subject_id, row.subject).max_score or 0)),
+            ),
+        )
         for row in rows
     )
     settings = dict(get_settings())
@@ -1640,7 +1693,8 @@ def result_payload(student, exam=None, public_only=True):
     )
     subject_rows = []
     for row in rows:
-        max_score = maxima.get(row.subject_id, Decimal(str(row.subject.max_score or 0)))
+        display_subject = scoped_subject_by_id.get(row.subject_id, row.subject)
+        max_score = maxima.get(row.subject_id, Decimal(str(display_subject.max_score or 0)))
         percentage_raw = Decimal(row.score) / max_score * 100 if max_score else 0
         percentage = round(float(percentage_raw), 2)
         automatic_grade = grade_for_from_cache(percentage_raw, grade_cache)
@@ -1651,14 +1705,14 @@ def result_payload(student, exam=None, public_only=True):
             {
                 "id": row.id,
                 "subject_id": row.subject_id,
-                "subject": subject_display_name(row.subject, settings).strip(),
+                "subject": subject_display_name(display_subject, settings).strip(),
                 "score": float(row.score),
                 "max_score": float(max_score),
                 "grade": displayed_grade,
                 "automatic_grade": automatic_grade,
                 "status": "Pass" if displayed_grade.get("is_pass", automatic_grade.get("is_pass")) else "Needs Support",
                 "percentage": percentage,
-                "icon": subject_icon(row.subject.name, settings),
+                "icon": subject_icon(display_subject.name, settings),
                 "is_uf": (student.id, row.subject_id) in uf_subject_keys,
                 "is_critical": row.subject_id in critical_badges,
                 "critical_badge": critical_badges.get(row.subject_id),
@@ -1686,6 +1740,7 @@ def result_payload(student, exam=None, public_only=True):
             .order_by(Subject.id.asc())
             .all()
         ):
+            subject = scoped_subject_by_id.get(subject.id, subject)
             automatic_grade = grade_for_from_cache(Decimal("0"), grade_cache)
             subject_rows.append(
                 {

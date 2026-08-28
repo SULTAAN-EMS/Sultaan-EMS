@@ -427,7 +427,14 @@ def save_results():
     student = db.session.get(Student, int(request.form["student_id"])) or abort_404()
     exam = db.session.get(Exam, int(request.form["exam_id"])) or abort_404()
     placement = enrollment_placement_for_student(student, exam.academic_year_id) or {}
-    for subject in Subject.query.order_by(Subject.sort_order, Subject.name).all():
+    from .routes_advanced_results import subjects_for_scope
+
+    subjects = subjects_for_scope(
+        exam,
+        level_id=placement.get("academic_level_id"),
+        class_id=placement.get("academic_class_id"),
+    )
+    for subject in subjects:
         raw = request.form.get(f"subject_{subject.id}", "").strip()
         if raw == "":
             continue
@@ -439,7 +446,7 @@ def save_results():
         )
         score = max(0, min(float(raw), float(max_score)))
         result = Result.query.filter_by(student_id=student.id, exam_id=exam.id, subject_id=subject.id).first() or Result(
-            student=student, exam=exam, subject=subject
+            student=student, exam=exam, subject_id=subject.id
         )
         result.score = score
         result.is_published = bool(request.form.get("is_published"))
@@ -464,9 +471,15 @@ def delete_result(result_id):
 def edit_result_set(student_id, exam_id):
     student = db.session.get(Student, student_id) or abort_404()
     exam = db.session.get(Exam, exam_id) or abort_404()
-    subjects = Subject.query.order_by(Subject.sort_order, Subject.name).all()
     existing = {row.subject_id: row for row in Result.query.filter_by(student_id=student.id, exam_id=exam.id).all()}
     placement = enrollment_placement_for_student(student, exam.academic_year_id) or {}
+    from .routes_advanced_results import subjects_for_scope
+
+    subjects = subjects_for_scope(
+        exam,
+        level_id=placement.get("academic_level_id"),
+        class_id=placement.get("academic_class_id"),
+    )
     if request.method == "POST":
         changes = []
         for subject in subjects:
@@ -482,7 +495,7 @@ def edit_result_set(student_id, exam_id):
             )
             score = max(0, min(float(raw), float(max_score)))
             if not result:
-                result = Result(student=student, exam=exam, subject=subject)
+                result = Result(student=student, exam=exam, subject_id=subject.id)
             old_score = float(result.score) if result.id and result.score is not None else None
             old_grade = result.grade_override or ""
             old_comment = result.comment or ""
@@ -4110,7 +4123,18 @@ def config_update_subject(subject_id):
     try:
         db.session.commit()
         _audit_config_change("Configuration Center Updated", "subjects", subject, old_value=old_value, new_value={'name': subject.name, 'academic_year_id': subject.academic_year_id, 'academic_year_level_id': subject.academic_year_level_id, 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order})
-        return jsonify({'success': True, 'message': 'Subject updated successfully'})
+        return jsonify({
+            'success': True,
+            'message': 'Subject updated successfully',
+            'data': {
+                'id': subject.id,
+                'name': subject.name,
+                'max_score': float(subject.max_score or 0),
+                'sort_order': subject.sort_order,
+                'academic_year_id': subject.academic_year_id,
+                'academic_year_level_id': subject.academic_year_level_id,
+            },
+        })
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)})

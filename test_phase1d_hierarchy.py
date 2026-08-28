@@ -10,6 +10,8 @@ from app.academic_hierarchy import (
     year_levels,
     year_subjects,
 )
+from app.routes_advanced_results import subjects_for_year_level
+from app.services import result_payload, scoped_legacy_subjects
 from app.models import (
     AcademicClass,
     AcademicLevel,
@@ -234,6 +236,130 @@ class TestPhase1DHierarchy(unittest.TestCase):
         scoped = students_for_year_scope_query(self.year_a.id, year_class_id=year_class.id).all()
         self.assertEqual([item.student_code for item in scoped], ["TIS001"])
         self.assertEqual(Result.query.filter_by(subject_id=year_subject.legacy_subject_id).count(), 1)
+
+    def test_subject_edits_project_to_result_bridge_without_rewriting_legacy_row(self):
+        legacy_subject = Subject(
+            academic_level_id=self.legacy_level.id,
+            name="Old Mathematics",
+            max_score=100,
+            sort_order=1,
+        )
+        exam = Exam(name="Monthly", academic_year_id=self.year_a.id)
+        db.session.add_all([legacy_subject, exam])
+        db.session.flush()
+        year_subject = AcademicYearSubject(
+            academic_year_id=self.year_a.id,
+            academic_year_level_id=self.level_a.id,
+            legacy_subject_id=legacy_subject.id,
+            name="Updated Mathematics",
+            max_score=25,
+            sort_order=4,
+        )
+        db.session.add(year_subject)
+        db.session.commit()
+
+        resolved = subjects_for_year_level(exam, self.level_a.id)
+        self.assertEqual([item.id for item in resolved], [legacy_subject.id])
+        self.assertEqual(resolved[0].name, "Updated Mathematics")
+        self.assertEqual(float(resolved[0].max_score), 25.0)
+        self.assertEqual(resolved[0].sort_order, 4)
+
+        db.session.expire(legacy_subject)
+        self.assertEqual(legacy_subject.name, "Old Mathematics")
+        self.assertEqual(float(legacy_subject.max_score), 100.0)
+
+    def test_result_payload_uses_edited_year_subject_metadata(self):
+        legacy_class = AcademicClass(
+            academic_level_id=self.legacy_level.id,
+            name="Form Four",
+            sort_order=1,
+        )
+        legacy_subject = Subject(
+            academic_level_id=self.legacy_level.id,
+            name="Old Mathematics",
+            max_score=100,
+            sort_order=1,
+        )
+        student = Student(
+            student_code="EDIT001",
+            full_name="Edited Subject Student",
+            academic_year_id=self.year_a.id,
+            academic_level_id=self.legacy_level.id,
+        )
+        exam = Exam(name="Midterm", academic_year_id=self.year_a.id)
+        db.session.add_all([legacy_class, legacy_subject, student, exam])
+        db.session.flush()
+        year_class = AcademicYearClass(
+            academic_year_level_id=self.level_a.id,
+            legacy_class_id=legacy_class.id,
+            name="Form Four",
+            sort_order=1,
+        )
+        year_subject = AcademicYearSubject(
+            academic_year_id=self.year_a.id,
+            academic_year_level_id=self.level_a.id,
+            legacy_subject_id=legacy_subject.id,
+            name="Edited Mathematics",
+            max_score=25,
+            sort_order=2,
+        )
+        student.academic_class_id = legacy_class.id
+        db.session.add_all([year_class, year_subject])
+        db.session.flush()
+        db.session.add(Result(
+            student_id=student.id,
+            exam_id=exam.id,
+            subject_id=legacy_subject.id,
+            score=20,
+        ))
+        db.session.commit()
+
+        payload = result_payload(student, exam=exam, public_only=False)
+
+        self.assertEqual(len(payload["subjects"]), 1)
+        self.assertEqual(payload["subjects"][0]["subject"], "Edited Mathematics")
+        self.assertEqual(payload["subjects"][0]["max_score"], 25.0)
+        self.assertEqual(payload["subjects"][0]["score"], 20.0)
+
+    def test_scoped_subject_views_do_not_leak_between_academic_years(self):
+        legacy_subject = Subject(
+            academic_level_id=self.legacy_level.id,
+            name="Legacy Subject",
+            max_score=100,
+            sort_order=1,
+        )
+        db.session.add(legacy_subject)
+        db.session.flush()
+        year_subject_a = AcademicYearSubject(
+            academic_year_id=self.year_a.id,
+            academic_year_level_id=self.level_a.id,
+            legacy_subject_id=legacy_subject.id,
+            name="Mathematics A",
+            max_score=25,
+            sort_order=1,
+            is_active=True,
+        )
+        year_subject_b = AcademicYearSubject(
+            academic_year_id=self.year_b.id,
+            academic_year_level_id=self.level_b.id,
+            legacy_subject_id=legacy_subject.id,
+            name="Mathematics B",
+            max_score=50,
+            sort_order=2,
+            is_active=True,
+        )
+        db.session.add_all([year_subject_a, year_subject_b])
+        db.session.flush()
+
+        scoped_a = scoped_legacy_subjects([year_subject_a])
+        scoped_b = scoped_legacy_subjects([year_subject_b])
+
+        self.assertEqual(scoped_a[0].name, "Mathematics A")
+        self.assertEqual(float(scoped_a[0].max_score), 25.0)
+        self.assertEqual(scoped_b[0].name, "Mathematics B")
+        self.assertEqual(float(scoped_b[0].max_score), 50.0)
+        self.assertEqual(legacy_subject.name, "Legacy Subject")
+        self.assertEqual(float(legacy_subject.max_score), 100.0)
 
 
 if __name__ == "__main__":
