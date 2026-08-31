@@ -264,7 +264,12 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
             f"&level_id={self.level_one.id}&class_id={self.class_one.id}"
         )
         self.assertEqual(class_pdf.status_code, 200)
-        self.assertIn("F · GP 0.00", class_pdf.get_data(as_text=True))
+        class_pdf_body = class_pdf.get_data(as_text=True)
+        self.assertIn(
+            '<td class="behavior-class-cell"><strong>25.00</strong></td>',
+            class_pdf_body,
+        )
+        self.assertNotIn("F · GP 0.00", class_pdf_body)
 
     def test_behavior_grade_management_is_scoped_and_does_not_use_ordinary_scale(self):
         self.admin.role = "super_admin"

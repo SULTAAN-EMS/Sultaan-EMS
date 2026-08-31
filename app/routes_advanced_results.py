@@ -1499,11 +1499,11 @@ def export_class_pdf():
         })
     behavior_stats = []
     for definition in behavior_definitions:
-        scores = [
-            row["behavior_by_config"][definition["configuration_id"]]["annual_score"]
-            for row in roster_data
-            if definition["configuration_id"] in row["behavior_by_config"]
-        ]
+        scores = []
+        for row in roster_data:
+            behavior_data = row["behavior_by_config"].get(definition["configuration_id"])
+            if behavior_data and behavior_data.get("annual_score") is not None:
+                scores.append(float(behavior_data["annual_score"]))
         behavior_stats.append(
             {
                 "configuration_id": definition["configuration_id"],
