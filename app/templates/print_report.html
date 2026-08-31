@@ -149,11 +149,11 @@
             {% set behavior_session = behavior.current_sessions[0] if behavior.current_sessions else None %}
             <tr class="behavior-report-row">
               <td>{{ result.subjects|length + loop.index }}</td>
-              <td class="result-subject-cell"><span class="behavior-print-subject">{{ behavior_diamond_icon('behavior-print-diamond') }}<strong>{{ behavior.subject_name }}</strong>{{ critical_subject_badge(behavior.critical_badge, interactive=false, subject_name=behavior.subject_name) }}<small>{{ behavior.session_label or 'Behavior' }}</small></span></td>
+              <td class="result-subject-cell"><span class="behavior-print-subject">{{ behavior_diamond_icon('behavior-print-diamond') }}<strong>{{ behavior.subject_name }}</strong>{{ critical_subject_badge(behavior.critical_badge, interactive=false, subject_name=behavior.subject_name) }}</span></td>
               <td>{% if behavior_session %}{{ behavior_session.maximum_score|academic_number(settings) }}{% else %}-{% endif %}</td>
               <td>{% if behavior_session %}<strong class="print-grade-badge print-mark-badge behavior-print-score behavior-print-score--{{ behavior.score_tone }}">{{ behavior_session.final_score|academic_number(settings) }}</strong>{% else %}<span class="behavior-print-unavailable">Not available</span>{% endif %}</td>
               <td>{% if behavior_session and behavior.grade and behavior.grade.grade != '-' %}<strong class="print-grade-badge" style="background: {{ behavior.grade.background_color }}; border-color: {{ behavior.grade.border_color }}; color: {{ behavior.grade.badge_color }};">{{ behavior.grade.grade }}</strong>{% else %}-{% endif %}</td>
-              <td>{% if behavior_session %}{{ behavior_session.session_label }} · {{ behavior.grade.grade if behavior.grade else '-' }} · GP {{ behavior.grade.grade_point|academic_number(settings) if behavior.grade else '-' }}{% else %}{{ behavior.message }}{% endif %}</td>
+              <td>{% if behavior.grade and behavior.grade.id and behavior.grade.description %}{{ behavior.grade.description }}{% else %}-{% endif %}</td>
             </tr>
           {% endfor %}
         </tbody>

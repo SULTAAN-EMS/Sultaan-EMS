@@ -5745,4 +5745,7 @@ tbody tr:hover td { background: #f8fbff; }
   height: 31px;
   display: block;
 }
+.behavior-detail-dialog__icon .behavior-detail-dialog__diamond path {
+  stroke: #fff !important;
+}
 .reference-one-result .behavior-not-applicable { color: #6b7280; }
