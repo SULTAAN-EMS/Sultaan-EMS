@@ -62,6 +62,10 @@ def scoped_legacy_subjects(year_subject_items):
     """
     subjects = []
     for year_subject in year_subject_items:
+        # Only examination offerings have a legacy Subject identity that can
+        # safely participate in the existing result/reporting schema.
+        if (getattr(year_subject, "subject_kind", None) or "exam") != "exam":
+            continue
         if not year_subject.legacy_subject_id:
             continue
         legacy_subject = db.session.get(Subject, year_subject.legacy_subject_id)
@@ -868,6 +872,7 @@ def top_students_for_class(student, exam, limit=10):
         year_subject_items = AcademicYearSubject.query.filter_by(
                 academic_year_id=exam.academic_year_id,
                 academic_year_level_id=selected_placement.get("academic_year_level_id"),
+                subject_kind="exam",
                 is_active=True,
             ).order_by(AcademicYearSubject.sort_order, AcademicYearSubject.name, AcademicYearSubject.id).all()
         subject_ids = [row.legacy_subject_id for row in year_subject_items if row.legacy_subject_id]
@@ -1554,6 +1559,7 @@ def critical_subject_badges(exam, academic_year_level_id=None):
     scoped_subjects = AcademicYearSubject.query.filter_by(
         academic_year_id=exam.academic_year_id,
         academic_year_level_id=academic_year_level_id,
+        subject_kind="exam",
         is_active=True,
     ).all()
     legacy_subject_ids = {
@@ -1612,6 +1618,7 @@ def result_payload(student, exam=None, public_only=True):
         year_subject_items = AcademicYearSubject.query.filter_by(
                 academic_year_id=exam.academic_year_id,
                 academic_year_level_id=selected_year_level_id,
+                subject_kind="exam",
                 is_active=True,
             ).order_by(
                 AcademicYearSubject.sort_order,
@@ -1664,6 +1671,25 @@ def result_payload(student, exam=None, public_only=True):
     )
     settings = dict(get_settings())
     active_exam = exam or (rows[0].exam if rows else None)
+    # Behavior is projected separately from ordinary Result rows.  The
+    # reporting adapter delegates session scoring to behavior_service and is
+    # shared by the portal, official report card, and class report routes.
+    from .behavior_reporting import get_behavior_report_data
+
+    behavior_reports = get_behavior_report_data(student, active_exam)
+    behavior_total = sum(
+        (Decimal(str(report.get("session_score") or 0)) for report in behavior_reports),
+        Decimal("0"),
+    )
+    behavior_max_total = sum(
+        (Decimal(str(report.get("session_maximum") or 0)) for report in behavior_reports),
+        Decimal("0"),
+    )
+    # Behavior is a reportable score contribution, but its row and grade scale
+    # remain separate from ordinary Result/GradeScale records.
+    total += behavior_total
+    max_total += behavior_max_total
+    average = round(float(total / max_total * Decimal("100")), 2) if max_total else 0
     critical_badges = critical_subject_badges(active_exam, selected_year_level_id)
     portal_outcome = {"code": "NOT_EVALUATED", "label": "LAMA QIIMEYN", "tone": "muted"}
     if active_exam and selected_placement and selected_placement.get("enrollment"):
@@ -1766,7 +1792,7 @@ def result_payload(student, exam=None, public_only=True):
             )
 
     rank = None
-    if rows and active_exam:
+    if (rows or behavior_reports) and active_exam:
         # Rank against the student's own class first.  Older student records that
         # only have the legacy class/level fields remain in the same scope.
         peer_year_id = active_exam.academic_year_id or student.academic_year_id
@@ -1814,7 +1840,7 @@ def result_payload(student, exam=None, public_only=True):
             academic_year_level_id=peer_placement.get("academic_year_level_id") if peer_placement else None,
             academic_level_id=peer_placement.get("academic_level_id") if peer_placement else None,
         )
-        if peers and subject_maxima:
+        if peers and (subject_maxima or behavior_reports):
             peer_rows_query = Result.query.filter(
                 Result.exam_id == active_exam.id,
                 Result.student_id.in_([peer.id for peer in peers]),
@@ -1823,13 +1849,27 @@ def result_payload(student, exam=None, public_only=True):
             if public_only:
                 peer_rows_query = peer_rows_query.filter(Result.is_published.is_(True))
 
+            ordinary_maximum = sum(subject_maxima.values(), Decimal("0"))
             scores_by_student = {peer.id: Decimal("0") for peer in peers}
+            maxima_by_student = {peer.id: ordinary_maximum for peer in peers}
             for peer_row in peer_rows_query.all():
                 scores_by_student[peer_row.student_id] += Decimal(peer_row.score)
 
-            maximum_score = sum(subject_maxima.values(), Decimal("0"))
+            for peer in peers:
+                peer_behavior_reports = get_behavior_report_data(peer, active_exam)
+                scores_by_student[peer.id] += sum(
+                    (Decimal(str(report.get("session_score") or 0)) for report in peer_behavior_reports),
+                    Decimal("0"),
+                )
+                maxima_by_student[peer.id] += sum(
+                    (Decimal(str(report.get("session_maximum") or 0)) for report in peer_behavior_reports),
+                    Decimal("0"),
+                )
             official_scores = {
-                peer_id: round(float(score / maximum_score * 100), 2) if maximum_score else 0
+                peer_id: round(
+                    float(score / maxima_by_student[peer_id] * 100),
+                    2,
+                ) if maxima_by_student[peer_id] else 0
                 for peer_id, score in scores_by_student.items()
             }
             rank = competition_rank_lookup(official_scores).get(student.id)
@@ -1868,6 +1908,7 @@ def result_payload(student, exam=None, public_only=True):
         "comment": overall.get("comment") or "",
         "settings": settings,
         "portal_outcome": portal_outcome,
+        "behavior_reports": behavior_reports,
     }
 
 

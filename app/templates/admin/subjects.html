@@ -34,24 +34,19 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
       <div>
         <h1 style="font-family: var(--font-serif); font-size: 1.75rem; margin-bottom: 0.5rem;">Subject Directory</h1>
-        <p style="color: var(--slate);">Define subjects and maximum scores for the academic system.</p>
+        <p style="color: var(--slate);">Define subjects for the academic system.</p>
       </div>
     </div>
 
     <!-- Add Subject Form -->
     <div style="background: white; border: 1px solid var(--paper-line); border-radius: 12px; padding: 2rem; margin-bottom: 2rem;">
       <h2 style="font-family: var(--font-serif); font-size: 1.25rem; margin-bottom: 1rem;">Add Subject</h2>
-      <form method="post" style="display: grid; grid-template-columns: repeat(3, 1fr) auto; gap: 1rem; align-items: end;">
+      <form method="post" style="display: grid; grid-template-columns: repeat(2, 1fr) auto; gap: 1rem; align-items: end;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         
         <div>
           <label style="display: block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate); margin-bottom: 0.5rem;">Name</label>
           <input name="name" required style="width: 100%; padding: 10px 14px; border: 1px solid var(--paper-line); border-radius: 8px; font-family: var(--font-mono); font-size: 14px; color: var(--ink);">
-        </div>
-        
-        <div>
-          <label style="display: block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate); margin-bottom: 0.5rem;">Max Score</label>
-          <input name="max_score" type="number" step="0.01" value="100" style="width: 100%; padding: 10px 14px; border: 1px solid var(--paper-line); border-radius: 8px; font-family: var(--font-mono); font-size: 14px; color: var(--ink);">
         </div>
         
         <div>
@@ -72,7 +67,6 @@
           <thead>
             <tr>
               <th>Name</th>
-              <th class="mono">Max Score</th>
               <th class="mono">Order</th>
               <th>Actions</th>
             </tr>
@@ -85,9 +79,6 @@
                   <input type="hidden" name="id" value="{{ r.id }}">
                   <td>
                     <input name="name" value="{{ r.name }}" style="width: 100%; padding: 8px 10px; border: 1px solid var(--paper-line); border-radius: 6px; font-family: var(--font-mono); font-size: 13px; color: var(--ink);">
-                  </td>
-                  <td class="mono">
-                    <input name="max_score" value="{{ r.max_score }}" type="number" step="0.01" style="width: 100%; padding: 8px 10px; border: 1px solid var(--paper-line); border-radius: 6px; font-family: var(--font-mono); font-size: 13px; color: var(--ink);">
                   </td>
                   <td class="mono">
                     <input name="sort_order" value="{{ r.sort_order }}" type="number" style="width: 100%; padding: 8px 10px; border: 1px solid var(--paper-line); border-radius: 6px; font-family: var(--font-mono); font-size: 13px; color: var(--ink);">
@@ -107,7 +98,7 @@
               </tr>
             {% else %}
               <tr>
-                <td colspan="4" style="text-align: center; padding: 2rem; color: var(--slate);">
+                <td colspan="3" style="text-align: center; padding: 2rem; color: var(--slate);">
                   No subjects found.
                 </td>
               </tr>

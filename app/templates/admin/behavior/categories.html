@@ -1,0 +1,28 @@
+{% extends "admin/base.html" %}
+{% block page_title %}Behavior Categories{% endblock %}
+{% block admin_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css') }}">
+<div class="behavior-page">
+  <header class="behavior-hero"><span class="behavior-hero__mark"><i class="fa-solid fa-tags"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow"><i class="fa-solid fa-shield-halved"></i> Behavior taxonomy</span><h1>Behavior Categories</h1><p>Separate positive and negative categories inside one year-aware Behavior configuration.</p></div></header>
+  {% include "admin/behavior/_nav.html" %}
+  <form class="behavior-card behavior-form" method="get" action="{{ url_for('behavior.categories') }}"><div class="behavior-field"><label for="categoryConfig">Behavior Configuration</label><select id="categoryConfig" name="config_id" onchange="this.form.submit()"><option value="">Select configuration</option>{% for item in configurations %}<option value="{{ item.id }}" {% if config and config.id == item.id %}selected{% endif %}>{{ item.academic_year.name }} · {{ item.academic_year_level.name }} · {{ item.behavior_subject.name }}</option>{% endfor %}</select></div></form>
+  {% if config %}
+  <section class="behavior-card behavior-section">
+    <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-plus"></i> Add category</span><h2>{{ config.behavior_subject.name }}</h2></div><span class="behavior-scope-pill">{{ config.academic_year.name }} · {{ config.academic_year_level.name }}</span></div>
+    <form class="behavior-form" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><div class="behavior-field"><label for="newCategoryName">Name</label><input id="newCategoryName" name="name" required placeholder="Participation"></div><div class="behavior-field"><label for="newCategoryPolarity">Polarity</label><select id="newCategoryPolarity" name="polarity" required><option value="positive">Positive</option><option value="negative">Negative</option></select></div><div class="behavior-field"><label>Sort Order</label><input name="sort_order" type="number" min="0" value="0"></div><div class="behavior-field behavior-field--full"><label>Description</label><textarea name="description" placeholder="Optional category guidance"></textarea></div><div class="behavior-form__actions"><button class="behavior-btn behavior-btn--primary" type="submit"><i class="fa-solid fa-plus"></i> Save category</button><a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.actions', config_id=config.id) }}"><i class="fa-solid fa-list-check"></i> Manage actions</a></div></form>
+  </section>
+  <section class="behavior-card behavior-section">
+    <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-list"></i> Category registry</span><h2>{{ config.categories|length }} categor(ies)</h2></div></div>
+    <div class="behavior-list">
+      {% for item in config.categories %}
+      <details class="behavior-list__item">
+        <summary style="display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none"><span><strong>{{ item.name }}</strong><small>{{ item.description or 'No description' }} · {{ item.actions|length }} action(s)</small></span><span class="behavior-status behavior-status--{{ item.polarity }}">{{ item.polarity|title }}</span></summary>
+        <form class="behavior-form" method="post" style="margin-top:14px"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="category_id" value="{{ item.id }}"><div class="behavior-field"><label>Name</label><input name="name" value="{{ item.name }}" required></div><div class="behavior-field"><label>Polarity</label><select name="polarity"><option value="positive" {% if item.polarity == 'positive' %}selected{% endif %}>Positive</option><option value="negative" {% if item.polarity == 'negative' %}selected{% endif %}>Negative</option></select></div><div class="behavior-field"><label>Sort Order</label><input name="sort_order" type="number" min="0" value="{{ item.sort_order }}"></div><div class="behavior-field behavior-field--full"><label>Description</label><textarea name="description">{{ item.description or '' }}</textarea></div><div class="behavior-form__actions"><button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save changes</button></div></form>
+        <form method="post" action="{{ url_for('behavior.delete_category', category_id=item.id) }}" onsubmit="return confirm('Delete this Behavior category?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><button class="behavior-btn behavior-btn--danger behavior-btn--small" type="submit" title="Delete category" aria-label="Delete category"><i class="fa-solid fa-trash-can"></i> Delete</button></form>
+      </details>
+      {% else %}<div class="behavior-empty"><i class="fa-solid fa-tags"></i><p>No categories configured.</p></div>{% endfor %}
+    </div>
+  </section>
+  {% else %}<section class="behavior-card behavior-section"><div class="behavior-empty"><i class="fa-solid fa-filter-circle-xmark"></i><p>Select a Behavior configuration to manage categories.</p></div></section>{% endif %}
+</div>
+{% endblock %}

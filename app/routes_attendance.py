@@ -540,6 +540,7 @@ def timetable_level_scope(year_id, exam=None):
             .filter(
                 AcademicYearSubject.academic_year_id == year_id,
                 AcademicYearSubject.academic_year_level_id == year_level.id,
+                AcademicYearSubject.subject_kind == "exam",
                 AcademicYearSubject.is_active.is_(True),
                 AcademicYearSubject.legacy_subject_id.isnot(None),
                 Subject.is_active.is_(True),
@@ -739,6 +740,7 @@ def api_timetable_data():
     level_data, allowed_pairs = timetable_level_scope(year_id, exam=exam)
     unassigned_subject_count = AcademicYearSubject.query.filter(
         AcademicYearSubject.academic_year_id == year_id,
+        AcademicYearSubject.subject_kind == "exam",
         AcademicYearSubject.is_active.is_(True),
         AcademicYearSubject.legacy_subject_id.is_(None),
     ).count()

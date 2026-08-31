@@ -31,6 +31,13 @@ PERMISSIONS = [
     ("restore", "Restore"),
     ("manage_academic_structure", "System Setup"),
     ("seat_arrangement", "Seat Arrangement"),
+    ("behavior.view", "Behavior View"),
+    ("behavior.manage", "Behavior Manage"),
+    ("behavior.record", "Behavior Record"),
+    ("behavior.edit", "Behavior Edit"),
+    ("behavior.void", "Behavior Void"),
+    ("behavior.configure", "Behavior Configure"),
+    ("behavior.audit", "Behavior Audit"),
 ]
 
 ENDPOINT_PERMISSIONS = {
@@ -146,6 +153,28 @@ ENDPOINT_PERMISSIONS = {
     "seat_mixer.api_delete_history_snapshot": "seat_arrangement",
     "seat_mixer.api_class_students": "seat_arrangement",
     "seat_mixer.print_arrangement": ("seat_arrangement", "print"),
+    "behavior.dashboard": "behavior.view",
+    "behavior.scope_api": "behavior.view",
+    "behavior.create_subject": "behavior.configure",
+    "behavior.delete_subject": "behavior.configure",
+    "behavior.configuration": "behavior.configure",
+    "behavior.delete_configuration": "behavior.configure",
+    "behavior.sessions": "behavior.configure",
+    "behavior.delete_session": "behavior.configure",
+    "behavior.categories": "behavior.configure",
+    "behavior.delete_category": "behavior.configure",
+    "behavior.actions": "behavior.configure",
+    "behavior.delete_action": "behavior.configure",
+    "behavior.grade_management": "behavior.configure",
+    "behavior.delete_grade_scale": "behavior.configure",
+    "behavior.students": "behavior.record",
+    "behavior.student_detail": "behavior.view",
+    "behavior.events": "behavior.view",
+    "behavior.event_detail": "behavior.view",
+    "behavior.void": "behavior.void",
+    "behavior.edit": "behavior.edit",
+    "behavior.history": "behavior.view",
+    "behavior.audit_history": "behavior.audit",
 }
 
 

@@ -107,6 +107,7 @@ def incident_subjects_for_student(student, academic_year_id=None):
         year_items = AcademicYearSubject.query.filter_by(
                 academic_year_id=academic_year_id,
                 academic_year_level_id=placement.get("academic_year_level_id"),
+                subject_kind="exam",
                 is_active=True,
             ).order_by(
                 AcademicYearSubject.sort_order,
@@ -228,7 +229,7 @@ def result():
 
     payload = result_payload(student, exam=exam, public_only=True) if exam else None
 
-    if not payload or not payload.get("subjects"):
+    if not payload or not (payload.get("subjects") or payload.get("behavior_reports")):
         return render_template(
             "portal.html",
             settings=get_settings(),
@@ -398,6 +399,7 @@ def api_result(student_code):
         return jsonify({"ok": False, "message": "No published result."}), 404
 
     payload = result_payload(student, exam=exam, public_only=True)
+    from .behavior_reporting import serialize_behavior_reports
 
     result_scope = public_result_scope(student, exam)
     return jsonify({
@@ -411,6 +413,7 @@ def api_result(student_code):
         },
         "exam": payload["exam"].name if payload.get("exam") else None,
         "subjects": payload["subjects"],
+        "behavior_reports": serialize_behavior_reports(payload.get("behavior_reports", [])),
         "total": payload["total"],
         "average": payload["average"],
         "status": payload["status"],
@@ -581,6 +584,7 @@ def feedback_subjects():
         year_items = AcademicYearSubject.query.filter_by(
                 academic_year_id=exam.academic_year_id,
                 academic_year_level_id=placement.get("academic_year_level_id"),
+                subject_kind="exam",
                 is_active=True,
             ).order_by(
                 AcademicYearSubject.sort_order,
@@ -656,6 +660,7 @@ def feedback_mg_details():
         year_items = AcademicYearSubject.query.filter_by(
             academic_year_id=exam.academic_year_id,
             academic_year_level_id=placement.get("academic_year_level_id"),
+            subject_kind="exam",
             is_active=True,
         ).order_by(
             AcademicYearSubject.sort_order,

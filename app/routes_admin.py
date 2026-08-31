@@ -5,7 +5,7 @@ from functools import wraps
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
 from openpyxl import Workbook
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.utils import secure_filename
 
@@ -602,8 +602,14 @@ def classes():
 def subjects():
     if request.method == "POST":
         subject = db.session.get(Subject, int(request.form.get("id") or 0)) or Subject()
+        is_new = subject.id is None
         subject.name = request.form["name"].strip()
-        subject.max_score = float(request.form.get("max_score", 100))
+        # Setup no longer edits Max Score. Preserve existing ordinary values
+        # and keep the legacy default for a newly-created subject.
+        if request.form.get("max_score") not in (None, ""):
+            subject.max_score = float(request.form["max_score"])
+        elif is_new:
+            subject.max_score = 100
         subject.sort_order = int(request.form.get("sort_order", 0))
         db.session.add(subject)
         db.session.commit()
@@ -2466,6 +2472,107 @@ def _config_model(item_type):
     return CONFIG_CENTER_MODEL_MAP.get(item_type)
 
 
+def _foreign_key_references(target_fullname, target_id, excluded_table=None, excluded_id=None):
+    """Return live database references to one legacy configuration identity."""
+    references = []
+    for table in db.metadata.tables.values():
+        for column in table.columns:
+            subject_fk = any(
+                fk.target_fullname == target_fullname
+                for fk in column.foreign_keys
+            )
+            if not subject_fk:
+                continue
+
+            statement = select(func.count()).select_from(table).where(
+                column == target_id
+            )
+            if (
+                table.name == excluded_table
+                and excluded_id is not None
+                and "id" in table.c
+            ):
+                statement = statement.where(table.c.id != excluded_id)
+
+            count = db.session.execute(statement).scalar_one()
+            if count:
+                references.append({
+                    "table": table.name,
+                    "column": column.name,
+                    "count": int(count),
+                })
+    return references
+
+
+def _remove_orphaned_legacy_record(model, target_fullname, record_id, excluded_table, excluded_id):
+    """Remove a legacy bridge only after the selected mapping is gone.
+
+    A shared legacy record is intentionally retained. It is not an orphan and
+    deleting it would damage historical data or another year scope.
+    """
+    if not record_id:
+        return False, []
+
+    references = _foreign_key_references(
+        target_fullname,
+        record_id,
+        excluded_table=excluded_table,
+        excluded_id=excluded_id,
+    )
+    if references:
+        return False, references
+
+    legacy_record = db.session.get(model, record_id)
+    if legacy_record is None:
+        return False, []
+    db.session.delete(legacy_record)
+    db.session.flush()
+    return True, []
+
+
+def _get_or_create_legacy_subject(name, academic_level_id, max_score, sort_order):
+    """Resolve the legacy Subject bridge without violating older schemas.
+
+    Some deployed databases still enforce ``UNIQUE(subjects.name)`` even
+    though the current model scopes the unique key by academic level. Reuse
+    an exact level match, remove an unreferenced stale conflict, and never
+    remove a Subject that is still referenced by live application data.
+    """
+    legacy_subject = Subject.query.filter_by(
+        name=name,
+        academic_level_id=academic_level_id,
+    ).first()
+    if legacy_subject:
+        return legacy_subject
+
+    conflicting_subject = Subject.query.filter_by(name=name).first()
+    if conflicting_subject:
+        references = _foreign_key_references(
+            "subjects.id",
+            conflicting_subject.id,
+        )
+        if references:
+            reference_summary = ", ".join(
+                f"{item['table']}.{item['column']} ({item['count']})"
+                for item in references
+            )
+            raise ValueError(
+                f"Subject '{name}' already exists and is used by existing records: {reference_summary}."
+            )
+        db.session.delete(conflicting_subject)
+        db.session.flush()
+
+    legacy_subject = Subject(
+        name=name,
+        academic_level_id=academic_level_id,
+        max_score=max_score,
+        sort_order=sort_order,
+    )
+    db.session.add(legacy_subject)
+    db.session.flush()
+    return legacy_subject
+
+
 def _cascade_delete_config_item(item_type, item_id):
     """Recursively delete dependent records for force delete override"""
     if item_type == 'academic-years':
@@ -2878,7 +2985,7 @@ def promotion_rules_scope_data():
         is_active=True,
     ).order_by(Exam.sort_order, Exam.name, Exam.id).all()
     exam = next((item for item in exams if item.id == exam_id), None)
-    subjects = year_subjects(year.id, level.id) if level else []
+    subjects = year_subjects(year.id, level.id, subject_kind="exam") if level else []
     maxima = resolved_subject_maxima(
         subjects,
         exam=exam,
@@ -4052,11 +4159,14 @@ def config_create_subject():
     name = data.get('name', '').strip()
     academic_year_id = _parse_int(data.get('academic_year_id'))
     year_level_id = _parse_int(data.get('academic_year_level_id'))
+    subject_kind = str(data.get('subject_kind') or 'exam').strip().lower()
     max_score = _parse_float(data.get('max_score'), 100.0)
     sort_order = _parse_int(data.get('sort_order'))
 
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'})
+    if subject_kind not in ('exam', 'behavior'):
+        return jsonify({'success': False, 'message': 'Subject kind must be exam or behavior'})
     year_level = validate_year_level(academic_year_id, year_level_id)
     if not year_level:
         return jsonify({'success': False, 'message': 'Academic year and matching academic level are required'})
@@ -4069,25 +4179,27 @@ def config_create_subject():
         max_sort = max_sort_query.scalar() or 0
 
         legacy_subject = None
-        if year_level.legacy_level_id:
-            legacy_subject = Subject.query.filter_by(name=name, academic_level_id=year_level.legacy_level_id).first()
-            if not legacy_subject:
-                legacy_subject = Subject(name=name, academic_level_id=year_level.legacy_level_id, max_score=max_score, sort_order=sort_order if sort_order is not None else max_sort + 1)
-                db.session.add(legacy_subject)
-                db.session.flush()
+        if subject_kind == 'exam' and year_level.legacy_level_id:
+            legacy_subject = _get_or_create_legacy_subject(
+                name,
+                year_level.legacy_level_id,
+                max_score,
+                sort_order if sort_order is not None else max_sort + 1,
+            )
         subject = AcademicYearSubject(
             name=name,
             academic_year_id=academic_year_id,
             academic_year_level_id=year_level.id,
+            subject_kind=subject_kind,
             legacy_subject_id=legacy_subject.id if legacy_subject else None,
-            max_score=max_score,
+            max_score=0 if subject_kind == 'behavior' else max_score,
             sort_order=sort_order if sort_order is not None else max_sort + 1,
         )
         db.session.add(subject)
         db.session.commit()
 
         audit("Configuration Center", f"Created subject: {name}")
-        return jsonify({'success': True, 'message': 'Subject created successfully', 'data': {'id': subject.id, 'name': subject.name}})
+        return jsonify({'success': True, 'message': 'Subject created successfully', 'data': {'id': subject.id, 'name': subject.name, 'subject_kind': subject.subject_kind}})
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)})
@@ -4113,41 +4225,49 @@ def config_update_subject(subject_id):
     if _duplicate_exists(AcademicYearSubject, {'name': name, 'academic_year_id': academic_year_id, 'academic_year_level_id': year_level.id}, exclude_id=subject.id):
         return jsonify({'success': False, 'message': 'Subject already exists for this academic year level'})
 
-    old_value = {'name': subject.name, 'academic_year_id': subject.academic_year_id, 'academic_year_level_id': subject.academic_year_level_id, 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order}
+    subject_kind = str(data.get('subject_kind', getattr(subject, 'subject_kind', 'exam')) or 'exam').strip().lower()
+    if subject_kind not in ('exam', 'behavior'):
+        return jsonify({'success': False, 'message': 'Subject kind must be exam or behavior'})
+    old_value = {'name': subject.name, 'academic_year_id': subject.academic_year_id, 'academic_year_level_id': subject.academic_year_level_id, 'subject_kind': getattr(subject, 'subject_kind', 'exam'), 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order}
     subject.name = name
     subject.academic_year_id = academic_year_id
     subject.academic_year_level_id = year_level.id
-    subject.max_score = _parse_float(data.get('max_score'), float(subject.max_score or 100))
+    subject.subject_kind = subject_kind
+    subject.max_score = (
+        0 if subject_kind == 'behavior'
+        else _parse_float(data.get('max_score'), float(subject.max_score or 100))
+    )
     subject.sort_order = _parse_int(data.get('sort_order'), subject.sort_order)
 
-    # A subject moved to another level must not retain a legacy Subject from
-    # its former level.  Results still reference the legacy subject bridge,
-    # so repair/create the bridge before committing the year-aware edit.
-    if year_level.legacy_level_id:
-        legacy_subject = (
-            db.session.get(Subject, subject.legacy_subject_id)
-            if subject.legacy_subject_id
-            else None
-        )
-        if not legacy_subject or legacy_subject.academic_level_id != year_level.legacy_level_id:
-            legacy_subject = Subject.query.filter_by(
-                name=name,
-                academic_level_id=year_level.legacy_level_id,
-            ).first()
-            if not legacy_subject:
-                legacy_subject = Subject(
-                    name=name,
-                    academic_level_id=year_level.legacy_level_id,
-                    max_score=subject.max_score,
-                    sort_order=subject.sort_order,
-                )
-                db.session.add(legacy_subject)
-                db.session.flush()
-            subject.legacy_subject_id = legacy_subject.id
-
     try:
+        # A subject moved to another level must not retain a legacy Subject
+        # from its former level. Results still reference the legacy bridge,
+        # so repair/create it before committing the year-aware edit. Keep the
+        # whole bridge operation inside this transaction so a conflict rolls
+        # back the pending year-aware changes and returns a useful response.
+        existing_results = Result.query.filter_by(subject_id=subject.legacy_subject_id).count() if subject.legacy_subject_id else 0
+        if subject_kind == 'behavior' and subject.legacy_subject_id and existing_results:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': 'This examination subject has recorded results and cannot be converted to a behavior subject. Create a new behavior subject instead.'})
+        if subject_kind == 'behavior':
+            subject.legacy_subject_id = None
+        elif year_level.legacy_level_id:
+            legacy_subject = (
+                db.session.get(Subject, subject.legacy_subject_id)
+                if subject.legacy_subject_id
+                else None
+            )
+            if not legacy_subject or legacy_subject.academic_level_id != year_level.legacy_level_id:
+                legacy_subject = _get_or_create_legacy_subject(
+                    name,
+                    year_level.legacy_level_id,
+                    subject.max_score,
+                    subject.sort_order,
+                )
+                subject.legacy_subject_id = legacy_subject.id
+
         db.session.commit()
-        _audit_config_change("Configuration Center Updated", "subjects", subject, old_value=old_value, new_value={'name': subject.name, 'academic_year_id': subject.academic_year_id, 'academic_year_level_id': subject.academic_year_level_id, 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order})
+        _audit_config_change("Configuration Center Updated", "subjects", subject, old_value=old_value, new_value={'name': subject.name, 'academic_year_id': subject.academic_year_id, 'academic_year_level_id': subject.academic_year_level_id, 'subject_kind': subject.subject_kind, 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order})
         return jsonify({
             'success': True,
             'message': 'Subject updated successfully',
@@ -4158,6 +4278,7 @@ def config_update_subject(subject_id):
                 'sort_order': subject.sort_order,
                 'academic_year_id': subject.academic_year_id,
                 'academic_year_level_id': subject.academic_year_level_id,
+                'subject_kind': subject.subject_kind,
             },
         })
     except Exception as e:
@@ -4199,18 +4320,73 @@ def config_delete_item(item_type, item_id):
 
     try:
         item_name = _item_display_name(item)
-        if force:
-            # First recursively delete all child dependencies
-            _cascade_delete_config_item(item_type, item_id)
-            
-        # Re-fetch item to ensure it's in the current session transaction scope and delete it
-        item = Model.query.get(item_id)
-        if item:
-            db.session.delete(item)
+        legacy_bridge = None
+        if item_type == 'subjects' and isinstance(item, AcademicYearSubject):
+            legacy_bridge = (
+                Subject,
+                "subjects.id",
+                item.legacy_subject_id,
+                AcademicYearSubject.__tablename__,
+            )
+        elif item_type == 'levels' and isinstance(item, AcademicYearLevel):
+            legacy_bridge = (
+                AcademicLevel,
+                "academic_levels.id",
+                item.legacy_level_id,
+                AcademicYearLevel.__tablename__,
+            )
+        elif item_type == 'classes' and isinstance(item, AcademicYearClass):
+            legacy_bridge = (
+                AcademicClass,
+                "academic_classes.id",
+                item.legacy_class_id,
+                AcademicYearClass.__tablename__,
+            )
+        db.session.delete(item)
+        # Surface FK/dependency failures before any success response is
+        # possible. The session rollback below restores the full operation.
+        db.session.flush()
+
+        legacy_bridge_deleted = False
+        retained_references = []
+        if legacy_bridge:
+            legacy_bridge_deleted, retained_references = _remove_orphaned_legacy_record(
+                *legacy_bridge,
+                item_id,
+            )
+        audit_details = f"Deleted {item_type}: {item_name} (Force={force})"
+        if retained_references:
+            audit_details += "; shared legacy bridge retained"
+        audit("Configuration Center", audit_details)
         db.session.commit()
 
-        audit("Configuration Center", f"Deleted {item_type}: {item_name} (Force={force})")
-        return jsonify({'success': True, 'message': 'Item deleted successfully'})
+        # Verify the committed state with a fresh SQL statement, rather than
+        # trusting the ORM identity map or a UI success message.
+        remaining = db.session.execute(
+            select(func.count()).select_from(Model.__table__).where(
+                Model.__table__.c.id == item_id
+            )
+        ).scalar_one()
+        if remaining:
+            raise RuntimeError(
+                f"Permanent deletion verification failed for {item_type} {item_id}."
+            )
+        if legacy_bridge_deleted:
+            legacy_model, _, legacy_bridge_id, _ = legacy_bridge
+            bridge_remaining = db.session.execute(
+                select(func.count()).select_from(legacy_model.__table__).where(
+                    legacy_model.__table__.c.id == legacy_bridge_id
+                )
+            ).scalar_one()
+            if bridge_remaining:
+                raise RuntimeError(
+                    f"Permanent deletion verification failed for legacy bridge {legacy_model.__tablename__} {legacy_bridge_id}."
+                )
+
+        message = 'Item deleted successfully'
+        if retained_references:
+            message += ' The shared legacy record was retained because other records still use it.'
+        return jsonify({'success': True, 'message': message})
     except Exception as e:
         db.session.rollback()
         # Log full stack trace server-side for developer reference

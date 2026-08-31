@@ -1,0 +1,54 @@
+{% extends "admin/base.html" %}
+{% block page_title %}Edit Behavior Event{% endblock %}
+{% block admin_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css') }}">
+<div class="behavior-page">
+  <header class="behavior-hero"><span class="behavior-hero__mark"><i class="fa-solid fa-pen-to-square"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow">Phase 2C · Audited edit</span><h1>Edit Behavior Event</h1><p>Material changes require a reason and preserve the old values in the existing AuditLog.</p></div></header>
+  {% include "admin/behavior/_nav.html" %}
+  <section class="behavior-card behavior-section">
+    <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-user-graduate"></i> {{ event.student.full_name }}</span><h2>{{ config.academic_year.name }} · {{ config.academic_year_level.name }} · {{ config.behavior_subject.name }}</h2></div><span class="behavior-scope-pill">Recorded event</span></div>
+    <form class="behavior-form" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="behavior-field"><label for="editSession">Behavior Session</label><select id="editSession" name="behavior_session_id" required>{% for item in sessions %}<option value="{{ item.id }}" data-maximum="{{ item.maximum_score }}" {% if item.id == event.behavior_session_id %}selected{% endif %}>{{ item.session_label }} · {{ item.maximum_score }}</option>{% endfor %}</select></div>
+      <div class="behavior-field"><label>Direction</label><select id="editDirection" name="direction" required><option value="positive" {% if event.polarity == 'positive' %}selected{% endif %}>Positive</option><option value="negative" {% if event.polarity == 'negative' %}selected{% endif %}>Negative</option></select></div>
+      <div class="behavior-field"><label>Category</label><select id="editCategory" name="behavior_category_id" required>{% for item in categories %}<option value="{{ item.id }}" data-polarity="{{ item.polarity }}" {% if item.id == event.behavior_category_id %}selected{% endif %}>{{ item.name }} ({{ item.polarity|title }})</option>{% endfor %}</select></div>
+      <div class="behavior-field"><label>Action</label><select id="editAction" name="behavior_action_id" required>{% for item in actions %}<option value="{{ item.id }}" data-category="{{ item.behavior_category_id }}" data-points="{{ item.points }}" {% if item.id == event.behavior_action_id %}selected{% endif %}>{{ item.name }} · {{ item.points }} points · Level {{ item.level_number }}</option>{% endfor %}</select><small class="behavior-help">Actions above the selected session maximum cannot be saved.</small></div>
+      <div class="behavior-field behavior-field--full"><label>Event date and time</label><input name="occurred_at" type="datetime-local" value="{{ event.occurred_at.strftime('%Y-%m-%dT%H:%M') }}" required></div>
+      <div class="behavior-field behavior-field--full"><label>Notes</label><textarea name="notes">{{ event.notes or '' }}</textarea></div>
+      <div class="behavior-field behavior-field--full"><label>Edit reason</label><textarea name="reason" required placeholder="Explain why this official event is being corrected"></textarea></div>
+      <div class="behavior-form__actions"><button class="behavior-btn behavior-btn--primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save Audited Edit</button><a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.events', config_id=config.id) }}">Cancel</a></div>
+    </form>
+  </section>
+</div>
+<script>
+(() => {
+  const category = document.getElementById('editCategory');
+  const action = document.getElementById('editAction');
+  const direction = document.getElementById('editDirection');
+  const session = document.getElementById('editSession');
+  const getSessionMaximum = () => Number(session && session.options[session.selectedIndex]?.dataset.maximum || 0);
+  if (!category || !action) return;
+  const sync = (resetAction = false) => {
+    const previousValue = action.value;
+    const sessionMaximum = getSessionMaximum();
+    const sessionMaximumLabel = Number.isFinite(sessionMaximum) ? sessionMaximum.toLocaleString(undefined, { maximumFractionDigits: 3 }) : '-';
+    Array.from(action.options).forEach((option) => {
+      const pointsValue = Number(option.dataset.points);
+      const exceedsMaximum = Number.isFinite(pointsValue) && pointsValue > sessionMaximum;
+      option.hidden = option.dataset.category !== category.value;
+      option.disabled = exceedsMaximum;
+      option.title = exceedsMaximum ? `Exceeds session maximum (${sessionMaximumLabel})` : '';
+    });
+    const visible = Array.from(action.options).filter((option) => !option.hidden && !option.disabled);
+    const selectedAction = visible.find((option) => option.value === previousValue);
+    const nextAction = resetAction || !selectedAction ? visible[0] : selectedAction;
+    if (nextAction) action.value = nextAction.value; else action.value = '';
+    const selectedCategory = category.options[category.selectedIndex];
+    if (direction && selectedCategory) direction.value = selectedCategory.dataset.polarity;
+  };
+  category.addEventListener('change', () => sync(true));
+  session && session.addEventListener('change', () => sync(true));
+  sync(false);
+})();
+</script>
+{% endblock %}

@@ -115,6 +115,9 @@
               {% for subject in subjects %}
                 <th class="mono" data-mg-subject-id="{{ subject.id }}" data-mg-subject="{{ subject.name|e }}">{{ subject_display_name(subject, settings) }}</th>
               {% endfor %}
+              {% for behavior in behavior_definitions|default([]) %}
+                <th class="mono behavior-roster-heading">{{ behavior.subject_name }}<small>Behavior / {{ behavior.annual_maximum|academic_number(settings) }}</small></th>
+              {% endfor %}
               <th>{{ rh_label("roster.total", default="Total") }}</th>
               <th>%</th>
               <th>{{ rh_label("roster.grade", default="Grade") }}</th>
@@ -140,6 +143,10 @@
                     <td class="rh-mono">{{ subject_data.score|academic_number(settings) }}</td>
                   {% endif %}
                 {% endfor %}
+                {% for behavior in behavior_definitions|default([]) %}
+                  {% set behavior_data = student_data.behavior_by_config.get(behavior.configuration_id) %}
+                  <td class="rh-mono behavior-roster-cell">{% if behavior_data and behavior_data.session_score is not none %}{{ behavior_data.session_score|academic_number(settings) }}{% else %}-{% endif %}</td>
+                {% endfor %}
                   <td class="rh-mono"><strong>{{ student_data.total_score|academic_number(settings) }}/{{ student_data.total_max|academic_number(settings) }}</strong></td>
                   <td class="rh-mono">{{ student_data.percentage|academic_number(settings) }}%</td>
                 <td>
@@ -151,7 +158,7 @@
               </tr>
             {% else %}
               <tr>
-                <td colspan="{{ subjects|length + 6 }}" style="text-align:center; padding: 32px; color: var(--slate);">No students found for this class.</td>
+                <td colspan="{{ subjects|length + behavior_definitions|default([])|length + 6 }}" style="text-align:center; padding: 32px; color: var(--slate);">No students found for this class.</td>
               </tr>
             {% endfor %}
           </tbody>

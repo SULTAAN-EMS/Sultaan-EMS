@@ -321,8 +321,39 @@
                     <td data-label="Darajo Dhibceed">{% if row.is_uf %}<span class="dynamic-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b><span class="mg-danger-icon" aria-hidden="true">⚠️</span><span>MG</span></b></span>{% else %}{{ row.grade.grade_point|academic_number(settings) }}{% endif %}</td>
                   </tr>
                 {% endfor %}
-              </tbody>
-            </table>
+                {% for behavior in result.behavior_reports|default([]) %}
+                  {% set behavior_session = behavior.current_sessions[0] if behavior.current_sessions else None %}
+                  <tr class="behavior-result-row">
+                    <td data-label="TT.">{{ result.subjects|length + loop.index }}</td>
+                    <td data-label="Maaddo" class="result-subject-cell"><span class="behavior-subject-label">{% if behavior.available %}<button type="button" class="behavior-subject-trigger" aria-controls="behaviorDetailDialog{{ loop.index }}" data-behavior-dialog="behaviorDetailDialog{{ loop.index }}"><i class="fa-solid fa-heart-pulse"></i><span>{{ behavior.subject_name }}</span></button>{% else %}<span><i class="fa-solid fa-heart-pulse"></i><span>{{ behavior.subject_name }}</span></span>{% endif %}</span></td>
+                    <td data-label="Dhibcaha Guud">{% if behavior_session %}{{ behavior_session.maximum_score|academic_number(settings) }}{% else %}-{% endif %}</td>
+                    <td data-label="Dhibcaha la helay">{% if behavior_session %}<span class="behavior-score-badge">{{ behavior_session.final_score|academic_number(settings) }}</span>{% else %}<span class="behavior-unavailable">Not available</span>{% endif %}</td>
+                    <td data-label="Darajo">{% if behavior_session and behavior.grade and behavior.grade.grade != '-' %}<span class="dynamic-grade-badge" style="background: {{ behavior.grade.background_color }}; border-color: {{ behavior.grade.border_color }}; color: {{ behavior.grade.badge_color }};"><b style="background: {{ behavior.grade.badge_color }}; color: {{ behavior.grade.text_color }};">{{ behavior.grade.grade }}</b></span>{% else %}<span class="behavior-not-applicable">-</span>{% endif %}</td>
+                    <td data-label="Darajo Dhibceed">{% if behavior_session and behavior.grade and behavior.grade.grade != '-' %}{{ behavior.grade.grade_point|academic_number(settings) }}{% else %}<span class="behavior-not-applicable">-</span>{% endif %}</td>
+                  </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% for behavior in result.behavior_reports|default([]) %}
+          {% set behavior_session = behavior.current_sessions[0] if behavior.current_sessions else None %}
+          {% if behavior.available %}
+            <dialog class="behavior-detail-dialog" id="behaviorDetailDialog{{ loop.index }}" aria-labelledby="behaviorDetailTitle{{ loop.index }}">
+              <div class="behavior-detail-dialog__content">
+                <button type="button" class="behavior-detail-dialog__close" data-behavior-dialog-close aria-label="Close Behavior details"><i class="fa-solid fa-xmark"></i></button>
+                <div class="behavior-detail-dialog__heading"><span class="behavior-detail-dialog__icon"><i class="fa-solid fa-heart-pulse"></i></span><div><span class="behavior-detail-dialog__eyebrow">Behavior assessment</span><h3 id="behaviorDetailTitle{{ loop.index }}">{{ behavior.subject_name }}</h3><p>{{ behavior_session.session_label }} · {{ behavior.exam_name }}</p></div></div>
+                <div class="behavior-detail-dialog__stats">
+                  <div><span>Score</span><strong>{{ behavior_session.final_score|academic_number(settings) }} / {{ behavior_session.maximum_score|academic_number(settings) }}</strong></div>
+                  <div><span>Base score</span><strong>{{ behavior_session.base_score|academic_number(settings) }}</strong></div>
+                  <div><span>Positive points</span><strong>+{{ behavior_session.positive_points|academic_number(settings) }}</strong></div>
+                  <div><span>Negative points</span><strong>-{{ behavior_session.negative_points|academic_number(settings) }}</strong></div>
+                  <div><span>Grade</span><strong>{{ behavior.grade.grade if behavior.grade else '-' }}</strong></div>
+                  <div><span>Grade point</span><strong>{{ behavior.grade.grade_point|academic_number(settings) if behavior.grade else '-' }}</strong></div>
+                </div>
+                <div class="behavior-detail-dialog__events"><h4>Recorded activity</h4>{% if behavior_session.events %}<ul>{% for event in behavior_session.events %}<li><span class="behavior-event-dot behavior-event-dot--{{ event.polarity }}"><i class="fa-solid {% if event.polarity == 'positive' %}fa-plus{% else %}fa-minus{% endif %}"></i></span><div><strong>{{ event.action_name }}</strong><small>{{ event.category_name }} · {{ event.points|academic_number(settings) }} points{% if event.occurred_at %} · {{ event.occurred_at|replace('T', ' ') }}{% endif %}</small>{% if event.notes %}<p>{{ event.notes }}</p>{% endif %}</div></li>{% endfor %}</ul>{% else %}<p class="behavior-detail-dialog__empty">No behavior events were recorded for this session.</p>{% endif %}</div>
+              </div>
+            </dialog>
+          {% endif %}
+        {% endfor %}
           </section>
 
           <aside class="reference-right-column">
@@ -444,6 +475,40 @@
     </div>
     <script src="{{ url_for('static', filename='js/mg-detail-card.js') }}"></script>
     <script src="{{ url_for('static', filename='js/critical-subject-stars.js', v='critical-stars-20260827-4') }}"></script>
+    <script>
+      (() => {
+        const closeDialog = (dialog, trigger) => {
+          if (typeof dialog.close === 'function') dialog.close();
+          else dialog.removeAttribute('open');
+          trigger?.focus();
+        };
+        document.querySelectorAll('[data-behavior-dialog]').forEach((trigger) => {
+          const dialog = document.getElementById(trigger.dataset.behaviorDialog);
+          if (!dialog) return;
+          const openDialog = () => {
+            if (typeof dialog.showModal === 'function') dialog.showModal();
+            else dialog.setAttribute('open', '');
+          };
+          trigger.addEventListener('click', openDialog);
+          trigger.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            openDialog();
+          });
+          dialog.querySelectorAll('[data-behavior-dialog-close]').forEach((button) => {
+            button.addEventListener('click', () => closeDialog(dialog, trigger));
+          });
+          dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) closeDialog(dialog, trigger);
+          });
+        });
+        document.addEventListener('keydown', (event) => {
+          if (event.key !== 'Escape') return;
+          const openDialog = document.querySelector('.behavior-detail-dialog[open]');
+          if (openDialog && typeof openDialog.close !== 'function') openDialog.removeAttribute('open');
+        });
+      })();
+    </script>
 
     <div class="falcelin-widget-host" id="falcelinWidgetHost" hidden aria-hidden="true">
       <iframe id="falcelinWidgetFrame" title="Falcelin iyo Cabasho" src="{{ url_for('static', filename='falcelin-cabasho-widget.html') }}?token={{ feedback_access_token|urlencode }}&amp;embedded=1&amp;v=4" loading="eager"></iframe>

@@ -1,0 +1,93 @@
+{% extends "admin/base.html" %}
+{% block page_title %}Behavior Sessions{% endblock %}
+{% block admin_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css') }}">
+<div class="behavior-page">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+      <div class="behavior-alert {% if category in ['danger', 'error'] %}behavior-alert--danger{% endif %}" role="alert">
+        <i class="fa-solid {% if category in ['danger', 'error'] %}fa-circle-exclamation{% else %}fa-circle-check{% endif %}"></i>
+        {{ message }}
+      </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+  <header class="behavior-hero">
+    <span class="behavior-hero__mark"><i class="fa-solid fa-calendar-days"></i></span>
+    <div class="behavior-hero__copy">
+      <span class="behavior-eyebrow"><i class="fa-solid fa-chart-pie"></i> Session allocation</span>
+      <h1>Behavior Sessions</h1>
+      <p>Map one or more sessions to this year's existing Exam Types. The annual allocation must total exactly 100 before events can be recorded.</p>
+    </div>
+  </header>
+  {% include "admin/behavior/_nav.html" %}
+
+  <form class="behavior-card behavior-form" method="get" action="{{ url_for('behavior.sessions') }}">
+    <div class="behavior-field">
+      <label for="sessionConfig">Behavior Configuration</label>
+      <select id="sessionConfig" name="config_id" onchange="this.form.submit()">
+        <option value="">Select configuration</option>
+        {% for item in configurations %}
+        <option value="{{ item.id }}" {% if config and config.id == item.id %}selected{% endif %}>{{ item.academic_year.name }} · {{ item.academic_year_level.name }} · {{ item.behavior_subject.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+
+  {% if config %}
+  <section class="behavior-card behavior-section">
+    <div class="behavior-section__head">
+      <div>
+        <span class="behavior-kicker"><i class="fa-solid fa-calculator"></i> Allocation ledger</span>
+        <h2>{{ config.behavior_subject.name }} · {{ config.academic_year_level.name }}</h2>
+        <p class="behavior-muted">{{ config.academic_year.name }} · session allocation is configuration-owned</p>
+      </div>
+      <span class="behavior-scope-pill">{{ allocation }} / 100</span>
+    </div>
+    {% if allocation != 100 %}<div class="behavior-alert"><i class="fa-solid fa-circle-info"></i> Configured sessions currently total {{ allocation }}. Add or edit sessions until the allocation is exactly 100 before recording events.</div>{% endif %}
+    <form class="behavior-form behavior-form--wide" method="post" action="{{ url_for('behavior.sessions', config_id=config.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="config_id" value="{{ config.id }}">
+      <div class="behavior-field">
+        <label for="newSessionExam">Exam Type</label>
+        <select id="newSessionExam" name="exam_ref" required>
+          {% if available_exams %}{% for exam in available_exams %}<option value="{{ exam.value }}" {% if selected_exam_ref == exam.value %}selected{% endif %}>{{ exam.name }}</option>{% endfor %}{% elif exams %}<option value="" disabled>All Exam Types are already assigned to this configuration</option>{% else %}<option value="" disabled>No Exam Types are available for this Academic Year</option>{% endif %}
+        </select>
+      </div>
+      <div class="behavior-field"><label for="newSessionLabel">Session Label</label><input id="newSessionLabel" name="session_label" placeholder="e.g. Term 1 Behavior" required></div>
+      <div class="behavior-field"><label for="newSessionMaximum">Maximum Score</label><input id="newSessionMaximum" name="maximum_score" type="number" min="0.001" step="0.001" placeholder="25" required></div>
+      <div class="behavior-field"><label for="newSessionOrder">Sort Order</label><input id="newSessionOrder" name="sort_order" type="number" min="0" step="1" value="0"></div>
+      <div class="behavior-form__actions">
+        {% if available_exams %}<button class="behavior-btn behavior-btn--primary" type="submit"><i class="fa-solid fa-plus"></i> Add session</button>{% elif exams %}<span class="behavior-muted"><i class="fa-solid fa-circle-check"></i> All Exam Types are already assigned to this configuration.</span>{% else %}<span class="behavior-muted"><i class="fa-solid fa-calendar-xmark"></i> No Exam Types are available for this Academic Year.</span>{% endif %}
+        <a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.configuration', config_id=config.id) }}"><i class="fa-solid fa-sliders"></i> Configuration</a>
+      </div>
+    </form>
+  </section>
+
+  <section class="behavior-card behavior-section">
+    <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-list"></i> Configured sessions</span><h2>{{ config.sessions|length }} session(s)</h2></div><span class="behavior-muted">All saved sessions are available for use</span></div>
+    <div class="behavior-list">
+      {% for item in config.sessions %}
+      <details class="behavior-list__item">
+        <summary style="display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none">
+          <span><strong>{{ item.session_label }}</strong><small>{{ item.exam.name if item.exam else item.exam_type.name if item.exam_type else 'Exam Type unavailable' }} · maximum {{ item.maximum_score }} · base {{ (item.maximum_score / 2)|round(3) }} · positive capacity {{ (item.maximum_score / 2)|round(3) }} · order {{ item.sort_order }}</small></span>
+        </summary>
+        <form class="behavior-form behavior-form--wide" method="post" style="margin-top:14px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ item.id }}">
+          <div class="behavior-field"><label>Exam Type</label><select name="exam_ref" required>{% for exam in exams %}<option value="{{ exam.value }}" {% if exam.value == (('exam:' ~ item.exam_id) if item.exam_id else ('legacy:' ~ item.exam_type_id)) %}selected{% endif %}>{{ exam.name }}</option>{% endfor %}</select></div>
+          <div class="behavior-field"><label>Session Label</label><input name="session_label" value="{{ item.session_label }}" required></div>
+          <div class="behavior-field"><label>Maximum Score</label><input name="maximum_score" type="number" min="0.001" step="0.001" value="{{ item.maximum_score }}" required></div>
+          <div class="behavior-field"><label>Sort Order</label><input name="sort_order" type="number" min="0" value="{{ item.sort_order }}"></div>
+          <div class="behavior-form__actions">
+            <button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save changes</button>
+          </div>
+        </form>
+        <form method="post" action="{{ url_for('behavior.delete_session', session_id=item.id) }}" onsubmit="return confirm('Delete this Behavior session?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><button class="behavior-btn behavior-btn--danger behavior-btn--small" type="submit" title="Delete session" aria-label="Delete session"><i class="fa-solid fa-trash-can"></i> Delete</button></form>
+      </details>
+      {% else %}<div class="behavior-empty"><i class="fa-solid fa-calendar-xmark"></i><p>No sessions configured.</p></div>{% endfor %}
+    </div>
+  </section>
+  {% else %}<section class="behavior-card behavior-section"><div class="behavior-empty"><i class="fa-solid fa-filter-circle-xmark"></i><p>Select a Behavior configuration to manage sessions.</p></div></section>{% endif %}
+</div>
+{% endblock %}

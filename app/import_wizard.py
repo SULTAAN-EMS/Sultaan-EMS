@@ -887,6 +887,7 @@ def _result_import_subject_bindings(year_obj=None, year_level=None):
     if year_obj:
         query = AcademicYearSubject.query.filter_by(
             academic_year_id=year_obj.id,
+            subject_kind="exam",
             is_active=True,
         )
         if year_level:

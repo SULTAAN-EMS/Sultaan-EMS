@@ -298,6 +298,7 @@
         .col-name { width: 39mm; }
         .col-class { width: 12mm; }
         .col-subject { width: auto; }
+        .col-behavior { width: 21mm; background: #17634f !important; }
         .col-total { width: 14mm; }
         .col-percent { width: 19mm; }
         .col-grade { width: 13mm; }
@@ -366,6 +367,25 @@
             color: #002a7c;
             font-weight: 900;
         }
+
+        .behavior-class-cell {
+            color: #17634f !important;
+            background: #effaf6 !important;
+            white-space: nowrap;
+            text-align: center !important;
+            vertical-align: middle !important;
+            overflow: hidden;
+        }
+
+        .behavior-class-cell strong {
+            display: inline-block;
+            max-width: 100%;
+            font-size: 6.5pt;
+            line-height: 1.1;
+            text-align: center;
+            white-space: nowrap;
+        }
+        .behavior-stat-cell { color: #17634f !important; background: #effaf6 !important; }
 
         .badge {
             display: inline-flex;
@@ -673,6 +693,9 @@
                                 {% for subject in subjects %}
                                     <th class="col-subject" data-mg-subject-id="{{ subject.id }}" data-mg-subject="{{ subject.name|e }}"><span class="subj-cell"><span>{{ subject.name|upper }}</span>{{ critical_subject_badge(critical_badges.get(subject.id), interactive=false, subject_name=subject.name) }}</span><small>({{ subject_maxima.get(subject.id, subject.max_score)|academic_number(settings) }})</small></th>
                                 {% endfor %}
+                                {% for behavior in behavior_definitions|default([]) %}
+                                    <th class="col-behavior"><span>{{ behavior.subject_name|upper }}</span><small>(BEHAVIOR / {{ behavior.annual_maximum|academic_number(settings) }})</small></th>
+                                {% endfor %}
                                 <th class="col-total">Total<small>({{ page_students[0].total_max|academic_number(settings) if page_students else 0 }})</small></th>
                                 <th class="col-percent">Percentage</th>
                                 <th class="col-grade">Grade<br>Letter</th>
@@ -712,6 +735,10 @@
                                             <td>{{ subject_data.score|academic_number(settings) }}</td>
                                         {% endif %}
                                     {% endfor %}
+                                    {% for behavior in behavior_definitions|default([]) %}
+                                        {% set behavior_data = row.behavior_by_config.get(behavior.configuration_id) %}
+                                        <td class="behavior-class-cell">{% if behavior_data and behavior_data.annual_score is not none %}<strong>{{ behavior_data.annual_score|academic_number(settings) }}</strong>{% else %}-{% endif %}</td>
+                                    {% endfor %}
                                     <td class="total-score">{{ row.total_score|academic_number(settings) }}</td>
                                     <td>
                                         {% if row.is_fail %}
@@ -745,6 +772,9 @@
                                     {% for stat in subject_stats %}
                                         <td class="highest-cell">{{ stat.highest|academic_number(settings) }}</td>
                                     {% endfor %}
+                                    {% for stat in behavior_stats|default([]) %}
+                                        <td class="highest-cell behavior-stat-cell">{{ stat.highest|academic_number(settings) }}</td>
+                                    {% endfor %}
                                     <td class="highest-cell">{{ highest_total|academic_number(settings) }}</td>
                                     <td class="highest-cell">{{ highest_score|academic_number(settings) }}%</td>
                                     <td colspan="2" rowspan="3" class="pass-card">
@@ -758,6 +788,9 @@
                                     {% for stat in subject_stats %}
                                         <td class="lowest-cell">{{ stat.lowest|academic_number(settings) }}</td>
                                     {% endfor %}
+                                    {% for stat in behavior_stats|default([]) %}
+                                        <td class="lowest-cell behavior-stat-cell">{{ stat.lowest|academic_number(settings) }}</td>
+                                    {% endfor %}
                                     <td class="lowest-cell">{{ lowest_total|academic_number(settings) }}</td>
                                     <td class="lowest-cell">{{ lowest_score|academic_number(settings) }}%</td>
                                 </tr>
@@ -765,6 +798,9 @@
                                     <td class="stat-row-label srl-average" colspan="2"><span class="stat-icon-wrap si-average"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span><strong>Class Average</strong></td>
                                     {% for stat in subject_stats %}
                                         <td class="average-cell">{{ stat.average|academic_number(settings) }}</td>
+                                    {% endfor %}
+                                    {% for stat in behavior_stats|default([]) %}
+                                        <td class="average-cell behavior-stat-cell">{{ stat.average|academic_number(settings) }}</td>
                                     {% endfor %}
                                     <td class="average-cell">{{ average_total|academic_number(settings) }}</td>
                                     <td class="average-cell">{{ class_average|academic_number(settings) }}%</td>

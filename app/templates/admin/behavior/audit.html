@@ -1,0 +1,6 @@
+{% extends "admin/base.html" %}
+{% block page_title %}Behavior Audit{% endblock %}
+{% block admin_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css') }}">
+<div class="behavior-page"><header class="behavior-hero"><span class="behavior-hero__mark"><i class="fa-solid fa-shield-halved"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow">Phase 2B · Governance</span><h1>Behavior Audit</h1><p>Existing AuditLog entries for Behavior configuration and event mutations.</p></div></header>{% include "admin/behavior/_nav.html" %}<section class="behavior-card behavior-section"><div class="behavior-table-wrap"><table class="behavior-table"><thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Details</th></tr></thead><tbody>{% for item in rows %}<tr><td>{{ item.created_at }}</td><td>{{ item.username }}</td><td>{{ item.action }}</td><td>{{ item.details }}</td></tr>{% else %}<tr><td colspan="4" class="behavior-muted">No Behavior audit entries found.</td></tr>{% endfor %}</tbody></table></div></section></div>
+{% endblock %}

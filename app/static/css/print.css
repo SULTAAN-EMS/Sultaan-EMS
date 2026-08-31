@@ -595,3 +595,47 @@ body {
   html, body { width: 210mm; height: 297mm; background: #fff; }
   .tis-print-report { width: 202mm; height: 289mm; box-shadow: none; page-break-inside: avoid; break-inside: avoid; }
 }
+
+/* Phase 2E: keep Behavior visible while separate from ordinary totals. */
+.tis-print-table .behavior-report-row td {
+  background: #effaf6;
+  border-top: 1px solid #8bd6b8;
+  color: #17634f;
+}
+.behavior-print-subject {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.4mm;
+}
+.behavior-print-subject i {
+  color: #087f5b;
+  font-size: 8pt;
+}
+.behavior-print-subject strong { color: #17634f; }
+.behavior-print-subject small {
+  color: #64748b;
+  font-size: 6pt;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.behavior-print-score {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  padding: .5mm 1mm;
+  border: .25mm solid #75cfa7;
+  border-radius: 999px;
+  color: #087f5b;
+  background: #e1f5ec;
+  font-size: 7.4pt;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+  line-height: 1.1;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+.behavior-print-unavailable {
+  color: #64748b;
+  font-size: 7pt;
+  font-weight: 700;
+}

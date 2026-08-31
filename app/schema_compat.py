@@ -4,7 +4,7 @@ from . import db
 
 
 def ensure_schema_compatibility():
-    """Add missing production columns safely without dropping or rewriting data."""
+    """Apply additive compatibility changes and data-preserving repairs."""
     inspector = inspect(db.engine)
     dialect = db.engine.dialect.name
 
@@ -138,6 +138,14 @@ def ensure_schema_compatibility():
     # model table is created without rewriting any existing result records.
     ensure_exam_marking_configuration_table()
 
+    # Behavior sessions now use the canonical Results Hub Exam registry while
+    # preserving legacy ExamType links for older records.
+    ensure_behavior_exam_scope()
+    # Behavior grades are owned by one session and use that session's raw
+    # maximum. This upgrades the original configuration-level percentage table
+    # without touching ordinary GradeScale rows.
+    ensure_behavior_session_grading()
+
     # Update teacher_classes foreign key to reference academic_classes instead of school_classes
     # This requires manual migration for existing data
 
@@ -158,6 +166,403 @@ def ensure_exam_marking_configuration_table():
     except Exception as exc:
         db.session.rollback()
         print(f"Warning: exam marking configuration schema sync failed: {exc}")
+
+
+def ensure_behavior_exam_scope():
+    """Make Behavior sessions compatible with canonical year-scoped Exams.
+
+    Existing sessions retain their legacy ``exam_type_id``. New sessions may
+    use ``exam_id`` instead, so old SQLite databases need a data-preserving
+    table rebuild to remove the legacy NOT NULL restriction.
+    """
+    inspector = inspect(db.engine)
+    if not inspector.has_table("behavior_sessions"):
+        return
+    dialect = db.engine.dialect.name
+    add_column_if_missing("behavior_sessions", "exam_id", column_sql(dialect, "exam_id", "INTEGER"))
+    inspector = inspect(db.engine)
+    columns = {item["name"]: item for item in inspector.get_columns("behavior_sessions")}
+    exam_type_column = columns.get("exam_type_id")
+    if dialect == "sqlite" and exam_type_column and not exam_type_column.get("nullable", True):
+        _rebuild_behavior_sessions_for_exam_scope()
+    elif dialect == "postgresql" and exam_type_column and not exam_type_column.get("nullable", True):
+        try:
+            db.session.execute(
+                text(
+                    "ALTER TABLE behavior_sessions "
+                    "ALTER COLUMN exam_type_id DROP NOT NULL"
+                )
+            )
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            print(f"Warning: Behavior session nullability sync failed: {exc}")
+    elif dialect == "mysql" and exam_type_column and not exam_type_column.get("nullable", True):
+        try:
+            db.session.execute(text(
+                "ALTER TABLE behavior_sessions MODIFY COLUMN exam_type_id INTEGER NULL"
+            ))
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            print(f"Warning: Behavior session nullability sync failed: {exc}")
+
+    add_index_if_missing("behavior_sessions", "idx_behavior_sessions_exam_id", ["exam_id"])
+    add_foreign_key_if_missing(
+        "behavior_sessions",
+        "fk_behavior_sessions_exam_id",
+        ["exam_id"],
+        "exams",
+        ["id"],
+        ondelete="RESTRICT",
+    )
+    add_index_if_missing(
+        "behavior_sessions",
+        "uq_behavior_session_configuration_canonical_exam",
+        ["behavior_configuration_id", "exam_id"],
+        unique=True,
+    )
+
+
+def _rebuild_behavior_sessions_for_exam_scope():
+    """Rebuild the legacy SQLite table without changing existing rows."""
+    connection = db.engine.connect()
+    transaction = None
+    try:
+        transaction = connection.begin()
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        columns = {item["name"] for item in inspect(connection).get_columns("behavior_sessions")}
+        exam_id_expression = "exam_id" if "exam_id" in columns else "NULL"
+        connection.execute(text(
+            "CREATE TABLE behavior_sessions_phase2d2 ("
+            "id INTEGER NOT NULL PRIMARY KEY, "
+            "behavior_configuration_id INTEGER NOT NULL, "
+            "exam_type_id INTEGER NULL, "
+            "exam_id INTEGER NULL, "
+            "session_label VARCHAR(120) NOT NULL, "
+            "maximum_score NUMERIC(8, 3) NOT NULL, "
+            "sort_order INTEGER NOT NULL DEFAULT 0, "
+            "is_active BOOLEAN NOT NULL DEFAULT 1, "
+            "created_at DATETIME NOT NULL, "
+            "updated_at DATETIME NOT NULL, "
+            "CONSTRAINT uq_behavior_session_configuration_exam UNIQUE "
+            "(behavior_configuration_id, exam_type_id), "
+            "CONSTRAINT uq_behavior_session_configuration_canonical_exam UNIQUE "
+            "(behavior_configuration_id, exam_id), "
+            "CONSTRAINT ck_behavior_session_maximum_positive CHECK (maximum_score > 0), "
+            "FOREIGN KEY(behavior_configuration_id) REFERENCES behavior_configurations(id) ON DELETE CASCADE, "
+            "FOREIGN KEY(exam_type_id) REFERENCES exam_types(id) ON DELETE RESTRICT, "
+            "FOREIGN KEY(exam_id) REFERENCES exams(id) ON DELETE RESTRICT"
+            ")"
+        ))
+        connection.execute(text(
+            "INSERT INTO behavior_sessions_phase2d2 "
+            "(id, behavior_configuration_id, exam_type_id, exam_id, session_label, "
+            "maximum_score, sort_order, is_active, created_at, updated_at) "
+            f"SELECT id, behavior_configuration_id, exam_type_id, {exam_id_expression}, session_label, "
+            "maximum_score, sort_order, is_active, created_at, updated_at "
+            "FROM behavior_sessions"
+        ))
+        connection.execute(text("DROP TABLE behavior_sessions"))
+        connection.execute(text(
+            "ALTER TABLE behavior_sessions_phase2d2 RENAME TO behavior_sessions"
+        ))
+        transaction.commit()
+        transaction = None
+    except Exception as exc:
+        if transaction is not None:
+            transaction.rollback()
+        print(f"Warning: Behavior session SQLite schema sync failed: {exc}")
+    finally:
+        try:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+        finally:
+            connection.close()
+
+
+def ensure_behavior_session_grading():
+    """Make Behavior grade bands session-owned and raw-score based.
+
+    The first Behavior release keyed grades by configuration and stored
+    percentage ranges. Existing rows are mapped to a session only when a
+    configuration has exactly one session; those ranges are converted to that
+    session's raw maximum. Ambiguous legacy rows remain readable in the table
+    but are deliberately not used by new session-scoped lookups.
+    """
+    inspector = inspect(db.engine)
+    if not inspector.has_table("behavior_grade_scales"):
+        return
+    if not inspector.has_table("behavior_sessions"):
+        return
+    dialect = db.engine.dialect.name
+    columns = {item["name"] for item in inspector.get_columns("behavior_grade_scales")}
+    had_session_column = "behavior_session_id" in columns
+    if not had_session_column:
+        add_column_if_missing(
+            "behavior_grade_scales",
+            "behavior_session_id",
+            column_sql(dialect, "behavior_session_id", "INTEGER"),
+        )
+        inspector = inspect(db.engine)
+    add_foreign_key_if_missing(
+        "behavior_grade_scales",
+        "fk_behavior_grade_scales_session",
+        ["behavior_session_id"],
+        "behavior_sessions",
+        ["id"],
+        ondelete="CASCADE",
+    )
+
+    unique_constraints = inspector.get_unique_constraints("behavior_grade_scales")
+    indexes = inspector.get_indexes("behavior_grade_scales")
+    old_scope_unique = any(
+        tuple(item.get("column_names") or []) == ("behavior_configuration_id", "grade")
+        for item in unique_constraints + indexes
+        if item.get("unique") or item in unique_constraints
+    )
+    session_scope_unique = any(
+        tuple(item.get("column_names") or []) == ("behavior_session_id", "grade")
+        for item in unique_constraints + indexes
+        if item.get("unique") or item in unique_constraints
+    )
+
+    if dialect == "sqlite" and (not had_session_column or old_scope_unique or not session_scope_unique):
+        _rebuild_behavior_grade_scales_sqlite(had_session_column)
+        return
+
+    if dialect == "postgresql":
+        _alter_behavior_grade_scales_postgresql(had_session_column, old_scope_unique)
+        return
+
+    if dialect == "mysql":
+        _alter_behavior_grade_scales_mysql(had_session_column, old_scope_unique)
+
+
+def _rebuild_behavior_grade_scales_sqlite(had_session_column):
+    """Rebuild SQLite's constrained table without losing Behavior rows."""
+    connection = db.engine.connect()
+    transaction = None
+    try:
+        transaction = connection.begin()
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        session_expression = (
+            "behavior_session_id"
+            if had_session_column
+            else "CASE WHEN (SELECT COUNT(*) FROM behavior_sessions s "
+                 "WHERE s.behavior_configuration_id = behavior_grade_scales.behavior_configuration_id) = 1 "
+                 "THEN (SELECT s.id FROM behavior_sessions s "
+                 "WHERE s.behavior_configuration_id = behavior_grade_scales.behavior_configuration_id LIMIT 1) "
+                 "ELSE NULL END"
+        )
+        if had_session_column:
+            minimum_expression = "min_score"
+            maximum_expression = "max_score"
+        else:
+            minimum_expression = (
+                "CASE WHEN (SELECT COUNT(*) FROM behavior_sessions s "
+                "WHERE s.behavior_configuration_id = behavior_grade_scales.behavior_configuration_id) = 1 "
+                "THEN min_score * (SELECT s.maximum_score FROM behavior_sessions s "
+                "WHERE s.behavior_configuration_id = behavior_grade_scales.behavior_configuration_id LIMIT 1) / 100 "
+                "ELSE min_score END"
+            )
+            maximum_expression = (
+                "CASE WHEN (SELECT COUNT(*) FROM behavior_sessions s "
+                "WHERE s.behavior_configuration_id = behavior_grade_scales.behavior_configuration_id) = 1 "
+                "THEN max_score * (SELECT s.maximum_score FROM behavior_sessions s "
+                "WHERE s.behavior_configuration_id = behavior_grade_scales.behavior_configuration_id LIMIT 1) / 100 "
+                "ELSE max_score END"
+            )
+        connection.execute(text(
+            "CREATE TABLE behavior_grade_scales_phase2d2 ("
+            "id INTEGER NOT NULL PRIMARY KEY, "
+            "behavior_configuration_id INTEGER NOT NULL, "
+            "behavior_session_id INTEGER NULL, "
+            "grade VARCHAR(20) NOT NULL, "
+            "min_score NUMERIC(8, 3) NOT NULL, "
+            "max_score NUMERIC(8, 3) NOT NULL, "
+            "grade_point NUMERIC(6, 3) NOT NULL DEFAULT 0, "
+            "description VARCHAR(160) NULL, "
+            "sort_order INTEGER NOT NULL DEFAULT 0, "
+            "is_active BOOLEAN NOT NULL DEFAULT 1, "
+            "is_pass BOOLEAN NOT NULL DEFAULT 1, "
+            "created_at DATETIME NOT NULL, "
+            "updated_at DATETIME NOT NULL, "
+            "CONSTRAINT uq_behavior_grade_scale_session_grade UNIQUE (behavior_session_id, grade), "
+            "CONSTRAINT ck_behavior_grade_scale_raw_score_range CHECK "
+            "(min_score >= 0 AND max_score >= 0 AND min_score <= max_score), "
+            "CONSTRAINT ck_behavior_grade_scale_point_nonnegative CHECK (grade_point >= 0), "
+            "FOREIGN KEY(behavior_configuration_id) REFERENCES behavior_configurations(id) ON DELETE CASCADE, "
+            "FOREIGN KEY(behavior_session_id) REFERENCES behavior_sessions(id) ON DELETE CASCADE"
+            ")"
+        ))
+        connection.execute(text(
+            "INSERT INTO behavior_grade_scales_phase2d2 "
+            "(id, behavior_configuration_id, behavior_session_id, grade, min_score, max_score, "
+            "grade_point, description, sort_order, is_active, is_pass, created_at, updated_at) "
+            "SELECT id, behavior_configuration_id, " + session_expression + ", grade, "
+            + minimum_expression + ", " + maximum_expression + ", grade_point, description, sort_order, "
+            "is_active, is_pass, created_at, updated_at FROM behavior_grade_scales"
+        ))
+        connection.execute(text("DROP TABLE behavior_grade_scales"))
+        connection.execute(text(
+            "ALTER TABLE behavior_grade_scales_phase2d2 RENAME TO behavior_grade_scales"
+        ))
+        connection.execute(text(
+            "CREATE INDEX ix_behavior_grade_scales_configuration "
+            "ON behavior_grade_scales (behavior_configuration_id)"
+        ))
+        connection.execute(text(
+            "CREATE INDEX ix_behavior_grade_scales_session "
+            "ON behavior_grade_scales (behavior_session_id)"
+        ))
+        transaction.commit()
+        transaction = None
+    except Exception as exc:
+        if transaction is not None:
+            transaction.rollback()
+        print(f"Warning: Behavior grade scale SQLite schema sync failed: {exc}")
+    finally:
+        try:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+        finally:
+            connection.close()
+
+
+def _alter_behavior_grade_scales_postgresql(had_session_column, old_scope_unique):
+    """Upgrade PostgreSQL constraints in place."""
+    try:
+        if not had_session_column:
+            db.session.execute(text(
+                "UPDATE behavior_grade_scales b SET behavior_session_id = s.id, "
+                "min_score = b.min_score * s.maximum_score / 100, "
+                "max_score = b.max_score * s.maximum_score / 100 "
+                "FROM behavior_sessions s WHERE s.behavior_configuration_id = b.behavior_configuration_id "
+                "AND (SELECT COUNT(*) FROM behavior_sessions s2 "
+                "WHERE s2.behavior_configuration_id = b.behavior_configuration_id) = 1"
+            ))
+        inspector = inspect(db.engine)
+        if old_scope_unique:
+            for item in inspector.get_unique_constraints("behavior_grade_scales"):
+                if tuple(item.get("column_names") or []) == (
+                    "behavior_configuration_id",
+                    "grade",
+                ):
+                    name = item.get("name")
+                    if name:
+                        db.session.execute(text(
+                            f'ALTER TABLE behavior_grade_scales DROP CONSTRAINT IF EXISTS "{name}"'
+                        ))
+            for item in inspector.get_indexes("behavior_grade_scales"):
+                if (
+                    item.get("unique")
+                    and tuple(item.get("column_names") or []) == (
+                        "behavior_configuration_id",
+                        "grade",
+                    )
+                ):
+                    name = item.get("name")
+                    if name:
+                        db.session.execute(text(f'DROP INDEX IF EXISTS "{name}"'))
+        check_names = {
+            "ck_behavior_grade_scale_percentage_range",
+            "ck_behavior_grade_scale_raw_score_range",
+        }
+        existing_checks = db.session.execute(text(
+            "SELECT conname FROM pg_constraint "
+            "WHERE conrelid = 'behavior_grade_scales'::regclass AND contype = 'c'"
+        ))
+        for row in existing_checks:
+            if row[0] in check_names:
+                db.session.execute(text(
+                    f'ALTER TABLE behavior_grade_scales DROP CONSTRAINT IF EXISTS "{row[0]}"'
+                ))
+        existing_checks = {
+            row[0]
+            for row in db.session.execute(text(
+                "SELECT conname FROM pg_constraint "
+                "WHERE conrelid = 'behavior_grade_scales'::regclass AND contype = 'c'"
+            ))
+        }
+        if "ck_behavior_grade_scale_raw_score_range" not in existing_checks:
+            db.session.execute(text(
+                "ALTER TABLE behavior_grade_scales ADD CONSTRAINT "
+                "ck_behavior_grade_scale_raw_score_range CHECK "
+                "(min_score >= 0 AND max_score >= 0 AND min_score <= max_score)"
+            ))
+        inspector = inspect(db.engine)
+        has_session_unique = any(
+            tuple(item.get("column_names") or []) == ("behavior_session_id", "grade")
+            for item in inspector.get_unique_constraints("behavior_grade_scales")
+        ) or any(
+            item.get("unique")
+            and tuple(item.get("column_names") or []) == ("behavior_session_id", "grade")
+            for item in inspector.get_indexes("behavior_grade_scales")
+        )
+        if not has_session_unique:
+            db.session.execute(text(
+                "CREATE UNIQUE INDEX uq_behavior_grade_scale_session_grade "
+                "ON behavior_grade_scales (behavior_session_id, grade)"
+            ))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"Warning: Behavior grade scale PostgreSQL schema sync failed: {exc}")
+
+
+def _alter_behavior_grade_scales_mysql(had_session_column, old_scope_unique):
+    """Upgrade MySQL/MariaDB constraints in place where supported."""
+    try:
+        if not had_session_column:
+            db.session.execute(text(
+                "UPDATE behavior_grade_scales b JOIN behavior_sessions s "
+                "ON s.behavior_configuration_id = b.behavior_configuration_id "
+                "SET b.behavior_session_id = s.id, "
+                "b.min_score = b.min_score * s.maximum_score / 100, "
+                "b.max_score = b.max_score * s.maximum_score / 100 "
+                "WHERE (SELECT COUNT(*) FROM behavior_sessions s2 "
+                "WHERE s2.behavior_configuration_id = b.behavior_configuration_id) = 1"
+            ))
+        inspector = inspect(db.engine)
+        if old_scope_unique:
+            for item in inspector.get_indexes("behavior_grade_scales"):
+                if (
+                    item.get("unique")
+                    and tuple(item.get("column_names") or []) == (
+                        "behavior_configuration_id",
+                        "grade",
+                    )
+                ):
+                    name = item.get("name")
+                    if name:
+                        db.session.execute(text(
+                            f"ALTER TABLE behavior_grade_scales DROP INDEX `{name}`"
+                        ))
+        for constraint in inspector.get_unique_constraints("behavior_grade_scales"):
+            if tuple(constraint.get("column_names") or []) == (
+                "behavior_configuration_id",
+                "grade",
+            ) and constraint.get("name"):
+                db.session.execute(text(
+                    f"ALTER TABLE behavior_grade_scales DROP INDEX `{constraint['name']}`"
+                ))
+        inspector = inspect(db.engine)
+        has_session_unique = any(
+            item.get("unique")
+            and tuple(item.get("column_names") or []) == ("behavior_session_id", "grade")
+            for item in inspector.get_indexes("behavior_grade_scales")
+        ) or any(
+            tuple(item.get("column_names") or []) == ("behavior_session_id", "grade")
+            for item in inspector.get_unique_constraints("behavior_grade_scales")
+        )
+        if not has_session_unique:
+            db.session.execute(text(
+                "ALTER TABLE behavior_grade_scales ADD UNIQUE INDEX "
+                "uq_behavior_grade_scale_session_grade (behavior_session_id, grade)"
+            ))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"Warning: Behavior grade scale MySQL schema sync failed: {exc}")
 
 
 def ensure_phase4c_student_year_nullable():

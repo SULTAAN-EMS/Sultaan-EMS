@@ -49,12 +49,14 @@ def year_classes_for_year(year_id, year_level_id, active_only=True):
     return year_classes(year_level.id, active_only=active_only)
 
 
-def year_subjects(year_id, year_level_id=None, active_only=True):
+def year_subjects(year_id, year_level_id=None, active_only=True, subject_kind=None):
     query = AcademicYearSubject.query.filter_by(academic_year_id=year_id)
     if year_level_id:
         query = query.filter_by(academic_year_level_id=year_level_id)
     if active_only:
         query = query.filter_by(is_active=True)
+    if subject_kind is not None:
+        query = query.filter_by(subject_kind=subject_kind)
     return query.order_by(AcademicYearSubject.sort_order, AcademicYearSubject.name, AcademicYearSubject.id).all()
 
 

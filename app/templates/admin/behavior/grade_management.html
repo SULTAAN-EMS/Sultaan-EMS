@@ -1,0 +1,170 @@
+{% extends "admin/base.html" %}
+{% block page_title %}Behavior Grade Management{% endblock %}
+{% block admin_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css') }}">
+<div class="behavior-page">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+      <div class="behavior-alert {% if category in ['danger', 'error'] %}behavior-alert--danger{% endif %}" role="alert">
+        <i class="fa-solid {% if category in ['danger', 'error'] %}fa-circle-exclamation{% else %}fa-circle-check{% endif %}"></i>
+        {{ message }}
+      </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <header class="behavior-hero">
+    <span class="behavior-hero__mark"><i class="fa-solid fa-graduation-cap"></i></span>
+    <div class="behavior-hero__copy">
+      <span class="behavior-eyebrow"><i class="fa-solid fa-shield-halved"></i> Behavior-owned grading</span>
+      <h1>Behavior Grade Management</h1>
+      <p>Configure raw score bands for the selected Exam Type / Behavior Session only.</p>
+    </div>
+  </header>
+  {% include "admin/behavior/_nav.html" %}
+
+  <form class="behavior-card behavior-filter-panel" method="get" action="{{ url_for('behavior.grade_management') }}">
+    <div class="behavior-field">
+      <label for="behaviorGradeYear">Academic Year</label>
+      <select id="behaviorGradeYear" name="year_id" onchange="this.form.config_id.value='';this.form.submit()">
+        <option value="">Select Academic Year</option>
+        {% for year in years %}<option value="{{ year.id }}" {% if selected_year and selected_year.id == year.id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="behavior-field behavior-field--wide">
+      <label for="behaviorGradeConfig">Behavior Configuration</label>
+      <select id="behaviorGradeConfig" name="config_id" {% if not selected_year %}disabled{% endif %} onchange="this.form.submit()">
+        <option value="">Select Behavior Subject</option>
+        {% for item in configurations %}<option value="{{ item.id }}" {% if config and config.id == item.id %}selected{% endif %}>{{ item.behavior_subject.name }} · {{ item.academic_year_level.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="behavior-field behavior-field--wide">
+      <label for="behaviorGradeSession">Exam Type / Behavior Session</label>
+      <select id="behaviorGradeSession" name="session_id" {% if not config %}disabled{% endif %} onchange="this.form.submit()">
+        <option value="">Select Behavior Session</option>
+        {% for item in sessions|default([]) %}<option value="{{ item.id }}" {% if selected_session and selected_session.id == item.id %}selected{% endif %}>{{ item.session_label }} · {{ item.exam.name if item.exam else item.exam_type.name if item.exam_type else 'Exam Type unavailable' }} · max {{ item.maximum_score }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="behavior-form__actions"><a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.configuration', config_id=config.id) if config else url_for('behavior.configuration') }}"><i class="fa-solid fa-sliders"></i> Behavior Setup</a></div>
+  </form>
+
+  {% if config and selected_session %}
+  <section class="behavior-card behavior-section">
+    <div class="behavior-section__head">
+      <div>
+        <span class="behavior-kicker"><i class="fa-solid fa-link"></i> Isolated grading scope</span>
+        <h2>{{ config.behavior_subject.name }}</h2>
+        <p class="behavior-muted">{{ config.academic_year.name }} · {{ config.academic_year_level.name }} · {{ selected_session.session_label }} · max {{ selected_session.maximum_score }}</p>
+      </div>
+      <span class="behavior-scope-pill">{{ scales|length }} grade band(s)</span>
+    </div>
+    <div class="behavior-alert {% if readiness.ready %}behavior-alert--success{% endif %}">
+      <i class="fa-solid {% if readiness.ready %}fa-circle-check{% else %}fa-circle-info{% endif %}"></i>
+      {{ readiness.message }}
+    </div>
+    <p class="behavior-help">This scale is completely independent from ordinary Grade Management. It is resolved from the raw score and this exact Behavior session only.</p>
+  </section>
+
+  <section class="behavior-card behavior-section">
+    <div class="behavior-section__head">
+      <div><span class="behavior-kicker"><i class="fa-solid fa-pen-to-square"></i> Scale editor</span><h2 id="behaviorGradeFormTitle">Add Behavior grade band</h2></div>
+      <button class="behavior-btn behavior-btn--outline behavior-btn--small" type="button" id="behaviorGradeReset"><i class="fa-solid fa-rotate-left"></i> Clear</button>
+    </div>
+    <form class="behavior-form behavior-form--wide" method="post" action="{{ url_for('behavior.grade_management', config_id=config.id, session_id=selected_session.id) }}" id="behaviorGradeForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="config_id" value="{{ config.id }}">
+      <input type="hidden" name="session_id" value="{{ selected_session.id }}">
+      <input type="hidden" name="grade_id" id="behaviorGradeId">
+      <div class="behavior-field"><label for="behaviorGradeLetter">Grade Letter</label><input id="behaviorGradeLetter" name="grade" maxlength="20" required placeholder="A"></div>
+      <div class="behavior-field"><label for="behaviorGradeMin">Minimum Score</label><input id="behaviorGradeMin" name="min_score" type="number" min="0" max="{{ selected_session.maximum_score }}" step="0.001" required placeholder="0"></div>
+      <div class="behavior-field"><label for="behaviorGradeMax">Maximum Score</label><input id="behaviorGradeMax" name="max_score" type="number" min="0" max="{{ selected_session.maximum_score }}" step="0.001" required placeholder="{{ selected_session.maximum_score }}"></div>
+      <div class="behavior-field"><label for="behaviorGradePoint">Grade Point</label><input id="behaviorGradePoint" name="grade_point" type="number" min="0" step="0.001" required placeholder="4.00"></div>
+      <div class="behavior-field"><label for="behaviorGradeOrder">Ordering</label><input id="behaviorGradeOrder" name="sort_order" type="number" min="0" step="1" value="0"></div>
+      <div class="behavior-field behavior-field--full"><label for="behaviorGradeDescription">Label / Description</label><input id="behaviorGradeDescription" name="description" maxlength="160" placeholder="Excellent behavior"></div>
+      <div class="behavior-field behavior-inline"><label><input type="checkbox" name="is_active" id="behaviorGradeActive" checked> Active band</label></div>
+      <div class="behavior-field behavior-inline"><label><input type="checkbox" name="is_pass" id="behaviorGradePass" checked> Passing band</label></div>
+      <div class="behavior-form__actions"><button class="behavior-btn behavior-btn--primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save Behavior Grade</button></div>
+    </form>
+  </section>
+
+  <section class="behavior-card behavior-section">
+    <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-table-list"></i> Private registry</span><h2>Behavior grade scale</h2></div><span class="behavior-muted">{{ config.behavior_subject.name }} · {{ selected_session.session_label }} only</span></div>
+    {% if sessions|length > 1 %}
+    <form class="behavior-inline-form" method="post" action="{{ url_for('behavior.grade_management', config_id=config.id, session_id=selected_session.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="action" value="generate_previous">
+      <label for="behaviorPreviousSession">Copy from previous session</label>
+      <select id="behaviorPreviousSession" name="source_session_id" required>{% for item in sessions %}{% if item.id != selected_session.id %}<option value="{{ item.id }}">{{ item.session_label }} · max {{ item.maximum_score }}</option>{% endif %}{% endfor %}</select>
+      <button class="behavior-btn behavior-btn--outline behavior-btn--small" type="submit"><i class="fa-solid fa-copy"></i> Generate starting scale</button>
+    </form>
+    {% endif %}
+    <div class="behavior-table-wrap">
+      <table class="behavior-table">
+        <thead><tr><th>Grade</th><th>Raw score band</th><th>Point</th><th>Status</th><th>Description</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for scale in scales %}
+          <tr>
+            <td><strong class="behavior-grade-badge {% if not scale.is_pass %}behavior-grade-badge--fail{% endif %}">{{ scale.grade }}</strong></td>
+            <td>{{ scale.min_score }} - {{ scale.max_score }} / {{ selected_session.maximum_score }}</td>
+            <td>{{ scale.grade_point }}</td>
+            <td><span class="behavior-status {% if scale.is_active %}behavior-status--recorded{% else %}behavior-status--voided{% endif %}">{{ 'Active' if scale.is_active else 'Inactive' }}{% if scale.is_pass %} · Pass{% else %} · Fail{% endif %}</span></td>
+            <td>{{ scale.description or '-' }}</td>
+            <td><div class="behavior-row-actions">
+              <button class="behavior-btn behavior-btn--outline behavior-btn--small" type="button" data-edit-behavior-grade data-id="{{ scale.id }}" data-grade="{{ scale.grade|e }}" data-min="{{ scale.min_score }}" data-max="{{ scale.max_score }}" data-point="{{ scale.grade_point }}" data-order="{{ scale.sort_order }}" data-description="{{ (scale.description or '')|e }}" data-active="{{ 'true' if scale.is_active else 'false' }}" data-pass="{{ 'true' if scale.is_pass else 'false' }}" title="Edit Behavior grade"><i class="fa-solid fa-pen"></i></button>
+              <form method="post" action="{{ url_for('behavior.delete_grade_scale', scale_id=scale.id) }}" onsubmit="return confirm('Delete this Behavior grade band?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><button class="behavior-btn behavior-btn--danger behavior-btn--small" type="submit" title="Delete Behavior grade" aria-label="Delete Behavior grade"><i class="fa-solid fa-trash-can"></i></button></form>
+            </div></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6"><div class="behavior-empty"><i class="fa-solid fa-graduation-cap"></i><p>No Behavior grade bands are configured for this scope.</p></div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% else %}
+  <section class="behavior-card behavior-section"><div class="behavior-empty"><i class="fa-solid fa-filter-circle-xmark"></i><h2>Select a Behavior configuration</h2><p>Choose an Academic Year and Behavior configuration to create its independent grade scale.</p></div></section>
+  {% endif %}
+</div>
+{% if config %}
+<script>
+(() => {
+  const form = document.getElementById('behaviorGradeForm');
+  const title = document.getElementById('behaviorGradeFormTitle');
+  const reset = document.getElementById('behaviorGradeReset');
+  const fields = {
+    id: document.getElementById('behaviorGradeId'),
+    grade: document.getElementById('behaviorGradeLetter'),
+    min: document.getElementById('behaviorGradeMin'),
+    max: document.getElementById('behaviorGradeMax'),
+    point: document.getElementById('behaviorGradePoint'),
+    order: document.getElementById('behaviorGradeOrder'),
+    description: document.getElementById('behaviorGradeDescription'),
+    active: document.getElementById('behaviorGradeActive'),
+    pass: document.getElementById('behaviorGradePass')
+  };
+  const clearForm = () => {
+    form.reset();
+    fields.id.value = '';
+    fields.order.value = '0';
+    fields.active.checked = true;
+    fields.pass.checked = true;
+    title.textContent = 'Add Behavior grade band';
+  };
+  document.querySelectorAll('[data-edit-behavior-grade]').forEach((button) => button.addEventListener('click', () => {
+    fields.id.value = button.dataset.id || '';
+    fields.grade.value = button.dataset.grade || '';
+    fields.min.value = button.dataset.min || '';
+    fields.max.value = button.dataset.max || '';
+    fields.point.value = button.dataset.point || '';
+    fields.order.value = button.dataset.order || '0';
+    fields.description.value = button.dataset.description || '';
+    fields.active.checked = button.dataset.active === 'true';
+    fields.pass.checked = button.dataset.pass === 'true';
+    title.textContent = 'Edit Behavior grade band';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+  reset.addEventListener('click', clearForm);
+})();
+</script>
+{% endif %}
+{% endblock %}

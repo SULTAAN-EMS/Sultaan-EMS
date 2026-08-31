@@ -466,6 +466,13 @@ body {
   color: white;
 }
 
+.config-badge-behavior {
+  background: linear-gradient(135deg, var(--info-sky), var(--primary-600));
+  color: #fff;
+  margin-left: var(--space-2);
+  font-size: 0.68rem;
+}
+
 /* Buttons */
 .config-btn {
   display: inline-flex;

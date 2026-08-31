@@ -217,7 +217,7 @@
             {% for item in items %}
             {% set assigned_classes = subject_class_map.get(item.id, []) %}
             {% set icon = subject_icons.get(item.id, {"type": "fa", "value": "fa-book"}) %}
-            <tr data-id="{{ item.id }}" data-item-type="subjects" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-max-score="{{ item.max_score }}" data-academic-year-id="{{ item.academic_year_id }}" data-academic-year-level-id="{{ item.academic_year_level_id }}" data-sort-order="{{ item.sort_order }}">
+            <tr data-id="{{ item.id }}" data-item-type="subjects" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-subject-kind="{{ item.subject_kind or 'exam' }}" data-academic-year-id="{{ item.academic_year_id }}" data-academic-year-level-id="{{ item.academic_year_level_id }}" data-sort-order="{{ item.sort_order }}">
               <td>
                 <div class="config-subject-cell subject-theme-{{ item.name|lower|replace(' ', '-')|replace('/', '-') }}">
                   <span class="config-subject-icon">
@@ -228,6 +228,7 @@
                     {% endif %}
                   </span>
                   <strong>{{ item.name }}</strong>
+                  {% if item.subject_kind == 'behavior' %}<span class="config-badge config-badge-behavior">Behavior</span>{% endif %}
                   {% if not item.is_active %}<span class="config-badge config-badge-neutral" style="margin-left:6px;font-size:0.75rem;">Archived</span>{% endif %}
                 </div>
               </td>
@@ -323,9 +324,13 @@
             {% endfor %}
           </select>
         </div>
-        <div class="config-form-group js-max-score-group">
-          <label class="config-form-label">Maximum Mark</label>
-          <input type="number" min="0.001" step="0.001" class="config-form-input" id="itemMaxScore" placeholder="100">
+        <div class="config-form-group js-subject-kind-group">
+          <label class="config-form-label" for="itemSubjectKind">Subject Kind</label>
+          <select class="config-form-select" id="itemSubjectKind" onchange="configureForm()">
+            <option value="exam">Examination Subject</option>
+            <option value="behavior">Behavior Subject</option>
+          </select>
+          <small class="config-form-help">Behavior scores are configured through Behavior Sessions.</small>
         </div>
         <div class="config-form-group js-code-group">
           <label class="config-form-label">Short Code</label>
@@ -467,10 +472,10 @@ function configureForm() {
   setGroup('.js-kind-group', currentSection === 'levels' && !editingItemId);
   setGroup('.js-year-group', ['exam-types', 'levels', 'classes', 'subjects'].includes(apiType));
   setGroup('.js-level-group', apiType === 'subjects' || apiType === 'classes');
+  setGroup('.js-subject-kind-group', apiType === 'subjects');
   setGroup('.js-code-group', apiType === 'exam-types');
   setGroup('.js-weight-group', apiType === 'exam-types');
   setGroup('.js-final-evaluation-group', apiType === 'exam-types');
-  setGroup('.js-max-score-group', apiType === 'subjects');
   setGroup('.js-sort-group', apiType === 'levels' || apiType === 'classes' || apiType === 'subjects');
 
   const labels = {
@@ -518,10 +523,10 @@ function editItem(itemType, itemId) {
   document.getElementById('modalTitle').textContent = 'Edit ' + (row.dataset.name || 'Item');
   document.getElementById('itemRecordKind').value = itemType === 'classes' ? 'class' : 'level';
   document.getElementById('itemName').value = row.dataset.name || '';
-  document.getElementById('itemMaxScore').value = row.dataset.maxScore || '';
   document.getElementById('itemShortCode').value = row.dataset.shortCode || '';
   document.getElementById('itemWeightPercentage').value = row.dataset.weightPercentage || '';
   document.getElementById('itemFinalEvaluation').checked = row.dataset.finalEvaluation === 'true';
+  document.getElementById('itemSubjectKind').value = row.dataset.subjectKind || 'exam';
   const yearId = row.dataset.academicYearId || '';
   const yearLevelId = row.dataset.academicYearLevelId || '';
   document.getElementById('itemAcademicYearId').value = yearId;
@@ -774,8 +779,8 @@ function payloadFor(apiType) {
   if (apiType === 'subjects') {
     payload.academic_year_id = document.getElementById('itemAcademicYearId').value;
     payload.academic_year_level_id = document.getElementById('itemAcademicLevelId').value;
-    payload.max_score = document.getElementById('itemMaxScore').value;
     payload.sort_order = document.getElementById('itemSortOrder').value;
+    payload.subject_kind = document.getElementById('itemSubjectKind').value;
   }
   return payload;
 }

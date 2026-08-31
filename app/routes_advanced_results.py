@@ -38,6 +38,7 @@ from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import DEFAULT_GRADE_SCALES, ScopedSubjectView, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, critical_subject_badges, get_exam_marking_configuration, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, performance_tier_for, resolved_subject_maxima, result_payload, resolve_subject_max_score, scoped_legacy_subjects, subject_display_name
 from .attendance_rules import counts_as_exam_sitting
+from .behavior_reporting import get_behavior_report_data
 
 advanced_results_bp = Blueprint("admin_advanced_results", __name__)
 
@@ -248,7 +249,7 @@ def subjects_for_scope(exam, level_id=None, class_id=None):
         )
         if not year_level:
             return []
-        year_items = year_subjects(exam.academic_year_id, year_level.id)
+        year_items = year_subjects(exam.academic_year_id, year_level.id, subject_kind="exam")
         mapped_subjects = scoped_legacy_subjects(year_items)
         if mapped_subjects:
             return mapped_subjects
@@ -267,7 +268,7 @@ def subjects_for_scope(exam, level_id=None, class_id=None):
 
 def analytics_subject_bridge(academic_year_id, year_level_id=None):
     """Return year-aware subjects and their legacy Result subjects."""
-    year_items = year_subjects(academic_year_id, year_level_id)
+    year_items = year_subjects(academic_year_id, year_level_id, subject_kind="exam")
     legacy_items = []
     seen = set()
     for item in scoped_legacy_subjects(year_items):
@@ -284,7 +285,7 @@ def subjects_for_year_level(exam, year_level_id):
     year_level = db.session.get(AcademicYearLevel, year_level_id)
     if not year_level or year_level.academic_year_id != exam.academic_year_id:
         return []
-    year_items = year_subjects(exam.academic_year_id, year_level.id)
+    year_items = year_subjects(exam.academic_year_id, year_level.id, subject_kind="exam")
     subjects = scoped_legacy_subjects(year_items)
     # A year-level without a subject bridge is incomplete setup.  Do not
     # widen the report/result view to the legacy global subject set.
@@ -883,10 +884,36 @@ def class_roster():
             overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
             overall_grade = cached_grade_for(overall_percentage)
             overall_tier = performance_tier_for(overall_percentage, weak_config, fail_config)
-            
+
+            behavior_reports = get_behavior_report_data(student, selected_exam)
+            behavior_score = sum(
+                float(item.get("session_score") or 0)
+                for item in behavior_reports
+            )
+            behavior_maximum = sum(
+                float(item.get("session_maximum") or 0)
+                for item in behavior_reports
+            )
+            total_score += behavior_score
+            total_max += behavior_maximum
+            overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
+            overall_grade = cached_grade_for(overall_percentage)
+            overall_tier = performance_tier_for(overall_percentage, weak_config, fail_config)
+
             # Calculate GP (grade point average)
             total_points = sum(s["grade"]["grade_point"] for s in subject_data if s["grade"]["grade_point"])
-            gp = academic_round(total_points / len(subject_data), get_settings()) if subject_data else 0
+            behavior_points = sum(
+                float(item.get("grade_point") or 0)
+                for item in behavior_reports
+                if item.get("session_score") is not None
+            )
+            scored_components = len(subject_data) + sum(
+                1 for item in behavior_reports if item.get("session_score") is not None
+            )
+            gp = academic_round(
+                (total_points + behavior_points) / scored_components,
+                get_settings(),
+            ) if scored_components else 0
             
             roster_data.append({
                 "student": student,
@@ -899,7 +926,24 @@ def class_roster():
                 "is_fail": overall_tier["is_fail"],
                 "is_weak": overall_tier["is_weak"],
                 "gp": gp,
+                "behavior_reports": behavior_reports,
+                "behavior_by_config": {
+                    item["configuration_id"]: item for item in behavior_reports
+                },
             })
+
+        behavior_definitions = []
+        seen_behavior_configurations = set()
+        for row in roster_data:
+            for behavior in row["behavior_reports"]:
+                if not behavior.get("available") or behavior["configuration_id"] in seen_behavior_configurations:
+                    continue
+                seen_behavior_configurations.add(behavior["configuration_id"])
+                behavior_definitions.append({
+                    "configuration_id": behavior["configuration_id"],
+                    "subject_name": behavior["subject_name"],
+                    "annual_maximum": behavior["annual_maximum"],
+                })
         
         return render_template(
             "admin/class_roster.html",
@@ -917,6 +961,7 @@ def class_roster():
             settings=get_settings(),
             weak_config=weak_config,
             fail_config=fail_config,
+            behavior_definitions=behavior_definitions,
         )
     except Exception as e:
         logger.error(f"Class roster error: {str(e)}")
@@ -1295,6 +1340,24 @@ def export_class_pdf():
         [student.id for student in students],
         [subject.id for subject in subjects],
     )
+    behavior_reports_by_student = {
+        student.id: get_behavior_report_data(student, selected_exam)
+        for student in students
+    }
+    behavior_definitions = []
+    seen_behavior_configurations = set()
+    for reports in behavior_reports_by_student.values():
+        for behavior in reports:
+            if (
+                not behavior.get("available")
+                or behavior.get("configuration_id") in seen_behavior_configurations
+            ):
+                continue
+            seen_behavior_configurations.add(behavior["configuration_id"])
+            behavior_definitions.append({
+                "configuration_id": behavior["configuration_id"],
+                "subject_name": behavior["subject_name"],
+            })
     critical_badges = critical_subject_badges(
         selected_exam,
         year_level_scope.id if year_level_scope else None,
@@ -1358,11 +1421,31 @@ def export_class_pdf():
         overall_tier = performance_tier_for(overall_percentage, weak_config, fail_config)
         overall_fail = overall_tier["is_fail"]
         overall_weak = overall_tier["is_weak"]
+        behavior_reports = get_behavior_report_data(student, selected_exam)
+        behavior_score = sum(
+            float(item.get("session_score") or 0)
+            for item in behavior_reports
+        )
+        behavior_maximum = sum(
+            float(item.get("session_maximum") or 0)
+            for item in behavior_reports
+        )
+        total_score += behavior_score
+        total_max += behavior_maximum
+        overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
+        overall_grade = cached_grade_for(overall_percentage)
+        overall_tier = performance_tier_for(overall_percentage, weak_config, fail_config)
+        overall_fail = overall_tier["is_fail"]
+        overall_weak = overall_tier["is_weak"]
 
         roster_data.append({
             "student": student,
             "mg_token": feedback_access_token(student, selected_exam),
             "subject_data": subject_data,
+            "behavior_reports": behavior_reports,
+            "behavior_by_config": {
+                item["configuration_id"]: item for item in behavior_reports
+            },
             "total_score": total_score,
             "total_max": total_max,
             "percentage": overall_percentage,
@@ -1370,6 +1453,22 @@ def export_class_pdf():
             "is_fail": overall_fail,
             "is_weak": overall_weak,
         })
+
+    behavior_definitions = []
+    seen_behavior_configurations = set()
+    for row in roster_data:
+        for behavior in row["behavior_reports"]:
+            configuration_id = behavior["configuration_id"]
+            if configuration_id in seen_behavior_configurations:
+                continue
+            seen_behavior_configurations.add(configuration_id)
+            behavior_definitions.append(
+                {
+                    "configuration_id": configuration_id,
+                    "subject_name": behavior["subject_name"],
+                    "annual_maximum": behavior["annual_maximum"],
+                }
+            )
 
     ranked_data = sorted(roster_data, key=lambda row: (row["percentage"], row["total_score"]), reverse=True)
     rank_lookup = competition_rank_lookup({row["student"].id: row["percentage"] for row in ranked_data})
@@ -1398,6 +1497,21 @@ def export_class_pdf():
             "lowest": round(min(scores), 2) if scores else 0,
             "average": round(sum(scores) / len(scores), 2) if scores else 0,
         })
+    behavior_stats = []
+    for definition in behavior_definitions:
+        scores = [
+            row["behavior_by_config"][definition["configuration_id"]]["annual_score"]
+            for row in roster_data
+            if definition["configuration_id"] in row["behavior_by_config"]
+        ]
+        behavior_stats.append(
+            {
+                "configuration_id": definition["configuration_id"],
+                "highest": round(float(max(scores)), 2) if scores else 0,
+                "lowest": round(float(min(scores)), 2) if scores else 0,
+                "average": round(float(sum(scores) / len(scores)), 2) if scores else 0,
+            }
+        )
     students_per_page = 15
     total_pages = max(1, math.ceil(len(roster_data) / students_per_page))
     
@@ -1419,6 +1533,8 @@ def export_class_pdf():
         scope_info=scope_info,
         students=ranked_data,
         subjects=subjects,
+        behavior_definitions=behavior_definitions,
+        behavior_stats=behavior_stats,
         subject_maxima=subject_maxima,
         critical_badges=critical_badges,
         subject_stats=subject_stats,
@@ -1484,6 +1600,26 @@ def export_class_excel():
         [student.id for student in students],
         [subject.id for subject in subjects],
     )
+    behavior_reports_by_student = {
+        student.id: get_behavior_report_data(student, selected_exam)
+        for student in students
+    }
+    behavior_definitions = []
+    seen_behavior_configurations = set()
+    for reports in behavior_reports_by_student.values():
+        for behavior in reports:
+            if (
+                not behavior.get("available")
+                or behavior.get("configuration_id") in seen_behavior_configurations
+            ):
+                continue
+            seen_behavior_configurations.add(behavior["configuration_id"])
+            behavior_definitions.append(
+                {
+                    "configuration_id": behavior["configuration_id"],
+                    "subject_name": behavior["subject_name"],
+                }
+            )
     
     # Resolve grades through the shared Grade Management cache.
     grade_cache = load_grade_scale_cache(selected_exam.id)
@@ -1507,6 +1643,8 @@ def export_class_excel():
     headers = ["ID", "Student Name", "Mother's Name", "Class"]
     for subject in subjects:
         headers.append(subject.name)
+    for behavior in behavior_definitions:
+        headers.append(f"Behavior: {behavior['subject_name']}")
     headers.extend(["Total", "%", "Grade", "GP"])
     ws.append(headers)
     
@@ -1525,6 +1663,10 @@ def export_class_excel():
         
         total_score = 0
         total_max = 0
+        behavior_reports = behavior_reports_by_student.get(student.id, [])
+        behavior_by_config = {
+            item["configuration_id"]: item for item in behavior_reports
+        }
         row_data = [
             student.student_code,
             student.full_name,
@@ -1542,6 +1684,23 @@ def export_class_excel():
             total_max += max_score
             
             row_data.append("⚠️ MG" if (student.id, subject.id) in attendance_uf_keys else score)
+
+        behavior_points = 0.0
+        behavior_components = 0
+        for behavior in behavior_definitions:
+            report = behavior_by_config.get(behavior["configuration_id"])
+            behavior_score = report.get("session_score") if report else None
+            behavior_maximum = report.get("session_maximum") if report else None
+            row_data.append(
+                float(behavior_score)
+                if behavior_score is not None
+                else ""
+            )
+            if behavior_score is not None and behavior_maximum is not None:
+                total_score += float(behavior_score)
+                total_max += float(behavior_maximum)
+                behavior_points += float(report.get("grade_point") or 0)
+                behavior_components += 1
         
         overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
         overall_grade = cached_grade_for(overall_percentage)
@@ -1560,13 +1719,17 @@ def export_class_excel():
                     grade_info["grade"] = result.grade_override
                 total_points += grade_info["grade_point"]
         
-        gp = academic_round(total_points / len(subjects), get_settings()) if subjects else 0
+        total_components = len(subjects) + behavior_components
+        gp = academic_round(
+            (total_points + behavior_points) / total_components,
+            get_settings(),
+        ) if total_components else 0
         
         row_data.extend([total_score, overall_percentage, overall_grade["grade"], gp])
         ws.append(row_data)
         
         # Apply conditional formatting to percentage column
-        percentage_col = len(subjects) + 5  # ID, Name, Mother, Class + subjects + Total
+        percentage_col = len(subjects) + len(behavior_definitions) + 5  # ... + Total
         percentage_cell = ws.cell(row=row_num, column=percentage_col)
         
         if overall_tier["is_fail"]:
@@ -1980,6 +2143,7 @@ def analytics():
     if selected_year_subject and (
         selected_year_subject.academic_year_id != selected_year.id
         or (effective_year_level_id and selected_year_subject.academic_year_level_id != effective_year_level_id)
+        or (getattr(selected_year_subject, "subject_kind", "exam") or "exam") != "exam"
     ):
         selected_year_subject = None
         subject_id = None
@@ -2318,7 +2482,7 @@ def build_analytics_results_report_data(academic_year, exam):
                 continue
             subject_ids_by_level[scope.legacy_level_id].update(
                 item.legacy_subject_id
-                for item in year_subjects(academic_year.id, scope.id)
+                for item in year_subjects(academic_year.id, scope.id, subject_kind="exam")
                 if item.legacy_subject_id
             )
     year_level_by_legacy = {
@@ -2329,7 +2493,7 @@ def build_analytics_results_report_data(academic_year, exam):
     scoped_subjects_by_level = {
         scope.legacy_level_id: {
             subject.id: subject
-            for subject in scoped_legacy_subjects(year_subjects(academic_year.id, scope.id))
+            for subject in scoped_legacy_subjects(year_subjects(academic_year.id, scope.id, subject_kind="exam"))
         }
         for scope in year_level_scopes
         if scope.legacy_level_id
@@ -2608,7 +2772,11 @@ def analytics_grade_drill_down():
     selected_year_subject = None
     if subject_id:
         selected_year_subject = db.session.get(AcademicYearSubject, subject_id)
-        if not selected_year_subject or selected_year_subject.academic_year_id != selected_year.id:
+        if (
+            not selected_year_subject
+            or selected_year_subject.academic_year_id != selected_year.id
+            or (getattr(selected_year_subject, "subject_kind", "exam") or "exam") != "exam"
+        ):
             return jsonify({"error": "Selected subject is not configured for this academic year"}), 400
         if selected_year_level and selected_year_subject.academic_year_level_id != selected_year_level.id:
             return jsonify({"error": "Selected subject does not belong to the selected level"}), 400
@@ -2656,6 +2824,7 @@ def analytics_grade_drill_down():
             for item in year_subjects(
                 selected_year.id,
                 selected_year_level.id if selected_year_level else None,
+                subject_kind="exam",
             )
             if item.legacy_subject_id
         ]
@@ -4284,6 +4453,7 @@ def build_stats(payloads, rows):
                 academic_year_id=row.exam.academic_year_id,
                 academic_year_level_id=year_level_id,
                 legacy_subject_id=row.subject_id,
+                subject_kind="exam",
                 is_active=True,
             ).first()
             if year_subject:

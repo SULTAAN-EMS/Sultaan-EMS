@@ -118,6 +118,7 @@ def valid_critical_subjects(academic_year_id, academic_year_level_id):
         .filter_by(
             academic_year_id=academic_year_id,
             academic_year_level_id=academic_year_level_id,
+            subject_kind="exam",
             is_active=True,
         )
         .order_by(AcademicYearSubject.sort_order, AcademicYearSubject.name, AcademicYearSubject.id)

@@ -56,6 +56,11 @@ def create_app(config_class=Config):
     @app.errorhandler(Exception)
     def handle_unhandled_exception(error):
         from flask import jsonify, request
+        from werkzeug.exceptions import HTTPException
+
+        if isinstance(error, HTTPException):
+            return error
+
         app.logger.error("UNHANDLED SERVER EXCEPTION [%s %s]: %s", request.method, request.path, str(error), exc_info=True)
         if request.headers.get("X-Requested-With") == "XMLHttpRequest" or \
            "application/json" in request.headers.get("Accept", "") or \
@@ -138,6 +143,7 @@ def create_app(config_class=Config):
     from .routes_advanced_results import advanced_results_bp
     from .routes_attendance import attendance_bp
     from .routes_auth import auth_bp
+    from .routes_behavior import behavior_bp
     from .routes_id_cards import id_cards_bp
     from .routes_public import public_bp
     from .routes_teacher_portal import teacher_portal_bp
@@ -151,6 +157,7 @@ def create_app(config_class=Config):
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")
     app.register_blueprint(attendance_bp, url_prefix="/admin/attendance")
+    app.register_blueprint(behavior_bp, url_prefix="/admin/behavior")
     app.register_blueprint(id_cards_bp, url_prefix="/admin/id-cards")
     app.register_blueprint(advanced_results_bp, url_prefix="/admin/advanced-results")
     app.register_blueprint(teachers_bp, url_prefix="/admin/teachers")

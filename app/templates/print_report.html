@@ -147,6 +147,17 @@
               <td>{{ row.grade.comment }}</td>
             </tr>
           {% endfor %}
+          {% for behavior in result.behavior_reports|default([]) %}
+            {% set behavior_session = behavior.current_sessions[0] if behavior.current_sessions else None %}
+            <tr class="behavior-report-row">
+              <td>{{ result.subjects|length + loop.index }}</td>
+              <td class="result-subject-cell"><span class="behavior-print-subject"><i class="fa-solid fa-heart-pulse"></i><strong>{{ behavior.subject_name }}</strong><small>{{ behavior.session_label or 'Behavior' }}</small></span></td>
+              <td>{% if behavior_session %}{{ behavior_session.maximum_score|academic_number(settings) }}{% else %}-{% endif %}</td>
+              <td>{% if behavior_session %}<strong class="behavior-print-score">{{ behavior_session.final_score|academic_number(settings) }}</strong>{% else %}<span class="behavior-print-unavailable">Not available</span>{% endif %}</td>
+              <td>{% if behavior_session and behavior.grade and behavior.grade.grade != '-' %}<strong class="print-grade-badge" style="background: {{ behavior.grade.background_color }}; border-color: {{ behavior.grade.border_color }}; color: {{ behavior.grade.badge_color }};">{{ behavior.grade.grade }}</strong>{% else %}-{% endif %}</td>
+              <td>{% if behavior_session %}{{ behavior_session.session_label }} · {{ behavior.grade.grade if behavior.grade else '-' }} · GP {{ behavior.grade.grade_point|academic_number(settings) if behavior.grade else '-' }}{% else %}{{ behavior.message }}{% endif %}</td>
+            </tr>
+          {% endfor %}
         </tbody>
       </table>
     </section>
