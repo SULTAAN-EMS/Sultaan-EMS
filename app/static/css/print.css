@@ -607,9 +607,14 @@ body {
   align-items: center;
   gap: 1.4mm;
 }
-.behavior-print-subject i {
-  color: #087f5b;
-  font-size: 8pt;
+.behavior-print-diamond {
+  display: inline-block;
+  width: 5.2mm;
+  height: 5.2mm;
+  flex: 0 0 5.2mm;
+  overflow: visible;
+  vertical-align: middle;
+  color: #1769aa;
 }
 .behavior-print-subject strong { color: #17634f; }
 .behavior-print-subject small {
@@ -623,16 +628,27 @@ body {
   min-width: 0;
   max-width: 100%;
   padding: .5mm 1mm;
-  border: .25mm solid #75cfa7;
+  border: .25mm solid;
   border-radius: 999px;
-  color: #087f5b;
+  color: #17634f;
   background: #e1f5ec;
   font-size: 7.4pt;
+  font-weight: 900;
   font-variant-numeric: tabular-nums;
   letter-spacing: .01em;
   line-height: 1.1;
   box-sizing: border-box;
   white-space: nowrap;
+}
+.behavior-print-score--pass {
+  border-color: #75cfa7;
+  color: #17634f;
+  background: #e1f5ec;
+}
+.behavior-print-score--fail {
+  border-color: #ef4444;
+  color: #b91c1c;
+  background: #fff1f2;
 }
 .behavior-print-unavailable {
   color: #64748b;

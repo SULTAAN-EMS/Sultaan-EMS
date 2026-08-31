@@ -22,6 +22,15 @@ def _number(value):
     return Decimal(str(value or 0)).quantize(Decimal("0.001"))
 
 
+def _raw_score_state(score, maximum):
+    """Return the fixed Behavior pass/fail presentation state."""
+    if score is None or maximum is None:
+        return None, "unavailable"
+    score = _number(score)
+    maximum = _number(maximum)
+    return score >= (maximum / Decimal("2")), "pass" if score >= (maximum / Decimal("2")) else "fail"
+
+
 def _session_exam_name(session):
     if session.exam:
         return session.exam.name
@@ -145,6 +154,13 @@ def get_behavior_report_data(student, exam):
         .all()
     )
 
+    # Critical status is resolved through the same exact Year + Level + Exam
+    # rule used by ordinary result rows. Behavior uses a namespaced key because
+    # its AcademicYearSubject ID is not a legacy Subject ID.
+    from .services import critical_subject_badges
+
+    critical_badges = critical_subject_badges(exam, year_level_id)
+
     reports = []
     for configuration in configurations:
         try:
@@ -156,7 +172,7 @@ def get_behavior_report_data(student, exam):
             # showing and correcting that invalid state.
             continue
 
-        selected_session = None
+        scoped_sessions = []
         for session in sessions:
             linked_exam = session.exam if session.exam_id is not None else session.exam_type
             if not linked_exam:
@@ -172,9 +188,35 @@ def get_behavior_report_data(student, exam):
                 and linked_level_id != configured_level.legacy_level_id
             ):
                 continue
-            if _session_matches_exam(session, exam):
-                selected_session = session
-                break
+            scoped_sessions.append(session)
+
+        # Canonical Exam IDs always win. A legacy same-name lookup is only a
+        # compatibility path for sessions that have no canonical exam_id; it
+        # must never override or compete with an exact relationship.
+        exact_sessions = [
+            session
+            for session in scoped_sessions
+            if session.exam_id == exam.id and session.exam is not None
+        ]
+        legacy_sessions = [
+            session
+            for session in scoped_sessions
+            if session.exam_id is None and _session_matches_exam(session, exam)
+        ]
+        selected_session = None
+        selection_error = None
+        if len(exact_sessions) > 1:
+            selection_error = (
+                "Behavior assessment is invalid because multiple sessions are linked to the selected examination."
+            )
+        elif exact_sessions:
+            selected_session = exact_sessions[0]
+        elif len(legacy_sessions) > 1:
+            selection_error = (
+                "Behavior assessment is invalid because multiple legacy sessions match the selected examination."
+            )
+        elif legacy_sessions:
+            selected_session = legacy_sessions[0]
 
         base_report = {
             "configuration_id": configuration.id,
@@ -183,7 +225,8 @@ def get_behavior_report_data(student, exam):
             "academic_year_id": exam.academic_year_id,
             "academic_year_level_id": year_level_id,
             "available": bool(selected_session),
-            "message": None,
+            "message": selection_error,
+            "availability_status": "INVALID" if selection_error else "AVAILABLE" if selected_session else "UNAVAILABLE",
             "session_id": selected_session.id if selected_session else None,
             "session_label": selected_session.session_label if selected_session else None,
             "exam_name": _session_exam_name(selected_session) if selected_session else exam.name,
@@ -199,11 +242,18 @@ def get_behavior_report_data(student, exam):
             "positive_points": None,
             "negative_points": None,
             "grade": None,
+            "grade_point": 0.0,
+            "is_pass": None,
+            "score_tone": "unavailable",
+            "critical_badge": critical_badges.get(
+                f"behavior:{configuration.academic_year_subject_id}"
+            ),
         }
         if not selected_session:
-            base_report["message"] = (
-                "Behavior assessment is not yet available for this examination."
-            )
+            if not selection_error:
+                base_report["message"] = (
+                    "Behavior assessment is not yet available for this examination."
+                )
             reports.append(base_report)
             continue
 
@@ -258,6 +308,12 @@ def get_behavior_report_data(student, exam):
         )
         session_result["grade"] = grade
         session_result["grade_point"] = grade.get("grade_point", 0.0)
+        is_pass, score_tone = _raw_score_state(
+            session_result["final_score"],
+            session_result["maximum_score"],
+        )
+        session_result["is_pass"] = is_pass
+        session_result["score_tone"] = score_tone
         base_report.update(
             {
                 # These fields remain as compatibility aliases for the class
@@ -275,6 +331,8 @@ def get_behavior_report_data(student, exam):
                 "events": event_rows,
                 "grade": grade,
                 "grade_point": grade.get("grade_point", 0.0),
+                "is_pass": is_pass,
+                "score_tone": score_tone,
             }
         )
         reports.append(base_report)

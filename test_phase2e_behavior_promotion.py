@@ -2,9 +2,11 @@
 
 import json
 import unittest
+from decimal import Decimal
 
 from app import db
 from app.behavior_service import record_event
+from app.behavior_grading import behavior_grade_for_score
 from app.models import (
     AcademicYearClass,
     AcademicYearLevel,
@@ -21,6 +23,7 @@ from app.promotion_service import (
     set_promotion_rules_enabled,
     upsert_promotion_rule,
 )
+from app.services import critical_subject_badges
 from test_phase2e_behavior_reporting import TestPhase2EBehaviorReporting
 
 
@@ -473,6 +476,69 @@ class TestPhase2EBehaviorPromotion(TestPhase2EBehaviorReporting):
         self.assertEqual(original["score"], 25)
         self.assertEqual(stored_result["score"], 25)
         self.assertEqual(current_result["score"], 24)
+
+    def test_behavior_pass_state_uses_raw_half_session_threshold(self):
+        self._behavior_grades()
+        self.session_one.maximum_score = 17
+        db.session.commit()
+
+        pass_grade = behavior_grade_for_score(self.session_one, Decimal("8.50"))
+        fail_grade = behavior_grade_for_score(self.session_one, Decimal("8.49"))
+
+        self.assertTrue(pass_grade["is_pass"])
+        self.assertEqual(pass_grade["badge_color"], "#16a34a")
+        self.assertFalse(fail_grade["is_pass"])
+        self.assertEqual(fail_grade["badge_color"], "#dc2626")
+
+    def test_behavior_critical_badge_flows_to_portal_and_whole_class_pdf(self):
+        upsert_promotion_rule(
+            self.year_one.id,
+            self.year_level_one.id,
+            exam_id=self.exam_one.id,
+            critical_subject_ids=[self.behavior_subject.id],
+        )
+        db.session.commit()
+
+        badges = critical_subject_badges(self.exam_one, self.year_level_one.id)
+        behavior_key = f"behavior:{self.behavior_subject.id}"
+        self.assertIn(behavior_key, badges)
+        self.assertEqual(badges[behavior_key]["design"], "emerald")
+
+        client = self._client_as_admin()
+        portal = client.post(
+            "/result",
+            data={
+                "student_id": self.student.student_code,
+                "year_id": self.year_one.id,
+                "exam_id": self.exam_one.id,
+            },
+        )
+        self.assertEqual(portal.status_code, 200)
+        portal_body = portal.get_data(as_text=True)
+        self.assertIn("behavior-subject-trigger", portal_body)
+        self.assertIn("behavior-subject-diamond", portal_body)
+        self.assertIn("critical-star-badge--emerald", portal_body)
+        self.assertNotIn("behavior-subject-heart", portal_body)
+        self.assertNotIn("fa-heart-pulse", portal_body)
+        self.assertNotIn("behavior-result-row--clickable", portal_body)
+
+        class_pdf = client.get(
+            "/admin/advanced-results/export-class-pdf"
+            f"?year_id={self.year_one.id}&exam_id={self.exam_one.id}"
+            f"&level_id={self.level_one.id}&class_id={self.class_one.id}"
+        )
+        self.assertEqual(class_pdf.status_code, 200)
+        self.assertIn("critical-star-badge--emerald", class_pdf.get_data(as_text=True))
+
+        for path in (
+            f"/print/{self.student.student_code}?exam_id={self.exam_one.id}",
+            f"/download/{self.student.student_code}?exam_id={self.exam_one.id}",
+        ):
+            response = client.get(path)
+            with self.subTest(path=path):
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("behavior-print-diamond", response.get_data(as_text=True))
+                self.assertIn("critical-star-badge--emerald", response.get_data(as_text=True))
 
 
 if __name__ == "__main__":

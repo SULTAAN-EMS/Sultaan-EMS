@@ -8,9 +8,7 @@
   {% if not download_mode|default(false) %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/mg-detail-card.css', v='mg-loading-20260821') }}">
   {% endif %}
-  {% if not download_mode|default(false) %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/critical-subject-stars.css', v='critical-stars-20260827-4') }}">
-  {% endif %}
   <style>
     :root {
       --report-primary: {{ result.settings.report_primary_color or result.settings.primary_color or '#002060' }};
@@ -56,8 +54,7 @@
   </style>
   {% if download_mode|default(false) %}
   <style>
-    /* Keep the static PDF badge equivalent without loading unsupported
-       conic-gradient rules into html2canvas. */
+    /* Keep the PDF capture deterministic while preserving the Print design. */
     .critical-star-badge { position: relative; width: 16px; height: 16px; flex: 0 0 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; vertical-align: middle; }
     .critical-star-badge__ring { position: absolute; inset: -1.5px; border-radius: 50%; }
     .critical-star-badge__core { position: relative; z-index: 1; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,.75); border-radius: 50%; }
@@ -71,13 +68,14 @@
     .tis-exam-banner { background: linear-gradient(135deg, var(--print-banner-color, #073986), var(--print-banner-accent, #22d3ee)) !important; }
     .tis-print-table th, .tis-print-table td { border-color: #dbe5f3 !important; }
     .mg-detail-modal { display: none !important; }
-    .critical-star-badge .critical-star-badge__ring { background-image: none !important; }
-    .tis-print-footer { background-image: none !important; }
+    .pdf-download .tis-print-report { box-shadow: none !important; }
+    .pdf-download .tis-print-footer { background: linear-gradient(135deg, #05205f, var(--print-banner-color, #073986)) !important; }
   </style>
   {% endif %}
 </head>
-<body{% if not download_mode|default(false) %} onload="prepareReportPrint()"{% endif %}>
+<body class="{% if download_mode|default(false) %}pdf-download{% else %}print-preview{% endif %}"{% if not download_mode|default(false) %} onload="prepareReportPrint()"{% endif %}>
   {% from 'partials/critical_subject_badge.html' import critical_subject_badge %}
+  {% from 'partials/behavior_diamond_icon.html' import behavior_diamond_icon %}
   <article class="sheet tis-print-report">
     {% set download_dt = result.generated_at if result.generated_at is defined else none %}
     {% if result.settings.download_datetime_format == 'day_month_year_12' %}
@@ -151,9 +149,9 @@
             {% set behavior_session = behavior.current_sessions[0] if behavior.current_sessions else None %}
             <tr class="behavior-report-row">
               <td>{{ result.subjects|length + loop.index }}</td>
-              <td class="result-subject-cell"><span class="behavior-print-subject"><i class="fa-solid fa-heart-pulse"></i><strong>{{ behavior.subject_name }}</strong><small>{{ behavior.session_label or 'Behavior' }}</small></span></td>
+              <td class="result-subject-cell"><span class="behavior-print-subject">{{ behavior_diamond_icon('behavior-print-diamond') }}<strong>{{ behavior.subject_name }}</strong>{{ critical_subject_badge(behavior.critical_badge, interactive=false, subject_name=behavior.subject_name) }}<small>{{ behavior.session_label or 'Behavior' }}</small></span></td>
               <td>{% if behavior_session %}{{ behavior_session.maximum_score|academic_number(settings) }}{% else %}-{% endif %}</td>
-              <td>{% if behavior_session %}<strong class="behavior-print-score">{{ behavior_session.final_score|academic_number(settings) }}</strong>{% else %}<span class="behavior-print-unavailable">Not available</span>{% endif %}</td>
+              <td>{% if behavior_session %}<strong class="print-grade-badge print-mark-badge behavior-print-score behavior-print-score--{{ behavior.score_tone }}">{{ behavior_session.final_score|academic_number(settings) }}</strong>{% else %}<span class="behavior-print-unavailable">Not available</span>{% endif %}</td>
               <td>{% if behavior_session and behavior.grade and behavior.grade.grade != '-' %}<strong class="print-grade-badge" style="background: {{ behavior.grade.background_color }}; border-color: {{ behavior.grade.border_color }}; color: {{ behavior.grade.badge_color }};">{{ behavior.grade.grade }}</strong>{% else %}-{% endif %}</td>
               <td>{% if behavior_session %}{{ behavior_session.session_label }} · {{ behavior.grade.grade if behavior.grade else '-' }} · GP {{ behavior.grade.grade_point|academic_number(settings) if behavior.grade else '-' }}{% else %}{{ behavior.message }}{% endif %}</td>
             </tr>
@@ -248,13 +246,16 @@
               scale: 2,
               useCORS: true,
               backgroundColor: '#ffffff',
-              onclone: (clonedDocument) => clonedDocument.querySelectorAll('*').forEach((element) => {
-                const style = clonedDocument.defaultView.getComputedStyle(element);
-                if (style.backgroundImage !== 'none') {
-                  element.style.backgroundImage = 'none';
-                  element.style.backgroundColor = style.backgroundColor;
-                }
-              }),
+               onclone: (clonedDocument) => clonedDocument.querySelectorAll('*').forEach((element) => {
+                 const style = clonedDocument.defaultView.getComputedStyle(element);
+                 const backgroundImage = style.backgroundImage || '';
+                 if (backgroundImage.includes('url(')) {
+                   element.style.backgroundImage = 'none';
+                   if (style.backgroundColor && style.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+                     element.style.backgroundColor = style.backgroundColor;
+                   }
+                 }
+               }),
               ignoreElements: (element) => element.id === 'mgDetailModal' || element.classList.contains('critical-star-modal')
             },
             jsPDF: {unit: 'mm', format: 'a4', orientation: 'portrait'}

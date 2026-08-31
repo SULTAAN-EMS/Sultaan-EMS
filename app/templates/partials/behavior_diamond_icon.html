@@ -1,0 +1,29 @@
+{% macro behavior_diamond_icon(class_name='behavior-diamond-icon') -%}
+<svg class="{{ class_name }}" viewBox="0 0 160 160" role="img" aria-label="Diamond icon">
+  <path
+    d="M20 47 L42 18 L118 18 L140 47 L80 139 Z"
+    fill="none"
+    stroke="#1769aa"
+    stroke-width="7"
+    stroke-linejoin="round"/>
+
+  <path
+    d="M20 47 L140 47"
+    fill="none"
+    stroke="#1769aa"
+    stroke-width="6"/>
+
+  <path
+    d="M42 18 L57 47 L80 18 L103 47 L118 18"
+    fill="none"
+    stroke="#1769aa"
+    stroke-width="6"
+    stroke-linejoin="round"/>
+
+  <path
+    d="M57 47 L80 139 L103 47"
+    fill="none"
+    stroke="#1769aa"
+    stroke-width="6"/>
+</svg>
+{%- endmacro %}

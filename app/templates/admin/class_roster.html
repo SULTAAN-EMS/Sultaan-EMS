@@ -1,4 +1,5 @@
 {% extends "admin/base.html" %}
+{% from 'partials/critical_subject_badge.html' import critical_subject_badge %}
 {% set active_tab = "roster" %}
 {% block body_class %}{{ super() }} admin-page-hero-layout{% endblock %}
 {% block title %}{{ rh_label("roster.title", default="Liiska Natiijada Fasalka") }}{% endblock %}
@@ -6,6 +7,7 @@
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/results_module.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/mg-detail-card.css', v='mg-loading-20260821') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/critical-subject-stars.css', v='critical-stars-20260827-4') }}">
 
 <div class="results-hub">
   {% include "admin/_results_hub_header.html" %}
@@ -116,7 +118,7 @@
                 <th class="mono" data-mg-subject-id="{{ subject.id }}" data-mg-subject="{{ subject.name|e }}">{{ subject_display_name(subject, settings) }}</th>
               {% endfor %}
               {% for behavior in behavior_definitions|default([]) %}
-                <th class="mono behavior-roster-heading">{{ behavior.subject_name }}<small>Behavior / {{ behavior.annual_maximum|academic_number(settings) }}</small></th>
+                <th class="mono behavior-roster-heading"><span>{{ behavior.subject_name }}</span>{{ critical_subject_badge(behavior.critical_badge, interactive=false, subject_name=behavior.subject_name) }}<small>Behavior / {{ behavior.annual_maximum|academic_number(settings) }}</small></th>
               {% endfor %}
               <th>{{ rh_label("roster.total", default="Total") }}</th>
               <th>%</th>

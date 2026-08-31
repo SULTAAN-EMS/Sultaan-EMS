@@ -217,7 +217,13 @@ def behavior_grade_for_score(session, score):
         if Decimal(str(scale.min_score)) <= value <= Decimal(str(scale.max_score))
     ]
     if len(matches) == 1:
-        return behavior_grade_payload(matches[0])
+        payload = behavior_grade_payload(matches[0])
+        # Behavior pass/fail is a raw session-score rule. The Behavior-owned
+        # scale still supplies the letter and point, but cannot change the
+        # fixed half-of-session-maximum threshold.
+        payload["is_pass"] = value >= (maximum / Decimal("2"))
+        payload.update(_grade_colors(payload["is_pass"]))
+        return payload
     if len(matches) > 1:
         return {
             "id": None,

@@ -11,6 +11,7 @@
 {% block content %}
 {% from 'partials/verified_name_badge.html' import verified_name_badge %}
 {% from 'partials/critical_subject_badge.html' import critical_subject_badge %}
+{% from 'partials/behavior_diamond_icon.html' import behavior_diamond_icon %}
 <style>
   .premium-homepage {
     --portal-page-title-size: {{ settings.typography_page_title_size }};
@@ -325,9 +326,9 @@
                   {% set behavior_session = behavior.current_sessions[0] if behavior.current_sessions else None %}
                   <tr class="behavior-result-row">
                     <td data-label="TT.">{{ result.subjects|length + loop.index }}</td>
-                    <td data-label="Maaddo" class="result-subject-cell"><span class="behavior-subject-label">{% if behavior.available %}<button type="button" class="behavior-subject-trigger" aria-controls="behaviorDetailDialog{{ loop.index }}" data-behavior-dialog="behaviorDetailDialog{{ loop.index }}"><i class="fa-solid fa-heart-pulse"></i><span>{{ behavior.subject_name }}</span></button>{% else %}<span><i class="fa-solid fa-heart-pulse"></i><span>{{ behavior.subject_name }}</span></span>{% endif %}</span></td>
+                    <td data-label="Maaddo" class="result-subject-cell"><span class="behavior-subject-label">{% if behavior.available %}<button type="button" class="behavior-subject-trigger" aria-label="Faahfaahinta {{ behavior.subject_name }}" aria-controls="behaviorDetailDialog{{ loop.index }}" data-behavior-dialog="behaviorDetailDialog{{ loop.index }}">{{ behavior_diamond_icon('behavior-subject-diamond') }}<span>{{ behavior.subject_name }}</span>{{ critical_subject_badge(behavior.critical_badge, interactive=false, subject_name=behavior.subject_name) }}</button>{% else %}<span>{{ behavior_diamond_icon('behavior-subject-diamond') }}<span>{{ behavior.subject_name }}</span>{{ critical_subject_badge(behavior.critical_badge, interactive=false, subject_name=behavior.subject_name) }}</span>{% endif %}</span></td>
                     <td data-label="Dhibcaha Guud">{% if behavior_session %}{{ behavior_session.maximum_score|academic_number(settings) }}{% else %}-{% endif %}</td>
-                    <td data-label="Dhibcaha la helay">{% if behavior_session %}<span class="behavior-score-badge">{{ behavior_session.final_score|academic_number(settings) }}</span>{% else %}<span class="behavior-unavailable">Not available</span>{% endif %}</td>
+                    <td data-label="Dhibcaha la helay">{% if behavior_session %}<span class="dynamic-grade-badge mark-badge behavior-score-badge behavior-score-badge--{{ behavior.score_tone }}"><b>{{ behavior_session.final_score|academic_number(settings) }}</b></span>{% else %}<span class="behavior-unavailable">Not available</span>{% endif %}</td>
                     <td data-label="Darajo">{% if behavior_session and behavior.grade and behavior.grade.grade != '-' %}<span class="dynamic-grade-badge" style="background: {{ behavior.grade.background_color }}; border-color: {{ behavior.grade.border_color }}; color: {{ behavior.grade.badge_color }};"><b style="background: {{ behavior.grade.badge_color }}; color: {{ behavior.grade.text_color }};">{{ behavior.grade.grade }}</b></span>{% else %}<span class="behavior-not-applicable">-</span>{% endif %}</td>
                     <td data-label="Darajo Dhibceed">{% if behavior_session and behavior.grade and behavior.grade.grade != '-' %}{{ behavior.grade.grade_point|academic_number(settings) }}{% else %}<span class="behavior-not-applicable">-</span>{% endif %}</td>
                   </tr>
@@ -340,7 +341,7 @@
             <dialog class="behavior-detail-dialog" id="behaviorDetailDialog{{ loop.index }}" aria-labelledby="behaviorDetailTitle{{ loop.index }}">
               <div class="behavior-detail-dialog__content">
                 <button type="button" class="behavior-detail-dialog__close" data-behavior-dialog-close aria-label="Close Behavior details"><i class="fa-solid fa-xmark"></i></button>
-                <div class="behavior-detail-dialog__heading"><span class="behavior-detail-dialog__icon"><i class="fa-solid fa-heart-pulse"></i></span><div><span class="behavior-detail-dialog__eyebrow">Behavior assessment</span><h3 id="behaviorDetailTitle{{ loop.index }}">{{ behavior.subject_name }}</h3><p>{{ behavior_session.session_label }} · {{ behavior.exam_name }}</p></div></div>
+                <div class="behavior-detail-dialog__heading"><span class="behavior-detail-dialog__icon">{{ behavior_diamond_icon('behavior-detail-dialog__diamond') }}</span><div><span class="behavior-detail-dialog__eyebrow">Behavior assessment</span><h3 id="behaviorDetailTitle{{ loop.index }}">{{ behavior.subject_name }}</h3><p>{{ behavior_session.session_label }} · {{ behavior.exam_name }}</p></div></div>
                 <div class="behavior-detail-dialog__stats">
                   <div><span>Score</span><strong>{{ behavior_session.final_score|academic_number(settings) }} / {{ behavior_session.maximum_score|academic_number(settings) }}</strong></div>
                   <div><span>Base score</span><strong>{{ behavior_session.base_score|academic_number(settings) }}</strong></div>
@@ -359,7 +360,7 @@
           <aside class="reference-right-column">
             <section class="reference-academic-summary">
               <h3>{{ settings.result_academic_summary_title if settings.result_academic_summary_title != 'Academic Summary' else 'SOO KOOBID' }}</h3>
-              <div><span><i class="fa-solid fa-book-open"></i> Maadooyinka Guud</span><strong>{{ result.subjects|length }}</strong></div>
+              <div><span><i class="fa-solid fa-book-open"></i> Maadooyinka Guud</span><strong>{{ result.subjects|length + (result.behavior_reports|default([])|length) }}</strong></div>
               <div><span><i class="fa-solid fa-list-check"></i> Dhibcaha Guud</span><strong>{{ result.max_total|academic_number(settings) }}</strong></div>
               <div><span><i class="fa-solid fa-chart-line"></i> Dhibcaha Guud ee la helay</span><strong>{{ result.total|academic_number(settings) }}</strong></div>
               <div><span><i class="fa-solid fa-chart-pie"></i> Celceliska Boqolleyda</span><strong>{{ result.average|academic_number(settings) }}%</strong></div>

@@ -694,7 +694,7 @@
                                     <th class="col-subject" data-mg-subject-id="{{ subject.id }}" data-mg-subject="{{ subject.name|e }}"><span class="subj-cell"><span>{{ subject.name|upper }}</span>{{ critical_subject_badge(critical_badges.get(subject.id), interactive=false, subject_name=subject.name) }}</span><small>({{ subject_maxima.get(subject.id, subject.max_score)|academic_number(settings) }})</small></th>
                                 {% endfor %}
                                 {% for behavior in behavior_definitions|default([]) %}
-                                    <th class="col-behavior"><span>{{ behavior.subject_name|upper }}</span><small>(BEHAVIOR / {{ behavior.annual_maximum|academic_number(settings) }})</small></th>
+                                    <th class="col-behavior"><span>{{ behavior.subject_name|upper }}</span>{{ critical_subject_badge(behavior.critical_badge, interactive=false, subject_name=behavior.subject_name) }}<small>(BEHAVIOR / {{ behavior.annual_maximum|academic_number(settings) }})</small></th>
                                 {% endfor %}
                                 <th class="col-total">Total<small>({{ page_students[0].total_max|academic_number(settings) if page_students else 0 }})</small></th>
                                 <th class="col-percent">Percentage</th>
@@ -737,7 +737,7 @@
                                     {% endfor %}
                                     {% for behavior in behavior_definitions|default([]) %}
                                         {% set behavior_data = row.behavior_by_config.get(behavior.configuration_id) %}
-                                        <td class="behavior-class-cell">{% if behavior_data and behavior_data.annual_score is not none %}<strong>{{ behavior_data.annual_score|academic_number(settings) }}</strong>{% else %}-{% endif %}</td>
+                                        <td class="behavior-class-cell">{% if behavior_data and behavior_data.session_score is not none %}<strong>{{ behavior_data.session_score|academic_number(settings) }}</strong>{% else %}-{% endif %}</td>
                                     {% endfor %}
                                     <td class="total-score">{{ row.total_score|academic_number(settings) }}</td>
                                     <td>

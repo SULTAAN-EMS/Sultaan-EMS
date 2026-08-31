@@ -1556,18 +1556,24 @@ def critical_subject_badges(exam, academic_year_level_id=None):
     critical_year_subject_ids = {
         item.academic_year_subject_id for item in rule.critical_subjects
     }
-    scoped_subjects = AcademicYearSubject.query.filter_by(
-        academic_year_id=exam.academic_year_id,
-        academic_year_level_id=academic_year_level_id,
-        subject_kind="exam",
-        is_active=True,
+    scoped_subjects = AcademicYearSubject.query.filter(
+        AcademicYearSubject.academic_year_id == exam.academic_year_id,
+        AcademicYearSubject.academic_year_level_id == academic_year_level_id,
+        AcademicYearSubject.subject_kind.in_(("exam", "behavior")),
+        AcademicYearSubject.is_active.is_(True),
     ).all()
-    legacy_subject_ids = {
-        item.legacy_subject_id
-        for item in scoped_subjects
-        if item.id in critical_year_subject_ids and item.legacy_subject_id
-    }
-    if not legacy_subject_ids:
+    # Ordinary rows are keyed by their legacy Subject ID while Behavior rows
+    # are keyed by their year-aware AcademicYearSubject ID. Namespacing the
+    # latter prevents an integer-ID collision between the two tables.
+    critical_keys = set()
+    for item in scoped_subjects:
+        if item.id not in critical_year_subject_ids:
+            continue
+        if item.subject_kind == "behavior":
+            critical_keys.add(f"behavior:{item.id}")
+        elif item.legacy_subject_id:
+            critical_keys.add(item.legacy_subject_id)
+    if not critical_keys:
         return {}
 
     levels = (
@@ -1586,13 +1592,13 @@ def critical_subject_badges(exam, academic_year_level_id=None):
     design = CRITICAL_STAR_DESIGNS[(level_order - 1) % len(CRITICAL_STAR_DESIGNS)]
     threshold = float(rule.critical_subject_pass_threshold or 0)
     return {
-        subject_id: {
+        subject_key: {
             "design": design,
             "level_order": level_order,
             "minimum_percentage": threshold,
             "reason": "Maaddadani waxa ay ka mid tahay maadooyinka ay qasab tahay in uu ardeygu ku gudbo.",
         }
-        for subject_id in legacy_subject_ids
+        for subject_key in critical_keys
     }
 
 
