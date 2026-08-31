@@ -28,7 +28,7 @@ from .models import (
     StudentEnrollmentMovement,
     StudentEnrollment,
 )
-from .services import get_settings, resolve_subject_max_score
+from .services import get_settings, resolve_subject_max_score, resolved_subject_maxima
 
 
 PROMOTION_RULES_SETTING_KEY = "promotion_rules_enabled"
@@ -126,8 +126,79 @@ def valid_critical_subjects(academic_year_id, academic_year_level_id):
     )
 
 
+def valid_promotion_subjects(academic_year_id, academic_year_level_id):
+    """Return active ordinary and Behavior subjects in one exact scope.
+
+    Existing callers that need the legacy ordinary-only critical list continue
+    using ``valid_critical_subjects``.  Behavior is opt-in through explicit
+    subject selection and never becomes an implicit evaluation subject.
+    """
+    validate_rule_scope(academic_year_id, academic_year_level_id)
+    return (
+        AcademicYearSubject.query
+        .filter(
+            AcademicYearSubject.academic_year_id == academic_year_id,
+            AcademicYearSubject.academic_year_level_id == academic_year_level_id,
+            AcademicYearSubject.subject_kind.in_(("exam", "behavior")),
+            AcademicYearSubject.is_active.is_(True),
+        )
+        .order_by(AcademicYearSubject.sort_order, AcademicYearSubject.name, AcademicYearSubject.id)
+        .all()
+    )
+
+
+def promotion_subject_maxima(subjects, *, exam=None, academic_year_level_id=None):
+    """Resolve display/evaluation maxima without using ordinary data for Behavior."""
+    ordinary_subjects = [
+        subject for subject in subjects or ()
+        if (getattr(subject, "subject_kind", "exam") or "exam") != "behavior"
+    ]
+    maxima = resolved_subject_maxima(
+        ordinary_subjects,
+        exam=exam,
+        academic_year_level_id=academic_year_level_id,
+    )
+    if exam and academic_year_level_id:
+        from .behavior_promotion_adapter import resolve_behavior_promotion_context
+
+        for subject in subjects or ():
+            if (getattr(subject, "subject_kind", "exam") or "exam") != "behavior":
+                continue
+            context = resolve_behavior_promotion_context(
+                exam.academic_year_id,
+                academic_year_level_id,
+                exam.id,
+                subject.id,
+            )
+            maxima[subject.id] = context.get("maximum_score") or 0
+    else:
+        for subject in subjects or ():
+            if (getattr(subject, "subject_kind", "exam") or "exam") == "behavior":
+                maxima[subject.id] = 0
+    return maxima
+
+
+def promotion_subject_maximum(subject, *, exam, academic_year_level_id):
+    """Resolve one subject maximum using the subject domain that owns it."""
+    if (getattr(subject, "subject_kind", "exam") or "exam") == "behavior":
+        from .behavior_promotion_adapter import resolve_behavior_promotion_context
+
+        context = resolve_behavior_promotion_context(
+            exam.academic_year_id,
+            academic_year_level_id,
+            exam.id,
+            subject.id,
+        )
+        return context.get("maximum_score") if context.get("status") == "VALID" else None
+    return resolve_subject_max_score(
+        subject.legacy_subject or subject,
+        exam=exam,
+        academic_year_level_id=academic_year_level_id,
+    )
+
+
 def _validate_critical_subject_ids(academic_year_id, academic_year_level_id, subject_ids):
-    valid_subjects = valid_critical_subjects(academic_year_id, academic_year_level_id)
+    valid_subjects = valid_promotion_subjects(academic_year_id, academic_year_level_id)
     valid_by_id = {subject.id: subject for subject in valid_subjects}
     normalized = []
     for raw_id in subject_ids or ():
@@ -216,6 +287,13 @@ def upsert_promotion_rule(
         academic_year_level_id,
         critical_subject_ids,
     )
+    if resolved_exam is None and any(
+        (getattr(subject, "subject_kind", "exam") or "exam") == "behavior"
+        for subject in subjects
+    ):
+        raise PromotionValidationError(
+            "Behavior critical subjects require an exact Exam Type rule"
+        )
     rule = get_promotion_rule(
         academic_year_id,
         academic_year_level_id,
@@ -297,6 +375,37 @@ def promotion_rule_snapshot(rule, *, enabled):
             "critical_subject_pass_threshold": float(DEFAULT_PROMOTION_THRESHOLD),
             "critical_subjects": [],
         }
+    critical_subjects = []
+    for item in rule.critical_subjects:
+        subject = item.academic_year_subject
+        max_score = None
+        session_id = None
+        if (getattr(subject, "subject_kind", "exam") or "exam") == "behavior":
+            if rule.exam_id:
+                from .behavior_promotion_adapter import resolve_behavior_promotion_context
+
+                context = resolve_behavior_promotion_context(
+                    rule.academic_year_id,
+                    rule.academic_year_level_id,
+                    rule.exam_id,
+                    subject.id,
+                )
+                max_score = context.get("maximum_score")
+                session = context.get("session")
+                session_id = session.id if session else None
+        else:
+            max_score = resolve_subject_max_score(
+                subject.legacy_subject or subject,
+                exam=rule.exam,
+                academic_year_level_id=rule.academic_year_level_id,
+            )
+        critical_subjects.append({
+            "id": subject.id,
+            "name": subject.name,
+            "subject_kind": getattr(subject, "subject_kind", "exam") or "exam",
+            "behavior_session_id": session_id,
+            "max_score": float(max_score) if max_score is not None else None,
+        })
     return {
         "feature_enabled": bool(enabled),
         "rule_id": rule.id,
@@ -307,18 +416,7 @@ def promotion_rule_snapshot(rule, *, enabled):
         "is_active": bool(rule.is_active),
         "overall_pass_threshold": float(rule.overall_pass_threshold),
         "critical_subject_pass_threshold": float(rule.critical_subject_pass_threshold),
-        "critical_subjects": [
-            {
-                "id": item.academic_year_subject_id,
-                "name": item.academic_year_subject.name,
-                "max_score": float(resolve_subject_max_score(
-                    item.academic_year_subject.legacy_subject or item.academic_year_subject,
-                    exam=rule.exam,
-                    academic_year_level_id=rule.academic_year_level_id,
-                )),
-            }
-            for item in rule.critical_subjects
-        ],
+        "critical_subjects": critical_subjects,
     }
 
 
@@ -498,12 +596,16 @@ def resolve_evaluation_context(academic_year_id, academic_year_level_id, exam_id
 
 def evaluation_subjects(academic_year_id, academic_year_level_id, subject_ids=None):
     """Resolve the exact subject set for one evaluation, never globally."""
-    valid = valid_critical_subjects(academic_year_id, academic_year_level_id)
+    valid = valid_promotion_subjects(academic_year_id, academic_year_level_id)
     valid_by_id = {item.id: item for item in valid}
     if subject_ids is None:
-        if not valid:
+        ordinary = [
+            subject for subject in valid
+            if (getattr(subject, "subject_kind", "exam") or "exam") != "behavior"
+        ]
+        if not ordinary:
             raise PromotionValidationError("No active subjects are configured for the selected Academic Year Level")
-        return valid
+        return ordinary
     if subject_ids in ((), [], ""):
         raise PromotionValidationError("Select at least one subject for the evaluation")
     normalized = []
@@ -536,55 +638,100 @@ def _subject_percentage(score, maximum):
 def _result_snapshot_for_student(student_enrollment, exam, subjects):
     """Load only this student's published results and exact year-level subjects."""
     subject_ids = {subject.id for subject in subjects}
+    ordinary_subjects = [
+        subject for subject in subjects
+        if (getattr(subject, "subject_kind", "exam") or "exam") != "behavior"
+    ]
+    behavior_subjects = [
+        subject for subject in subjects
+        if (getattr(subject, "subject_kind", "exam") or "exam") == "behavior"
+    ]
     subjects_by_legacy = {}
-    for subject in subjects:
+    for subject in ordinary_subjects:
         if subject.legacy_subject_id is not None:
             subjects_by_legacy.setdefault(subject.legacy_subject_id, []).append(subject)
 
-    rows = (
-        Result.query
-        .filter_by(student_id=student_enrollment.student_id, exam_id=exam.id, is_published=True)
-        .order_by(Result.id)
-        .all()
-    )
     mapped = {}
     issues = []
-    for row in rows:
-        candidates = subjects_by_legacy.get(row.subject_id, [])
-        if len(candidates) != 1:
-            issues.append(f"Result subject {row.subject_id} has no unique mapping in the selected Academic Year Level")
-            continue
-        subject = candidates[0]
-        if subject.id not in subject_ids:
-            # The explicit evaluation subject set intentionally excludes this
-            # result; it must not affect the selected evaluation.
-            continue
-        if subject.id in mapped:
-            issues.append(f"Duplicate result for subject {subject.name}")
-            continue
-        try:
-            configured_maximum = resolve_subject_max_score(
-                subject.legacy_subject or subject,
-                exam=exam,
-                academic_year_level_id=student_enrollment.academic_year_level_id,
-            )
-            score, maximum, percentage = _subject_percentage(row.score, configured_maximum)
-        except PromotionValidationError as exc:
-            issues.append(f"{subject.name}: {exc}")
-            continue
-        mapped[subject.id] = {
-            "academic_year_subject_id": subject.id,
-            "subject": subject.name,
-            "score": score,
-            "maximum": maximum,
-            "percentage": percentage,
-            "status": "VALID",
-        }
+    incomplete_issues = []
+    if ordinary_subjects:
+        rows = (
+            Result.query
+            .filter_by(student_id=student_enrollment.student_id, exam_id=exam.id, is_published=True)
+            .order_by(Result.id)
+            .all()
+        )
+        for row in rows:
+            candidates = subjects_by_legacy.get(row.subject_id, [])
+            if len(candidates) != 1:
+                issues.append(f"Result subject {row.subject_id} has no unique mapping in the selected Academic Year Level")
+                continue
+            subject = candidates[0]
+            if subject.id not in subject_ids:
+                # The explicit evaluation subject set intentionally excludes this
+                # result; it must not affect the selected evaluation.
+                continue
+            if subject.id in mapped:
+                issues.append(f"Duplicate result for subject {subject.name}")
+                continue
+            try:
+                configured_maximum = resolve_subject_max_score(
+                    subject.legacy_subject or subject,
+                    exam=exam,
+                    academic_year_level_id=student_enrollment.academic_year_level_id,
+                )
+                score, maximum, percentage = _subject_percentage(row.score, configured_maximum)
+            except PromotionValidationError as exc:
+                issues.append(f"{subject.name}: {exc}")
+                continue
+            mapped[subject.id] = {
+                "academic_year_subject_id": subject.id,
+                "subject": subject.name,
+                "subject_kind": "exam",
+                "source": "ordinary_result",
+                "score": score,
+                "maximum": maximum,
+                "percentage": percentage,
+                "status": "VALID",
+            }
+
+    if behavior_subjects:
+        from .behavior_promotion_adapter import behavior_promotion_evidence
+
+        for subject in behavior_subjects:
+            evidence = behavior_promotion_evidence(student_enrollment, exam, subject)
+            if evidence["status"] in {"VALID", "VALID_BASELINE"}:
+                mapped[subject.id] = {
+                    "academic_year_subject_id": subject.id,
+                    "subject": subject.name,
+                    "subject_kind": "behavior",
+                    "source": "behavior_service",
+                    "score": evidence["score"],
+                    "maximum": evidence["maximum_score"],
+                    "percentage": evidence["percentage"],
+                    "status": evidence["status"],
+                    "behavior_configuration_id": evidence["configuration"].id,
+                    "behavior_session_id": evidence["session"].id,
+                    "base_score": evidence["base_score"],
+                    "positive_points": evidence["positive_points"],
+                    "negative_points": evidence["negative_points"],
+                    "event_count": evidence["event_count"],
+                    "grade": evidence["grade"],
+                    "grade_point": evidence["grade_point"],
+                    "is_pass": evidence["is_pass"],
+                }
+            elif evidence["status"] == "INCOMPLETE":
+                incomplete_issues.append(f"{subject.name}: {evidence['reason']}")
+            else:
+                issues.append(f"{subject.name}: {evidence['reason']}")
 
     missing = [subject for subject in subjects if subject.id not in mapped]
     if issues:
         status = "INVALID"
         reason = "; ".join(issues)
+    elif incomplete_issues:
+        status = "INCOMPLETE"
+        reason = "; ".join(incomplete_issues)
     elif not mapped:
         status = "INCOMPLETE"
         reason = "NO_VALID_RESULTS"
@@ -617,7 +764,10 @@ def evaluate_student_promotion(student_enrollment, evaluation_context, *, persis
     overall_percentage = None
     base_outcome = None
     final_outcome = None
-    override_reason = data_reason
+    # The column is intentionally short; keep the complete diagnostic in the
+    # JSON snapshot while preventing a long missing-data list from breaking a
+    # PostgreSQL save.
+    override_reason = str(data_reason)[:80] if data_reason else None
     enabled = promotion_rules_enabled()
     # Explicit evaluations must use only the rule for this exact exam. A
     # legacy year-level rule is preserved for history but never leaks here.
@@ -658,8 +808,8 @@ def evaluate_student_promotion(student_enrollment, evaluation_context, *, persis
                 "academic_year_subject_id": subject.id,
                 "subject": subject.name,
                 "score": result["score"] if result else None,
-                "maximum": result["maximum"] if result else resolve_subject_max_score(
-                    subject.legacy_subject or subject,
+                "maximum": result["maximum"] if result else promotion_subject_maximum(
+                    subject,
                     exam=exam,
                     academic_year_level_id=student_enrollment.academic_year_level_id,
                 ),

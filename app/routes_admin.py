@@ -52,6 +52,8 @@ from .promotion_service import (
     transition_applied_outcome,
     upsert_promotion_rule,
     valid_critical_subjects,
+    valid_promotion_subjects,
+    promotion_subject_maxima,
     verify_committed_evaluation_scope,
     verify_promotion_rule_persistence,
 )
@@ -2917,10 +2919,10 @@ def promotion_rules_dashboard():
         PromotionRule.academic_year_level_id,
     ).all()
     modal_subjects = (
-        valid_critical_subjects(selected_year_id, selected_level_id)
+        valid_promotion_subjects(selected_year_id, selected_level_id)
         if selected_year_id and selected_level_id else []
     )
-    modal_subject_maxima = resolved_subject_maxima(
+    modal_subject_maxima = promotion_subject_maxima(
         modal_subjects,
         exam=selected_exam,
         academic_year_level_id=selected_level_id,
@@ -2985,8 +2987,8 @@ def promotion_rules_scope_data():
         is_active=True,
     ).order_by(Exam.sort_order, Exam.name, Exam.id).all()
     exam = next((item for item in exams if item.id == exam_id), None)
-    subjects = year_subjects(year.id, level.id, subject_kind="exam") if level else []
-    maxima = resolved_subject_maxima(
+    subjects = valid_promotion_subjects(year.id, level.id) if level else []
+    maxima = promotion_subject_maxima(
         subjects,
         exam=exam,
         academic_year_level_id=level.id if level else None,
@@ -3005,6 +3007,7 @@ def promotion_rules_scope_data():
         "subjects": [{
             "id": item.id,
             "name": item.name,
+            "subject_kind": item.subject_kind or "exam",
             "max_score": float(maxima.get(item.id, 0)),
         } for item in subjects],
         "rule": {
@@ -3144,8 +3147,8 @@ def promotion_rules_configure():
     selected_exam = next((exam for exam in exams if exam.id == selected_exam_id), None)
     if selected_exam_id and selected_exam is None:
         selected_exam_id = None
-    subjects = valid_critical_subjects(selected_year_id, selected_level_id) if selected_level else []
-    subject_maxima = resolved_subject_maxima(
+    subjects = valid_promotion_subjects(selected_year_id, selected_level_id) if selected_level else []
+    subject_maxima = promotion_subject_maxima(
         subjects,
         exam=selected_exam,
         academic_year_level_id=selected_level_id,
@@ -3223,12 +3226,26 @@ def _promotion_evaluation_page_data(year_id=None, level_id=None, exam_id=None, c
             .all()
         )
     selected_exam = next((exam for exam in exams if exam.id == exam_id), None)
-    subjects = valid_critical_subjects(year_id, level_id) if selected_level else []
-    subject_maxima = resolved_subject_maxima(
+    subjects = valid_promotion_subjects(year_id, level_id) if selected_level else []
+    subject_maxima = promotion_subject_maxima(
         subjects,
         exam=selected_exam,
         academic_year_level_id=level_id,
     )
+    rule = get_promotion_rule(
+        year_id,
+        level_id,
+        exam_id=selected_exam.id,
+        active_only=True,
+    ) if selected_level and selected_exam else None
+    default_subject_ids = {
+        subject.id for subject in subjects
+        if (getattr(subject, "subject_kind", "exam") or "exam") != "behavior"
+    }
+    if rule:
+        default_subject_ids.update(
+            item.academic_year_subject_id for item in rule.critical_subjects
+        )
     return {
         "years": years,
         "selected_year": selected_year,
@@ -3244,6 +3261,7 @@ def _promotion_evaluation_page_data(year_id=None, level_id=None, exam_id=None, c
         "selected_exam_id": exam_id,
         "selected_class_id": class_id,
         "subject_maxima": subject_maxima,
+        "default_subject_ids": default_subject_ids,
     }
 
 

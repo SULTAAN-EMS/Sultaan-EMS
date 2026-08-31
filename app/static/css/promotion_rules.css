@@ -264,6 +264,8 @@ body:has(.promotion-page) .sidebar-toggle-btn{background:rgba(255,255,255,.1);bo
 .subject-chip .flagdot i{font-size:11px;color:#fff;opacity:0;transition:opacity .15s;}
 .subject-chip.critical .flagdot i{opacity:1;}
 .subject-chip .sname{font:700 13.5px/1.25 'Inter',sans-serif;color:var(--pr-text);}
+.subject-chip__kind{display:inline-block;margin-left:5px;color:var(--pr-blue);font:700 9px/1 'Inter',sans-serif;text-transform:uppercase;letter-spacing:.04em;vertical-align:middle;}
+.subject-chip--behavior .sbook{background:#e8f7f1;color:#168368;}
 .subject-chip .smax{font:500 11px/1.2 'IBM Plex Mono',monospace;color:var(--pr-muted);}
 .subject-chip.critical .smax{color:var(--pr-gold-600);}
 .subject-chip__input{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;clip-path:inset(50%);}

@@ -161,7 +161,7 @@
 
         <div class="promotion-modal-subject-heading"><div><span class="promotion-kicker"><i class="fa-solid fa-flag"></i> Critical subjects</span><p>Mark subjects that must meet the critical threshold.</p></div><b id="modalCriticalCount">{{ modal_selected_subject_ids|length }} selected</b></div>
         <div class="promotion-modal-subject-grid" id="modalSubjectGrid">
-          {% for subject in modal_subjects %}<label class="promotion-modal-subject {% if subject.id in modal_selected_subject_ids %}is-critical{% endif %}"><input type="checkbox" name="critical_subject_ids" value="{{ subject.id }}" {% if subject.id in modal_selected_subject_ids %}checked{% endif %}><span class="promotion-modal-subject-icon"><i class="fa-solid fa-book-open"></i><i class="fa-solid fa-flag"></i></span><span class="promotion-modal-subject-name">{{ subject.name }}</span><small>Max {{ '%.3f'|format(modal_subject_maxima.get(subject.id, subject.max_score)|float) }}</small></label>{% else %}<div class="promotion-empty promotion-empty--small"><i class="fa-solid fa-book-open"></i><span>Select an Academic Year and Level on the dashboard first to load valid subjects.</span></div>{% endfor %}
+          {% for subject in modal_subjects %}{% set is_behavior = (subject.subject_kind or 'exam') == 'behavior' %}<label class="promotion-modal-subject {% if subject.id in modal_selected_subject_ids %}is-critical{% endif %}{% if is_behavior %} promotion-modal-subject--behavior{% endif %}"><input type="checkbox" name="critical_subject_ids" value="{{ subject.id }}" {% if subject.id in modal_selected_subject_ids %}checked{% endif %}><span class="promotion-modal-subject-icon"><i class="fa-solid {% if is_behavior %}fa-heart-pulse{% else %}fa-book-open{% endif %}"></i><i class="fa-solid fa-flag"></i></span><span class="promotion-modal-subject-name">{{ subject.name }}{% if is_behavior %}<small>Behavior</small>{% endif %}</span><small>Max {{ '%.3f'|format(modal_subject_maxima.get(subject.id, subject.max_score)|float) }}</small></label>{% else %}<div class="promotion-empty promotion-empty--small"><i class="fa-solid fa-book-open"></i><span>Select an Academic Year and Level on the dashboard first to load valid subjects.</span></div>{% endfor %}
         </div>
 
         <div class="promotion-modal-actions"><button class="promotion-button promotion-button--ghost" type="button" data-modal-close>Cancel</button><button class="promotion-button promotion-button--primary" type="submit"><i class="fa-solid fa-check"></i> Create rule</button></div>
@@ -221,9 +221,11 @@
     }
     const selected = new Set(criticalIds.map(Number));
     subjects.forEach((subject) => {
-      const label = document.createElement('label'); label.className = `promotion-modal-subject${selected.has(Number(subject.id)) ? ' is-critical' : ''}`;
-      label.innerHTML = `<input type="checkbox" name="critical_subject_ids" value="${subject.id}" ${selected.has(Number(subject.id)) ? 'checked' : ''}><span class="promotion-modal-subject-icon"><i class="fa-solid fa-book-open"></i><i class="fa-solid fa-flag"></i></span><span class="promotion-modal-subject-name"></span><small></small>`;
+      const isBehavior = subject.subject_kind === 'behavior';
+      const label = document.createElement('label'); label.className = `promotion-modal-subject${selected.has(Number(subject.id)) ? ' is-critical' : ''}${isBehavior ? ' promotion-modal-subject--behavior' : ''}`;
+      label.innerHTML = `<input type="checkbox" name="critical_subject_ids" value="${subject.id}" ${selected.has(Number(subject.id)) ? 'checked' : ''}><span class="promotion-modal-subject-icon"><i class="fa-solid ${isBehavior ? 'fa-heart-pulse' : 'fa-book-open'}"></i><i class="fa-solid fa-flag"></i></span><span class="promotion-modal-subject-name"></span><small></small>`;
       label.querySelector('.promotion-modal-subject-name').textContent = subject.name;
+      if (isBehavior) label.querySelector('.promotion-modal-subject-name').insertAdjacentHTML('beforeend', '<small>Behavior</small>');
       label.querySelector('small').textContent = `Max ${Number(subject.max_score || 0).toFixed(3)}`;
       subjectGrid.append(label);
     });
