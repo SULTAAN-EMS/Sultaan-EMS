@@ -255,6 +255,40 @@ def result():
     )
 
 
+@public_bp.route("/result/view/<student_code>/<int:exam_id>")
+def result_view(student_code, exam_id):
+    """Open the published Student Result Portal for a specific student/exam."""
+    student = Student.query.filter(
+        func.lower(func.trim(Student.student_code)) == student_code.strip().casefold()
+    ).first_or_404()
+    settings = get_settings()
+    if student.is_result_locked:
+        return render_template("locked_result.html", settings=settings, student=student), 403
+
+    exam = _published_exam_for_student(student, exam_id) or abort(404)
+    payload = result_payload(student, exam=exam, public_only=True)
+    if not payload or not (payload.get("subjects") or payload.get("behavior_reports")):
+        abort(404)
+    result_scope = public_result_scope(student, exam)
+    return render_template(
+        "portal.html",
+        settings=settings,
+        result=payload,
+        result_scope=result_scope,
+        generated_at=datetime.now(),
+        feedback_access_token=feedback_access_token(student, exam),
+        result_success_overlay=result_success_overlay_config(
+            exam,
+            payload.get("rank"),
+            payload.get("average"),
+            settings,
+            letter_grade=(payload.get("overall_grade") or {}).get("grade")
+            if isinstance(payload.get("overall_grade"), dict)
+            else None,
+        ),
+    )
+
+
 # =========================
 # PRINT REPORT
 # =========================
@@ -335,7 +369,7 @@ def _render_portal_behavior_report(student_code, exam_id, config_id, session_id,
     exam = _published_exam_for_student(student, exam_id) or abort(404)
     enrollment, report = _portal_behavior_report_scope(student, exam, config_id, session_id)
 
-    back_url = url_for("public.print_report", student_code=student.student_code, exam_id=exam.id)
+    back_url = url_for("public.result_view", student_code=student.student_code, exam_id=exam.id)
     endpoint = (
         "public.behavior_reading_view"
         if report_kind == "behavior"

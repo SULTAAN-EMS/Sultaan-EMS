@@ -82,6 +82,7 @@ from .models import (
     StudentEnrollment,
 )
 from .permissions import enforce_endpoint_permission
+from .services import get_settings
 
 
 behavior_bp = Blueprint("behavior", __name__)
@@ -2012,6 +2013,7 @@ def student_report(enrollment_id):
     ][:5]
     return render_template(
         "admin/behavior/student_report.html",
+        settings=get_settings(),
         student=enrollment.student,
         enrollment=enrollment,
         config=config,
@@ -2508,6 +2510,15 @@ def attendance_report(enrollment_id):
     record_by_date = {item.attendance_date: item for item in records}
     active_weekdays = {item.weekday for item in attendance_days(config) if item.is_active}
     status_keys = {"present", "late", "absent", "excused", "official_leave"}
+    somali_weekdays = {
+        0: "Isniin",
+        1: "Talaada",
+        2: "Arbaca",
+        3: "Khamiis",
+        4: "Jumca",
+        5: "Sabti",
+        6: "Axad",
+    }
 
     def report_status_key(value, label=None):
         aliases = {
@@ -2604,7 +2615,7 @@ def attendance_report(enrollment_id):
             tag_label = f"{label} ({record.late_by_minutes} daqiiqo)"
         absence_rows.append({
             "date": record.attendance_date,
-            "day": record.attendance_date.strftime("%A"),
+            "day": somali_weekdays[record.attendance_date.weekday()],
             "key": key,
             "label": label,
             "tag_label": tag_label,
@@ -2697,7 +2708,7 @@ def attendance_report(enrollment_id):
             "absent": values["absent"],
             "excused": values["excused"],
             "official_leave": values["official_leave"],
-            "label": f"Week {week_number + 1}",
+            "label": f"Usbuuca {week_number + 1}aad",
             "range": f"{start_day}-{end_day} {report_date.strftime('%b')}",
         })
 
@@ -2715,6 +2726,7 @@ def attendance_report(enrollment_id):
     report_counts = SimpleNamespace(**counts)
     return render_template(
         "admin/behavior/attendance_report.html",
+        settings=get_settings(),
         config=config,
         session=selected_session,
         enrollment=enrollment,
