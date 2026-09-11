@@ -1,9 +1,12 @@
 """Dedicated Phase 2B Behavior administration routes."""
 
 import json
+from calendar import monthrange
+from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
 from secrets import token_urlsafe
+from types import SimpleNamespace
 
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -13,10 +16,13 @@ from . import db
 from .academic_hierarchy import year_levels, year_subjects
 from .audit import audit
 from .behavior_service import (
+    BEHAVIOR_RESPONSE_TYPES,
     BehaviorValidationError,
     allocation_total,
     behavior_summary,
     calculate_session_score,
+    capture_attendance_session_policy,
+    canonical_response_type,
     configuration_for_scope,
     decimal_value,
     edit_event,
@@ -26,6 +32,9 @@ from .behavior_service import (
     normalize_idempotency_key,
     record_event,
     restore_event,
+    scoring_ledger_projection,
+    session_allocation_projection,
+    storage_response_type,
     validate_behavior_configuration,
     validate_enrollment_scope,
     validate_behavior_scope,
@@ -40,17 +49,33 @@ from .behavior_grading import (
     validate_behavior_grade_overlap,
     validate_behavior_grade_values,
 )
+from .behavior_reporting import get_behavior_report_data
+from .behavior_attendance import (
+    OFFICIAL_ATTENDANCE_LABELS,
+    attendance_days,
+    attendance_status_label,
+    attendance_statuses,
+    enrollments_for_class,
+    ensure_attendance_defaults,
+    generate_daily_roster,
+    mark_attendance,
+)
 from .models import (
     AcademicYear,
     AcademicYearClass,
     AcademicYearLevel,
     AcademicYearSubject,
     BehaviorAction,
+    BehaviorActionChoice,
     BehaviorCategory,
     BehaviorConfiguration,
     BehaviorEvent,
+    BehaviorAttendanceDay,
+    BehaviorAttendanceRecord,
+    BehaviorAttendanceStatus,
     BehaviorGradeScale,
     BehaviorSession,
+    BehaviorSubCategory,
     Exam,
     ExamType,
     Student,
@@ -75,6 +100,26 @@ def _int(value, default=None):
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _parse_time(value):
+    if value in (None, ""):
+        return None
+    try:
+        return datetime.strptime(str(value).strip(), "%H:%M").time()
+    except (TypeError, ValueError):
+        raise ValueError("Arrival time must use HH:MM format")
+
+
+def _late_by_minutes(arrival_time, school_start_time):
+    if not arrival_time or not school_start_time:
+        return None
+    start = school_start_time
+    if isinstance(start, datetime):
+        start = start.time()
+    elif not hasattr(start, "hour"):
+        start = _parse_time(start)
+    return max(0, (arrival_time.hour * 60 + arrival_time.minute) - (start.hour * 60 + start.minute))
 
 
 def _behavior_exam_options(year_id, configuration=None):
@@ -473,11 +518,19 @@ def dashboard():
         "active_events": len(active_events),
         "session_average": average,
     }
+    try:
+        session_allocation = session_allocation_projection(context["selected_session"]) if context["selected_session"] else None
+        session_allocation_error = None
+    except BehaviorValidationError as exc:
+        session_allocation = None
+        session_allocation_error = str(exc)
     return render_template(
         "admin/behavior/dashboard.html",
         **context,
         board_rows=board_rows,
         summary=summary,
+        session_allocation=session_allocation,
+        session_allocation_error=session_allocation_error,
     )
 
 
@@ -745,7 +798,7 @@ def delete_configuration(config_id):
 
 @behavior_bp.route("/grade-management", methods=["GET", "POST"])
 def grade_management():
-    """Manage raw-score bands owned exclusively by one Behavior session."""
+    """Manage percentage grade bands owned exclusively by one Behavior session."""
     config_id = _int(request.args.get("config_id") or request.form.get("config_id"))
     year_id = request.args.get("year_id") or request.form.get("year_id")
     config = _selected_config(config_id, year_id)
@@ -840,7 +893,7 @@ def grade_management():
                     f"to session {selected_session.id}",
                 )
                 db.session.commit()
-                flash("Behavior grade scale copied. Review the raw score ranges before using it.", "success")
+                flash("Behavior grade scale copied. Review the percentage ranges before using it.", "success")
                 return redirect(url_for(
                     "behavior.grade_management",
                     config_id=config.id,
@@ -863,7 +916,12 @@ def grade_management():
                 request.form.get("grade_point"),
                 request.form.get("description"),
                 request.form.get("sort_order"),
-                session_maximum=selected_session.maximum_score,
+                session_maximum=(
+                    Decimal("100")
+                    if selected_session.behavior_allocation is not None
+                    and selected_session.attendance_allocation is not None
+                    else selected_session.maximum_score
+                ),
             )
             if request.form.get("is_active"):
                 validate_behavior_grade_overlap(
@@ -991,6 +1049,11 @@ def sessions():
             if item and item.behavior_configuration_id != config.id:
                 raise BehaviorValidationError("Behavior session is outside the selected configuration")
             ensure_session_editable(config, item)
+            legacy_session = bool(
+                item
+                and item.behavior_allocation is None
+                and item.attendance_allocation is None
+            )
             submitted_exam_ref = f"{exam_source}:{exam_type.id}"
             duplicate = next(
                 (
@@ -1016,11 +1079,36 @@ def sessions():
             item.session_label = (request.form.get("session_label") or exam_type.name).strip()
             if not item.session_label:
                 raise BehaviorValidationError("Session label is required")
-            item.maximum_score = decimal_value(
+            maximum_score = decimal_value(
                 request.form.get("maximum_score"),
                 "Session maximum",
                 minimum="0.001",
             )
+            if legacy_session:
+                behavior_allocation = None
+                attendance_allocation = None
+            else:
+                behavior_raw = request.form.get("behavior_allocation")
+                attendance_raw = request.form.get("attendance_allocation")
+                behavior_allocation = (
+                    decimal_value(behavior_raw, "Behavior allocation", minimum="0")
+                    if behavior_raw not in (None, "") else (maximum_score / Decimal("2")).quantize(Decimal("0.001"))
+                )
+                attendance_allocation = (
+                    decimal_value(attendance_raw, "Attendance allocation", minimum="0")
+                    if attendance_raw not in (None, "") else (maximum_score - behavior_allocation).quantize(Decimal("0.001"))
+                )
+                if (behavior_allocation + attendance_allocation).quantize(Decimal("0.001")) != maximum_score:
+                    raise BehaviorValidationError(
+                        "Behavior and Attendance allocations must equal the session maximum"
+                    )
+            item.maximum_score = maximum_score
+            item.behavior_allocation = behavior_allocation
+            item.attendance_allocation = attendance_allocation
+            # Capture the currently configured status policy and calendar on
+            # the session so later edits cannot rewrite historical scores.
+            ensure_attendance_defaults(config)
+            capture_attendance_session_policy(config, item)
             item.sort_order = _int(request.form.get("sort_order"), 0)
             item.is_active = True  # legacy column; all saved sessions are operational
             db.session.flush()
@@ -1073,6 +1161,75 @@ def sessions():
         available_exams=available_exams,
         selected_exam_ref=selected_exam_ref,
         allocation=allocation_total(config) if config else Decimal("0.000"),
+    )
+
+
+@behavior_bp.route("/session-allocation", methods=["GET"])
+def session_allocation():
+    """Dedicated planning view backed by the canonical session mutation route."""
+    context = _behavior_context(
+        request.args.get("year_id"),
+        request.args.get("level_id"),
+        request.args.get("config_id"),
+        request.args.get("class_id"),
+        request.args.get("session_id"),
+    )
+    config = context["config"]
+    sessions = context["sessions"]
+    session_views = []
+    for item in sessions:
+        try:
+            allocation = session_allocation_projection(item)
+            allocation_error = None
+        except BehaviorValidationError as exc:
+            allocation = None
+            allocation_error = str(exc)
+        session_views.append({"session": item, "allocation": allocation, "error": allocation_error})
+
+    enrollments = _behavior_enrollments(
+        config,
+        context["selected_class"].id if context["selected_class"] else None,
+    ) if config else []
+    requested_enrollment_id = _int(request.args.get("enrollment_id"))
+    selected_enrollment = next(
+        (item for item in enrollments if item.id == requested_enrollment_id),
+        None,
+    )
+    if selected_enrollment is None and enrollments:
+        selected_enrollment = enrollments[0]
+
+    selected_allocation = None
+    selected_allocation_error = None
+    selected_score = None
+    selected_projection = None
+    selected_session = context["selected_session"]
+    if selected_session:
+        try:
+            selected_allocation = session_allocation_projection(selected_session)
+        except BehaviorValidationError as exc:
+            selected_allocation_error = str(exc)
+        if selected_enrollment and not selected_allocation_error:
+            try:
+                selected_score = calculate_session_score(
+                    config,
+                    selected_session,
+                    selected_enrollment,
+                )
+                selected_projection = scoring_ledger_projection(selected_score)
+            except BehaviorValidationError as exc:
+                selected_allocation_error = str(exc)
+
+    return render_template(
+        "admin/behavior/session_allocation.html",
+        **context,
+        session_views=session_views,
+        enrollments=enrollments,
+        selected_enrollment=selected_enrollment,
+        selected_allocation=selected_allocation,
+        selected_allocation_error=selected_allocation_error,
+        selected_score=selected_score,
+        selected_projection=selected_projection,
+        selected_exam_ref=_session_exam_value(selected_session) if selected_session else "",
     )
 
 
@@ -1169,6 +1326,25 @@ def categories():
     )
 
 
+@behavior_bp.route("/taxonomy")
+def taxonomy():
+    """Single visual taxonomy workspace; existing mutation routes remain unchanged."""
+    config_id = _int(request.args.get("config_id"))
+    config = _selected_config(config_id, request.args.get("year_id"))
+    years, selected_year, configurations, _ = _config_choices(
+        config.academic_year_id if config else request.args.get("year_id"),
+        config.id if config else None,
+    )
+    return render_template(
+        "admin/behavior/taxonomy.html",
+        years=years,
+        selected_year=selected_year,
+        configurations=configurations,
+        config=config,
+        active_tab=request.args.get("tab", "overview"),
+    )
+
+
 @behavior_bp.route("/categories/<int:category_id>/delete", methods=["POST"])
 def delete_category(category_id):
     item = db.session.get(BehaviorCategory, category_id)
@@ -1213,6 +1389,14 @@ def actions():
                 raise BehaviorValidationError(
                     "Category does not belong to the selected Behavior configuration"
                 )
+            subcategory = None
+            subcategory_id = _int(request.form.get("behavior_subcategory_id"))
+            if subcategory_id:
+                subcategory = db.session.get(BehaviorSubCategory, subcategory_id)
+                if not subcategory or subcategory.behavior_category_id != category.id:
+                    raise BehaviorValidationError(
+                        "Sub-category does not belong to the selected Behavior category"
+                    )
             item = (
                 db.session.get(BehaviorAction, _int(request.form.get("action_id")))
                 if request.form.get("action_id") else None
@@ -1221,7 +1405,28 @@ def actions():
                 raise BehaviorValidationError(
                     "Behavior action is outside the selected category"
                 )
+            original_behavior_type = item.behavior_type if item else None
+            original_action_points = (
+                decimal_value(item.points, "Action points", minimum="0.001")
+                if item else None
+            )
             item = item or BehaviorAction(behavior_category_id=category.id)
+            submitted_type = (request.form.get("behavior_type") or "short_answer").strip().lower()
+            legacy_types = {"direct_action", "choice", "selection", "dropdown", "linear_scale"}
+            if submitted_type in {"dropdown", "linear_scale"} and not item.id:
+                raise BehaviorValidationError("Drop-down and Linear scale are no longer supported")
+            if submitted_type in BEHAVIOR_RESPONSE_TYPES:
+                behavior_type = storage_response_type(submitted_type)
+                response_type = submitted_type
+            elif submitted_type in {"direct_action", "choice", "selection"}:
+                behavior_type = submitted_type
+                response_type = canonical_response_type(submitted_type)
+            else:
+                raise BehaviorValidationError("Behavior action response type is invalid")
+            item.behavior_subcategory_id = subcategory.id if subcategory else None
+            item.behavior_type = behavior_type
+            item.response_type = response_type
+            item.response_required = request.form.get("response_required") == "1"
             item.name = (request.form.get("name") or "").strip()
             item.level_number = _int(request.form.get("level_number"), 1)
             item.points = decimal_value(
@@ -1229,16 +1434,112 @@ def actions():
                 "Action points",
                 minimum="0.001",
             )
+            if item.id and original_action_points and item.points < original_action_points:
+                historical_points = [
+                    decimal_value(
+                        event.response_points if event.response_points is not None else event.points_applied,
+                        "Historical response points",
+                        minimum="0",
+                    )
+                    for event in item.events
+                ]
+                if any(value > item.points for value in historical_points):
+                    raise BehaviorValidationError(
+                        "Action Maximum cannot be lowered below points already recorded in historical responses."
+                    )
             item.frequency = (request.form.get("frequency") or "ad_hoc").strip().lower()
             if item.frequency not in BehaviorAction.FREQUENCY_VALUES:
                 raise BehaviorValidationError("Behavior action frequency is invalid")
             item.description = (request.form.get("description") or "").strip() or None
             item.sort_order = _int(request.form.get("sort_order"), 0)
+            if response_type == "rating":
+                item.rating_scale = _int(request.form.get("rating_scale"))
+                if item.rating_scale not in {5, 7, 8, 10}:
+                    raise BehaviorValidationError("Rating scale must be 5, 7, 8, or 10")
+            else:
+                item.rating_scale = None
             item.is_active = True  # legacy column; all saved actions are operational
             if not item.name:
                 raise BehaviorValidationError("Action name is required")
+            choice_types = {"multiple_choice", "checkboxes"}
+            choice_builder_submitted = request.form.get("choices_builder") == "1"
+            choice_ids_raw = request.form.getlist("choice_id")
+            choice_labels = request.form.getlist("choice_label")
+            choice_points = request.form.getlist("choice_points")
+            choice_descriptions = request.form.getlist("choice_description")
+            if len(choice_labels) != len(choice_points) or len(choice_labels) != len(choice_descriptions):
+                raise BehaviorValidationError("Each choice must include a label, points, and description field")
+            choice_specs = []
+            seen_labels = set()
+            for index, (label_raw, points_raw, description_raw) in enumerate(
+                zip(choice_labels, choice_points, choice_descriptions), start=1
+            ):
+                label = (label_raw or "").strip()
+                points_text = (points_raw or "").strip()
+                description = (description_raw or "").strip() or None
+                if not label and not points_text and not description:
+                    continue
+                if not label:
+                    raise BehaviorValidationError(f"Choice {index} requires a label")
+                label_key = label.casefold()
+                if label_key in seen_labels:
+                    raise BehaviorValidationError("Choice labels must be unique within an action")
+                seen_labels.add(label_key)
+                choice_specs.append(
+                    {
+                        "id": _int(choice_ids_raw[index - 1]) if index <= len(choice_ids_raw) and choice_ids_raw[index - 1] else None,
+                        "label": label,
+                        "points": decimal_value(points_text, "Choice points", minimum="0"),
+                        "description": description,
+                    }
+                )
+            if choice_builder_submitted and response_type in choice_types and not choice_specs:
+                raise BehaviorValidationError("Add at least one choice for this action type")
+            if choice_specs and response_type not in choice_types:
+                raise BehaviorValidationError("Response options are only valid for multiple choice or checkboxes")
+            choice_total = sum((spec["points"] for spec in choice_specs), Decimal("0.000"))
+            if any(spec["points"] > item.points for spec in choice_specs):
+                raise BehaviorValidationError("Response option points cannot exceed the action maximum")
+            if response_type == "checkboxes" and choice_total > item.points:
+                raise BehaviorValidationError("Combined checkbox points cannot exceed the action maximum")
             db.session.add(item)
             db.session.flush()
+            existing_choices = {choice.id: choice for choice in item.choices}
+            submitted_existing_ids = {
+                spec["id"] for spec in choice_specs if spec["id"] is not None
+            }
+            if any(choice_id not in existing_choices for choice_id in submitted_existing_ids):
+                raise BehaviorValidationError("One or more choices do not belong to this action")
+            if item.id and item.events:
+                existing_snapshot = {
+                    choice.id: (choice.label, choice.points, choice.description)
+                    for choice in item.choices
+                }
+                submitted_snapshot = {
+                    spec["id"]: (spec["label"], spec["points"], spec["description"])
+                    for spec in choice_specs if spec["id"] is not None
+                }
+                if behavior_type != original_behavior_type or submitted_snapshot != existing_snapshot or any(
+                    spec["id"] is None for spec in choice_specs
+                ):
+                    raise BehaviorValidationError(
+                        "This action's type and choices cannot be changed after it has recorded events"
+                    )
+            else:
+                for choice in item.choices:
+                    if choice.id not in submitted_existing_ids:
+                        db.session.delete(choice)
+                for sort_order, spec in enumerate(choice_specs, start=1):
+                    choice = existing_choices.get(spec["id"])
+                    if choice is None:
+                        choice = BehaviorActionChoice(behavior_action_id=item.id)
+                        db.session.add(choice)
+                    choice.label = spec["label"]
+                    choice.points = spec["points"]
+                    choice.description = spec["description"]
+                    choice.sort_order = sort_order
+                    choice.is_active = True
+                db.session.flush()
             audit(
                 "Behavior Actions",
                 f"Saved action {item.name} level {item.level_number} for category {category.name}",
@@ -1302,6 +1603,133 @@ def delete_action(action_id):
     return redirect(url_for("behavior.actions", config_id=config_id))
 
 
+@behavior_bp.route("/subcategories", methods=["GET", "POST"])
+def subcategories():
+    config_id = _int(request.args.get("config_id") or request.form.get("config_id"))
+    config = _selected_config(config_id, request.args.get("year_id"))
+    if request.method == "POST":
+        try:
+            if not config:
+                raise BehaviorValidationError("Select a Behavior configuration first")
+            ensure_configuration_editable(config)
+            category = db.session.get(BehaviorCategory, _int(request.form.get("behavior_category_id")))
+            if not category or category.behavior_configuration_id != config.id:
+                raise BehaviorValidationError("Category does not belong to the selected Behavior configuration")
+            item = db.session.get(BehaviorSubCategory, _int(request.form.get("subcategory_id"))) if request.form.get("subcategory_id") else None
+            if item and item.behavior_category_id != category.id:
+                raise BehaviorValidationError("Sub-category is outside the selected category")
+            name = (request.form.get("name") or "").strip()
+            if not name:
+                raise BehaviorValidationError("Sub-category name is required")
+            item = item or BehaviorSubCategory(behavior_category_id=category.id)
+            item.name = name
+            item.description = (request.form.get("description") or "").strip() or None
+            item.sort_order = _int(request.form.get("sort_order"), 0)
+            item.is_active = True
+            db.session.add(item)
+            db.session.commit()
+            audit("Behavior Sub-categories", f"Saved sub-category {item.name} for configuration {config.id}")
+            flash("Behavior sub-category saved.", "success")
+            return redirect(url_for("behavior.subcategories", config_id=config.id))
+        except (BehaviorValidationError, ValueError) as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+        except IntegrityError:
+            db.session.rollback()
+            flash("A sub-category with this name already exists in the selected category.", "danger")
+    years, selected_year, configurations, _ = _config_choices(
+        config.academic_year_id if config else request.args.get("year_id"),
+        config.id if config else None,
+    )
+    return render_template(
+        "admin/behavior/subcategories.html",
+        years=years,
+        selected_year=selected_year,
+        configurations=configurations,
+        config=config,
+    )
+
+
+@behavior_bp.route("/subcategories/<int:subcategory_id>/delete", methods=["POST"])
+def delete_subcategory(subcategory_id):
+    item = db.session.get(BehaviorSubCategory, subcategory_id)
+    config_id = request.form.get("config_id") or (item.category.configuration.id if item and item.category else None)
+    try:
+        if not item:
+            raise BehaviorValidationError("Behavior sub-category was not found")
+        config = item.category.configuration if item.category else None
+        ensure_configuration_editable(config)
+        if item.actions:
+            raise BehaviorValidationError("Move or remove the sub-category actions before deleting this sub-category")
+        db.session.delete(item)
+        db.session.commit()
+        flash("Behavior sub-category deleted.", "success")
+    except (BehaviorValidationError, IntegrityError) as exc:
+        db.session.rollback()
+        flash(str(exc) if isinstance(exc, BehaviorValidationError) else "This sub-category is still in use.", "danger")
+    return redirect(url_for("behavior.subcategories", config_id=config_id))
+
+
+@behavior_bp.route("/actions/<int:action_id>/choices", methods=["POST"])
+def add_action_choice(action_id):
+    action = db.session.get(BehaviorAction, action_id)
+    config_id = request.form.get("config_id") or (action.category.configuration.id if action and action.category else None)
+    try:
+        if not action or not action.category or not action.category.configuration:
+            raise BehaviorValidationError("Behavior action was not found")
+        config = action.category.configuration
+        ensure_configuration_editable(config)
+        if action.behavior_type not in {"choice", "rating", "selection"}:
+            raise BehaviorValidationError("Change the action type before adding choices")
+        label = (request.form.get("label") or "").strip()
+        if not label:
+            raise BehaviorValidationError("Choice label is required")
+        choice_points = decimal_value(request.form.get("points"), "Choice points", minimum="0")
+        action_points = decimal_value(action.points, "Action points", minimum="0.001")
+        if choice_points > action_points:
+            raise BehaviorValidationError(
+                f"Choice points cannot exceed this action maximum ({action_points:g})"
+            )
+        item = BehaviorActionChoice(
+            behavior_action_id=action.id,
+            label=label,
+            points=choice_points,
+            description=(request.form.get("description") or "").strip() or None,
+            sort_order=_int(request.form.get("sort_order"), 0),
+            is_active=True,
+        )
+        db.session.add(item)
+        db.session.commit()
+        flash("Behavior action choice saved.", "success")
+    except (BehaviorValidationError, ValueError) as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    except IntegrityError:
+        db.session.rollback()
+        flash("This action choice label already exists.", "danger")
+    return redirect(url_for("behavior.actions", config_id=config_id))
+
+
+@behavior_bp.route("/actions/choices/<int:choice_id>/delete", methods=["POST"])
+def delete_action_choice(choice_id):
+    item = db.session.get(BehaviorActionChoice, choice_id)
+    config_id = request.form.get("config_id") or (item.action.category.configuration.id if item and item.action and item.action.category else None)
+    try:
+        if not item or not item.action or not item.action.category:
+            raise BehaviorValidationError("Behavior action choice was not found")
+        config = item.action.category.configuration
+        ensure_configuration_editable(config)
+        if BehaviorEvent.query.filter_by(behavior_action_choice_id=item.id).first():
+            raise BehaviorValidationError("This choice cannot be deleted because it is part of historical events")
+        db.session.delete(item)
+        db.session.commit()
+        flash("Behavior action choice deleted.", "success")
+    except (BehaviorValidationError, IntegrityError) as exc:
+        db.session.rollback()
+        flash(str(exc) if isinstance(exc, BehaviorValidationError) else "This choice is still in use.", "danger")
+    return redirect(url_for("behavior.actions", config_id=config_id))
+
+
 @behavior_bp.route("/students", methods=["GET", "POST"])
 def students():
     config_id = request.args.get("config_id") or request.form.get("config_id")
@@ -1333,6 +1761,18 @@ def students():
                 BehaviorAction,
                 _int(request.form.get("behavior_action_id")),
             )
+            choice = db.session.get(
+                BehaviorActionChoice,
+                _int(request.form.get("behavior_action_choice_id")),
+            ) if request.form.get("behavior_action_choice_id") else None
+            choice_ids = []
+            for raw_choice_id in request.form.getlist("behavior_action_choice_ids"):
+                choice_id = _int(raw_choice_id)
+                if choice_id and choice_id not in choice_ids:
+                    choice_ids.append(choice_id)
+            choices = [db.session.get(BehaviorActionChoice, choice_id) for choice_id in choice_ids]
+            if choice and choice not in choices:
+                choices.insert(0, choice)
             if not all((enrollment, session, category, action)):
                 raise BehaviorValidationError(
                     "Student, session, category, and action are required"
@@ -1351,6 +1791,10 @@ def students():
                 created_by=current_user.id,
                 direction=direction,
                 idempotency_key=idempotency_key,
+                choice=choice,
+                choices=choices,
+                response_text=request.form.get("response_text"),
+                rating=request.form.get("response_rating"),
             )
             if not existing:
                 audit(
@@ -1413,6 +1857,12 @@ def students():
         )
         if not context["scope_invalid"] else []
     )
+    try:
+        session_allocation = session_allocation_projection(selected_session) if selected_session else None
+        session_allocation_error = None
+    except BehaviorValidationError as exc:
+        session_allocation = None
+        session_allocation_error = str(exc)
     return render_template(
         "admin/behavior/students.html",
         **context,
@@ -1423,6 +1873,8 @@ def students():
         score=score,
         event_rows=event_rows,
         board_rows=board_rows,
+        session_allocation=session_allocation,
+        session_allocation_error=session_allocation_error,
     )
 
 
@@ -1474,6 +1926,105 @@ def student_detail(enrollment_id):
         score=score,
         grade=grade,
         events=events,
+    )
+
+
+@behavior_bp.route("/students/<int:enrollment_id>/report")
+def student_report(enrollment_id):
+    """Render the selected student's year-aware Behavior report for PDF/print."""
+    config = _selected_config(request.args.get("config_id"), request.args.get("year_id"))
+    if not config:
+        flash("Select a Behavior configuration first.", "warning")
+        return redirect(url_for("behavior.students"))
+    try:
+        enrollment = validate_enrollment_scope(config, enrollment_id)
+    except BehaviorValidationError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("behavior.students", config_id=config.id))
+
+    session_id = _int(request.args.get("session_id"))
+    session = next((item for item in config.sessions if item.id == session_id), None)
+    if not session:
+        flash("The selected Behavior session is outside this configuration.", "danger")
+        return redirect(url_for("behavior.students", config_id=config.id))
+    linked_exam = session.exam or session.exam_type
+    if not linked_exam:
+        flash("This Behavior session is not linked to an examination.", "danger")
+        return redirect(url_for("behavior.students", config_id=config.id, session_id=session.id))
+
+    report = next(
+        (
+            item for item in get_behavior_report_data(enrollment.student, linked_exam)
+            if item.get("configuration_id") == config.id and item.get("session_id") == session.id
+        ),
+        None,
+    )
+    if not report:
+        flash("No Behavior report is available for this student and session.", "warning")
+        return redirect(url_for("behavior.students", config_id=config.id, session_id=session.id))
+
+    events = report.get("events", [])
+    category_map = {}
+    for event in events:
+        key = event.get("category_name") or "Behavior"
+        category = category_map.setdefault(
+            key,
+            {"name": key, "polarity": event.get("polarity") or "positive", "events": [], "total": Decimal("0")},
+        )
+        category["events"].append(event)
+        amount = Decimal(str(event.get("points") or 0))
+        category["total"] += amount if event.get("polarity") == "positive" else -amount
+    for category in category_map.values():
+        category["polarity"] = "positive" if category["total"] >= 0 else "negative"
+    categories = list(category_map.values())
+    positive_points = sum(
+        (Decimal(str(item.get("points") or 0)) for item in events if item.get("polarity") == "positive"),
+        Decimal("0"),
+    )
+    negative_points = sum(
+        (Decimal(str(item.get("points") or 0)) for item in events if item.get("polarity") == "negative"),
+        Decimal("0"),
+    )
+    event_dates = [item.get("occurred_at") for item in events if item.get("occurred_at")]
+    report.update(
+        {
+            "categories": categories,
+            "positive_points": positive_points,
+            "negative_points": negative_points,
+            "net_points": positive_points - negative_points,
+            "period_from": min(event_dates) if event_dates else None,
+            "period_to": max(event_dates) if event_dates else None,
+            "generated_on": datetime.utcnow(),
+        }
+    )
+    report_ledger = report.get("ledger") or {}
+    behavior_ledger = report_ledger.get("behavior") or {}
+    session_ledger = report_ledger.get("session") or {}
+    strengths = [
+        item.get("action_name") or item.get("category_name")
+        for item in events
+        if item.get("polarity") == "positive"
+    ][:5]
+    improvements = [
+        item.get("action_name") or item.get("category_name")
+        for item in events
+        if item.get("polarity") == "negative"
+    ][:5]
+    return render_template(
+        "admin/behavior/student_report.html",
+        student=enrollment.student,
+        enrollment=enrollment,
+        config=config,
+        session=session,
+        report=report,
+        behavior_ledger=behavior_ledger,
+        session_ledger=session_ledger,
+        strengths=strengths,
+        improvements=improvements,
+        print_mode=request.args.get("print") == "1",
+        portal_read_only=request.args.get("portal_read_only") == "1",
+        portal_back_url=request.args.get("portal_back_url"),
+        portal_download_url=request.args.get("portal_download_url"),
     )
 
 
@@ -1547,8 +2098,14 @@ def event_detail(event_id):
     if not event:
         flash("Behavior event was not found.", "danger")
         return redirect(url_for("behavior.events"))
-    validate_behavior_configuration(event.configuration)
-    return render_template("admin/behavior/event_detail.html", event=event)
+    configuration = validate_behavior_configuration(event.configuration)
+    return render_template(
+        "admin/behavior/event_detail.html",
+        event=event,
+        config=configuration,
+        selected_year=configuration.academic_year,
+        selected_level=configuration.academic_year_level,
+    )
 
 
 @behavior_bp.route("/events/<int:event_id>/void", methods=["POST"])
@@ -1597,4 +2154,664 @@ def audit_history():
     rows = AuditLog.query.filter(
         AuditLog.action.like("Behavior%")
     ).order_by(AuditLog.created_at.desc()).limit(500).all()
-    return render_template("admin/behavior/audit.html", rows=rows)
+    return render_template(
+        "admin/behavior/audit.html",
+        rows=rows,
+        config=None,
+        selected_year=None,
+        selected_level=None,
+    )
+
+
+@behavior_bp.route("/attendance", methods=["GET", "POST"])
+def attendance():
+    """Daily Behavior attendance, deliberately separate from exam-hall attendance."""
+    context = _behavior_context(
+        request.args.get("year_id") or request.form.get("year_id"),
+        request.args.get("level_id") or request.form.get("level_id"),
+        request.args.get("config_id") or request.form.get("config_id"),
+        request.args.get("class_id") or request.form.get("class_id"),
+        request.args.get("session_id") or request.form.get("session_id"),
+    )
+    config = context["config"]
+    selected_session = context["selected_session"]
+    attendance_view = request.args.get("attendance_view", "")
+    raw_date = request.args.get("attendance_date") or request.form.get("attendance_date")
+    try:
+        attendance_date = date.fromisoformat(raw_date) if raw_date else date.today()
+    except ValueError:
+        attendance_date = date.today()
+        flash("Attendance date was invalid; today's date was selected.", "warning")
+    raw_time = request.args.get("attendance_time") or request.form.get("attendance_time")
+    try:
+        attendance_time = _parse_time(raw_time) if raw_time else datetime.now().time().replace(second=0, microsecond=0)
+    except ValueError:
+        attendance_time = datetime.now().time().replace(second=0, microsecond=0)
+        flash("Attendance time was invalid; the current time was selected.", "warning")
+
+    if config:
+        try:
+            before_statuses = BehaviorAttendanceStatus.query.filter_by(
+                behavior_configuration_id=config.id
+            ).count()
+            before_days = BehaviorAttendanceDay.query.filter_by(
+                behavior_configuration_id=config.id
+            ).count()
+            ensure_attendance_defaults(config)
+            after_statuses = BehaviorAttendanceStatus.query.filter_by(
+                behavior_configuration_id=config.id
+            ).count()
+            after_days = BehaviorAttendanceDay.query.filter_by(
+                behavior_configuration_id=config.id
+            ).count()
+            if after_statuses != before_statuses or after_days != before_days:
+                db.session.commit()
+            db.session.expire(config, ["attendance_statuses", "attendance_days"])
+        except BehaviorValidationError as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+
+    if request.method == "POST":
+        try:
+            if not config or context["scope_invalid"]:
+                raise BehaviorValidationError("Select a valid year-aware Behavior scope first")
+            if not selected_session:
+                raise BehaviorValidationError("Select an Exam Type session first")
+            action = request.form.get("action")
+            if action == "generate":
+                created = generate_daily_roster(
+                    config,
+                    selected_session,
+                    attendance_date,
+                    context["selected_class"].id if context["selected_class"] else None,
+                    attendance_time=attendance_time,
+                )
+                audit("Behavior Attendance", f"Generated {created} attendance rows for configuration {config.id}")
+                db.session.commit()
+                flash(f"{created} missing Present attendance row(s) generated.", "success")
+            elif action == "save_all":
+                if attendance_date.weekday() not in {item.weekday for item in attendance_days(config)}:
+                    raise BehaviorValidationError("The selected date is not configured as a school attendance day")
+                enrollments = enrollments_for_class(
+                    config,
+                    context["selected_class"].id if context["selected_class"] else None,
+                )
+                for enrollment in enrollments:
+                    status_id = _int(request.form.get(f"status_{enrollment.id}"))
+                    arrival_time = _parse_time(request.form.get(f"arrival_time_{enrollment.id}"))
+                    school_start_time = getattr(config, "school_start_time", None) or current_app.config.get("SCHOOL_START_TIME")
+                    mark_attendance(
+                        config,
+                        selected_session,
+                        enrollment,
+                        status_id,
+                        attendance_date,
+                        note=request.form.get(f"note_{enrollment.id}"),
+                        marked_by_id=current_user.id,
+                        attendance_time=attendance_time,
+                        arrival_time=arrival_time,
+                        late_by_minutes=_late_by_minutes(arrival_time, school_start_time),
+                    )
+                audit("Behavior Attendance", f"Saved attendance for {len(enrollments)} enrollment(s) in configuration {config.id}")
+                db.session.commit()
+                flash(f"Attendance saved for {len(enrollments)} student(s).", "success")
+            elif action == "save_status":
+                key = (request.form.get("key") or "").strip().lower().replace(" ", "_")
+                label = (request.form.get("label") or "").strip()
+                polarity = (request.form.get("polarity") or "neutral").strip().lower()
+                if not key or not label or polarity not in {"positive", "negative", "neutral"}:
+                    raise BehaviorValidationError("Status key, label, and polarity are required")
+                status = BehaviorAttendanceStatus(
+                    behavior_configuration_id=config.id,
+                    key=key,
+                    label=label,
+                    polarity=polarity,
+                    points=decimal_value(request.form.get("points"), "Attendance points", minimum="0"),
+                    contributes_to_behavior=True,
+                    sort_order=len(config.attendance_statuses) + 1,
+                    is_active=True,
+                )
+                db.session.add(status)
+                db.session.flush()
+                audit("Behavior Attendance", f"Added attendance status {status.key} to configuration {config.id}")
+                db.session.commit()
+                flash("Attendance status saved.", "success")
+            elif action == "save_days":
+                active_days = {_int(value) for value in request.form.getlist("school_days")}
+                if not active_days.issubset(set(range(7))):
+                    raise BehaviorValidationError("School day selection is invalid")
+                for day in config.attendance_days:
+                    day.is_active = day.weekday in active_days
+                db.session.commit()
+                flash("School attendance days saved.", "success")
+            else:
+                raise BehaviorValidationError("Unknown attendance action")
+            return redirect(url_for(
+                "behavior.attendance",
+                config_id=config.id,
+                class_id=context["selected_class"].id if context["selected_class"] else None,
+                session_id=selected_session.id,
+                attendance_date=attendance_date.isoformat(),
+                attendance_time=attendance_time.strftime("%H:%M"),
+            ))
+        except (BehaviorValidationError, ValueError, IntegrityError) as exc:
+            db.session.rollback()
+            if isinstance(exc, IntegrityError):
+                flash("Attendance could not be saved because it conflicts with an existing configuration.", "danger")
+            else:
+                flash(str(exc), "danger")
+
+    statuses = attendance_statuses(config) if config else []
+    all_statuses = attendance_statuses(config, active_only=False) if config else []
+    all_days = attendance_days(config, active_only=False) if config else []
+    school_day = bool(config and attendance_date.weekday() in {item.weekday for item in all_days if item.is_active})
+    enrollments = (
+        enrollments_for_class(config, context["selected_class"].id if context["selected_class"] else None)
+        if config and selected_session and not context["scope_invalid"] else []
+    )
+    records = {}
+    if config and selected_session and enrollments:
+        records = {
+            item.student_enrollment_id: item
+            for item in BehaviorAttendanceRecord.query.filter(
+                BehaviorAttendanceRecord.behavior_configuration_id == config.id,
+                BehaviorAttendanceRecord.behavior_session_id == selected_session.id,
+                BehaviorAttendanceRecord.attendance_date == attendance_date,
+                BehaviorAttendanceRecord.student_enrollment_id.in_([item.id for item in enrollments]),
+            ).all()
+        }
+    rows = [{"enrollment": enrollment, "record": records.get(enrollment.id)} for enrollment in enrollments]
+    # The roster, contextual profile, records drawer, and class overview all
+    # read this same scoped record set. No parallel attendance data is created.
+    history_records = []
+    profiles = {}
+    record_rows = []
+    overview_counts = defaultdict(int)
+    history_by_enrollment = defaultdict(list)
+    if config and selected_session and enrollments:
+        enrollment_ids = [item.id for item in enrollments]
+        history_records = BehaviorAttendanceRecord.query.filter(
+            BehaviorAttendanceRecord.behavior_configuration_id == config.id,
+            BehaviorAttendanceRecord.behavior_session_id == selected_session.id,
+            BehaviorAttendanceRecord.student_enrollment_id.in_(enrollment_ids),
+        ).order_by(BehaviorAttendanceRecord.attendance_date.desc(), BehaviorAttendanceRecord.id.desc()).all()
+        for item in history_records:
+            key = (item.status_key_snapshot or "").strip().lower() or "unknown"
+            history_by_enrollment[item.student_enrollment_id].append(item)
+            record_rows.append({
+                "date": item.attendance_date.isoformat(),
+                "date_display": item.attendance_date.strftime("%B %d, %Y"),
+                "student": item.student.full_name,
+                "mother": item.student.mother_name or "-",
+                "student_code": item.student.student_code,
+                "class_name": item.academic_year_class.name if item.academic_year_class else "-",
+                "photo_path": item.student.photo_path or "",
+                "photo_url": (
+                    item.student.photo_path
+                    if (item.student.photo_path or "").startswith(("http://", "https://", "data:"))
+                    else url_for("static", filename=item.student.photo_path)
+                    if item.student.photo_path
+                    else ""
+                ),
+                "status": attendance_status_label(key, item.status_label_snapshot),
+                "status_key": key,
+                "arrival_time": item.arrival_time.strftime("%I:%M %p").lstrip("0") if item.arrival_time else "",
+                "attendance_time": item.attendance_time.strftime("%I:%M %p").lstrip("0") if item.attendance_time else "",
+                "late_by_minutes": item.late_by_minutes,
+                "points": str(item.points_applied or 0),
+                "polarity": item.polarity,
+                "note": item.note or "",
+            })
+        for item in records.values():
+            key = (item.status_key_snapshot or "").strip().lower() or "unknown"
+            overview_counts[key] += 1
+        for enrollment in enrollments:
+            scoped_records = history_by_enrollment.get(enrollment.id, [])
+            counts = defaultdict(int)
+            for item in scoped_records:
+                key = (item.status_key_snapshot or "").strip().lower() or "unknown"
+                counts[key] += 1
+            total = len(scoped_records)
+            attended = counts["present"] + counts["late"]
+            positive_points = sum(
+                (item.points_applied or 0 for item in scoped_records if item.polarity == "positive"),
+                Decimal("0"),
+            )
+            negative_points = sum(
+                (item.points_applied or 0 for item in scoped_records if item.polarity == "negative"),
+                Decimal("0"),
+            )
+            canonical_score = calculate_session_score(config, selected_session, enrollment)
+            profiles[enrollment.id] = {
+                "name": enrollment.student.full_name,
+                "mother": enrollment.student.mother_name or "-",
+                "student_code": enrollment.student.student_code,
+                "class_name": enrollment.academic_year_class.name,
+                "year_name": config.academic_year.name,
+                "level_name": config.academic_year_level.name,
+                "present": counts["present"],
+                "late": counts["late"],
+                "absent": counts["absent"],
+                "excused": counts["excused"],
+                "official_leave": counts["official_leave"],
+                "total": total,
+                "percentage": round((attended / total) * 100, 1) if total else 0,
+                "points": str(positive_points - negative_points),
+                # The profile keeps the raw status counts for operational
+                # review, but final score fields come from the central
+                # Attendance scoring service.
+                "attendance_score": str(canonical_score.get("attendance_score") or "") if canonical_score.get("attendance_score") is not None else "-",
+                "attendance_allocation": str(canonical_score.get("attendance_allocation") or "") if canonical_score.get("attendance_allocation") is not None else "-",
+                "attendance_scoring_status": canonical_score.get("attendance_status", "-"),
+                "attendance_scoring_reason": canonical_score.get("attendance_reason") or "",
+                "history": [
+                    {
+                        "date": item.attendance_date.isoformat(),
+                        "date_display": item.attendance_date.strftime("%B %d, %Y"),
+                        "status": attendance_status_label(
+                            (item.status_key_snapshot or "").strip().lower(),
+                            item.status_label_snapshot,
+                        ),
+                        "arrival_time": item.arrival_time.strftime("%I:%M %p").lstrip("0") if item.arrival_time else "",
+                        "late_by_minutes": item.late_by_minutes,
+                        "note": item.note or "-",
+                    }
+                    for item in scoped_records[:12]
+                ],
+            }
+    repeat_alerts = []
+    for enrollment in enrollments:
+        scoped_records = history_by_enrollment.get(enrollment.id, [])
+        absent_count = sum(1 for item in scoped_records if (item.status_key_snapshot or "").lower() == "absent")
+        late_count = sum(1 for item in scoped_records if (item.status_key_snapshot or "").lower() == "late")
+        if absent_count >= 2 or late_count >= 2:
+            repeat_alerts.append({
+                "name": enrollment.student.full_name,
+                "absent": absent_count,
+                "late": late_count,
+            })
+    current_total = sum(overview_counts.values())
+    current_attended = overview_counts["present"] + overview_counts["late"]
+    current_positive_points = sum(
+        (item.points_applied or 0 for item in records.values() if item.polarity == "positive"),
+        Decimal("0"),
+    )
+    current_negative_points = sum(
+        (item.points_applied or 0 for item in records.values() if item.polarity == "negative"),
+        Decimal("0"),
+    )
+    overview = {
+        "total": len(enrollments),
+        "present": overview_counts["present"],
+        "late": overview_counts["late"],
+        "absent": overview_counts["absent"],
+        "excused": overview_counts["excused"],
+        "official_leave": overview_counts["official_leave"],
+        "percentage": round((current_attended / current_total) * 100, 1) if current_total else 0,
+        "impact_points": str(current_positive_points - current_negative_points),
+        "repeat_alerts": repeat_alerts,
+    }
+    return render_template(
+        "admin/behavior/attendance.html",
+        **context,
+        attendance_date=attendance_date,
+        attendance_time=attendance_time,
+        statuses=statuses,
+        all_statuses=all_statuses,
+        all_days=all_days,
+        school_day=school_day,
+        rows=rows,
+        profiles=profiles,
+        record_rows=record_rows,
+        overview=overview,
+        official_status_labels=OFFICIAL_ATTENDANCE_LABELS,
+        attendance_view=attendance_view,
+        attendance_view_target=attendance_view or "records",
+    )
+
+
+@behavior_bp.route("/attendance/students/<int:enrollment_id>/report")
+def attendance_report(enrollment_id):
+    """Render the selected enrollment's data-backed monthly Attendance report."""
+    context = _behavior_context(
+        request.args.get("year_id"),
+        request.args.get("level_id"),
+        request.args.get("config_id"),
+        request.args.get("class_id"),
+        request.args.get("session_id"),
+    )
+    config = context["config"]
+    selected_session = context["selected_session"]
+    if not config or not selected_session or context["scope_invalid"]:
+        flash("Select a valid Attendance year, configuration, and session first.", "warning")
+        return redirect(url_for("behavior.attendance"))
+    try:
+        enrollment = validate_enrollment_scope(config, enrollment_id)
+    except BehaviorValidationError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("behavior.attendance", config_id=config.id, session_id=selected_session.id))
+
+    raw_date = request.args.get("attendance_date")
+    try:
+        report_date = date.fromisoformat(raw_date) if raw_date else date.today()
+    except ValueError:
+        report_date = date.today()
+
+    month_start = report_date.replace(day=1)
+    month_end = report_date.replace(day=monthrange(report_date.year, report_date.month)[1])
+    records = BehaviorAttendanceRecord.query.filter(
+        BehaviorAttendanceRecord.student_enrollment_id == enrollment.id,
+        BehaviorAttendanceRecord.behavior_configuration_id == config.id,
+        BehaviorAttendanceRecord.behavior_session_id == selected_session.id,
+        BehaviorAttendanceRecord.attendance_date.between(month_start, month_end),
+    ).order_by(BehaviorAttendanceRecord.attendance_date).all()
+    record_by_date = {item.attendance_date: item for item in records}
+    active_weekdays = {item.weekday for item in attendance_days(config) if item.is_active}
+    status_keys = {"present", "late", "absent", "excused", "official_leave"}
+
+    def report_status_key(value, label=None):
+        aliases = {
+            "joogid": "present",
+            "daahid": "late",
+            "maqnaansho": "absent",
+            "cudurdaar": "excused",
+            "fasaxid_rasmi_ah": "official_leave",
+            "officialleave": "official_leave",
+        }
+        first_normalized = ""
+        for candidate in (value, label):
+            normalized = (candidate or "").strip().lower().replace("-", "_").replace(" ", "_")
+            if not first_normalized:
+                first_normalized = normalized
+            resolved = aliases.get(normalized, normalized)
+            if resolved in status_keys:
+                return resolved
+        return first_normalized
+
+    counts = {key: 0 for key in status_keys}
+    for record in records:
+        key = report_status_key(record.status_key_snapshot, record.status_label_snapshot)
+        if key not in status_keys:
+            key = "excused" if record.polarity == "neutral" else ("absent" if record.polarity == "negative" else "present")
+        counts[key] += 1
+    total_school_days = sum(
+        1 for day_number in range(1, month_end.day + 1)
+        if month_start.replace(day=day_number).weekday() in active_weekdays
+    )
+    attended_days = counts["present"] + counts["late"]
+    attendance_percentage = round((attended_days / total_school_days) * 100, 1) if total_school_days else 0.0
+    overall_label = "EXCELLENT" if attendance_percentage >= 90 else "GOOD" if attendance_percentage >= 75 else "NEEDS SUPPORT"
+    donut_denominator = total_school_days or 1
+    donut_present_angle = counts["present"] / donut_denominator * 360
+    donut_late_angle = counts["late"] / donut_denominator * 360
+    donut_absent_angle = counts["absent"] / donut_denominator * 360
+    donut_excused_angle = counts["excused"] / donut_denominator * 360
+    donut_official_leave_angle = counts["official_leave"] / donut_denominator * 360
+
+    def calendar_cell(day_value):
+        if day_value is None:
+            return {"pad": True, "day": ""}
+        current = month_start.replace(day=day_value)
+        record = record_by_date.get(current)
+        key = report_status_key(record.status_key_snapshot, record.status_label_snapshot) if record else ""
+        if key not in status_keys and record:
+            key = "excused" if record.polarity == "neutral" else ("absent" if record.polarity == "negative" else "present")
+        holiday = current.weekday() == 4
+        return {
+            "pad": False,
+            "day": day_value,
+            "holiday": holiday,
+            "active": current.weekday() in active_weekdays,
+            "key": key,
+            "marker": "H" if holiday else ("x" if key == "absent" else "." if key == "late" else "-" if key == "excused" else "check" if key == "present" else ""),
+        }
+
+    calendar_weeks = []
+    week = []
+    order = [5, 6, 0, 1, 2, 3, 4]
+    first_index = order.index(month_start.weekday())
+    for _ in range(first_index):
+        week.append(calendar_cell(None))
+    for day_number in range(1, month_end.day + 1):
+        week.append(calendar_cell(day_number))
+        if len(week) == 7:
+            calendar_weeks.append(week)
+            week = []
+    if week:
+        while len(week) < 7:
+            week.append(calendar_cell(None))
+        calendar_weeks.append(week)
+
+    absence_rows = []
+    positive_points = Decimal("0")
+    negative_points = Decimal("0")
+    for record in records:
+        key = report_status_key(record.status_key_snapshot, record.status_label_snapshot)
+        if key not in {"late", "absent", "excused", "official_leave"}:
+            key = "present" if record.polarity == "positive" else ("excused" if record.polarity == "neutral" else "absent")
+        label = attendance_status_label(key, record.status_label_snapshot)
+        saved_attendance_time = record.attendance_time or (record.created_at.time() if record.created_at else None)
+        display_time = saved_attendance_time if key == "present" else record.arrival_time
+        raw_points = Decimal(str(record.points_applied or 0))
+        signed_points = -abs(raw_points) if record.polarity == "negative" else abs(raw_points)
+        if signed_points > 0:
+            positive_points += signed_points
+        elif signed_points < 0:
+            negative_points += signed_points
+        point_text = f"{signed_points:+g}" if signed_points else "0"
+        tag_label = label
+        if key == "late" and record.late_by_minutes is not None:
+            tag_label = f"{label} ({record.late_by_minutes} daqiiqo)"
+        absence_rows.append({
+            "date": record.attendance_date,
+            "day": record.attendance_date.strftime("%A"),
+            "key": key,
+            "label": label,
+            "tag_label": tag_label,
+            "time": display_time.strftime("%I:%M %p").lstrip("0") if display_time else "-",
+            "points": point_text,
+            "note": record.note or "-",
+        })
+
+    def format_points(value, signed=False):
+        if value is None:
+            return "-"
+        value = Decimal(str(value))
+        text = format(value.normalize(), "f").rstrip("0").rstrip(".") if value % 1 else str(int(value))
+        if signed and value > 0:
+            return f"+{text}"
+        return text
+
+    try:
+        canonical_score = calculate_session_score(config, selected_session, enrollment)
+    except BehaviorValidationError:
+        # Keep historical reports printable while preserving the raw detail
+        # rows for an administrator to repair the invalid configuration.
+        canonical_score = {}
+    attendance_ledger = (canonical_score.get("ledger") or {}).get("attendance") or {}
+    normalized_attendance = attendance_ledger.get("allocation") is not None
+    attendance_status = attendance_ledger.get("status") or "LEGACY_COMPATIBILITY"
+    attendance_incomplete = attendance_status == "INCOMPLETE"
+    if normalized_attendance:
+        positive_display = None if attendance_incomplete else attendance_ledger.get("positive_used") or 0
+        negative_display = None if attendance_incomplete else -(attendance_ledger.get("negative_used") or 0)
+        canonical_total = canonical_score.get("attendance_score")
+        grand_display = (
+            "INCOMPLETE" if canonical_total is None else format_points(canonical_total, signed=True)
+        )
+        attendance_positive_max = format_points(attendance_ledger.get("positive_capacity"))
+        attendance_negative_max = format_points(attendance_ledger.get("negative_capacity"))
+        attendance_allocation = format_points(attendance_ledger.get("allocation"))
+        attendance_remaining = "-" if attendance_incomplete else format_points(attendance_ledger.get("remaining"))
+    else:
+        positive_display = positive_points
+        negative_display = negative_points
+        grand_display = format_points(positive_points + negative_points, signed=True)
+        attendance_positive_max = "-"
+        attendance_negative_max = "-"
+        attendance_allocation = "-"
+        attendance_remaining = "-"
+
+    attendance_positive_remaining = (
+        format_points(attendance_ledger.get("positive_remaining"))
+        if normalized_attendance and not attendance_incomplete else "-"
+    )
+    attendance_negative_remaining = (
+        format_points(attendance_ledger.get("negative_remaining"))
+        if normalized_attendance and not attendance_incomplete else "-"
+    )
+    attendance_earned = (
+        format_points(attendance_ledger.get("earned_score"))
+        if normalized_attendance and not attendance_incomplete and attendance_ledger.get("earned_score") is not None
+        else "INCOMPLETE" if attendance_incomplete else grand_display
+    )
+    attendance_reason = canonical_score.get("attendance_reason") if canonical_score else None
+    attendance_positive_used = (
+        "INCOMPLETE" if attendance_incomplete
+        else format_points(attendance_ledger.get("positive_used")) if normalized_attendance
+        else format_points(positive_points)
+    )
+    attendance_negative_used = (
+        "INCOMPLETE" if attendance_incomplete
+        else format_points(attendance_ledger.get("negative_used")) if normalized_attendance
+        else format_points(abs(negative_points))
+    )
+
+    weekly_max = max(len(active_weekdays), 1)
+    trend = []
+    for week_number in range(5):
+        start_day = week_number * 7 + 1
+        end_day = min(start_day + 6, month_end.day)
+        week_records = [item for item in records if start_day <= item.attendance_date.day <= end_day]
+        values = {key: 0 for key in status_keys}
+        for record in week_records:
+            key = report_status_key(record.status_key_snapshot, record.status_label_snapshot)
+            if key not in status_keys:
+                key = "excused" if record.polarity == "neutral" else ("absent" if record.polarity == "negative" else "present")
+            values[key] += 1
+        total = sum(values.values())
+        trend.append({
+            "total": total,
+            "present": values["present"],
+            "late": values["late"],
+            "absent": values["absent"],
+            "excused": values["excused"],
+            "official_leave": values["official_leave"],
+            "label": f"Week {week_number + 1}",
+            "range": f"{start_day}-{end_day} {report_date.strftime('%b')}",
+        })
+
+    linked_exam = selected_session.exam or selected_session.exam_type
+    behavior_report = next(
+        (
+            item for item in get_behavior_report_data(enrollment.student, linked_exam)
+            if item.get("configuration_id") == config.id and item.get("session_id") == selected_session.id
+        ),
+        None,
+    ) if linked_exam else None
+    behavior_grade_data = (behavior_report.get("grade") or {}) if behavior_report else {}
+    behavior_grade = behavior_grade_data.get("grade") or "N/A"
+    behavior_percentage = behavior_report.get("percentage") if behavior_report else attendance_percentage
+    report_counts = SimpleNamespace(**counts)
+    return render_template(
+        "admin/behavior/attendance_report.html",
+        config=config,
+        session=selected_session,
+        enrollment=enrollment,
+        student=enrollment.student,
+        report_date=report_date,
+        month_start=month_start,
+        month_end=month_end,
+        records=records,
+        calendar_weeks=calendar_weeks,
+        counts=report_counts,
+        total_school_days=total_school_days,
+        attended_days=attended_days,
+        attendance_percentage=attendance_percentage,
+        overall_label=overall_label,
+        donut_present_angle=donut_present_angle,
+        donut_late_angle=donut_late_angle,
+        donut_absent_angle=donut_absent_angle,
+        donut_excused_angle=donut_excused_angle,
+        donut_official_leave_angle=donut_official_leave_angle,
+        absence_rows=absence_rows,
+        total_positive_points="INCOMPLETE" if attendance_incomplete else format_points(positive_display, signed=True),
+        total_negative_points="INCOMPLETE" if attendance_incomplete else format_points(negative_display, signed=True),
+        grand_total_points=grand_display,
+        attendance_positive_max=attendance_positive_max,
+        attendance_negative_max=attendance_negative_max,
+        attendance_allocation=attendance_allocation,
+        attendance_remaining=attendance_remaining,
+        attendance_positive_remaining=attendance_positive_remaining,
+        attendance_negative_remaining=attendance_negative_remaining,
+        attendance_earned=attendance_earned,
+        attendance_reason=attendance_reason,
+        attendance_positive_used=attendance_positive_used,
+        attendance_negative_used=attendance_negative_used,
+        attendance_status=attendance_status,
+        normalized_attendance=normalized_attendance,
+        attendance_incomplete=attendance_incomplete,
+        weekly_max=weekly_max,
+        trend=trend,
+        behavior_grade=behavior_grade,
+        behavior_percentage=behavior_percentage,
+        print_mode=request.args.get("print") == "1",
+        portal_read_only=request.args.get("portal_read_only") == "1",
+        portal_back_url=request.args.get("portal_back_url"),
+        portal_download_url=request.args.get("portal_download_url"),
+    )
+
+
+def _attendance_redirect(config, session_id=None, attendance_date=None):
+    return redirect(url_for(
+        "behavior.attendance",
+        config_id=config.id if config else None,
+        session_id=session_id,
+        attendance_date=attendance_date.isoformat() if attendance_date else None,
+    ))
+
+
+@behavior_bp.route("/attendance/statuses/<int:status_id>", methods=["POST"])
+def update_attendance_status(status_id):
+    item = db.session.get(BehaviorAttendanceStatus, status_id)
+    config = db.session.get(BehaviorConfiguration, _int(request.form.get("config_id")))
+    try:
+        if not item or not config or item.behavior_configuration_id != config.id:
+            raise BehaviorValidationError("Attendance status is outside the selected configuration")
+        ensure_configuration_editable(config)
+        item.label = (request.form.get("label") or "").strip()
+        item.polarity = (request.form.get("polarity") or "neutral").strip().lower()
+        item.points = decimal_value(request.form.get("points"), "Attendance points", minimum="0")
+        item.is_active = request.form.get("is_active") == "on"
+        if not item.label or item.polarity not in {"positive", "negative", "neutral"}:
+            raise BehaviorValidationError("Attendance status label and polarity are required")
+        db.session.commit()
+        flash("Attendance status updated.", "success")
+    except (BehaviorValidationError, ValueError, IntegrityError) as exc:
+        db.session.rollback()
+        flash(str(exc) if not isinstance(exc, IntegrityError) else "Attendance status could not be updated.", "danger")
+    try:
+        selected_date = date.fromisoformat(request.form.get("attendance_date"))
+    except (TypeError, ValueError):
+        selected_date = date.today()
+    return _attendance_redirect(config, _int(request.form.get("session_id")), selected_date)
+
+
+@behavior_bp.route("/attendance/scoring", methods=["POST"])
+def update_attendance_scoring():
+    config = db.session.get(BehaviorConfiguration, _int(request.form.get("config_id")))
+    try:
+        if not config:
+            raise BehaviorValidationError("Behavior configuration was not found")
+        ensure_configuration_editable(config)
+        config.behavior_attendance_scoring_enabled = request.form.get("enabled") == "on"
+        db.session.commit()
+        flash("Behavior attendance scoring setting updated.", "success")
+    except (BehaviorValidationError, ValueError) as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    try:
+        selected_date = date.fromisoformat(request.form.get("attendance_date"))
+    except (TypeError, ValueError):
+        selected_date = date.today()
+    return _attendance_redirect(config, _int(request.form.get("session_id")), selected_date)

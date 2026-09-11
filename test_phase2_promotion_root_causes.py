@@ -116,9 +116,11 @@ class TestPhase2PromotionRootCauses(unittest.TestCase):
         disabled_write = template.index("submitter.disabled = true")
         self.assertLess(action_write, disabled_write)
         self.assertIn("actionField.name = 'action'", template)
-        self.assertIn("submitter.value !== 'execute'", template)
+        self.assertIn("execute_new", template)
+        self.assertIn("reevaluate_selected", template)
         self.assertIn('name="action" value="preview"', template)
-        self.assertIn('name="action" value="execute"', template)
+        self.assertIn('name="action" value="execute_new"', template)
+        self.assertIn('name="action" value="reevaluate_selected"', template)
 
 
 if __name__ == "__main__":

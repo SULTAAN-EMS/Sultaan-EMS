@@ -2,7 +2,7 @@
 {% block page_title %}Behavior Categories{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css') }}">
-<div class="behavior-page">
+<div class="behavior-page view">
   <header class="behavior-hero"><span class="behavior-hero__mark"><i class="fa-solid fa-tags"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow"><i class="fa-solid fa-shield-halved"></i> Behavior taxonomy</span><h1>Behavior Categories</h1><p>Separate positive and negative categories inside one year-aware Behavior configuration.</p></div></header>
   {% include "admin/behavior/_nav.html" %}
   <form class="behavior-card behavior-form" method="get" action="{{ url_for('behavior.categories') }}"><div class="behavior-field"><label for="categoryConfig">Behavior Configuration</label><select id="categoryConfig" name="config_id" onchange="this.form.submit()"><option value="">Select configuration</option>{% for item in configurations %}<option value="{{ item.id }}" {% if config and config.id == item.id %}selected{% endif %}>{{ item.academic_year.name }} · {{ item.academic_year_level.name }} · {{ item.behavior_subject.name }}</option>{% endfor %}</select></div></form>

@@ -1,12 +1,33 @@
-<nav class="behavior-nav" aria-label="Behavior administration">
-  <a href="{{ url_for('behavior.dashboard') }}" class="{% if request.endpoint == 'behavior.dashboard' %}is-active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
-  <a href="{{ url_for('behavior.configuration') }}" class="{% if request.endpoint == 'behavior.configuration' %}is-active{% endif %}"><i class="fa-solid fa-sliders"></i> Behavior Setup</a>
-  <a href="{{ url_for('behavior.sessions') }}" class="{% if request.endpoint == 'behavior.sessions' %}is-active{% endif %}"><i class="fa-solid fa-calendar-days"></i> Sessions &amp; Allocation</a>
-  <a href="{{ url_for('behavior.grade_management') }}" class="{% if request.endpoint in ['behavior.grade_management', 'behavior.delete_grade_scale'] %}is-active{% endif %}"><i class="fa-solid fa-graduation-cap"></i> Grade Management</a>
-  <a href="{{ url_for('behavior.categories') }}" class="{% if request.endpoint == 'behavior.categories' %}is-active{% endif %}"><i class="fa-solid fa-tags"></i> Categories</a>
-  <a href="{{ url_for('behavior.actions') }}" class="{% if request.endpoint == 'behavior.actions' %}is-active{% endif %}"><i class="fa-solid fa-list-check"></i> Actions</a>
-  <a href="{{ url_for('behavior.students') }}" class="{% if request.endpoint == 'behavior.students' %}is-active{% endif %}"><i class="fa-solid fa-user-graduate"></i> Student Behavior</a>
-  <a href="{{ url_for('behavior.events') }}" class="{% if request.endpoint == 'behavior.events' %}is-active{% endif %}"><i class="fa-solid fa-clock-rotate-left"></i> Events</a>
-  <a href="{{ url_for('behavior.history') }}" class="{% if request.endpoint == 'behavior.history' %}is-active{% endif %}"><i class="fa-solid fa-timeline"></i> History</a>
-  <a href="{{ url_for('behavior.audit_history') }}" class="{% if request.endpoint == 'behavior.audit_history' %}is-active{% endif %}"><i class="fa-solid fa-shield-halved"></i> Audit</a>
-</nav>
+<div class="behavior-module-shell app-header">
+  <header class="behavior-topbar topbar">
+    <a class="behavior-brand" href="{{ url_for('behavior.dashboard') }}"><span class="behavior-brand__seal"><i class="fa-solid fa-shield-halved"></i></span><span><small>SULTAAN EMS</small><strong>Anshaxa Ledger</strong></span></a>
+    <div class="behavior-topbar__meta"><span class="behavior-year-chip">{{ selected_year.name if selected_year else (config.academic_year.name if config else 'Academic Year') }}{% if selected_level %} · {{ selected_level.name }}{% endif %}</span><span class="behavior-user-avatar">{{ (current_user.username or 'AD')[:2]|upper }}</span></div>
+  </header>
+  <nav class="behavior-nav top-tabs" aria-label="Behavior administration">
+    <button class="behavior-nav__scroll" type="button" data-behavior-nav-scroll="-1" aria-label="Scroll behavior navigation left"><i class="fa-solid fa-chevron-left"></i></button>
+    <div class="behavior-nav__items">
+    <a href="{{ url_for('behavior.dashboard') }}" class="{% if request.endpoint == 'behavior.dashboard' %}is-active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+    <a href="{{ url_for('behavior.configuration') }}" class="{% if request.endpoint == 'behavior.configuration' %}is-active{% endif %}"><i class="fa-solid fa-sliders"></i> Behavior Setup</a>
+    <a href="{{ url_for('behavior.sessions') }}" class="{% if request.endpoint == 'behavior.sessions' %}is-active{% endif %}"><i class="fa-solid fa-calendar-days"></i> Sessions &amp; Allocation</a>
+    <a href="{{ url_for('behavior.session_allocation') }}" class="{% if request.endpoint == 'behavior.session_allocation' %}is-active{% endif %}"><i class="fa-solid fa-scale-balanced"></i> Allocation Planning</a>
+    <a href="{{ url_for('behavior.grade_management') }}" class="{% if request.endpoint in ['behavior.grade_management', 'behavior.delete_grade_scale'] %}is-active{% endif %}"><i class="fa-solid fa-graduation-cap"></i> Grade Management</a>
+    <a href="{{ url_for('behavior.taxonomy', config_id=config.id if config else '') }}" class="{% if request.endpoint in ['behavior.taxonomy', 'behavior.categories', 'behavior.subcategories', 'behavior.actions'] %}is-active{% endif %}"><i class="fa-solid fa-tags"></i> Taxonomy</a>
+    <a href="{{ url_for('behavior.attendance') }}" class="{% if request.endpoint == 'behavior.attendance' %}is-active{% endif %}"><i class="fa-solid fa-user-check"></i> Attendance</a>
+    <a href="{{ url_for('behavior.students') }}" class="{% if request.endpoint == 'behavior.students' %}is-active{% endif %}"><i class="fa-solid fa-user-graduate"></i> Student Behavior</a>
+    <a href="{{ url_for('behavior.events') }}" class="{% if request.endpoint == 'behavior.events' %}is-active{% endif %}"><i class="fa-solid fa-clock-rotate-left"></i> Events</a>
+    <a href="{{ url_for('behavior.history') }}" class="{% if request.endpoint == 'behavior.history' %}is-active{% endif %}"><i class="fa-solid fa-timeline"></i> History</a>
+    <a href="{{ url_for('behavior.audit_history') }}" class="{% if request.endpoint == 'behavior.audit_history' %}is-active{% endif %}"><i class="fa-solid fa-shield-halved"></i> Audit</a>
+    </div>
+    <button class="behavior-nav__scroll" type="button" data-behavior-nav-scroll="1" aria-label="Scroll behavior navigation right"><i class="fa-solid fa-chevron-right"></i></button>
+  </nav>
+</div>
+<script>
+(() => {
+  document.body.classList.add('behavior-mode');
+  const items = document.querySelector('.behavior-nav__items');
+  if (!items) return;
+  document.querySelectorAll('[data-behavior-nav-scroll]').forEach((button) => {
+    button.addEventListener('click', () => items.scrollBy({ left: Number(button.dataset.behaviorNavScroll) * 260, behavior: 'smooth' }));
+  });
+})();
+</script>

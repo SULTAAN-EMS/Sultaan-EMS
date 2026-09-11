@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="so">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attendance Report - {{ student.full_name }}</title>
+<style>
+@page { size: A4; margin: 0; }
+.bd-donut{background:conic-gradient(#22c55e 0deg {{ donut_present_angle }}deg,#f59e0b {{ donut_present_angle }}deg {{ donut_present_angle + donut_late_angle }}deg,#ef4444 {{ donut_present_angle + donut_late_angle }}deg {{ donut_present_angle + donut_late_angle + donut_absent_angle }}deg,#7c3aed {{ donut_present_angle + donut_late_angle + donut_absent_angle }}deg 360deg)}
+* { box-sizing: border-box; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.pdf-icon{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.dcircle .pdf-icon{width:8px;height:8px;vertical-align:0}.badge .pdf-icon{width:19px;height:19px;vertical-align:0}
+body { font-family:'Segoe UI',Arial,sans-serif; width:794px; color:#1f2937; background:#f4f6f9; }
+.page { width:794px; height:1123px; background:#fff; overflow:hidden; margin:0 auto; }
+.top { display:flex; justify-content:space-between; align-items:center; padding:10px 30px 6px; border-bottom:3px solid #0d3b66; }.top-left{display:flex;align-items:center;gap:14px}.logo{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#0d3b66,#123d6b);display:flex;align-items:center;justify-content:center;color:#f4b400;font-size:26px;border:2px solid #f4b400}.school-name{font-size:21px;font-weight:800;color:#0d3b66;letter-spacing:.3px}.school-sub{font-size:11px;color:#6b7280;margin-top:2px;letter-spacing:1px}.top-right{text-align:right}.behavior-tag{font-size:10px;color:#16a34a;font-weight:700;letter-spacing:1px}.report-tag{font-size:19px;font-weight:800;color:#0d3b66;display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.banner{background:linear-gradient(90deg,#0d3b66,#146356);color:#fff;padding:6px 30px;display:flex;justify-content:space-between;align-items:center}.banner-title{font-size:16px;font-weight:800}.banner-sub{font-size:11px;opacity:.9;margin-top:3px}.banner-month{font-size:24px;font-weight:800}
+.info-row{display:flex;gap:22px;padding:8px 30px}.info-card{flex:1;border:1px solid #e5e7eb;border-left:5px solid #0d3b66;border-radius:10px;padding:12px 20px;display:flex;gap:16px;align-items:center;background:linear-gradient(180deg,#fbfdff,#fff);box-shadow:0 2px 6px rgba(13,59,102,.08)}.photo{width:66px;height:80px;border-radius:0;object-fit:cover;border:1px solid #cbd5e1;outline:3px solid #f4f7fb;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.12)}.photo-placeholder{width:66px;height:80px;border:1px solid #cbd5e1;outline:3px solid #f4f7fb;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-weight:800}.info-details{flex:1}.student-name{font-size:15px;font-weight:800;color:#0d3b66;letter-spacing:.2px}.mother-name{font-size:9.5px;color:#64748b;margin-top:1px;font-style:italic}.mother-name b{color:#374151;font-style:normal;font-weight:700}.name-block{padding-bottom:6px;margin-bottom:6px;border-bottom:2px solid #eef2f7}.info-grid{display:grid;grid-template-columns:1fr 1fr;row-gap:5px;column-gap:10px}.info-item{display:flex;align-items:center;gap:6px;font-size:11.5px}.info-icon{width:16px;height:16px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;flex-shrink:0}.info-label{color:#6b7280;display:block;font-size:8px}.info-value{font-weight:700;color:#1f2937;font-size:10.5px}.overall-card{width:190px;border:1px solid #e5e7eb;border-top:4px solid #22c55e;border-radius:10px;padding:12px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(13,59,102,.08)}.overall-label{font-size:8.5px;letter-spacing:1px;color:#6b7280;font-weight:700;margin-bottom:6px}.badge{width:44px;height:44px;border-radius:50%;background:#e9f9ee;border:2px solid #22c55e;color:#16a34a;display:flex;align-items:center;justify-content:center;font-size:19px;margin:0 auto 6px}.overall-pct{font-size:21px;font-weight:800;color:#16a34a}.overall-tag{font-size:10px;font-weight:800;color:#16a34a;letter-spacing:1px}
+.stats-row{display:flex;gap:10px;padding:0 30px 5px}.stat-card{flex:1;border:1px solid #e5e7eb;border-radius:9px;padding:5px 8px;text-align:center}.stat-icon{width:19px;height:19px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;margin:0 auto 3px}.stat-label{font-size:6.8px;letter-spacing:.4px;color:#6b7280;font-weight:700;margin-bottom:1px}.stat-value{font-size:14px;font-weight:800;color:#1f2937}.stat-unit{font-size:7.5px;color:#6b7280}
+.mid-row{display:flex;gap:12px;padding:0 30px 4px}.panel{border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px}.panel-title{font-size:12px;font-weight:800;color:#0d3b66;margin-bottom:5px}.cal-panel{flex:1.5;display:flex;flex-direction:column}table.cal{width:100%;border-collapse:collapse;border:1px solid #e2e8f0}table.cal th{font-size:8px;color:#475569;padding:2px 0;font-weight:700;background:#f8fafc;border:1px solid #e2e8f0}table.cal th.holiday-h{color:#7c3aed;background:#f4f0fd}table.cal td{text-align:center;font-size:8px;padding:1.5px 0;width:14.28%;border:1px solid #e2e8f0}table.cal td.pad{background:#fafbfc}table.cal td.holiday{background:#f7f5fd}.day-num{color:#9ca3af;font-size:8px}.day-num.active{color:#374151;font-weight:600}.dcircle{width:13px;height:13px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:1px auto 0;font-size:7.5px;color:#fff}.present{background:#22c55e}.late{background:#f59e0b}.absent{background:#ef4444}.excused{background:#7c3aed}.official_leave{background:#0891b2}.hol-badge{width:13px;height:13px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:1px auto 0;font-size:6.5px;color:#fff;background:#a78bfa;font-weight:700}.legend{display:flex;gap:10px;margin-top:auto;padding-top:6px;flex-wrap:wrap;font-size:7.2px;color:#4b5563}.legend span{display:inline-flex;align-items:center;gap:3px}.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.donut-panel{flex:1;display:flex;flex-direction:column;align-items:center}.donut-wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:space-evenly;width:100%}.bd-donut{width:86px;height:86px;border-radius:50%;background:conic-gradient(#22c55e {{ attendance_percentage * 3.6 }}deg,#f59e0b {{ attendance_percentage * 3.6 }}deg {{ (attendance_percentage + (counts.late / (total_school_days or 1) * 100)) * 3.6 }}deg,#ef4444 0deg);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.04)}.bd-donut-inner{width:54px;height:54px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 0 0 1px #f1f3f5}.bd-pct{font-size:13px;font-weight:800;color:#1f2937}.bd-sub{font-size:6.5px;color:#6b7280;font-weight:700}.bd-list{width:100%;font-size:10px}.bd-list .bd-item{display:flex;justify-content:space-between;align-items:center;padding:4px 2px;border-bottom:1px dashed #f1f3f5}.bd-list .bd-item:last-child{border-bottom:none}.bd-item span{display:flex;align-items:center;gap:5px;color:#374151}.bd-item b{color:#1f2937}
+.section{padding:0 30px 5px}.section-panel{border:1px solid #e5e7eb;border-radius:10px;padding:7px 14px}table.abs{width:100%;border-collapse:collapse;margin-top:6px}table.abs th{text-align:left;font-size:8.5px;color:#334155;padding:3.5px 8px;border-bottom:2px solid #e5e7eb;letter-spacing:.4px;font-weight:800;white-space:nowrap}table.abs th .table-head-icon{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;margin-right:3px;border-radius:4px;vertical-align:-3px}table.abs th .table-head-icon .pdf-icon{width:10px;height:10px;stroke-width:2.2}.abs th.table-head-date{color:#2563eb}.abs th.table-head-date .table-head-icon{color:#2563eb;background:#dbeafe}.abs th.table-head-day{color:#0f766e}.abs th.table-head-day .table-head-icon{color:#0f766e;background:#ccfbf1}.abs th.table-head-type{color:#7c3aed}.abs th.table-head-type .table-head-icon{color:#7c3aed;background:#ede9fe}.abs th.table-head-time{color:#b45309}.abs th.table-head-time .table-head-icon{color:#b45309;background:#fef3c7}.abs th.table-head-period{color:#0891b2}.abs th.table-head-period .table-head-icon{color:#0891b2;background:#cffafe}.abs th.table-head-reason{color:#be123c}.abs th.table-head-reason .table-head-icon{color:#be123c;background:#ffe4e6}.abs th.table-head-remark{color:#15803d}.abs th.table-head-remark .table-head-icon{color:#15803d;background:#dcfce7}table.abs td{font-size:9px;padding:2.8px 8px;border-bottom:1px solid #f1f3f5}.tag{padding:2px 8px;border-radius:10px;font-size:8.5px;font-weight:700}.tag-late{background:#fef3c7;color:#b45309}.tag-absent{background:#fee2e2;color:#b91c1c}.tag-excused{background:#ede9fe;color:#6d28d9}.info-note{margin-top:6px;font-size:8.5px;color:#6b7280;display:flex;align-items:center;gap:5px}.info-note .note-icon{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:50%;color:#2563eb;background:#dbeafe;flex:0 0 auto}.info-note .note-icon .pdf-icon{width:9px;height:9px;stroke-width:2.3}
+.bot-row{display:flex;gap:14px;padding:0 30px 5px}.behavior-panel{flex:.85}.behavior-header{background:#0d3b66;color:#fff;font-size:11px;font-weight:800;padding:6px 12px;border-radius:8px 8px 0 0;margin:-8px -10px 8px}.behavior-list{font-size:9.5px}.behavior-list .row{display:flex;justify-content:space-between;align-items:center;padding:3.5px 0;border-bottom:1px dashed #f1f3f5}.behavior-list .row:last-child{border-bottom:none}.behavior-list .row>span{display:inline-flex;align-items:center;gap:5px;color:#334155;font-weight:600}.behavior-list .row>span .pdf-icon{width:15px;height:15px;padding:2px;border-radius:50%;stroke-width:2.2}.behavior-list .row:nth-child(1)>span .pdf-icon{color:#2563eb;background:#dbeafe}.behavior-list .row:nth-child(2)>span .pdf-icon{color:#16a34a;background:#dcfce7}.behavior-list .row:nth-child(3)>span .pdf-icon{color:#d97706;background:#fef3c7}.behavior-list .row:nth-child(4)>span .pdf-icon{color:#7c3aed;background:#ede9fe}.behavior-list .row b{font-weight:800}.bar-wrap{margin-top:8px}.bar-track{height:6px;border-radius:4px;background:linear-gradient(90deg,#ef4444,#f59e0b,#22c55e);position:relative}.bar-marker{position:absolute;top:-4px;width:2px;height:14px;background:#111827}.bar-labels{display:flex;justify-content:space-between;font-size:8px;color:#9ca3af;margin-top:3px}.trend-panel{flex:1.15}.trend-title{color:#166534}.trend-chart{display:flex;gap:6px}.y-axis{display:flex;flex-direction:column-reverse;justify-content:space-between;font-size:7.5px;color:#9ca3af;padding-bottom:16px;text-align:right;width:14px}.y-axis-label{font-size:7px;color:#9ca3af;text-align:left;margin-bottom:2px}.plot-wrap{flex:1}.plot-area{position:relative;height:78px}.gridline{position:absolute;left:0;right:0;border-top:1px solid #eef1f4;font-size:0}.bars{position:relative;display:flex;align-items:flex-end;gap:8px;height:100%}.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative}.bar-total{font-size:9px;font-weight:700;margin-bottom:2px;color:#166534}.bar-stack{width:62%;display:flex;flex-direction:column-reverse;border-radius:3px 3px 0 0;overflow:hidden}.bar-seg-label{font-size:7.5px;font-weight:800;color:#fff;text-align:center;line-height:1.5}.bar-week-label{font-size:6.8px;color:#6b7280;margin-top:4px;text-align:center}.trend-note{margin-top:6px;background:#f0fdf4;border-radius:6px;padding:5px 9px;font-size:8px;color:#166534;display:flex;gap:5px}
+.footer-row{display:flex;gap:14px;padding:0 30px 4px;align-items:center}.stamp-panel{flex:.6;display:flex;flex-direction:column;align-items:center;justify-content:center}.stamp{width:66px;height:66px;border-radius:50%;border:2px double #0d3b66;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#0d3b66;font-size:6px;font-weight:800;text-align:center;padding:2px}.sign-panel{flex:1;border:1px solid #e5e7eb;border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:14px}.sign-header{color:#0d3b66;font-weight:800;font-size:10.5px;white-space:nowrap}.sign-line{flex:1;border-bottom:1px dotted #9ca3af;margin:10px 0 0}.sign-date{font-size:9px;color:#6b7280;white-space:nowrap}.bottom-bar{background:#0d3b66;color:#fff;font-size:9px;padding:5px 30px;display:flex;justify-content:space-between}.bottom-bar span{display:flex;align-items:center;gap:5px}.report-toolbar{position:fixed;right:12px;top:12px;z-index:20;display:flex;gap:8px}.report-toolbar button,.report-toolbar a{border:0;border-radius:6px;padding:9px 14px;font-weight:700;cursor:pointer;text-decoration:none}.report-toolbar button{background:#0d3b66;color:#fff}.report-toolbar a{background:#fff;color:#0d3b66}@media print{body{background:#fff}.report-toolbar{display:none}}@media screen and (max-width:900px){body{background:#f4f6f9}.page{transform-origin:top left;margin:0}.report-toolbar{position:sticky;top:0;justify-content:flex-end;padding:8px;background:rgba(244,246,249,.96)}}
+.tag-present{background:#dcfce7;color:#15803d}.tag-official_leave{background:#cffafe;color:#0e7490}.abs th.table-head-points{color:#0891b2}.abs th.table-head-points .table-head-icon{color:#0891b2;background:#cffafe}
+/* Reference table layout and print-safe pagination. */
+.page{height:auto;min-height:1123px;overflow:visible}
+table.abs{table-layout:fixed}
+table.abs th.table-head-points,table.abs td:nth-child(5){text-align:center}
+table.abs th.table-head-reason,table.abs td:nth-child(6){padding-left:16px}
+table.abs td:nth-child(6){font-size:12px}
+table.abs th,table.abs td,table.abs .tag{font-size:12px}
+.bd-donut{background:conic-gradient(#22c55e 0deg {{ donut_present_angle }}deg,#f59e0b {{ donut_present_angle }}deg {{ donut_present_angle + donut_late_angle }}deg,#ef4444 {{ donut_present_angle + donut_late_angle }}deg {{ donut_present_angle + donut_late_angle + donut_absent_angle }}deg,#7c3aed {{ donut_present_angle + donut_late_angle + donut_absent_angle }}deg {{ donut_present_angle + donut_late_angle + donut_absent_angle + donut_excused_angle }}deg,#0891b2 {{ donut_present_angle + donut_late_angle + donut_absent_angle + donut_excused_angle }}deg {{ donut_present_angle + donut_late_angle + donut_absent_angle + donut_excused_angle + donut_official_leave_angle }}deg,#e5e7eb {{ donut_present_angle + donut_late_angle + donut_absent_angle + donut_excused_angle + donut_official_leave_angle }}deg 360deg)}
+table.abs th{font-size:9.5px;padding:4.5px 8px;white-space:nowrap}
+table.abs td{font-size:10.5px;padding:4px 8px;vertical-align:middle}
+table.abs thead{display:table-header-group}
+table.abs tr{page-break-inside:avoid;break-inside:avoid}
+table.abs .tag{padding:2.5px 9px;font-size:9.5px;white-space:nowrap}
+table.abs tr.totals-row td{background:#eef4fb;border-top:2px solid #0d3b66;border-bottom:none;padding:10px 8px 6px!important}
+.totals-group{display:flex;align-items:center;justify-content:center;gap:16px}
+.totals-label-cell{font-weight:800;color:#0d3b66;font-size:9.5px;letter-spacing:.3px;white-space:nowrap}
+.totals-cards{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:8px}
+.t-card{flex:0 0 auto;min-width:100px;display:flex;align-items:center;justify-content:center;gap:4px;border-radius:6px;padding:2.5px 8px;border:1px solid;line-height:1}
+.t-card.pos{background:#f0fdf4;border-color:#bbf7d0}.t-card.neg{background:#fef2f2;border-color:#fecaca}.t-card.grand{background:#eaf1fb;border-color:#bcd2ea}
+.t-icon{width:11px;height:11px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7.5px;font-weight:800;color:#fff;flex-shrink:0;line-height:1}
+.t-card.pos .t-icon{background:#22c55e}.t-card.neg .t-icon{background:#ef4444}.t-card.grand .t-icon{background:#0d3b66}
+.t-text{display:flex;flex-direction:column;justify-content:center;line-height:1.1;min-width:0}.t-label{font-size:5.5px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:.1px;white-space:nowrap}.t-val{font-size:9px;font-weight:800}.t-card.pos .t-val{color:#16a34a}.t-card.neg .t-val{color:#b91c1c}.t-card.grand .t-val{color:#0d3b66;font-size:10px}.attendance-ledger-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px;padding:6px 8px;border:1px solid #dbe5f0;border-radius:7px;background:#f8fafc;font-size:8px}.attendance-ledger-grid .ledger-group{display:flex;flex-direction:column;gap:2px}.attendance-ledger-grid .ledger-title{font-size:7px;color:#0d3b66;font-weight:800;text-transform:uppercase;letter-spacing:.2px}.attendance-ledger-grid .ledger-line{display:flex;justify-content:space-between;gap:5px;color:#64748b;white-space:nowrap}.attendance-ledger-grid .ledger-line b{color:#1f2937}.attendance-ledger-grid .ledger-line .positive{color:#15803d}.attendance-ledger-grid .ledger-line .negative{color:#b91c1c}.attendance-ledger-grid .ledger-line .status{color:#b45309;font-weight:800}
+</style>
+</head>
+<body>
+<div class="report-toolbar">{% if portal_read_only and portal_download_url %}<a href="{{ portal_download_url }}">Download PDF</a>{% else %}<button type="button" onclick="window.print()">Print / Save PDF</button>{% endif %}{% if portal_read_only and portal_back_url %}<a href="{{ portal_back_url }}">Back to Result</a>{% else %}<a href="{{ url_for('behavior.attendance', config_id=config.id, session_id=session.id, class_id=enrollment.academic_year_class_id, attendance_date=report_date.isoformat()) }}">Back</a>{% endif %}</div>
+<div class="page">
+  <div class="top"><div class="top-left"><div class="logo">&#127891;</div><div><div class="school-name">SULTAAN INTERNATIONAL SCHOOLS</div><div class="school-sub">Knowledge &bull; Discipline &bull; Excellence</div></div></div><div class="top-right"><div class="behavior-tag">BEHAVIOR SECTION</div><div class="report-tag">&#128197; ATTENDANCE REPORT</div></div></div>
+  <div class="banner"><div><div class="banner-title">MONTHLY ATTENDANCE REPORT</div><div class="banner-sub">&#128197; {{ month_start.strftime('%d %b') }} &ndash; {{ month_end.strftime('%d %b %Y') }}</div></div><div class="banner-month">{{ report_date.strftime('%b %Y')|upper }}</div></div>
+  <div class="info-row"><div class="info-card"><div>{% if student.photo_path %}<img class="photo" src="{{ asset_url(student.photo_path) }}" alt="{{ student.full_name }} photo">{% else %}<div class="photo-placeholder">ID</div>{% endif %}</div><div class="info-details"><div class="name-block"><div class="student-name">{{ student.full_name|upper }}</div><div class="mother-name">Hooyo <b>{{ student.mother_name or '__________________' }}</b></div></div><div class="info-grid"><div class="info-item"><div class="info-icon" style="background:#16a34a;">&#128100;</div><div><span class="info-label">Student ID</span><span class="info-value">{{ student.student_code }}</span></div></div><div class="info-item"><div class="info-icon" style="background:#2563eb;">&#127891;</div><div><span class="info-label">Academic Year</span><span class="info-value">{{ config.academic_year.name }}</span></div></div><div class="info-item"><div class="info-icon" style="background:#7c3aed;">&#128218;</div><div><span class="info-label">Level</span><span class="info-value">{{ config.academic_year_level.name }}</span></div></div><div class="info-item"><div class="info-icon" style="background:#7c3aed;">&#128218;</div><div><span class="info-label">Class / Grade</span><span class="info-value">{{ enrollment.academic_year_class.name }}</span></div></div></div></div></div><div class="overall-card"><div class="overall-label">OVERALL ATTENDANCE</div><div class="badge">&#10003;</div><div class="overall-pct">{{ '%.1f'|format(attendance_percentage) }}%</div><div class="overall-tag">{{ overall_label }}</div></div></div>
+  <div class="stats-row"><div class="stat-card"><div class="stat-icon" style="background:#16a34a;">&#128197;</div><div class="stat-label">TOTAL SCHOOL DAYS</div><div class="stat-value">{{ total_school_days }}</div><div class="stat-unit">Days</div></div><div class="stat-card"><div class="stat-icon" style="background:#2563eb;">&#10003;</div><div class="stat-label">PRESENT DAYS</div><div class="stat-value">{{ counts.present }}</div><div class="stat-unit">Days</div></div><div class="stat-card"><div class="stat-icon" style="background:#f59e0b;">&#128340;</div><div class="stat-label">LATE DAYS</div><div class="stat-value">{{ counts.late }}</div><div class="stat-unit">Day</div></div><div class="stat-card"><div class="stat-icon" style="background:#ef4444;">&#10005;</div><div class="stat-label">ABSENT DAYS</div><div class="stat-value">{{ counts.absent }}</div><div class="stat-unit">Day</div></div><div class="stat-card"><div class="stat-icon" style="background:#7c3aed;">&#128198;</div><div class="stat-label">EXCUSED DAYS</div><div class="stat-value">{{ counts.excused }}</div><div class="stat-unit">Days</div></div><div class="stat-card"><div class="stat-icon" style="background:#0891b2;">&#128203;</div><div class="stat-label">OFFICIAL LEAVE</div><div class="stat-value">{{ counts.official_leave }}</div><div class="stat-unit">Days</div></div></div>
+  <div class="mid-row"><div class="panel cal-panel"><div class="panel-title">MONTHLY ATTENDANCE CALENDAR</div><table class="cal"><thead><tr><th>SAT</th><th>SUN</th><th>MON</th><th>TUE</th><th>WED</th><th>THU</th><th class="holiday-h">Fri</th></tr></thead><tbody>{% for week in calendar_weeks %}<tr>{% for cell in week %}{% if cell.pad %}<td class="pad"></td>{% else %}<td class="{% if cell.holiday %}holiday{% endif %}"><span class="day-num {% if cell.active %}active{% endif %}">{{ cell.day }}</span>{% if cell.holiday %}<span class="hol-badge">H</span>{% elif cell.key %}<span class="dcircle {{ cell.key }}">{% if cell.key == 'present' %}&#10003;{% elif cell.key == 'late' %}.{% elif cell.key == 'absent' %}x{% elif cell.key == 'excused' %}-{% elif cell.key == 'official_leave' %}L{% endif %}</span>{% endif %}</td>{% endif %}{% endfor %}</tr>{% endfor %}</tbody></table><div class="legend"><span><i class="dot present"></i>Present</span><span><i class="dot late"></i>Late</span><span><i class="dot absent"></i>Absent</span><span><i class="dot excused"></i>Excused</span><span><i class="dot official_leave"></i>Official Leave</span><span><i class="dot" style="background:#a78bfa;"></i>Holiday</span></div></div><div class="panel donut-panel"><div class="panel-title">ATTENDANCE BREAKDOWN</div><div class="donut-wrap"><div class="bd-donut"><div class="bd-donut-inner"><span class="bd-pct">{{ '%.1f'|format(attendance_percentage) }}%</span><span class="bd-sub">ATTENDANCE</span></div></div><div class="bd-list"><div class="bd-item"><span><i class="dot present"></i>Present</span><b>{{ counts.present }}</b></div><div class="bd-item"><span><i class="dot late"></i>Late</span><b>{{ counts.late }}</b></div><div class="bd-item"><span><i class="dot absent"></i>Absent</span><b>{{ counts.absent }}</b></div><div class="bd-item"><span><i class="dot excused"></i>Excused</span><b>{{ counts.excused }}</b></div><div class="bd-item"><span><i class="dot official_leave"></i>Official Leave</span><b>{{ counts.official_leave }}</b></div></div></div></div></div>
+  <div class="section"><div class="section-panel"><div class="panel-title">ABSENCES &amp; LATES DETAILS</div><table class="abs"><colgroup><col style="width:13%"><col style="width:11%"><col style="width:15%"><col style="width:12%"><col style="width:10%"><col style="width:39%"></colgroup><thead><tr><th class="table-head-date"><span class="table-head-icon" data-icon="date"></span>DATE</th><th class="table-head-day"><span class="table-head-icon" data-icon="day"></span>DAY</th><th class="table-head-type"><span class="table-head-icon" data-icon="type"></span>TYPE</th><th class="table-head-time"><span class="table-head-icon" data-icon="time"></span>TIME</th><th class="table-head-points"><span class="table-head-icon" data-icon="points"></span>POINTS</th><th class="table-head-reason"><span class="table-head-icon" data-icon="reason"></span>REASON / NOTE</th></tr></thead><tbody>{% for item in absence_rows %}<tr><td>{{ item.date.strftime('%d %b %Y') }}</td><td>{{ item.day }}</td><td><span class="tag tag-{{ item.key }}">{{ item.tag_label }}</span></td><td>{{ item.time }}</td><td style="font-weight:800;{% if item.key == 'late' %}color:#b45309;{% elif item.key == 'absent' %}color:#b91c1c;{% elif item.key == 'excused' or item.key == 'official_leave' %}color:#6d28d9;{% else %}color:#15803d;{% endif %}">{{ item.points }}</td><td>{{ item.note }}</td></tr>{% else %}<tr><td colspan="6">No attendance records for this month.</td></tr>{% endfor %}<tr class="totals-row"><td colspan="6"><div class="totals-group"><span class="totals-label-cell">WADARTA GUUD / MONTHLY TOTAL &rarr;</span><div class="totals-cards"><div class="t-card pos"><div class="t-icon">+</div><div class="t-text"><span class="t-label">Total Positive Points</span><span class="t-val">{{ total_positive_points }}</span></div></div><div class="t-card neg"><div class="t-icon">&minus;</div><div class="t-text"><span class="t-label">Total Negative Points</span><span class="t-val">{{ total_negative_points }}</span></div></div><div class="t-card grand"><div class="t-icon">&Sigma;</div><div class="t-text"><span class="t-label">Grand Total</span><span class="t-val">{{ grand_total_points }}</span></div></div></div></div></td></tr></tbody></table><div class="attendance-ledger-grid"><div class="ledger-group"><div class="ledger-title">Attendance Allocation</div><div class="ledger-line"><span>Maximum</span><b>{{ attendance_allocation }}</b></div><div class="ledger-line"><span>Earned</span><b>{{ attendance_earned }}</b></div><div class="ledger-line"><span>Remaining</span><b>{{ attendance_remaining }}</b></div></div><div class="ledger-group"><div class="ledger-title">Positive Ledger</div><div class="ledger-line"><span>Maximum</span><b>{{ attendance_positive_max }}</b></div><div class="ledger-line"><span>Used</span><b class="positive">{{ attendance_positive_used }}</b></div><div class="ledger-line"><span>Remaining</span><b>{{ attendance_positive_remaining }}</b></div></div><div class="ledger-group"><div class="ledger-title">Negative Ledger</div><div class="ledger-line"><span>Maximum</span><b>{{ attendance_negative_max }}</b></div><div class="ledger-line"><span>Used</span><b class="negative">{{ attendance_negative_used }}</b></div><div class="ledger-line"><span>Remaining</span><b>{{ attendance_negative_remaining }}</b></div></div><div class="ledger-group"><div class="ledger-title">Session Status</div><div class="ledger-line"><span>Status</span><b class="status">{{ attendance_status }}</b></div><div class="ledger-line"><span>Grand Total</span><b>{{ grand_total_points }}</b></div>{% if attendance_reason %}<div class="ledger-line"><span>Reason</span><b>{{ attendance_reason }}</b></div>{% endif %}</div></div><div class="info-note">&#8505; <b>Note:</b> Attendance records shown here belong only to the selected year, configuration, session, and student enrollment. Allocation and earned values use the canonical Attendance scoring projection.</div></div></div>
+  <div class="bot-row"><div class="panel behavior-panel"><div class="behavior-header">BEHAVIOR IMPACT</div><div class="behavior-list"><div class="row"><span>&#127942; Attendance Points</span><b style="color:#2563eb;">{{ attended_days }} / {{ total_school_days }}</b></div><div class="row"><span>&#128202; Behavior Grade</span><b style="color:#16a34a;">{{ behavior_grade }}</b></div><div class="row"><span>&#128260; Consistency</span><b style="color:#16a34a;">{{ overall_label|title }}</b></div><div class="row"><span>&#128200; Improvement</span><b style="color:#16a34a;">{{ '%.1f'|format(behavior_percentage or 0) }}%</b></div></div><div class="bar-wrap"><div style="font-size:9px;color:#6b7280;margin-bottom:4px;">BEHAVIOR SCORE CONTRIBUTION &nbsp;<b style="color:#16a34a;">{{ '%.1f'|format(behavior_percentage or 0) }}%</b></div><div class="bar-track"><div class="bar-marker" style="left:{{ [behavior_percentage or 0, 100]|min }}%;"></div></div><div class="bar-labels"><span>0%</span><span>50%</span><span>100%</span></div></div></div><div class="panel trend-panel"><div class="panel-title trend-title">ATTENDANCE TREND (WEEKLY)</div><div class="y-axis-label">Days</div><div class="trend-chart"><div class="y-axis">{% for value in range(weekly_max + 1) %}<span>{{ value }}</span>{% endfor %}</div><div class="plot-wrap"><div class="plot-area"><div class="gridline" style="bottom:0%;"></div><div class="gridline" style="bottom:20%;"></div><div class="gridline" style="bottom:40%;"></div><div class="gridline" style="bottom:60%;"></div><div class="gridline" style="bottom:80%;"></div><div class="gridline" style="bottom:100%;"></div><div class="bars">{% for item in trend %}<div class="bar-col"><div class="bar-total">{{ item.total }}</div><div class="bar-stack" style="height:{{ [item.total / (weekly_max or 1) * 100, 100]|min }}%;">{% if item.absent %}<div style="background:#ef4444;height:{{ (item.absent / (item.total or 1) * 100) }}%;" class="bar-seg-label">{{ item.absent }}</div>{% endif %}{% if item.late %}<div style="background:#f59e0b;height:{{ (item.late / (item.total or 1) * 100) }}%;" class="bar-seg-label">{{ item.late }}</div>{% endif %}{% if item.present %}<div style="background:#22c55e;height:{{ (item.present / (item.total or 1) * 100) }}%;" class="bar-seg-label">{{ item.present }}</div>{% endif %}{% if item.excused %}<div style="background:#7c3aed;height:{{ (item.excused / (item.total or 1) * 100) }}%;" class="bar-seg-label">{{ item.excused }}</div>{% endif %}{% if item.official_leave %}<div style="background:#0891b2;height:{{ (item.official_leave / (item.total or 1) * 100) }}%;" class="bar-seg-label">{{ item.official_leave }}</div>{% endif %}</div></div>{% endfor %}</div></div><div class="bars" style="height:auto;">{% for item in trend %}<div class="bar-col" style="height:auto;"><div class="bar-week-label">{{ item.label }}<br>({{ item.range }})</div></div>{% endfor %}</div></div></div><div style="display:flex;gap:14px;font-size:8.5px;color:#4b5563;padding:5px 4px 0 20px;"><span><span class="dot" style="background:#22c55e;"></span> Present</span><span><span class="dot" style="background:#f59e0b;"></span> Late</span><span><span class="dot" style="background:#ef4444;"></span> Absent</span><span><span class="dot" style="background:#7c3aed;"></span> Excused</span><span><span class="dot" style="background:#0891b2;"></span> Official Leave</span></div><div class="trend-note">&#127942; You attended {{ attended_days }} out of {{ total_school_days }} school days this month.</div></div></div>
+  <div class="footer-row"><div class="stamp-panel"><div class="stamp">SULTAAN INTERNATIONAL SCHOOLS<br><b style="font-size:8px;">OFFICIAL STAMP</b></div></div><div class="sign-panel"><div class="sign-header">PARENT / GUARDIAN SIGNATURE</div><div class="sign-line"></div><div class="sign-date">Date: ____ / ____ / {{ report_date.year }}</div></div></div><div class="bottom-bar"><span>&#128205; Hodan-Taleex, Mogadishu, Somalia</span><span>&#128222; +252 61 2345678</span><span>&#9993; info@sultaan.edu.so</span><span>&#127760; www.sultaan.edu.so</span></div>
+</div>
+<div id="attendance-summary-data" hidden
+  data-positive-used="{{ attendance_positive_used }}"
+  data-positive-max="{{ attendance_positive_max }}"
+  data-negative-used="{{ attendance_negative_used }}"
+  data-negative-max="{{ attendance_negative_max }}"
+  data-earned="{{ attendance_earned }}"
+  data-allocation="{{ attendance_allocation }}"
+  data-normalized="{{ '1' if normalized_attendance else '0' }}"
+  data-incomplete="{{ '1' if attendance_incomplete else '0' }}"></div>
+<script>
+(() => {
+  const ledger = document.querySelector('.attendance-ledger-grid');
+  const data = document.querySelector('#attendance-summary-data');
+  const cards = document.querySelectorAll('.totals-cards .t-card');
+  if (!ledger || !data || cards.length < 3) return;
+  const format = (value) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(2) : (value || '-');
+  };
+  if (data.dataset.normalized === '1') {
+    const incomplete = data.dataset.incomplete === '1';
+    cards[0].querySelector('.t-val').textContent = incomplete ? 'INCOMPLETE' : `+${format(data.dataset.positiveUsed)}`;
+    cards[1].querySelector('.t-val').textContent = incomplete ? 'INCOMPLETE' : `−${format(data.dataset.negativeUsed)}`;
+    cards[2].querySelector('.t-val').textContent = incomplete ? 'INCOMPLETE' : `${format(data.dataset.earned)} / ${format(data.dataset.allocation)}`;
+  } else {
+    cards[0].querySelector('.t-val').textContent = `${format(data.dataset.positiveUsed)} / ${format(data.dataset.positiveMax)}`;
+    cards[1].querySelector('.t-val').textContent = `${format(data.dataset.negativeUsed)} / ${format(data.dataset.negativeMax)}`;
+    cards[2].querySelector('.t-val').textContent = `${format(data.dataset.earned)} / ${format(data.dataset.allocation)}`;
+  }
+  ledger.remove();
+})();
+</script>
+{% if print_mode %}<script>window.addEventListener('load',function(){window.print();});</script>{% endif %}
+<script>
+(() => {
+  const icon = (paths) => `<svg class="pdf-icon" viewBox="0 0 24 24" aria-hidden="true">${paths}</svg>`;
+  const icons = {
+    cap: icon('<path d="M2 9.5 12 4l10 5.5-10 5.5L2 9.5Z"/><path d="M6 12.2v4.2c3.7 2.5 8.3 2.5 12 0v-4.2M22 10v6"/>'),
+    calendar: icon('<rect x="4.5" y="5" width="15" height="15" rx="2"/><path d="M8.5 3.5v4M15.5 3.5v4M4.5 10h15"/>'),
+    user: icon('<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c.7-4 3.3-6.5 6.5-6.5s5.8 2.5 6.5 6.5"/>'),
+    book: icon('<path d="M4 5.5a2 2 0 0 1 2-2h6v16H6a2 2 0 0 0-2 2V5.5Z"/><path d="M20 5.5a2 2 0 0 0-2-2h-6v16h6a2 2 0 0 1 2 2V5.5Z"/>'),
+    check: icon('<path d="m5 12.5 4.5 4.5L19 7"/>'),
+    clock: icon('<circle cx="12" cy="12" r="8.3"/><path d="M12 7.5V12l3 2"/>'),
+    cross: icon('<path d="M6 6l12 12M18 6 6 18"/>'),
+    clipboard: icon('<rect x="5" y="4" width="14" height="16" rx="1.8"/><path d="M9 4V2.8h6V4M8.5 9h7M8.5 13h7M8.5 17h4"/>'),
+    trophy: icon('<path d="M8 4h8v4a4 4 0 0 1-8 0V4Z"/><path d="M8 5H5v1.5A3.5 3.5 0 0 0 8.3 10M16 5h3v1.5A3.5 3.5 0 0 1 15.7 10M12 12v4M9 20h6M12 16c-1.7 0-3-1-3-2.5"/>'),
+    chart: icon('<path d="M5 19V9M12 19V5M19 19v-7"/><path d="M3 19h18"/>'),
+    refresh: icon('<path d="M20 11a8 8 0 0 0-14.7-4L3 10"/><path d="M3 5v5h5M4 13a8 8 0 0 0 14.7 4L21 14"/><path d="M21 19v-5h-5"/>'),
+    location: icon('<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>'),
+    phone: icon('<path d="M6.5 3.5 9 3l2 5-2.2 1.6a14 14 0 0 0 5.1 5.1l1.6-2.2 5 2-.5 2.5c-.3 1.5-1.7 2.5-3.2 2.2C10.2 18 6 13.8 4.3 7.2 4 5.7 5 3.8 6.5 3.5Z"/>'),
+    mail: icon('<rect x="3.5" y="5.5" width="17" height="13" rx="1.8"/><path d="m4.5 7 7.5 5.5L19.5 7"/>'),
+    globe: icon('<circle cx="12" cy="12" r="8.5"/><path d="M3.8 9h16.4M3.8 15h16.4M12 3.5c2.2 2.4 3.2 5.2 3.2 8.5s-1 6.1-3.2 8.5c-2.2-2.4-3.2-5.2-3.2-8.5s1-6.1 3.2-8.5Z"/>'),
+    info: icon('<circle cx="12" cy="12" r="8.5"/><path d="M12 10.5v5M12 7.5h.01"/>')
+  };
+  const set = (selector, name) => document.querySelectorAll(selector).forEach((node) => { node.innerHTML = icons[name]; });
+  const append = (node, name, text) => { node.innerHTML = icons[name]; node.appendChild(document.createTextNode(text ? ` ${text}` : '')); };
+  const setIcon = (node, name) => { node.innerHTML = icons[name]; };
+  set('.logo', 'cap');
+  document.querySelectorAll('.report-tag').forEach((node) => append(node, 'calendar', 'ATTENDANCE REPORT'));
+  document.querySelectorAll('.banner-sub').forEach((node) => { const text = node.textContent.trim().replace(/^.*?\s(?=\d)/, ''); node.innerHTML = icons.calendar; node.appendChild(document.createTextNode(` ${text}`)); });
+  const infoIcons = ['user', 'cap', 'book', 'book'];
+  document.querySelectorAll('.info-icon').forEach((node, index) => { node.innerHTML = icons[infoIcons[index] || 'book']; });
+  const statIcons = ['calendar', 'check', 'clock', 'cross', 'clipboard'];
+  document.querySelectorAll('.stat-icon').forEach((node, index) => { node.innerHTML = icons[statIcons[index] || 'calendar']; });
+  set('.badge', 'check');
+  document.querySelectorAll('.dcircle').forEach((node) => {
+    const name = node.classList.contains('present') ? 'check' : node.classList.contains('late') ? 'clock' : node.classList.contains('absent') ? 'cross' : 'clipboard';
+    node.innerHTML = icons[name];
+  });
+  document.querySelectorAll('table.abs td:nth-child(3)').forEach((node) => {
+    if (node.querySelector('.tag')) return;
+    const text = node.textContent.trim().replace(/^[^A-Za-z]+/, '').trim();
+    const lower = text.toLowerCase();
+    append(node, lower.includes('late') ? 'clock' : lower.includes('absent') ? 'cross' : 'clipboard', text);
+  });
+  const headerIcons = { date: 'calendar', day: 'calendar', type: 'clipboard', time: 'clock', points: 'chart', reason: 'clipboard' };
+  document.querySelectorAll('table.abs th .table-head-icon').forEach((node) => setIcon(node, headerIcons[node.dataset.icon] || 'clipboard'));
+  document.querySelectorAll('.info-note .note-icon').forEach((node) => setIcon(node, 'info'));
+  document.querySelectorAll('.info-note:not(:has(.note-icon))').forEach((node) => {
+    const text = node.textContent.trim().replace(/^[^A-Za-z]+/, '').trim();
+    const body = text.replace(/^Note:\s*/, '');
+    node.innerHTML = icons.info;
+    const label = document.createElement('b');
+    label.textContent = 'Note:';
+    node.append(label, document.createTextNode(` ${body}`));
+  });
+  const impactIcons = ['trophy', 'chart', 'refresh', 'chart'];
+  document.querySelectorAll('.behavior-list .row > span').forEach((node, index) => {
+    const text = node.textContent.trim().replace(/^[^A-Za-z]+/, '').trim();
+    append(node, impactIcons[index] || 'chart', text);
+  });
+  document.querySelectorAll('.trend-note').forEach((node) => { const text = node.textContent.trim().replace(/^[^A-Za-z]+/, '').trim(); append(node, 'trophy', text); });
+  const attendanceStatusSomali = { Present: 'Joogid', Late: 'Daahid', Absent: 'Maqnaansho', Excused: 'Cudurdaar', 'Official Leave': 'Fasaxid Rasmi ah' };
+  document.querySelectorAll('.trend-panel > div[style*="font-size:8.5px"] > span').forEach((node) => { const key = node.textContent.trim(); if (attendanceStatusSomali[key] && node.lastChild?.nodeType === Node.TEXT_NODE) node.lastChild.nodeValue = ` ${attendanceStatusSomali[key]}`; });
+  const weeklyMaximum = Number({{ weekly_max|tojson }}) || 1;
+  const weeklyTrend = {{ trend|tojson }};
+  const trendAxis = document.querySelector('.trend-panel .y-axis');
+  const trendPlot = document.querySelector('.trend-panel .plot-area');
+  const trendBars = trendPlot?.querySelector('.bars');
+  if (trendAxis && trendPlot && trendBars) {
+    trendAxis.innerHTML = '';
+    for (let value = 0; value <= weeklyMaximum; value += 1) {
+      const tick = document.createElement('span');
+      tick.textContent = value;
+      trendAxis.appendChild(tick);
+    }
+    trendPlot.querySelectorAll('.gridline').forEach((line) => line.remove());
+    for (let value = 0; value <= weeklyMaximum; value += 1) {
+      const line = document.createElement('div');
+      line.className = 'gridline';
+      line.style.bottom = `${(value / weeklyMaximum) * 100}%`;
+      trendPlot.insertBefore(line, trendBars);
+    }
+    trendBars.innerHTML = '';
+    weeklyTrend.forEach((item) => {
+      const column = document.createElement('div');
+      column.className = 'bar-col';
+      const total = Number(item.total || 0);
+      const totalLabel = document.createElement('div');
+      totalLabel.className = 'bar-total';
+      totalLabel.textContent = total;
+      const stack = document.createElement('div');
+      stack.className = 'bar-stack';
+      stack.style.height = `${Math.min((total / weeklyMaximum) * 100, 100)}%`;
+      const segments = [
+        [Number(item.absent || 0), '#ef4444'],
+        [Number(item.late || 0), '#f59e0b'],
+        [Number(item.excused || 0), '#7c3aed'],
+        [Number(item.official_leave || 0), '#0891b2'],
+        [Number(item.present || 0), '#22c55e'],
+      ];
+      segments.forEach(([value, color]) => {
+        if (!value || !total) return;
+        const segment = document.createElement('div');
+        segment.className = 'bar-seg-label';
+        segment.textContent = value;
+        segment.style.background = color;
+        segment.style.height = `${(value / total) * 100}%`;
+        stack.appendChild(segment);
+      });
+      column.append(totalLabel, stack);
+      trendBars.appendChild(column);
+    });
+    const weekLabels = trendPlot.parentElement?.querySelector(':scope > .bars:last-child');
+    if (weekLabels) {
+      weekLabels.innerHTML = '';
+      weeklyTrend.forEach((item) => {
+        const column = document.createElement('div');
+        column.className = 'bar-col';
+        column.style.height = 'auto';
+        column.innerHTML = `<div class="bar-week-label">${item.label}<br>(${item.range})</div>`;
+        weekLabels.appendChild(column);
+      });
+    }
+  }
+  const footerIcons = ['location', 'phone', 'mail', 'globe'];
+  document.querySelectorAll('.bottom-bar > span').forEach((node, index) => { const text = node.textContent.trim().replace(/^[^A-Za-z]+/, '').trim(); append(node, footerIcons[index] || 'globe', text); });
+})();
+</script>
+</body>
+</html>

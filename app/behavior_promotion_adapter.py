@@ -179,6 +179,14 @@ def behavior_promotion_evidence(enrollment, exam, subject):
     except BehaviorValidationError as exc:
         return {**context, "status": "INVALID", "reason": str(exc)}
 
+    if score.get("attendance_status") == "INCOMPLETE":
+        return {
+            **context,
+            "status": "INCOMPLETE",
+            "reason": score.get("attendance_reason") or "Attendance is incomplete for this session.",
+            "score": None,
+            "maximum_score": score["maximum_score"],
+        }
     grade = behavior_grade_for_score(session, score["final_score"])
     grade_status = str(grade.get("grade") or "").upper()
     if grade_status == "NOT CONFIGURED":
@@ -199,6 +207,9 @@ def behavior_promotion_evidence(enrollment, exam, subject):
         base_score=score["base_score"],
         positive_points=score["positive_applied_points"],
         negative_points=score["negative_points"],
+        behavior_score=score.get("behavior_score"),
+        attendance_score=score.get("attendance_score"),
+        attendance_status=score.get("attendance_status"),
         event_count=score["event_count"],
         grade=grade,
         grade_point=grade.get("grade_point", 0.0),

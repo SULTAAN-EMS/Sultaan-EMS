@@ -2,27 +2,189 @@
 {% block page_title %}Behavior Actions{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css') }}">
-<div class="behavior-page">
-  <header class="behavior-hero"><span class="behavior-hero__mark"><i class="fa-solid fa-list-check"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow"><i class="fa-solid fa-calculator"></i> Scoring rules</span><h1>Behavior Actions</h1><p>Define point-bearing actions and levels. Each recorded event preserves a snapshot of the selected action.</p></div></header>
+<div class="behavior-page view">
+  <header class="behavior-hero">
+    <span class="behavior-hero__mark"><i class="fa-solid fa-list-check"></i></span>
+    <div class="behavior-hero__copy">
+      <span class="behavior-eyebrow"><i class="fa-solid fa-calculator"></i> Behavior taxonomy</span>
+      <h1>Behavior Actions</h1>
+      <p>Build one complete action, including its options, and save it once inside the selected year-aware configuration.</p>
+    </div>
+  </header>
   {% include "admin/behavior/_nav.html" %}
-  <form class="behavior-card behavior-form" method="get" action="{{ url_for('behavior.actions') }}"><div class="behavior-field"><label for="actionConfig">Behavior Configuration</label><select id="actionConfig" name="config_id" onchange="this.form.submit()"><option value="">Select configuration</option>{% for item in configurations %}<option value="{{ item.id }}" {% if config and config.id == item.id %}selected{% endif %}>{{ item.academic_year.name }} · {{ item.academic_year_level.name }} · {{ item.behavior_subject.name }}</option>{% endfor %}</select></div></form>
+
+  <form class="behavior-card card behavior-form config-bar" method="get" action="{{ url_for('behavior.actions') }}">
+    <div class="behavior-field">
+      <label for="actionConfig">Behavior Configuration</label>
+      <select id="actionConfig" name="config_id" onchange="this.form.submit()">
+        <option value="">Select configuration</option>
+        {% for item in configurations %}
+        <option value="{{ item.id }}" {% if config and config.id == item.id %}selected{% endif %}>{{ item.academic_year.name }} · {{ item.academic_year_level.name }} · {{ item.behavior_subject.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+
   {% if config %}
   <section class="behavior-card behavior-section">
-    <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-plus"></i> Add action</span><h2>{{ config.behavior_subject.name }}</h2></div><span class="behavior-scope-pill">{{ config.academic_year.name }} · {{ config.academic_year_level.name }}</span></div>
-    <form class="behavior-form behavior-form--wide" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><div class="behavior-field"><label for="newActionCategory">Category</label><select id="newActionCategory" name="behavior_category_id" required>{% for category in config.categories %}<option value="{{ category.id }}">{{ category.name }} ({{ category.polarity|title }})</option>{% endfor %}</select></div><div class="behavior-field"><label for="newActionName">Action Name</label><input id="newActionName" name="name" required placeholder="Excellent participation"></div><div class="behavior-field"><label>Level</label><input name="level_number" type="number" min="1" value="1" required></div><div class="behavior-field"><label>Points</label><input name="points" type="number" min="0.001" step="0.001" value="1" required></div><div class="behavior-field"><label>Frequency</label><select name="frequency"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="ad_hoc" selected>Ad hoc</option></select></div><div class="behavior-field"><label>Sort Order</label><input name="sort_order" type="number" min="0" value="0"></div><div class="behavior-field behavior-field--full"><label>Description</label><textarea name="description" placeholder="Optional action guidance"></textarea></div><div class="behavior-form__actions"><button class="behavior-btn behavior-btn--primary" type="submit"><i class="fa-solid fa-plus"></i> Save action</button><a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.categories', config_id=config.id) }}"><i class="fa-solid fa-tags"></i> Categories</a></div></form>
+    <div class="behavior-section__head">
+      <div>
+        <span class="behavior-kicker"><i class="fa-solid fa-wand-magic-sparkles"></i> Action builder</span>
+        <h2>{{ config.behavior_subject.name }}</h2>
+      </div>
+      <span class="behavior-scope-pill">{{ config.academic_year.name }} · {{ config.academic_year_level.name }}</span>
+    </div>
+    <form class="behavior-form behavior-form--wide" method="post" data-action-builder>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="config_id" value="{{ config.id }}">
+      <input type="hidden" name="choices_builder" value="1">
+      <div class="behavior-field">
+        <label for="newActionCategory">Category</label>
+        <select id="newActionCategory" name="behavior_category_id" required>
+          {% for category in config.categories %}<option value="{{ category.id }}">{{ category.name }} ({{ category.polarity|title }})</option>{% endfor %}
+        </select>
+      </div>
+      <div class="behavior-field">
+        <label for="newActionSubcategory">Sub-category</label>
+        <select id="newActionSubcategory" name="behavior_subcategory_id">
+          <option value="">No sub-category</option>
+          {% for category in config.categories %}{% for subcategory in category.subcategories %}<option value="{{ subcategory.id }}" data-category="{{ category.id }}">{{ category.name }} → {{ subcategory.name }}</option>{% endfor %}{% endfor %}
+        </select>
+      </div>
+      <div class="behavior-field"><label for="newActionName">Action Name</label><input id="newActionName" name="name" required placeholder="Excellent participation"></div>
+      <div class="behavior-field">
+        <label for="newActionType">Type</label>
+        <select id="newActionType" name="behavior_type" data-choice-type>
+          <option value="short_answer">Short answer</option>
+          <option value="multiple_choice">Multiple choice</option>
+          <option value="checkboxes">Checkboxes</option>
+          <option value="rating">Rating</option>
+          <option value="text_note">Text / note</option>
+        </select>
+      </div>
+      <div class="behavior-field"><label for="newActionLevel">Level</label><input id="newActionLevel" name="level_number" type="number" min="1" value="1" required></div>
+      <div class="behavior-field"><label for="newActionPoints">Points</label><input id="newActionPoints" name="points" type="number" min="0.001" step="0.001" value="1" required></div>
+      <div class="behavior-field"><label for="newActionRatingScale">Rating scale</label><select id="newActionRatingScale" name="rating_scale" disabled><option value="5">5 stars</option><option value="7">7 stars</option><option value="8">8 stars</option><option value="10">10 stars</option></select></div>
+      <div class="behavior-field"><label><input type="checkbox" name="response_required" value="1"> Response required</label></div>
+      <div class="behavior-field"><label for="newActionFrequency">Frequency</label><select id="newActionFrequency" name="frequency"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="ad_hoc" selected>Ad hoc</option></select></div>
+      <div class="behavior-field"><label for="newActionSort">Sort Order</label><input id="newActionSort" name="sort_order" type="number" min="0" value="0"></div>
+      <div class="behavior-field behavior-field--full"><label for="newActionDescription">Description</label><textarea id="newActionDescription" name="description" placeholder="Optional action guidance"></textarea></div>
+
+      <fieldset class="behavior-choice-builder behavior-field--full" data-choice-builder hidden disabled>
+        <legend><i class="fa-solid fa-list-check"></i> Choices</legend>
+        <p class="behavior-help">Add every option here before saving the action. Each option is saved together with the action.</p>
+        <div class="behavior-choice-list" data-choice-list></div>
+        <button class="behavior-btn behavior-btn--outline" type="button" data-add-choice><i class="fa-solid fa-plus"></i> Add option</button>
+      </fieldset>
+      <div class="behavior-form__actions"><button class="behavior-btn behavior-btn--primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save action</button><a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.subcategories', config_id=config.id) }}"><i class="fa-solid fa-sitemap"></i> Sub-categories</a></div>
+    </form>
   </section>
+
   <section class="behavior-card behavior-section">
     <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-list"></i> Action registry</span><h2>Configured actions</h2></div><span class="behavior-muted">{{ category_rows|length }} categor(ies)</span></div>
     <div class="behavior-list">
       {% for category in category_rows %}{% for item in category.actions %}
-      <details class="behavior-list__item">
-        <summary style="display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none"><span><strong>{{ item.name }}</strong><small>{{ category.name }} · Level {{ item.level_number }} · {{ item.points }} points · {{ item.frequency|replace('_', ' ')|title }}</small></span><span class="behavior-status behavior-status--{{ category.polarity }}">{{ category.polarity|title }}</span></summary>
-        <form class="behavior-form behavior-form--wide" method="post" style="margin-top:14px"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="action_id" value="{{ item.id }}"><div class="behavior-field"><label>Category</label><select name="behavior_category_id" required>{% for option in config.categories %}<option value="{{ option.id }}" {% if option.id == category.id %}selected{% endif %}>{{ option.name }} ({{ option.polarity|title }})</option>{% endfor %}</select></div><div class="behavior-field"><label>Action Name</label><input name="name" value="{{ item.name }}" required></div><div class="behavior-field"><label>Level</label><input name="level_number" type="number" min="1" value="{{ item.level_number }}" required></div><div class="behavior-field"><label>Points</label><input name="points" type="number" min="0.001" step="0.001" value="{{ item.points }}" required></div><div class="behavior-field"><label>Frequency</label><select name="frequency"><option value="daily" {% if item.frequency == 'daily' %}selected{% endif %}>Daily</option><option value="weekly" {% if item.frequency == 'weekly' %}selected{% endif %}>Weekly</option><option value="monthly" {% if item.frequency == 'monthly' %}selected{% endif %}>Monthly</option><option value="ad_hoc" {% if item.frequency == 'ad_hoc' %}selected{% endif %}>Ad hoc</option></select></div><div class="behavior-field"><label>Sort Order</label><input name="sort_order" type="number" min="0" value="{{ item.sort_order }}"></div><div class="behavior-field behavior-field--full"><label>Description</label><textarea name="description">{{ item.description or '' }}</textarea></div><div class="behavior-form__actions"><button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save changes</button></div></form>
-        <form method="post" action="{{ url_for('behavior.delete_action', action_id=item.id) }}" onsubmit="return confirm('Delete this Behavior action?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><button class="behavior-btn behavior-btn--danger behavior-btn--small" type="submit" title="Delete action" aria-label="Delete action"><i class="fa-solid fa-trash-can"></i> Delete</button></form>
+      <details class="behavior-list__item behavior-list__item--stacked">
+        <summary class="behavior-action-summary"><span><strong>{{ item.name }}</strong><small>{{ category.name }}{% if item.subcategory %} · {{ item.subcategory.name }}{% endif %} · {{ item.behavior_type|replace('_', ' ')|title }} · Level {{ item.level_number }} · {{ item.points }} points</small></span><span class="behavior-status behavior-status--{{ category.polarity }}">{{ category.polarity|title }}</span></summary>
+        <form class="behavior-form behavior-form--wide behavior-action-edit" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="action_id" value="{{ item.id }}"><input type="hidden" name="choices_builder" value="1">
+          <div class="behavior-field"><label>Category</label><select name="behavior_category_id" required>{% for option in config.categories %}<option value="{{ option.id }}" {% if option.id == category.id %}selected{% endif %}>{{ option.name }} ({{ option.polarity|title }})</option>{% endfor %}</select></div>
+          <div class="behavior-field"><label>Sub-category</label><select name="behavior_subcategory_id"><option value="">No sub-category</option>{% for option in config.categories %}{% for subcategory in option.subcategories %}<option value="{{ subcategory.id }}" data-category="{{ option.id }}" {% if item.behavior_subcategory_id == subcategory.id %}selected{% endif %}>{{ option.name }} → {{ subcategory.name }}</option>{% endfor %}{% endfor %}</select></div>
+          <div class="behavior-field"><label>Action Name</label><input name="name" value="{{ item.name }}" required></div>
+          <div class="behavior-field"><label>Type</label><select name="behavior_type" data-choice-type>{% set current_type = {'direct_action':'short_answer','choice':'multiple_choice','selection':'checkboxes','rating':'rating','text_note':'text_note','dropdown':'multiple_choice','linear_scale':'rating'}.get(item.behavior_type, 'short_answer') %}{% for type in ['short_answer', 'multiple_choice', 'checkboxes', 'rating', 'text_note'] %}<option value="{{ type }}" {% if current_type == type %}selected{% endif %}>{{ type|replace('_', ' ')|title }}</option>{% endfor %}</select></div>
+          <div class="behavior-field"><label>Level</label><input name="level_number" type="number" min="1" value="{{ item.level_number }}" required></div><div class="behavior-field"><label>Points</label><input name="points" type="number" min="0.001" step="0.001" value="{{ item.points }}" required></div>
+          <div class="behavior-field"><label>Rating scale</label><select name="rating_scale" {% if current_type != 'rating' %}disabled{% endif %}><option value="5" {% if item.rating_scale == 5 %}selected{% endif %}>5 stars</option><option value="7" {% if item.rating_scale == 7 %}selected{% endif %}>7 stars</option><option value="8" {% if item.rating_scale == 8 %}selected{% endif %}>8 stars</option><option value="10" {% if item.rating_scale == 10 %}selected{% endif %}>10 stars</option></select></div><div class="behavior-field"><label>Response required</label><input type="checkbox" name="response_required" value="1" {% if item.response_required %}checked{% endif %}></div><div class="behavior-field"><label>Frequency</label><select name="frequency">{% for frequency in ['daily', 'weekly', 'monthly', 'ad_hoc'] %}<option value="{{ frequency }}" {% if item.frequency == frequency %}selected{% endif %}>{{ frequency|replace('_', ' ')|title }}</option>{% endfor %}</select></div><div class="behavior-field"><label>Sort Order</label><input name="sort_order" type="number" min="0" value="{{ item.sort_order }}"></div>
+          <div class="behavior-field behavior-field--full"><label>Description</label><textarea name="description">{{ item.description or '' }}</textarea></div>
+          <fieldset class="behavior-choice-builder behavior-field--full" data-choice-builder {% if current_type not in ['multiple_choice', 'checkboxes'] %}hidden disabled{% endif %}>
+            <legend><i class="fa-solid fa-list-check"></i> Choices</legend>
+            <p class="behavior-help">Edit, remove, or add options, then save all changes together.</p>
+            <div class="behavior-choice-list" data-choice-list>
+              {% for choice in item.choices %}<div class="behavior-choice-row" data-choice-row><input type="hidden" name="choice_id" value="{{ choice.id }}"><div class="behavior-field"><label>Option</label><input name="choice_label" value="{{ choice.label }}" required></div><div class="behavior-field"><label>Points</label><input name="choice_points" type="number" min="0" step="0.001" value="{{ choice.points }}" required></div><div class="behavior-field"><label>Description</label><input name="choice_description" value="{{ choice.description or '' }}"></div><button class="behavior-btn behavior-btn--outline behavior-btn--small" type="button" data-move-choice="-1" title="Move option up" aria-label="Move option up"><i class="fa-solid fa-arrow-up"></i></button><button class="behavior-btn behavior-btn--outline behavior-btn--small" type="button" data-move-choice="1" title="Move option down" aria-label="Move option down"><i class="fa-solid fa-arrow-down"></i></button><button class="behavior-btn behavior-btn--danger behavior-btn--small" type="button" data-remove-choice title="Remove option" aria-label="Remove option"><i class="fa-solid fa-trash-can"></i></button></div>{% endfor %}
+            </div>
+            <button class="behavior-btn behavior-btn--outline" type="button" data-add-choice><i class="fa-solid fa-plus"></i> Add option</button>
+          </fieldset>
+          <div class="behavior-form__actions"><button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save changes</button></div>
+        </form>
+        <div class="behavior-row-actions behavior-action-footer">
+          <form method="post" action="{{ url_for('behavior.delete_action', action_id=item.id) }}" onsubmit="return confirm('Delete this Behavior action?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><button class="behavior-btn behavior-btn--danger behavior-btn--small" type="submit" title="Delete action" aria-label="Delete action"><i class="fa-solid fa-trash-can"></i> Delete action</button></form>
+        </div>
       </details>
       {% endfor %}{% else %}<div class="behavior-empty"><i class="fa-solid fa-list-check"></i><p>No categories or actions configured.</p></div>{% endfor %}
     </div>
   </section>
   {% else %}<section class="behavior-card behavior-section"><div class="behavior-empty"><i class="fa-solid fa-filter-circle-xmark"></i><p>Select a Behavior configuration to manage actions.</p></div></section>{% endif %}
 </div>
+
+<template id="behaviorChoiceTemplate"><div class="behavior-choice-row" data-choice-row><input type="hidden" name="choice_id" value=""><div class="behavior-field"><label>Option</label><input name="choice_label" required placeholder="Excellent participation"></div><div class="behavior-field"><label>Points</label><input name="choice_points" type="number" min="0" step="0.001" value="0" required></div><div class="behavior-field"><label>Description</label><input name="choice_description" placeholder="Optional meaning"></div><button class="behavior-btn behavior-btn--outline behavior-btn--small" type="button" data-move-choice="-1" title="Move option up" aria-label="Move option up"><i class="fa-solid fa-arrow-up"></i></button><button class="behavior-btn behavior-btn--outline behavior-btn--small" type="button" data-move-choice="1" title="Move option down" aria-label="Move option down"><i class="fa-solid fa-arrow-down"></i></button><button class="behavior-btn behavior-btn--danger behavior-btn--small" type="button" data-remove-choice title="Remove option" aria-label="Remove option"><i class="fa-solid fa-trash-can"></i></button></div></template>
+<script>
+(() => {
+  const choiceTypes = new Set(["multiple_choice", "checkboxes"]);
+  const template = document.getElementById("behaviorChoiceTemplate");
+  const addChoice = (builder) => {
+    const list = builder.querySelector("[data-choice-list]");
+    list.appendChild(template.content.cloneNode(true));
+  };
+  const syncBuilder = (form, typeSelect) => {
+    const builder = form.querySelector("[data-choice-builder]");
+    if (!builder) return;
+    const enabled = choiceTypes.has(typeSelect.value);
+    const ratingScale = form.querySelector('[name="rating_scale"]');
+    if (ratingScale) { ratingScale.disabled = typeSelect.value !== "rating"; }
+    builder.hidden = !enabled;
+    builder.disabled = !enabled;
+    builder.querySelectorAll("input").forEach((input) => { input.disabled = !enabled; });
+    if (enabled && !builder.querySelector("[data-choice-row]")) addChoice(builder);
+  };
+  document.querySelectorAll("[data-action-builder], .behavior-action-edit").forEach((form) => {
+    const typeSelect = form.querySelector("[data-choice-type]");
+    if (!typeSelect) return;
+    syncBuilder(form, typeSelect);
+    typeSelect.addEventListener("change", () => syncBuilder(form, typeSelect));
+    form.addEventListener("submit", (event) => {
+      const actionMaximum = Number(form.querySelector('[name="points"]')?.value || 0);
+      if (!choiceTypes.has(typeSelect.value)) return;
+      const choicePoints = [...form.querySelectorAll('[name="choice_points"]')]
+        .filter((input) => !input.disabled)
+        .map((input) => Number(input.value || 0));
+      const invalidChoice = choicePoints.some((value) => value > actionMaximum);
+      const total = choicePoints.reduce((sum, value) => sum + value, 0);
+      if (invalidChoice || (typeSelect.value === "checkboxes" && total > actionMaximum)) {
+        event.preventDefault();
+        window.alert(typeSelect.value === "checkboxes"
+          ? "Each choice and the combined checkbox points must stay within the action maximum."
+          : "Each response option must stay within the action maximum.");
+      }
+    });
+    form.addEventListener("click", (event) => {
+      const add = event.target.closest("[data-add-choice]");
+      if (add) { addChoice(add.closest("[data-choice-builder]")); return; }
+      const remove = event.target.closest("[data-remove-choice]");
+      if (remove) {
+        const row = remove.closest("[data-choice-row]");
+        if (row) row.remove();
+        if (choiceTypes.has(typeSelect.value) && !form.querySelector("[data-choice-row]")) addChoice(form.querySelector("[data-choice-builder]"));
+      }
+      const move = event.target.closest("[data-move-choice]");
+      if (move) {
+        const row = move.closest("[data-choice-row]");
+        const sibling = Number(move.dataset.moveChoice) < 0 ? row?.previousElementSibling : row?.nextElementSibling;
+        if (row && sibling?.matches("[data-choice-row]")) {
+          if (Number(move.dataset.moveChoice) < 0) sibling.before(row);
+          else sibling.after(row);
+        }
+      }
+    });
+  });
+  const category = document.getElementById("newActionCategory");
+  const subcategory = document.getElementById("newActionSubcategory");
+  if (category && subcategory) {
+    const syncSubcategories = () => {
+      subcategory.querySelectorAll("option[data-category]").forEach((option) => { option.hidden = option.dataset.category !== category.value; });
+      if (subcategory.selectedOptions[0]?.hidden) subcategory.value = "";
+    };
+    category.addEventListener("change", syncSubcategories);
+    syncSubcategories();
+  }
+})();
+</script>
 {% endblock %}

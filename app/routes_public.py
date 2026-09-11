@@ -297,6 +297,106 @@ def public_result_scope(student, exam):
     }
 
 
+def _portal_behavior_report_scope(student, exam, config_id, session_id):
+    """Resolve one published student's exact Behavior session without widening scope."""
+    from .behavior_reporting import get_behavior_report_data
+
+    enrollment = get_enrollment_for_student_year(student.id, exam.academic_year_id)
+    if not enrollment or enrollment.status not in {"active", "completed"}:
+        abort(404)
+
+    report = next(
+        (
+            item
+            for item in get_behavior_report_data(student, exam)
+            if item.get("configuration_id") == config_id
+            and item.get("session_id") == session_id
+            and item.get("available")
+        ),
+        None,
+    )
+    if not report:
+        abort(404)
+    return enrollment, report
+
+
+def _render_portal_behavior_report(student_code, exam_id, config_id, session_id, report_kind):
+    """Render the existing report template for a published student result.
+
+    This deliberately dispatches to the established report views in a nested
+    request context. The browser view and the downloadable PDF therefore share
+    the exact same template, report assembly, and canonical scoring projection.
+    """
+    student = Student.query.filter(
+        func.lower(func.trim(Student.student_code)) == student_code.strip().casefold()
+    ).first_or_404()
+    if student.is_result_locked:
+        abort(403)
+    exam = _published_exam_for_student(student, exam_id) or abort(404)
+    enrollment, report = _portal_behavior_report_scope(student, exam, config_id, session_id)
+
+    back_url = url_for("public.print_report", student_code=student.student_code, exam_id=exam.id)
+    endpoint = (
+        "public.behavior_reading_view"
+        if report_kind == "behavior"
+        else "public.attendance_reading_view"
+    )
+    download_url = url_for(
+        endpoint,
+        student_code=student.student_code,
+        exam_id=exam.id,
+        config_id=config_id,
+        session_id=session_id,
+        download=1,
+    )
+    route_args = {
+        "year_id": exam.academic_year_id,
+        "level_id": report["academic_year_level_id"],
+        "class_id": enrollment.academic_year_class_id,
+        "config_id": config_id,
+        "session_id": session_id,
+        "portal_read_only": 1,
+        "portal_back_url": back_url,
+        "portal_download_url": download_url,
+    }
+    if report_kind == "attendance":
+        requested_date = request.args.get("attendance_date")
+        route_args["attendance_date"] = requested_date or date.today().isoformat()
+        target = url_for("behavior.attendance_report", enrollment_id=enrollment.id)
+    else:
+        target = url_for("behavior.student_report", enrollment_id=enrollment.id)
+    if request.args.get("download") == "1":
+        route_args["print"] = 1
+
+    # The admin routes already own canonical report assembly. Calling the view
+    # directly avoids a second student-facing reporting/calculation path while
+    # keeping public access restricted to this published student's own scope.
+    with current_app.test_request_context(target, query_string=route_args):
+        if report_kind == "attendance":
+            from .routes_behavior import attendance_report
+
+            return attendance_report(enrollment.id)
+        from .routes_behavior import student_report
+
+        return student_report(enrollment.id)
+
+
+@public_bp.route("/behavior/<student_code>/<int:exam_id>/<int:config_id>/<int:session_id>/read")
+def behavior_reading_view(student_code, exam_id, config_id, session_id):
+    """Student read-only view of the exact Behavior PDF report."""
+    return _render_portal_behavior_report(
+        student_code, exam_id, config_id, session_id, "behavior"
+    )
+
+
+@public_bp.route("/behavior/<student_code>/<int:exam_id>/<int:config_id>/<int:session_id>/attendance/read")
+def attendance_reading_view(student_code, exam_id, config_id, session_id):
+    """Student read-only view of the exact Attendance PDF report."""
+    return _render_portal_behavior_report(
+        student_code, exam_id, config_id, session_id, "attendance"
+    )
+
+
 @public_bp.route("/print/<student_code>")
 def print_report(student_code):
     student_code = student_code.strip()

@@ -118,7 +118,7 @@
                 <th class="mono" data-mg-subject-id="{{ subject.id }}" data-mg-subject="{{ subject.name|e }}">{{ subject_display_name(subject, settings) }}</th>
               {% endfor %}
               {% for behavior in behavior_definitions|default([]) %}
-                <th class="mono behavior-roster-heading"><span>{{ behavior.subject_name }}</span>{{ critical_subject_badge(behavior.critical_badge, interactive=false, subject_name=behavior.subject_name) }}<small>Behavior / {{ behavior.annual_maximum|academic_number(settings) }}</small></th>
+                <th class="mono behavior-roster-heading"><span>{{ behavior.subject_name }}</span>{{ critical_subject_badge(behavior.critical_badge, interactive=false, subject_name=behavior.subject_name) }}<small>Behavior / {{ behavior.session_maximum|academic_number(settings) }}</small></th>
               {% endfor %}
               <th>{{ rh_label("roster.total", default="Total") }}</th>
               <th>%</th>

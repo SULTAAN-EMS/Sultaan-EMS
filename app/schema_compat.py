@@ -1,3 +1,6 @@
+import json
+from decimal import Decimal
+
 from sqlalchemy import inspect, text
 
 from . import db
@@ -141,10 +144,23 @@ def ensure_schema_compatibility():
     # Behavior sessions now use the canonical Results Hub Exam registry while
     # preserving legacy ExamType links for older records.
     ensure_behavior_exam_scope()
+    # Attendance scoring allocations and policy snapshots are additive. Legacy
+    # sessions keep NULL here and remain on the legacy compatibility path.
+    ensure_behavior_attendance_scoring()
+    # Protect the allocation invariant while preserving legacy rows whose two
+    # allocation columns are both NULL.
+    ensure_behavior_allocation_integrity()
     # Behavior grades are owned by one session and use that session's raw
     # maximum. This upgrades the original configuration-level percentage table
     # without touching ordinary GradeScale rows.
     ensure_behavior_session_grading()
+    # Phase 1 Behavior taxonomy and daily attendance are additive.  Create the
+    # new tables and nullable compatibility columns before ORM queries select
+    # them on an existing local or deployed database.
+    ensure_behavior_foundation_attendance()
+    # Freeze the Attendance calendar/policy for normalized sessions so later
+    # configuration edits cannot silently rewrite historical results.
+    ensure_behavior_attendance_history_snapshots()
 
     # Update teacher_classes foreign key to reference academic_classes instead of school_classes
     # This requires manual migration for existing data
@@ -166,6 +182,53 @@ def ensure_exam_marking_configuration_table():
     except Exception as exc:
         db.session.rollback()
         print(f"Warning: exam marking configuration schema sync failed: {exc}")
+
+
+def ensure_behavior_foundation_attendance():
+    """Install the Phase 1 Behavior taxonomy and daily attendance schema."""
+    try:
+        from .models import (
+            BehaviorActionChoice,
+            BehaviorAttendanceDay,
+            BehaviorAttendanceRecord,
+            BehaviorAttendanceStatus,
+            BehaviorSubCategory,
+        )
+
+        dialect = db.engine.dialect.name
+        add_column_if_missing(
+            "behavior_actions",
+            "behavior_subcategory_id",
+            column_sql(dialect, "behavior_subcategory_id", "INTEGER"),
+        )
+        add_column_if_missing(
+            "behavior_actions",
+            "behavior_type",
+            column_sql(dialect, "behavior_type", "VARCHAR(30) NOT NULL DEFAULT 'direct_action'"),
+        )
+        add_column_if_missing(
+            "behavior_events",
+            "behavior_action_choice_id",
+            column_sql(dialect, "behavior_action_choice_id", "INTEGER"),
+        )
+        add_column_if_missing(
+            "behavior_configurations",
+            "behavior_attendance_scoring_enabled",
+            column_sql(dialect, "behavior_attendance_scoring_enabled", "BOOLEAN NOT NULL DEFAULT TRUE"),
+        )
+        for model in (
+            BehaviorSubCategory,
+            BehaviorActionChoice,
+            BehaviorAttendanceStatus,
+            BehaviorAttendanceDay,
+            BehaviorAttendanceRecord,
+        ):
+            model.__table__.create(bind=db.engine, checkfirst=True)
+        add_index_if_missing("behavior_actions", "ix_behavior_actions_behavior_subcategory_id", ["behavior_subcategory_id"])
+        add_index_if_missing("behavior_events", "ix_behavior_events_behavior_action_choice_id", ["behavior_action_choice_id"])
+    except Exception as exc:
+        db.session.rollback()
+        print(f"Warning: Behavior Phase 1 schema sync failed: {exc}")
 
 
 def ensure_behavior_exam_scope():
@@ -222,6 +285,223 @@ def ensure_behavior_exam_scope():
         ["behavior_configuration_id", "exam_id"],
         unique=True,
     )
+
+
+def ensure_behavior_attendance_scoring():
+    """Add the session-owned attendance scoring contract idempotently."""
+    dialect = db.engine.dialect.name
+    columns = (
+        ("behavior_allocation", "NUMERIC(8, 3)"),
+        ("attendance_allocation", "NUMERIC(8, 3)"),
+        ("attendance_present_weight", "NUMERIC(8, 3)"),
+        ("attendance_late_weight", "NUMERIC(8, 3)"),
+        ("attendance_absent_weight", "NUMERIC(8, 3)"),
+        ("attendance_policy_snapshot", "TEXT"),
+        ("attendance_frequency_snapshot", "VARCHAR(20)"),
+        ("attendance_weekdays_snapshot", "VARCHAR(32)"),
+        ("scoring_policy_version", "VARCHAR(40)"),
+    )
+    for name, type_sql in columns:
+        add_column_if_missing(
+            "behavior_sessions",
+            name,
+            column_sql(dialect, name, type_sql),
+        )
+
+
+def ensure_behavior_attendance_history_snapshots():
+    """Backfill missing immutable policy/calendar snapshots conservatively."""
+    inspector = inspect(db.engine)
+    required = {
+        "behavior_sessions",
+        "behavior_configurations",
+        "behavior_attendance_statuses",
+        "behavior_attendance_days",
+    }
+    if not required.issubset(set(inspector.get_table_names())):
+        return
+    try:
+        sessions = db.session.execute(text(
+            "SELECT id, behavior_configuration_id, attendance_policy_snapshot, "
+            "attendance_frequency_snapshot, attendance_weekdays_snapshot "
+            "FROM behavior_sessions WHERE attendance_allocation IS NOT NULL"
+        )).mappings().all()
+        changed = False
+        for session in sessions:
+            config_id = session["behavior_configuration_id"]
+            config = db.session.execute(text(
+                "SELECT frequency FROM behavior_configurations WHERE id = :id"
+            ), {"id": config_id}).first()
+            if not config:
+                continue
+            frequency_snapshot = session["attendance_frequency_snapshot"]
+            weekdays_snapshot = session["attendance_weekdays_snapshot"]
+            policy_snapshot = session["attendance_policy_snapshot"]
+            if not frequency_snapshot:
+                frequency_snapshot = str(config[0] or "monthly").strip().lower()
+            if weekdays_snapshot is None:
+                weekdays = db.session.execute(text(
+                    "SELECT weekday FROM behavior_attendance_days "
+                    "WHERE behavior_configuration_id = :id AND is_active = 1 "
+                    "ORDER BY weekday"
+                ), {"id": config_id}).scalars().all()
+                weekdays_snapshot = ",".join(str(value) for value in weekdays)
+            if not policy_snapshot:
+                status_rows = db.session.execute(text(
+                    "SELECT key, polarity, points FROM behavior_attendance_statuses "
+                    "WHERE behavior_configuration_id = :id AND is_active = 1"
+                ), {"id": config_id}).mappings().all()
+                if status_rows:
+                    weights = {}
+                    for row in status_rows:
+                        points = Decimal(str(row["points"] or 0))
+                        if row["polarity"] == "negative":
+                            points = -points
+                        elif row["polarity"] != "positive":
+                            points = Decimal("0")
+                        weights[row["key"]] = str(points.quantize(Decimal("0.001")))
+                    policy_snapshot = json.dumps({
+                        "version": "attendance-normalization-v1",
+                        "weights": weights,
+                    }, sort_keys=True)
+            db.session.execute(text(
+                "UPDATE behavior_sessions SET "
+                "attendance_policy_snapshot = :policy, "
+                "attendance_frequency_snapshot = :frequency, "
+                "attendance_weekdays_snapshot = :weekdays "
+                "WHERE id = :id"
+            ), {
+                "policy": policy_snapshot,
+                "frequency": frequency_snapshot,
+                "weekdays": weekdays_snapshot,
+                "id": session["id"],
+            })
+            changed = True
+        if changed:
+            db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"Warning: Behavior Attendance history snapshot sync failed: {exc}")
+
+
+def ensure_behavior_allocation_integrity():
+    """Install the allocation-total constraint without rewriting history."""
+    inspector = inspect(db.engine)
+    if not inspector.has_table("behavior_sessions"):
+        return
+    columns = {item["name"] for item in inspector.get_columns("behavior_sessions")}
+    if not {"maximum_score", "behavior_allocation", "attendance_allocation"}.issubset(columns):
+        return
+
+    condition = (
+        "(behavior_allocation IS NULL AND attendance_allocation IS NULL) OR "
+        "(behavior_allocation IS NOT NULL AND attendance_allocation IS NOT NULL "
+        "AND behavior_allocation + attendance_allocation = maximum_score)"
+    )
+    invalid = db.session.execute(text(
+        "SELECT id FROM behavior_sessions WHERE NOT (" + condition + ") LIMIT 1"
+    )).first()
+    if invalid:
+        print(
+            "Warning: Behavior allocation CHECK was not added because existing "
+            "session rows contain incompatible allocation data."
+        )
+        return
+
+    constraint_name = "ck_behavior_session_allocation_total"
+    dialect = db.engine.dialect.name
+    if dialect == "postgresql":
+        exists = db.session.execute(text(
+            "SELECT 1 FROM pg_constraint WHERE conname = :name"
+        ), {"name": constraint_name}).first()
+        if not exists:
+            try:
+                db.session.execute(text(
+                    "ALTER TABLE behavior_sessions ADD CONSTRAINT "
+                    + constraint_name + " CHECK (" + condition + ")"
+                ))
+                db.session.commit()
+            except Exception as exc:
+                db.session.rollback()
+                print(f"Warning: Behavior allocation CHECK sync failed: {exc}")
+        return
+    if dialect == "mysql":
+        try:
+            constraints = inspector.get_check_constraints("behavior_sessions")
+            if not any(item.get("name") == constraint_name for item in constraints):
+                db.session.execute(text(
+                    "ALTER TABLE behavior_sessions ADD CONSTRAINT "
+                    + constraint_name + " CHECK (" + condition + ")"
+                ))
+                db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            print(f"Warning: Behavior allocation CHECK sync failed: {exc}")
+        return
+    if dialect != "sqlite":
+        return
+
+    table_sql = db.session.execute(text(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'behavior_sessions'"
+    )).scalar() or ""
+    if constraint_name in table_sql:
+        return
+
+    connection = db.engine.connect()
+    transaction = None
+    try:
+        transaction = connection.begin()
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.execute(text(
+            "CREATE TABLE behavior_sessions_phase3a ("
+            "id INTEGER NOT NULL PRIMARY KEY, "
+            "behavior_configuration_id INTEGER NOT NULL, "
+            "exam_type_id INTEGER NULL, exam_id INTEGER NULL, "
+            "session_label VARCHAR(120) NOT NULL, maximum_score NUMERIC(8, 3) NOT NULL, "
+            "behavior_allocation NUMERIC(8, 3) NULL, attendance_allocation NUMERIC(8, 3) NULL, "
+            "attendance_present_weight NUMERIC(8, 3) NULL, attendance_late_weight NUMERIC(8, 3) NULL, "
+            "attendance_absent_weight NUMERIC(8, 3) NULL, scoring_policy_version VARCHAR(40) NULL, "
+            "sort_order INTEGER NOT NULL DEFAULT 0, is_active BOOLEAN NOT NULL DEFAULT 1, "
+            "created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL, "
+            "CONSTRAINT uq_behavior_session_configuration_exam UNIQUE (behavior_configuration_id, exam_type_id), "
+            "CONSTRAINT uq_behavior_session_configuration_canonical_exam UNIQUE (behavior_configuration_id, exam_id), "
+            "CONSTRAINT ck_behavior_session_maximum_positive CHECK (maximum_score > 0), "
+            "CONSTRAINT ck_behavior_session_allocation_total CHECK (" + condition + "), "
+            "FOREIGN KEY(behavior_configuration_id) REFERENCES behavior_configurations(id) ON DELETE CASCADE, "
+            "FOREIGN KEY(exam_type_id) REFERENCES exam_types(id) ON DELETE RESTRICT, "
+            "FOREIGN KEY(exam_id) REFERENCES exams(id) ON DELETE RESTRICT)"
+        ))
+        connection.execute(text(
+            "INSERT INTO behavior_sessions_phase3a ("
+            "id, behavior_configuration_id, exam_type_id, exam_id, session_label, maximum_score, "
+            "behavior_allocation, attendance_allocation, attendance_present_weight, "
+            "attendance_late_weight, attendance_absent_weight, scoring_policy_version, "
+            "sort_order, is_active, created_at, updated_at) "
+            "SELECT id, behavior_configuration_id, exam_type_id, exam_id, session_label, maximum_score, "
+            "behavior_allocation, attendance_allocation, attendance_present_weight, "
+            "attendance_late_weight, attendance_absent_weight, scoring_policy_version, "
+            "sort_order, is_active, created_at, updated_at FROM behavior_sessions"
+        ))
+        connection.execute(text("DROP TABLE behavior_sessions"))
+        connection.execute(text("ALTER TABLE behavior_sessions_phase3a RENAME TO behavior_sessions"))
+        transaction.commit()
+        transaction = None
+    except Exception as exc:
+        if transaction is not None:
+            transaction.rollback()
+        print(f"Warning: Behavior allocation SQLite schema sync failed: {exc}")
+    finally:
+        try:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+        finally:
+            connection.close()
+    for index_name, index_columns in {
+        "ix_behavior_sessions_behavior_configuration_id": ["behavior_configuration_id"],
+        "ix_behavior_sessions_exam_type_id": ["exam_type_id"],
+        "ix_behavior_sessions_exam_id": ["exam_id"],
+        "ix_behavior_sessions_is_active": ["is_active"],
+    }.items():
+        add_index_if_missing("behavior_sessions", index_name, index_columns)
 
 
 def _rebuild_behavior_sessions_for_exam_scope():

@@ -1,0 +1,154 @@
+{% extends "admin/base.html" %}
+{% block page_title %}Session Allocation{% endblock %}
+{% block admin_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css') }}">
+<div class="behavior-page view">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+      <div class="behavior-alert {% if category in ['danger', 'error'] %}behavior-alert--danger{% endif %}" role="alert">
+        <i class="fa-solid {% if category in ['danger', 'error'] %}fa-circle-exclamation{% else %}fa-circle-check{% endif %}"></i>
+        {{ message }}
+      </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <header class="behavior-hero page-head">
+    <span class="behavior-hero__mark seal-badge"><i class="fa-solid fa-scale-balanced"></i></span>
+    <div class="behavior-hero__copy">
+      <span class="behavior-eyebrow"><i class="fa-solid fa-chart-pie"></i> Canonical allocation</span>
+      <h1>Session Allocation</h1>
+      <p>Plan each session's Behavior and Attendance share, then review the selected student's live used and remaining ledger.</p>
+    </div>
+  </header>
+  {% include "admin/behavior/_nav.html" %}
+
+  <form class="behavior-card card behavior-filter-panel allocation-filter" method="get" action="{{ url_for('behavior.session_allocation') }}">
+    <div class="behavior-field">
+      <label for="allocationYear">Academic Year</label>
+      <select id="allocationYear" name="year_id" onchange="this.form.level_id.value='';this.form.config_id.value='';this.form.session_id.value='';this.form.enrollment_id.value='';this.form.submit()">
+        <option value="">Select year</option>
+        {% for item in years %}<option value="{{ item.id }}" {% if selected_year and selected_year.id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="behavior-field">
+      <label for="allocationLevel">Academic Level</label>
+      <select id="allocationLevel" name="level_id" {% if not selected_year %}disabled{% endif %} onchange="this.form.config_id.value='';this.form.session_id.value='';this.form.enrollment_id.value='';this.form.submit()">
+        <option value="">Select level</option>
+        {% for item in levels %}<option value="{{ item.id }}" {% if selected_level and selected_level.id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="behavior-field behavior-field--wide">
+      <label for="allocationConfig">Behavior Configuration</label>
+      <select id="allocationConfig" name="config_id" {% if not selected_year %}disabled{% endif %} onchange="this.form.session_id.value='';this.form.enrollment_id.value='';this.form.submit()">
+        <option value="">Select configuration</option>
+        {% for item in configurations %}<option value="{{ item.id }}" {% if config and config.id == item.id %}selected{% endif %}>{{ item.behavior_subject.name }} · {{ item.academic_year_level.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="behavior-field">
+      <label for="allocationSession">Session / Exam Type</label>
+      <select id="allocationSession" name="session_id" {% if not config %}disabled{% endif %} onchange="this.form.enrollment_id.value='';this.form.submit()">
+        <option value="">Select session</option>
+        {% for item in sessions %}<option value="{{ item.id }}" {% if selected_session and selected_session.id == item.id %}selected{% endif %}>{{ item.session_label }} · {{ item.exam.name if item.exam else item.exam_type.name if item.exam_type else 'Exam unavailable' }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="behavior-field">
+      <label for="allocationClass">Class</label>
+      <select id="allocationClass" name="class_id" {% if not config %}disabled{% endif %} onchange="this.form.enrollment_id.value='';this.form.submit()">
+        <option value="">All classes</option>
+        {% for item in classes %}<option value="{{ item.id }}" {% if selected_class and selected_class.id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="behavior-field behavior-field--wide">
+      <label for="allocationStudent">Student ledger</label>
+      <select id="allocationStudent" name="enrollment_id" {% if not enrollments %}disabled{% endif %} onchange="this.form.submit()">
+        <option value="">Select student</option>
+        {% for item in enrollments %}<option value="{{ item.id }}" {% if selected_enrollment and selected_enrollment.id == item.id %}selected{% endif %}>{{ item.student.full_name }} · {{ item.student.student_code }}</option>{% endfor %}
+      </select>
+    </div>
+  </form>
+
+  {% if config and selected_session %}
+  <section class="behavior-card card behavior-section allocation-hero-card">
+    <div class="behavior-section__head card-head">
+      <div>
+        <span class="behavior-kicker"><i class="fa-solid fa-calendar-check"></i> Selected session</span>
+        <h2>{{ selected_session.session_label }}</h2>
+        <p class="behavior-muted">{{ config.academic_year.name }} · {{ config.academic_year_level.name }} · {{ config.behavior_subject.name }} · {{ selected_session.exam.name if selected_session.exam else selected_session.exam_type.name if selected_session.exam_type else 'Exam unavailable' }}</p>
+      </div>
+      {% if selected_allocation %}<span class="behavior-scope-pill pill neutral">{{ selected_allocation.total_allocation if selected_allocation.total_allocation is not none else 'Legacy' }} / {{ selected_allocation.session_maximum }}</span>{% endif %}
+    </div>
+    {% if selected_allocation_error %}
+      <div class="behavior-alert behavior-alert--danger"><i class="fa-solid fa-triangle-exclamation"></i> {{ selected_allocation_error }}</div>
+    {% elif selected_allocation %}
+      {% if selected_allocation.status == 'LEGACY_COMPATIBILITY' %}
+      <div class="behavior-alert"><i class="fa-solid fa-clock-rotate-left"></i> This session predates the allocation contract. Its historical scoring is preserved and is not silently reinterpreted.</div>
+      {% endif %}
+      <div class="allocation-stat-grid">
+        <div class="allocation-stat"><span>Session Maximum</span><strong>{{ selected_allocation.session_maximum }}</strong><small>Total configured session points</small></div>
+        <div class="allocation-stat allocation-stat--behavior"><span>Behavior Allocation</span><strong>{{ selected_allocation.behavior_allocation if selected_allocation.behavior_allocation is not none else 'Legacy' }}</strong><small>Positive max {{ selected_allocation.behavior_positive_max if selected_allocation.behavior_positive_max is not none else '-' }} · Negative max {{ selected_allocation.behavior_negative_max if selected_allocation.behavior_negative_max is not none else '-' }}</small></div>
+        <div class="allocation-stat allocation-stat--attendance"><span>Attendance Allocation</span><strong>{{ selected_allocation.attendance_allocation if selected_allocation.attendance_allocation is not none else 'Legacy' }}</strong><small>Full Attendance maximum; normalized across applicable attendance opportunities</small></div>
+        <div class="allocation-stat {% if selected_allocation.is_valid %}allocation-stat--valid{% endif %}"><span>Total Allocation</span><strong>{{ selected_allocation.total_allocation if selected_allocation.total_allocation is not none else 'Legacy' }} / {{ selected_allocation.session_maximum }}{% if selected_allocation.is_valid %} <i class="fa-solid fa-circle-check"></i>{% endif %}</strong><small>Must equal the Session Maximum</small></div>
+      </div>
+    {% endif %}
+  </section>
+
+  {% if selected_projection %}
+  <section class="behavior-card card behavior-section">
+    <div class="behavior-section__head card-head"><div><span class="behavior-kicker"><i class="fa-solid fa-chart-line"></i> Current usage</span><h2>{{ selected_enrollment.student.full_name }}</h2><p class="behavior-muted">{{ selected_enrollment.student.student_code }} · {{ selected_enrollment.academic_year_class.name }}</p></div><span class="behavior-scope-pill pill neutral">{{ selected_projection.session.status or 'Available' }}</span></div>
+    <div class="allocation-ledger-grid">
+      <div class="allocation-ledger allocation-ledger--behavior"><div class="allocation-ledger__head"><span>Behavior</span><strong>{{ selected_projection.behavior.earned_score }} / {{ selected_projection.behavior.allocation }}</strong></div><div class="allocation-ledger__rows"><div><span>Positive Used / Remaining</span><b>{{ selected_projection.behavior.positive_used }} / {{ selected_projection.behavior.positive_remaining }}</b></div><div><span>Negative Used / Remaining</span><b>{{ selected_projection.behavior.negative_used }} / {{ selected_projection.behavior.negative_remaining }}</b></div><div><span>Earned Score</span><b>{{ selected_projection.behavior.earned_score }}</b></div></div></div>
+      <div class="allocation-ledger allocation-ledger--attendance"><div class="allocation-ledger__head"><span>Attendance</span><strong>{% if selected_projection.attendance.earned_score is not none %}{{ selected_projection.attendance.earned_score }} / {{ selected_projection.attendance.allocation }}{% else %}{{ selected_projection.attendance.status }}{% endif %}</strong></div><div class="allocation-ledger__rows"><div><span>Positive Used / Remaining</span><b>{{ selected_projection.attendance.positive_used }} / {{ selected_projection.attendance.positive_remaining if selected_projection.attendance.positive_remaining is not none else '-' }}</b></div><div><span>Negative Used / Remaining</span><b>{{ selected_projection.attendance.negative_used }} / {{ selected_projection.attendance.negative_remaining if selected_projection.attendance.negative_remaining is not none else '-' }}</b></div><div><span>Earned Score</span><b>{{ selected_projection.attendance.earned_score if selected_projection.attendance.earned_score is not none else selected_projection.attendance.status }}</b></div></div></div>
+    </div>
+    <div class="allocation-summary"><div><span>Behavior</span><strong>{{ selected_projection.session.behavior_earned }}</strong></div><div><span>Attendance</span><strong>{{ selected_projection.session.attendance_earned if selected_projection.session.attendance_earned is not none else selected_projection.attendance.status }}</strong></div><div><span>Grand Total</span><strong>{{ selected_projection.session.grand_total if selected_projection.session.grand_total is not none else selected_projection.session.status }}</strong></div><div><span>Session Remaining</span><strong>{{ selected_projection.session.session_remaining if selected_projection.session.session_remaining is not none else '-' }}</strong></div></div>
+  </section>
+  {% elif config and selected_session and not selected_enrollment %}
+  <section class="behavior-card behavior-section"><div class="behavior-empty"><i class="fa-solid fa-user-graduate"></i><p>Select a student to display used and remaining values.</p></div></section>
+  {% endif %}
+
+  {% if selected_allocation and selected_allocation.status != 'LEGACY_COMPATIBILITY' %}
+  <section class="behavior-card card behavior-section">
+    <div class="behavior-section__head card-head"><div><span class="behavior-kicker"><i class="fa-solid fa-pen-to-square"></i> Allocation planning</span><h2>Manage selected session</h2><p class="behavior-muted">Saving uses the existing session validation route. Historical sessions remain protected.</p></div><a class="behavior-btn behavior-btn--outline behavior-btn--small" href="{{ url_for('behavior.sessions', config_id=config.id) }}"><i class="fa-solid fa-list"></i> All sessions</a></div>
+    <form class="behavior-form behavior-form--wide allocation-edit-form" method="post" action="{{ url_for('behavior.sessions', config_id=config.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="exam_ref" value="{{ selected_exam_ref }}">
+      <div class="behavior-field"><label for="allocationEditLabel">Session Label</label><input id="allocationEditLabel" name="session_label" value="{{ selected_session.session_label }}" required></div>
+      <div class="behavior-field"><label for="allocationEditMaximum">Session Maximum</label><input id="allocationEditMaximum" name="maximum_score" type="number" min="0.001" step="0.001" value="{{ selected_allocation.session_maximum }}" required></div>
+      <div class="behavior-field"><label for="allocationEditBehavior">Behavior Allocation</label><input id="allocationEditBehavior" name="behavior_allocation" type="number" min="0" step="0.001" value="{{ selected_allocation.behavior_allocation }}" required></div>
+      <div class="behavior-field"><label for="allocationEditAttendance">Attendance Allocation</label><input id="allocationEditAttendance" name="attendance_allocation" type="number" min="0" step="0.001" value="{{ selected_allocation.attendance_allocation }}" required></div>
+      <div class="behavior-field"><label for="allocationEditOrder">Sort Order</label><input id="allocationEditOrder" name="sort_order" type="number" min="0" step="1" value="{{ selected_session.sort_order }}"></div>
+      <div class="behavior-form__actions"><span class="behavior-muted" data-allocation-edit-message>Behavior + Attendance must equal the Session Maximum.</span><button class="behavior-btn behavior-btn--primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save allocation</button></div>
+    </form>
+  </section>
+  {% endif %}
+  {% else %}
+  <section class="behavior-card behavior-section"><div class="behavior-empty"><i class="fa-solid fa-filter-circle-xmark"></i><p>Select a Behavior configuration and session to inspect its allocation.</p></div></section>
+  {% endif %}
+
+  {% if session_views %}
+  <section class="behavior-card card behavior-section">
+    <div class="behavior-section__head card-head"><div><span class="behavior-kicker"><i class="fa-solid fa-layer-group"></i> Session register</span><h2>{{ session_views|length }} configured session(s)</h2></div><span class="behavior-muted">One canonical allocation per session</span></div>
+    <div class="behavior-table-wrap"><table class="behavior-table allocation-table"><thead><tr><th>Session</th><th>Exam Type</th><th>Maximum</th><th>Behavior</th><th>Attendance</th><th>Status</th><th>Open</th></tr></thead><tbody>
+      {% for view in session_views %}<tr><td><strong>{{ view.session.session_label }}</strong></td><td>{{ view.session.exam.name if view.session.exam else view.session.exam_type.name if view.session.exam_type else 'Unavailable' }}</td>{% if view.allocation %}<td>{{ view.allocation.session_maximum }}</td><td>{{ view.allocation.behavior_allocation if view.allocation.behavior_allocation is not none else 'Legacy' }}</td><td>{{ view.allocation.attendance_allocation if view.allocation.attendance_allocation is not none else 'Legacy' }}</td><td><span class="behavior-status behavior-status--{{ 'info' if view.allocation.status == 'LEGACY_COMPATIBILITY' else 'recorded' }}">{{ view.allocation.status }}</span></td>{% else %}<td colspan="4"><span class="behavior-status behavior-status--negative">{{ view.error }}</span></td>{% endif %}<td><a class="behavior-btn behavior-btn--outline behavior-btn--small" href="{{ url_for('behavior.session_allocation', config_id=config.id, session_id=view.session.id, class_id=selected_class.id if selected_class else '', enrollment_id=selected_enrollment.id if selected_enrollment else '') }}"><i class="fa-solid fa-eye"></i> View</a></td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+  {% endif %}
+</div>
+<script>
+(() => {
+  const form = document.querySelector('.allocation-edit-form');
+  if (!form) return;
+  const fields = ['maximum_score', 'behavior_allocation', 'attendance_allocation'].map((name) => form.querySelector(`[name="${name}"]`));
+  const button = form.querySelector('button[type="submit"]');
+  const message = form.querySelector('[data-allocation-edit-message]');
+  const sync = () => {
+    const values = fields.map((field) => Number(field?.value || 0));
+    const valid = values[0] > 0 && Math.abs((values[1] + values[2]) - values[0]) < 0.001;
+    if (message) message.textContent = valid ? `Ready: ${values[1].toFixed(3)} + ${values[2].toFixed(3)} = ${values[0].toFixed(3)}.` : 'Behavior + Attendance must equal the Session Maximum.';
+    button?.toggleAttribute('disabled', !valid);
+  };
+  fields.forEach((field) => field?.addEventListener('input', sync));
+  sync();
+})();
+</script>
+{% endblock %}

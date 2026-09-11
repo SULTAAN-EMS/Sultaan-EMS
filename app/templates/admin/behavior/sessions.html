@@ -2,7 +2,7 @@
 {% block page_title %}Behavior Sessions{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css') }}">
-<div class="behavior-page">
+<div class="behavior-page view">
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}
@@ -13,8 +13,8 @@
       {% endfor %}
     {% endif %}
   {% endwith %}
-  <header class="behavior-hero">
-    <span class="behavior-hero__mark"><i class="fa-solid fa-calendar-days"></i></span>
+  <header class="behavior-hero page-head">
+    <span class="behavior-hero__mark seal-badge"><i class="fa-solid fa-calendar-days"></i></span>
     <div class="behavior-hero__copy">
       <span class="behavior-eyebrow"><i class="fa-solid fa-chart-pie"></i> Session allocation</span>
       <h1>Behavior Sessions</h1>
@@ -23,7 +23,7 @@
   </header>
   {% include "admin/behavior/_nav.html" %}
 
-  <form class="behavior-card behavior-form" method="get" action="{{ url_for('behavior.sessions') }}">
+  <form class="behavior-card card behavior-form config-bar" method="get" action="{{ url_for('behavior.sessions') }}">
     <div class="behavior-field">
       <label for="sessionConfig">Behavior Configuration</label>
       <select id="sessionConfig" name="config_id" onchange="this.form.submit()">
@@ -36,14 +36,14 @@
   </form>
 
   {% if config %}
-  <section class="behavior-card behavior-section">
-    <div class="behavior-section__head">
+  <section class="behavior-card card behavior-section">
+    <div class="behavior-section__head card-head">
       <div>
         <span class="behavior-kicker"><i class="fa-solid fa-calculator"></i> Allocation ledger</span>
         <h2>{{ config.behavior_subject.name }} · {{ config.academic_year_level.name }}</h2>
         <p class="behavior-muted">{{ config.academic_year.name }} · session allocation is configuration-owned</p>
       </div>
-      <span class="behavior-scope-pill">{{ allocation }} / 100</span>
+      <span class="behavior-scope-pill pill neutral">{{ allocation }} / 100</span>
     </div>
     {% if allocation != 100 %}<div class="behavior-alert"><i class="fa-solid fa-circle-info"></i> Configured sessions currently total {{ allocation }}. Add or edit sessions until the allocation is exactly 100 before recording events.</div>{% endif %}
     <form class="behavior-form behavior-form--wide" method="post" action="{{ url_for('behavior.sessions', config_id=config.id) }}">
@@ -57,7 +57,10 @@
       </div>
       <div class="behavior-field"><label for="newSessionLabel">Session Label</label><input id="newSessionLabel" name="session_label" placeholder="e.g. Term 1 Behavior" required></div>
       <div class="behavior-field"><label for="newSessionMaximum">Maximum Score</label><input id="newSessionMaximum" name="maximum_score" type="number" min="0.001" step="0.001" placeholder="25" required></div>
+      <div class="behavior-field"><label for="newBehaviorAllocation">Behavior Allocation</label><input id="newBehaviorAllocation" name="behavior_allocation" type="number" min="0" step="0.001" placeholder="12.5"></div>
+      <div class="behavior-field"><label for="newAttendanceAllocation">Attendance Allocation</label><input id="newAttendanceAllocation" name="attendance_allocation" type="number" min="0" step="0.001" placeholder="12.5"></div>
       <div class="behavior-field"><label for="newSessionOrder">Sort Order</label><input id="newSessionOrder" name="sort_order" type="number" min="0" step="1" value="0"></div>
+      <p class="behavior-muted" data-allocation-message>Behavior allocation + Attendance allocation must equal the session maximum.</p>
       <div class="behavior-form__actions">
         {% if available_exams %}<button class="behavior-btn behavior-btn--primary" type="submit"><i class="fa-solid fa-plus"></i> Add session</button>{% elif exams %}<span class="behavior-muted"><i class="fa-solid fa-circle-check"></i> All Exam Types are already assigned to this configuration.</span>{% else %}<span class="behavior-muted"><i class="fa-solid fa-calendar-xmark"></i> No Exam Types are available for this Academic Year.</span>{% endif %}
         <a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.configuration', config_id=config.id) }}"><i class="fa-solid fa-sliders"></i> Configuration</a>
@@ -65,20 +68,28 @@
     </form>
   </section>
 
-  <section class="behavior-card behavior-section">
-    <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-list"></i> Configured sessions</span><h2>{{ config.sessions|length }} session(s)</h2></div><span class="behavior-muted">All saved sessions are available for use</span></div>
+  <section class="behavior-card card behavior-section">
+    <div class="behavior-section__head card-head"><div><span class="behavior-kicker"><i class="fa-solid fa-list"></i> Configured sessions</span><h2>{{ config.sessions|length }} session(s)</h2></div><span class="behavior-muted">All saved sessions are available for use</span></div>
     <div class="behavior-list">
       {% for item in config.sessions %}
       <details class="behavior-list__item">
         <summary style="display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none">
-          <span><strong>{{ item.session_label }}</strong><small>{{ item.exam.name if item.exam else item.exam_type.name if item.exam_type else 'Exam Type unavailable' }} · maximum {{ item.maximum_score }} · base {{ (item.maximum_score / 2)|round(3) }} · positive capacity {{ (item.maximum_score / 2)|round(3) }} · order {{ item.sort_order }}</small></span>
+          <span><strong>{{ item.session_label }}</strong><small>{{ item.exam.name if item.exam else item.exam_type.name if item.exam_type else 'Exam Type unavailable' }} · maximum {{ item.maximum_score }} · Behavior {{ item.behavior_allocation if item.behavior_allocation is not none else 'legacy' }} · Attendance {{ item.attendance_allocation if item.attendance_allocation is not none else 'legacy' }} · order {{ item.sort_order }}</small></span>
         </summary>
         <form class="behavior-form behavior-form--wide" method="post" style="margin-top:14px">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ item.id }}">
           <div class="behavior-field"><label>Exam Type</label><select name="exam_ref" required>{% for exam in exams %}<option value="{{ exam.value }}" {% if exam.value == (('exam:' ~ item.exam_id) if item.exam_id else ('legacy:' ~ item.exam_type_id)) %}selected{% endif %}>{{ exam.name }}</option>{% endfor %}</select></div>
           <div class="behavior-field"><label>Session Label</label><input name="session_label" value="{{ item.session_label }}" required></div>
           <div class="behavior-field"><label>Maximum Score</label><input name="maximum_score" type="number" min="0.001" step="0.001" value="{{ item.maximum_score }}" required></div>
+          {% if item.behavior_allocation is none and item.attendance_allocation is none %}
+          <input type="hidden" name="preserve_legacy" value="1">
+          <div class="behavior-field behavior-field--wide"><span class="behavior-muted"><i class="fa-solid fa-clock-rotate-left"></i> Legacy session: allocation fields remain empty to preserve historical scoring.</span></div>
+          {% else %}
+          <div class="behavior-field"><label>Behavior Allocation</label><input name="behavior_allocation" type="number" min="0" step="0.001" value="{{ item.behavior_allocation }}" required></div>
+          <div class="behavior-field"><label>Attendance Allocation</label><input name="attendance_allocation" type="number" min="0" step="0.001" value="{{ item.attendance_allocation }}" required></div>
+          {% endif %}
           <div class="behavior-field"><label>Sort Order</label><input name="sort_order" type="number" min="0" value="{{ item.sort_order }}"></div>
+          {% if item.behavior_allocation is not none and item.attendance_allocation is not none %}<p class="behavior-muted" data-allocation-message>Behavior allocation + Attendance allocation must equal the session maximum.</p>{% endif %}
           <div class="behavior-form__actions">
             <button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save changes</button>
           </div>
@@ -90,4 +101,28 @@
   </section>
   {% else %}<section class="behavior-card behavior-section"><div class="behavior-empty"><i class="fa-solid fa-filter-circle-xmark"></i><p>Select a Behavior configuration to manage sessions.</p></div></section>{% endif %}
 </div>
+<script>
+(() => {
+  const forms = document.querySelectorAll('.behavior-form--wide');
+  const sync = (form) => {
+    const allocationFields = form.querySelectorAll('input[name="maximum_score"], input[name="behavior_allocation"], input[name="attendance_allocation"]');
+    if (allocationFields.length < 3) return;
+    const maximum = Number(form.querySelector('[name="maximum_score"]')?.value || 0);
+    const behavior = Number(form.querySelector('[name="behavior_allocation"]')?.value || 0);
+    const attendance = Number(form.querySelector('[name="attendance_allocation"]')?.value || 0);
+    const message = form.querySelector('[data-allocation-message]');
+    const valid = maximum > 0 && Math.abs((behavior + attendance) - maximum) < 0.001;
+    if (message) {
+      message.textContent = valid
+        ? `Allocation ready: ${behavior.toFixed(3)} Behavior + ${attendance.toFixed(3)} Attendance = ${maximum.toFixed(3)}.`
+        : 'Behavior allocation + Attendance allocation must equal the session maximum.';
+    }
+    form.querySelector('button[type="submit"]')?.toggleAttribute('disabled', !valid);
+  };
+  forms.forEach((form) => {
+    form.querySelectorAll('input[name="maximum_score"], input[name="behavior_allocation"], input[name="attendance_allocation"]').forEach((input) => input.addEventListener('input', () => sync(form)));
+    sync(form);
+  });
+})();
+</script>
 {% endblock %}

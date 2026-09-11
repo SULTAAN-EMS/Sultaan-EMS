@@ -2,9 +2,9 @@
 {% block page_title %}Behavior Setup{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css') }}">
-<div class="behavior-page">
-  <header class="behavior-hero">
-    <span class="behavior-hero__mark"><i class="fa-solid fa-sliders"></i></span>
+<div class="behavior-page view">
+  <header class="behavior-hero page-head">
+    <span class="behavior-hero__mark seal-badge"><i class="fa-solid fa-sliders"></i></span>
     <div class="behavior-hero__copy">
       <span class="behavior-eyebrow">Phase 2D.1 · Year-aware setup</span>
       <h1>Behavior Setup</h1>
@@ -14,15 +14,15 @@
 
   {% include "admin/behavior/_nav.html" %}
 
-  <section class="behavior-card behavior-section">
-    <div class="behavior-section__head">
+  <section class="behavior-card card behavior-section">
+    <div class="behavior-section__head card-head">
       <div>
         <span class="behavior-kicker"><i class="fa-solid fa-link"></i> Exact hierarchy</span>
         <h2>{% if selected_config %}Edit configuration{% else %}Create configuration{% endif %}</h2>
       </div>
     </div>
     <p class="behavior-help">Academic Year -&gt; year-aware Academic Level -&gt; Behavior Subject -&gt; same-year Exam Type Sessions. Exam Types come from the official registry for the selected year and never cross that year.</p>
-    <div class="behavior-hierarchy" aria-label="Behavior configuration hierarchy">
+    <div class="behavior-hierarchy stepper" aria-label="Behavior configuration hierarchy">
       <span><b>1</b> Academic Year</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
       <span><b>2</b> Academic Level</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
       <span><b>3</b> Behavior Subject</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
@@ -59,7 +59,7 @@
         <small class="behavior-help">Filter the session source list to this Academic Year’s Exam Type.</small>
       </div>
       <div class="behavior-form__actions">
-        <button class="behavior-btn behavior-btn--primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save Configuration</button>
+        <button class="behavior-btn btn behavior-btn--primary btn-brass" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save Configuration</button>
         {% if selected_config %}
         <a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.sessions', config_id=selected_config.id, exam_ref=selected_exam_ref) }}"><i class="fa-solid fa-calendar-days"></i> Sessions</a>
         <a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.grade_management', config_id=selected_config.id) }}"><i class="fa-solid fa-graduation-cap"></i> Grade Management</a>

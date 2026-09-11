@@ -943,6 +943,7 @@ def class_roster():
                     "configuration_id": behavior["configuration_id"],
                     "subject_name": behavior["subject_name"],
                     "annual_maximum": behavior["annual_maximum"],
+                    "session_maximum": behavior.get("session_maximum"),
                     "critical_badge": behavior.get("critical_badge"),
                 })
         
@@ -1468,6 +1469,7 @@ def export_class_pdf():
                     "configuration_id": configuration_id,
                     "subject_name": behavior["subject_name"],
                     "annual_maximum": behavior["annual_maximum"],
+                    "session_maximum": behavior.get("session_maximum"),
                     "critical_badge": behavior.get("critical_badge"),
                 }
             )

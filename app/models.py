@@ -226,6 +226,12 @@ class BehaviorConfiguration(TimestampMixin, db.Model):
     frequency = db.Column(db.String(20), nullable=False, default="monthly")
     status = db.Column(db.String(20), nullable=False, default="active", index=True)
     annual_allocation = db.Column(db.Numeric(8, 3), nullable=False, default=0)
+    behavior_attendance_scoring_enabled = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("TRUE"),
+    )
     created_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     # Legacy column retained so existing databases remain readable.
     activated_at = db.Column(db.DateTime, nullable=True)
@@ -251,6 +257,22 @@ class BehaviorConfiguration(TimestampMixin, db.Model):
         back_populates="configuration",
         cascade="all, delete-orphan",
         order_by="BehaviorGradeScale.sort_order, BehaviorGradeScale.min_score, BehaviorGradeScale.id",
+    )
+    attendance_statuses = db.relationship(
+        "BehaviorAttendanceStatus",
+        back_populates="configuration",
+        cascade="all, delete-orphan",
+        order_by="BehaviorAttendanceStatus.sort_order, BehaviorAttendanceStatus.id",
+    )
+    attendance_days = db.relationship(
+        "BehaviorAttendanceDay",
+        back_populates="configuration",
+        cascade="all, delete-orphan",
+        order_by="BehaviorAttendanceDay.weekday",
+    )
+    attendance_records = db.relationship(
+        "BehaviorAttendanceRecord",
+        back_populates="configuration",
     )
 
     __table_args__ = (
@@ -278,12 +300,13 @@ class BehaviorConfiguration(TimestampMixin, db.Model):
 
 
 class BehaviorGradeScale(TimestampMixin, db.Model):
-    """Behavior-owned raw-score bands for one Behavior session.
+    """Behavior-owned grade bands for one Behavior session.
 
     ``behavior_configuration_id`` remains as the historical parent scope, but
-    the session is the grading authority.  The nullable session link keeps
-    older Behavior-owned rows readable until they are migrated or replaced;
-    new rows must always be session-scoped by the Behavior admin routes.
+    the session is the grading authority. New allocation-backed sessions
+    interpret these bands as percentages; legacy sessions retain raw-score
+    compatibility. The nullable session link keeps older Behavior-owned rows
+    readable until they are migrated or replaced.
     """
 
     __tablename__ = "behavior_grade_scales"
@@ -359,6 +382,20 @@ class BehaviorSession(TimestampMixin, db.Model):
     )
     session_label = db.Column(db.String(120), nullable=False)
     maximum_score = db.Column(db.Numeric(8, 3), nullable=False)
+    # New sessions persist their two scoring allocations and the attendance
+    # policy snapshot used to calculate them. Nullable keeps legacy sessions
+    # readable without silently reinterpreting their historical scores.
+    behavior_allocation = db.Column(db.Numeric(8, 3), nullable=True)
+    attendance_allocation = db.Column(db.Numeric(8, 3), nullable=True)
+    attendance_present_weight = db.Column(db.Numeric(8, 3), nullable=True)
+    attendance_late_weight = db.Column(db.Numeric(8, 3), nullable=True)
+    attendance_absent_weight = db.Column(db.Numeric(8, 3), nullable=True)
+    # Immutable Attendance policy/calendar snapshots for normalized sessions.
+    # Legacy sessions remain NULL and continue through the compatibility path.
+    attendance_policy_snapshot = db.Column(db.Text, nullable=True)
+    attendance_frequency_snapshot = db.Column(db.String(20), nullable=True)
+    attendance_weekdays_snapshot = db.Column(db.String(32), nullable=True)
+    scoring_policy_version = db.Column(db.String(40), nullable=True)
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
 
@@ -388,6 +425,12 @@ class BehaviorSession(TimestampMixin, db.Model):
             "maximum_score > 0",
             name="ck_behavior_session_maximum_positive",
         ),
+        db.CheckConstraint(
+            "(behavior_allocation IS NULL AND attendance_allocation IS NULL) OR "
+            "(behavior_allocation IS NOT NULL AND attendance_allocation IS NOT NULL "
+            "AND behavior_allocation + attendance_allocation = maximum_score)",
+            name="ck_behavior_session_allocation_total",
+        ),
     )
 
 
@@ -416,6 +459,12 @@ class BehaviorCategory(TimestampMixin, db.Model):
         cascade="all, delete-orphan",
         order_by="BehaviorAction.level_number, BehaviorAction.sort_order, BehaviorAction.id",
     )
+    subcategories = db.relationship(
+        "BehaviorSubCategory",
+        back_populates="category",
+        cascade="all, delete-orphan",
+        order_by="BehaviorSubCategory.sort_order, BehaviorSubCategory.id",
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -427,6 +476,39 @@ class BehaviorCategory(TimestampMixin, db.Model):
         db.CheckConstraint(
             "polarity IN ('positive', 'negative')",
             name="ck_behavior_category_polarity",
+        ),
+    )
+
+
+class BehaviorSubCategory(TimestampMixin, db.Model):
+    """A second taxonomy level below a Behavior category."""
+
+    __tablename__ = "behavior_subcategories"
+
+    id = db.Column(db.Integer, primary_key=True)
+    behavior_category_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_categories.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+
+    category = db.relationship("BehaviorCategory", back_populates="subcategories")
+    actions = db.relationship(
+        "BehaviorAction",
+        back_populates="subcategory",
+        order_by="BehaviorAction.level_number, BehaviorAction.sort_order, BehaviorAction.id",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "behavior_category_id",
+            "name",
+            name="uq_behavior_subcategory_category_name",
         ),
     )
 
@@ -445,16 +527,40 @@ class BehaviorAction(TimestampMixin, db.Model):
         nullable=False,
         index=True,
     )
+    behavior_subcategory_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_subcategories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     name = db.Column(db.String(120), nullable=False)
     level_number = db.Column(db.Integer, nullable=False, default=1)
     points = db.Column(db.Numeric(8, 3), nullable=False)
     frequency = db.Column(db.String(20), nullable=False, default="ad_hoc")
+    behavior_type = db.Column(
+        db.String(30),
+        nullable=False,
+        default="direct_action",
+        server_default=text("'direct_action'"),
+    )
+    # Phase 2F keeps the legacy storage values readable while exposing one
+    # canonical response contract to the application layer.
+    response_type = db.Column(db.String(30), nullable=True, index=True)
+    response_required = db.Column(db.Boolean, nullable=False, default=False, server_default=text("FALSE"))
+    rating_scale = db.Column(db.Integer, nullable=True)
     description = db.Column(db.String(255), nullable=True)
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
 
     category = db.relationship("BehaviorCategory", back_populates="actions")
+    subcategory = db.relationship("BehaviorSubCategory", back_populates="actions")
     events = db.relationship("BehaviorEvent", back_populates="action")
+    choices = db.relationship(
+        "BehaviorActionChoice",
+        back_populates="action",
+        cascade="all, delete-orphan",
+        order_by="BehaviorActionChoice.sort_order, BehaviorActionChoice.id",
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -474,6 +580,43 @@ class BehaviorAction(TimestampMixin, db.Model):
         db.CheckConstraint(
             "frequency IN ('daily', 'weekly', 'monthly', 'ad_hoc')",
             name="ck_behavior_action_frequency",
+        ),
+        db.CheckConstraint(
+            "behavior_type IN ('direct_action', 'choice', 'selection', 'dropdown', 'rating', 'linear_scale', 'text_note')",
+            name="ck_behavior_action_type",
+        ),
+    )
+
+
+class BehaviorActionChoice(TimestampMixin, db.Model):
+    """Administrator-defined choices for choice/rating Behavior actions."""
+
+    __tablename__ = "behavior_action_choices"
+
+    id = db.Column(db.Integer, primary_key=True)
+    behavior_action_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_actions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    label = db.Column(db.String(120), nullable=False)
+    points = db.Column(db.Numeric(8, 3), nullable=False, default=0)
+    description = db.Column(db.String(255), nullable=True)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+
+    action = db.relationship("BehaviorAction", back_populates="choices")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "behavior_action_id",
+            "label",
+            name="uq_behavior_action_choice_label",
+        ),
+        db.CheckConstraint(
+            "points >= 0",
+            name="ck_behavior_action_choice_points_nonnegative",
         ),
     )
 
@@ -522,12 +665,27 @@ class BehaviorEvent(TimestampMixin, db.Model):
         nullable=False,
         index=True,
     )
+    behavior_action_choice_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_action_choices.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     polarity = db.Column(db.String(10), nullable=False)
     points_applied = db.Column(db.Numeric(8, 3), nullable=False)
     status = db.Column(db.String(10), nullable=False, default="active", index=True)
     occurred_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
     notes = db.Column(db.Text, nullable=True)
+    response_type_snapshot = db.Column(db.String(30), nullable=True)
+    response_text = db.Column(db.Text, nullable=True)
+    response_snapshot = db.Column(db.Text, nullable=True)
+    response_display_snapshot = db.Column(db.Text, nullable=True)
+    response_points = db.Column(db.Numeric(8, 3), nullable=True)
+    action_points_snapshot = db.Column(db.Numeric(8, 3), nullable=True)
+    response_rating = db.Column(db.Integer, nullable=True)
+    response_rating_scale = db.Column(db.Integer, nullable=True)
     category_name_snapshot = db.Column(db.String(120), nullable=False)
+    subcategory_name_snapshot = db.Column(db.String(120), nullable=True)
     action_name_snapshot = db.Column(db.String(120), nullable=False)
     action_level_snapshot = db.Column(db.Integer, nullable=False, default=1)
     session_label_snapshot = db.Column(db.String(120), nullable=False)
@@ -543,6 +701,7 @@ class BehaviorEvent(TimestampMixin, db.Model):
     session = db.relationship("BehaviorSession", back_populates="events")
     category = db.relationship("BehaviorCategory")
     action = db.relationship("BehaviorAction", back_populates="events")
+    action_choice = db.relationship("BehaviorActionChoice")
     creator = db.relationship("User", foreign_keys=[created_by])
     voider = db.relationship("User", foreign_keys=[voided_by])
 
@@ -569,6 +728,170 @@ class BehaviorEvent(TimestampMixin, db.Model):
             "behavior_configuration_id",
             "student_enrollment_id",
             "behavior_session_id",
+        ),
+    )
+
+
+class BehaviorAttendanceStatus(TimestampMixin, db.Model):
+    """Configurable daily Attendance status inside one Behavior scope."""
+
+    __tablename__ = "behavior_attendance_statuses"
+
+    id = db.Column(db.Integer, primary_key=True)
+    behavior_configuration_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_configurations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    key = db.Column(db.String(40), nullable=False)
+    label = db.Column(db.String(120), nullable=False)
+    polarity = db.Column(db.String(10), nullable=False, default="neutral")
+    points = db.Column(db.Numeric(8, 3), nullable=False, default=0)
+    contributes_to_behavior = db.Column(db.Boolean, nullable=False, default=True)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+
+    configuration = db.relationship("BehaviorConfiguration", back_populates="attendance_statuses")
+    records = db.relationship("BehaviorAttendanceRecord", back_populates="status")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "behavior_configuration_id",
+            "key",
+            name="uq_behavior_attendance_status_configuration_key",
+        ),
+        db.CheckConstraint(
+            "polarity IN ('positive', 'negative', 'neutral')",
+            name="ck_behavior_attendance_status_polarity",
+        ),
+        db.CheckConstraint(
+            "points >= 0",
+            name="ck_behavior_attendance_status_points_nonnegative",
+        ),
+    )
+
+
+class BehaviorAttendanceDay(TimestampMixin, db.Model):
+    """School-day configuration for one Behavior scope."""
+
+    __tablename__ = "behavior_attendance_days"
+
+    id = db.Column(db.Integer, primary_key=True)
+    behavior_configuration_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_configurations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    weekday = db.Column(db.Integer, nullable=False)
+    label = db.Column(db.String(40), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    configuration = db.relationship("BehaviorConfiguration", back_populates="attendance_days")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "behavior_configuration_id",
+            "weekday",
+            name="uq_behavior_attendance_day_configuration_weekday",
+        ),
+        db.CheckConstraint(
+            "weekday BETWEEN 0 AND 6",
+            name="ck_behavior_attendance_day_weekday",
+        ),
+    )
+
+
+class BehaviorAttendanceRecord(TimestampMixin, db.Model):
+    """One daily Attendance mark for one enrollment and Behavior session."""
+
+    __tablename__ = "behavior_attendance_records"
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(
+        db.Integer,
+        db.ForeignKey("students.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    student_enrollment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("student_enrollments.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    behavior_configuration_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_configurations.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    behavior_session_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_sessions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_years.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_levels.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_class_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_classes.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    attendance_date = db.Column(db.Date, nullable=False, index=True)
+    attendance_time = db.Column(db.Time, nullable=True)
+    arrival_time = db.Column(db.Time, nullable=True)
+    late_by_minutes = db.Column(db.Integer, nullable=True)
+    status_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_attendance_statuses.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    status_key_snapshot = db.Column(db.String(40), nullable=False)
+    status_label_snapshot = db.Column(db.String(120), nullable=False)
+    polarity = db.Column(db.String(10), nullable=False, default="neutral")
+    points_applied = db.Column(db.Numeric(8, 3), nullable=False, default=0)
+    note = db.Column(db.String(255), nullable=True)
+    marked_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    student = db.relationship("Student")
+    student_enrollment = db.relationship("StudentEnrollment")
+    configuration = db.relationship("BehaviorConfiguration", back_populates="attendance_records")
+    session = db.relationship("BehaviorSession")
+    academic_year = db.relationship("AcademicYear")
+    academic_year_level = db.relationship("AcademicYearLevel")
+    academic_year_class = db.relationship("AcademicYearClass")
+    status = db.relationship("BehaviorAttendanceStatus", back_populates="records")
+    marked_by = db.relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "student_enrollment_id",
+            "behavior_session_id",
+            "attendance_date",
+            name="uq_behavior_attendance_enrollment_session_date",
+        ),
+        db.CheckConstraint(
+            "polarity IN ('positive', 'negative', 'neutral')",
+            name="ck_behavior_attendance_record_polarity",
+        ),
+        db.CheckConstraint(
+            "points_applied >= 0",
+            name="ck_behavior_attendance_record_points_nonnegative",
         ),
     )
 

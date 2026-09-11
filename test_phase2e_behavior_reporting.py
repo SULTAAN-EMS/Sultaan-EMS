@@ -1,10 +1,14 @@
 """Phase 2E coverage for Behavior portal and academic report projections."""
 
 import unittest
+from datetime import date
+from decimal import Decimal
 
 from app import create_app, db
+from app.behavior_grading import behavior_grade_for_score
+from app.behavior_attendance import ensure_attendance_defaults, mark_attendance
 from app.behavior_reporting import get_behavior_report_data
-from app.behavior_service import record_event
+from app.behavior_service import calculate_annual_behavior_score, calculate_session_score, record_event
 from app.models import (
     AcademicClass,
     AcademicLevel,
@@ -13,6 +17,7 @@ from app.models import (
     AcademicYearLevel,
     AcademicYearSubject,
     BehaviorConfiguration,
+    BehaviorAttendanceStatus,
     BehaviorAction,
     BehaviorCategory,
     BehaviorGradeScale,
@@ -347,7 +352,8 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         self.assertIn('class="behavior-subject-trigger"', body)
         self.assertIn('class="behavior-subject-diamond"', body)
         self.assertIn('dynamic-grade-badge mark-badge behavior-score-badge', body)
-        self.assertIn('id="behaviorDetailDialog1"', body)
+        self.assertIn('id="behaviorChoiceDialog1"', body)
+        self.assertIn("Open official read-only report", body)
         self.assertNotIn("behavior-subject-heart", body)
         self.assertNotIn("fa-heart-pulse", body)
         self.assertNotIn("DABEECADDA ARDEYGA", body)
@@ -361,6 +367,108 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
             api_response.get_json()["behavior_reports"][0]["annual_maximum"],
             50,
         )
+
+    def test_step4_portal_and_reading_views_use_the_canonical_combined_projection(self):
+        self.session_one.maximum_score = 20
+        self.session_one.behavior_allocation = 12
+        self.session_one.attendance_allocation = 8
+        ensure_attendance_defaults(self.configuration)
+        db.session.flush()
+        present = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.configuration.id,
+            key="present",
+        ).one()
+        mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            present.id,
+            date.today(),
+            note="On time",
+            attendance_time="07:30",
+        )
+        db.session.commit()
+
+        payload = result_payload(self.student, exam=self.exam_one, public_only=False)
+        report = payload["behavior_reports"][0]
+        session = report["session_results"][0]
+        ledger = session["ledger"]
+        self.assertEqual(ledger["session"]["session_maximum"], Decimal("20.000"))
+        self.assertEqual(ledger["session"]["behavior_allocation"], Decimal("12.000"))
+        self.assertEqual(ledger["session"]["attendance_allocation"], Decimal("8.000"))
+        self.assertEqual(ledger["session"]["grand_total"], session["final_score"])
+        self.assertEqual(ledger["behavior"]["earned_score"], session["behavior_score"])
+        self.assertEqual(ledger["attendance"]["earned_score"], session["attendance_score"])
+        self.assertEqual(session["attendance_records"][0]["status_label"], "Joogid")
+
+        portal = self.app.test_client().post(
+            "/result",
+            data={"student_id": self.student.student_code, "year_id": self.year_one.id, "exam_id": self.exam_one.id},
+        )
+        self.assertEqual(portal.status_code, 200)
+        portal_body = portal.get_data(as_text=True)
+        self.assertIn("Behavior + Attendance", portal_body)
+        self.assertIn("Behavior <b>", portal_body)
+        self.assertIn("Open official read-only report", portal_body)
+        self.assertNotIn("Attendance reading view", portal_body)
+        self.assertNotIn("Attendance records", portal_body)
+        self.assertIn("Grand <b>", portal_body)
+
+        behavior_view = self.app.test_client().get(
+            f"/behavior/{self.student.student_code}/{self.exam_one.id}/"
+            f"{self.configuration.id}/{self.session_one.id}/read"
+        )
+        self.assertEqual(behavior_view.status_code, 200)
+        behavior_body = behavior_view.get_data(as_text=True)
+        self.assertIn("STUDENT BEHAVIOR REPORT", behavior_body)
+        self.assertIn("Behavior Allocation", behavior_body)
+        self.assertIn("Positive Ledger", behavior_body)
+        self.assertIn("Negative Ledger", behavior_body)
+        self.assertIn("Download PDF", behavior_body)
+        self.assertIn(f"{float(session['behavior_score']):.2f}", behavior_body)
+        self.assertIn(f"{float(ledger['session']['session_maximum']):.3f}", behavior_body)
+
+        behavior_download = self.app.test_client().get(
+            f"/behavior/{self.student.student_code}/{self.exam_one.id}/"
+            f"{self.configuration.id}/{self.session_one.id}/read?download=1"
+        )
+        self.assertEqual(behavior_download.status_code, 200)
+        self.assertIn("STUDENT BEHAVIOR REPORT", behavior_download.get_data(as_text=True))
+
+        attendance_view = self.app.test_client().get(
+            f"/behavior/{self.student.student_code}/{self.exam_one.id}/"
+            f"{self.configuration.id}/{self.session_one.id}/attendance/read"
+        )
+        self.assertEqual(attendance_view.status_code, 200)
+        attendance_body = attendance_view.get_data(as_text=True)
+        self.assertIn("MONTHLY ATTENDANCE REPORT", attendance_body)
+        self.assertIn("MONTHLY ATTENDANCE CALENDAR", attendance_body)
+        self.assertIn("ATTENDANCE BREAKDOWN", attendance_body)
+        self.assertIn("Download PDF", attendance_body)
+        self.assertIn("Joogid", attendance_body)
+
+        attendance_download = self.app.test_client().get(
+            f"/behavior/{self.student.student_code}/{self.exam_one.id}/"
+            f"{self.configuration.id}/{self.session_one.id}/attendance/read?download=1"
+        )
+        self.assertEqual(attendance_download.status_code, 200)
+        self.assertIn("MONTHLY ATTENDANCE REPORT", attendance_download.get_data(as_text=True))
+
+        wrong_scope = self.app.test_client().get(
+            f"/behavior/{self.student.student_code}/{self.exam_two.id}/"
+            f"{self.configuration.id}/{self.session_one.id}/read"
+        )
+        self.assertEqual(wrong_scope.status_code, 404)
+
+        for path in (
+            f"/print/{self.student.student_code}?exam_id={self.exam_one.id}",
+            f"/download/{self.student.student_code}?exam_id={self.exam_one.id}",
+        ):
+            response = self.app.test_client().get(path)
+            self.assertEqual(response.status_code, 200)
+            body = response.get_data(as_text=True)
+            self.assertIn(f"{float(session['final_score']):.2f}", body)
+            self.assertIn(f"{float(session['maximum_score']):.2f}", body)
 
     def test_whole_class_pdf_contains_behavior_column_and_combined_total(self):
         client = self._client_as_admin()
@@ -527,6 +635,110 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
             report["academic_year_id"] == self.year_one.id
             for report in reports
         ))
+
+    def test_phase3_variable_maximums_share_percentage_grade_and_annual_weight(self):
+        self.session_one.maximum_score = 17
+        self.session_one.behavior_allocation = 17
+        self.session_one.attendance_allocation = 0
+        self.session_two.maximum_score = 15
+        self.session_two.behavior_allocation = 15
+        self.session_two.attendance_allocation = 0
+        for session in (self.session_one, self.session_two):
+            db.session.add_all([
+                BehaviorGradeScale(
+                    configuration=self.configuration,
+                    session=session,
+                    grade="F",
+                    min_score=0,
+                    max_score=89.999,
+                    grade_point=0,
+                    description="Fail",
+                    sort_order=1,
+                    is_active=True,
+                    is_pass=False,
+                ),
+                BehaviorGradeScale(
+                    configuration=self.configuration,
+                    session=session,
+                    grade="A",
+                    min_score=90,
+                    max_score=100,
+                    grade_point=4,
+                    description="Excellent",
+                    sort_order=2,
+                    is_active=True,
+                    is_pass=True,
+                ),
+            ])
+        db.session.commit()
+
+        first_grade = behavior_grade_for_score(self.session_one, 15.3)
+        second_grade = behavior_grade_for_score(self.session_two, 13.5)
+        self.assertEqual(first_grade["grade"], "A")
+        self.assertEqual(second_grade["grade"], "A")
+        self.assertEqual(first_grade["grade_point"], second_grade["grade_point"])
+
+        annual = calculate_annual_behavior_score(self.configuration, self.enrollment)
+        self.assertEqual(annual["status"], "COMPLETE")
+        self.assertEqual(annual["total_score"], 16)
+        self.assertEqual(annual["total_maximum"], 32)
+        self.assertEqual(annual["percentage"], 50)
+
+    def test_phase3a_behavior_grade_boundaries_cover_a_to_f(self):
+        self.session_one.maximum_score = 50
+        self.session_one.behavior_allocation = 50
+        self.session_one.attendance_allocation = 0
+        bands = [
+            ("F", Decimal("0"), Decimal("49.999")),
+            ("E", Decimal("50"), Decimal("59.999")),
+            ("D", Decimal("60"), Decimal("69.999")),
+            ("C", Decimal("70"), Decimal("79.999")),
+            ("B", Decimal("80"), Decimal("89.999")),
+            ("A", Decimal("90"), Decimal("100")),
+        ]
+        db.session.add_all([
+            BehaviorGradeScale(
+                configuration=self.configuration,
+                session=self.session_one,
+                grade=grade,
+                min_score=minimum,
+                max_score=maximum,
+                grade_point=0 if grade == "F" else 4,
+                description=grade,
+                sort_order=index,
+                is_active=True,
+                is_pass=grade != "F",
+            )
+            for index, (grade, minimum, maximum) in enumerate(bands, start=1)
+        ])
+        db.session.commit()
+
+        for index, (grade, minimum, maximum) in enumerate(bands):
+            exact_score = minimum * Decimal("0.5")
+            self.assertEqual(behavior_grade_for_score(self.session_one, exact_score)["grade"], grade)
+            above = min(maximum, minimum + Decimal("0.01")) * Decimal("0.5")
+            self.assertEqual(behavior_grade_for_score(self.session_one, above)["grade"], grade)
+            if index:
+                below = (minimum - Decimal("0.01")) * Decimal("0.5")
+                self.assertEqual(
+                    behavior_grade_for_score(self.session_one, below)["grade"],
+                    bands[index - 1][0],
+                )
+            else:
+                self.assertEqual(
+                    behavior_grade_for_score(self.session_one, Decimal("-0.001"))["grade"],
+                    "INVALID",
+                )
+
+    def test_phase3a_public_scoring_status_is_clear(self):
+        self.session_one.maximum_score = 17
+        self.session_one.behavior_allocation = 17
+        self.session_one.attendance_allocation = 0
+        db.session.commit()
+        score = calculate_session_score(self.configuration, self.session_one, self.enrollment)
+        annual = calculate_annual_behavior_score(self.configuration, self.enrollment)
+        self.assertEqual(score["scoring_status"], "NOT_APPLICABLE")
+        self.assertEqual(annual["status"], "COMPLETE")
 
 
 if __name__ == "__main__":

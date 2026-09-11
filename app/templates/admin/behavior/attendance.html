@@ -1,0 +1,249 @@
+{% extends "admin/base.html" %}
+{% block page_title %}Behavior Attendance{% endblock %}
+{% block admin_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css') }}">
+<style>
+  .attendance-filter-panel { display:grid !important; grid-template-columns:minmax(95px,1fr) minmax(145px,1.35fr) minmax(95px,1fr) minmax(105px,1fr) minmax(145px,1.3fr) minmax(210px,1.8fr) auto; align-items:end !important; gap:10px !important; }
+  .attendance-filter-panel > .behavior-field { min-width:0; }
+  .attendance-date-field { grid-column:span 1; }
+  .attendance-date-time { display:grid; grid-template-columns:minmax(0,1fr) 110px; gap:7px; }
+  .attendance-date-readout { display:block; margin-top:7px; color:var(--ink-soft); font:600 11.5px var(--font-sans); }
+  .attendance-day-state { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 16px; padding:10px 12px; border:1.14px solid var(--line); border-radius:9px; background:var(--paper-deep); color:var(--ink-soft); font-size:12.5px; }
+  .attendance-day-state.is-open { color:var(--merit); border-color:#BCD6B9; background:var(--merit-tint); }
+  .attendance-day-state i { margin-right:6px; }
+  .attendance-table-wrap { overflow-x:auto; }
+  .attendance-table { min-width:850px; }
+  .attendance-table th:first-child, .attendance-table td:first-child { width:48px; text-align:center; }
+  .attendance-table th:nth-child(2), .attendance-table td:nth-child(2) { width:74px; text-align:center; }
+  .attendance-table th:nth-child(6), .attendance-table td:nth-child(6) { width:190px; }
+  .attendance-avatar { width:48px; height:48px; display:grid; place-items:center; overflow:hidden; margin:auto; border:1.14px solid var(--line); border-radius:13px; color:var(--brass-deep); background:var(--paper-deep); font:700 13px var(--font-sans); }
+  .attendance-avatar img { width:100%; height:100%; object-fit:cover; }
+  .attendance-student-name { display:block; color:var(--ink); font-weight:700; }
+  .attendance-student-meta { display:block; margin-top:3px; color:var(--ink-faint); font-size:11.5px; }
+  .attendance-select, .attendance-note { width:100%; min-height:38px; padding:8px 10px; border:1.14px solid var(--line); border-radius:8px; color:var(--ink); background:#fff; font:13px var(--font-sans); }
+  .attendance-arrival { display:none; width:100%; min-height:38px; margin-top:6px; padding:8px 10px; border:1.14px solid var(--line); border-radius:8px; color:var(--ink); background:#fff; font:13px var(--font-sans); }
+  .attendance-arrival.is-visible { display:block; }
+  .attendance-arrival-wrap { display:none; margin-top:6px; }
+  .attendance-arrival-wrap.is-visible { display:block; }
+  .attendance-arrival-label { display:block; color:#9f2828; font-size:10.5px; font-weight:700; }
+  .attendance-time-note { display:block; margin-top:4px; color:var(--ink-faint); font-size:10.5px; }
+  .attendance-scope-filters { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:16px; padding:12px; border:1px solid var(--line); border-radius:10px; background:var(--paper-deep); }
+  .attendance-scope-filters .behavior-field { min-width:0; }
+  .attendance-scope-filters__actions { display:flex; align-items:end; }
+  .attendance-select:focus, .attendance-arrival:focus, .attendance-note:focus { border-color:var(--brass); box-shadow:0 0 0 3px rgba(173,127,44,.14); outline:0; }
+  .attendance-row-actions { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
+  .attendance-row-actions .behavior-btn { white-space:nowrap; }
+  .attendance-footer { display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; margin:18px 0 20px; padding:14px 0 0; border-top:1.14px solid var(--line); }
+  .attendance-footer__actions { display:flex; flex-wrap:wrap; gap:8px; }
+  .attendance-dialog { width:min(720px,calc(100% - 24px)); max-height:88vh; padding:0; border:1.14px solid var(--line); border-radius:16px; color:var(--ink); background:var(--card); box-shadow:0 25px 62px rgba(19,36,32,.28); }
+  .attendance-dialog::backdrop { background:rgba(19,36,32,.44); backdrop-filter:blur(2px); }
+  .attendance-dialog__head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:20px 22px; border-bottom:1.14px solid var(--line); background:var(--paper-deep); }
+  .attendance-dialog__head h2 { margin:0; font:600 20px/1.15 var(--font-serif); }
+  .attendance-dialog__head p { margin:5px 0 0; color:var(--ink-soft); font-size:12.5px; }
+  .attendance-dialog__body { max-height:calc(88vh - 90px); overflow:auto; padding:20px 22px; }
+  .attendance-dialog__close { width:32px; height:32px; display:grid; place-items:center; border:1.14px solid var(--line); border-radius:50%; color:var(--ink-soft); background:#fff; cursor:pointer; }
+  .attendance-profile { display:grid; grid-template-columns:110px 1fr; gap:18px; }
+  .attendance-profile__photo { width:110px; height:130px; display:grid; place-items:center; overflow:hidden; border:1.14px solid var(--line); border-radius:14px; color:var(--brass-deep); background:var(--paper-deep); font:700 22px var(--font-sans); }
+  .attendance-profile__photo img { width:100%; height:100%; object-fit:cover; }
+  .attendance-profile__name { margin:0; color:var(--ink); font:600 22px/1.15 var(--font-serif); }
+  .attendance-profile__meta { margin:5px 0 16px; color:var(--ink-soft); font-size:12.5px; }
+  .attendance-profile__facts, .attendance-overview-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
+  .attendance-fact, .attendance-overview-stat { padding:10px 11px; border:1.14px solid var(--line); border-radius:9px; background:#fff; }
+  .attendance-fact span, .attendance-overview-stat span { display:block; color:var(--ink-faint); font:600 10px var(--font-mono); letter-spacing:.04em; text-transform:uppercase; }
+  .attendance-fact strong, .attendance-overview-stat strong { display:block; margin-top:4px; color:var(--ink); font-size:15px; }
+  .attendance-history { width:100%; margin-top:18px; border-collapse:collapse; }
+  .attendance-history th, .attendance-history td { padding:8px 9px; border-bottom:1px solid var(--line); text-align:left; font-size:12px; }
+  .attendance-history th { color:var(--ink-faint); font:600 10px var(--font-mono); letter-spacing:.04em; text-transform:uppercase; }
+  .attendance-record-filters { display:flex; flex-wrap:wrap; align-items:end; gap:10px; margin-bottom:15px; }
+  .attendance-record-filters label { display:grid; gap:5px; color:var(--ink-faint); font:600 10px var(--font-mono); letter-spacing:.04em; text-transform:uppercase; }
+  .attendance-record-filters input { min-height:36px; padding:7px 9px; border:1.14px solid var(--line); border-radius:8px; color:var(--ink); background:#fff; font:13px var(--font-sans); }
+  .attendance-records-table { width:100%; border-collapse:collapse; }
+  .attendance-records-table th, .attendance-records-table td { padding:8px 9px; border-bottom:1px solid var(--line); text-align:left; font-size:12px; }
+  .attendance-records-table th { color:var(--ink-faint); font:600 10px var(--font-mono); letter-spacing:.04em; text-transform:uppercase; }
+  .attendance-record-photo { width:34px; height:40px; display:inline-grid; place-items:center; overflow:hidden; margin-right:7px; vertical-align:middle; border:1px solid var(--line); border-radius:7px; color:var(--brass-deep); background:var(--paper-deep); font-weight:700; }
+  .attendance-record-photo img { width:100%; height:100%; object-fit:cover; }
+  .attendance-repeat-list { margin:16px 0 0; padding:0; list-style:none; }
+  .attendance-repeat-list li { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--line); color:var(--ink-soft); font-size:12.5px; }
+  .attendance-repeat-list strong { color:var(--ink); }
+  .attendance-empty { padding:18px; border:1.14px dashed #CBBF9E; border-radius:10px; color:var(--ink-soft); background:var(--paper-deep); text-align:center; }
+  .attendance-save-state { min-height:20px; color:var(--ink-soft); font-size:12px; }
+  .attendance-save-state.is-saving { color:var(--amber); }
+  @media (max-width:880px) { .attendance-filter-panel { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  @media (max-width:760px) { .attendance-filter-panel, .attendance-scope-filters { grid-template-columns:1fr; } .attendance-date-field { grid-column:auto; } .attendance-date-time { grid-template-columns:1fr 100px; } .attendance-profile { grid-template-columns:1fr; } .attendance-profile__photo { width:82px; height:96px; } .attendance-profile__facts, .attendance-overview-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .attendance-dialog__head, .attendance-dialog__body { padding:16px; } }
+</style>
+<div class="behavior-page view">
+  <header class="behavior-hero"><span class="behavior-hero__mark"><i class="fa-solid fa-user-check"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow"><i class="fa-solid fa-calendar-check"></i> Behavior Attendance</span><h1>Daily Attendance</h1><p>Record attendance inside the selected year-aware Behavior configuration and session.</p></div></header>
+  {% include "admin/behavior/_nav.html" %}
+  <form class="behavior-card card behavior-form attendance-filter-panel" id="attendanceFilters" method="get">
+    <div class="behavior-field"><label for="attendanceYear">Academic Year</label><select id="attendanceYear" name="year_id"><option value="">Select year</option>{% for year in years %}<option value="{{ year.id }}" {% if selected_year and year.id == selected_year.id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}</select></div>
+    <div class="behavior-field"><label for="attendanceConfig">Behavior Configuration</label><select id="attendanceConfig" name="config_id"><option value="">Select configuration</option>{% for item in configurations %}<option value="{{ item.id }}" data-level-id="{{ item.academic_year_level_id }}" {% if config and item.id == config.id %}selected{% endif %}>{{ item.academic_year_level.name }} &bull; {{ item.behavior_subject.name }}</option>{% endfor %}</select></div>
+    <div class="behavior-field"><label for="attendanceLevel">Academic Level</label><select id="attendanceLevel" name="level_id"><option value="">Select level</option>{% for item in levels %}<option value="{{ item.id }}" {% if selected_level and item.id == selected_level.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></div>
+    <div class="behavior-field"><label for="attendanceClass">Academic Class</label><select id="attendanceClass" name="class_id"><option value="">All classes</option>{% for item in classes %}<option value="{{ item.id }}" {% if selected_class and item.id == selected_class.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></div>
+    <div class="behavior-field"><label for="attendanceSession">Session / Exam Type</label><select id="attendanceSession" name="session_id"><option value="">Select session</option>{% for item in sessions %}<option value="{{ item.id }}" {% if selected_session and item.id == selected_session.id %}selected{% endif %}>{{ item.session_label }} &bull; {{ item.maximum_score }}</option>{% endfor %}</select></div>
+    <div class="behavior-field attendance-date-field"><label for="attendanceDate">Attendance Date + Time</label><div class="attendance-date-time"><input id="attendanceDate" type="date" name="attendance_date" value="{{ attendance_date.isoformat() }}"><input id="attendanceTime" type="time" name="attendance_time" value="{{ attendance_time.strftime('%H:%M') }}" aria-label="Attendance time"></div><span class="attendance-date-readout" id="attendanceDateReadout"></span></div>
+  </form>
+
+  {% if config and selected_session and not scope_invalid %}
+  <section class="behavior-card behavior-section">
+    <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-clipboard-check"></i> Daily workspace</span><h2>{{ selected_session.session_label }}</h2></div><span class="behavior-scope-pill">{{ config.academic_year.name }} &bull; {{ config.academic_year_level.name }}{% if selected_class %} &bull; {{ selected_class.name }}{% endif %}</span></div>
+    {% if school_day %}<div class="attendance-day-state is-open"><span><i class="fa-solid fa-circle-check"></i>{{ attendance_date.strftime('%A') }} is an active school day.</span><span>{{ attendance_date.strftime('%B %d, %Y') }}</span></div>{% else %}<div class="attendance-day-state"><span><i class="fa-solid fa-triangle-exclamation"></i>This date is not enabled as a school attendance day.</span><span>{{ attendance_date.strftime('%B %d, %Y') }}</span></div>{% endif %}
+    <form method="post" id="attendanceSaveForm"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save_all"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="class_id" value="{{ selected_class.id if selected_class else '' }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><input type="hidden" name="attendance_time" value="{{ attendance_time.strftime('%H:%M') }}">
+      <div class="attendance-table-wrap behavior-table-wrap"><table class="behavior-table attendance-table"><thead><tr><th>S.N.</th><th>Photo</th><th>Student</th><th>Class</th><th>Status</th><th>Note</th><th>Actions</th></tr></thead><tbody>{% for row in rows %}<tr><td>{{ loop.index }}</td><td><div class="attendance-avatar">{% if row.enrollment.student.photo_path %}<img src="{{ asset_url(row.enrollment.student.photo_path) }}" alt="{{ row.enrollment.student.full_name }} photo">{% else %}{{ row.enrollment.student.full_name[:2]|upper }}{% endif %}</div></td><td><span class="attendance-student-name">{{ row.enrollment.student.full_name }}</span><span class="attendance-student-meta">Hooyo: {{ row.enrollment.student.mother_name or '-' }} &bull; {{ row.enrollment.student.student_code }}</span></td><td>{{ row.enrollment.academic_year_class.name }}</td><td><select class="attendance-select" name="status_{{ row.enrollment.id }}" aria-label="Attendance status for {{ row.enrollment.student.full_name }}">{% for status in statuses %}<option value="{{ status.id }}" data-status-key="{{ status.key }}" {% if row.record and row.record.status_id == status.id or not row.record and status.key == 'present' %}selected{% endif %}>{{ official_status_labels.get(status.key, status.label) }}</option>{% endfor %}</select>{% if row.record and row.record.status_key_snapshot == 'present' and row.record.attendance_time %}<span class="attendance-time-note">Soo xaadiray: {{ row.record.attendance_time.strftime('%I:%M %p').lstrip('0') }}</span>{% endif %}<span class="attendance-arrival-wrap{% if row.record and row.record.status_key_snapshot == 'late' %} is-visible{% endif %}"><label class="attendance-arrival-label">Arrival Time *</label><input class="attendance-arrival"{% if row.record and row.record.status_key_snapshot == 'late' %} is-visible{% endif %} name="arrival_time_{{ row.enrollment.id }}" type="time" value="{{ row.record.arrival_time.strftime('%H:%M') if row.record and row.record.arrival_time else '' }}" aria-label="Arrival time for {{ row.enrollment.student.full_name }}"><span class="attendance-time-note">{% if row.record and row.record.late_by_minutes is not none %}Late by {{ row.record.late_by_minutes }} minutes{% endif %}</span></span></td><td><input class="attendance-note" name="note_{{ row.enrollment.id }}" value="{{ row.record.note if row.record else '' }}" placeholder="Optional note" aria-label="Attendance note for {{ row.enrollment.student.full_name }}"></td><td><div class="attendance-row-actions"><button class="behavior-btn behavior-btn--outline behavior-btn--small" type="button" data-open-profile data-profile-id="{{ row.enrollment.id }}" data-photo="{{ asset_url(row.enrollment.student.photo_path) if row.enrollment.student.photo_path else '' }}" title="View attendance profile"><i class="fa-solid fa-eye"></i> View</button><a class="behavior-btn behavior-btn--outline behavior-btn--small" href="{{ url_for('behavior.attendance_report', enrollment_id=row.enrollment.id, year_id=config.academic_year_id, level_id=config.academic_year_level_id, config_id=config.id, session_id=selected_session.id, attendance_date=attendance_date.isoformat(), print=1) }}" target="_blank" rel="noopener" title="Open attendance report"><i class="fa-solid fa-file-pdf"></i> Report PDF</a></div></td></tr>{% else %}<tr><td colspan="7"><div class="attendance-empty"><i class="fa-solid fa-users-slash"></i><p>No active enrollments exist in this scope.</p></div></td></tr>{% endfor %}</tbody></table></div>
+      <div class="behavior-form__actions"><button class="behavior-btn behavior-btn--primary" id="saveAttendanceButton" type="submit" {% if not school_day %}disabled{% endif %}><i class="fa-solid fa-floppy-disk"></i> Save Attendance</button><span class="attendance-save-state" id="attendanceSaveState" aria-live="polite"></span></div>
+    </form>
+    <div class="attendance-footer"><span class="behavior-kicker"><i class="fa-solid fa-toolbox"></i> Contextual tools</span><div class="attendance-footer__actions"><button class="behavior-btn behavior-btn--outline" type="button" data-open-records><i class="fa-solid fa-clock-rotate-left"></i> Attendance Records</button><button class="behavior-btn behavior-btn--outline" type="button" data-open-overview><i class="fa-solid fa-chart-column"></i> Class Overview</button></div></div>
+  </section>
+  <div class="behavior-settings-trigger"><div><span class="behavior-kicker"><i class="fa-solid fa-sliders"></i> Attendance controls</span><h2>Configuration-owned settings</h2><p>Manage statuses, scoring, and active school days for this exact Behavior configuration.</p></div><button class="behavior-btn behavior-btn--dark" type="button" data-open-attendance-drawer><i class="fa-solid fa-sliders"></i> Open settings</button></div>
+  <div class="behavior-drawer-backdrop drawer-overlay" data-close-attendance-drawer hidden></div>
+  <aside class="behavior-drawer" id="attendanceSettingsDrawer" aria-hidden="true" aria-labelledby="attendanceSettingsTitle"><div class="behavior-drawer__head"><div><span class="behavior-kicker"><i class="fa-solid fa-sliders"></i> Attendance controls</span><h2 id="attendanceSettingsTitle">Status points and school days</h2><p>These settings belong only to the selected configuration.</p></div><button class="behavior-modal__close" type="button" data-close-attendance-drawer aria-label="Close attendance settings"><i class="fa-solid fa-xmark"></i></button></div><div class="behavior-drawer__body">
+    <form class="behavior-form" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save_status"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><div class="behavior-field"><label>Key</label><input name="key" required placeholder="late"></div><div class="behavior-field"><label>Label</label><input name="label" required placeholder="Late"></div><div class="behavior-field"><label>Polarity</label><select name="polarity"><option value="neutral">Neutral</option><option value="positive">Positive</option><option value="negative">Negative</option></select></div><div class="behavior-field"><label>Points</label><input name="points" type="number" min="0" step="0.001" value="0"></div><div class="behavior-form__actions"><button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-plus"></i> Add status</button></div></form>
+    <div class="behavior-table-wrap"><table class="behavior-table"><thead><tr><th>Status controls</th></tr></thead><tbody>{% for status in all_statuses %}<tr><td><form class="behavior-form" method="post" action="{{ url_for('behavior.update_attendance_status', status_id=status.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><div class="behavior-field"><label>{{ status.key }}</label><input name="label" value="{{ status.label }}" required></div><div class="behavior-field"><label>Polarity</label><select name="polarity"><option value="neutral" {% if status.polarity == 'neutral' %}selected{% endif %}>Neutral</option><option value="positive" {% if status.polarity == 'positive' %}selected{% endif %}>Positive</option><option value="negative" {% if status.polarity == 'negative' %}selected{% endif %}>Negative</option></select></div><div class="behavior-field"><label>Points</label><input name="points" type="number" min="0" step="0.001" value="{{ status.points }}"></div><div class="behavior-field"><label>State</label><label><input type="checkbox" name="is_active" {% if status.is_active %}checked{% endif %}> Active</label></div><div class="behavior-form__actions"><button class="behavior-btn behavior-btn--outline behavior-btn--small" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save status</button></div></form></td></tr>{% endfor %}</tbody></table></div>
+    <form class="behavior-form" method="post" action="{{ url_for('behavior.update_attendance_scoring') }}" style="margin-top:14px"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><div class="behavior-field behavior-field--full"><label><input type="checkbox" name="enabled" {% if config.behavior_attendance_scoring_enabled %}checked{% endif %}> Feed Attendance points into the Behavior score</label></div><div class="behavior-form__actions"><button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-toggle-on"></i> Save scoring setting</button></div></form>
+    <form class="behavior-form" method="post" style="margin-top:14px"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save_days"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><div class="behavior-field behavior-field--full"><label>Active school days</label><div class="behavior-direction">{% for day in all_days %}<label><input type="checkbox" name="school_days" value="{{ day.weekday }}" {% if day.is_active %}checked{% endif %}> {{ day.label }}</label>{% endfor %}</div></div><div class="behavior-form__actions"><button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-calendar-check"></i> Save school days</button></div></form>
+  </div></aside>
+
+  <dialog class="attendance-dialog" id="attendanceProfileDialog"><div class="attendance-dialog__head"><div><span class="behavior-kicker"><i class="fa-solid fa-user-check"></i> Student profile</span><h2>Attendance Profile</h2><p>Records from the selected Behavior configuration and session.</p></div><button class="attendance-dialog__close" type="button" data-close-dialog="attendanceProfileDialog" aria-label="Close student profile"><i class="fa-solid fa-xmark"></i></button></div><div class="attendance-dialog__body"><div class="attendance-profile"><div class="attendance-profile__photo" id="profilePhoto">ID</div><div><h3 class="attendance-profile__name" id="profileName">-</h3><p class="attendance-profile__meta" id="profileMeta">-</p><div class="attendance-profile__facts" id="profileFacts"></div></div></div><table class="attendance-history"><thead><tr><th>Date</th><th>Status</th><th>Arrival Time</th><th>Note</th></tr></thead><tbody id="profileHistory"></tbody></table></div></dialog>
+  <dialog class="attendance-dialog" id="attendanceRecordsDialog"><div class="attendance-dialog__head"><div><span class="behavior-kicker"><i class="fa-solid fa-clock-rotate-left"></i> Saved history</span><h2>Attendance Records</h2><p>Previously saved records for the selected year, configuration, level, class, and session.</p></div><button class="attendance-dialog__close" type="button" data-close-dialog="attendanceRecordsDialog" aria-label="Close attendance records"><i class="fa-solid fa-xmark"></i></button></div><div class="attendance-dialog__body">{% set attendance_view_target = 'records' %}{% include 'admin/behavior/_attendance_scope_filters.html' %}<div class="attendance-record-filters"><label>Date / Date Range (From)<input type="date" id="recordsFrom"></label><label>Date / Date Range (To)<input type="date" id="recordsTo"></label></div><div id="recordsEmpty" class="attendance-empty" hidden>No saved attendance records match this range.</div><table class="attendance-records-table" id="recordsTable"><thead><tr><th>Attendance Date</th><th>Student / Mother / ID</th><th>Class</th><th>Status</th><th>Arrival Time</th><th>Recorded Time</th><th>Note</th></tr></thead><tbody id="recordsBody"></tbody></table></div></dialog>
+  <dialog class="attendance-dialog" id="attendanceOverviewDialog"><div class="attendance-dialog__head"><div><span class="behavior-kicker"><i class="fa-solid fa-chart-column"></i> Current scope</span><h2>Class Overview</h2><p>Statistics calculated from saved attendance records in the selected context.</p></div><button class="attendance-dialog__close" type="button" data-close-dialog="attendanceOverviewDialog" aria-label="Close class overview"><i class="fa-solid fa-xmark"></i></button></div><div class="attendance-dialog__body">{% set attendance_view_target = 'overview' %}{% include 'admin/behavior/_attendance_scope_filters.html' %}<div class="attendance-record-filters"><label>Date / Date Range (From)<input type="date" id="overviewFrom"></label><label>Date / Date Range (To)<input type="date" id="overviewTo"></label></div><div class="attendance-overview-grid" id="overviewStats"></div><ul class="attendance-repeat-list" id="overviewRepeats"></ul></div></dialog>
+  {% else %}<section class="behavior-card behavior-section"><div class="attendance-empty"><i class="fa-solid fa-filter-circle-xmark"></i><p>Select a complete Behavior year, configuration, level, class, and session to open Daily Attendance.</p></div></section>{% endif %}
+</div>
+<script>
+(() => {
+  const filterForm = document.getElementById('attendanceFilters');
+  const dateInput = document.getElementById('attendanceDate');
+  const dateReadout = document.getElementById('attendanceDateReadout');
+  const configSelect = document.getElementById('attendanceConfig');
+  const levelSelect = document.getElementById('attendanceLevel');
+  const submitFilters = () => filterForm?.requestSubmit();
+  const syncArrivalField = (select) => {
+    const cell = select?.closest('td');
+    const arrivalWrap = cell?.querySelector('.attendance-arrival-wrap');
+    const arrival = arrivalWrap?.querySelector('.attendance-arrival');
+    if (!arrivalWrap || !arrival) return;
+    const isLate = select.selectedOptions[0]?.dataset.statusKey === 'late';
+    arrivalWrap.classList.toggle('is-visible', isLate);
+    arrival.classList.toggle('is-visible', isLate);
+    arrival.required = isLate;
+    if (!isLate) arrival.value = '';
+  };
+  const formatDate = () => {
+    if (!dateInput || !dateReadout || !dateInput.value) return;
+    const value = new Date(`${dateInput.value}T00:00:00`);
+    dateReadout.textContent = value.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: '2-digit' });
+  };
+  formatDate();
+  dateInput?.addEventListener('change', submitFilters);
+  document.getElementById('attendanceTime')?.addEventListener('change', submitFilters);
+  document.getElementById('attendanceYear')?.addEventListener('change', () => {
+    configSelect.value = '';
+    levelSelect.value = '';
+    document.getElementById('attendanceClass').value = '';
+    document.getElementById('attendanceSession').value = '';
+    submitFilters();
+  });
+  configSelect?.addEventListener('change', () => {
+    const levelId = configSelect.selectedOptions[0]?.dataset.levelId || '';
+    if (levelId) levelSelect.value = levelId;
+    document.getElementById('attendanceClass').value = '';
+    document.getElementById('attendanceSession').value = '';
+    submitFilters();
+  });
+  levelSelect?.addEventListener('change', () => {
+    configSelect.value = '';
+    document.getElementById('attendanceClass').value = '';
+    document.getElementById('attendanceSession').value = '';
+    submitFilters();
+  });
+  document.getElementById('attendanceClass')?.addEventListener('change', submitFilters);
+  document.getElementById('attendanceSession')?.addEventListener('change', submitFilters);
+  document.querySelectorAll('.attendance-select').forEach((select) => {
+    syncArrivalField(select);
+    select.addEventListener('change', () => syncArrivalField(select));
+  });
+
+  const closeDialog = (dialog) => { if (dialog?.open) dialog.close(); };
+  document.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => closeDialog(document.getElementById(button.dataset.closeDialog))));
+  document.querySelectorAll('.attendance-dialog').forEach((dialog) => dialog.addEventListener('click', (event) => { if (event.target === dialog) closeDialog(dialog); }));
+
+  const profiles = {{ profiles|tojson }};
+  const profileDialog = document.getElementById('attendanceProfileDialog');
+  const profileFacts = document.getElementById('profileFacts');
+  const profileHistory = document.getElementById('profileHistory');
+  document.querySelectorAll('[data-open-profile]').forEach((button) => button.addEventListener('click', () => {
+    const item = profiles[String(button.dataset.profileId)] || profiles[button.dataset.profileId];
+    if (!item || !profileDialog) return;
+    const photo = document.getElementById('profilePhoto');
+    photo.innerHTML = button.dataset.photo ? `<img src="${button.dataset.photo}" alt="${item.name} photo">` : item.name.slice(0, 2).toUpperCase();
+    document.getElementById('profileName').textContent = item.name;
+    document.getElementById('profileMeta').textContent = `Hooyo: ${item.mother} | ${item.student_code} | ${item.class_name}`;
+    profileFacts.innerHTML = [['Joogid', item.present], ['Daahid', item.late], ['Maqnaansho', item.absent], ['Cudurdaar', item.excused], ['Fasaxid Rasmi ah', item.official_leave], ['Attendance Earned', item.attendance_score], ['Attendance Maximum', item.attendance_allocation], ['Scoring Status', item.attendance_scoring_status]].map(([label, value]) => `<div class="attendance-fact"><span>${label}</span><strong>${value}</strong></div>`).join('');
+    profileHistory.innerHTML = item.history.length ? item.history.map((row) => `<tr><td>${row.date_display || row.date}</td><td>${row.status}</td><td>${row.arrival_time || '-'}</td><td>${row.note}</td></tr>`).join('') : '<tr><td colspan="4">No saved attendance history.</td></tr>';
+    profileDialog.showModal();
+  }));
+
+  const recordRows = {{ record_rows|tojson }};
+  const recordsDialog = document.getElementById('attendanceRecordsDialog');
+  const renderRecords = () => {
+    const from = document.getElementById('recordsFrom')?.value || '';
+    const to = document.getElementById('recordsTo')?.value || '';
+    const visible = recordRows.filter((row) => (!from || row.date >= from) && (!to || row.date <= to));
+    document.getElementById('recordsBody').innerHTML = visible.map((row) => `<tr><td>${row.date_display || row.date}</td><td>${row.photo_url ? `<span class="attendance-record-photo"><img src="${row.photo_url}" alt="${row.student} photo"></span>` : `<span class="attendance-record-photo">${row.student.slice(0, 2).toUpperCase()}</span>`}<strong>${row.student}</strong><br><small>Hooyo: ${row.mother} &bull; ${row.student_code}</small></td><td>${row.class_name}</td><td>${row.status}</td><td>${row.arrival_time || '-'}${row.late_by_minutes != null ? `<br><small>Late by ${row.late_by_minutes} minutes</small>` : ''}</td><td>${row.attendance_time || '-'}</td><td>${row.note || '-'}</td></tr>`).join('');
+    document.getElementById('recordsEmpty').hidden = visible.length > 0;
+    document.getElementById('recordsTable').hidden = visible.length === 0;
+  };
+  document.querySelectorAll('[data-open-records]').forEach((button) => button.addEventListener('click', () => { renderRecords(); recordsDialog?.showModal(); }));
+  document.getElementById('recordsFrom')?.addEventListener('change', renderRecords);
+  document.getElementById('recordsTo')?.addEventListener('change', renderRecords);
+
+  const overview = {{ overview|tojson }};
+  const overviewDialog = document.getElementById('attendanceOverviewDialog');
+  const renderOverview = () => {
+    const from = document.getElementById('overviewFrom')?.value || '';
+    const to = document.getElementById('overviewTo')?.value || '';
+    const visible = recordRows.filter((row) => (!from || row.date >= from) && (!to || row.date <= to));
+    const counts = { present: 0, late: 0, absent: 0, excused: 0, official_leave: 0 };
+    const studentStats = {};
+    visible.forEach((row) => {
+      if (Object.prototype.hasOwnProperty.call(counts, row.status_key)) counts[row.status_key] += 1;
+      const key = row.student_code;
+      studentStats[key] ||= { name: row.student, absent: 0, late: 0 };
+      if (row.status_key === 'absent') studentStats[key].absent += 1;
+      if (row.status_key === 'late') studentStats[key].late += 1;
+    });
+    const total = visible.length;
+    const attended = counts.present + counts.late;
+    const repeatAlerts = Object.values(studentStats).filter((item) => item.absent >= 2 || item.late >= 2);
+    const impact = visible.reduce((sum, row) => sum + Number(row.points || 0) * (row.polarity === 'negative' ? -1 : 1), 0);
+    document.getElementById('overviewStats').innerHTML = [['Students', Object.keys(studentStats).length], ['Joogid', counts.present], ['Daahid', counts.late], ['Maqnaansho', counts.absent], ['Cudurdaar', counts.excused], ['Fasaxid Rasmi ah', counts.official_leave], ['Attendance', `${total ? (attended / total * 100).toFixed(1) : '0.0'}%`], ['Behavior Impact', impact.toFixed(3)]].map(([label, value]) => `<div class="attendance-overview-stat"><span>${label}</span><strong>${value}</strong></div>`).join('');
+    document.getElementById('overviewRepeats').innerHTML = repeatAlerts.length ? repeatAlerts.map((item) => `<li><strong>${item.name}</strong><span>${item.absent} absent | ${item.late} late</span></li>`).join('') : '<li><span>No repeated absence or lateness found.</span></li>';
+  };
+  document.querySelectorAll('[data-open-overview]').forEach((button) => button.addEventListener('click', () => {
+    renderOverview();
+    overviewDialog?.showModal();
+  }));
+  document.getElementById('overviewFrom')?.addEventListener('change', renderOverview);
+  document.getElementById('overviewTo')?.addEventListener('change', renderOverview);
+  const requestedView = {{ attendance_view|tojson }};
+  if (requestedView === 'records') { renderRecords(); recordsDialog?.showModal(); }
+  if (requestedView === 'overview') { renderOverview(); overviewDialog?.showModal(); }
+
+  const saveForm = document.getElementById('attendanceSaveForm');
+  const saveButton = document.getElementById('saveAttendanceButton');
+  const saveState = document.getElementById('attendanceSaveState');
+  let dirty = false;
+  saveForm?.addEventListener('input', () => { dirty = true; });
+  saveForm?.addEventListener('change', () => { dirty = true; });
+  saveForm?.addEventListener('submit', () => { dirty = false; if (saveButton) { saveButton.disabled = true; saveButton.innerHTML = '<i class="fa-solid fa-arrows-rotate fa-spin"></i> Saving attendance...'; } if (saveState) { saveState.className = 'attendance-save-state is-saving'; saveState.textContent = 'Saving attendance...'; } });
+  window.addEventListener('beforeunload', (event) => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
+
+  const drawer = document.getElementById('attendanceSettingsDrawer');
+  const backdrop = document.querySelector('[data-close-attendance-drawer]');
+  const openButton = document.querySelector('[data-open-attendance-drawer]');
+  const closeDrawer = () => { if (!drawer) return; drawer.classList.remove('is-open'); drawer.setAttribute('aria-hidden', 'true'); if (backdrop) backdrop.hidden = true; document.body.classList.remove('behavior-drawer-open'); };
+  const openDrawer = () => { if (!drawer) return; drawer.classList.add('is-open'); drawer.setAttribute('aria-hidden', 'false'); if (backdrop) backdrop.hidden = false; document.body.classList.add('behavior-drawer-open'); };
+  openButton?.addEventListener('click', openDrawer);
+  document.querySelectorAll('[data-close-attendance-drawer]').forEach((element) => element.addEventListener('click', closeDrawer));
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { closeDrawer(); document.querySelectorAll('.attendance-dialog[open]').forEach(closeDialog); } });
+})();
+</script>
+{% endblock %}
