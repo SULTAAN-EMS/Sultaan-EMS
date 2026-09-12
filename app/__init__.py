@@ -105,12 +105,15 @@ def create_app(config_class=Config):
         session["admin_last_activity"] = now.isoformat()
         return None
 
-    with app.app_context():
-        try:
-            from .schema_compat import ensure_schema_compatibility
-            ensure_schema_compatibility()
-        except Exception as ex:
-            app.logger.error("Automatic schema compatibility sync failed on startup: %s", str(ex), exc_info=True)
+    if app.config.get("AUTO_INIT_DB", True):
+        with app.app_context():
+            try:
+                from .schema_compat import ensure_schema_compatibility
+                ensure_schema_compatibility()
+            except Exception as ex:
+                app.logger.error("Automatic schema compatibility sync failed on startup: %s", str(ex), exc_info=True)
+    else:
+        app.logger.info("Automatic database schema sync is disabled for this deployed process; use the explicit migration process.")
 
     @app.context_processor
     def inject_ui_settings():
@@ -167,7 +170,22 @@ def create_app(config_class=Config):
     app.register_blueprint(seat_arrangement_bp, url_prefix="/admin/seat-arrangement")
     app.register_blueprint(seat_mixer_bp, url_prefix="/admin/seat-mixer")
 
+    try:
+        import os
+        from whitenoise import WhiteNoise
+        static_dir = os.path.join(app.root_path, "static")
+        if os.path.isdir(static_dir):
+            app.wsgi_app = WhiteNoise(app.wsgi_app, root=static_dir, prefix="static/")
+    except Exception as ex:
+        app.logger.warning("WhiteNoise initialization skipped: %s", ex)
+
     register_cli(app)
+
+    # Production startup must not depend on an implicit schema create/seed
+    # transaction. Run the explicit migration/init process separately.
+    if not app.config.get("AUTO_INIT_DB", True):
+        app.logger.info("Automatic database bootstrap is disabled for production startup.")
+        return app
 
     # =========================
     # FIX: AUTO CREATE EVERYTHING
@@ -312,15 +330,6 @@ def create_app(config_class=Config):
                 ))
 
         db.session.commit()
-
-    try:
-        import os
-        from whitenoise import WhiteNoise
-        static_dir = os.path.join(app.root_path, "static")
-        if os.path.isdir(static_dir):
-            app.wsgi_app = WhiteNoise(app.wsgi_app, root=static_dir, prefix="static/")
-    except Exception as ex:
-        app.logger.warning("WhiteNoise initialization skipped: %s", ex)
 
     return app
 

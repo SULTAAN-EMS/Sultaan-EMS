@@ -120,6 +120,10 @@ def _get_database_uri():
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-change-me")
 
+    # Database schema/bootstrap work is explicit in deployed environments.
+    # Local development keeps the existing convenience behavior.
+    AUTO_INIT_DB = not _is_production_environment()
+
     SQLALCHEMY_DATABASE_URI = _get_database_uri()
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
