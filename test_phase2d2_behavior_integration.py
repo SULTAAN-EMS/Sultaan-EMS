@@ -170,7 +170,7 @@ class TestPhase2D2BehaviorIntegration(TestPhase2EBehaviorReporting):
             f"/admin/behavior/students?config_id={self.configuration.id}"
             f"&session_id={self.session_one.id}"
         ).get_data(as_text=True)
-        self.assertIn("Actions above the selected session maximum are disabled", body)
+        self.assertNotIn("Actions above the selected session maximum are disabled", body)
         self.assertIn("option.disabled = exceedsMaximum", body)
         with self.assertRaises(ValueError):
             record_event(

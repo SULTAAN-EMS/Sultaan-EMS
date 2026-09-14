@@ -3,7 +3,6 @@
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='student-behavior-layout-20260902b') }}">
 <div class="behavior-page view">
-  <header class="behavior-hero"><span class="behavior-hero__mark"><i class="fa-solid fa-user-graduate"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow"><i class="fa-solid fa-clipboard-check"></i> Official behavior ledger</span><h1>Student Behavior</h1><p>Review every student in the selected year-aware class and record auditable behavior events without mixing academic contexts.</p></div></header>
   {% include "admin/behavior/_nav.html" %}
 
   <form class="behavior-card card behavior-filter-panel config-bar" method="get" action="{{ url_for('behavior.students') }}">
@@ -22,7 +21,7 @@
   <section class="behavior-card card behavior-section">
     <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-table-list"></i> Class board</span><h2>Behavior scores</h2></div><span class="behavior-muted">{{ board_rows|length }} student(s) · {{ event_rows|length if selected_enrollment else 0 }} selected timeline events</span></div>
     <div class="behavior-board"><div class="behavior-student-row behavior-student-row--head"><span>Student</span><span>Base</span><span>Positive</span><span>Negative</span><span>Final</span><span>Events</span><span>Actions</span></div>
-      {% for row in board_rows %}<div class="behavior-student-row"><div class="behavior-student"><span class="behavior-student__avatar">{% if row.enrollment.student.photo_path %}<img src="{{ asset_url(row.enrollment.student.photo_path) }}" alt="{{ row.enrollment.student.full_name }} photo">{% else %}{{ row.enrollment.student.full_name[:1]|upper }}{% endif %}</span><div class="behavior-student__identity"><strong>{{ row.enrollment.student.full_name }}</strong><small>{{ row.enrollment.student.student_code }} · {{ row.enrollment.academic_year_class.name }}</small></div></div><div class="behavior-metric"><strong>{{ row.score.base_score }}</strong><small>base</small></div><div class="behavior-metric behavior-metric--positive"><strong>{{ row.score.positive_applied_points }}</strong><small>positive</small></div><div class="behavior-metric behavior-metric--negative"><strong>{{ row.score.negative_points }}</strong><small>negative</small></div><div class="behavior-metric behavior-metric--final"><strong>{{ row.score.final_score }}</strong><small>{{ row.score.percentage }}% · {{ row.grade.grade }}</small></div><div class="behavior-metric"><strong>{{ row.score.event_count }}</strong><small>{{ row.positive_events }}+ / {{ row.negative_events }}-</small></div><div class="behavior-row-actions"><a class="behavior-btn behavior-btn--outline behavior-btn--small" href="{{ url_for('behavior.student_detail', enrollment_id=row.enrollment.id, config_id=config.id, session_id=selected_session.id) }}"><i class="fa-solid fa-clock-rotate-left"></i> Timeline</a><button type="button" class="behavior-btn behavior-btn--primary behavior-btn--small" data-open-behavior-dialog data-enrollment="{{ row.enrollment.id }}" data-student="{{ row.enrollment.student.full_name }}"><i class="fa-solid fa-plus"></i> Record</button><a class="behavior-btn behavior-btn--outline behavior-btn--small" href="{{ url_for('behavior.student_report', enrollment_id=row.enrollment.id, year_id=selected_year.id, config_id=config.id, session_id=selected_session.id, print=1) }}" target="_blank" rel="noopener" title="Open the Behavior report and save it as PDF"><i class="fa-solid fa-file-pdf"></i> Report PDF</a></div></div>{% else %}<div class="behavior-empty"><i class="fa-solid fa-users-slash"></i><p>No active enrollments exist in this year-aware scope.</p></div>{% endfor %}
+      {% for row in board_rows %}<div class="behavior-student-row"><div class="behavior-student"><span class="behavior-student__avatar">{% if row.enrollment.student.photo_path %}<img src="{{ asset_url(row.enrollment.student.photo_path) }}" alt="{{ row.enrollment.student.full_name }} photo">{% else %}{{ row.enrollment.student.full_name[:1]|upper }}{% endif %}</span><div class="behavior-student__identity"><strong>{{ row.enrollment.student.full_name }}</strong><small>{{ row.enrollment.student.student_code }} · {{ row.enrollment.academic_year_class.name }}</small></div></div><div class="behavior-metric"><strong>{{ row.score.base_score|behavior_points }}</strong><small>base</small></div><div class="behavior-metric behavior-metric--positive"><strong>{{ row.score.positive_applied_points|behavior_points }}</strong><small>positive</small></div><div class="behavior-metric behavior-metric--negative"><strong>{{ row.score.negative_points|behavior_points }}</strong><small>negative</small></div><div class="behavior-metric behavior-metric--final"><strong>{{ row.score.final_score|behavior_points }}</strong><small>{{ row.score.percentage|behavior_points }}% · {{ row.grade.grade }}</small></div><div class="behavior-metric"><strong>{{ row.score.event_count }}</strong><small>{{ row.positive_events }}+ / {{ row.negative_events }}-</small></div><div class="behavior-row-actions"><a class="behavior-btn behavior-btn--outline behavior-btn--small" href="{{ url_for('behavior.student_detail', enrollment_id=row.enrollment.id, config_id=config.id, session_id=selected_session.id) }}"><i class="fa-solid fa-clock-rotate-left"></i> Timeline</a><button type="button" class="behavior-btn behavior-btn--primary behavior-btn--small" data-open-behavior-dialog data-enrollment="{{ row.enrollment.id }}" data-student="{{ row.enrollment.student.full_name }}" data-behavior-earned="{{ row.score.behavior_score|behavior_points }}" data-behavior-allocation="{{ row.score.behavior_allocation|behavior_points }}"><i class="fa-solid fa-plus"></i> Record</button><a class="behavior-btn behavior-btn--outline behavior-btn--small" href="{{ url_for('behavior.student_report', enrollment_id=row.enrollment.id, year_id=selected_year.id, config_id=config.id, session_id=selected_session.id, print=1) }}" target="_blank" rel="noopener" title="Open the Behavior report and save it as PDF"><i class="fa-solid fa-file-pdf"></i> Report PDF</a></div></div>{% else %}<div class="behavior-empty"><i class="fa-solid fa-users-slash"></i><p>No active enrollments exist in this year-aware scope.</p></div>{% endfor %}
     </div>
   </section>
   {% else %}<section class="behavior-card behavior-section"><div class="behavior-empty"><i class="fa-solid fa-filter-circle-xmark"></i><h2>Select a complete scope</h2><p>Choose Academic Year, Level, Behavior Subject, and Session to load the student board.</p></div></section>{% endif %}
@@ -61,21 +60,21 @@
           <div class="rf-head"><div class="rf-ic c3"><i class="fa-solid fa-layer-group"></i></div><div><h4>Category &amp; action</h4><div class="d">The exact taxonomy leaf for this student.</div></div></div>
           <div class="grid cols-2">
             <div class="field"><label for="behaviorDialogCategory">Category</label><select id="behaviorDialogCategory" name="behavior_category_id" required>{% for item in config.categories %}<option value="{{ item.id }}" data-polarity="{{ item.polarity }}">{{ item.name }} ({{ item.polarity|title }})</option>{% endfor %}</select></div>
-            <div class="field"><label for="behaviorDialogAction">Action</label><select id="behaviorDialogAction" name="behavior_action_id" required>{% for category in config.categories %}{% for item in category.actions %}<option value="{{ item.id }}" data-category="{{ category.id }}" data-points="{{ item.points }}" data-type="{{ {'direct_action':'short_answer','choice':'multiple_choice','selection':'checkboxes','rating':'rating','text_note':'text_note','dropdown':'multiple_choice','linear_scale':'rating'}.get(item.behavior_type, 'short_answer') }}" data-rating-scale="{{ item.rating_scale or '' }}" data-required="{{ '1' if item.response_required else '0' }}" data-action-name="{{ item.name|e }}">{{ item.name }} · {{ item.points }} points · Level {{ item.level_number }}</option>{% endfor %}{% endfor %}</select></div>
+            <div class="field"><label for="behaviorDialogAction">Action</label><select id="behaviorDialogAction" name="behavior_action_id" required>{% for category in config.categories %}{% for item in category.actions %}<option value="{{ item.id }}" data-category="{{ category.id }}" data-points="{{ item.points|behavior_points }}" data-type="{{ {'direct_action':'short_answer','choice':'multiple_choice','selection':'checkboxes','rating':'rating','text_note':'text_note','dropdown':'multiple_choice','linear_scale':'rating'}.get(item.behavior_type, 'short_answer') }}" data-rating-scale="{{ item.rating_scale or '' }}" data-required="{{ '1' if item.response_required else '0' }}" data-action-name="{{ item.name|e }}">{{ item.name }} · {{ item.points|behavior_points }} points · Level {{ item.level_number }}</option>{% endfor %}{% endfor %}</select></div>
           </div>
           <div class="rf-preview"><span class="ic"><i class="fa-solid fa-circle-check"></i></span><span class="b"><span class="t" id="behaviorPreviewAction">Select an action</span><span class="m" id="behaviorPreviewMeta">Choose a category and action</span></span><span class="rf-pill pos" id="behaviorPreviewPolarity">Positive</span><span class="rf-pill info" id="behaviorPreviewBase">- base pts</span></div>
-          <div class="note warn rf-note"><i class="fa-solid fa-triangle-exclamation"></i><span>Actions above the selected session maximum are disabled and cannot be recorded.</span></div>
+          <div class="rf-points-ledger" aria-live="polite"><div><span>Selected Points</span><strong id="behaviorSelectedPoints">0.00</strong></div><div><span>Category Total</span><strong id="behaviorCategoryTotal">0.00</strong><small>Reference only</small></div><div><span>Server-validated points</span><strong id="behaviorDialogValidatedPoints">{% if session_allocation and session_allocation.status != 'LEGACY_COMPATIBILITY' %}{{ session_allocation.behavior_allocation|behavior_points }}{% else %}{{ selected_session.maximum_score|behavior_points }}{% endif %}</strong></div></div>
         </section>
 
         <section class="rf-section">
           <div class="rf-head"><div class="rf-ic c4"><i class="fa-solid fa-list-check"></i></div><div><h4>Response</h4><div class="d">Adapts to how this action was configured.</div></div></div>
           <div class="rf-response-type" id="behaviorResponseType" aria-live="polite">Select an action to load its configured response.</div>
-          <div class="rf-resp" data-response-panel="multiple_choice"><div class="rf-choice-list" id="behaviorChoiceCards">{% for category in config.categories %}{% for item in category.actions %}{% for choice in item.choices %}<label class="rf-opt" data-choice-card data-choice-id="{{ choice.id }}" data-action="{{ item.id }}"><input type="radio" name="behavior_action_choice_id" value="{{ choice.id }}" data-action="{{ item.id }}"><span class="mk round"><i class="fa-solid fa-circle"></i></span><span class="lb">{{ choice.label }}</span><span class="pt">{{ choice.points }} pts</span></label>{% endfor %}{% endfor %}{% endfor %}<p class="field hint" data-choice-empty hidden>No configured choices for this action.</p></div></div>
-          <div class="rf-resp" data-response-panel="checkboxes"><div class="rf-choice-list">{% for category in config.categories %}{% for item in category.actions %}{% for choice in item.choices %}<label class="rf-opt" data-checkbox-card data-choice-id="{{ choice.id }}" data-action="{{ item.id }}"><input type="checkbox" name="behavior_action_choice_ids" value="{{ choice.id }}" data-action="{{ item.id }}"><span class="mk square"><i class="fa-solid fa-check"></i></span><span class="lb">{{ choice.label }}</span><span class="pt">{{ choice.points }} pts</span></label>{% endfor %}{% endfor %}{% endfor %}</div><p class="field hint">Select one or more configured options.</p></div>
+          <div class="rf-resp" data-response-panel="multiple_choice"><div class="rf-choice-list" id="behaviorChoiceCards">{% for category in config.categories %}{% for item in category.actions %}{% for choice in item.choices %}<label class="rf-opt" data-choice-card data-choice-id="{{ choice.id }}" data-action="{{ item.id }}"><input type="radio" name="behavior_action_choice_id" value="{{ choice.id }}" data-action="{{ item.id }}" data-points="{{ choice.points|behavior_points }}"><span class="mk round"><i class="fa-solid fa-circle"></i></span><span class="lb">{{ choice.label }}</span><span class="pt">{{ choice.points|behavior_points }} pts</span></label>{% endfor %}{% endfor %}{% endfor %}<p class="field hint" data-choice-empty hidden>No configured choices for this action.</p></div></div>
+          <div class="rf-resp" data-response-panel="checkboxes"><div class="rf-choice-list">{% for category in config.categories %}{% for item in category.actions %}{% for choice in item.choices %}<label class="rf-opt" data-checkbox-card data-choice-id="{{ choice.id }}" data-action="{{ item.id }}"><input type="checkbox" name="behavior_action_choice_ids" value="{{ choice.id }}" data-action="{{ item.id }}" data-points="{{ choice.points|behavior_points }}"><span class="mk square"><i class="fa-solid fa-check"></i></span><span class="lb">{{ choice.label }}</span><span class="pt">{{ choice.points|behavior_points }} pts</span></label>{% endfor %}{% endfor %}{% endfor %}</div><p class="field hint">Select one or more configured options.</p></div>
           <div class="rf-resp" data-response-panel="rating"><div class="behavior-rating" id="behaviorRatingStars" role="radiogroup" aria-label="Behavior rating"></div><input type="hidden" id="behaviorDialogRating" name="response_rating"><p class="field hint" id="behaviorRatingHint">Choose a rating.</p></div>
           <div class="rf-resp" data-response-panel="short_answer"><div class="field"><label for="behaviorDialogResponseText">Action response</label><input id="behaviorDialogResponseText" name="response_text" maxlength="2000" placeholder="Write the response..."></div></div>
           <div class="rf-resp" data-response-panel="text_note"><div class="field"><label for="behaviorDialogResponseNote">Action response</label><textarea id="behaviorDialogResponseNote" name="response_text" maxlength="2000" placeholder="Write the contextual response..."></textarea></div></div>
-          <div class="rf-score"><div><div class="l">Server-validated points</div><div class="c">Calculated, not editable.</div></div><div class="v" id="behaviorDialogPoints">-<small> / {{ selected_session.maximum_score }}</small></div></div>
+          <div class="rf-score"><div><div class="l">Behavior Section Remaining</div></div><div class="v" id="behaviorDialogRemaining">-</div></div>
         </section>
 
         <section class="rf-section">
@@ -97,10 +96,10 @@
   const direction = dialog && dialog.querySelectorAll('input[name="direction"]');
   const category = document.getElementById('behaviorDialogCategory');
   const action = document.getElementById('behaviorDialogAction');
-  const choiceCards = dialog ? dialog.querySelectorAll('[data-choice-card]') : [];
+  const choiceCards = dialog ? dialog.querySelectorAll('[data-choice-card], [data-checkbox-card]') : [];
   const choiceEmpty = document.querySelector('[data-choice-empty]');
   const session = document.getElementById('behaviorDialogSession');
-  const points = document.getElementById('behaviorDialogPoints');
+  const validatedPoints = document.getElementById('behaviorDialogValidatedPoints');
   const previewAction = document.getElementById('behaviorPreviewAction');
   const previewMeta = document.getElementById('behaviorPreviewMeta');
   const previewPolarity = document.getElementById('behaviorPreviewPolarity');
@@ -108,10 +107,48 @@
   const responsePanels = dialog ? dialog.querySelectorAll('[data-response-panel]') : [];
   const responseTypeLabel = document.getElementById('behaviorResponseType');
   const responseInputs = dialog ? dialog.querySelectorAll('input[name="behavior_action_choice_id"], input[name="behavior_action_choice_ids"]') : [];
+  const selectedPoints = document.getElementById('behaviorSelectedPoints');
+  const categoryTotal = document.getElementById('behaviorCategoryTotal');
+  const sectionRemaining = document.getElementById('behaviorDialogRemaining');
   const ratingInput = document.getElementById('behaviorDialogRating');
   const ratingStars = document.getElementById('behaviorRatingStars');
   const ratingHint = document.getElementById('behaviorRatingHint');
+  const studentLedger = {
+    {% for row in board_rows %}
+    "{{ row.enrollment.id }}": { earned: Number("{{ row.score.behavior_score|behavior_points }}"), allocation: Number("{{ row.score.behavior_allocation|behavior_points }}") },
+    {% endfor %}
+  };
   const getSessionMaximum = () => Number(session && session.options[session.selectedIndex]?.dataset.maximum || 0);
+  const formatPoints = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(2) : '-';
+  const selectedChoicePoints = () => Array.from(responseInputs)
+    .filter((input) => input.checked && input.dataset.action === action?.value)
+    .reduce((sum, input) => sum + Number(input.dataset.points || 0), 0);
+  let selectedRadioChoiceId = null;
+  const clearResponses = () => {
+    selectedRadioChoiceId = null;
+    responseInputs.forEach((input) => {
+      input.checked = false;
+      input.closest('[data-choice-card], [data-checkbox-card]')?.classList.remove('selected');
+    });
+  };
+  const syncLedger = (responseType, currentAction, sessionMaximum) => {
+    const actionPoints = Number(currentAction?.dataset.points || 0);
+    const choicePoints = selectedChoicePoints();
+    const value = ['multiple_choice', 'checkboxes'].includes(responseType) ? choicePoints : actionPoints;
+    const total = Array.from(action?.options || [])
+      .filter((option) => option.dataset.category === category?.value)
+      .reduce((sum, option) => sum + Number(option.dataset.points || 0), 0);
+    const ledger = studentLedger[student?.value] || {};
+    if (selectedPoints) selectedPoints.textContent = formatPoints(value);
+    if (categoryTotal) categoryTotal.textContent = formatPoints(total);
+    const totalEarned = Number(ledger.earned || 0) + value;
+    const behaviorMaximum = ledger.allocation == null ? sessionMaximum : Number(ledger.allocation);
+    if (validatedPoints) validatedPoints.textContent = formatPoints(behaviorMaximum);
+    if (sectionRemaining) {
+      const remaining = ledger.allocation == null ? null : Math.max(0, Number(ledger.allocation) - totalEarned);
+      sectionRemaining.textContent = remaining == null ? '-' : `${formatPoints(value)} / ${formatPoints(remaining)}`;
+    }
+  };
   const makeKey = () => window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const sync = (resetAction = false) => {
     if (!category || !action) return;
@@ -150,7 +187,7 @@
       panel.querySelectorAll('input, textarea, select').forEach((input) => { input.disabled = !active; input.required = active && currentAction?.dataset.required === '1' && ['text', 'textarea'].includes(input.type || input.tagName.toLowerCase()); });
     });
     if (responseTypeLabel) responseTypeLabel.textContent = `Configured response: ${typeLabels[responseType] || 'Response'}`;
-    responseInputs.forEach((input) => { input.checked = false; input.closest('[data-choice-card], [data-checkbox-card]')?.classList.remove('selected'); input.disabled = input.dataset.action !== action.value || !currentAction || !['multiple_choice', 'checkboxes'].includes(responseType); });
+    responseInputs.forEach((input) => { input.closest('[data-choice-card], [data-checkbox-card]')?.classList.toggle('selected', input.checked); input.disabled = input.dataset.action !== action.value || !currentAction || !['multiple_choice', 'checkboxes'].includes(responseType); });
     const visibleCards = Array.from(choiceCards).filter((card) => card.dataset.action === action.value);
     choiceCards.forEach((card) => {
       card.hidden = !['multiple_choice', 'checkboxes'].includes(responseType) || card.dataset.action !== action.value;
@@ -165,12 +202,7 @@
       }
       if (ratingHint) ratingHint.textContent = scale ? `Choose 1 to ${scale} stars.` : 'Rating scale is not configured.';
     }
-    const selectedPoints = currentAction && !currentAction.disabled
-      ? (responseType === 'multiple_choice' ? (currentAction.querySelector?.('[data-points]')?.dataset.points || currentAction.dataset.points) : currentAction.dataset.points)
-      : '';
-    if (points) points.innerHTML = selectedPoints
-      ? `${selectedPoints}<small> / ${sessionMaximumLabel}</small>`
-      : `No valid action for this session (maximum ${sessionMaximumLabel})`;
+    syncLedger(responseType, currentAction, sessionMaximum);
     if (previewAction) previewAction.textContent = currentAction?.dataset.actionName || currentAction?.textContent.split(' · ')[0] || 'Select an action';
     if (previewMeta) previewMeta.textContent = selectedCategory && currentAction
       ? `${selectedCategory.textContent.split(' (')[0]} · ${currentAction.dataset.type.replaceAll('_', ' ')} · Level ${currentAction.textContent.split('Level ')[1] || '-'}`
@@ -181,7 +213,7 @@
       previewPolarity.classList.toggle('neg', polarity === 'negative');
       previewPolarity.classList.toggle('pos', polarity !== 'negative');
     }
-    if (previewBase) previewBase.textContent = selectedPoints ? `${selectedPoints} base pts` : '- base pts';
+    if (previewBase) previewBase.textContent = `${selectedPoints?.textContent || '0.00'} base pts`;
     Array.from(direction || []).forEach((radio) => radio.closest('.rf-dcard')?.classList.toggle('active', radio.checked));
   };
   document.querySelectorAll('[data-open-behavior-dialog]').forEach((button) => button.addEventListener('click', () => {
@@ -193,19 +225,37 @@
     sync(false);
     if (dialog && dialog.showModal) dialog.showModal(); else if (dialog) dialog.setAttribute('open', '');
   }));
-  student && student.addEventListener('change', () => { enrollment.value = student.value; label.textContent = student.options[student.selectedIndex].text; });
-  category && category.addEventListener('change', () => sync(true));
-  session && session.addEventListener('change', () => sync(true));
-  action && action.addEventListener('change', () => sync(false));
-  direction && Array.from(direction).forEach((radio) => radio.addEventListener('change', () => sync(true)));
-  responseInputs && Array.from(responseInputs).forEach((input) => input.addEventListener('change', () => input.closest('label')?.classList.toggle('selected', input.checked)));
-  choiceCards && Array.from(choiceCards).forEach((card) => card.addEventListener('click', () => {
-    const input = card.querySelector('input');
-    if (input) { if (input.type === 'radio') input.checked = true; card.classList.toggle('selected', input.checked); }
-  }));
+  student && student.addEventListener('change', () => { enrollment.value = student.value; label.textContent = student.options[student.selectedIndex].text; clearResponses(); sync(); });
+  category && category.addEventListener('change', () => { clearResponses(); sync(true); });
+  session && session.addEventListener('change', () => { clearResponses(); sync(true); });
+  action && action.addEventListener('change', () => { clearResponses(); sync(false); });
+  direction && Array.from(direction).forEach((radio) => radio.addEventListener('change', () => { clearResponses(); sync(true); }));
+  responseInputs && Array.from(responseInputs).forEach((input) => {
+    input.addEventListener('click', (event) => {
+      // The browser may fire change before click for radios. The deferred state
+      // update below keeps the first click selectable and the second removable.
+      if (input.type === 'radio' && selectedRadioChoiceId === input.value) {
+        event.preventDefault();
+        selectedRadioChoiceId = null;
+        window.setTimeout(() => {
+          input.checked = false;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }, 0);
+      }
+    });
+    input.addEventListener('change', () => {
+      if (input.type === 'radio') {
+        const nextChoiceId = input.checked ? input.value : null;
+        window.setTimeout(() => { selectedRadioChoiceId = nextChoiceId; }, 0);
+      }
+      input.closest('label')?.classList.toggle('selected', input.checked);
+      sync(false);
+    });
+  });
   ratingStars && ratingStars.addEventListener('click', (event) => { const star = event.target.closest('[data-value]'); if (!star) return; const value = Number(star.dataset.value); if (ratingInput) ratingInput.value = String(value); ratingStars.querySelectorAll('[data-value]').forEach((item) => item.classList.toggle('selected', Number(item.dataset.value) <= value)); });
   document.querySelectorAll('[data-close-behavior-dialog]').forEach((button) => button.addEventListener('click', () => dialog && dialog.close()));
   dialog && dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); });
+  clearResponses();
   sync(true);
 })();
 </script>

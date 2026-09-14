@@ -13,14 +13,6 @@
       {% endfor %}
     {% endif %}
   {% endwith %}
-  <header class="behavior-hero page-head">
-    <span class="behavior-hero__mark seal-badge"><i class="fa-solid fa-calendar-days"></i></span>
-    <div class="behavior-hero__copy">
-      <span class="behavior-eyebrow"><i class="fa-solid fa-chart-pie"></i> Session allocation</span>
-      <h1>Behavior Sessions</h1>
-      <p>Map one or more sessions to this year's existing Exam Types. The annual allocation must total exactly 100 before events can be recorded.</p>
-    </div>
-  </header>
   {% include "admin/behavior/_nav.html" %}
 
   <form class="behavior-card card behavior-form config-bar" method="get" action="{{ url_for('behavior.sessions') }}">
@@ -43,7 +35,7 @@
         <h2>{{ config.behavior_subject.name }} · {{ config.academic_year_level.name }}</h2>
         <p class="behavior-muted">{{ config.academic_year.name }} · session allocation is configuration-owned</p>
       </div>
-      <span class="behavior-scope-pill pill neutral">{{ allocation }} / 100</span>
+      <span class="behavior-scope-pill pill neutral">{{ allocation|behavior_points }} / 100</span>
     </div>
     {% if allocation != 100 %}<div class="behavior-alert"><i class="fa-solid fa-circle-info"></i> Configured sessions currently total {{ allocation }}. Add or edit sessions until the allocation is exactly 100 before recording events.</div>{% endif %}
     <form class="behavior-form behavior-form--wide" method="post" action="{{ url_for('behavior.sessions', config_id=config.id) }}">
@@ -74,19 +66,19 @@
       {% for item in config.sessions %}
       <details class="behavior-list__item">
         <summary style="display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none">
-          <span><strong>{{ item.session_label }}</strong><small>{{ item.exam.name if item.exam else item.exam_type.name if item.exam_type else 'Exam Type unavailable' }} · maximum {{ item.maximum_score }} · Behavior {{ item.behavior_allocation if item.behavior_allocation is not none else 'legacy' }} · Attendance {{ item.attendance_allocation if item.attendance_allocation is not none else 'legacy' }} · order {{ item.sort_order }}</small></span>
+          <span><strong>{{ item.session_label }}</strong><small>{{ item.exam.name if item.exam else item.exam_type.name if item.exam_type else 'Exam Type unavailable' }} · maximum {{ item.maximum_score|behavior_points }} · Behavior {{ item.behavior_allocation|behavior_points if item.behavior_allocation is not none else 'legacy' }} · Attendance {{ item.attendance_allocation|behavior_points if item.attendance_allocation is not none else 'legacy' }} · order {{ item.sort_order }}</small></span>
         </summary>
         <form class="behavior-form behavior-form--wide" method="post" style="margin-top:14px">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ item.id }}">
           <div class="behavior-field"><label>Exam Type</label><select name="exam_ref" required>{% for exam in exams %}<option value="{{ exam.value }}" {% if exam.value == (('exam:' ~ item.exam_id) if item.exam_id else ('legacy:' ~ item.exam_type_id)) %}selected{% endif %}>{{ exam.name }}</option>{% endfor %}</select></div>
           <div class="behavior-field"><label>Session Label</label><input name="session_label" value="{{ item.session_label }}" required></div>
-          <div class="behavior-field"><label>Maximum Score</label><input name="maximum_score" type="number" min="0.001" step="0.001" value="{{ item.maximum_score }}" required></div>
+          <div class="behavior-field"><label>Maximum Score</label><input name="maximum_score" type="number" min="0.001" step="0.001" value="{{ item.maximum_score|behavior_points }}" required></div>
           {% if item.behavior_allocation is none and item.attendance_allocation is none %}
           <input type="hidden" name="preserve_legacy" value="1">
           <div class="behavior-field behavior-field--wide"><span class="behavior-muted"><i class="fa-solid fa-clock-rotate-left"></i> Legacy session: allocation fields remain empty to preserve historical scoring.</span></div>
           {% else %}
-          <div class="behavior-field"><label>Behavior Allocation</label><input name="behavior_allocation" type="number" min="0" step="0.001" value="{{ item.behavior_allocation }}" required></div>
-          <div class="behavior-field"><label>Attendance Allocation</label><input name="attendance_allocation" type="number" min="0" step="0.001" value="{{ item.attendance_allocation }}" required></div>
+          <div class="behavior-field"><label>Behavior Allocation</label><input name="behavior_allocation" type="number" min="0" step="0.001" value="{{ item.behavior_allocation|behavior_points }}" required></div>
+          <div class="behavior-field"><label>Attendance Allocation</label><input name="attendance_allocation" type="number" min="0" step="0.001" value="{{ item.attendance_allocation|behavior_points }}" required></div>
           {% endif %}
           <div class="behavior-field"><label>Sort Order</label><input name="sort_order" type="number" min="0" value="{{ item.sort_order }}"></div>
           {% if item.behavior_allocation is not none and item.attendance_allocation is not none %}<p class="behavior-muted" data-allocation-message>Behavior allocation + Attendance allocation must equal the session maximum.</p>{% endif %}

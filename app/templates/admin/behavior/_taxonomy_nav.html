@@ -1,0 +1,7 @@
+<nav class="behavior-taxonomy-nav" aria-label="Behavior taxonomy navigation">
+  <a href="{{ url_for('behavior.configuration', config_id=config.id if config else '') }}" class="{% if request.endpoint == 'behavior.configuration' %}is-active{% endif %}"><i class="fa-solid fa-sliders"></i> Configuration</a>
+  <a href="{{ url_for('behavior.taxonomy', config_id=config.id if config else '') }}" class="{% if request.endpoint == 'behavior.taxonomy' %}is-active{% endif %}"><i class="fa-solid fa-diagram-project"></i> Overview</a>
+  <a href="{{ url_for('behavior.categories', config_id=config.id if config else '') }}" class="{% if request.endpoint == 'behavior.categories' %}is-active{% endif %}"><i class="fa-solid fa-tags"></i> Categories</a>
+  <a href="{{ url_for('behavior.subcategories', config_id=config.id if config else '') }}" class="{% if request.endpoint == 'behavior.subcategories' %}is-active{% endif %}"><i class="fa-solid fa-sitemap"></i> Sub-categories</a>
+  <a href="{{ url_for('behavior.actions', config_id=config.id if config else '') }}" class="{% if request.endpoint == 'behavior.actions' %}is-active{% endif %}"><i class="fa-solid fa-list-check"></i> Actions</a>
+</nav>

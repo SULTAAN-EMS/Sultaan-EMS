@@ -3,16 +3,9 @@
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css') }}">
 <div class="behavior-page view">
-  <header class="behavior-hero page-head">
-    <span class="behavior-hero__mark seal-badge"><i class="fa-solid fa-sliders"></i></span>
-    <div class="behavior-hero__copy">
-      <span class="behavior-eyebrow">Phase 2D.1 · Year-aware setup</span>
-      <h1>Behavior Setup</h1>
-      <p>Configure Behavior subjects, sessions, scoring allocation, categories, and actions in one exact Academic Year + Level scope.</p>
-    </div>
-  </header>
-
   {% include "admin/behavior/_nav.html" %}
+  {% set config = selected_config %}
+  {% include "admin/behavior/_taxonomy_nav.html" %}
 
   <section class="behavior-card card behavior-section">
     <div class="behavior-section__head card-head">
@@ -148,7 +141,7 @@
       <span class="behavior-scope-pill">{{ 'Complete' if setup_complete else 'Needs setup' }}</span>
     </div>
     <div class="behavior-score-grid">
-      <div class="behavior-score-card"><span>Allocation</span><strong>{{ allocation }} / 100</strong><small>{% if allocation == 100 %}Exact annual total{% else %}{{ allocation_remaining }} remaining{% endif %}</small></div>
+      <div class="behavior-score-card"><span>Allocation</span><strong>{{ allocation|behavior_points }} / 100</strong><small>{% if allocation == 100 %}Exact annual total{% else %}{{ allocation_remaining|behavior_points }} remaining{% endif %}</small></div>
       <div class="behavior-score-card"><span>Sessions</span><strong>{{ active_session_count }}</strong><small>Configured year exam sessions</small></div>
       <div class="behavior-score-card"><span>Categories</span><strong>{{ active_category_count }}</strong><small>Configured positive/negative categories</small></div>
       <div class="behavior-score-card"><span>Actions</span><strong>{{ active_action_count }}</strong><small>Configured category actions</small></div>
@@ -157,7 +150,7 @@
     {% if selected_config %}
     <div class="behavior-list" style="margin-top: 14px;">
       {% for session in selected_config.sessions|sort(attribute='sort_order') %}
-      <div class="behavior-list__item"><div><strong>{{ session.session_label }}</strong><small>{{ session.exam.name if session.exam else session.exam_type.name if session.exam_type else 'Exam Type unavailable' }} - maximum {{ session.maximum_score }}</small></div><span class="behavior-muted">Available for use</span></div>
+      <div class="behavior-list__item"><div><strong>{{ session.session_label }}</strong><small>{{ session.exam.name if session.exam else session.exam_type.name if session.exam_type else 'Exam Type unavailable' }} - maximum {{ session.maximum_score|behavior_points }}</small></div><span class="behavior-muted">Available for use</span></div>
       {% else %}<p class="behavior-muted">No sessions configured yet.</p>{% endfor %}
     </div>
     {% endif %}

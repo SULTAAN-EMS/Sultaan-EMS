@@ -2057,8 +2057,32 @@ def edit(event_id):
             session = db.session.get(BehaviorSession, _int(request.form.get("behavior_session_id")))
             category = db.session.get(BehaviorCategory, _int(request.form.get("behavior_category_id")))
             action = db.session.get(BehaviorAction, _int(request.form.get("behavior_action_id")))
+            choice = db.session.get(
+                BehaviorActionChoice,
+                _int(request.form.get("behavior_action_choice_id")),
+            ) if request.form.get("behavior_action_choice_id") else None
+            choice_ids = []
+            for raw_choice_id in request.form.getlist("behavior_action_choice_ids"):
+                choice_id = _int(raw_choice_id)
+                if choice_id and choice_id not in choice_ids:
+                    choice_ids.append(choice_id)
+            choices = [db.session.get(BehaviorActionChoice, choice_id) for choice_id in choice_ids]
+            if choice and choice not in choices:
+                choices.insert(0, choice)
+            if not choices and not choice and action and action.id == event.behavior_action_id and (event.response_snapshot or event.behavior_action_choice_id):
+                try:
+                    snapshot = json.loads(event.response_snapshot or "{}")
+                    saved_ids = [int(item["id"]) for item in snapshot.get("selected_options", []) if item.get("id")]
+                    if not saved_ids and event.behavior_action_choice_id:
+                        saved_ids = [event.behavior_action_choice_id]
+                    choices = [db.session.get(BehaviorActionChoice, choice_id) for choice_id in saved_ids]
+                    choices = [item for item in choices if item is not None]
+                except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+                    choices = []
             if not all((session, category, action)):
                 raise BehaviorValidationError("Session, category, and action are required")
+            response_text = request.form.get("response_text") if "response_text" in request.form else event.response_text
+            response_rating = request.form.get("response_rating") if "response_rating" in request.form else event.response_rating
             _, old_values, new_values = edit_event(
                 event,
                 config,
@@ -2070,6 +2094,10 @@ def edit(event_id):
                 occurred_at=_parse_event_datetime(request.form.get("occurred_at"), event.occurred_at),
                 notes=request.form.get("notes"),
                 reason=request.form.get("reason"),
+                choice=choice,
+                choices=choices,
+                response_text=response_text,
+                rating=response_rating,
             )
             audit(
                 "Behavior Events",

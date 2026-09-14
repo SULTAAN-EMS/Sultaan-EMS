@@ -64,6 +64,46 @@ class TestPhase2FBehaviorResponses(TestPhase2CBehaviorEvents):
         with self.assertRaises(BehaviorValidationError):
             record_event(self.config_one, self.enrollment_two, self.session_a, self.positive, too_high, choices=high_choices, idempotency_key="phase2f-checkbox-over")
 
+    def test_checkbox_quarter_points_sum_and_edit_recomputes_selection(self):
+        action = BehaviorAction(
+            category=self.positive,
+            name="Quarter point checklist",
+            level_number=4,
+            points=Decimal("0.500"),
+            frequency="ad_hoc",
+            behavior_type="selection",
+        )
+        first = BehaviorActionChoice(action=action, label="First", points=Decimal("0.250"), sort_order=1)
+        second = BehaviorActionChoice(action=action, label="Second", points=Decimal("0.250"), sort_order=2)
+        db.session.add_all([action, first, second])
+        db.session.commit()
+
+        event = record_event(
+            self.config_one,
+            self.enrollment_one,
+            self.session_a,
+            self.positive,
+            action,
+            choices=[first, second],
+            idempotency_key="phase2f-quarter-sum",
+        )
+        self.assertEqual(event.response_points, Decimal("0.500"))
+        self.assertEqual(event.points_applied, Decimal("0.500"))
+
+        edit_event(
+            event,
+            self.config_one,
+            self.enrollment_one,
+            self.session_a,
+            self.positive,
+            action,
+            choices=[first],
+            reason="Remove the second selected response",
+        )
+        self.assertEqual(event.response_points, Decimal("0.250"))
+        self.assertEqual(event.points_applied, Decimal("0.250"))
+        self.assertEqual(event.response_display_snapshot, "First")
+
     def test_rating_uses_configured_scale_and_proportional_points(self):
         action = BehaviorAction(category=self.positive, name="Effort rating", level_number=6, points=3, frequency="ad_hoc", behavior_type="rating", rating_scale=7)
         db.session.add(action)

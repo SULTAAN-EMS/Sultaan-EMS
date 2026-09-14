@@ -3,7 +3,6 @@
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css') }}">
 <div class="behavior-page view">
-  <header class="behavior-hero"><span class="behavior-hero__mark"><i class="fa-solid fa-timeline"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow"><i class="fa-solid fa-clock-rotate-left"></i> Historical view</span><h1>Behavior History</h1><p>Read the complete behavior timeline, including voided records and immutable event snapshots.</p></div></header>
   {% include "admin/behavior/_nav.html" %}
   <form class="behavior-card card behavior-filter-panel config-bar" method="get" action="{{ url_for('behavior.history') }}">
     <div class="behavior-field"><label for="historyYear">Academic Year</label><select id="historyYear" name="year_id" onchange="this.form.level_id.value='';this.form.class_id.value='';this.form.config_id.value='';this.form.session_id.value='';this.form.student_enrollment_id.value='';this.form.submit()"><option value="">All years</option>{% for year in years %}<option value="{{ year.id }}" {% if selected_year and selected_year.id == year.id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}</select></div>

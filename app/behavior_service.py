@@ -916,39 +916,12 @@ def calculate_annual_behavior_score(configuration, enrollment):
     }
 
 
-def record_event(
-    configuration,
-    enrollment,
-    session,
-    category,
-    action,
-    notes=None,
-    occurred_at=None,
-    created_by=None,
-    direction=None,
-    idempotency_key=None,
-    choice=None,
-    choices=None,
-    response_text=None,
-    rating=None,
-):
-    """Record an event with immutable taxonomy and response snapshots."""
-    configuration = validate_behavior_configuration(configuration)
-    enrollment = validate_enrollment_scope(configuration, enrollment.id if hasattr(enrollment, "id") else enrollment)
-    if not session or session.behavior_configuration_id != configuration.id:
-        raise BehaviorValidationError("Behavior session does not belong to the selected configuration")
-    validate_session_scope(
-        configuration,
-        exam_type_id=session.exam_type_id,
-        exam_id=session.exam_id,
-    )
-    if category.behavior_configuration_id != configuration.id:
-        raise BehaviorValidationError("Behavior category does not belong to the selected configuration")
-    if action.behavior_category_id != category.id:
-        raise BehaviorValidationError("Behavior action does not belong to the selected category")
+def _resolve_behavior_response(action, choice=None, choices=None, response_text=None, rating=None):
+    """Validate one response contract and return its canonical point snapshot."""
     response_type = canonical_response_type(action)
     if response_type not in BEHAVIOR_RESPONSE_TYPES:
         raise BehaviorValidationError("This Behavior action has an unsupported response type")
+
     submitted_choices = list(choices or [])
     if choice is not None and choice not in submitted_choices:
         submitted_choices.insert(0, choice)
@@ -970,9 +943,7 @@ def record_event(
             raise BehaviorValidationError("Behavior response option is outside the selected action")
         if len({item.id for item in submitted_choices}) != len(submitted_choices):
             raise BehaviorValidationError("A response option cannot be selected more than once")
-    direction = (direction or category.polarity).strip().lower()
-    if direction != category.polarity:
-        raise BehaviorValidationError("Event direction must match the selected category")
+
     action_points = decimal_value(action.points, "Action points", minimum="0.001")
     response_text = _response_text_value(response_text, "Action response")
     response_rating_value = None
@@ -1004,8 +975,7 @@ def record_event(
         if not 1 <= response_rating_value <= response_rating_scale:
             raise BehaviorValidationError("Rating is outside the configured scale")
         response_points = (action_points * Decimal(response_rating_value) / Decimal(response_rating_scale)).quantize(Decimal("0.001"))
-    # The action maximum is authoritative for every response contract,
-    # including legacy actions whose response_type column is NULL.
+
     if response_points < 0 or response_points > action_points:
         raise BehaviorValidationError(
             f"This response exceeds the Action Maximum of {action_points:g} points."
@@ -1029,6 +999,70 @@ def record_event(
         "action_points": str(action_points),
         "response_points": str(response_points),
     }
+    return {
+        "response_type": response_type,
+        "submitted_choices": submitted_choices,
+        "selected_labels": selected_labels,
+        "action_points": action_points,
+        "response_points": response_points,
+        "response_text": response_text,
+        "response_rating": response_rating_value,
+        "response_rating_scale": response_rating_scale,
+        "response_display": response_display,
+        "response_snapshot": response_snapshot,
+    }
+
+
+def record_event(
+    configuration,
+    enrollment,
+    session,
+    category,
+    action,
+    notes=None,
+    occurred_at=None,
+    created_by=None,
+    direction=None,
+    idempotency_key=None,
+    choice=None,
+    choices=None,
+    response_text=None,
+    rating=None,
+):
+    """Record an event with immutable taxonomy and response snapshots."""
+    configuration = validate_behavior_configuration(configuration)
+    enrollment = validate_enrollment_scope(configuration, enrollment.id if hasattr(enrollment, "id") else enrollment)
+    if not session or session.behavior_configuration_id != configuration.id:
+        raise BehaviorValidationError("Behavior session does not belong to the selected configuration")
+    validate_session_scope(
+        configuration,
+        exam_type_id=session.exam_type_id,
+        exam_id=session.exam_id,
+    )
+    if category.behavior_configuration_id != configuration.id:
+        raise BehaviorValidationError("Behavior category does not belong to the selected configuration")
+    if action.behavior_category_id != category.id:
+        raise BehaviorValidationError("Behavior action does not belong to the selected category")
+    direction = (direction or category.polarity).strip().lower()
+    if direction != category.polarity:
+        raise BehaviorValidationError("Event direction must match the selected category")
+    response = _resolve_behavior_response(
+        action,
+        choice=choice,
+        choices=choices,
+        response_text=response_text,
+        rating=rating,
+    )
+    response_type = response["response_type"]
+    submitted_choices = response["submitted_choices"]
+    selected_labels = response["selected_labels"]
+    action_points = response["action_points"]
+    response_points = response["response_points"]
+    response_text = response["response_text"]
+    response_rating_value = response["response_rating"]
+    response_rating_scale = response["response_rating_scale"]
+    response_display = response["response_display"]
+    response_snapshot = response["response_snapshot"]
     session_maximum = decimal_value(
         session.maximum_score,
         "Session maximum",
@@ -1104,6 +1138,10 @@ def edit_event(
     occurred_at=None,
     notes=None,
     reason=None,
+    choice=None,
+    choices=None,
+    response_text=None,
+    rating=None,
 ):
     """Edit an active event in place only with an explicit audit reason."""
     if not event or event.status != "active":
@@ -1132,22 +1170,38 @@ def edit_event(
     direction = (direction or category.polarity).strip().lower()
     if direction != category.polarity:
         raise BehaviorValidationError("Event direction must match the selected category")
-    points = decimal_value(action.points, "Action points", minimum="0.001")
+    response = _resolve_behavior_response(
+        action,
+        choice=choice,
+        choices=choices,
+        response_text=response_text,
+        rating=rating,
+    )
+    response_type = response["response_type"]
+    submitted_choices = response["submitted_choices"]
+    selected_labels = response["selected_labels"]
+    action_points = response["action_points"]
+    response_points = response["response_points"]
+    response_text = response["response_text"]
+    response_rating_value = response["response_rating"]
+    response_rating_scale = response["response_rating_scale"]
+    response_display = response["response_display"]
+    response_snapshot = response["response_snapshot"]
     session_maximum = decimal_value(
         session.maximum_score,
         "Session maximum",
         minimum="0.001",
     )
-    if points > session_maximum:
+    if response_points > session_maximum:
         raise BehaviorValidationError(
-            f"Action points ({points:g}) cannot exceed the selected session maximum ({session_maximum:g})"
+            f"Response points ({response_points:g}) cannot exceed the selected session maximum ({session_maximum:g})"
         )
     validate_behavior_ledger_capacity(
         configuration,
         session,
         enrollment,
         direction,
-        points,
+        response_points,
         exclude_event_id=event.id,
     )
     occurred_at = occurred_at or event.occurred_at
@@ -1157,6 +1211,9 @@ def edit_event(
         "action_id": event.behavior_action_id,
         "direction": event.polarity,
         "points_applied": str(event.points_applied),
+        "response_points": str(event.response_points) if event.response_points is not None else None,
+        "response_display": event.response_display_snapshot,
+        "response_snapshot": event.response_snapshot,
         "action_level": event.action_level_snapshot,
         "occurred_at": str(event.occurred_at),
         "notes": event.notes,
@@ -1165,19 +1222,31 @@ def edit_event(
     event.behavior_category_id = category.id
     event.behavior_action_id = action.id
     event.polarity = direction
-    event.points_applied = points
+    event.points_applied = response_points
     event.action_level_snapshot = action.level_number
     event.category_name_snapshot = category.name
     event.action_name_snapshot = action.name
     event.session_label_snapshot = session.session_label
     event.occurred_at = occurred_at
     event.notes = (notes or "").strip() or None
+    event.behavior_action_choice_id = submitted_choices[0].id if len(submitted_choices) == 1 else None
+    event.response_type_snapshot = response_type
+    event.response_text = response_text
+    event.response_snapshot = json.dumps(response_snapshot, ensure_ascii=False, sort_keys=True)
+    event.response_display_snapshot = response_display
+    event.response_points = response_points
+    event.action_points_snapshot = action_points
+    event.response_rating = response_rating_value
+    event.response_rating_scale = response_rating_scale
     new_values = {
         "session_id": event.behavior_session_id,
         "category_id": event.behavior_category_id,
         "action_id": event.behavior_action_id,
         "direction": event.polarity,
         "points_applied": str(event.points_applied),
+        "response_points": str(event.response_points),
+        "response_display": event.response_display_snapshot,
+        "response_snapshot": event.response_snapshot,
         "action_level": event.action_level_snapshot,
         "occurred_at": str(event.occurred_at),
         "notes": event.notes,

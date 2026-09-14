@@ -286,7 +286,7 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
             f"/admin/behavior/grade-management?config_id={self.configuration.id}"
         )
         self.assertEqual(page.status_code, 200)
-        self.assertIn(b"Behavior Grade Management", page.data)
+        self.assertIn(b"Scale editor", page.data)
         response = client.post(
             "/admin/behavior/grade-management",
             data={
@@ -408,11 +408,11 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         self.assertEqual(portal.status_code, 200)
         portal_body = portal.get_data(as_text=True)
         self.assertIn("Behavior + Attendance", portal_body)
-        self.assertIn("Behavior <b>", portal_body)
+        self.assertNotIn("Behavior <b>", portal_body)
         self.assertIn("Open official read-only report", portal_body)
         self.assertNotIn("Attendance reading view", portal_body)
         self.assertNotIn("Attendance records", portal_body)
-        self.assertIn("Grand <b>", portal_body)
+        self.assertNotIn("Grand <b>", portal_body)
 
         behavior_view = self.app.test_client().get(
             f"/behavior/{self.student.student_code}/{self.exam_one.id}/"
@@ -426,7 +426,7 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         self.assertIn("Negative Ledger", behavior_body)
         self.assertIn("Download PDF", behavior_body)
         self.assertIn(f"{float(session['behavior_score']):.2f}", behavior_body)
-        self.assertIn(f"{float(ledger['session']['session_maximum']):.3f}", behavior_body)
+        self.assertIn(f"{float(ledger['session']['session_maximum']):.2f}", behavior_body)
 
         behavior_download = self.app.test_client().get(
             f"/behavior/{self.student.student_code}/{self.exam_one.id}/"

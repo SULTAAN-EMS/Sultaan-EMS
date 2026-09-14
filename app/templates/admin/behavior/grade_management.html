@@ -14,14 +14,6 @@
     {% endif %}
   {% endwith %}
 
-  <header class="behavior-hero page-head">
-    <span class="behavior-hero__mark seal-badge"><i class="fa-solid fa-graduation-cap"></i></span>
-    <div class="behavior-hero__copy">
-      <span class="behavior-eyebrow"><i class="fa-solid fa-shield-halved"></i> Behavior-owned grading</span>
-      <h1>Behavior Grade Management</h1>
-      <p>Configure percentage-based grade bands for the selected Exam Type / Behavior Session only.</p>
-    </div>
-  </header>
   {% include "admin/behavior/_nav.html" %}
 
   <form class="behavior-card card behavior-filter-panel config-bar" method="get" action="{{ url_for('behavior.grade_management') }}">

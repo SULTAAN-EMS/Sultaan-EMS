@@ -341,6 +341,9 @@ body:has(.behavior-page) .admin-top-compact { display: none !important; height: 
 .behavior-subnav { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 20px; padding:0; }
 .behavior-subnav button { padding:7px 13px; border:1.14px solid var(--line); border-radius:999px; color:var(--ink-soft); background:var(--card); cursor:pointer; font:600 12.6px var(--font-sans); }
 .behavior-subnav button:hover, .behavior-subnav button.is-active { color:var(--brass-deep); border-color:var(--brass-tint-line); background:var(--brass-tint); }
+.behavior-taxonomy-nav { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 20px; padding:0 0 10px; border-bottom:1px solid var(--line); }
+.behavior-taxonomy-nav a { display:inline-flex; align-items:center; gap:7px; padding:7px 12px; border:1px solid transparent; border-radius:999px; color:var(--ink-soft); background:transparent; text-decoration:none; font:600 12.6px var(--font-sans); }
+.behavior-taxonomy-nav a:hover, .behavior-taxonomy-nav a.is-active { color:var(--brass-deep); border-color:var(--brass-tint-line); background:var(--brass-tint); }
 .behavior-tax-panel { display:none; }
 .behavior-tax-panel.is-active { display:block; animation:behaviorFadeIn .2s ease; }
 @keyframes behaviorFadeIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:none; } }
@@ -520,6 +523,12 @@ body.behavior-drawer-open { overflow:hidden; }
 .behavior-record-form .rf-pill.info { color:var(--brass-deep); border:1.14px solid var(--brass-tint-line); background:#fff; }
 .behavior-record-form .rf-note { margin:16px 0 0; }
 .behavior-record-form .rf-note i { width:15px; height:15px; flex-shrink:0; margin-top:1px; }
+.behavior-record-form .rf-points-ledger { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; margin-top:14px; }
+.behavior-record-form .rf-points-ledger > div { display:flex; flex-direction:column; gap:3px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card); }
+.behavior-record-form .rf-points-ledger span { color:var(--ink-faint); font:600 9px/1.2 var(--font-mono); letter-spacing:.06em; text-transform:uppercase; }
+.behavior-record-form .rf-points-ledger strong { color:var(--ink); font:700 17px/1.1 var(--font-mono); }
+.behavior-record-form .rf-points-ledger small { color:var(--ink-soft); font-size:10px; }
+@media (max-width:680px) { .behavior-record-form .rf-points-ledger { grid-template-columns:1fr; } }
 .behavior-record-form .rf-pills { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:14px; }
 .behavior-record-form .rf-pills button { padding:7px 14px; border:1.7px solid var(--line); border-radius:999px; color:var(--ink-soft); background:#fff; cursor:pointer; font:700 11.59px var(--font-sans); }
 .behavior-record-form .rf-pills button.active,.behavior-record-form .rf-pills button:hover { border-color:var(--brass); color:#fff; background:var(--brass); }

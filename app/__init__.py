@@ -36,10 +36,22 @@ def create_app(config_class=Config):
     from .models import User, Setting
     from .permissions import can
     from .services import format_academic_number, seed_grade_scales, seed_missing_settings
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
     @app.template_filter("academic_number")
     def academic_number_filter(value, settings=None):
         return format_academic_number(value, settings=settings)
+
+    @app.template_filter("behavior_points")
+    def behavior_points_filter(value):
+        """Render Behavior points with the feature's fixed two-decimal contract."""
+        if value in (None, ""):
+            return "-"
+        try:
+            number = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        except (InvalidOperation, TypeError, ValueError):
+            return "-"
+        return f"{number:.2f}"
 
     @app.template_filter("fromjson")
     def fromjson_filter(value):
