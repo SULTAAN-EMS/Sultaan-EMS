@@ -102,6 +102,26 @@ table.dbr{width:100%; border-collapse:collapse; border:0.3mm solid var(--line); 
 .dbr-readable .cat-sub,.dbr-readable .note-txt{font-size:8.2pt}
 .dbr-readable .dt-cell .t{font-size:8pt}
 .dbr-readable td.pt{font-size:9.4pt}
+.dbr-readable .type-pill{font-size:7.6pt}
+.dbr-readable .type-pill.pos{font-size:7.6pt}
+</style>
+<style>
+/* Keep selected action options visible in the action details column. */
+.page{height:auto;min-height:297mm;overflow:visible}
+@media print{.page{display:flex;flex-direction:column;height:auto;min-height:297mm;overflow:visible;padding:6mm 7mm 6mm;page-break-after:auto}.page>*{flex-shrink:0;break-inside:auto}.bottom-bar{margin-top:auto}.sec-head,.info-card,.summary-row,.allocation-strip,.allocation-ledger,.note-bar,.comment-grid,.comment-card,.sig-grid,.bottom-bar{break-inside:avoid;page-break-inside:avoid}.sec-head{break-after:avoid;page-break-after:avoid}.comment-grid{break-before:avoid;page-break-before:avoid}table.dbr{break-inside:auto}table.dbr tr{break-inside:avoid;page-break-inside:avoid}}
+@media print{.comments-section-head{break-before:page;page-break-before:always}}
+.action-options{display:flex;flex-direction:column;gap:.55mm;margin-top:.9mm;padding-top:.7mm;border-top:.25mm solid var(--line)}
+.action-options-label{font-size:5.1pt;color:var(--ink-faint);font-weight:800;letter-spacing:.04em;text-transform:uppercase;margin-bottom:.1mm}
+.action-option{display:flex;align-items:flex-start;gap:.9mm;color:var(--ink-soft);font-size:6.1pt;line-height:1.15}
+.action-option__icon{width:3.2mm;height:3.2mm;display:inline-flex;align-items:center;justify-content:center;flex:0 0 3.2mm;border-radius:50%;color:#fff;font-size:5pt;font-weight:800;margin-top:.1mm}
+.action-option.pos .action-option__icon{background:var(--green)}
+.action-option.pos .action-option__icon{font-size:4pt;width:2.5mm;height:2.5mm;flex-basis:2.5mm}
+.action-option.neg .action-option__icon{background:var(--red)}
+.action-option.neg .action-option__icon{font-family:"Arial Black",Arial,Helvetica,sans-serif;font-size:7pt;font-weight:900;line-height:1;width:2.6mm;height:2.6mm;flex-basis:2.6mm}
+.action-option__label{font-weight:700;overflow-wrap:anywhere}
+.dbr-readable .action-options-label{font-size:7.2pt}
+.dbr-readable .action-option{font-size:8.2pt;line-height:1.2}
+.dbr-readable .action-option__icon{font-size:6pt}
 .dbr-readable .type-pill{font-size:7.8pt}
 </style>
 </head>
@@ -126,6 +146,7 @@ table.dbr{width:100%; border-collapse:collapse; border:0.3mm solid var(--line); 
   const detailHead = headFor('DETAILED BEHAVIOR RECORD');
   const overallHead = headFor('BEHAVIOR OVERALL SUMMARY');
   const commentsHead = headFor('BEHAVIOR SUMMARY & COMMENTS');
+  if (commentsHead) commentsHead.classList.add('comments-section-head');
   [['1', studentHead], ['2', detailHead], ['3', overallHead], ['4', commentsHead]].forEach(([number, node]) => {
     if (node) node.querySelector('.sec-num').textContent = number;
   });
@@ -239,5 +260,47 @@ table.dbr{width:100%; border-collapse:collapse; border:0.3mm solid var(--line); 
 {% if portal_read_only %}<script>const portalToolbarLinks=[...document.querySelectorAll('.report-toolbar a')];const downloadReportLink=portalToolbarLinks.find(link=>link.textContent.includes('Download PDF'));if(downloadReportLink){downloadReportLink.classList.add('report-download');downloadReportLink.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span>La Dag Warbixinta</span>';}const backResultLink=portalToolbarLinks.find(link=>link.textContent.includes('Back to Result'));if(backResultLink){backResultLink.classList.add('report-back');backResultLink.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg><span>Dib-u-noqo</span>';}</script>{% endif %}
 {% if not portal_read_only %}<script>const adminPrintButton=document.querySelector('.report-toolbar button');if(adminPrintButton){adminPrintButton.classList.add('report-download');adminPrintButton.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span>La Dag Warbixinta</span>';}const adminBackLink=[...document.querySelectorAll('.report-toolbar a')].find(link=>link.textContent.trim()==='Back');if(adminBackLink){adminBackLink.classList.add('report-back');adminBackLink.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg><span>Dib-u-noqo</span>';}</script>{% endif %}
 {% if print_mode %}<script>window.addEventListener('load',()=>window.print());</script>{% endif %}
+<script id="behavior-report-responses" type="application/json">{% set response_ns = namespace(first=true) %}[{% for category in report.categories %}{% for event in category.events %}{% if not response_ns.first %},{% endif %}{% set response_ns.first = false %}{"options":{{ (event.selected_options or [])|tojson }},"note":{{ (event.notes or '')|tojson }}}{% endfor %}{% endfor %}]</script>
+<script>
+(() => {
+  const source = document.getElementById('behavior-report-responses');
+  if (!source) return;
+  let responses = [];
+  try { responses = JSON.parse(source.textContent || '[]'); } catch (_) { return; }
+  const rows = [...document.querySelectorAll('table.dbr tbody tr:not(.grand)')];
+  rows.forEach((row, index) => {
+    const item = responses[index];
+    if (!item || !Array.isArray(item.options) || !item.options.length) return;
+    const actionText = row.querySelector('.action-txt');
+    const actionCell = actionText ? actionText.closest('td') : null;
+    if (!actionCell) return;
+    const options = document.createElement('div');
+    options.className = 'action-options';
+    const tone = row.classList.contains('cat-att') ? 'neg' : 'pos';
+    item.options.forEach((option) => {
+      const entry = document.createElement('div');
+      entry.className = `action-option ${tone}`;
+      const icon = document.createElement('span');
+      icon.className = 'action-option__icon';
+      icon.textContent = tone === 'neg' ? '!' : '✓';
+      const label = document.createElement('span');
+      label.className = 'action-option__label';
+      label.textContent = option && option.label ? option.label : '';
+      entry.append(icon, label);
+      options.appendChild(entry);
+    });
+    actionCell.appendChild(options);
+    const note = row.querySelector('.note-txt');
+    if (note) note.textContent = item.note || '-';
+  });
+})();
+</script>
+<script>
+document.querySelectorAll('.type-pill').forEach((pill) => {
+  const label = pill.classList.contains('pos') ? 'DH. TOGAN' : 'DH. TABAN';
+  const textNode = [...pill.childNodes].find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+  if (textNode) textNode.textContent = label;
+});
+</script>
 </body>
 </html>

@@ -3,12 +3,18 @@
 import unittest
 from datetime import date
 from decimal import Decimal
+import re
 
 from app import create_app, db
 from app.behavior_grading import behavior_grade_for_score
 from app.behavior_attendance import ensure_attendance_defaults, mark_attendance
 from app.behavior_reporting import get_behavior_report_data
-from app.behavior_service import calculate_annual_behavior_score, calculate_session_score, record_event
+from app.behavior_service import (
+    attendance_points_projection,
+    calculate_annual_behavior_score,
+    calculate_session_score,
+    record_event,
+)
 from app.models import (
     AcademicClass,
     AcademicLevel,
@@ -16,6 +22,7 @@ from app.models import (
     AcademicYearClass,
     AcademicYearLevel,
     AcademicYearSubject,
+    BehaviorAttendanceRecord,
     BehaviorConfiguration,
     BehaviorAttendanceStatus,
     BehaviorAction,
@@ -25,6 +32,7 @@ from app.models import (
     Exam,
     GradeScale,
     Result,
+    Setting,
     Student,
     StudentEnrollment,
     Subject,
@@ -449,10 +457,27 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
 
         attendance_download = self.app.test_client().get(
             f"/behavior/{self.student.student_code}/{self.exam_one.id}/"
-            f"{self.configuration.id}/{self.session_one.id}/attendance/read?download=1"
+            f"{self.configuration.id}/{self.session_one.id}/attendance/read"
+            "?download=1&attendance_date=2026-09-11"
         )
         self.assertEqual(attendance_download.status_code, 200)
-        self.assertIn("MONTHLY ATTENDANCE REPORT", attendance_download.get_data(as_text=True))
+        self.assertEqual(attendance_download.mimetype, "application/pdf")
+        self.assertTrue(attendance_download.data.startswith(b"%PDF"))
+        self.assertIn(
+            "Behavior Report - Diiwaanka Xaadirka - Sep - (2026-2027).pdf",
+            attendance_download.headers["Content-Disposition"],
+        )
+        from app.routes_public import _attendance_download_filename
+
+        self.assertEqual(
+            _attendance_download_filename(
+                self.student,
+                self.exam_one,
+                date(2026, 9, 11),
+                month_keys=[(2026, 9), (2026, 10)],
+            ),
+            "Behavior Report - Diiwaanka Xaadirka - Sep-Oct - (2026-2027).pdf",
+        )
 
         wrong_scope = self.app.test_client().get(
             f"/behavior/{self.student.student_code}/{self.exam_two.id}/"
@@ -739,6 +764,200 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         annual = calculate_annual_behavior_score(self.configuration, self.enrollment)
         self.assertEqual(score["scoring_status"], "NOT_APPLICABLE")
         self.assertEqual(annual["status"], "COMPLETE")
+
+    def test_attendance_monthly_total_uses_only_visible_month_records_once(self):
+        self.session_one.maximum_score = 20
+        self.session_one.behavior_allocation = 10
+        self.session_one.attendance_allocation = 10
+        ensure_attendance_defaults(self.configuration)
+        present = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.configuration.id,
+            key="present",
+        ).one()
+        for day_number in range(1, 14):
+            mark_attendance(
+                self.configuration,
+                self.session_one,
+                self.enrollment,
+                present.id,
+                date(2026, 9, day_number),
+                attendance_time="07:30",
+            )
+        # These records belong to the same session but a different month. They
+        # must not inflate the September Monthly Total.
+        for day_number in range(1, 6):
+            mark_attendance(
+                self.configuration,
+                self.session_one,
+                self.enrollment,
+                present.id,
+                date(2026, 8, day_number),
+                attendance_time="07:30",
+            )
+        db.session.commit()
+
+        records = BehaviorAttendanceRecord.query.filter_by(
+            behavior_configuration_id=self.configuration.id,
+            behavior_session_id=self.session_one.id,
+            student_enrollment_id=self.enrollment.id,
+        ).order_by(BehaviorAttendanceRecord.attendance_date).all()
+        projection = attendance_points_projection(records)
+        self.assertEqual(projection["record_count"], 18)
+        self.assertEqual(projection["positive_points"], Decimal("18.000"))
+        self.assertEqual(
+            attendance_points_projection(records[:1] * 2)["positive_points"],
+            Decimal("1.000"),
+        )
+
+        client = self._client_as_admin()
+        response = client.get(
+            "/admin/behavior/attendance/students/%s/report"
+            "?year_id=%s&level_id=%s&config_id=%s&session_id=%s&attendance_date=2026-09-13"
+            % (
+                self.enrollment.id,
+                self.year_one.id,
+                self.year_level_one.id,
+                self.configuration.id,
+                self.session_one.id,
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        positive_card = re.search(r'class="t-card pos".*?</div></div>', body, re.S)
+        grand_card = re.search(r'class="t-card grand".*?</div></div>', body, re.S)
+        self.assertIsNotNone(positive_card)
+        self.assertIsNotNone(grand_card)
+        self.assertIn("13.00", positive_card.group(0))
+        self.assertIn("10.00 / 10.00", grand_card.group(0))
+        self.assertNotIn("18.00", positive_card.group(0))
+        self.assertNotIn("18.00", grand_card.group(0))
+        self.assertEqual(body.count('class="page '), 2)
+        self.assertIn("AUGUST 2026", body)
+        self.assertIn("SEPTEMBER 2026", body)
+        self.assertEqual(body.count('class="footer-row"'), 2)
+        self.assertEqual(body.count('class="bottom-bar"'), 2)
+        self.assertIn("overflow:visible", body)
+
+        portal_response = client.get(
+            "/admin/behavior/attendance/students/%s/report"
+            "?year_id=%s&level_id=%s&config_id=%s&session_id=%s"
+            "&attendance_date=2026-09-13&portal_read_only=1"
+            % (
+                self.enrollment.id,
+                self.year_one.id,
+                self.year_level_one.id,
+                self.configuration.id,
+                self.session_one.id,
+            )
+        )
+        self.assertEqual(portal_response.status_code, 200)
+        portal_body = portal_response.get_data(as_text=True)
+        self.assertEqual(len(re.findall(r'class="page portal-report(?: last-page)?"', portal_body)), 2)
+        self.assertEqual(portal_body.count('class="footer-row"'), 2)
+
+    def test_attendance_monthly_projection_preserves_negative_and_neutral_statuses(self):
+        ensure_attendance_defaults(self.configuration)
+        late = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.configuration.id,
+            key="late",
+        ).one()
+        absent = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.configuration.id,
+            key="absent",
+        ).one()
+        excused = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.configuration.id,
+            key="excused",
+        ).one()
+        official_leave = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.configuration.id,
+            key="official_leave",
+        ).one()
+        late.polarity = "negative"
+        late.points = Decimal("0.500")
+        db.session.flush()
+
+        late_record = mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            late.id,
+            date(2026, 9, 1),
+            attendance_time="07:30",
+            arrival_time="08:00",
+        )
+        absent_record = mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            absent.id,
+            date(2026, 9, 2),
+        )
+        excused_record = mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            excused.id,
+            date(2026, 9, 3),
+        )
+        leave_record = mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            official_leave.id,
+            date(2026, 9, 4),
+        )
+        projection = attendance_points_projection(
+            [late_record, absent_record, excused_record, leave_record]
+        )
+        self.assertEqual(projection["positive_points"], Decimal("0.000"))
+        self.assertEqual(projection["negative_points"], Decimal("1.500"))
+        self.assertEqual(projection["signed_total"], Decimal("-1.500"))
+        self.assertEqual(projection["record_count"], 4)
+
+    def test_late_is_canonical_negative_for_new_and_legacy_rows(self):
+        ensure_attendance_defaults(self.configuration)
+        late = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.configuration.id,
+            key="late",
+        ).one()
+        self.assertEqual(late.polarity, "negative")
+        late.polarity = "positive"  # emulate an older configuration
+        db.session.flush()
+        record = mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            late.id,
+            date(2026, 9, 5),
+            attendance_time="07:30",
+            arrival_time="08:00",
+        )
+        self.assertEqual(record.polarity, "negative")
+        record.polarity = "positive"  # emulate an old saved snapshot
+        projection = attendance_points_projection([record])
+        self.assertEqual(projection["positive_points"], Decimal("0.000"))
+        self.assertEqual(projection["negative_points"], Decimal("0.500"))
+
+    def test_attendance_report_keeps_uploaded_school_logo(self):
+        logo_url = "https://res.cloudinary.com/example/image/upload/v1/school-logo.png"
+        db.session.add(Setting(key="logo_path", value=logo_url))
+        db.session.commit()
+        response = self._client_as_admin().get(
+            "/admin/behavior/attendance/students/%s/report"
+            "?year_id=%s&level_id=%s&config_id=%s&session_id=%s&attendance_date=2026-09-01"
+            % (
+                self.enrollment.id,
+                self.year_one.id,
+                self.year_level_one.id,
+                self.configuration.id,
+                self.session_one.id,
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn(f'<img src="{logo_url}"', body)
+        self.assertIn("if (!node.querySelector('img')) node.innerHTML = icons.cap", body)
 
 
 if __name__ == "__main__":

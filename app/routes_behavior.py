@@ -19,6 +19,7 @@ from .behavior_service import (
     BEHAVIOR_RESPONSE_TYPES,
     BehaviorValidationError,
     allocation_total,
+    attendance_points_projection,
     behavior_summary,
     calculate_session_score,
     capture_attendance_session_policy,
@@ -2403,14 +2404,7 @@ def attendance():
                 counts[key] += 1
             total = len(scoped_records)
             attended = counts["present"] + counts["late"]
-            positive_points = sum(
-                (item.points_applied or 0 for item in scoped_records if item.polarity == "positive"),
-                Decimal("0"),
-            )
-            negative_points = sum(
-                (item.points_applied or 0 for item in scoped_records if item.polarity == "negative"),
-                Decimal("0"),
-            )
+            profile_points = attendance_points_projection(scoped_records)
             canonical_score = calculate_session_score(config, selected_session, enrollment)
             profiles[enrollment.id] = {
                 "name": enrollment.student.full_name,
@@ -2426,7 +2420,7 @@ def attendance():
                 "official_leave": counts["official_leave"],
                 "total": total,
                 "percentage": round((attended / total) * 100, 1) if total else 0,
-                "points": str(positive_points - negative_points),
+                "points": str(profile_points["signed_total"]),
                 # The profile keeps the raw status counts for operational
                 # review, but final score fields come from the central
                 # Attendance scoring service.
@@ -2462,14 +2456,7 @@ def attendance():
             })
     current_total = sum(overview_counts.values())
     current_attended = overview_counts["present"] + overview_counts["late"]
-    current_positive_points = sum(
-        (item.points_applied or 0 for item in records.values() if item.polarity == "positive"),
-        Decimal("0"),
-    )
-    current_negative_points = sum(
-        (item.points_applied or 0 for item in records.values() if item.polarity == "negative"),
-        Decimal("0"),
-    )
+    current_points = attendance_points_projection(list(records.values()))
     overview = {
         "total": len(enrollments),
         "present": overview_counts["present"],
@@ -2478,7 +2465,7 @@ def attendance():
         "excused": overview_counts["excused"],
         "official_leave": overview_counts["official_leave"],
         "percentage": round((current_attended / current_total) * 100, 1) if current_total else 0,
-        "impact_points": str(current_positive_points - current_negative_points),
+        "impact_points": str(current_points["signed_total"]),
         "repeat_alerts": repeat_alerts,
     }
     return render_template(
@@ -2502,7 +2489,7 @@ def attendance():
 
 @behavior_bp.route("/attendance/students/<int:enrollment_id>/report")
 def attendance_report(enrollment_id):
-    """Render the selected enrollment's data-backed monthly Attendance report."""
+    """Render one A4 Attendance page for every month in the selected session."""
     context = _behavior_context(
         request.args.get("year_id"),
         request.args.get("level_id"),
@@ -2527,219 +2514,17 @@ def attendance_report(enrollment_id):
     except ValueError:
         report_date = date.today()
 
-    month_start = report_date.replace(day=1)
-    month_end = report_date.replace(day=monthrange(report_date.year, report_date.month)[1])
-    records = BehaviorAttendanceRecord.query.filter(
+    all_session_records = BehaviorAttendanceRecord.query.filter(
         BehaviorAttendanceRecord.student_enrollment_id == enrollment.id,
         BehaviorAttendanceRecord.behavior_configuration_id == config.id,
         BehaviorAttendanceRecord.behavior_session_id == selected_session.id,
-        BehaviorAttendanceRecord.attendance_date.between(month_start, month_end),
     ).order_by(BehaviorAttendanceRecord.attendance_date).all()
-    record_by_date = {item.attendance_date: item for item in records}
-    active_weekdays = {item.weekday for item in attendance_days(config) if item.is_active}
-    status_keys = {"present", "late", "absent", "excused", "official_leave"}
-    somali_weekdays = {
-        0: "Isniin",
-        1: "Talaada",
-        2: "Arbaca",
-        3: "Khamiis",
-        4: "Jumca",
-        5: "Sabti",
-        6: "Axad",
-    }
-
-    def report_status_key(value, label=None):
-        aliases = {
-            "joogid": "present",
-            "daahid": "late",
-            "maqnaansho": "absent",
-            "cudurdaar": "excused",
-            "fasaxid_rasmi_ah": "official_leave",
-            "officialleave": "official_leave",
-        }
-        first_normalized = ""
-        for candidate in (value, label):
-            normalized = (candidate or "").strip().lower().replace("-", "_").replace(" ", "_")
-            if not first_normalized:
-                first_normalized = normalized
-            resolved = aliases.get(normalized, normalized)
-            if resolved in status_keys:
-                return resolved
-        return first_normalized
-
-    counts = {key: 0 for key in status_keys}
-    for record in records:
-        key = report_status_key(record.status_key_snapshot, record.status_label_snapshot)
-        if key not in status_keys:
-            key = "excused" if record.polarity == "neutral" else ("absent" if record.polarity == "negative" else "present")
-        counts[key] += 1
-    total_school_days = sum(
-        1 for day_number in range(1, month_end.day + 1)
-        if month_start.replace(day=day_number).weekday() in active_weekdays
-    )
-    attended_days = counts["present"] + counts["late"]
-    attendance_percentage = round((attended_days / total_school_days) * 100, 1) if total_school_days else 0.0
-    overall_label = "EXCELLENT" if attendance_percentage >= 90 else "GOOD" if attendance_percentage >= 75 else "NEEDS SUPPORT"
-    donut_denominator = total_school_days or 1
-    donut_present_angle = counts["present"] / donut_denominator * 360
-    donut_late_angle = counts["late"] / donut_denominator * 360
-    donut_absent_angle = counts["absent"] / donut_denominator * 360
-    donut_excused_angle = counts["excused"] / donut_denominator * 360
-    donut_official_leave_angle = counts["official_leave"] / donut_denominator * 360
-
-    def calendar_cell(day_value):
-        if day_value is None:
-            return {"pad": True, "day": ""}
-        current = month_start.replace(day=day_value)
-        record = record_by_date.get(current)
-        key = report_status_key(record.status_key_snapshot, record.status_label_snapshot) if record else ""
-        if key not in status_keys and record:
-            key = "excused" if record.polarity == "neutral" else ("absent" if record.polarity == "negative" else "present")
-        holiday = current.weekday() == 4
-        return {
-            "pad": False,
-            "day": day_value,
-            "holiday": holiday,
-            "active": current.weekday() in active_weekdays,
-            "key": key,
-            "marker": "H" if holiday else ("x" if key == "absent" else "." if key == "late" else "-" if key == "excused" else "check" if key == "present" else ""),
-        }
-
-    calendar_weeks = []
-    week = []
-    order = [5, 6, 0, 1, 2, 3, 4]
-    first_index = order.index(month_start.weekday())
-    for _ in range(first_index):
-        week.append(calendar_cell(None))
-    for day_number in range(1, month_end.day + 1):
-        week.append(calendar_cell(day_number))
-        if len(week) == 7:
-            calendar_weeks.append(week)
-            week = []
-    if week:
-        while len(week) < 7:
-            week.append(calendar_cell(None))
-        calendar_weeks.append(week)
-
-    absence_rows = []
-    positive_points = Decimal("0")
-    negative_points = Decimal("0")
-    for record in records:
-        key = report_status_key(record.status_key_snapshot, record.status_label_snapshot)
-        if key not in {"late", "absent", "excused", "official_leave"}:
-            key = "present" if record.polarity == "positive" else ("excused" if record.polarity == "neutral" else "absent")
-        label = attendance_status_label(key, record.status_label_snapshot)
-        saved_attendance_time = record.attendance_time or (record.created_at.time() if record.created_at else None)
-        display_time = saved_attendance_time if key == "present" else record.arrival_time
-        raw_points = Decimal(str(record.points_applied or 0))
-        signed_points = -abs(raw_points) if record.polarity == "negative" else abs(raw_points)
-        if signed_points > 0:
-            positive_points += signed_points
-        elif signed_points < 0:
-            negative_points += signed_points
-        point_text = f"{signed_points:+g}" if signed_points else "0"
-        tag_label = label
-        if key == "late" and record.late_by_minutes is not None:
-            tag_label = f"{label} ({record.late_by_minutes} daqiiqo)"
-        absence_rows.append({
-            "date": record.attendance_date,
-            "day": somali_weekdays[record.attendance_date.weekday()],
-            "key": key,
-            "label": label,
-            "tag_label": tag_label,
-            "time": display_time.strftime("%I:%M %p").lstrip("0") if display_time else "-",
-            "points": point_text,
-            "note": record.note or "-",
-        })
-
-    def format_points(value, signed=False):
-        if value is None:
-            return "-"
-        value = Decimal(str(value))
-        text = format(value.normalize(), "f").rstrip("0").rstrip(".") if value % 1 else str(int(value))
-        if signed and value > 0:
-            return f"+{text}"
-        return text
-
     try:
         canonical_score = calculate_session_score(config, selected_session, enrollment)
     except BehaviorValidationError:
         # Keep historical reports printable while preserving the raw detail
         # rows for an administrator to repair the invalid configuration.
         canonical_score = {}
-    attendance_ledger = (canonical_score.get("ledger") or {}).get("attendance") or {}
-    normalized_attendance = attendance_ledger.get("allocation") is not None
-    attendance_status = attendance_ledger.get("status") or "LEGACY_COMPATIBILITY"
-    attendance_incomplete = attendance_status == "INCOMPLETE"
-    if normalized_attendance:
-        positive_display = None if attendance_incomplete else attendance_ledger.get("positive_used") or 0
-        negative_display = None if attendance_incomplete else -(attendance_ledger.get("negative_used") or 0)
-        canonical_total = canonical_score.get("attendance_score")
-        grand_display = (
-            "INCOMPLETE" if canonical_total is None else format_points(canonical_total, signed=True)
-        )
-        attendance_positive_max = format_points(attendance_ledger.get("positive_capacity"))
-        attendance_negative_max = format_points(attendance_ledger.get("negative_capacity"))
-        attendance_allocation = format_points(attendance_ledger.get("allocation"))
-        attendance_remaining = "-" if attendance_incomplete else format_points(attendance_ledger.get("remaining"))
-    else:
-        positive_display = positive_points
-        negative_display = negative_points
-        grand_display = format_points(positive_points + negative_points, signed=True)
-        attendance_positive_max = "-"
-        attendance_negative_max = "-"
-        attendance_allocation = "-"
-        attendance_remaining = "-"
-
-    attendance_positive_remaining = (
-        format_points(attendance_ledger.get("positive_remaining"))
-        if normalized_attendance and not attendance_incomplete else "-"
-    )
-    attendance_negative_remaining = (
-        format_points(attendance_ledger.get("negative_remaining"))
-        if normalized_attendance and not attendance_incomplete else "-"
-    )
-    attendance_earned = (
-        format_points(attendance_ledger.get("earned_score"))
-        if normalized_attendance and not attendance_incomplete and attendance_ledger.get("earned_score") is not None
-        else "INCOMPLETE" if attendance_incomplete else grand_display
-    )
-    attendance_reason = canonical_score.get("attendance_reason") if canonical_score else None
-    attendance_positive_used = (
-        "INCOMPLETE" if attendance_incomplete
-        else format_points(attendance_ledger.get("positive_used")) if normalized_attendance
-        else format_points(positive_points)
-    )
-    attendance_negative_used = (
-        "INCOMPLETE" if attendance_incomplete
-        else format_points(attendance_ledger.get("negative_used")) if normalized_attendance
-        else format_points(abs(negative_points))
-    )
-
-    weekly_max = max(len(active_weekdays), 1)
-    trend = []
-    for week_number in range(5):
-        start_day = week_number * 7 + 1
-        end_day = min(start_day + 6, month_end.day)
-        week_records = [item for item in records if start_day <= item.attendance_date.day <= end_day]
-        values = {key: 0 for key in status_keys}
-        for record in week_records:
-            key = report_status_key(record.status_key_snapshot, record.status_label_snapshot)
-            if key not in status_keys:
-                key = "excused" if record.polarity == "neutral" else ("absent" if record.polarity == "negative" else "present")
-            values[key] += 1
-        total = sum(values.values())
-        trend.append({
-            "total": total,
-            "present": values["present"],
-            "late": values["late"],
-            "absent": values["absent"],
-            "excused": values["excused"],
-            "official_leave": values["official_leave"],
-            "label": f"Usbuuca {week_number + 1}aad",
-            "range": f"{start_day}-{end_day} {report_date.strftime('%b')}",
-        })
-
     linked_exam = selected_session.exam or selected_session.exam_type
     behavior_report = next(
         (
@@ -2750,8 +2535,199 @@ def attendance_report(enrollment_id):
     ) if linked_exam else None
     behavior_grade_data = (behavior_report.get("grade") or {}) if behavior_report else {}
     behavior_grade = behavior_grade_data.get("grade") or "N/A"
-    behavior_percentage = behavior_report.get("percentage") if behavior_report else attendance_percentage
-    report_counts = SimpleNamespace(**counts)
+
+    active_weekdays = {item.weekday for item in attendance_days(config) if item.is_active}
+    status_keys = {"present", "late", "absent", "excused", "official_leave"}
+    status_polarities = {
+        "present": "positive",
+        "late": "negative",
+        "absent": "negative",
+        "excused": "neutral",
+        "official_leave": "neutral",
+    }
+    somali_weekdays = {0: "Isniin", 1: "Talaada", 2: "Arbaca", 3: "Khamiis", 4: "Jumca", 5: "Sabti", 6: "Axad"}
+    aliases = {
+        "joogid": "present",
+        "daahid": "late",
+        "maqnaansho": "absent",
+        "cudurdaar": "excused",
+        "fasaxid_rasmi_ah": "official_leave",
+        "officialleave": "official_leave",
+    }
+
+    def report_status_key(value, label=None):
+        first_normalized = ""
+        for candidate in (value, label):
+            normalized = (candidate or "").strip().lower().replace("-", "_").replace(" ", "_")
+            if not first_normalized:
+                first_normalized = normalized
+            resolved = aliases.get(normalized, normalized)
+            if resolved in status_keys:
+                return resolved
+        return first_normalized
+
+    def format_points(value, signed=False):
+        if value is None:
+            return "-"
+        value = Decimal(str(value)).quantize(Decimal("0.01"))
+        text = f"{abs(value):.2f}" if signed else f"{value:.2f}"
+        if signed and value > 0:
+            return f"+{text}"
+        if signed and value < 0:
+            return f"-{text}"
+        return text
+
+    attendance_ledger = (canonical_score.get("ledger") or {}).get("attendance") or {}
+    normalized_attendance = attendance_ledger.get("allocation") is not None
+    attendance_status = attendance_ledger.get("status") or "LEGACY_COMPATIBILITY"
+    attendance_incomplete = attendance_status == "INCOMPLETE"
+    session_projection = attendance_points_projection(all_session_records)
+    session_earned_value = attendance_ledger.get("earned_score")
+    session_allocation_value = attendance_ledger.get("allocation")
+    if not normalized_attendance:
+        session_earned_value = session_projection["signed_total"]
+    session_grand_display = (
+        "INCOMPLETE" if attendance_incomplete else
+        f"{format_points(session_earned_value)} / {format_points(session_allocation_value)}"
+        if normalized_attendance else format_points(session_earned_value, signed=True)
+    )
+
+    def build_month(report_date):
+        month_start = report_date.replace(day=1)
+        month_end = report_date.replace(day=monthrange(report_date.year, report_date.month)[1])
+        records = [item for item in all_session_records if month_start <= item.attendance_date <= month_end]
+        record_by_date = {item.attendance_date: item for item in records}
+        counts = {key: 0 for key in status_keys}
+        for record in records:
+            key = report_status_key(record.status_key_snapshot, record.status_label_snapshot)
+            if key not in status_keys:
+                key = "excused" if record.polarity == "neutral" else ("absent" if record.polarity == "negative" else "present")
+            counts[key] += 1
+        total_school_days = sum(
+            1 for day_number in range(1, month_end.day + 1)
+            if month_start.replace(day=day_number).weekday() in active_weekdays
+        )
+        attended_days = counts["present"] + counts["late"]
+        attendance_percentage = round((attended_days / total_school_days) * 100, 1) if total_school_days else 0.0
+        overall_label = "EXCELLENT" if attendance_percentage >= 90 else "GOOD" if attendance_percentage >= 75 else "NEEDS SUPPORT"
+        donut_denominator = total_school_days or 1
+        angles = {
+            "donut_present_angle": counts["present"] / donut_denominator * 360,
+            "donut_late_angle": counts["late"] / donut_denominator * 360,
+            "donut_absent_angle": counts["absent"] / donut_denominator * 360,
+            "donut_excused_angle": counts["excused"] / donut_denominator * 360,
+            "donut_official_leave_angle": counts["official_leave"] / donut_denominator * 360,
+        }
+
+        def calendar_cell(day_value):
+            if day_value is None:
+                return {"pad": True, "day": ""}
+            current = month_start.replace(day=day_value)
+            record = record_by_date.get(current)
+            key = report_status_key(record.status_key_snapshot, record.status_label_snapshot) if record else ""
+            if key not in status_keys and record:
+                key = "excused" if record.polarity == "neutral" else ("absent" if record.polarity == "negative" else "present")
+            holiday = current.weekday() == 4
+            return {"pad": False, "day": day_value, "holiday": holiday, "active": current.weekday() in active_weekdays, "key": key, "marker": "H" if holiday else ("x" if key == "absent" else "." if key == "late" else "-" if key == "excused" else "check" if key == "present" else "")}
+
+        calendar_weeks, week = [], []
+        order = [5, 6, 0, 1, 2, 3, 4]
+        for _ in range(order.index(month_start.weekday())):
+            week.append(calendar_cell(None))
+        for day_number in range(1, month_end.day + 1):
+            week.append(calendar_cell(day_number))
+            if len(week) == 7:
+                calendar_weeks.append(week)
+                week = []
+        if week:
+            while len(week) < 7:
+                week.append(calendar_cell(None))
+            calendar_weeks.append(week)
+
+        absence_rows = []
+        monthly_points = attendance_points_projection(records)
+        for record in records:
+            key = report_status_key(record.status_key_snapshot, record.status_label_snapshot)
+            if key not in {"late", "absent", "excused", "official_leave"}:
+                key = "present" if record.polarity == "positive" else ("excused" if record.polarity == "neutral" else "absent")
+            label = attendance_status_label(key, record.status_label_snapshot)
+            saved_attendance_time = record.attendance_time or (record.created_at.time() if record.created_at else None)
+            display_time = saved_attendance_time if key == "present" else record.arrival_time
+            raw_points = Decimal(str(record.points_applied or 0))
+            polarity = status_polarities.get(key, record.polarity)
+            signed_points = -abs(raw_points) if polarity == "negative" else abs(raw_points)
+            point_text = format_points(signed_points, signed=True) if signed_points else "0.00"
+            tag_label = label
+            if key == "late" and record.late_by_minutes is not None:
+                tag_label = f"{label} ({record.late_by_minutes} daqiiqo)"
+            absence_rows.append({"date": record.attendance_date, "day": somali_weekdays[record.attendance_date.weekday()], "key": key, "label": label, "tag_label": tag_label, "time": display_time.strftime("%I:%M %p").lstrip("0") if display_time else "-", "points": point_text, "note": record.note or "-"})
+
+        weekly_max = max(len(active_weekdays), 1)
+        trend = []
+        for week_number in range(5):
+            start_day = week_number * 7 + 1
+            end_day = min(start_day + 6, month_end.day)
+            values = {key: 0 for key in status_keys}
+            for record in records:
+                if start_day <= record.attendance_date.day <= end_day:
+                    key = report_status_key(record.status_key_snapshot, record.status_label_snapshot)
+                    if key not in status_keys:
+                        key = "excused" if record.polarity == "neutral" else ("absent" if record.polarity == "negative" else "present")
+                    values[key] += 1
+            total = sum(values.values())
+            trend.append({"total": total, "present": values["present"], "late": values["late"], "absent": values["absent"], "excused": values["excused"], "official_leave": values["official_leave"], "label": f"Usbuuca {week_number + 1}aad", "range": f"{start_day}-{end_day} {report_date.strftime('%b')}"})
+
+        return {
+            "report_date": report_date,
+            "month_start": month_start,
+            "month_end": month_end,
+            "records": records,
+            "calendar_weeks": calendar_weeks,
+            "counts": SimpleNamespace(**counts),
+            "total_school_days": total_school_days,
+            "attended_days": attended_days,
+            "attendance_percentage": attendance_percentage,
+            "overall_label": overall_label,
+            **angles,
+            "absence_rows": absence_rows,
+            "total_positive_points": "INCOMPLETE" if attendance_incomplete else format_points(monthly_points["positive_points"], signed=True),
+            "total_negative_points": "INCOMPLETE" if attendance_incomplete else format_points(-monthly_points["negative_points"], signed=True),
+            "grand_total_points": session_grand_display,
+            "attendance_positive_max": format_points(attendance_ledger.get("positive_capacity")) if normalized_attendance else "-",
+            "attendance_negative_max": format_points(attendance_ledger.get("negative_capacity")) if normalized_attendance else "-",
+            "attendance_allocation": format_points(session_allocation_value) if normalized_attendance else "-",
+            "attendance_remaining": "-" if attendance_incomplete else format_points(attendance_ledger.get("remaining")) if normalized_attendance else "-",
+            "attendance_positive_remaining": format_points(attendance_ledger.get("positive_remaining")) if normalized_attendance and not attendance_incomplete else "-",
+            "attendance_negative_remaining": format_points(attendance_ledger.get("negative_remaining")) if normalized_attendance and not attendance_incomplete else "-",
+            "attendance_earned": "INCOMPLETE" if attendance_incomplete else format_points(session_earned_value, signed=True),
+            "attendance_reason": canonical_score.get("attendance_reason") if canonical_score else None,
+            "attendance_positive_used": "INCOMPLETE" if attendance_incomplete else format_points(attendance_ledger.get("positive_used")) if normalized_attendance else format_points(session_projection["positive_points"]),
+            "attendance_negative_used": "INCOMPLETE" if attendance_incomplete else format_points(attendance_ledger.get("negative_used")) if normalized_attendance else format_points(session_projection["negative_points"]),
+            "monthly_positive_points": monthly_points["positive_points"],
+            "monthly_negative_points": monthly_points["negative_points"],
+            "monthly_total_points": monthly_points["signed_total"],
+            "attendance_status": attendance_status,
+            "normalized_attendance": normalized_attendance,
+            "attendance_incomplete": attendance_incomplete,
+            "weekly_max": weekly_max,
+            "trend": trend,
+            "behavior_grade": behavior_grade,
+            "behavior_percentage": behavior_report.get("percentage") if behavior_report else attendance_percentage,
+            "session_grand_earned": session_earned_value,
+            "session_grand_allocation": session_allocation_value,
+        }
+
+    month_keys = sorted({(item.attendance_date.year, item.attendance_date.month) for item in all_session_records})
+    if not month_keys:
+        month_keys = [(report_date.year, report_date.month)]
+    else:
+        # Keep the month selected by the caller first, then continue in
+        # chronological order so the report opens where the administrator was
+        # working while still including the complete session history.
+        selected_month_key = (report_date.year, report_date.month)
+        if selected_month_key in month_keys:
+            month_keys = [selected_month_key] + [key for key in month_keys if key != selected_month_key]
+    monthly_reports = [build_month(date(year, month, 1)) for year, month in month_keys]
     return render_template(
         "admin/behavior/attendance_report.html",
         settings=get_settings(),
@@ -2760,45 +2736,26 @@ def attendance_report(enrollment_id):
         enrollment=enrollment,
         student=enrollment.student,
         report_date=report_date,
-        month_start=month_start,
-        month_end=month_end,
-        records=records,
-        calendar_weeks=calendar_weeks,
-        counts=report_counts,
-        total_school_days=total_school_days,
-        attended_days=attended_days,
-        attendance_percentage=attendance_percentage,
-        overall_label=overall_label,
-        donut_present_angle=donut_present_angle,
-        donut_late_angle=donut_late_angle,
-        donut_absent_angle=donut_absent_angle,
-        donut_excused_angle=donut_excused_angle,
-        donut_official_leave_angle=donut_official_leave_angle,
-        absence_rows=absence_rows,
-        total_positive_points="INCOMPLETE" if attendance_incomplete else format_points(positive_display, signed=True),
-        total_negative_points="INCOMPLETE" if attendance_incomplete else format_points(negative_display, signed=True),
-        grand_total_points=grand_display,
-        attendance_positive_max=attendance_positive_max,
-        attendance_negative_max=attendance_negative_max,
-        attendance_allocation=attendance_allocation,
-        attendance_remaining=attendance_remaining,
-        attendance_positive_remaining=attendance_positive_remaining,
-        attendance_negative_remaining=attendance_negative_remaining,
-        attendance_earned=attendance_earned,
-        attendance_reason=attendance_reason,
-        attendance_positive_used=attendance_positive_used,
-        attendance_negative_used=attendance_negative_used,
-        attendance_status=attendance_status,
-        normalized_attendance=normalized_attendance,
-        attendance_incomplete=attendance_incomplete,
-        weekly_max=weekly_max,
-        trend=trend,
-        behavior_grade=behavior_grade,
-        behavior_percentage=behavior_percentage,
+        monthly_reports=monthly_reports,
+        # Compatibility inputs for the existing chart enhancement script; the
+        # server-rendered chart itself is generated separately for every page.
+        weekly_max=monthly_reports[0]["weekly_max"],
+        trend=monthly_reports[0]["trend"],
+        # The stylesheet predates the per-month loop and still evaluates the
+        # first page's donut angles at template-load time.
+        donut_present_angle=monthly_reports[0]["donut_present_angle"],
+        donut_late_angle=monthly_reports[0]["donut_late_angle"],
+        donut_absent_angle=monthly_reports[0]["donut_absent_angle"],
+        donut_excused_angle=monthly_reports[0]["donut_excused_angle"],
+        donut_official_leave_angle=monthly_reports[0]["donut_official_leave_angle"],
+        attendance_percentage=monthly_reports[0]["attendance_percentage"],
+        counts=monthly_reports[0]["counts"],
+        total_school_days=monthly_reports[0]["total_school_days"],
         print_mode=request.args.get("print") == "1",
         portal_read_only=request.args.get("portal_read_only") == "1",
         portal_back_url=request.args.get("portal_back_url"),
         portal_download_url=request.args.get("portal_download_url"),
+        portal_download_filename=request.args.get("portal_download_filename"),
     )
 
 
@@ -2821,6 +2778,8 @@ def update_attendance_status(status_id):
         ensure_configuration_editable(config)
         item.label = (request.form.get("label") or "").strip()
         item.polarity = (request.form.get("polarity") or "neutral").strip().lower()
+        if item.key == "late":
+            item.polarity = "negative"
         item.points = decimal_value(request.form.get("points"), "Attendance points", minimum="0")
         item.is_active = request.form.get("is_active") == "on"
         if not item.label or item.polarity not in {"positive", "negative", "neutral"}:

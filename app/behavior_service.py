@@ -37,10 +37,18 @@ CANONICAL_ATTENDANCE_STATUS_KEYS = frozenset(
 )
 DEFAULT_ATTENDANCE_WEIGHTS = {
     "present": Decimal("1.000"),
-    "late": Decimal("0.500"),
+    "late": Decimal("-0.500"),
     "absent": Decimal("-1.000"),
     "excused": Decimal("0.000"),
     "official_leave": Decimal("0.000"),
+}
+
+CANONICAL_ATTENDANCE_POLARITIES = {
+    "present": "positive",
+    "late": "negative",
+    "absent": "negative",
+    "excused": "neutral",
+    "official_leave": "neutral",
 }
 INTERNAL_COMPLETE_STATUSES = frozenset({"VALID", "VALID_BASELINE"})
 
@@ -593,6 +601,56 @@ def attendance_policy_for_session(session):
     }
 
 
+def attendance_points_projection(records):
+    """Aggregate saved Attendance points exactly once using their snapshots.
+
+    Attendance records persist both the configured polarity and the point value
+    that was applied at mark time.  Every report and scoring surface must use
+    those immutable snapshots rather than re-reading a later status policy or
+    combining a second query.  The identity guard also makes this projection
+    safe when a caller accidentally supplies the same ORM row more than once.
+    """
+    seen = set()
+    positive = Decimal("0.000")
+    negative = Decimal("0.000")
+    record_count = 0
+    for row in records or ():
+        enrollment_id = getattr(row, "student_enrollment_id", None)
+        session_id = getattr(row, "behavior_session_id", None)
+        attendance_date = getattr(row, "attendance_date", None)
+        if enrollment_id is not None and session_id is not None and attendance_date is not None:
+            identity = ("scope", enrollment_id, session_id, attendance_date)
+        else:
+            identity = ("id", getattr(row, "id", None), id(row))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        status_key = (getattr(row, "status_key_snapshot", None) or "").strip().lower()
+        if status_key not in CANONICAL_ATTENDANCE_STATUS_KEYS:
+            continue
+        record_count += 1
+        points = abs(decimal_value(getattr(row, "points_applied", 0) or 0, "Attendance points"))
+        # Attendance polarity is defined by the five official status keys.  A
+        # legacy row may still contain the old positive Late snapshot; using
+        # the canonical key here prevents that row from inflating positives.
+        polarity = CANONICAL_ATTENDANCE_POLARITIES.get(
+            status_key,
+            (getattr(row, "polarity", None) or "neutral").strip().lower(),
+        )
+        if polarity == "positive":
+            positive += points
+        elif polarity == "negative":
+            negative += points
+    positive = positive.quantize(Decimal("0.001"))
+    negative = negative.quantize(Decimal("0.001"))
+    return {
+        "positive_points": positive,
+        "negative_points": negative,
+        "signed_total": (positive - negative).quantize(Decimal("0.001")),
+        "record_count": record_count,
+    }
+
+
 def attendance_score_projection(configuration, session, enrollment):
     """Calculate direct configured Attendance points for one session/student.
 
@@ -630,8 +688,8 @@ def attendance_score_projection(configuration, session, enrollment):
         row for row in rows
         if (row.status_key_snapshot or "").strip().lower() in CANONICAL_ATTENDANCE_STATUS_KEYS
     ]
+    point_projection = attendance_points_projection(canonical_rows)
     policy = attendance_policy_for_session(session)
-    weights = policy["weights"]
     if allocation == 0:
         return {
             "status": "NOT_APPLICABLE",
@@ -646,7 +704,7 @@ def attendance_score_projection(configuration, session, enrollment):
             "negative_evidence": Decimal("0.000"),
             "positive_applied": Decimal("0.000"),
             "negative_applied": Decimal("0.000"),
-            "record_count": len(canonical_rows),
+            "record_count": point_projection["record_count"],
             "policy_version": policy["version"],
         }
     if not canonical_rows:
@@ -666,18 +724,8 @@ def attendance_score_projection(configuration, session, enrollment):
         if (row.status_key_snapshot or "").strip().lower()
         in {"present", "late", "absent"}
     ]
-    positive_evidence = sum(
-        (max(weights.get((row.status_key_snapshot or "").strip().lower(), Decimal("0")), Decimal("0"))
-         for row in counted_rows),
-        Decimal("0.000"),
-    )
-    negative_evidence = sum(
-        (abs(min(weights.get((row.status_key_snapshot or "").strip().lower(), Decimal("0")), Decimal("0")))
-         for row in counted_rows),
-        Decimal("0.000"),
-    )
-    positive_evidence = positive_evidence.quantize(Decimal("0.001"))
-    negative_evidence = negative_evidence.quantize(Decimal("0.001"))
+    positive_evidence = point_projection["positive_points"]
+    negative_evidence = point_projection["negative_points"]
     positive_applied = positive_evidence
     negative_applied = negative_evidence
     configured_total = (positive_evidence - negative_evidence).quantize(Decimal("0.001"))
@@ -696,7 +744,7 @@ def attendance_score_projection(configuration, session, enrollment):
         "negative_evidence": negative_evidence,
         "positive_applied": positive_applied,
         "negative_applied": negative_applied,
-        "record_count": len(canonical_rows),
+        "record_count": point_projection["record_count"],
         "policy_version": policy["version"],
     }
 

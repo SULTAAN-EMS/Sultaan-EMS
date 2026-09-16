@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from .behavior_service import (
     BehaviorValidationError,
+    attendance_points_projection,
     calculate_annual_behavior_score,
     calculate_session_score,
     validate_behavior_configuration,
@@ -416,6 +417,7 @@ def get_behavior_report_data(student, exam):
             .order_by(BehaviorAttendanceRecord.attendance_date.asc(), BehaviorAttendanceRecord.id.asc())
             .all()
         )
+        attendance_points = attendance_points_projection(attendance_rows)
         attendance = {
             "total": len(attendance_rows),
             "present": sum(row.status_key_snapshot == "present" for row in attendance_rows),
@@ -423,9 +425,11 @@ def get_behavior_report_data(student, exam):
             "absent": sum(row.status_key_snapshot == "absent" for row in attendance_rows),
             "excused": sum(row.status_key_snapshot == "excused" for row in attendance_rows),
             "official_leave": sum(row.status_key_snapshot == "official_leave" for row in attendance_rows),
-            "points": _number(sum((row.points_applied or 0 for row in attendance_rows), 0)),
-            # Raw points remain available for audit detail; final Attendance
-            # values are always sourced from the canonical session projection.
+            "points": _number(attendance_points["signed_total"]),
+            "positive_points": _number(attendance_points["positive_points"]),
+            "negative_points": _number(attendance_points["negative_points"]),
+            # Attendance points are read from the same immutable row snapshots
+            # used by the canonical session scorer.
             "earned_score": _number((score.get("attendance") or {}).get("attendance_score")),
             "allocation": _number((score.get("attendance") or {}).get("allocation")),
             "positive_applied": _number((score.get("attendance") or {}).get("positive_applied")),

@@ -12,6 +12,7 @@ from . import db
 from .behavior_service import (
     CANONICAL_ATTENDANCE_STATUS_KEYS,
     BehaviorValidationError,
+    attendance_points_projection,
     decimal_value,
     capture_attendance_session_policy,
     validate_behavior_configuration,
@@ -30,7 +31,7 @@ from .models import (
 
 DEFAULT_ATTENDANCE_STATUSES = (
     {"key": "present", "label": "Joogid", "polarity": "positive", "points": "1", "sort_order": 1},
-    {"key": "late", "label": "Daahid", "polarity": "positive", "points": "0.5", "sort_order": 2},
+    {"key": "late", "label": "Daahid", "polarity": "negative", "points": "0.5", "sort_order": 2},
     {"key": "absent", "label": "Maqnaansho", "polarity": "negative", "points": "1", "sort_order": 3},
     {"key": "excused", "label": "Cudurdaar", "polarity": "neutral", "points": "0", "sort_order": 4},
     {"key": "official_leave", "label": "Fasaxid Rasmi ah", "polarity": "neutral", "points": "0", "sort_order": 5},
@@ -97,6 +98,14 @@ def ensure_attendance_defaults(configuration):
                     is_active=True,
                 )
             )
+    # Late is always a negative Attendance status.  Correct an older default
+    # in-place without touching saved record snapshots or unrelated statuses.
+    late_status = BehaviorAttendanceStatus.query.filter_by(
+        behavior_configuration_id=configuration.id,
+        key="late",
+    ).first()
+    if late_status and late_status.polarity != "negative":
+        late_status.polarity = "negative"
     # Preserve historical Emergency rows for audit, but prevent the retired
     # status from being offered as a canonical new Attendance status.
     emergency = BehaviorAttendanceStatus.query.filter_by(
@@ -280,7 +289,7 @@ def mark_attendance(
     normalized_arrival_time = _coerce_time(arrival_time) if status_key == "late" else None
     if status_key == "late" and normalized_arrival_time is None:
         raise BehaviorValidationError("Arrival time is required when status is Late")
-    new_polarity = status.polarity
+    new_polarity = "negative" if status_key == "late" else status.polarity
     new_points = status.points if status.contributes_to_behavior else Decimal("0")
     validate_attendance_ledger_capacity(
         configuration,
@@ -330,16 +339,9 @@ def attendance_score_adjustments(configuration, session, enrollment):
         behavior_session_id=session.id,
         student_enrollment_id=enrollment.id,
     ).all()
-    positive = sum(
-        (decimal_value(row.points_applied, "Attendance points") for row in rows if row.polarity == "positive"),
-        Decimal("0.000"),
-    )
-    negative = sum(
-        (decimal_value(row.points_applied, "Attendance points") for row in rows if row.polarity == "negative"),
-        Decimal("0.000"),
-    )
+    projection = attendance_points_projection(rows)
     return {
-        "positive_points": positive.quantize(Decimal("0.001")),
-        "negative_points": negative.quantize(Decimal("0.001")),
-        "record_count": len(rows),
+        "positive_points": projection["positive_points"],
+        "negative_points": projection["negative_points"],
+        "record_count": projection["record_count"],
     }

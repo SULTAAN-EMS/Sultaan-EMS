@@ -1,7 +1,13 @@
 import secrets
 from datetime import date, datetime
+from io import BytesIO
+import os
+import shutil
+import subprocess
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, jsonify, make_response, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
@@ -354,7 +360,9 @@ def _portal_behavior_report_scope(student, exam, config_id, session_id):
     return enrollment, report
 
 
-def _render_portal_behavior_report(student_code, exam_id, config_id, session_id, report_kind):
+def _render_portal_behavior_report(
+    student_code, exam_id, config_id, session_id, report_kind, pdf_download=False
+):
     """Render the existing report template for a published student result.
 
     This deliberately dispatches to the established report views in a nested
@@ -382,6 +390,11 @@ def _render_portal_behavior_report(student_code, exam_id, config_id, session_id,
         config_id=config_id,
         session_id=session_id,
         download=1,
+        **(
+            {"attendance_date": request.args.get("attendance_date")}
+            if report_kind == "attendance" and request.args.get("attendance_date")
+            else {}
+        ),
     )
     route_args = {
         "year_id": exam.academic_year_id,
@@ -395,7 +408,34 @@ def _render_portal_behavior_report(student_code, exam_id, config_id, session_id,
     }
     if report_kind == "attendance":
         requested_date = request.args.get("attendance_date")
-        route_args["attendance_date"] = requested_date or date.today().isoformat()
+        selected_date = date.today()
+        if requested_date:
+            try:
+                selected_date = date.fromisoformat(requested_date)
+            except ValueError:
+                selected_date = date.today()
+        route_args["attendance_date"] = selected_date.isoformat()
+        from .models import BehaviorAttendanceRecord
+
+        attendance_records = (
+            BehaviorAttendanceRecord.query.filter_by(
+                student_enrollment_id=enrollment.id,
+                behavior_configuration_id=config_id,
+                behavior_session_id=session_id,
+            )
+            .with_entities(BehaviorAttendanceRecord.attendance_date)
+            .order_by(BehaviorAttendanceRecord.attendance_date)
+            .all()
+        )
+        month_keys = sorted(
+            {(item.attendance_date.year, item.attendance_date.month) for item in attendance_records}
+        )
+        route_args["portal_download_filename"] = _attendance_download_filename(
+            student,
+            exam,
+            selected_date,
+            month_keys=month_keys,
+        )
         target = url_for("behavior.attendance_report", enrollment_id=enrollment.id)
     else:
         target = url_for("behavior.student_report", enrollment_id=enrollment.id)
@@ -409,7 +449,21 @@ def _render_portal_behavior_report(student_code, exam_id, config_id, session_id,
         if report_kind == "attendance":
             from .routes_behavior import attendance_report
 
-            return attendance_report(enrollment.id)
+            response = attendance_report(enrollment.id)
+            if pdf_download:
+                response = make_response(response)
+                pdf_bytes = _html_report_to_pdf(
+                    response.get_data(as_text=True),
+                    request.url_root,
+                )
+                return send_file(
+                    BytesIO(pdf_bytes),
+                    as_attachment=True,
+                    download_name=route_args["portal_download_filename"],
+                    mimetype="application/pdf",
+                    max_age=0,
+                )
+            return response
         from .routes_behavior import student_report
 
         return student_report(enrollment.id)
@@ -426,6 +480,15 @@ def behavior_reading_view(student_code, exam_id, config_id, session_id):
 @public_bp.route("/behavior/<student_code>/<int:exam_id>/<int:config_id>/<int:session_id>/attendance/read")
 def attendance_reading_view(student_code, exam_id, config_id, session_id):
     """Student read-only view of the exact Attendance PDF report."""
+    if request.args.get("download") == "1":
+        return _render_portal_behavior_report(
+            student_code,
+            exam_id,
+            config_id,
+            session_id,
+            "attendance",
+            pdf_download=True,
+        )
     return _render_portal_behavior_report(
         student_code, exam_id, config_id, session_id, "attendance"
     )
@@ -470,6 +533,84 @@ def _safe_pdf_filename_part(value, fallback):
     cleaned = "".join(" " if ch in invalid or ord(ch) < 32 else ch for ch in str(value or ""))
     cleaned = " ".join(cleaned.split()).strip(" .")
     return cleaned or fallback
+
+
+def _attendance_download_filename(student, exam, report_date, month_keys=None):
+    """Build the stable, mobile-friendly filename for a portal attendance PDF."""
+    month_abbreviations = (
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    )
+    month_keys = month_keys or [(report_date.year, report_date.month)]
+    month_label = "-".join(
+        month_abbreviations[month - 1]
+        for _year, month in month_keys
+    )
+    name_parts = (student.full_name or "Student").split()[:2]
+    student_name = _safe_pdf_filename_part(" ".join(name_parts), "Student")
+    year_name = _safe_pdf_filename_part(
+        exam.academic_year.name if exam.academic_year else None,
+        "Academic Year",
+    )
+    return (
+        f"{student_name} - Diiwaanka Xaadirka - "
+        f"{month_label} - ({year_name}).pdf"
+    )
+
+
+def _html_report_to_pdf(html_text, base_url):
+    """Render the Reading View HTML without opening a browser print dialog."""
+    chrome_candidates = [
+        os.environ.get("CHROME_BIN"),
+        os.environ.get("CHROMIUM_BIN"),
+        shutil.which("google-chrome"),
+        shutil.which("chromium"),
+        shutil.which("chromium-browser"),
+        shutil.which("msedge"),
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    ]
+    chrome = next(
+        (candidate for candidate in chrome_candidates if candidate and Path(candidate).exists()),
+        None,
+    )
+    if chrome:
+        with TemporaryDirectory(prefix="sultaan-attendance-pdf-") as temp_dir:
+            html_path = Path(temp_dir) / "report.html"
+            pdf_path = Path(temp_dir) / "report.pdf"
+            html_path.write_text(
+                html_text.replace("<head>", f'<head><base href="{base_url}">', 1),
+                encoding="utf-8",
+            )
+            subprocess.run(
+                [
+                    chrome,
+                    "--headless=new",
+                    "--disable-gpu",
+                    "--no-sandbox",
+                    "--no-pdf-header-footer",
+                    f"--print-to-pdf={pdf_path}",
+                    html_path.as_uri(),
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=60,
+            )
+            return pdf_path.read_bytes()
+
+    from xhtml2pdf import pisa
+
+    pdf_buffer = BytesIO()
+    pdf_result = pisa.CreatePDF(
+        html_text,
+        dest=pdf_buffer,
+        encoding="UTF-8",
+        capacity=100 * 1024 * 1024,
+    )
+    if pdf_result.err:
+        abort(500, description="Attendance PDF could not be generated")
+    return pdf_buffer.getvalue()
 
 
 @public_bp.route("/download/<student_code>")

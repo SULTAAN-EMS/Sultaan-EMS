@@ -47,6 +47,8 @@ def create_app(config_class=Config):
         """Render Behavior points with the feature's fixed two-decimal contract."""
         if value in (None, ""):
             return "-"
+        if isinstance(value, str) and (" / " in value or value == "INCOMPLETE"):
+            return value
         try:
             number = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         except (InvalidOperation, TypeError, ValueError):
