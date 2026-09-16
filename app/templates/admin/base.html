@@ -19,7 +19,7 @@
   width: 100%;
   min-width: 0;
   padding: 14px;
-  overflow: visible;
+  overflow: hidden;
   z-index: 40;
   transition: box-shadow 280ms cubic-bezier(.4,0,.2,1);
 }
@@ -299,7 +299,7 @@
       <div class="nav-group-header">Academic Records</div>
       {% if can('results') %}<a href="{{ url_for('admin_advanced_results.new_dashboard') }}"><i class="fa-solid fa-square-poll-vertical" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Academic Records</span></a>{% endif %}
       {% if can('results') %}<a href="{{ url_for('admin.promotion_rules_dashboard') }}"><i class="fa-solid fa-scale-balanced" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Promotion Rules</span></a>{% endif %}
-      {% if can('behavior.view') %}<a href="{{ url_for('behavior.dashboard') }}"><i class="fa-solid fa-person-chalkboard" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Behavior</span></a>{% endif %}
+      {% if can('behavior.view') %}<a href="{{ url_for('behavior.dashboard') }}" class="{% if request.endpoint and request.endpoint.startswith('behavior.') %}is-active{% endif %}"><i class="fa-solid fa-person-chalkboard" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Behavior</span></a>{% endif %}
     </div>
 
     <div class="nav-group">
@@ -448,9 +448,12 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
+    const behaviorRoot = '/admin/behavior';
     document.querySelectorAll('.side-nav a[href]').forEach((link) => {
       const linkPath = new URL(link.href, window.location.origin).pathname.replace(/\/$/, '') || '/';
-      if (linkPath === currentPath) link.classList.add('is-active');
+      if (linkPath === currentPath || (linkPath === behaviorRoot && currentPath.startsWith(behaviorRoot + '/'))) {
+        link.classList.add('is-active');
+      }
     });
 
     toggle.addEventListener('click', () => {

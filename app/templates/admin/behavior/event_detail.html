@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 {% block page_title %}Behavior Event Detail{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='behavior-brand-20260916e') }}">
 <div class="behavior-page view">
   <header class="behavior-hero"><span class="behavior-hero__mark"><i class="fa-solid fa-file-lines"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow"><i class="fa-solid fa-shield-halved"></i> Immutable event snapshot</span><h1>Behavior Event #{{ event.id }}</h1><p>The displayed values are the official snapshots captured when this event was recorded.</p></div><div class="behavior-hero__action"><a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.events', config_id=event.behavior_configuration_id) }}"><i class="fa-solid fa-arrow-left"></i> Back to events</a>{% if event.status == 'voided' %}<form method="post" action="{{ url_for('behavior.restore', event_id=event.id) }}" onsubmit="return confirm('Restore this Behavior event?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ event.behavior_configuration_id }}"><button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-rotate-left"></i> Restore</button></form>{% endif %}</div></header>
   {% include "admin/behavior/_nav.html" %}

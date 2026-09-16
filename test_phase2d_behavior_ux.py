@@ -1,6 +1,7 @@
 """Phase 2D route and workflow coverage for the Behavior admin UX."""
 
 import unittest
+import re
 
 from app import db
 from app.models import BehaviorEvent
@@ -43,6 +44,52 @@ class TestPhase2DBehaviorUX(TestPhase2CBehaviorEvents):
         self.assertIn("Behavior Two", dashboard)
         self.assertIn("Class board", dashboard)
         self.assertIn("Maximum", dashboard)
+
+    def test_behavior_navigation_active_state_and_page_persistence(self):
+        client = self._client_as_admin()
+        self.admin.set_permissions([
+            "behavior.view", "behavior.record", "behavior.edit", "behavior.void",
+            "behavior.configure", "behavior.audit",
+        ])
+        db.session.commit()
+        config_query = f"?config_id={self.config_one.id}"
+        pages = [
+            ("/admin/behavior/", "/admin/behavior/", "Dashboard"),
+            ("/admin/behavior/configuration", "/admin/behavior/configuration", "Behavior Setup"),
+            ("/admin/behavior/taxonomy" + config_query, "/admin/behavior/taxonomy", "Taxonomy"),
+            ("/admin/behavior/categories" + config_query, "/admin/behavior/taxonomy", "Taxonomy"),
+            ("/admin/behavior/subcategories" + config_query, "/admin/behavior/taxonomy", "Taxonomy"),
+            ("/admin/behavior/actions" + config_query, "/admin/behavior/taxonomy", "Taxonomy"),
+            ("/admin/behavior/sessions" + config_query, "/admin/behavior/sessions", "Sessions &amp; Allocation"),
+            ("/admin/behavior/session-allocation" + config_query, "/admin/behavior/session-allocation", "Allocation Planning"),
+            ("/admin/behavior/grade-management" + config_query, "/admin/behavior/grade-management", "Grade Management"),
+            ("/admin/behavior/attendance" + config_query, "/admin/behavior/attendance", "Attendance"),
+            ("/admin/behavior/students" + config_query, "/admin/behavior/students", "Student Behavior"),
+            ("/admin/behavior/events", "/admin/behavior/events", "Events"),
+            ("/admin/behavior/history", "/admin/behavior/history", "History"),
+            ("/admin/behavior/audit", "/admin/behavior/audit", "Audit"),
+        ]
+        for path, active_href, active_label in pages:
+            with self.subTest(path=path):
+                response = client.get(path)
+                self.assertEqual(response.status_code, 200)
+                body = response.get_data(as_text=True)
+                self.assertRegex(
+                    body,
+                    r'<a href="/admin/behavior/" class="is-active">.*?<span class="nav-label">Behavior</span></a>',
+                )
+                self.assertRegex(
+                    body,
+                    rf'<a href="{re.escape(active_href)}[^\"]*" class="is-active">.*?{re.escape(active_label)}',
+                )
+
+        client.get("/admin/behavior/")
+        events_response = client.get("/admin/behavior/events")
+        self.assertEqual(events_response.status_code, 200)
+        self.assertRegex(
+            events_response.get_data(as_text=True),
+            r'href="/admin/behavior/events[^\"]*" class="is-active"',
+        )
 
     def test_record_edit_void_and_detail_workflow(self):
         client = self._client_as_admin()
