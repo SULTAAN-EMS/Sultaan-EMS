@@ -5,7 +5,12 @@ from datetime import date
 from unittest.mock import patch
 
 from app import create_app, db
-from app.deletion_service import PurgeValidationError, purge_academic_year, scan_academic_year
+from app.deletion_service import (
+    PurgeValidationError,
+    _delete_fk_graph,
+    purge_academic_year,
+    scan_academic_year,
+)
 from app.models import (
     AcademicClass,
     AcademicLevel,
@@ -369,6 +374,27 @@ class TestHugeForceDelete(unittest.TestCase):
         self.assertIsNotNone(db.session.get(AcademicYearSubject, self.target_subject.id))
         self.assertIsNotNone(db.session.get(StudentEnrollment, self.source_enrollment_id))
         self.assertEqual(db.session.get(Student, self.student_id).academic_year_id, self.target_id)
+
+    def test_delete_graph_uses_bulk_deletes_without_leaf_probe_selects(self):
+        level_id = self.target_level.id
+        class_id = self.target_class.id
+        subject_id = self.target_subject.id
+        graph = {
+            "academic_year_levels": {level_id},
+            "academic_year_classes": {class_id},
+            "academic_year_subjects": {subject_id},
+        }
+        with patch.object(db.session, "execute", wraps=db.session.execute) as execute:
+            deleted = _delete_fk_graph(graph)
+
+        self.assertEqual(deleted, 3)
+        statements = [str(call.args[0]).upper() for call in execute.call_args_list]
+        self.assertTrue(statements)
+        self.assertFalse(any(statement.lstrip().startswith("SELECT") for statement in statements))
+        db.session.expire_all()
+        self.assertIsNone(db.session.get(AcademicYearClass, class_id))
+        self.assertIsNone(db.session.get(AcademicYearSubject, subject_id))
+        self.assertIsNone(db.session.get(AcademicYearLevel, level_id))
 
     def test_http_confirmation_guards_run_before_purge(self):
         client = self.app.test_client()

@@ -437,38 +437,39 @@ def _collect_fk_descendants(seed):
 
 
 def _delete_fk_graph(graph):
-    """Delete leaf rows first using the database's actual FK graph."""
+    """Delete rows in child-before-parent order using the FK graph.
+
+    The graph already contains every reachable row that belongs to the
+    archived year.  The previous implementation issued a ``SELECT ...
+    LIMIT 1`` for every table/FK pair on every pass to discover leaves.  That
+    turned a purge into a large number of round trips and made production
+    purges vulnerable to request timeouts.  A table-level child-before-parent
+    order is sufficient here: deleting an unrelated row from a child table
+    early is safe, and the row graph has already been collected before any
+    delete starts.
+    """
     remaining = {name: set(ids) for name, ids in graph.items() if ids}
     deleted = 0
-    while remaining:
-        leaves = []
-        for parent_name in remaining:
-            has_child = False
-            for child in db.metadata.tables.values():
-                if child.name not in remaining:
+
+    children_by_parent = {}
+    for child in db.metadata.tables.values():
+        if "id" not in child.c:
+            continue
+        for column in child.columns:
+            for fk in column.foreign_keys:
+                if (
+                    child.name == "student_enrollments"
+                    and column.name == "previous_enrollment_id"
+                ):
                     continue
-                for column in child.columns:
-                    for fk in column.foreign_keys:
-                        if fk.column.table.name != parent_name:
-                            continue
-                        if (
-                            child.name == "student_enrollments"
-                            and column.name == "previous_enrollment_id"
-                        ):
-                            continue
-                        if db.session.execute(
-                            select(child.c.id)
-                            .where(column.in_(remaining[parent_name]))
-                            .limit(1)
-                        ).first():
-                            has_child = True
-                            break
-                    if has_child:
-                        break
-                if has_child:
-                    break
-            if not has_child:
-                leaves.append(parent_name)
+                children_by_parent.setdefault(fk.column.table.name, set()).add(child.name)
+
+    while remaining:
+        leaves = [
+            table_name
+            for table_name in remaining
+            if not (children_by_parent.get(table_name, set()) & remaining.keys())
+        ]
         if not leaves:
             raise RuntimeError("The purge dependency graph contains an unresolved cycle.")
         for table_name in leaves:
@@ -481,17 +482,15 @@ def _delete_fk_graph(graph):
 
 
 def _student_identity_split(student_ids, year_id):
-    removable, retained = set(), set()
-    for student_id in student_ids:
-        has_other_year = db.session.execute(
-            select(StudentEnrollment.id)
-            .where(
-                StudentEnrollment.student_id == student_id,
-                StudentEnrollment.academic_year_id != year_id,
-            )
-            .limit(1)
-        ).first()
-        (retained if has_other_year else removable).add(student_id)
+    if not student_ids:
+        return set(), set()
+    retained = _ids(
+        db.session.query(StudentEnrollment.student_id).filter(
+            StudentEnrollment.student_id.in_(student_ids),
+            StudentEnrollment.academic_year_id != year_id,
+        )
+    )
+    removable = set(student_ids) - retained
     return removable, retained
 
 
@@ -528,14 +527,21 @@ def _purge_schema_issues():
     return []
 
 
-def scan_academic_year(year_id):
-    """Return a real dependency report for an AcademicYear purge."""
-    year = db.session.get(AcademicYear, year_id)
-    if not year:
-        raise PurgeValidationError("Academic Year was not found.")
-
+def _purge_context(year_id):
+    """Build the purge inputs once for both preview and execution."""
     scope = _year_scope_ids(year_id)
     graph, removable, retained = _build_purge_graph(year_id, scope)
+    return (
+        scope,
+        graph,
+        removable,
+        retained,
+        _purge_schema_issues(),
+        _unknown_direct_dependencies(year_id),
+    )
+
+
+def _purge_report(year, graph, removable, retained, schema_issues, unknown_direct):
     entries = []
     for table_name, ids in graph.items():
         if table_name == "academic_years":
@@ -544,8 +550,6 @@ def scan_academic_year(year_id):
             label = _PURGE_LABELS.get(table_name, table_name.replace("_", " ").title())
         _add_entry(entries, label, len(ids), retained=False)
     _add_entry(entries, "Student identities retained (other academic years)", len(retained), retained=True)
-    schema_issues = _purge_schema_issues()
-    unknown_direct = _unknown_direct_dependencies(year_id)
 
     return {
         "entity_type": "academic-years",
@@ -560,6 +564,16 @@ def scan_academic_year(year_id):
         "unsupported_direct_dependencies": unknown_direct,
         "schema_issues": schema_issues,
     }
+
+
+def scan_academic_year(year_id):
+    """Return a real dependency report for an AcademicYear purge."""
+    year = db.session.get(AcademicYear, year_id)
+    if not year:
+        raise PurgeValidationError("Academic Year was not found.")
+
+    _, graph, removable, retained, schema_issues, unknown_direct = _purge_context(year_id)
+    return _purge_report(year, graph, removable, retained, schema_issues, unknown_direct)
 
 
 def _delete_ids(model, ids):
@@ -580,21 +594,26 @@ def purge_academic_year(year_id):
     if year.is_current:
         raise PurgeValidationError("Only archived Academic Years can use HUGE FORCE DELETE.")
 
-    report = scan_academic_year(year_id)
-    if report.get("schema_issues"):
-        raise PurgeValidationError(" ".join(report["schema_issues"]))
-    if report.get("unsupported_direct_dependencies"):
+    scope, graph, removable_students, retained_students, schema_issues, unknown_direct = _purge_context(year_id)
+    report = _purge_report(
+        year,
+        graph,
+        removable_students,
+        retained_students,
+        schema_issues,
+        unknown_direct,
+    )
+    if schema_issues:
+        raise PurgeValidationError(" ".join(schema_issues))
+    if unknown_direct:
         dependencies = ", ".join(
             f"{item['table']}.{item['column']} ({item['count']})"
-            for item in report["unsupported_direct_dependencies"]
+            for item in unknown_direct
         )
         raise PurgeValidationError(
             "The purge is blocked because these direct Academic Year dependencies "
             f"have no deletion handler yet: {dependencies}."
         )
-    scope = _year_scope_ids(year_id)
-
-    graph, removable_students, retained_students = _build_purge_graph(year_id, scope)
     for student_id in retained_students:
         student = db.session.get(Student, student_id, with_for_update=True)
         if not student or student.academic_year_id != year_id:
