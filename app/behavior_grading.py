@@ -8,6 +8,7 @@ no global grade fallback can leak into Behavior reports.
 
 from decimal import Decimal, InvalidOperation
 
+from . import db
 from .models import BehaviorConfiguration, BehaviorGradeScale, BehaviorSession
 
 
@@ -81,21 +82,31 @@ def behavior_grade_scales(scope, active_only=False):
     them to override a session-owned scale.
     """
     if isinstance(scope, BehaviorSession):
+        cache_key = ("session", scope.id, bool(active_only))
         query = BehaviorGradeScale.query.filter_by(behavior_session_id=scope.id)
     elif isinstance(scope, BehaviorConfiguration):
+        cache_key = ("configuration", scope.id, bool(active_only))
         query = BehaviorGradeScale.query.filter(
             BehaviorGradeScale.behavior_configuration_id == scope.id,
             BehaviorGradeScale.behavior_session_id.is_(None),
         )
     else:
         return []
+    # A dashboard/report can resolve the same session grade for many students.
+    # Keep this read-only cache on Flask-SQLAlchemy's request-scoped session so
+    # one request performs one grade-band query per exact scope.
+    cache = db.session.info.setdefault("_behavior_grade_scales_cache", {})
+    if cache_key in cache:
+        return cache[cache_key]
     if active_only:
         query = query.filter_by(is_active=True)
-    return query.order_by(
+    scales = query.order_by(
         BehaviorGradeScale.sort_order,
         BehaviorGradeScale.min_score,
         BehaviorGradeScale.id,
     ).all()
+    cache[cache_key] = scales
+    return scales
 
 
 def validate_behavior_grade_values(

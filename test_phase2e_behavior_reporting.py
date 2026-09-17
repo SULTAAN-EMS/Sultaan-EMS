@@ -5,8 +5,10 @@ from datetime import date
 from decimal import Decimal
 import re
 
+from sqlalchemy import event
+
 from app import create_app, db
-from app.behavior_grading import behavior_grade_for_score
+from app.behavior_grading import behavior_grade_for_score, behavior_grade_scales
 from app.behavior_attendance import ensure_attendance_defaults, mark_attendance
 from app.behavior_reporting import get_behavior_report_data
 from app.behavior_service import (
@@ -285,6 +287,41 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
             class_pdf_body,
         )
         self.assertNotIn("F · GP 0.00", class_pdf_body)
+
+    def test_behavior_grade_scales_are_loaded_once_per_request_scope(self):
+        db.session.add(
+            BehaviorGradeScale(
+                configuration=self.configuration,
+                session=self.session_one,
+                grade="A",
+                min_score=25,
+                max_score=50,
+                grade_point=4.0,
+                description="Behavior excellent",
+                sort_order=1,
+                is_active=True,
+                is_pass=True,
+            )
+        )
+        db.session.commit()
+        db.session.info.pop("_behavior_grade_scales_cache", None)
+        statements = []
+
+        def count_grade_scale_query(conn, cursor, statement, parameters, context, executemany):
+            if "behavior_grade_scales" in statement.lower():
+                statements.append(statement)
+
+        event.listen(db.engine, "before_cursor_execute", count_grade_scale_query)
+        try:
+            first = behavior_grade_for_score(self.session_one, Decimal("25"))
+            second = behavior_grade_for_score(self.session_one, Decimal("25"))
+            self.assertEqual(first["grade"], "A")
+            self.assertEqual(second["grade"], "A")
+            self.assertEqual(behavior_grade_scales(self.session_one, active_only=True), behavior_grade_scales(self.session_one, active_only=True))
+        finally:
+            event.remove(db.engine, "before_cursor_execute", count_grade_scale_query)
+
+        self.assertEqual(len(statements), 1)
 
     def test_behavior_grade_management_is_scoped_and_does_not_use_ordinary_scale(self):
         self.admin.role = "super_admin"
