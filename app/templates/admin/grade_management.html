@@ -122,6 +122,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="year_id" value="{{ selected_year.id if selected_year else '' }}">
       <input type="hidden" name="exam_id" value="{{ selected_exam.id if selected_exam else '' }}">
+      <input type="hidden" name="level_id" value="{{ selected_level_id or '' }}">
       <table class="rh-table grade-scale-table">
         <thead>
           <tr>
@@ -139,8 +140,8 @@
           {% for grade in grade_scales %}
             <tr>
               <td><input class="rh-input" type="text" name="grade_{{ grade.id }}" value="{{ grade.grade }}"></td>
-              <td><input class="rh-input" type="number" step="{{ decimal_step }}" name="min_{{ grade.id }}" value="{{ grade.min_score|academic_number(settings) }}"></td>
-              <td><input class="rh-input" type="number" step="{{ decimal_step }}" name="max_{{ grade.id }}" value="{{ grade.max_score|academic_number(settings) }}"></td>
+              <td><input class="rh-input" type="number" step="{{ decimal_step }}" name="min_{{ grade.id }}" value="{{ grade_input_bounds[grade.id]['min']|academic_number(settings) }}" min="0" {% if marking_full_marks %}max="{{ marking_full_marks|academic_number(settings) }}"{% endif %}></td>
+              <td><input class="rh-input" type="number" step="{{ decimal_step }}" name="max_{{ grade.id }}" value="{{ grade_input_bounds[grade.id]['max']|academic_number(settings) }}" min="0" {% if marking_full_marks %}max="{{ marking_full_marks|academic_number(settings) }}"{% endif %}></td>
               <td><input class="rh-input" type="number" step="{{ decimal_step }}" name="point_{{ grade.id }}" value="{{ grade.grade_point|academic_number(settings) }}"></td>
               <td><input class="rh-input" type="text" name="comment_{{ grade.id }}" value="{{ grade.comment }}"></td>
               <td>
@@ -168,8 +169,8 @@
           {% if selected_exam %}
             <tr style="background: var(--paper);">
               <td><input class="rh-input" type="text" name="new_grade" placeholder="A+"></td>
-              <td><input class="rh-input" type="number" name="new_min" step="{{ decimal_step }}" placeholder="95"></td>
-              <td><input class="rh-input" type="number" name="new_max" step="{{ decimal_step }}" placeholder="100"></td>
+              <td><input class="rh-input" type="number" name="new_min" step="{{ decimal_step }}" placeholder="0" min="0" {% if marking_full_marks %}max="{{ marking_full_marks|academic_number(settings) }}"{% endif %}></td>
+              <td><input class="rh-input" type="number" name="new_max" step="{{ decimal_step }}" placeholder="{{ marking_full_marks|academic_number(settings) if marking_full_marks else 'Full mark' }}" min="0" {% if marking_full_marks %}max="{{ marking_full_marks|academic_number(settings) }}"{% endif %}></td>
               <td><input class="rh-input" type="number" name="new_point" step="{{ decimal_step }}" placeholder="4.0"></td>
               <td><input class="rh-input" type="text" name="new_comment" placeholder="Outstanding"></td>
               <td>
@@ -234,11 +235,11 @@
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
             <div>
               <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #92400e; margin-bottom: 4px;">Range From (%)</label>
-              <input type="number" step="{{ decimal_step }}" name="weak_min" class="rh-input" value="{{ weak_tier_config.min }}" style="width: 100%; background: #ffffff;" required>
+              <input type="number" step="{{ decimal_step }}" name="weak_min" class="rh-input" value="{{ weak_tier_config.min }}" min="0" max="100" style="width: 100%; background: #ffffff;" required>
             </div>
             <div>
               <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #92400e; margin-bottom: 4px;">Range To (%)</label>
-              <input type="number" step="{{ decimal_step }}" name="weak_max" class="rh-input" value="{{ weak_tier_config.max }}" style="width: 100%; background: #ffffff;" required>
+              <input type="number" step="{{ decimal_step }}" name="weak_max" class="rh-input" value="{{ weak_tier_config.max }}" min="0" max="100" style="width: 100%; background: #ffffff;" required>
             </div>
           </div>
 
@@ -274,11 +275,11 @@
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
             <div>
               <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #991b1b; margin-bottom: 4px;">Range From (%)</label>
-              <input type="number" step="{{ decimal_step }}" name="fail_min" class="rh-input" value="{{ fail_tier_config.min }}" style="width: 100%; background: #ffffff;" required>
+              <input type="number" step="{{ decimal_step }}" name="fail_min" class="rh-input" value="{{ fail_tier_config.min }}" min="0" max="100" style="width: 100%; background: #ffffff;" required>
             </div>
             <div>
               <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #991b1b; margin-bottom: 4px;">Range To (%)</label>
-              <input type="number" step="{{ decimal_step }}" name="fail_max" class="rh-input" value="{{ fail_tier_config.max }}" style="width: 100%; background: #ffffff;" required>
+              <input type="number" step="{{ decimal_step }}" name="fail_max" class="rh-input" value="{{ fail_tier_config.max }}" min="0" max="100" style="width: 100%; background: #ffffff;" required>
             </div>
           </div>
 

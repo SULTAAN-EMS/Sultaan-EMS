@@ -1,5 +1,5 @@
 from collections import defaultdict
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import math
 import json
 import re
@@ -37,7 +37,7 @@ from .enrollment_service import (
 from .promotion_service import promotion_operational_status
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
-from .services import DEFAULT_GRADE_SCALES, ScopedSubjectView, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, critical_subject_badges, get_exam_marking_configuration, get_label, get_settings, grade_for, grade_for_from_cache, load_grade_scale_cache, performance_tier_for, resolved_subject_maxima, result_payload, resolve_subject_max_score, scoped_legacy_subjects, subject_display_name
+from .services import DEFAULT_GRADE_SCALES, ScopedSubjectView, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, critical_subject_badges, get_exam_marking_configuration, get_label, get_settings, grade_for, grade_for_from_cache, grade_scale_input_bounds, load_grade_scale_cache, performance_tier_for, resolved_subject_maxima, result_payload, resolve_subject_max_score, scoped_legacy_subjects, subject_display_name
 from .attendance_rules import counts_as_exam_sitting
 from .behavior_reporting import get_behavior_report_data
 
@@ -1238,23 +1238,51 @@ def get_report_tier_configs(year_id=None, exam_id=None, level_id=None):
     weak_key = f"weak_tier_{year_id or 0}_{exam_id or 0}_{level_id or 0}"
     fail_key = f"fail_tier_{year_id or 0}_{exam_id or 0}_{level_id or 0}"
 
+    default_weak = {"min": 50.0, "max": 59.99, "bg_color": "#F5A400", "color": "#F5A400", "text_color": "#ffffff"}
+    default_fail = {"min": 0.0, "max": 49.99, "bg_color": "#DC2626", "color": "#DC2626", "text_color": "#ffffff"}
+
+    def _valid_percentage(value, fallback):
+        try:
+            parsed = Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            return fallback
+        if not parsed.is_finite() or parsed < 0 or parsed > 100:
+            return fallback
+        return float(parsed)
+
+    def _valid_color(value, fallback):
+        candidate = str(value or "").strip()
+        return candidate if re.fullmatch(r"#[0-9A-Fa-f]{6}", candidate) else fallback
+
+    def _normalize_config(value, default_dict):
+        if not isinstance(value, dict):
+            return None
+        minimum = _valid_percentage(value.get("min"), default_dict["min"])
+        maximum = _valid_percentage(value.get("max"), default_dict["max"])
+        if minimum > maximum:
+            minimum, maximum = default_dict["min"], default_dict["max"]
+        background = _valid_color(
+            value.get("bg_color") or value.get("color"),
+            default_dict["bg_color"],
+        )
+        text = _valid_color(value.get("text_color"), default_dict["text_color"])
+        return {
+            "min": minimum,
+            "max": maximum,
+            "bg_color": background,
+            "color": background,
+            "text_color": text,
+        }
+
     def _load_setting(key, default_dict):
         setting = db.session.get(Setting, key)
         if setting and setting.value:
             try:
                 res = json.loads(setting.value)
-                if "text_color" not in res:
-                    res["text_color"] = default_dict.get("text_color", "#ffffff")
-                if "bg_color" not in res:
-                    res["bg_color"] = res.get("color", default_dict.get("bg_color", "#F5A400"))
-                res["color"] = res["bg_color"]
-                return res
+                return _normalize_config(res, default_dict)
             except Exception:
                 pass
         return None
-
-    default_weak = {"min": 50.0, "max": 59.99, "bg_color": "#F5A400", "color": "#F5A400", "text_color": "#ffffff"}
-    default_fail = {"min": 0.0, "max": 49.99, "bg_color": "#DC2626", "color": "#DC2626", "text_color": "#ffffff"}
 
     weak_cfg = _load_setting(weak_key, default_weak)
     if not weak_cfg and level_id:
@@ -1276,26 +1304,52 @@ def get_report_tier_configs(year_id=None, exam_id=None, level_id=None):
 
 def save_report_tier_configs(year_id, exam_id, level_id, weak_min, weak_max, weak_bg, weak_text, fail_min, fail_max, fail_bg, fail_text):
     """Save Weak and Fail tier configurations for a scope."""
+    def _percentage(value, label):
+        try:
+            parsed = Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError(f"{label} must be a number between 0 and 100.") from exc
+        if not parsed.is_finite() or parsed < 0 or parsed > 100:
+            raise ValueError(f"{label} must be between 0 and 100.")
+        return float(parsed)
+
+    def _color(value, label):
+        candidate = str(value or "").strip()
+        if not re.fullmatch(r"#[0-9A-Fa-f]{6}", candidate):
+            raise ValueError(f"{label} must be a 6-digit hexadecimal color.")
+        return candidate
+
+    weak_min_value = _percentage(weak_min, "Weak minimum")
+    weak_max_value = _percentage(weak_max, "Weak maximum")
+    fail_min_value = _percentage(fail_min, "Fail minimum")
+    fail_max_value = _percentage(fail_max, "Fail maximum")
+    if weak_min_value > weak_max_value or fail_min_value > fail_max_value:
+        raise ValueError("Each tier minimum must be less than or equal to its maximum.")
+    weak_bg_value = _color(weak_bg, "Weak highlight color")
+    weak_text_value = _color(weak_text, "Weak text color")
+    fail_bg_value = _color(fail_bg, "Fail highlight color")
+    fail_text_value = _color(fail_text, "Fail text color")
+
     weak_key = f"weak_tier_{year_id or 0}_{exam_id or 0}_{level_id or 0}"
     fail_key = f"fail_tier_{year_id or 0}_{exam_id or 0}_{level_id or 0}"
 
     s_weak = db.session.get(Setting, weak_key) or Setting(key=weak_key)
     s_weak.value = json.dumps({
-        "min": float(weak_min),
-        "max": float(weak_max),
-        "bg_color": str(weak_bg).strip(),
-        "color": str(weak_bg).strip(),
-        "text_color": str(weak_text).strip(),
+        "min": weak_min_value,
+        "max": weak_max_value,
+        "bg_color": weak_bg_value,
+        "color": weak_bg_value,
+        "text_color": weak_text_value,
     })
     db.session.add(s_weak)
 
     s_fail = db.session.get(Setting, fail_key) or Setting(key=fail_key)
     s_fail.value = json.dumps({
-        "min": float(fail_min),
-        "max": float(fail_max),
-        "bg_color": str(fail_bg).strip(),
-        "color": str(fail_bg).strip(),
-        "text_color": str(fail_text).strip(),
+        "min": fail_min_value,
+        "max": fail_max_value,
+        "bg_color": fail_bg_value,
+        "color": fail_bg_value,
+        "text_color": fail_text_value,
     })
     db.session.add(s_fail)
 
@@ -2694,6 +2748,11 @@ def analytics_report_grade_bands(exam):
         (scale.grade or "").strip().casefold(): scale
         for scale in scales
     }
+    normalized_by_id = {
+        row["payload"]["id"]: row
+        for bucket in ("exam", "global", "fallback")
+        for row in load_grade_scale_cache(exam.id).get(bucket, [])
+    }
 
     # The report has a fixed twelve-card visual grid.  Its labels and fallback
     # colours reuse the system's canonical Grade Management defaults; a slot
@@ -2703,10 +2762,11 @@ def analytics_report_grade_bands(exam):
     for default in DEFAULT_GRADE_SCALES:
         scale = scale_by_grade.get(default["grade"].casefold())
         if scale:
+            normalized = normalized_by_id.get(scale.id)
             bands.append({
                 "g": scale.grade,
-                "lo": float(scale.min_score),
-                "hi": float(scale.max_score),
+                "lo": float(normalized["min_score"] if normalized else scale.min_score),
+                "hi": float(normalized["max_score"] if normalized else scale.max_score),
                 "color": scale.badge_color or default["badge_color"],
                 "configured": True,
             })
@@ -3180,6 +3240,19 @@ def grade_management():
     else:
         grade_scales = GradeScale.query.filter_by(exam_id=None).order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
         using_global = True
+
+    marking_full_marks = (
+        marking_configuration.default_full_marks
+        if marking_configuration else None
+    )
+    grade_input_bounds = {
+        grade.id: grade_scale_input_bounds(
+            grade,
+            grade_scales,
+            marking_full_marks,
+        )
+        for grade in grade_scales
+    }
     
     # Get all exams with their configuration status
     all_exams = Exam.query.order_by(Exam.id.desc()).all()
@@ -3225,6 +3298,8 @@ def grade_management():
         marking_subjects=marking_subjects,
         marking_max_score=marking_configuration.default_full_marks if marking_configuration else None,
         grade_scales=grade_scales,
+        grade_input_bounds=grade_input_bounds,
+        marking_full_marks=marking_full_marks,
         using_global=using_global,
         exam_status=exam_status,
         total_points=total_points,
@@ -3375,14 +3450,23 @@ def generate_scale():
 def save_grade_scales():
     """Save grade scales for an exam"""
     exam_id = int_or_none(request.form.get("exam_id"))
+    level_id = int_or_none(request.form.get("level_id"))
     selected_exam = db.session.get(Exam, exam_id) if exam_id else None
+    marking_configuration = get_exam_marking_configuration(
+        selected_exam,
+        academic_level_id=level_id,
+    )
+    marking_full_marks = (
+        Decimal(str(marking_configuration.default_full_marks))
+        if marking_configuration else None
+    )
     try:
         decimal_precision = int(request.form.get("academic_decimal_precision", "2"))
     except (TypeError, ValueError):
         decimal_precision = 2
     if decimal_precision not in (0, 1, 2, 3):
         flash("Decimal precision must be between 0 and 3 places.", "danger")
-        return redirect(url_for("admin_advanced_results.grade_management", year_id=request.form.get("year_id"), exam_id=exam_id) if exam_id else url_for("admin_advanced_results.grade_management"))
+        return redirect(url_for("admin_advanced_results.grade_management", year_id=request.form.get("year_id"), exam_id=exam_id, level_id=level_id) if exam_id else url_for("admin_advanced_results.grade_management"))
     posted_grade_ids = []
     for key in request.form:
         if key.startswith("grade_"):
@@ -3414,8 +3498,11 @@ def save_grade_scales():
             max_score = _decimal_form_value(f"max_{form_id}", grade.max_score)
             grade_point = _decimal_form_value(f"point_{form_id}", grade.grade_point)
             if min_score > max_score:
-                flash(f"Grade {grade_value}: minimum percentage cannot be greater than maximum percentage.", "danger")
-                return redirect(url_for("admin_advanced_results.grade_management", year_id=selected_exam.academic_year_id if selected_exam else request.form.get("year_id"), exam_id=exam_id) if exam_id else url_for("admin_advanced_results.grade_management"))
+                flash(f"Grade {grade_value}: minimum score cannot be greater than maximum score.", "danger")
+                return redirect(url_for("admin_advanced_results.grade_management", year_id=selected_exam.academic_year_id if selected_exam else request.form.get("year_id"), exam_id=exam_id, level_id=level_id) if exam_id else url_for("admin_advanced_results.grade_management"))
+            if marking_full_marks and (min_score < 0 or max_score > marking_full_marks):
+                flash(f"Grade {grade_value}: scores must be between 0 and {marking_full_marks}.", "danger")
+                return redirect(url_for("admin_advanced_results.grade_management", year_id=selected_exam.academic_year_id if selected_exam else request.form.get("year_id"), exam_id=exam_id, level_id=level_id) if exam_id else url_for("admin_advanced_results.grade_management"))
             grade.grade = grade_value
             grade.min_score = min_score
             grade.max_score = max_score
@@ -3435,8 +3522,11 @@ def save_grade_scales():
             min_score = _decimal_form_value("new_min", 0)
             max_score = _decimal_form_value("new_max", 0)
             if min_score > max_score:
-                flash("New grade minimum percentage cannot be greater than maximum percentage.", "danger")
-                return redirect(url_for("admin_advanced_results.grade_management", year_id=selected_exam.academic_year_id if selected_exam else None, exam_id=exam_id))
+                flash("New grade minimum score cannot be greater than maximum score.", "danger")
+                return redirect(url_for("admin_advanced_results.grade_management", year_id=selected_exam.academic_year_id if selected_exam else None, exam_id=exam_id, level_id=level_id))
+            if marking_full_marks and (min_score < 0 or max_score > marking_full_marks):
+                flash(f"New grade scores must be between 0 and {marking_full_marks}.", "danger")
+                return redirect(url_for("admin_advanced_results.grade_management", year_id=selected_exam.academic_year_id if selected_exam else None, exam_id=exam_id, level_id=level_id))
             db.session.add(GradeScale(
                 grade=new_grade,
                 exam_id=exam_id,
@@ -3462,7 +3552,7 @@ def save_grade_scales():
 
     year_id = selected_exam.academic_year_id if selected_exam else request.form.get("year_id")
     if exam_id:
-        return redirect(url_for("admin_advanced_results.grade_management", year_id=year_id, exam_id=exam_id))
+        return redirect(url_for("admin_advanced_results.grade_management", year_id=year_id, exam_id=exam_id, level_id=level_id))
     return redirect(url_for("admin_advanced_results.grade_management", year_id=year_id))
 
 
