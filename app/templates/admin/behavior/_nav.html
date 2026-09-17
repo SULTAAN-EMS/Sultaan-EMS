@@ -24,17 +24,17 @@
   <nav class="behavior-nav top-tabs" aria-label="Behavior administration">
     <button class="behavior-nav__scroll" type="button" data-behavior-nav-scroll="-1" aria-label="Scroll behavior navigation left"><i class="fa-solid fa-chevron-left"></i></button>
     <div class="behavior-nav__items">
-    <a href="{{ behavior_url('behavior.dashboard') }}" class="{% if request.endpoint == 'behavior.dashboard' %}is-active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
-    <a href="{{ behavior_url('behavior.configuration') }}" class="{% if request.endpoint == 'behavior.configuration' %}is-active{% endif %}"><i class="fa-solid fa-sliders"></i> Behavior Setup</a>
-    <a href="{{ behavior_url('behavior.sessions') }}" class="{% if request.endpoint in ['behavior.sessions', 'behavior.delete_session'] %}is-active{% endif %}"><i class="fa-solid fa-calendar-days"></i> Sessions &amp; Allocation</a>
-    <a href="{{ behavior_url('behavior.session_allocation') }}" class="{% if request.endpoint == 'behavior.session_allocation' %}is-active{% endif %}"><i class="fa-solid fa-scale-balanced"></i> Allocation Planning</a>
-    <a href="{{ behavior_url('behavior.grade_management') }}" class="{% if request.endpoint in ['behavior.grade_management', 'behavior.delete_grade_scale'] %}is-active{% endif %}"><i class="fa-solid fa-graduation-cap"></i> Grade Management</a>
-    <a href="{{ behavior_url('behavior.taxonomy') }}" class="{% if request.endpoint in ['behavior.taxonomy', 'behavior.categories', 'behavior.subcategories', 'behavior.actions', 'behavior.delete_category', 'behavior.delete_subcategory', 'behavior.delete_action', 'behavior.add_action_choice', 'behavior.delete_action_choice'] %}is-active{% endif %}"><i class="fa-solid fa-tags"></i> Taxonomy</a>
-    <a href="{{ behavior_url('behavior.attendance') }}" class="{% if request.endpoint in ['behavior.attendance', 'behavior.attendance_report'] %}is-active{% endif %}"><i class="fa-solid fa-user-check"></i> Attendance</a>
-    <a href="{{ behavior_url('behavior.students') }}" class="{% if request.endpoint in ['behavior.students', 'behavior.student_detail', 'behavior.student_report'] %}is-active{% endif %}"><i class="fa-solid fa-user-graduate"></i> Student Behavior</a>
-    <a href="{{ behavior_url('behavior.events') }}" class="{% if request.endpoint in ['behavior.events', 'behavior.edit', 'behavior.event_detail', 'behavior.void', 'behavior.restore'] %}is-active{% endif %}"><i class="fa-solid fa-clock-rotate-left"></i> Events</a>
-    <a href="{{ behavior_url('behavior.history') }}" class="{% if request.endpoint == 'behavior.history' %}is-active{% endif %}"><i class="fa-solid fa-timeline"></i> History</a>
-    <a href="{{ behavior_url('behavior.audit_history') }}" class="{% if request.endpoint == 'behavior.audit_history' %}is-active{% endif %}"><i class="fa-solid fa-shield-halved"></i> Audit</a>
+    <a href="{{ behavior_url('behavior.dashboard') }}" class="{% if request.endpoint == 'behavior.dashboard' %}is-active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Wajahada Hore</a>
+    <a href="{{ behavior_url('behavior.configuration') }}" class="{% if request.endpoint == 'behavior.configuration' %}is-active{% endif %}"><i class="fa-solid fa-sliders"></i> Dejinta Hab-dhaqanka</a>
+    <a href="{{ behavior_url('behavior.sessions') }}" class="{% if request.endpoint in ['behavior.sessions', 'behavior.delete_session'] %}is-active{% endif %}"><i class="fa-solid fa-calendar-days"></i> Dejinta Xilliyada</a>
+    <a href="{{ behavior_url('behavior.session_allocation') }}" class="{% if request.endpoint == 'behavior.session_allocation' %}is-active{% endif %}"><i class="fa-solid fa-scale-balanced"></i> Qorshaynta Qoondaynta</a>
+    <a href="{{ behavior_url('behavior.grade_management') }}" class="{% if request.endpoint in ['behavior.grade_management', 'behavior.delete_grade_scale'] %}is-active{% endif %}"><i class="fa-solid fa-graduation-cap"></i> Maareynta Dhibcaha</a>
+    <a href="{{ behavior_url('behavior.taxonomy') }}" class="{% if request.endpoint in ['behavior.taxonomy', 'behavior.categories', 'behavior.subcategories', 'behavior.actions', 'behavior.delete_category', 'behavior.delete_subcategory', 'behavior.delete_action', 'behavior.add_action_choice', 'behavior.delete_action_choice'] %}is-active{% endif %}"><i class="fa-solid fa-tags"></i> Dejinta Qodobada</a>
+    <a href="{{ behavior_url('behavior.attendance') }}" class="{% if request.endpoint in ['behavior.attendance', 'behavior.attendance_report'] %}is-active{% endif %}"><i class="fa-solid fa-user-check"></i> Xaadirka</a>
+    <a href="{{ behavior_url('behavior.students') }}" class="{% if request.endpoint in ['behavior.students', 'behavior.student_detail', 'behavior.student_report'] %}is-active{% endif %}"><i class="fa-solid fa-user-graduate"></i> Diiwaanka Hab-dhaqanka Ardeyga</a>
+    <a href="{{ behavior_url('behavior.events') }}" class="{% if request.endpoint in ['behavior.events', 'behavior.edit', 'behavior.event_detail', 'behavior.void', 'behavior.restore'] %}is-active{% endif %}"><i class="fa-solid fa-clock-rotate-left"></i> Dhacdooyinka</a>
+    <a href="{{ behavior_url('behavior.history') }}" class="{% if request.endpoint == 'behavior.history' %}is-active{% endif %}"><i class="fa-solid fa-timeline"></i> Taariikhda</a>
+    <a href="{{ behavior_url('behavior.audit_history') }}" class="{% if request.endpoint == 'behavior.audit_history' %}is-active{% endif %}"><i class="fa-solid fa-shield-halved"></i> Diiwaanka Dabagalka</a>
     </div>
     <button class="behavior-nav__scroll" type="button" data-behavior-nav-scroll="1" aria-label="Scroll behavior navigation right"><i class="fa-solid fa-chevron-right"></i></button>
   </nav>

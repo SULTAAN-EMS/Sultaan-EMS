@@ -155,11 +155,22 @@ class Config:
         # PostgreSQL / default options
         SQLALCHEMY_ENGINE_OPTIONS = {
             "pool_pre_ping": True,
-            "pool_recycle": 600,
+            "pool_recycle": 300,
             "pool_use_lifo": True,
             "pool_size": 5,
             "max_overflow": 10,
-            "pool_timeout": 30,
+            "pool_timeout": 15,
+            "pool_reset_on_return": "rollback",
+            "connect_args": {
+                # Railway's public PostgreSQL endpoint can close idle TCP
+                # sessions.  Keep the pool from handing stale sockets to a
+                # request and fail quickly when a new connection is unavailable.
+                "connect_timeout": 10,
+                "keepalives": 1,
+                "keepalives_idle": 30,
+                "keepalives_interval": 10,
+                "keepalives_count": 3,
+            },
         }
 
     WTF_CSRF_TIME_LIMIT = None

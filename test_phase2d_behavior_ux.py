@@ -42,8 +42,9 @@ class TestPhase2DBehaviorUX(TestPhase2CBehaviorEvents):
         dashboard = client.get(f"/admin/behavior/?{query}").get_data(as_text=True)
         self.assertIn("Behavior One", dashboard)
         self.assertIn("Behavior Two", dashboard)
-        self.assertIn("Class board", dashboard)
-        self.assertIn("Maximum", dashboard)
+        self.assertIn("Guddiga Fasalka", dashboard)
+        self.assertIn("Ardayda iyo Dhibcaha Hadda", dashboard)
+        self.assertIn("Ugu Badnaan", dashboard)
 
     def test_behavior_navigation_active_state_and_page_persistence(self):
         client = self._client_as_admin()
@@ -54,20 +55,20 @@ class TestPhase2DBehaviorUX(TestPhase2CBehaviorEvents):
         db.session.commit()
         config_query = f"?config_id={self.config_one.id}"
         pages = [
-            ("/admin/behavior/", "/admin/behavior/", "Dashboard"),
-            ("/admin/behavior/configuration", "/admin/behavior/configuration", "Behavior Setup"),
-            ("/admin/behavior/taxonomy" + config_query, "/admin/behavior/taxonomy", "Taxonomy"),
-            ("/admin/behavior/categories" + config_query, "/admin/behavior/taxonomy", "Taxonomy"),
-            ("/admin/behavior/subcategories" + config_query, "/admin/behavior/taxonomy", "Taxonomy"),
-            ("/admin/behavior/actions" + config_query, "/admin/behavior/taxonomy", "Taxonomy"),
-            ("/admin/behavior/sessions" + config_query, "/admin/behavior/sessions", "Sessions &amp; Allocation"),
-            ("/admin/behavior/session-allocation" + config_query, "/admin/behavior/session-allocation", "Allocation Planning"),
-            ("/admin/behavior/grade-management" + config_query, "/admin/behavior/grade-management", "Grade Management"),
-            ("/admin/behavior/attendance" + config_query, "/admin/behavior/attendance", "Attendance"),
-            ("/admin/behavior/students" + config_query, "/admin/behavior/students", "Student Behavior"),
-            ("/admin/behavior/events", "/admin/behavior/events", "Events"),
-            ("/admin/behavior/history", "/admin/behavior/history", "History"),
-            ("/admin/behavior/audit", "/admin/behavior/audit", "Audit"),
+            ("/admin/behavior/", "/admin/behavior/", "Wajahada Hore"),
+            ("/admin/behavior/configuration", "/admin/behavior/configuration", "Dejinta Hab-dhaqanka"),
+            ("/admin/behavior/taxonomy" + config_query, "/admin/behavior/taxonomy", "Dejinta Qodobada"),
+            ("/admin/behavior/categories" + config_query, "/admin/behavior/taxonomy", "Dejinta Qodobada"),
+            ("/admin/behavior/subcategories" + config_query, "/admin/behavior/taxonomy", "Dejinta Qodobada"),
+            ("/admin/behavior/actions" + config_query, "/admin/behavior/taxonomy", "Dejinta Qodobada"),
+            ("/admin/behavior/sessions" + config_query, "/admin/behavior/sessions", "Dejinta Xilliyada"),
+            ("/admin/behavior/session-allocation" + config_query, "/admin/behavior/session-allocation", "Qorshaynta Qoondaynta"),
+            ("/admin/behavior/grade-management" + config_query, "/admin/behavior/grade-management", "Maareynta Dhibcaha"),
+            ("/admin/behavior/attendance" + config_query, "/admin/behavior/attendance", "Xaadirka"),
+            ("/admin/behavior/students" + config_query, "/admin/behavior/students", "Diiwaanka Hab-dhaqanka Ardeyga"),
+            ("/admin/behavior/events", "/admin/behavior/events", "Dhacdooyinka"),
+            ("/admin/behavior/history", "/admin/behavior/history", "Taariikhda"),
+            ("/admin/behavior/audit", "/admin/behavior/audit", "Diiwaanka Dabagalka"),
         ]
         for path, active_href, active_label in pages:
             with self.subTest(path=path):
