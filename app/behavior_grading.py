@@ -7,9 +7,15 @@ no global grade fallback can leak into Behavior reports.
 """
 
 from decimal import Decimal, InvalidOperation
+import logging
+
+from sqlalchemy.exc import OperationalError
 
 from . import db
 from .models import BehaviorConfiguration, BehaviorGradeScale, BehaviorSession
+
+
+logger = logging.getLogger(__name__)
 
 
 class BehaviorGradeValidationError(ValueError):
@@ -242,9 +248,23 @@ def behavior_grade_for_score(session, score):
         if normalized and maximum > 0
         else value
     )
+    try:
+        scales = behavior_grade_scales(session, active_only=True)
+    except OperationalError:
+        # A transient Railway public-proxy failure must not take down the
+        # dashboard/report. SQLAlchemy marks the transaction as failed after
+        # an operational error, so clear only this request's transaction and
+        # let the next request retry the canonical grade lookup.
+        logger.warning(
+            "Behavior grade lookup failed for session %s; returning an unconfigured grade",
+            session.id,
+            exc_info=True,
+        )
+        db.session.rollback()
+        return _not_configured("Behavior grade lookup is temporarily unavailable.")
     matches = [
         scale
-        for scale in behavior_grade_scales(session, active_only=True)
+        for scale in scales
         if Decimal(str(scale.min_score)) <= comparable_value <= Decimal(str(scale.max_score))
     ]
     if len(matches) == 1:

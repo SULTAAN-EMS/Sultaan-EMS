@@ -3,12 +3,14 @@
 import unittest
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 import re
 
 from sqlalchemy import event
 
 from app import create_app, db
 from app.behavior_grading import behavior_grade_for_score, behavior_grade_scales
+from sqlalchemy.exc import OperationalError
 from app.behavior_attendance import ensure_attendance_defaults, mark_attendance
 from app.behavior_reporting import get_behavior_report_data
 from app.behavior_service import (
@@ -322,6 +324,14 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
             event.remove(db.engine, "before_cursor_execute", count_grade_scale_query)
 
         self.assertEqual(len(statements), 1)
+
+    def test_transient_grade_lookup_failure_does_not_break_behavior_page(self):
+        error = OperationalError("SELECT behavior grade scales", {}, Exception("proxy timeout"))
+        with patch("app.behavior_grading.behavior_grade_scales", side_effect=error):
+            payload = behavior_grade_for_score(self.session_one, Decimal("25"))
+
+        self.assertEqual(payload["grade"], "NOT CONFIGURED")
+        self.assertIn("temporarily unavailable", payload["description"])
 
     def test_behavior_grade_management_is_scoped_and_does_not_use_ordinary_scale(self):
         self.admin.role = "super_admin"

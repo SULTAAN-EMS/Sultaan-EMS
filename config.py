@@ -166,6 +166,11 @@ class Config:
                 # sessions.  Keep the pool from handing stale sockets to a
                 # request and fail quickly when a new connection is unavailable.
                 "connect_timeout": 10,
+                # Keep a stalled public-proxy query from consuming the whole
+                # Gunicorn worker. These are session-local safety limits and
+                # do not change schema or application data.
+                "options": "-c statement_timeout=15000 -c lock_timeout=5000",
+                "tcp_user_timeout": 15000,
                 "keepalives": 1,
                 "keepalives_idle": 30,
                 "keepalives_interval": 10,
