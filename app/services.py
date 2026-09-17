@@ -1,7 +1,7 @@
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
 
-from flask import current_app, g
+from flask import current_app, g, has_request_context
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
@@ -728,10 +728,17 @@ DEFAULT_GRADE_SCALES = [
 
 
 def get_settings():
+    if has_request_context():
+        cached = getattr(g, "_sultaan_settings", None)
+        if cached is not None:
+            return dict(cached)
+
     rows = Setting.query.all()
     settings = DEFAULT_SETTINGS.copy()
     settings.update({row.key: row.value for row in rows})
-    return settings
+    if has_request_context():
+        g._sultaan_settings = dict(settings)
+    return dict(settings)
 
 
 def seed_missing_settings():
@@ -1933,23 +1940,15 @@ def get_label(label_key, language_code=None, default=None):
         settings = get_settings()
         language_code = settings.get("default_language", "so")
     
-    # Try requested language first
-    label = LabelTranslation.query.filter_by(
-        label_key=label_key,
-        language_code=language_code
-    ).first()
-    
-    if label:
-        return label.text_value
+    labels = get_all_labels(language_code)
+    if label_key in labels:
+        return labels[label_key]
     
     # Fall back to Somali if requested language not found
     if language_code != "so":
-        label = LabelTranslation.query.filter_by(
-            label_key=label_key,
-            language_code="so"
-        ).first()
-        if label:
-            return label.text_value
+        somali_labels = get_all_labels("so")
+        if label_key in somali_labels:
+            return somali_labels[label_key]
     
     # Fall back to default if provided
     if default is not None:
@@ -1967,9 +1966,18 @@ def get_all_labels(language_code=None):
     if not language_code:
         settings = get_settings()
         language_code = settings.get("default_language", "so")
-    
+
+    if has_request_context():
+        cache = getattr(g, "_sultaan_label_cache", {})
+        if language_code in cache:
+            return dict(cache[language_code])
+
     labels = LabelTranslation.query.filter_by(language_code=language_code).all()
-    return {label.label_key: label.text_value for label in labels}
+    values = {label.label_key: label.text_value for label in labels}
+    if has_request_context():
+        cache[language_code] = dict(values)
+        g._sultaan_label_cache = cache
+    return dict(values)
 
 
 def is_setup_complete():

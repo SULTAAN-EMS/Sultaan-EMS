@@ -11,6 +11,7 @@ from flask_login import current_user, login_required
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font
 from sqlalchemy import and_ as db_and, func, or_ as db_or
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from . import db
@@ -185,20 +186,33 @@ RESULTS_LABEL_SEEDS = [
 def ensure_results_label_seeds():
     if current_app.config.get("_results_label_seeds_checked"):
         return
-    changed = False
-    for label_key, language_code, text_value, context in RESULTS_LABEL_SEEDS:
-        exists = LabelTranslation.query.filter_by(label_key=label_key, language_code=language_code).first()
-        if exists:
-            continue
-        db.session.add(LabelTranslation(
+
+    seed_keys = {label_key for label_key, _language, _text, _context in RESULTS_LABEL_SEEDS}
+    existing_keys = {
+        label_key
+        for (label_key,) in db.session.query(LabelTranslation.label_key).filter(
+            LabelTranslation.language_code == "so",
+            LabelTranslation.label_key.in_(seed_keys),
+        ).all()
+    }
+    missing = [
+        LabelTranslation(
             label_key=label_key,
             language_code=language_code,
             text_value=text_value,
             context=context,
-        ))
-        changed = True
-    if changed:
-        db.session.commit()
+        )
+        for label_key, language_code, text_value, context in RESULTS_LABEL_SEEDS
+        if label_key not in existing_keys
+    ]
+    if missing:
+        db.session.add_all(missing)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            # Another worker may have seeded the same immutable defaults.
+            # Keep the request usable and let the next request re-read labels.
+            db.session.rollback()
     current_app.config["_results_label_seeds_checked"] = True
 
 
