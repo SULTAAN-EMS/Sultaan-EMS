@@ -325,7 +325,13 @@ def mark_attendance(
     return item
 
 
-def attendance_score_adjustments(configuration, session, enrollment):
+def attendance_score_adjustments(
+    configuration,
+    session,
+    enrollment,
+    *,
+    attendance_records=None,
+):
     """Return Attendance points using the same positive/negative score inputs."""
     configuration, session, enrollment = validate_attendance_context(configuration, session, enrollment)
     if not configuration.behavior_attendance_scoring_enabled:
@@ -334,11 +340,14 @@ def attendance_score_adjustments(configuration, session, enrollment):
             "negative_points": Decimal("0.000"),
             "record_count": 0,
         }
-    rows = BehaviorAttendanceRecord.query.filter_by(
-        behavior_configuration_id=configuration.id,
-        behavior_session_id=session.id,
-        student_enrollment_id=enrollment.id,
-    ).all()
+    if attendance_records is None:
+        rows = BehaviorAttendanceRecord.query.filter_by(
+            behavior_configuration_id=configuration.id,
+            behavior_session_id=session.id,
+            student_enrollment_id=enrollment.id,
+        ).all()
+    else:
+        rows = list(attendance_records)
     projection = attendance_points_projection(rows)
     return {
         "positive_points": projection["positive_points"],

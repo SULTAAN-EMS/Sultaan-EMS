@@ -3,6 +3,8 @@
 import unittest
 import re
 
+from sqlalchemy import event
+
 from app import db
 from app.models import BehaviorEvent
 from test_phase2c_behavior_events import TestPhase2CBehaviorEvents
@@ -90,6 +92,37 @@ class TestPhase2DBehaviorUX(TestPhase2CBehaviorEvents):
         self.assertRegex(
             events_response.get_data(as_text=True),
             r'href="/admin/behavior/events[^\"]*" class="is-active"',
+        )
+
+    def test_dashboard_uses_batched_event_and_attendance_queries(self):
+        client = self._client_as_admin()
+        self.admin.set_permissions(["behavior.view"])
+        db.session.commit()
+        statements = []
+
+        def count_scoped_queries(conn, cursor, statement, parameters, context, executemany):
+            normalized = " ".join(statement.lower().split())
+            if "from behavior_events" in normalized or "from behavior_attendance_records" in normalized:
+                statements.append(normalized)
+
+        event.listen(db.engine, "before_cursor_execute", count_scoped_queries)
+        try:
+            response = client.get(
+                "/admin/behavior/?"
+                f"config_id={self.config_one.id}&session_id={self.session_a.id}"
+                f"&class_id={self.class_one.id}"
+            )
+        finally:
+            event.remove(db.engine, "before_cursor_execute", count_scoped_queries)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            sum("from behavior_events" in statement for statement in statements),
+            1,
+        )
+        self.assertEqual(
+            sum("from behavior_attendance_records" in statement for statement in statements),
+            1,
         )
 
     def test_record_edit_void_and_detail_workflow(self):

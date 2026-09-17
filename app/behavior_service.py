@@ -663,7 +663,14 @@ def attendance_points_projection(records):
     }
 
 
-def attendance_score_projection(configuration, session, enrollment, *, _validated=False):
+def attendance_score_projection(
+    configuration,
+    session,
+    enrollment,
+    *,
+    _validated=False,
+    attendance_records=None,
+):
     """Calculate direct configured Attendance points for one session/student.
 
     This is the sole Attendance scoring implementation. Saved status points
@@ -692,11 +699,17 @@ def attendance_score_projection(configuration, session, enrollment, *, _validate
         }
 
     allocation = decimal_value(allocation_value, "Attendance allocation", minimum="0")
-    rows = BehaviorAttendanceRecord.query.filter_by(
-        behavior_configuration_id=configuration.id,
-        behavior_session_id=session.id,
-        student_enrollment_id=enrollment.id,
-    ).order_by(BehaviorAttendanceRecord.attendance_date.asc(), BehaviorAttendanceRecord.id.asc()).all()
+    if attendance_records is None:
+        rows = BehaviorAttendanceRecord.query.filter_by(
+            behavior_configuration_id=configuration.id,
+            behavior_session_id=session.id,
+            student_enrollment_id=enrollment.id,
+        ).order_by(
+            BehaviorAttendanceRecord.attendance_date.asc(),
+            BehaviorAttendanceRecord.id.asc(),
+        ).all()
+    else:
+        rows = list(attendance_records)
     canonical_rows = [
         row for row in rows
         if (row.status_key_snapshot or "").strip().lower() in CANONICAL_ATTENDANCE_STATUS_KEYS
@@ -790,7 +803,14 @@ def validate_enrollment_scope(configuration, enrollment_id):
     return enrollment
 
 
-def calculate_session_score(configuration, session, enrollment):
+def calculate_session_score(
+    configuration,
+    session,
+    enrollment,
+    *,
+    behavior_events=None,
+    attendance_records=None,
+):
     """Return one session score projection for Behavior and Attendance."""
     configuration = validate_behavior_configuration(configuration)
     if session.configuration is not configuration and session.behavior_configuration_id != configuration.id:
@@ -815,12 +835,15 @@ def calculate_session_score(configuration, session, enrollment):
                 "Behavior and Attendance allocations must equal the session maximum"
             )
     base = (behavior_allocation / Decimal("2")).quantize(Decimal("0.001"))
-    rows = BehaviorEvent.query.filter_by(
-        behavior_configuration_id=configuration.id,
-        behavior_session_id=session.id,
-        student_enrollment_id=enrollment.id,
-        status="active",
-    ).all()
+    if behavior_events is None:
+        rows = BehaviorEvent.query.filter_by(
+            behavior_configuration_id=configuration.id,
+            behavior_session_id=session.id,
+            student_enrollment_id=enrollment.id,
+            status="active",
+        ).all()
+    else:
+        rows = [row for row in behavior_events if row.status == "active"]
     positive_raw = sum(
         (decimal_value(row.points_applied, "Event points") for row in rows if row.polarity == "positive"),
         Decimal("0.000"),
@@ -841,14 +864,23 @@ def calculate_session_score(configuration, session, enrollment):
     # Both scope checks have already completed above. Avoid repeating them in
     # the Attendance projection for every student on a dashboard request.
     attendance = attendance_score_projection(
-        configuration, session, enrollment, _validated=True
+        configuration,
+        session,
+        enrollment,
+        _validated=True,
+        attendance_records=attendance_records,
     )
     if legacy_scoring:
         # Preserve the old calculation for sessions created before allocations
         # existed; this avoids silently rewriting historical results.
         from .behavior_attendance import attendance_score_adjustments
 
-        legacy_attendance = attendance_score_adjustments(configuration, session, enrollment)
+        legacy_attendance = attendance_score_adjustments(
+            configuration,
+            session,
+            enrollment,
+            attendance_records=attendance_records,
+        )
         positive_raw += legacy_attendance["positive_points"]
         positive_applied = min(positive_raw, positive_capacity).quantize(Decimal("0.001"))
         negative_raw += legacy_attendance["negative_points"]

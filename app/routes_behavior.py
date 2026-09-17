@@ -412,9 +412,38 @@ def _behavior_enrollments(config, class_id=None):
 def _student_board_rows(config, selected_session, class_id=None):
     if not config or not selected_session:
         return []
+    enrollments = _behavior_enrollments(config, class_id)
+    enrollment_ids = [item.id for item in enrollments]
+    events_by_enrollment = defaultdict(list)
+    attendance_by_enrollment = defaultdict(list)
+    if enrollment_ids:
+        event_rows = BehaviorEvent.query.filter(
+            BehaviorEvent.behavior_configuration_id == config.id,
+            BehaviorEvent.behavior_session_id == selected_session.id,
+            BehaviorEvent.student_enrollment_id.in_(enrollment_ids),
+            BehaviorEvent.status == "active",
+        ).all()
+        attendance_rows = BehaviorAttendanceRecord.query.filter(
+            BehaviorAttendanceRecord.behavior_configuration_id == config.id,
+            BehaviorAttendanceRecord.behavior_session_id == selected_session.id,
+            BehaviorAttendanceRecord.student_enrollment_id.in_(enrollment_ids),
+        ).order_by(
+            BehaviorAttendanceRecord.attendance_date.asc(),
+            BehaviorAttendanceRecord.id.asc(),
+        ).all()
+        for row in event_rows:
+            events_by_enrollment[row.student_enrollment_id].append(row)
+        for row in attendance_rows:
+            attendance_by_enrollment[row.student_enrollment_id].append(row)
     rows = []
-    for enrollment in _behavior_enrollments(config, class_id):
-        score = calculate_session_score(config, selected_session, enrollment)
+    for enrollment in enrollments:
+        score = calculate_session_score(
+            config,
+            selected_session,
+            enrollment,
+            behavior_events=events_by_enrollment.get(enrollment.id, []),
+            attendance_records=attendance_by_enrollment.get(enrollment.id, []),
+        )
         events = score.get("_active_events", [])
         rows.append({
             "enrollment": enrollment,
