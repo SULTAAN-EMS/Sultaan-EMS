@@ -533,7 +533,13 @@ def dashboard():
     evaluated = [row for row in board_rows if row["events"]]
     positive = [row for row in board_rows if row["positive_events"]]
     negative = [row for row in board_rows if row["negative_events"]]
-    final_scores = [row["score"]["final_score"] for row in board_rows]
+    # Allocated Attendance without a record intentionally produces an
+    # incomplete score (None). It must not be added to Decimal totals.
+    final_scores = [
+        row["score"]["final_score"]
+        for row in board_rows
+        if row["score"].get("final_score") is not None
+    ]
     average = (sum(final_scores, Decimal("0.000")) / len(final_scores)).quantize(Decimal("0.001")) if final_scores else Decimal("0.000")
     summary = {
         "students": len(board_rows),

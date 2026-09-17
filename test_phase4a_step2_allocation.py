@@ -139,6 +139,14 @@ class TestPhase4AStep2Allocation(unittest.TestCase):
         self.assertIsNone(score["ledger"]["attendance"]["earned_score"])
         self.assertIsNone(score["ledger"]["attendance"]["remaining"])
 
+    def test_dashboard_renders_when_incomplete_scores_are_present(self):
+        response = self._admin_client().get(
+            f"/admin/behavior/?year_id={self.year.id}&level_id={self.level.id}"
+            f"&config_id={self.config.id}&session_id={self.session.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Ardayda iyo Dhibcaha Hadda", response.get_data(as_text=True))
+
     def test_configured_status_points_are_snapshotted_and_used_by_canonical_scoring(self):
         ensure_attendance_defaults(self.config)
         present = next(item for item in self.config.attendance_statuses if item.key == "present")
