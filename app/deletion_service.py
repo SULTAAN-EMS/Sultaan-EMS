@@ -20,6 +20,7 @@ from .models import (
     ExamHallEnrollment,
     ExamHallSubject,
     ExamHallVersion,
+    ExamMarkingConfiguration,
     ExamSession,
     ExamSessionSubject,
     ExamType,
@@ -44,6 +45,8 @@ from .models import (
     StudentEnrollmentMovement,
     StudentFeedback,
     StudentFeedbackReply,
+    BehaviorConfiguration,
+    BehaviorAttendanceRecord,
 )
 
 
@@ -58,7 +61,10 @@ KNOWN_DIRECT_YEAR_TABLES = {
     "academic_year_levels",
     "academic_year_subjects",
     "attendance_records",
+    "behavior_attendance_records",
+    "behavior_configurations",
     "exam_halls",
+    "exam_marking_configurations",
     "exam_sessions",
     "exam_types",
     "exams",
@@ -115,6 +121,11 @@ def _year_scope_ids(year_id):
     )
     exam_type_ids = _ids(
         db.session.query(ExamType.id).filter(ExamType.academic_year_id == year_id)
+    )
+    exam_marking_configuration_ids = _ids(
+        db.session.query(ExamMarkingConfiguration.id).filter(
+            ExamMarkingConfiguration.academic_year_id == year_id
+        )
     )
     exam_ids = _ids(db.session.query(Exam.id).filter(Exam.academic_year_id == year_id))
     session_ids = _ids(
@@ -265,12 +276,23 @@ def _year_scope_ids(year_id):
             )
         )
     )
+    behavior_configuration_ids = _ids(
+        db.session.query(BehaviorConfiguration.id).filter(
+            BehaviorConfiguration.academic_year_id == year_id
+        )
+    )
+    behavior_attendance_record_ids = _ids(
+        db.session.query(BehaviorAttendanceRecord.id).filter(
+            BehaviorAttendanceRecord.academic_year_id == year_id
+        )
+    )
 
     return {
         "year_level_ids": year_level_ids,
         "year_class_ids": year_class_ids,
         "year_subject_ids": year_subject_ids,
         "exam_type_ids": exam_type_ids,
+        "exam_marking_configuration_ids": exam_marking_configuration_ids,
         "exam_ids": exam_ids,
         "session_ids": session_ids,
         "hall_ids": hall_ids,
@@ -293,6 +315,8 @@ def _year_scope_ids(year_id):
         "feedback_ids": feedback_ids,
         "complaint_ids": complaint_ids,
         "incident_ids": incident_ids,
+        "behavior_configuration_ids": behavior_configuration_ids,
+        "behavior_attendance_record_ids": behavior_attendance_record_ids,
     }
 
 
@@ -318,6 +342,7 @@ _PURGE_SEED_TABLES = {
     "academic_year_classes": "year_class_ids",
     "academic_year_subjects": "year_subject_ids",
     "exam_types": "exam_type_ids",
+    "exam_marking_configurations": "exam_marking_configuration_ids",
     "exams": "exam_ids",
     "exam_sessions": "session_ids",
     "exam_halls": "hall_ids",
@@ -335,6 +360,8 @@ _PURGE_SEED_TABLES = {
     "report_verifications": "verification_ids",
     "grade_scales": "grade_scale_ids",
     "attendance_records": "attendance_ids",
+    "behavior_configurations": "behavior_configuration_ids",
+    "behavior_attendance_records": "behavior_attendance_record_ids",
     "id_card_issues": "id_card_ids",
     "student_feedback": "feedback_ids",
     "student_complaints": "complaint_ids",
@@ -346,6 +373,18 @@ _PURGE_LABELS = {
     "academic_year_levels": "Academic year levels",
     "academic_year_classes": "Academic year classes",
     "academic_year_subjects": "Academic year subjects",
+    "behavior_configurations": "Behavior configurations",
+    "behavior_sessions": "Behavior sessions",
+    "behavior_categories": "Behavior categories",
+    "behavior_subcategories": "Behavior sub-categories",
+    "behavior_actions": "Behavior actions",
+    "behavior_action_choices": "Behavior action choices",
+    "behavior_events": "Behavior events",
+    "behavior_grade_scales": "Behavior grade scales",
+    "behavior_attendance_statuses": "Behavior attendance statuses",
+    "behavior_attendance_days": "Behavior attendance days",
+    "behavior_attendance_records": "Behavior attendance records",
+    "exam_marking_configurations": "Exam marking configurations",
     "students": "Student identities deleted",
     "student_enrollments": "Student enrollments",
     "student_enrollment_movements": "Enrollment movements",
@@ -513,7 +552,7 @@ def scan_academic_year(year_id):
         "entity_id": year.id,
         "target_name": year.name,
         "archived": not bool(year.is_current),
-        "eligible": not bool(year.is_current) and not schema_issues,
+        "eligible": not bool(year.is_current) and not schema_issues and not unknown_direct,
         "dependencies": entries,
         "total_affected_records": sum(item["count"] for item in entries if not item["retained"]),
         "retained_student_identities": len(retained),
@@ -544,6 +583,15 @@ def purge_academic_year(year_id):
     report = scan_academic_year(year_id)
     if report.get("schema_issues"):
         raise PurgeValidationError(" ".join(report["schema_issues"]))
+    if report.get("unsupported_direct_dependencies"):
+        dependencies = ", ".join(
+            f"{item['table']}.{item['column']} ({item['count']})"
+            for item in report["unsupported_direct_dependencies"]
+        )
+        raise PurgeValidationError(
+            "The purge is blocked because these direct Academic Year dependencies "
+            f"have no deletion handler yet: {dependencies}."
+        )
     scope = _year_scope_ids(year_id)
 
     graph, removable_students, retained_students = _build_purge_graph(year_id, scope)

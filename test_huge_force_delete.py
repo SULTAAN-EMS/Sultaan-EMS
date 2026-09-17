@@ -1,6 +1,7 @@
 """Regression coverage for the archived Academic Year final purge."""
 
 import unittest
+from datetime import date
 from unittest.mock import patch
 
 from app import create_app, db
@@ -12,7 +13,18 @@ from app.models import (
     AcademicYearClass,
     AcademicYearLevel,
     AcademicYearSubject,
+    BehaviorAction,
+    BehaviorActionChoice,
+    BehaviorAttendanceDay,
+    BehaviorAttendanceRecord,
+    BehaviorAttendanceStatus,
+    BehaviorCategory,
+    BehaviorConfiguration,
+    BehaviorEvent,
+    BehaviorSession,
+    BehaviorSubCategory,
     Exam,
+    ExamMarkingConfiguration,
     PromotionEvaluation,
     PromotionRule,
     Student,
@@ -190,6 +202,136 @@ class TestHugeForceDelete(unittest.TestCase):
         self.assertIsNone(surviving.previous_enrollment_id)
         self.assertEqual(report["target_name"], "2025-2026")
 
+    def test_behavior_and_marking_dependencies_are_purged(self):
+        config = BehaviorConfiguration(
+            academic_year_id=self.target_id,
+            academic_year_level_id=self.target_level.id,
+            academic_year_subject_id=self.target_subject.id,
+            frequency="monthly",
+            status="archived",
+            annual_allocation=20,
+        )
+        session = BehaviorSession(
+            configuration=config,
+            session_label="Term 1",
+            maximum_score=25,
+            behavior_allocation=20,
+            attendance_allocation=5,
+        )
+        category = BehaviorCategory(
+            configuration=config,
+            name="Good Conduct",
+            polarity="positive",
+        )
+        subcategory = BehaviorSubCategory(category=category, name="Participation")
+        action = BehaviorAction(
+            category=category,
+            subcategory=subcategory,
+            name="Helping",
+            points=1,
+            frequency="ad_hoc",
+            behavior_type="choice",
+        )
+        choice = BehaviorActionChoice(action=action, label="Yes", points=1)
+        status = BehaviorAttendanceStatus(
+            configuration=config,
+            key="present",
+            label="Present",
+            polarity="positive",
+            points=1,
+        )
+        day = BehaviorAttendanceDay(
+            configuration=config,
+            weekday=0,
+            label="Monday",
+        )
+        marked_exam = Exam(
+            name="Marked Exam",
+            academic_year_id=self.target_id,
+            is_final_evaluation=False,
+        )
+        marking = ExamMarkingConfiguration(
+            academic_year_id=self.target_id,
+            academic_year_level_id=self.target_level.id,
+            exam=marked_exam,
+            default_full_marks=100,
+        )
+        db.session.add_all([
+            config,
+            session,
+            category,
+            subcategory,
+            action,
+            choice,
+            status,
+            day,
+            marked_exam,
+            marking,
+        ])
+        db.session.flush()
+        attendance = BehaviorAttendanceRecord(
+            student_id=self.student_id,
+            student_enrollment_id=self.source_enrollment_id,
+            behavior_configuration_id=config.id,
+            behavior_session_id=session.id,
+            academic_year_id=self.target_id,
+            academic_year_level_id=self.target_level.id,
+            academic_year_class_id=self.target_class.id,
+            attendance_date=date(2025, 9, 1),
+            status_id=status.id,
+            status_key_snapshot="present",
+            status_label_snapshot="Present",
+            polarity="positive",
+            points_applied=1,
+        )
+        event = BehaviorEvent(
+            student_id=self.student_id,
+            student_enrollment_id=self.source_enrollment_id,
+            behavior_configuration_id=config.id,
+            behavior_session_id=session.id,
+            behavior_category_id=category.id,
+            behavior_action_id=action.id,
+            polarity="positive",
+            points_applied=1,
+            category_name_snapshot=category.name,
+            action_name_snapshot=action.name,
+            action_level_snapshot=1,
+            session_label_snapshot=session.session_label,
+        )
+        db.session.add_all([attendance, event])
+        db.session.commit()
+
+        report = scan_academic_year(self.target_id)
+        categories = {item["category"]: item["count"] for item in report["dependencies"]}
+        self.assertEqual(categories["Behavior configurations"], 1)
+        self.assertEqual(categories["Behavior sessions"], 1)
+        self.assertEqual(categories["Behavior categories"], 1)
+        self.assertEqual(categories["Behavior sub-categories"], 1)
+        self.assertEqual(categories["Behavior actions"], 1)
+        self.assertEqual(categories["Behavior action choices"], 1)
+        self.assertEqual(categories["Behavior events"], 1)
+        self.assertEqual(categories["Behavior attendance statuses"], 1)
+        self.assertEqual(categories["Behavior attendance days"], 1)
+        self.assertEqual(categories["Behavior attendance records"], 1)
+        self.assertEqual(categories["Exam marking configurations"], 1)
+        self.assertFalse(report["unsupported_direct_dependencies"])
+        self.assertTrue(report["eligible"])
+
+        purge_academic_year(self.target_id)
+        db.session.commit()
+
+        self.assertEqual(BehaviorConfiguration.query.count(), 0)
+        self.assertEqual(BehaviorSession.query.count(), 0)
+        self.assertEqual(BehaviorCategory.query.count(), 0)
+        self.assertEqual(BehaviorSubCategory.query.count(), 0)
+        self.assertEqual(BehaviorAction.query.count(), 0)
+        self.assertEqual(BehaviorActionChoice.query.count(), 0)
+        self.assertEqual(BehaviorEvent.query.count(), 0)
+        self.assertEqual(BehaviorAttendanceStatus.query.count(), 0)
+        self.assertEqual(BehaviorAttendanceDay.query.count(), 0)
+        self.assertEqual(BehaviorAttendanceRecord.query.count(), 0)
+        self.assertEqual(ExamMarkingConfiguration.query.count(), 0)
+
     def test_purge_deletes_student_owned_only_by_archived_year(self):
         orphan = Student(
             student_code="PURGE-ONLY-001",
@@ -257,6 +399,25 @@ class TestHugeForceDelete(unittest.TestCase):
         })
         self.assertEqual(wrong_password.status_code, 400)
         self.assertIsNotNone(db.session.get(AcademicYear, self.target_id))
+
+    def test_http_huge_force_delete_completes_for_archived_year(self):
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin_id)
+            session["_fresh"] = True
+            session["config_center_authenticated"] = True
+
+        endpoint = f"/admin/config-center/api/academic-years/{self.target_id}/huge-force-delete"
+        response = client.post(endpoint, json={
+            "acknowledged": True,
+            "confirmation": "HUGE FORCE DELETE",
+            "password": "Correct-Purge-Password",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["success"])
+        self.assertIsNone(db.session.get(AcademicYear, self.target_id))
 
 
 if __name__ == "__main__":

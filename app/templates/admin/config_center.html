@@ -617,13 +617,18 @@ function escapePurgeText(value) {
 
 function openHugeForceDelete(itemType, itemId) {
   hugeForceDeleteTarget = { itemType, itemId };
+  const reportElement = document.getElementById('hugeForceDeleteReport');
+  reportElement.innerHTML = '<p class="config-muted">Scanning all linked records...</p>';
+  document.getElementById('hugeForceDeleteSubmit').disabled = true;
   fetch(`/admin/config-center/api/${itemType}/${itemId}/huge-force-delete/scan`)
-    .then(response => response.json())
-    .then(data => {
-      if (!data.success) {
-        showNotification('error', 'Dependency Scan Failed', data.message || 'Could not scan this record.');
-        return;
+    .then(async response => {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Could not scan this record.');
       }
+      return data;
+    })
+    .then(data => {
       const report = data.report || {};
       const dependencyRows = (report.dependencies || []).map(item => `
         <div class="config-purge-report-row ${item.retained ? 'retained' : ''}">
@@ -636,7 +641,8 @@ function openHugeForceDelete(itemType, itemId) {
         <div class="config-purge-summary"><span>Records to purge</span><strong>${Number(report.total_affected_records || 0).toLocaleString()}</strong></div>
         <div class="config-purge-summary"><span>Student identities retained</span><strong>${Number(report.retained_student_identities || 0).toLocaleString()}</strong></div>
         <div class="config-purge-report-list">${dependencyRows || '<p class="config-muted">No dependent records found.</p>'}</div>
-        ${unsupported ? '<p class="config-dependency-note">All linked records are included in this dependency-aware purge. They are not blockers.</p>' : ''}`;
+        ${unsupported ? `<p class="config-purge-blocked">Unsupported direct dependencies block this purge: ${escapePurgeText((report.unsupported_direct_dependencies || []).map(item => `${item.table}.${item.column} (${item.count})`).join(', '))}</p>` : ''}
+        ${(report.schema_issues || []).map(issue => `<p class="config-purge-blocked">${escapePurgeText(issue)}</p>`).join('')}`;
       document.getElementById('hugeForceDeleteAcknowledgement').checked = false;
       document.getElementById('hugeForceDeletePhrase').value = '';
       document.getElementById('hugeForceDeletePassword').value = '';
@@ -644,7 +650,7 @@ function openHugeForceDelete(itemType, itemId) {
       document.getElementById('hugeForceDeleteModal').classList.add('show');
       updateHugeForceDeleteButton();
     })
-    .catch(() => showNotification('error', 'Error', 'Could not scan this archived record.'));
+    .catch(error => showNotification('error', 'Dependency Scan Failed', error.message || 'Could not scan this archived record.'));
 }
 
 function updateHugeForceDeleteButton() {

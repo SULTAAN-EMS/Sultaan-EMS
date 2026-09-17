@@ -9,13 +9,29 @@ no global grade fallback can leak into Behavior reports.
 from decimal import Decimal, InvalidOperation
 import logging
 
+from sqlalchemy import event
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import object_session
 
 from . import db
 from .models import BehaviorConfiguration, BehaviorGradeScale, BehaviorSession
 
 
 logger = logging.getLogger(__name__)
+
+
+def _invalidate_behavior_grade_cache(_mapper, _connection, target):
+    session = object_session(target)
+    if session is not None:
+        session.info.pop("_behavior_grade_scales_cache", None)
+
+
+for _grade_scale_event in ("after_insert", "after_update", "after_delete"):
+    event.listen(
+        BehaviorGradeScale,
+        _grade_scale_event,
+        _invalidate_behavior_grade_cache,
+    )
 
 
 class BehaviorGradeValidationError(ValueError):
