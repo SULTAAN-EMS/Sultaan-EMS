@@ -415,12 +415,7 @@ def _student_board_rows(config, selected_session, class_id=None):
     rows = []
     for enrollment in _behavior_enrollments(config, class_id):
         score = calculate_session_score(config, selected_session, enrollment)
-        events = BehaviorEvent.query.filter_by(
-            behavior_configuration_id=config.id,
-            behavior_session_id=selected_session.id,
-            student_enrollment_id=enrollment.id,
-            status="active",
-        ).all()
+        events = score.get("_active_events", [])
         rows.append({
             "enrollment": enrollment,
             "score": score,

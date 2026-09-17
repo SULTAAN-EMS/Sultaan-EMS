@@ -217,11 +217,23 @@ def validate_behavior_scope(academic_year_id, academic_year_level_id, academic_y
 def validate_behavior_configuration(configuration):
     if not configuration:
         raise BehaviorValidationError("Behavior configuration was not found")
-    validate_behavior_scope(
+    # A dashboard evaluates the same configuration for every student. Keep
+    # the exact-scope check once per request so a long class does not issue
+    # the same three database lookups repeatedly.
+    cache = db.session.info.setdefault("_behavior_validated_configuration_scopes", set())
+    cache_key = (
+        configuration.id,
         configuration.academic_year_id,
         configuration.academic_year_level_id,
         configuration.academic_year_subject_id,
     )
+    if cache_key not in cache:
+        validate_behavior_scope(
+            configuration.academic_year_id,
+            configuration.academic_year_level_id,
+            configuration.academic_year_subject_id,
+        )
+        cache.add(cache_key)
     return configuration
 
 
@@ -651,17 +663,18 @@ def attendance_points_projection(records):
     }
 
 
-def attendance_score_projection(configuration, session, enrollment):
+def attendance_score_projection(configuration, session, enrollment, *, _validated=False):
     """Calculate direct configured Attendance points for one session/student.
 
     This is the sole Attendance scoring implementation. Saved status points
     are summed directly and clamped to the single Attendance allocation. No
     period, day, opportunity, ratio, or allocation-half normalization applies.
     """
-    configuration = validate_behavior_configuration(configuration)
-    enrollment = validate_enrollment_scope(
-        configuration, enrollment.id if hasattr(enrollment, "id") else enrollment
-    )
+    if not _validated:
+        configuration = validate_behavior_configuration(configuration)
+        enrollment = validate_enrollment_scope(
+            configuration, enrollment.id if hasattr(enrollment, "id") else enrollment
+        )
     if not session or session.behavior_configuration_id != configuration.id:
         raise BehaviorValidationError("Attendance session is outside the selected Behavior configuration")
 
@@ -825,7 +838,11 @@ def calculate_session_score(configuration, session, enrollment):
         Decimal("0.000"),
         min(behavior_allocation, (base + positive_applied - negative_applied).quantize(Decimal("0.001"))),
     )
-    attendance = attendance_score_projection(configuration, session, enrollment)
+    # Both scope checks have already completed above. Avoid repeating them in
+    # the Attendance projection for every student on a dashboard request.
+    attendance = attendance_score_projection(
+        configuration, session, enrollment, _validated=True
+    )
     if legacy_scoring:
         # Preserve the old calculation for sessions created before allocations
         # existed; this avoids silently rewriting historical results.
@@ -893,6 +910,9 @@ def calculate_session_score(configuration, session, enrollment):
         "final": final,
         "maximum": maximum,
         "event_count": len(rows),
+        # Reuse the canonical active rows in dashboard callers instead of
+        # issuing a second identical BehaviorEvent query per student.
+        "_active_events": rows,
     }
     result["ledger"] = scoring_ledger_projection(result)
     return result
