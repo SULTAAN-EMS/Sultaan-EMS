@@ -1358,7 +1358,23 @@ body {
 @media (max-width: 620px) { .config-defaults-form { grid-template-columns: 1fr; } }
 
 /* Final-stage archived purge: intentionally distinct from normal deletion. */
-.config-purge-modal { max-width: 650px; }
+.config-purge-modal {
+  width: min(650px, calc(100vw - 32px));
+  max-width: 650px;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.config-purge-modal .config-modal-header,
+.config-purge-modal .config-modal-footer { flex-shrink: 0; }
+.config-purge-modal .config-modal-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.config-purge-modal .config-modal-footer { background: var(--bg-primary); }
 .config-purge-icon { color: var(--danger-red); margin-right: var(--space-2); }
 .config-purge-warning {
   padding: var(--space-4);
