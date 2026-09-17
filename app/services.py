@@ -1067,7 +1067,79 @@ def grade_for(score, exam_id=None):
     return {"grade": "-", "comment": "", "grade_point": 0.0, "is_pass": False, "badge_color": "#64748b", "text_color": "#ffffff", "background_color": "#f1f5f9", "border_color": "#cbd5e1"}
 
 
-def load_grade_scale_cache(exam_id=None):
+def _configured_exam_full_mark_candidates(exam_id):
+    """Return configured full-mark candidates for an exam in ascending order."""
+    if not exam_id:
+        return []
+
+    return sorted({
+        Decimal(str(value))
+        for (value,) in ExamMarkingConfiguration.query.filter_by(exam_id=exam_id)
+        .with_entities(ExamMarkingConfiguration.default_full_marks)
+        .distinct()
+        .all()
+        if value is not None
+    })
+
+
+def _grade_scale_rows_use_natural_scores(rows, full_marks):
+    """Detect legacy/custom bands entered in the exam's natural score range."""
+    if full_marks is not None:
+        full_marks = Decimal(str(full_marks))
+    if not rows or full_marks is None or full_marks <= 0:
+        return False
+
+    highest_maximum = Decimal("0")
+    for scale in rows:
+        minimum = Decimal(str(scale.min_score or 0))
+        maximum = Decimal(str(scale.max_score or 0))
+        if minimum < 0 or maximum < minimum or maximum > full_marks:
+            return False
+        highest_maximum = max(highest_maximum, maximum)
+
+    # A natural scale must describe the exam's full score.  Without this
+    # guard, a 10-mark scale could be silently interpreted as a natural scale
+    # for a 20-mark exam simply because all of its rows happen to be <= 20.
+    return highest_maximum == full_marks
+
+
+def _grade_scale_cache_rows(rows, full_marks=None):
+    """Build percentage-based cache rows while accepting natural-score bands."""
+    if full_marks is not None:
+        full_marks = Decimal(str(full_marks))
+    natural_scores = _grade_scale_rows_use_natural_scores(rows, full_marks)
+    cached = []
+    for scale in rows:
+        minimum = Decimal(str(scale.min_score or 0))
+        maximum = Decimal(str(scale.max_score or 0))
+        if natural_scores:
+            minimum = minimum / full_marks * Decimal("100")
+            maximum = maximum / full_marks * Decimal("100")
+        cached.append({
+            "min_score": minimum,
+            "max_score": maximum,
+            "payload": grade_scale_payload(scale),
+        })
+    return cached, natural_scores
+
+
+def grade_scale_input_bounds(scale, scales, full_marks=None):
+    """Return Grade Management input bounds in natural marks for one exam."""
+    minimum = Decimal(str(scale.min_score or 0))
+    maximum = Decimal(str(scale.max_score or 0))
+    if full_marks is not None:
+        full_marks = Decimal(str(full_marks))
+    if (
+        full_marks is not None
+        and full_marks > 0
+        and not _grade_scale_rows_use_natural_scores(scales, full_marks)
+    ):
+        minimum = minimum * full_marks / Decimal("100")
+        maximum = maximum * full_marks / Decimal("100")
+    return {"min": minimum, "max": maximum}
+
+
+def load_grade_scale_cache(exam_id=None, full_marks=None):
     """Load active grade scales once for in-memory grade lookup.
 
     Regression fix: legacy production rows may have is_active=NULL when the
@@ -1081,6 +1153,10 @@ def load_grade_scale_cache(exam_id=None):
         GradeScale.is_active.is_(True),
         GradeScale.is_active.is_(None),
     )
+
+    full_mark_candidates = []
+    if full_marks is None:
+        full_mark_candidates = _configured_exam_full_mark_candidates(exam_id)
 
     exam_scales = []
     if exam_id:
@@ -1111,10 +1187,27 @@ def load_grade_scale_cache(exam_id=None):
             .all()
         )
 
+    if full_marks is None:
+        rows_for_basis = exam_scales or global_scales
+        full_marks = next(
+            (
+                candidate
+                for candidate in full_mark_candidates
+                if _grade_scale_rows_use_natural_scores(rows_for_basis, candidate)
+            ),
+            None,
+        )
+        if full_marks is None and len(full_mark_candidates) == 1:
+            full_marks = full_mark_candidates[0]
+
+    exam_rows, exam_natural_scores = _grade_scale_cache_rows(exam_scales, full_marks)
+    global_rows, global_natural_scores = _grade_scale_cache_rows(global_scales, full_marks)
     return {
-        "exam": [grade_scale_cache_row(scale) for scale in exam_scales],
-        "global": [grade_scale_cache_row(scale) for scale in global_scales],
+        "exam": exam_rows,
+        "global": global_rows,
         "fallback": [],
+        "full_marks": full_marks,
+        "natural_score_bands": exam_natural_scores or global_natural_scores,
     }
 
 
@@ -1907,6 +2000,28 @@ def result_payload(student, exam=None, public_only=True):
             .order_by(GradeScale.sort_order.asc(), GradeScale.min_score.desc()).all()
         )
 
+    # Keep the displayed scale in percentage space, matching the value used by
+    # the grade resolver.  Grade Management may store natural-score bands
+    # (for example 7.00-7.49 for a 10-mark exam), but portal/PDF consumers
+    # must receive the same normalized ranges used for grade lookup.
+    normalized_scales = {
+        row["payload"]["id"]: row
+        for bucket in ("exam", "global", "fallback")
+        for row in grade_cache.get(bucket, [])
+    }
+    display_grade_scales = []
+    for scale in result_grade_scales:
+        normalized = normalized_scales.get(scale.id)
+        if normalized:
+            display_scale = dict(normalized["payload"])
+            display_scale["min_score"] = normalized["min_score"]
+            display_scale["max_score"] = normalized["max_score"]
+        else:
+            display_scale = grade_scale_payload(scale)
+            display_scale["min_score"] = Decimal(str(scale.min_score or 0))
+            display_scale["max_score"] = Decimal(str(scale.max_score or 0))
+        display_grade_scales.append(display_scale)
+
     return {
         "student": student,
         "exam": exam or (rows[0].exam if rows else None),
@@ -1916,7 +2031,7 @@ def result_payload(student, exam=None, public_only=True):
         "average": average,
         "status": status,
         "overall_grade": overall,
-        "grade_scales": result_grade_scales,
+        "grade_scales": display_grade_scales,
         "rank": rank,
         "comment": overall.get("comment") or "",
         "settings": settings,
