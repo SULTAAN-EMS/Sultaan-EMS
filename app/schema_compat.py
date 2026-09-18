@@ -216,6 +216,28 @@ def ensure_behavior_foundation_attendance():
             "behavior_attendance_scoring_enabled",
             column_sql(dialect, "behavior_attendance_scoring_enabled", "BOOLEAN NOT NULL DEFAULT TRUE"),
         )
+        # Attendance VOID is additive: existing rows become ACTIVE and retain
+        # their original snapshots; no historical record is rewritten.
+        add_column_if_missing(
+            "behavior_attendance_records",
+            "status",
+            column_sql(dialect, "status", "VARCHAR(10) NOT NULL DEFAULT 'active'"),
+        )
+        add_column_if_missing(
+            "behavior_attendance_records",
+            "voided_by",
+            column_sql(dialect, "voided_by", "INTEGER"),
+        )
+        add_column_if_missing(
+            "behavior_attendance_records",
+            "voided_at",
+            column_sql(dialect, "voided_at", "DATETIME"),
+        )
+        add_column_if_missing(
+            "behavior_attendance_records",
+            "void_reason",
+            column_sql(dialect, "void_reason", "VARCHAR(255)"),
+        )
         for model in (
             BehaviorSubCategory,
             BehaviorActionChoice,
@@ -226,6 +248,8 @@ def ensure_behavior_foundation_attendance():
             model.__table__.create(bind=db.engine, checkfirst=True)
         add_index_if_missing("behavior_actions", "ix_behavior_actions_behavior_subcategory_id", ["behavior_subcategory_id"])
         add_index_if_missing("behavior_events", "ix_behavior_events_behavior_action_choice_id", ["behavior_action_choice_id"])
+        add_index_if_missing("behavior_attendance_records", "ix_behavior_attendance_records_status", ["status"])
+        add_index_if_missing("behavior_attendance_records", "ix_behavior_attendance_records_voided_by", ["voided_by"])
     except Exception as exc:
         db.session.rollback()
         print(f"Warning: Behavior Phase 1 schema sync failed: {exc}")

@@ -42,6 +42,9 @@ from .behavior_service import (
     validate_behavior_scope,
     validate_session_scope,
     void_event,
+    void_attendance_record,
+    restore_attendance_record,
+    delete_attendance_record,
 )
 from .behavior_grading import (
     BehaviorGradeValidationError,
@@ -74,6 +77,7 @@ from .models import (
     BehaviorEvent,
     BehaviorAttendanceDay,
     BehaviorAttendanceRecord,
+    BehaviorAttendanceDeletion,
     BehaviorAttendanceStatus,
     BehaviorGradeScale,
     BehaviorSession,
@@ -2342,7 +2346,22 @@ def attendance():
                     config,
                     context["selected_class"].id if context["selected_class"] else None,
                 )
+                existing_voided_ids = {
+                    item.student_enrollment_id
+                    for item in BehaviorAttendanceRecord.query.filter(
+                        BehaviorAttendanceRecord.behavior_configuration_id == config.id,
+                        BehaviorAttendanceRecord.behavior_session_id == selected_session.id,
+                        BehaviorAttendanceRecord.attendance_date == attendance_date,
+                        BehaviorAttendanceRecord.status == "voided",
+                        BehaviorAttendanceRecord.student_enrollment_id.in_([item.id for item in enrollments]),
+                    ).all()
+                }
+                saved_count = 0
                 for enrollment in enrollments:
+                    # A VOIDED row is an immutable audit record.  Do not let a
+                    # roster-wide save silently reactivate or edit it.
+                    if enrollment.id in existing_voided_ids:
+                        continue
                     status_id = _int(request.form.get(f"status_{enrollment.id}"))
                     arrival_time = _parse_time(request.form.get(f"arrival_time_{enrollment.id}"))
                     school_start_time = getattr(config, "school_start_time", None) or current_app.config.get("SCHOOL_START_TIME")
@@ -2358,9 +2377,17 @@ def attendance():
                         arrival_time=arrival_time,
                         late_by_minutes=_late_by_minutes(arrival_time, school_start_time),
                     )
-                audit("Behavior Attendance", f"Saved attendance for {len(enrollments)} enrollment(s) in configuration {config.id}")
+                    saved_count += 1
+                audit("Behavior Attendance", f"Saved attendance for {saved_count} enrollment(s) in configuration {config.id}")
                 db.session.commit()
-                flash(f"Attendance saved for {len(enrollments)} student(s).", "success")
+                if existing_voided_ids:
+                    flash(
+                        f"Attendance saved for {saved_count} student(s). "
+                        f"{len(existing_voided_ids)} voided record(s) remained unchanged.",
+                        "success",
+                    )
+                else:
+                    flash(f"Attendance saved for {saved_count} student(s).", "success")
             elif action == "save_status":
                 key = (request.form.get("key") or "").strip().lower().replace(" ", "_")
                 label = (request.form.get("label") or "").strip()
@@ -2461,6 +2488,54 @@ def attendance():
                 ),
                 "status": attendance_status_label(key, item.status_label_snapshot),
                 "status_key": key,
+                "record_id": item.id,
+                "record_status": item.status or "active",
+                "void_reason": item.void_reason or "",
+                "voided_by": item.voider.username if item.voider else "",
+                "voided_at": item.voided_at.isoformat() if item.voided_at else "",
+                "edit_url": url_for(
+                    "behavior.attendance",
+                    config_id=config.id,
+                    session_id=selected_session.id,
+                    class_id=item.academic_year_class_id,
+                    attendance_date=item.attendance_date.isoformat(),
+                ),
+                "void_url": url_for("behavior.void_attendance", record_id=item.id),
+                "restore_url": url_for("behavior.restore_attendance", record_id=item.id),
+                "delete_url": url_for("behavior.delete_attendance", record_id=item.id),
+                "arrival_time": item.arrival_time.strftime("%I:%M %p").lstrip("0") if item.arrival_time else "",
+                "attendance_time": item.attendance_time.strftime("%I:%M %p").lstrip("0") if item.attendance_time else "",
+                "late_by_minutes": item.late_by_minutes,
+                "points": str(item.points_applied or 0),
+                "polarity": item.polarity,
+                "note": item.note or "",
+            })
+        deleted_records = BehaviorAttendanceDeletion.query.filter(
+            BehaviorAttendanceDeletion.behavior_configuration_id == config.id,
+            BehaviorAttendanceDeletion.behavior_session_id == selected_session.id,
+            BehaviorAttendanceDeletion.student_enrollment_id.in_(enrollment_ids),
+        ).order_by(
+            BehaviorAttendanceDeletion.attendance_date.desc(),
+            BehaviorAttendanceDeletion.deleted_at.desc(),
+        ).all()
+        for item in deleted_records:
+            record_rows.append({
+                "date": item.attendance_date.isoformat(),
+                "date_display": item.attendance_date.strftime("%B %d, %Y"),
+                "student": item.student_name,
+                "mother": item.mother_name or "-",
+                "student_code": item.student_code,
+                "class_name": item.class_name or "-",
+                "photo_path": "",
+                "photo_url": "",
+                "status": item.status_label,
+                "status_key": item.status_key,
+                "record_id": item.original_record_id,
+                "record_status": "deleted",
+                "void_reason": item.void_reason or "",
+                "deletion_reason": item.deletion_reason,
+                "deleted_by": item.deleted_by_username,
+                "deleted_at": item.deleted_at.isoformat() if item.deleted_at else "",
                 "arrival_time": item.arrival_time.strftime("%I:%M %p").lstrip("0") if item.arrival_time else "",
                 "attendance_time": item.attendance_time.strftime("%I:%M %p").lstrip("0") if item.attendance_time else "",
                 "late_by_minutes": item.late_by_minutes,
@@ -2469,15 +2544,20 @@ def attendance():
                 "note": item.note or "",
             })
         for item in records.values():
+            if (item.status or "active") != "active":
+                continue
             key = (item.status_key_snapshot or "").strip().lower() or "unknown"
             overview_counts[key] += 1
         for enrollment in enrollments:
             scoped_records = history_by_enrollment.get(enrollment.id, [])
+            active_scoped_records = [
+                item for item in scoped_records if (item.status or "active") == "active"
+            ]
             counts = defaultdict(int)
-            for item in scoped_records:
+            for item in active_scoped_records:
                 key = (item.status_key_snapshot or "").strip().lower() or "unknown"
                 counts[key] += 1
-            total = len(scoped_records)
+            total = len(active_scoped_records)
             attended = counts["present"] + counts["late"]
             profile_points = attendance_points_projection(scoped_records)
             canonical_score = calculate_session_score(config, selected_session, enrollment)
@@ -2511,6 +2591,8 @@ def attendance():
                             (item.status_key_snapshot or "").strip().lower(),
                             item.status_label_snapshot,
                         ),
+                        "record_status": item.status or "active",
+                        "void_reason": item.void_reason or "",
                         "arrival_time": item.arrival_time.strftime("%I:%M %p").lstrip("0") if item.arrival_time else "",
                         "late_by_minutes": item.late_by_minutes,
                         "note": item.note or "-",
@@ -2520,7 +2602,10 @@ def attendance():
             }
     repeat_alerts = []
     for enrollment in enrollments:
-        scoped_records = history_by_enrollment.get(enrollment.id, [])
+        scoped_records = [
+            item for item in history_by_enrollment.get(enrollment.id, [])
+            if (item.status or "active") == "active"
+        ]
         absent_count = sum(1 for item in scoped_records if (item.status_key_snapshot or "").lower() == "absent")
         late_count = sum(1 for item in scoped_records if (item.status_key_snapshot or "").lower() == "late")
         if absent_count >= 2 or late_count >= 2:
@@ -2562,6 +2647,100 @@ def attendance():
     )
 
 
+@behavior_bp.route("/attendance/records/<int:record_id>/void", methods=["POST"])
+def void_attendance(record_id):
+    """Void one Attendance row while retaining its complete audit history."""
+    record = db.session.get(BehaviorAttendanceRecord, record_id)
+    try:
+        if not record:
+            raise BehaviorValidationError("Attendance record was not found")
+        void_attendance_record(record, current_user.id, request.form.get("reason"))
+        audit(
+            "Behavior Attendance",
+            f"Voided Attendance record {record.id}; reason={record.void_reason!r}",
+        )
+        db.session.commit()
+        flash("Attendance record voided and retained in history.", "success")
+    except BehaviorValidationError as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    except IntegrityError:
+        db.session.rollback()
+        flash("The Attendance record could not be voided because of a data conflict.", "danger")
+    return redirect(url_for(
+        "behavior.attendance",
+        config_id=record.behavior_configuration_id if record else request.form.get("config_id"),
+        session_id=record.behavior_session_id if record else request.form.get("session_id"),
+        attendance_date=record.attendance_date.isoformat() if record else request.form.get("attendance_date"),
+        attendance_view="records",
+    ))
+
+
+@behavior_bp.route("/attendance/records/<int:record_id>/restore", methods=["POST"])
+def restore_attendance(record_id):
+    """Restore a voided Attendance row only through an explicit action."""
+    record = db.session.get(BehaviorAttendanceRecord, record_id)
+    try:
+        if not record:
+            raise BehaviorValidationError("Attendance record was not found")
+        restore_attendance_record(record)
+        audit("Behavior Attendance", f"Restored Attendance record {record.id}")
+        db.session.commit()
+        flash("Attendance record restored and included in current scoring.", "success")
+    except BehaviorValidationError as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    except IntegrityError:
+        db.session.rollback()
+        flash("The Attendance record could not be restored because of a data conflict.", "danger")
+    return redirect(url_for(
+        "behavior.attendance",
+        config_id=record.behavior_configuration_id if record else request.form.get("config_id"),
+        session_id=record.behavior_session_id if record else request.form.get("session_id"),
+        attendance_date=record.attendance_date.isoformat() if record else request.form.get("attendance_date"),
+        attendance_view="records",
+    ))
+
+
+@behavior_bp.route("/attendance/records/<int:record_id>/delete", methods=["POST"])
+def delete_attendance(record_id):
+    """Hard-delete an Attendance row after explicit confirmation.
+
+    A separate deletion snapshot is retained for read-only Deleted filtering;
+    it is never returned to scoring, portal, history, or reports.
+    """
+    record = db.session.get(BehaviorAttendanceRecord, record_id)
+    config_id = record.behavior_configuration_id if record else request.form.get("config_id")
+    session_id = record.behavior_session_id if record else request.form.get("session_id")
+    attendance_date = record.attendance_date.isoformat() if record else request.form.get("attendance_date")
+    try:
+        if not record:
+            raise BehaviorValidationError("Attendance record was not found")
+        if request.form.get("confirmation", "").strip() != "DELETE ATTENDANCE RECORD":
+            raise BehaviorValidationError("Type DELETE ATTENDANCE RECORD to confirm permanent deletion")
+        deletion = delete_attendance_record(record, current_user, request.form.get("reason"))
+        audit(
+            "Behavior Attendance Deleted",
+            f"Hard-deleted Attendance record {deletion.original_record_id}; "
+            f"student={deletion.student_code}; reason={deletion.deletion_reason!r}",
+        )
+        db.session.commit()
+        flash("Attendance record permanently deleted. A read-only deletion snapshot was retained.", "success")
+    except BehaviorValidationError as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    except IntegrityError:
+        db.session.rollback()
+        flash("The Attendance record could not be permanently deleted; no partial change was committed.", "danger")
+    return redirect(url_for(
+        "behavior.attendance",
+        config_id=config_id,
+        session_id=session_id,
+        attendance_date=attendance_date,
+        attendance_view="records",
+    ))
+
+
 @behavior_bp.route("/attendance/students/<int:enrollment_id>/report")
 def attendance_report(enrollment_id):
     """Render one A4 Attendance page for every month in the selected session."""
@@ -2593,6 +2772,7 @@ def attendance_report(enrollment_id):
         BehaviorAttendanceRecord.student_enrollment_id == enrollment.id,
         BehaviorAttendanceRecord.behavior_configuration_id == config.id,
         BehaviorAttendanceRecord.behavior_session_id == selected_session.id,
+        BehaviorAttendanceRecord.status == "active",
     ).order_by(BehaviorAttendanceRecord.attendance_date).all()
     try:
         canonical_score = calculate_session_score(config, selected_session, enrollment)

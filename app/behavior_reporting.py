@@ -409,6 +409,7 @@ def get_behavior_report_data(student, exam):
             .filter_by(
                 behavior_configuration_id=configuration.id,
                 student_enrollment_id=enrollment.id,
+                status="active",
             )
             .order_by(BehaviorAttendanceRecord.attendance_date.asc(), BehaviorAttendanceRecord.id.asc())
             .all()

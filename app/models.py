@@ -753,7 +753,7 @@ class BehaviorAttendanceStatus(TimestampMixin, db.Model):
     is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
 
     configuration = db.relationship("BehaviorConfiguration", back_populates="attendance_statuses")
-    records = db.relationship("BehaviorAttendanceRecord", back_populates="status")
+    records = db.relationship("BehaviorAttendanceRecord", back_populates="attendance_status")
 
     __table_args__ = (
         UniqueConstraint(
@@ -807,6 +807,8 @@ class BehaviorAttendanceRecord(TimestampMixin, db.Model):
     """One daily Attendance mark for one enrollment and Behavior session."""
 
     __tablename__ = "behavior_attendance_records"
+
+    STATUS_VALUES = ("active", "voided")
 
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(
@@ -867,6 +869,10 @@ class BehaviorAttendanceRecord(TimestampMixin, db.Model):
     points_applied = db.Column(db.Numeric(8, 3), nullable=False, default=0)
     note = db.Column(db.String(255), nullable=True)
     marked_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status = db.Column(db.String(10), nullable=False, default="active", index=True)
+    voided_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    voided_at = db.Column(db.DateTime, nullable=True)
+    void_reason = db.Column(db.String(255), nullable=True)
 
     student = db.relationship("Student")
     student_enrollment = db.relationship("StudentEnrollment")
@@ -875,8 +881,9 @@ class BehaviorAttendanceRecord(TimestampMixin, db.Model):
     academic_year = db.relationship("AcademicYear")
     academic_year_level = db.relationship("AcademicYearLevel")
     academic_year_class = db.relationship("AcademicYearClass")
-    status = db.relationship("BehaviorAttendanceStatus", back_populates="records")
-    marked_by = db.relationship("User")
+    attendance_status = db.relationship("BehaviorAttendanceStatus", back_populates="records")
+    marked_by = db.relationship("User", foreign_keys=[marked_by_id])
+    voider = db.relationship("User", foreign_keys=[voided_by])
 
     __table_args__ = (
         UniqueConstraint(
@@ -893,7 +900,51 @@ class BehaviorAttendanceRecord(TimestampMixin, db.Model):
             "points_applied >= 0",
             name="ck_behavior_attendance_record_points_nonnegative",
         ),
+        db.CheckConstraint(
+            "status IN ('active', 'voided')",
+            name="ck_behavior_attendance_record_status",
+        ),
     )
+
+
+class BehaviorAttendanceDeletion(db.Model):
+    """Read-only tombstone for a permanently deleted Attendance record.
+
+    The source Attendance row is hard-deleted and can no longer affect any
+    score or operational view. This independent snapshot exists only so an
+    authorised administrator can review what was removed.
+    """
+
+    __tablename__ = "behavior_attendance_deletions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    original_record_id = db.Column(db.Integer, nullable=False, index=True)
+    student_id = db.Column(db.Integer, nullable=True, index=True)
+    student_enrollment_id = db.Column(db.Integer, nullable=True, index=True)
+    behavior_configuration_id = db.Column(db.Integer, nullable=True, index=True)
+    behavior_session_id = db.Column(db.Integer, nullable=True, index=True)
+    academic_year_id = db.Column(db.Integer, nullable=True, index=True)
+    academic_year_level_id = db.Column(db.Integer, nullable=True, index=True)
+    academic_year_class_id = db.Column(db.Integer, nullable=True, index=True)
+    student_name = db.Column(db.String(180), nullable=False)
+    student_code = db.Column(db.String(80), nullable=False)
+    mother_name = db.Column(db.String(180), nullable=True)
+    class_name = db.Column(db.String(120), nullable=True)
+    session_label = db.Column(db.String(120), nullable=True)
+    attendance_date = db.Column(db.Date, nullable=False, index=True)
+    attendance_time = db.Column(db.Time, nullable=True)
+    arrival_time = db.Column(db.Time, nullable=True)
+    late_by_minutes = db.Column(db.Integer, nullable=True)
+    status_key = db.Column(db.String(40), nullable=False)
+    status_label = db.Column(db.String(120), nullable=False)
+    original_status = db.Column(db.String(10), nullable=False)
+    polarity = db.Column(db.String(10), nullable=False)
+    points_applied = db.Column(db.Numeric(8, 3), nullable=False, default=0)
+    note = db.Column(db.String(255), nullable=True)
+    void_reason = db.Column(db.String(255), nullable=True)
+    deletion_reason = db.Column(db.String(255), nullable=False)
+    deleted_by_username = db.Column(db.String(80), nullable=False)
+    deleted_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
 class ExamMarkingConfiguration(TimestampMixin, db.Model):

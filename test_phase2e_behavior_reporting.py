@@ -1245,6 +1245,64 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         self.assertEqual(projection["signed_total"], Decimal("-1.500"))
         self.assertEqual(projection["record_count"], 4)
 
+    def test_negative_only_attendance_report_uses_allocation_baseline(self):
+        self.session_one.maximum_score = 20
+        self.session_one.behavior_allocation = Decimal("15.000")
+        self.session_one.attendance_allocation = Decimal("5.000")
+        ensure_attendance_defaults(self.configuration)
+        late = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.configuration.id,
+            key="late",
+        ).one()
+        absent = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.configuration.id,
+            key="absent",
+        ).one()
+        mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            late.id,
+            date(2026, 9, 1),
+            arrival_time="08:15",
+        )
+        mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            absent.id,
+            date(2026, 9, 2),
+        )
+        db.session.commit()
+
+        score = calculate_session_score(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+        )
+        self.assertEqual(score["attendance_positive_points"], Decimal("0.000"))
+        self.assertEqual(score["attendance_negative_points"], Decimal("1.500"))
+        self.assertEqual(score["attendance_score"], Decimal("3.500"))
+        self.assertEqual(score["ledger"]["attendance"]["earned_score"], Decimal("3.500"))
+
+        response = self._client_as_admin().get(
+            "/admin/behavior/attendance/students/%s/report"
+            "?year_id=%s&level_id=%s&config_id=%s&session_id=%s&attendance_date=2026-09-02"
+            % (
+                self.enrollment.id,
+                self.year_one.id,
+                self.year_level_one.id,
+                self.configuration.id,
+                self.session_one.id,
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        grand_card = re.search(r'class="t-card grand".*?</div></div>', body, re.S)
+        self.assertIsNotNone(grand_card)
+        self.assertIn("3.50 / 5.00", grand_card.group(0))
+        self.assertNotIn("0.00 / 5.00", grand_card.group(0))
+
     def test_late_is_canonical_negative_for_new_and_legacy_rows(self):
         ensure_attendance_defaults(self.configuration)
         late = BehaviorAttendanceStatus.query.filter_by(

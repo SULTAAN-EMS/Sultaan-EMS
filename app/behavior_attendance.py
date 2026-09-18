@@ -286,6 +286,10 @@ def mark_attendance(
         behavior_session_id=session.id,
         attendance_date=attendance_date,
     ).first()
+    if item and item.status == "voided":
+        raise BehaviorValidationError(
+            "This Attendance record is voided and immutable. Restore it before editing."
+        )
     normalized_arrival_time = _coerce_time(arrival_time) if status_key == "late" else None
     if status_key == "late" and normalized_arrival_time is None:
         raise BehaviorValidationError("Arrival time is required when status is Late")

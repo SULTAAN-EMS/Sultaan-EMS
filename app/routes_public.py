@@ -422,6 +422,7 @@ def _render_portal_behavior_report(
                 student_enrollment_id=enrollment.id,
                 behavior_configuration_id=config_id,
                 behavior_session_id=session_id,
+                status="active",
             )
             .with_entities(BehaviorAttendanceRecord.attendance_date)
             .order_by(BehaviorAttendanceRecord.attendance_date)

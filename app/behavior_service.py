@@ -17,6 +17,7 @@ from .models import (
     BehaviorAction,
     BehaviorAttendanceStatus,
     BehaviorAttendanceRecord,
+    BehaviorAttendanceDeletion,
     BehaviorAttendanceDay,
     BehaviorCategory,
     BehaviorConfiguration,
@@ -627,6 +628,11 @@ def attendance_points_projection(records):
     negative = Decimal("0.000")
     record_count = 0
     for row in records or ():
+        # VOID is an audit state, never a scoring state.  Keep the row in the
+        # caller's history collection, but exclude it before any identity or
+        # polarity aggregation can count it.
+        if (getattr(row, "status", "active") or "active").strip().lower() == "voided":
+            continue
         enrollment_id = getattr(row, "student_enrollment_id", None)
         session_id = getattr(row, "behavior_session_id", None)
         attendance_date = getattr(row, "attendance_date", None)
@@ -674,8 +680,12 @@ def attendance_score_projection(
     """Calculate direct configured Attendance points for one session/student.
 
     This is the sole Attendance scoring implementation. Saved status points
-    are summed directly and clamped to the single Attendance allocation. No
-    period, day, opportunity, ratio, or allocation-half normalization applies.
+    are summed directly and clamped to the single Attendance allocation. When
+    a student has only negative evidence, the allocation is the starting
+    baseline and those deductions reduce it (for example, 5.00 - 1.50 =
+    3.50). Positive evidence keeps the existing direct net-point behavior,
+    while neutral-only evidence contributes zero. No period, day,
+    opportunity, ratio, or allocation-half normalization applies.
     """
     if not _validated:
         configuration = validate_behavior_configuration(configuration)
@@ -712,7 +722,8 @@ def attendance_score_projection(
         rows = list(attendance_records)
     canonical_rows = [
         row for row in rows
-        if (row.status_key_snapshot or "").strip().lower() in CANONICAL_ATTENDANCE_STATUS_KEYS
+        if (getattr(row, "status", "active") or "active").strip().lower() != "voided"
+        and (row.status_key_snapshot or "").strip().lower() in CANONICAL_ATTENDANCE_STATUS_KEYS
     ]
     point_projection = attendance_points_projection(canonical_rows)
     policy = attendance_policy_for_session(session)
@@ -754,7 +765,13 @@ def attendance_score_projection(
     negative_evidence = point_projection["negative_points"]
     positive_applied = positive_evidence
     negative_applied = negative_evidence
-    configured_total = (positive_evidence - negative_evidence).quantize(Decimal("0.001"))
+    # A negative-only attendance history represents deductions from the
+    # configured maximum. Without this baseline, a student with only Late or
+    # Absent rows incorrectly receives 0.00 instead of allocation - penalty.
+    if positive_evidence == 0 and negative_evidence > 0:
+        configured_total = (allocation - negative_evidence).quantize(Decimal("0.001"))
+    else:
+        configured_total = (positive_evidence - negative_evidence).quantize(Decimal("0.001"))
     score = _clamp_decimal(configured_total, Decimal("0.000"), allocation)
     status = "VALID_BASELINE" if not counted_rows else "VALID"
     return {
@@ -1408,6 +1425,72 @@ def restore_event(event):
     event.voided_at = None
     event.void_reason = None
     return event
+
+
+def void_attendance_record(record, voided_by, reason):
+    """Void one Attendance row without deleting its immutable evidence."""
+    if not record or record.status != "active":
+        raise BehaviorValidationError("Only an active Attendance record can be voided")
+    reason = (reason or "").strip()
+    if not reason:
+        raise BehaviorValidationError("A reason is required when voiding an Attendance record")
+    record.status = "voided"
+    record.voided_by = voided_by
+    record.voided_at = datetime.utcnow()
+    record.void_reason = reason
+    return record
+
+
+def restore_attendance_record(record):
+    """Restore a voided row explicitly, preserving its original snapshot."""
+    if not record or record.status != "voided":
+        raise BehaviorValidationError("Only a voided Attendance record can be restored")
+    record.status = "active"
+    record.voided_by = None
+    record.voided_at = None
+    record.void_reason = None
+    return record
+
+
+def delete_attendance_record(record, deleted_by, reason):
+    """Hard-delete an Attendance row after saving a read-only tombstone."""
+    if not record:
+        raise BehaviorValidationError("Attendance record was not found")
+    reason = (reason or "").strip()
+    if not reason:
+        raise BehaviorValidationError("A reason is required when deleting an Attendance record")
+    student = record.student
+    deletion = BehaviorAttendanceDeletion(
+        original_record_id=record.id,
+        student_id=record.student_id,
+        student_enrollment_id=record.student_enrollment_id,
+        behavior_configuration_id=record.behavior_configuration_id,
+        behavior_session_id=record.behavior_session_id,
+        academic_year_id=record.academic_year_id,
+        academic_year_level_id=record.academic_year_level_id,
+        academic_year_class_id=record.academic_year_class_id,
+        student_name=student.full_name if student else "Unknown student",
+        student_code=student.student_code if student else "-",
+        mother_name=student.mother_name if student else None,
+        class_name=record.academic_year_class.name if record.academic_year_class else None,
+        session_label=record.session.session_label if record.session else None,
+        attendance_date=record.attendance_date,
+        attendance_time=record.attendance_time,
+        arrival_time=record.arrival_time,
+        late_by_minutes=record.late_by_minutes,
+        status_key=record.status_key_snapshot,
+        status_label=record.status_label_snapshot,
+        original_status=record.status or "active",
+        polarity=record.polarity,
+        points_applied=record.points_applied or 0,
+        note=record.note,
+        void_reason=record.void_reason,
+        deletion_reason=reason,
+        deleted_by_username=getattr(deleted_by, "username", None) or str(deleted_by),
+    )
+    db.session.add(deletion)
+    db.session.delete(record)
+    return deletion
 
 
 def behavior_summary(configuration):

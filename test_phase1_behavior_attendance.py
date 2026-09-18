@@ -14,7 +14,15 @@ from app.behavior_attendance import (
     generate_daily_roster,
     mark_attendance,
 )
-from app.behavior_service import BehaviorValidationError, calculate_session_score, record_event
+from app.behavior_service import (
+    BehaviorValidationError,
+    attendance_points_projection,
+    attendance_score_projection,
+    calculate_session_score,
+    record_event,
+    restore_attendance_record,
+    void_attendance_record,
+)
 from app.models import (
     AcademicYear,
     AcademicYearClass,
@@ -25,6 +33,7 @@ from app.models import (
     BehaviorCategory,
     BehaviorConfiguration,
     BehaviorAttendanceRecord,
+    BehaviorAttendanceDeletion,
     BehaviorEvent,
     BehaviorSession,
     ExamType,
@@ -184,8 +193,228 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertEqual(subcategory_response.status_code, 200)
         self.assertEqual(taxonomy_response.status_code, 200)
         self.assertIn(b"Behavior Attendance", attendance_response.data)
-        self.assertIn(b"Behavior Sub-categories", subcategory_response.data)
-        self.assertIn(b"Behavior Taxonomy", taxonomy_response.data)
+        self.assertIn(b"Sub-categories", subcategory_response.data)
+        self.assertIn(b"Structure overview", taxonomy_response.data)
+
+    def test_void_is_auditable_excluded_from_scoring_and_duplicate_safe(self):
+        ensure_attendance_defaults(self.config)
+        db.session.commit()
+        self.session.behavior_allocation = Decimal("15.000")
+        self.session.attendance_allocation = Decimal("5.000")
+        db.session.commit()
+        statuses = {item.key: item for item in self.config.attendance_statuses}
+        records = []
+        for index, key in enumerate(("present", "late", "absent", "excused", "official_leave")):
+            records.append(mark_attendance(
+                self.config,
+                self.session,
+                self.enrollment,
+                statuses[key].id,
+                date(2026, 8, 24 + index),
+                marked_by_id=self.admin.id,
+                arrival_time="09:15" if key == "late" else None,
+            ))
+        db.session.commit()
+
+        projection = attendance_points_projection(records + [records[0]])
+        self.assertEqual(projection["positive_points"], Decimal("1.000"))
+        self.assertEqual(projection["negative_points"], Decimal("1.500"))
+        self.assertEqual(projection["record_count"], 5)
+
+        void_attendance_record(records[0], self.admin.id, "Duplicate daily mark")
+        db.session.commit()
+        voided = db.session.get(BehaviorAttendanceRecord, records[0].id)
+        self.assertEqual(voided.status, "voided")
+        self.assertEqual(voided.voided_by, self.admin.id)
+        self.assertEqual(voided.void_reason, "Duplicate daily mark")
+        self.assertIsNotNone(voided.voided_at)
+
+        after_void = attendance_points_projection(BehaviorAttendanceRecord.query.all())
+        self.assertEqual(after_void["positive_points"], Decimal("0.000"))
+        self.assertEqual(after_void["negative_points"], Decimal("1.500"))
+        self.assertEqual(after_void["record_count"], 4)
+        with self.assertRaises(BehaviorValidationError):
+            mark_attendance(
+                self.config,
+                self.session,
+                self.enrollment,
+                statuses["present"].id,
+                records[0].attendance_date,
+                marked_by_id=self.admin.id,
+            )
+
+        restore_attendance_record(voided)
+        db.session.commit()
+        self.assertEqual(db.session.get(BehaviorAttendanceRecord, records[0].id).status, "active")
+        restored = attendance_points_projection(BehaviorAttendanceRecord.query.all())
+        self.assertEqual(restored["positive_points"], Decimal("1.000"))
+        self.assertEqual(restored["negative_points"], Decimal("1.500"))
+
+    def test_void_route_requires_reason_and_keeps_record_in_history(self):
+        self.admin.set_permissions([
+            "behavior.view", "behavior.record", "behavior.configure", "behavior.void",
+        ])
+        db.session.commit()
+        ensure_attendance_defaults(self.config)
+        db.session.commit()
+        present = next(item for item in self.config.attendance_statuses if item.key == "present")
+        record = mark_attendance(
+            self.config, self.session, self.enrollment, present.id,
+            date(2026, 8, 29), marked_by_id=self.admin.id,
+        )
+        db.session.commit()
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+
+        missing_reason = client.post(
+            f"/admin/behavior/attendance/records/{record.id}/void",
+            data={"config_id": self.config.id, "session_id": self.session.id, "reason": ""},
+            follow_redirects=False,
+        )
+        self.assertEqual(missing_reason.status_code, 302)
+        self.assertEqual(db.session.get(BehaviorAttendanceRecord, record.id).status, "active")
+
+        response = client.post(
+            f"/admin/behavior/attendance/records/{record.id}/void",
+            data={"config_id": self.config.id, "session_id": self.session.id, "reason": "Marked on wrong date"},
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302)
+        persisted = db.session.get(BehaviorAttendanceRecord, record.id)
+        self.assertEqual(persisted.status, "voided")
+        self.assertEqual(persisted.void_reason, "Marked on wrong date")
+        records_page = client.get(
+            "/admin/behavior/attendance",
+            query_string={
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+                "attendance_view": "records",
+            },
+        )
+        self.assertEqual(records_page.status_code, 200)
+        self.assertIn(b"Record state", records_page.data)
+        self.assertIn(b"Void Attendance", records_page.data)
+        self.assertIn(b"record_status", records_page.data)
+        self.assertTrue(any(
+            row.action == "Behavior Attendance"
+            and "Voided Attendance record" in (row.details or "")
+            for row in __import__("app.models", fromlist=["AuditLog"]).AuditLog.query.all()
+        ))
+
+    def test_delete_route_hard_deletes_record_and_keeps_read_only_snapshot(self):
+        self.admin.set_permissions([
+            "behavior.view", "behavior.record", "behavior.configure", "behavior.void",
+        ])
+        self.session.maximum_score = Decimal("20.000")
+        self.session.behavior_allocation = Decimal("15.000")
+        self.session.attendance_allocation = Decimal("5.000")
+        db.session.commit()
+        ensure_attendance_defaults(self.config)
+        db.session.commit()
+        present = next(item for item in self.config.attendance_statuses if item.key == "present")
+        record = mark_attendance(
+            self.config, self.session, self.enrollment, present.id,
+            date(2026, 8, 29), marked_by_id=self.admin.id, note="On time",
+        )
+        db.session.commit()
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+
+        rejected = client.post(
+            f"/admin/behavior/attendance/records/{record.id}/delete",
+            data={"config_id": self.config.id, "session_id": self.session.id, "reason": "Cleanup"},
+            follow_redirects=False,
+        )
+        self.assertEqual(rejected.status_code, 302)
+        self.assertIsNotNone(db.session.get(BehaviorAttendanceRecord, record.id))
+        self.assertEqual(BehaviorAttendanceDeletion.query.count(), 0)
+
+        response = client.post(
+            f"/admin/behavior/attendance/records/{record.id}/delete",
+            data={
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+                "reason": "Duplicate daily mark",
+                "confirmation": "DELETE ATTENDANCE RECORD",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNone(db.session.get(BehaviorAttendanceRecord, record.id))
+        deletion = BehaviorAttendanceDeletion.query.one()
+        self.assertEqual(deletion.original_record_id, record.id)
+        self.assertEqual(deletion.student_code, self.enrollment.student.student_code)
+        self.assertEqual(deletion.deletion_reason, "Duplicate daily mark")
+        self.assertEqual(deletion.original_status, "active")
+
+        records_page = client.get(
+            "/admin/behavior/attendance",
+            query_string={
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+                "attendance_view": "records",
+            },
+        )
+        self.assertEqual(records_page.status_code, 200)
+        body = records_page.get_data(as_text=True)
+        self.assertIn('<option value="deleted">Deleted</option>', body)
+        self.assertIn('"record_status": "deleted"', body)
+        self.assertIn("Read-only deletion snapshot", body)
+        self.assertNotIn('"record_status": "active"', body)
+
+        score = calculate_session_score(self.config, self.session, self.enrollment)
+        self.assertEqual(score["attendance_record_count"], 0)
+        self.assertEqual(score["attendance_status"], "INCOMPLETE")
+
+    def test_voided_late_and_absent_are_removed_from_each_month_and_session_total(self):
+        ensure_attendance_defaults(self.config)
+        self.session.behavior_allocation = Decimal("15.000")
+        self.session.attendance_allocation = Decimal("5.000")
+        db.session.commit()
+        statuses = {item.key: item for item in self.config.attendance_statuses}
+        september_present = mark_attendance(
+            self.config, self.session, self.enrollment, statuses["present"].id,
+            date(2026, 9, 1), marked_by_id=self.admin.id,
+        )
+        october_late = mark_attendance(
+            self.config, self.session, self.enrollment, statuses["late"].id,
+            date(2026, 10, 1), marked_by_id=self.admin.id, arrival_time="09:15",
+        )
+        november_absent = mark_attendance(
+            self.config, self.session, self.enrollment, statuses["absent"].id,
+            date(2026, 11, 1), marked_by_id=self.admin.id,
+        )
+        db.session.commit()
+
+        self.assertEqual(attendance_points_projection([september_present])["positive_points"], Decimal("1.000"))
+        self.assertEqual(attendance_points_projection([october_late])["negative_points"], Decimal("0.500"))
+        self.assertEqual(attendance_points_projection([november_absent])["negative_points"], Decimal("1.000"))
+        before = attendance_score_projection(
+            self.config, self.session, self.enrollment,
+            attendance_records=[september_present, october_late, november_absent],
+        )
+        self.assertEqual(before["allocation"], Decimal("5.000"))
+        self.assertEqual(before["attendance_score"], Decimal("0.000"))
+
+        void_attendance_record(october_late, self.admin.id, "Wrong late status")
+        void_attendance_record(november_absent, self.admin.id, "Duplicate absence")
+        db.session.commit()
+        after = attendance_score_projection(
+            self.config, self.session, self.enrollment,
+            attendance_records=[september_present, october_late, november_absent],
+        )
+        self.assertEqual(after["allocation"], Decimal("5.000"))
+        self.assertEqual(after["attendance_score"], Decimal("1.000"))
+        active_projection = attendance_points_projection(
+            [september_present, october_late, november_absent]
+        )
+        self.assertEqual(active_projection["positive_points"], Decimal("1.000"))
+        self.assertEqual(active_projection["negative_points"], Decimal("0.000"))
+        self.assertEqual(active_projection["record_count"], 1)
 
     def test_attendance_save_post_persists_exact_scope(self):
         client = self.app.test_client()
