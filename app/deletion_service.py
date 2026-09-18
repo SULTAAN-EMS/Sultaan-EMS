@@ -383,6 +383,7 @@ _PURGE_LABELS = {
     "behavior_grade_scales": "Behavior grade scales",
     "behavior_attendance_statuses": "Behavior attendance statuses",
     "behavior_attendance_days": "Behavior attendance days",
+    "academic_year_level_attendance_days": "Academic level attendance active days",
     "behavior_attendance_records": "Behavior attendance records",
     "exam_marking_configurations": "Exam marking configurations",
     "students": "Student identities deleted",

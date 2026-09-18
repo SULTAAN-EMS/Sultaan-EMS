@@ -58,6 +58,8 @@ TRANSLATIONS = {
 }
 
 TRANSLATIONS["so"].update({
+    "Monday": "Isniin", "Tuesday": "Talaado", "Wednesday": "Arbaco", "Thursday": "Khamiis", "Friday": "Jimco", "Saturday": "Sabti", "Sunday": "Axad",
+    "Attendance Active Days": "Maalmaha Xaadirka ee Firfircoon", "Save active days": "Keydi maalmaha firfircoon",
     "Student Management": "Maamulka Ardayda", "Add Student": "Ku dar Arday", "Export": "Dhoofin", "Import": "Soo dejin", "Template": "Qaab",
     "Student Directory": "Liiska Ardayda", "ID": "Aqoonsi", "Name": "Magac", "Mother": "Hooyo", "Class": "Fasal", "Year": "Sanad", "Result Lock": "Qufulka Natiijada", "Actions": "Falal",
     "Edit": "Wax ka beddel", "Delete": "Tirtir", "Save Student": "Keydi Ardayga", "Full Name": "Magaca Buuxa", "Mother Name": "Magaca Hooyada", "Active Student": "Arday Firfircoon",
@@ -68,6 +70,8 @@ TRANSLATIONS["so"].update({
     "Import Wizard": "Hagaha Soo Dejinta", "Confirm Import": "Xaqiiji Soo Dejinta", "Settings saved.": "Dejinta waa la keydiyay.",
 })
 TRANSLATIONS["ar"].update({
+    "Monday": "الاثنين", "Tuesday": "الثلاثاء", "Wednesday": "الأربعاء", "Thursday": "الخميس", "Friday": "الجمعة", "Saturday": "السبت", "Sunday": "الأحد",
+    "Attendance Active Days": "أيام الحضور النشطة", "Save active days": "حفظ الأيام النشطة",
     "Student Management": "إدارة الطلاب", "Add Student": "إضافة طالب", "Export": "تصدير", "Import": "استيراد", "Template": "قالب",
     "Student Directory": "دليل الطلاب", "ID": "المعرف", "Name": "الاسم", "Mother": "الأم", "Class": "الفصل", "Year": "السنة", "Result Lock": "قفل النتيجة", "Actions": "الإجراءات",
     "Edit": "تعديل", "Delete": "حذف", "Save Student": "حفظ الطالب", "Full Name": "الاسم الكامل", "Mother Name": "اسم الأم", "Active Student": "طالب نشط",
@@ -78,6 +82,8 @@ TRANSLATIONS["ar"].update({
     "Import Wizard": "معالج الاستيراد", "Confirm Import": "تأكيد الاستيراد", "Settings saved.": "تم حفظ الإعدادات.",
 })
 TRANSLATIONS["tr"].update({
+    "Monday": "Pazartesi", "Tuesday": "Salı", "Wednesday": "Çarşamba", "Thursday": "Perşembe", "Friday": "Cuma", "Saturday": "Cumartesi", "Sunday": "Pazar",
+    "Attendance Active Days": "Aktif Yoklama Günleri", "Save active days": "Aktif günleri kaydet",
     "Student Management": "Öğrenci Yönetimi", "Add Student": "Öğrenci Ekle", "Export": "Dışa Aktar", "Import": "İçe Aktar", "Template": "Şablon",
     "Student Directory": "Öğrenci Listesi", "ID": "No", "Name": "Ad", "Mother": "Anne", "Class": "Sınıf", "Year": "Yıl", "Result Lock": "Sonuç Kilidi", "Actions": "İşlemler",
     "Edit": "Düzenle", "Delete": "Sil", "Save Student": "Öğrenciyi Kaydet", "Full Name": "Tam Ad", "Mother Name": "Anne Adı", "Active Student": "Aktif Öğrenci",

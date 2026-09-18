@@ -1,1 +1,1 @@
-web: python migrations/phase_1_behavior_attendance_void.py && python migrations/phase_1_behavior_attendance_delete.py && gunicorn --no-sendfile --timeout 90 --graceful-timeout 30 --bind 0.0.0.0:$PORT run:app
+web: python migrations/phase_1_behavior_attendance_void.py && python migrations/phase_1_behavior_attendance_delete.py && python migrations/phase_1d_behavior_level_attendance_days.py && gunicorn --no-sendfile --timeout 90 --graceful-timeout 30 --bind 0.0.0.0:$PORT run:app

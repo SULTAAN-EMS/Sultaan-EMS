@@ -92,6 +92,12 @@ class AcademicYearLevel(TimestampMixin, db.Model):
 
     academic_year = db.relationship("AcademicYear", backref=db.backref("year_levels", lazy="dynamic"))
     legacy_level = db.relationship("AcademicLevel", backref=db.backref("year_scopes", lazy="dynamic"))
+    attendance_active_days = db.relationship(
+        "AcademicYearLevelAttendanceDay",
+        back_populates="academic_year_level",
+        cascade="all, delete-orphan",
+        order_by="AcademicYearLevelAttendanceDay.weekday",
+    )
 
     __table_args__ = (
         UniqueConstraint("academic_year_id", "name", name="uq_academic_year_level_name"),
@@ -128,6 +134,44 @@ class AcademicYearClass(TimestampMixin, db.Model):
 
     __table_args__ = (
         UniqueConstraint("academic_year_level_id", "name", name="uq_academic_year_class_name"),
+    )
+
+
+class AcademicYearLevelAttendanceDay(TimestampMixin, db.Model):
+    """Language-independent active-day policy for one year-scoped level.
+
+    ``weekday`` is the business identity. ``label`` is only a stable display
+    fallback for the current UI and is never used for matching or validation.
+    """
+
+    __tablename__ = "academic_year_level_attendance_days"
+
+    id = db.Column(db.Integer, primary_key=True)
+    academic_year_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_levels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    weekday = db.Column(db.Integer, nullable=False)
+    label = db.Column(db.String(40), nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    academic_year_level = db.relationship(
+        "AcademicYearLevel",
+        back_populates="attendance_active_days",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "academic_year_level_id",
+            "weekday",
+            name="uq_academic_year_level_attendance_day_weekday",
+        ),
+        db.CheckConstraint(
+            "weekday BETWEEN 0 AND 6",
+            name="ck_academic_year_level_attendance_day_weekday",
+        ),
     )
 
 

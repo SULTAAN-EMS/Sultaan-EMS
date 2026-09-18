@@ -116,7 +116,7 @@ def _attendance_record_payload(record):
         "id": record.id,
         "attendance_date": record.attendance_date.isoformat() if record.attendance_date else None,
         "status_key": status_key,
-        "status_label": _ATTENDANCE_STATUS_LABELS.get(status_key, record.status_label_snapshot or status_key),
+        "status_label": record.status_label_snapshot or _ATTENDANCE_STATUS_LABELS.get(status_key, status_key),
         "arrival_time": record.arrival_time.isoformat() if record.arrival_time else None,
         "attendance_time": record.attendance_time.isoformat() if record.attendance_time else None,
         "late_by_minutes": record.late_by_minutes,

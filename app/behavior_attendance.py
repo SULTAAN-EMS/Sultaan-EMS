@@ -20,6 +20,7 @@ from .behavior_service import (
     validate_session_scope,
 )
 from .models import (
+    AcademicYearLevelAttendanceDay,
     BehaviorAttendanceDay,
     BehaviorAttendanceRecord,
     BehaviorAttendanceStatus,
@@ -49,7 +50,7 @@ OFFICIAL_ATTENDANCE_LABELS = {
 def attendance_status_label(status_key, fallback=None):
     """Return one stable display label without rewriting historical records."""
     key = (status_key or "").strip().lower()
-    return OFFICIAL_ATTENDANCE_LABELS.get(key, fallback or key.replace("_", " ").title())
+    return (fallback or "").strip() or OFFICIAL_ATTENDANCE_LABELS.get(key, key.replace("_", " ").title())
 
 
 def _coerce_time(value):
@@ -74,10 +75,99 @@ DEFAULT_ATTENDANCE_DAYS = (
     (3, "Thursday"),
 )
 
+CANONICAL_WEEKDAY_LABELS = {
+    0: "Monday",
+    1: "Tuesday",
+    2: "Wednesday",
+    3: "Thursday",
+    4: "Friday",
+    5: "Saturday",
+    6: "Sunday",
+}
+ALL_WEEKDAYS = tuple(CANONICAL_WEEKDAY_LABELS)
+
+
+def _legacy_active_days_for_level(configuration):
+    """Read one legacy schedule only as a safe migration/bootstrap source."""
+    legacy_days = BehaviorAttendanceDay.query.filter_by(
+        behavior_configuration_id=configuration.id
+    ).all()
+    if not legacy_days:
+        source = (
+            BehaviorConfiguration.query
+            .filter_by(academic_year_level_id=configuration.academic_year_level_id)
+            .order_by(BehaviorConfiguration.id)
+            .first()
+        )
+        if source:
+            legacy_days = BehaviorAttendanceDay.query.filter_by(
+                behavior_configuration_id=source.id
+            ).all()
+    if legacy_days:
+        return {item.weekday for item in legacy_days if item.is_active}
+    return {weekday for weekday, _label in DEFAULT_ATTENDANCE_DAYS}
+
+
+def ensure_level_attendance_days(configuration):
+    """Ensure one complete level-scoped calendar exists without rewriting it."""
+    configuration = validate_behavior_configuration(configuration)
+    query = AcademicYearLevelAttendanceDay.query.filter_by(
+        academic_year_level_id=configuration.academic_year_level_id
+    )
+    existing = {item.weekday: item for item in query.all()}
+    if not existing:
+        active_days = _legacy_active_days_for_level(configuration)
+        for weekday in ALL_WEEKDAYS:
+            db.session.add(
+                AcademicYearLevelAttendanceDay(
+                    academic_year_level_id=configuration.academic_year_level_id,
+                    weekday=weekday,
+                    label=CANONICAL_WEEKDAY_LABELS[weekday],
+                    is_active=weekday in active_days,
+                )
+            )
+    else:
+        # Complete a partially migrated schedule conservatively. Missing days
+        # are inactive; existing administrator choices are never overwritten.
+        for weekday in ALL_WEEKDAYS:
+            if weekday not in existing:
+                db.session.add(
+                    AcademicYearLevelAttendanceDay(
+                        academic_year_level_id=configuration.academic_year_level_id,
+                        weekday=weekday,
+                        label=CANONICAL_WEEKDAY_LABELS[weekday],
+                        is_active=False,
+                    )
+                )
+    db.session.flush()
+    return AcademicYearLevelAttendanceDay.query.filter_by(
+        academic_year_level_id=configuration.academic_year_level_id
+    ).order_by(AcademicYearLevelAttendanceDay.weekday).all()
+
+
+def update_attendance_active_days(configuration, active_days):
+    """Update the canonical calendar for one Academic Year Level."""
+    configuration = validate_behavior_configuration(configuration)
+    try:
+        selected = {int(value) for value in active_days}
+    except (TypeError, ValueError):
+        raise BehaviorValidationError("School day selection is invalid")
+    if not selected.issubset(set(ALL_WEEKDAYS)):
+        raise BehaviorValidationError("School day selection is invalid")
+    days = ensure_level_attendance_days(configuration)
+    before = {item.weekday for item in days if item.is_active}
+    for day in days:
+        day.is_active = day.weekday in selected
+    return before, selected
+
 
 def ensure_attendance_defaults(configuration):
-    """Create missing status/day defaults without overwriting admin changes."""
+    """Ensure automatic status scoring and the canonical attendance defaults."""
     configuration = validate_behavior_configuration(configuration)
+    # Attendance is part of the normalized Behavior score contract.  The old
+    # per-configuration switch is retained in the schema for existing
+    # databases, but it is no longer an optional runtime behavior.
+    configuration.behavior_attendance_scoring_enabled = True
     existing_statuses = {
         item.key
         for item in BehaviorAttendanceStatus.query.filter_by(
@@ -106,6 +196,15 @@ def ensure_attendance_defaults(configuration):
     ).first()
     if late_status and late_status.polarity != "negative":
         late_status.polarity = "negative"
+    # Status availability is now implicit.  Keep the retired emergency row
+    # hidden below, while making every canonical status selectable without an
+    # administrator-maintained Active checkbox.
+    canonical_keys = {item["key"] for item in DEFAULT_ATTENDANCE_STATUSES}
+    for status in BehaviorAttendanceStatus.query.filter_by(
+        behavior_configuration_id=configuration.id
+    ).all():
+        if status.key in canonical_keys:
+            status.is_active = True
     # Preserve historical Emergency rows for audit, but prevent the retired
     # status from being offered as a canonical new Attendance status.
     emergency = BehaviorAttendanceStatus.query.filter_by(
@@ -130,6 +229,9 @@ def ensure_attendance_defaults(configuration):
                     is_active=True,
                 )
             )
+    # The legacy rows remain readable for old installations and audit history;
+    # all runtime date validation now uses the level-scoped schedule.
+    ensure_level_attendance_days(configuration)
     db.session.flush()
     return configuration
 
@@ -146,9 +248,9 @@ def attendance_statuses(configuration, active_only=True):
 
 def attendance_days(configuration, active_only=True):
     configuration = validate_behavior_configuration(configuration)
-    query = BehaviorAttendanceDay.query.filter_by(
-        behavior_configuration_id=configuration.id
-    ).order_by(BehaviorAttendanceDay.weekday)
+    query = AcademicYearLevelAttendanceDay.query.filter_by(
+        academic_year_level_id=configuration.academic_year_level_id
+    ).order_by(AcademicYearLevelAttendanceDay.weekday)
     if active_only:
         query = query.filter_by(is_active=True)
     return query.all()
@@ -336,14 +438,8 @@ def attendance_score_adjustments(
     *,
     attendance_records=None,
 ):
-    """Return Attendance points using the same positive/negative score inputs."""
+    """Return Attendance points using the canonical score inputs."""
     configuration, session, enrollment = validate_attendance_context(configuration, session, enrollment)
-    if not configuration.behavior_attendance_scoring_enabled:
-        return {
-            "positive_points": Decimal("0.000"),
-            "negative_points": Decimal("0.000"),
-            "record_count": 0,
-        }
     if attendance_records is None:
         rows = BehaviorAttendanceRecord.query.filter_by(
             behavior_configuration_id=configuration.id,

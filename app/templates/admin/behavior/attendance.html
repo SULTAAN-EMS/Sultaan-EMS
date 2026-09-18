@@ -35,13 +35,17 @@
   .attendance-row-actions .behavior-btn { white-space:nowrap; }
   .attendance-footer { display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; margin:18px 0 20px; padding:14px 0 0; border-top:1.14px solid var(--line); }
   .attendance-footer__actions { display:flex; flex-wrap:wrap; gap:8px; }
-  .attendance-dialog { display:flex; flex-direction:column; width:min(720px,calc(100% - 24px)); max-height:calc(100vh - 24px); overflow:hidden; padding:0; border:1.14px solid var(--line); border-radius:16px; color:var(--ink); background:var(--card); box-shadow:0 25px 62px rgba(19,36,32,.28); }
+  .attendance-dialog { box-sizing:border-box; display:none; flex-direction:column; position:fixed; top:50%; left:50%; width:min(720px,calc(100vw - 24px)); height:auto; max-height:calc(100dvh - 24px); margin:0; transform:translate(-50%,-50%); overflow:hidden; padding:0; border:1.14px solid var(--line); border-radius:16px; color:var(--ink); background:var(--card); box-shadow:0 25px 62px rgba(19,36,32,.28); }
+  .attendance-dialog[open] { display:flex; }
   .attendance-dialog::backdrop { background:rgba(19,36,32,.44); backdrop-filter:blur(2px); }
-  .attendance-dialog__head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:20px 22px; border-bottom:1.14px solid var(--line); background:var(--paper-deep); }
+  .attendance-dialog__head { box-sizing:border-box; position:sticky; top:0; z-index:2; display:flex; flex:0 0 auto; justify-content:space-between; align-items:flex-start; gap:16px; min-width:0; padding:20px 22px; border-bottom:1.14px solid var(--line); background:var(--paper-deep); }
+  .attendance-dialog__head > div { min-width:0; flex:1 1 auto; }
   .attendance-dialog__head h2 { margin:0; font:600 20px/1.15 var(--font-serif); }
   .attendance-dialog__head p { margin:5px 0 0; color:var(--ink-soft); font-size:12.5px; }
   .attendance-dialog__body { min-height:0; flex:1 1 auto; overflow-y:auto; overflow-x:hidden; padding:20px 22px; }
-  .attendance-dialog__close { width:32px; height:32px; display:grid; place-items:center; border:1.14px solid var(--line); border-radius:50%; color:var(--ink-soft); background:#fff; cursor:pointer; }
+  .attendance-dialog__close { box-sizing:border-box; flex:0 0 32px; width:32px; height:32px; display:grid; place-items:center; position:relative; z-index:3; border:1.14px solid var(--line); border-radius:50%; color:var(--ink-soft); background:#fff; cursor:pointer; }
+  .attendance-dialog--records { width:min(1100px,calc(100vw - 32px)); height:min(780px,calc(100dvh - 48px)); max-height:calc(100dvh - 48px); }
+  .attendance-dialog--records .attendance-dialog__head, .attendance-dialog--records .attendance-dialog__body { padding-left:28px; padding-right:28px; }
   .attendance-profile { display:grid; grid-template-columns:110px 1fr; gap:18px; }
   .attendance-profile__photo { width:110px; height:130px; display:grid; place-items:center; overflow:hidden; border:1.14px solid var(--line); border-radius:14px; color:var(--brass-deep); background:var(--paper-deep); font:700 22px var(--font-sans); }
   .attendance-profile__photo img { width:100%; height:100%; object-fit:cover; }
@@ -54,11 +58,11 @@
   .attendance-history { width:100%; margin-top:18px; border-collapse:collapse; }
   .attendance-history th, .attendance-history td { padding:8px 9px; border-bottom:1px solid var(--line); text-align:left; font-size:12px; }
   .attendance-history th { color:var(--ink-faint); font:600 10px var(--font-mono); letter-spacing:.04em; text-transform:uppercase; }
-  .attendance-record-filters { display:flex; flex-wrap:wrap; align-items:end; gap:10px; margin-bottom:15px; }
+  .attendance-record-filters { display:grid; grid-template-columns:repeat(3,minmax(150px,1fr)); align-items:end; gap:12px; margin-bottom:18px; }
   .attendance-record-filters label { display:grid; gap:5px; color:var(--ink-faint); font:600 10px var(--font-mono); letter-spacing:.04em; text-transform:uppercase; }
-  .attendance-record-filters input { min-height:36px; padding:7px 9px; border:1.14px solid var(--line); border-radius:8px; color:var(--ink); background:#fff; font:13px var(--font-sans); }
+  .attendance-record-filters input, .attendance-record-filters select { width:100%; min-height:38px; padding:7px 10px; border:1.14px solid var(--line); border-radius:8px; color:var(--ink); background:#fff; font:13px var(--font-sans); }
   .attendance-records-table { width:100%; border-collapse:collapse; }
-  .attendance-records-table th, .attendance-records-table td { padding:8px 9px; border-bottom:1px solid var(--line); text-align:left; font-size:12px; }
+  .attendance-records-table th, .attendance-records-table td { padding:10px 11px; border-bottom:1px solid var(--line); text-align:left; font-size:12px; vertical-align:middle; }
   .attendance-records-table th { color:var(--ink-faint); font:600 10px var(--font-mono); letter-spacing:.04em; text-transform:uppercase; }
   .attendance-records-table tr.is-voided td { color:var(--ink-faint); background:#fbf4f3; }
   .attendance-records-table tr.is-deleted td { color:#7f1d1d; background:#fff7f7; }
@@ -68,24 +72,31 @@
   .attendance-record-meta { display:block; margin-top:4px; color:var(--ink-faint); font-size:10.5px; line-height:1.35; }
   .attendance-action-trigger { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:31px; padding:7px 10px; border:1px solid var(--line); border-radius:8px; color:var(--ink-soft); background:#fff; font:600 12px var(--font-sans); cursor:pointer; }
   .attendance-action-trigger:hover, .attendance-action-trigger:focus-visible { border-color:var(--brass); color:var(--brass-deep); outline:0; box-shadow:0 0 0 3px rgba(173,127,44,.14); }
-  .attendance-action-dialog { width:min(380px,calc(100% - 24px)); }
+  .attendance-action-dialog { width:min(380px,calc(100vw - 24px)); height:min(360px,calc(100dvh - 48px)); max-height:calc(100dvh - 48px); }
   .attendance-action-dialog__items { display:grid; gap:8px; }
   .attendance-action-dialog__items a, .attendance-action-dialog__items button { display:flex; width:100%; align-items:center; gap:9px; min-height:42px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; color:var(--ink); background:#fff; font:600 13px var(--font-sans); text-align:left; cursor:pointer; }
   .attendance-action-dialog__items a:hover, .attendance-action-dialog__items button:hover { border-color:var(--brass); background:var(--paper-deep); }
   .attendance-action-dialog__items .is-danger { color:#9f2828; }
   .attendance-action-dialog__item { display:flex; align-items:center; gap:9px; min-height:42px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; color:var(--ink-soft); background:var(--paper-deep); font-size:13px; line-height:1.4; }
   .attendance-action-dialog__summary { margin:0 0 14px; color:var(--ink-soft); font-size:12.5px; line-height:1.45; }
-  .attendance-void-dialog { width:min(500px,calc(100% - 24px)); }
-  .attendance-void-dialog__form { display:grid; gap:12px; }
+  .attendance-void-dialog { width:min(640px,calc(100vw - 32px)); height:min(400px,calc(100dvh - 48px)); max-height:calc(100dvh - 48px); }
+  .attendance-void-dialog .attendance-dialog__head, .attendance-delete-dialog .attendance-dialog__head, .attendance-void-dialog .attendance-dialog__body, .attendance-delete-dialog .attendance-dialog__body { padding-left:28px; padding-right:28px; }
+  .attendance-void-dialog__form { display:grid; gap:16px; }
+  .attendance-void-dialog__form > label[for="attendanceVoidReason"] { display:inline-flex; align-items:baseline; gap:4px; width:max-content; white-space:nowrap; }
+  .attendance-void-dialog__form > label[for="attendanceVoidReason"] span { display:inline; }
+  .attendance-delete-dialog__form > label[for="attendanceDeleteReason"] { display:inline-flex; align-items:baseline; gap:4px; width:max-content; white-space:nowrap; }
+  .attendance-delete-dialog__form > label[for="attendanceDeleteReason"] span { display:inline; }
   .attendance-void-dialog__form textarea { min-height:100px; resize:vertical; padding:9px 10px; border:1px solid var(--line); border-radius:8px; color:var(--ink); background:#fff; font:13px/1.5 var(--font-sans); }
   .attendance-void-dialog__form textarea:focus { border-color:var(--brass); box-shadow:0 0 0 3px rgba(173,127,44,.14); outline:0; }
   .attendance-void-dialog__actions { display:flex; justify-content:flex-end; gap:8px; }
   .attendance-void-dialog__summary { margin:0; padding:10px 12px; border:1px solid var(--line); border-radius:8px; color:var(--ink-soft); background:var(--paper-deep); font-size:12px; }
-  .attendance-delete-dialog { width:min(520px,calc(100% - 24px)); }
-  .attendance-delete-dialog__form { display:grid; gap:12px; }
+  .attendance-delete-dialog { width:min(640px,calc(100vw - 32px)); height:min(620px,calc(100dvh - 48px)); max-height:calc(100dvh - 48px); }
+  .attendance-delete-dialog__form { display:grid; gap:16px; }
   .attendance-delete-dialog__form textarea, .attendance-delete-dialog__form input { min-height:38px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; color:var(--ink); background:#fff; font:13px/1.5 var(--font-sans); }
   .attendance-delete-dialog__form textarea { min-height:88px; resize:vertical; }
   .attendance-delete-dialog__form small { color:#8b3434; font-size:11px; line-height:1.45; }
+  .attendance-delete-confirmation { display:flex; align-items:center; gap:8px; min-width:0; min-height:42px; padding:10px 13px; border:1px solid #efb1b1; border-radius:10px; color:#7f1d1d; background:#fff5f5; font:600 clamp(10px,1.35vw,12.5px)/1 var(--font-sans); letter-spacing:.01em; white-space:nowrap; }
+  .attendance-delete-confirmation strong { display:inline-flex; align-items:center; min-height:24px; padding:0 8px; border-radius:6px; color:#991b1b; background:#fee2e2; font-weight:800; letter-spacing:.03em; }
   .attendance-delete-dialog__actions { display:flex; justify-content:flex-end; gap:8px; }
   .attendance-row--voided { background:#fbf4f3; }
   .attendance-row--voided .attendance-select, .attendance-row--voided .attendance-arrival, .attendance-row--voided .attendance-note { opacity:.62; cursor:not-allowed; }
@@ -98,8 +109,12 @@
   .attendance-empty { padding:18px; border:1.14px dashed #CBBF9E; border-radius:10px; color:var(--ink-soft); background:var(--paper-deep); text-align:center; }
   .attendance-save-state { min-height:20px; color:var(--ink-soft); font-size:12px; }
   .attendance-save-state.is-saving { color:var(--amber); }
+  .attendance-settings-save-state { display:block; margin-top:7px; color:var(--ink-faint); font:600 10.5px var(--font-sans); }
+  .attendance-settings-save-state.is-saving { color:var(--amber); }
+  .attendance-settings-save-state.is-saved { color:var(--merit); }
+  .attendance-settings-save-state.is-error { color:#9f2828; }
   @media (max-width:880px) { .attendance-filter-panel { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-  @media (max-width:760px) { .attendance-filter-panel, .attendance-scope-filters { grid-template-columns:1fr; } .attendance-date-field { grid-column:auto; } .attendance-date-time { grid-template-columns:1fr 100px; } .attendance-profile { grid-template-columns:1fr; } .attendance-profile__photo { width:82px; height:96px; } .attendance-profile__facts, .attendance-overview-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .attendance-dialog__head, .attendance-dialog__body { padding:16px; } }
+  @media (max-width:760px) { .attendance-filter-panel, .attendance-scope-filters { grid-template-columns:1fr; } .attendance-date-field { grid-column:auto; } .attendance-date-time { grid-template-columns:1fr 100px; } .attendance-profile { grid-template-columns:1fr; } .attendance-profile__photo { width:82px; height:96px; } .attendance-profile__facts, .attendance-overview-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .attendance-dialog, .attendance-dialog--records, .attendance-void-dialog, .attendance-delete-dialog { width:calc(100vw - 16px); height:auto; max-height:calc(100dvh - 16px); } .attendance-dialog--records { height:calc(100dvh - 16px); } .attendance-record-filters { grid-template-columns:1fr; } .attendance-dialog__head, .attendance-dialog__body { padding:16px; } .attendance-delete-confirmation { gap:5px; padding:9px 10px; font-size:10px; } .attendance-delete-confirmation strong { padding:0 5px; } }
 </style>
 <div class="behavior-page view">
   <header class="behavior-hero"><span class="behavior-hero__mark"><i class="fa-solid fa-user-check"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow"><i class="fa-solid fa-calendar-check"></i> Behavior Attendance</span><h1>Daily Attendance</h1><p>Record attendance inside the selected year-aware Behavior configuration and session.</p></div></header>
@@ -123,19 +138,18 @@
     </form>
     <div class="attendance-footer"><span class="behavior-kicker"><i class="fa-solid fa-toolbox"></i> Contextual tools</span><div class="attendance-footer__actions"><button class="behavior-btn behavior-btn--outline" type="button" data-open-records><i class="fa-solid fa-clock-rotate-left"></i> Attendance Records</button><button class="behavior-btn behavior-btn--outline" type="button" data-open-overview><i class="fa-solid fa-chart-column"></i> Class Overview</button></div></div>
   </section>
-  <div class="behavior-settings-trigger"><div><span class="behavior-kicker"><i class="fa-solid fa-sliders"></i> Attendance controls</span><h2>Configuration-owned settings</h2><p>Manage statuses, scoring, and active school days for this exact Behavior configuration.</p></div><button class="behavior-btn behavior-btn--dark" type="button" data-open-attendance-drawer><i class="fa-solid fa-sliders"></i> Open settings</button></div>
+  <div class="behavior-settings-trigger"><div><span class="behavior-kicker"><i class="fa-solid fa-sliders"></i> Attendance controls</span><h2>Configuration-owned settings</h2><p>Manage statuses and Attendance Active Days for this Academic Year Level.</p></div><button class="behavior-btn behavior-btn--dark" type="button" data-open-attendance-drawer><i class="fa-solid fa-sliders"></i> Open settings</button></div>
   <div class="behavior-drawer-backdrop drawer-overlay" data-close-attendance-drawer hidden></div>
-  <aside class="behavior-drawer" id="attendanceSettingsDrawer" aria-hidden="true" aria-labelledby="attendanceSettingsTitle"><div class="behavior-drawer__head"><div><span class="behavior-kicker"><i class="fa-solid fa-sliders"></i> Attendance controls</span><h2 id="attendanceSettingsTitle">Status points and school days</h2><p>These settings belong only to the selected configuration.</p></div><button class="behavior-modal__close" type="button" data-close-attendance-drawer aria-label="Close attendance settings"><i class="fa-solid fa-xmark"></i></button></div><div class="behavior-drawer__body">
+  <aside class="behavior-drawer" id="attendanceSettingsDrawer" aria-hidden="true" aria-labelledby="attendanceSettingsTitle"><div class="behavior-drawer__head"><div><span class="behavior-kicker"><i class="fa-solid fa-sliders"></i> Attendance controls</span><h2 id="attendanceSettingsTitle">Status points and active days</h2><p>{{ config.academic_year.name }} &bull; {{ config.academic_year_level.name }} — this schedule applies to the whole Academic Year Level.</p><span class="attendance-settings-save-state" id="attendanceSettingsSaveState" role="status" aria-live="polite">All changes saved</span></div><button class="behavior-modal__close" type="button" data-close-attendance-drawer aria-label="Close attendance settings"><i class="fa-solid fa-xmark"></i></button></div><div class="behavior-drawer__body">
     <form class="behavior-form" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save_status"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><div class="behavior-field"><label>Key</label><input name="key" required placeholder="late"></div><div class="behavior-field"><label>Label</label><input name="label" required placeholder="Late"></div><div class="behavior-field"><label>Polarity</label><select name="polarity"><option value="neutral">Neutral</option><option value="positive">Positive</option><option value="negative">Negative</option></select></div><div class="behavior-field"><label>Points</label><input name="points" type="number" min="0" step="0.001" value="0"></div><div class="behavior-form__actions"><button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-plus"></i> Add status</button></div></form>
-    <div class="behavior-table-wrap"><table class="behavior-table"><thead><tr><th>Status controls</th></tr></thead><tbody>{% for status in all_statuses %}<tr><td><form class="behavior-form" method="post" action="{{ url_for('behavior.update_attendance_status', status_id=status.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><div class="behavior-field"><label>{{ status.key }}</label><input name="label" value="{{ status.label }}" required></div><div class="behavior-field"><label>Polarity</label><select name="polarity"><option value="neutral" {% if status.polarity == 'neutral' %}selected{% endif %}>Neutral</option><option value="positive" {% if status.polarity == 'positive' %}selected{% endif %}>Positive</option><option value="negative" {% if status.polarity == 'negative' %}selected{% endif %}>Negative</option></select></div><div class="behavior-field"><label>Points</label><input name="points" type="number" min="0" step="0.001" value="{{ status.points|behavior_points }}"></div><div class="behavior-field"><label>State</label><label><input type="checkbox" name="is_active" {% if status.is_active %}checked{% endif %}> Active</label></div><div class="behavior-form__actions"><button class="behavior-btn behavior-btn--outline behavior-btn--small" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save status</button></div></form></td></tr>{% endfor %}</tbody></table></div>
-    <form class="behavior-form" method="post" action="{{ url_for('behavior.update_attendance_scoring') }}" style="margin-top:14px"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><div class="behavior-field behavior-field--full"><label><input type="checkbox" name="enabled" {% if config.behavior_attendance_scoring_enabled %}checked{% endif %}> Feed Attendance points into the Behavior score</label></div><div class="behavior-form__actions"><button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-toggle-on"></i> Save scoring setting</button></div></form>
-    <form class="behavior-form" method="post" style="margin-top:14px"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save_days"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><div class="behavior-field behavior-field--full"><label>Active school days</label><div class="behavior-direction">{% for day in all_days %}<label><input type="checkbox" name="school_days" value="{{ day.weekday }}" {% if day.is_active %}checked{% endif %}> {{ day.label }}</label>{% endfor %}</div></div><div class="behavior-form__actions"><button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-calendar-check"></i> Save school days</button></div></form>
+    <div class="behavior-table-wrap"><table class="behavior-table"><thead><tr><th>Status points <small>(auto-saved)</small></th></tr></thead><tbody>{% for status in all_statuses %}<tr><td><form class="behavior-form" data-attendance-status-form method="post" action="{{ url_for('behavior.update_attendance_status', status_id=status.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><div class="behavior-field"><label>{{ status.key }}</label><input name="label" value="{{ status.label }}" required></div><div class="behavior-field"><label>Polarity</label><select name="polarity"><option value="neutral" {% if status.polarity == 'neutral' %}selected{% endif %}>Neutral</option><option value="positive" {% if status.polarity == 'positive' %}selected{% endif %}>Positive</option><option value="negative" {% if status.polarity == 'negative' %}selected{% endif %}>Negative</option></select></div><div class="behavior-field"><label>Points</label><input name="points" type="number" min="0" step="0.001" value="{{ status.points|behavior_points }}"></div></form></td></tr>{% endfor %}</tbody></table></div>
+    <form class="behavior-form" data-attendance-days-form method="post" action="{{ url_for('behavior.update_attendance_active_days') }}" style="margin-top:14px"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><div class="behavior-field behavior-field--full"><label>{{ _('Attendance Active Days') }} — {{ config.academic_year.name }} / {{ config.academic_year_level.name }}</label><div class="behavior-direction">{% for day in all_days %}<label><input type="checkbox" name="school_days" value="{{ day.weekday }}" {% if day.is_active %}checked{% endif %}> {{ _(day.label) }}</label>{% endfor %}</div></div></form>
   </div></aside>
 
   <dialog class="attendance-dialog" id="attendanceProfileDialog"><div class="attendance-dialog__head"><div><span class="behavior-kicker"><i class="fa-solid fa-user-check"></i> Student profile</span><h2>Attendance Profile</h2><p>Records from the selected Behavior configuration and session.</p></div><button class="attendance-dialog__close" type="button" data-close-dialog="attendanceProfileDialog" aria-label="Close student profile"><i class="fa-solid fa-xmark"></i></button></div><div class="attendance-dialog__body"><div class="attendance-profile"><div class="attendance-profile__photo" id="profilePhoto">ID</div><div><h3 class="attendance-profile__name" id="profileName">-</h3><p class="attendance-profile__meta" id="profileMeta">-</p><div class="attendance-profile__facts" id="profileFacts"></div></div></div><table class="attendance-history"><thead><tr><th>Date</th><th>Status</th><th>Arrival Time</th><th>Note</th></tr></thead><tbody id="profileHistory"></tbody></table></div></dialog>
-  <dialog class="attendance-dialog" id="attendanceRecordsDialog"><div class="attendance-dialog__head"><div><span class="behavior-kicker"><i class="fa-solid fa-clock-rotate-left"></i> Saved history</span><h2>Attendance Records</h2><p>Previously saved records for the selected year, configuration, level, class, and session.</p></div><button class="attendance-dialog__close" type="button" data-close-dialog="attendanceRecordsDialog" aria-label="Close attendance records"><i class="fa-solid fa-xmark"></i></button></div><div class="attendance-dialog__body">{% set attendance_view_target = 'records' %}{% include 'admin/behavior/_attendance_scope_filters.html' %}<div class="attendance-record-filters"><label>Date / Date Range (From)<input type="date" id="recordsFrom"></label><label>Date / Date Range (To)<input type="date" id="recordsTo"></label><label>Record state<select id="recordsStatus"><option value="active" selected>Active</option><option value="all">All</option><option value="voided">Voided</option><option value="deleted">Deleted</option></select></label></div><div id="recordsEmpty" class="attendance-empty" hidden>No saved attendance records match this range.</div><table class="attendance-records-table" id="recordsTable"><thead><tr><th>Attendance Date</th><th>Student / Mother / ID</th><th>Class</th><th>Status</th><th>Arrival Time</th><th>Recorded Time</th><th>Note</th><th>Actions</th></tr></thead><tbody id="recordsBody"></tbody></table></div></dialog>
+  <dialog class="attendance-dialog attendance-dialog--records" id="attendanceRecordsDialog"><div class="attendance-dialog__head"><div><span class="behavior-kicker"><i class="fa-solid fa-clock-rotate-left"></i> Saved history</span><h2>Attendance Records</h2><p>Previously saved records for the selected year, configuration, level, class, and session.</p></div><button class="attendance-dialog__close" type="button" data-close-dialog="attendanceRecordsDialog" aria-label="Close attendance records"><i class="fa-solid fa-xmark"></i></button></div><div class="attendance-dialog__body">{% set attendance_view_target = 'records' %}{% include 'admin/behavior/_attendance_scope_filters.html' %}<div class="attendance-record-filters"><label>Date / Date Range (From)<input type="date" id="recordsFrom"></label><label>Date / Date Range (To)<input type="date" id="recordsTo"></label><label>Record state<select id="recordsStatus"><option value="active" selected>Active</option><option value="all">All</option><option value="voided">Voided</option><option value="deleted">Deleted</option></select></label></div><div id="recordsEmpty" class="attendance-empty" hidden>No saved attendance records match this range.</div><table class="attendance-records-table" id="recordsTable"><thead><tr><th>Attendance Date</th><th>Student / Mother / ID</th><th>Class</th><th>Status</th><th>Arrival Time</th><th>Recorded Time</th><th>Note</th><th>Actions</th></tr></thead><tbody id="recordsBody"></tbody></table></div></dialog>
   <dialog class="attendance-dialog attendance-void-dialog" id="attendanceVoidDialog"><div class="attendance-dialog__head"><div><span class="behavior-kicker"><i class="fa-solid fa-ban"></i> Attendance audit</span><h2>Void Attendance Record</h2><p>The original record will remain available in history and will stop contributing to scoring.</p></div><button class="attendance-dialog__close" type="button" data-close-dialog="attendanceVoidDialog" aria-label="Close void attendance dialog"><i class="fa-solid fa-xmark"></i></button></div><div class="attendance-dialog__body"><form class="attendance-void-dialog__form" id="attendanceVoidForm" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id if config else '' }}"><input type="hidden" name="session_id" value="{{ selected_session.id if selected_session else '' }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() if attendance_date else '' }}"><p class="attendance-void-dialog__summary" id="attendanceVoidSummary">Select an Attendance record to continue.</p><label for="attendanceVoidReason">Void reason <span aria-hidden="true">*</span></label><textarea id="attendanceVoidReason" name="reason" maxlength="255" required placeholder="Explain why this attendance record is invalid."></textarea><div class="attendance-void-dialog__actions"><button class="behavior-btn behavior-btn--outline" type="button" data-close-dialog="attendanceVoidDialog">Cancel</button><button class="behavior-btn behavior-btn--danger" type="submit"><i class="fa-solid fa-ban"></i> Void Attendance</button></div></form></div></dialog>
-  <dialog class="attendance-dialog attendance-delete-dialog" id="attendanceDeleteDialog"><div class="attendance-dialog__head"><div><span class="behavior-kicker"><i class="fa-solid fa-trash-can"></i> Permanent deletion</span><h2>Delete Attendance Record</h2><p>The source record will be hard-deleted and excluded from every score and operational view.</p></div><button class="attendance-dialog__close" type="button" data-close-dialog="attendanceDeleteDialog" aria-label="Close delete attendance dialog"><i class="fa-solid fa-xmark"></i></button></div><div class="attendance-dialog__body"><form class="attendance-delete-dialog__form" id="attendanceDeleteForm" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id if config else '' }}"><input type="hidden" name="session_id" value="{{ selected_session.id if selected_session else '' }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() if attendance_date else '' }}"><p class="attendance-void-dialog__summary" id="attendanceDeleteSummary">Select an Attendance record to continue.</p><small>A read-only Deleted snapshot will be retained for authorised review. It cannot be restored or scored.</small><label for="attendanceDeleteReason">Deletion reason <span aria-hidden="true">*</span></label><textarea id="attendanceDeleteReason" name="reason" maxlength="255" required placeholder="Explain why this record must be permanently deleted."></textarea><label for="attendanceDeleteConfirmation">Type <strong>DELETE ATTENDANCE RECORD</strong> to confirm</label><input id="attendanceDeleteConfirmation" name="confirmation" required autocomplete="off" placeholder="DELETE ATTENDANCE RECORD"><div class="attendance-delete-dialog__actions"><button class="behavior-btn behavior-btn--outline" type="button" data-close-dialog="attendanceDeleteDialog">Cancel</button><button class="behavior-btn behavior-btn--danger" type="submit"><i class="fa-solid fa-trash-can"></i> Delete Permanently</button></div></form></div></dialog>
+  <dialog class="attendance-dialog attendance-delete-dialog" id="attendanceDeleteDialog"><div class="attendance-dialog__head"><div><span class="behavior-kicker"><i class="fa-solid fa-trash-can"></i> Permanent deletion</span><h2>Delete Attendance Record</h2><p>The source record will be hard-deleted and excluded from every score and operational view.</p></div><button class="attendance-dialog__close" type="button" data-close-dialog="attendanceDeleteDialog" aria-label="Close delete attendance dialog"><i class="fa-solid fa-xmark"></i></button></div><div class="attendance-dialog__body"><form class="attendance-delete-dialog__form" id="attendanceDeleteForm" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id if config else '' }}"><input type="hidden" name="session_id" value="{{ selected_session.id if selected_session else '' }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() if attendance_date else '' }}"><p class="attendance-void-dialog__summary" id="attendanceDeleteSummary">Select an Attendance record to continue.</p><small>A read-only Deleted snapshot will be retained for authorised review. It cannot be restored or scored.</small><label for="attendanceDeleteReason">Deletion reason <span aria-hidden="true">*</span></label><textarea id="attendanceDeleteReason" name="reason" maxlength="255" required placeholder="Explain why this record must be permanently deleted."></textarea><label class="attendance-delete-confirmation" for="attendanceDeleteConfirmation"><span>Type</span><strong>DELETE ATTENDANCE RECORD</strong><span>to confirm</span></label><input id="attendanceDeleteConfirmation" name="confirmation" required autocomplete="off" placeholder="DELETE ATTENDANCE RECORD"><div class="attendance-delete-dialog__actions"><button class="behavior-btn behavior-btn--outline" type="button" data-close-dialog="attendanceDeleteDialog">Cancel</button><button class="behavior-btn behavior-btn--danger" type="submit"><i class="fa-solid fa-trash-can"></i> Delete Permanently</button></div></form></div></dialog>
   <dialog class="attendance-dialog attendance-action-dialog" id="attendanceRecordActionsDialog"><div class="attendance-dialog__head"><div><span class="behavior-kicker"><i class="fa-solid fa-ellipsis-vertical"></i> Record actions</span><h2 id="attendanceRecordActionsTitle">Attendance Record</h2><p>Choose an action for this saved record.</p></div><button class="attendance-dialog__close" type="button" data-close-dialog="attendanceRecordActionsDialog" aria-label="Close attendance record actions"><i class="fa-solid fa-xmark"></i></button></div><div class="attendance-dialog__body"><p class="attendance-action-dialog__summary" id="attendanceRecordActionsSummary"></p><div class="attendance-action-dialog__items" id="attendanceRecordActions"></div></div></dialog>
   <dialog class="attendance-dialog" id="attendanceOverviewDialog"><div class="attendance-dialog__head"><div><span class="behavior-kicker"><i class="fa-solid fa-chart-column"></i> Current scope</span><h2>Class Overview</h2><p>Statistics calculated from saved attendance records in the selected context.</p></div><button class="attendance-dialog__close" type="button" data-close-dialog="attendanceOverviewDialog" aria-label="Close class overview"><i class="fa-solid fa-xmark"></i></button></div><div class="attendance-dialog__body">{% set attendance_view_target = 'overview' %}{% include 'admin/behavior/_attendance_scope_filters.html' %}<div class="attendance-record-filters"><label>Date / Date Range (From)<input type="date" id="overviewFrom"></label><label>Date / Date Range (To)<input type="date" id="overviewTo"></label></div><div class="attendance-overview-grid" id="overviewStats"></div><ul class="attendance-repeat-list" id="overviewRepeats"></ul></div></dialog>
   {% else %}<section class="behavior-card behavior-section"><div class="attendance-empty"><i class="fa-solid fa-filter-circle-xmark"></i><p>Select a complete Behavior year, configuration, level, class, and session to open Daily Attendance.</p></div></section>{% endif %}
@@ -194,27 +208,52 @@
     select.addEventListener('change', () => syncArrivalField(select));
   });
 
-  const closeDialog = (dialog) => { if (dialog?.open) dialog.close(); };
+  let activeDialog = null;
+  let backgroundDialogs = new Set();
+  const getOpenDialogs = () => Array.from(document.querySelectorAll('dialog[open]'));
+  const syncActiveDialog = () => {
+    const openDialogs = getOpenDialogs();
+    activeDialog = openDialogs[openDialogs.length - 1] || null;
+  };
+  const closeDialog = (dialog) => {
+    if (!dialog?.open) return;
+    backgroundDialogs.delete(dialog);
+    dialog.close();
+    if (activeDialog === dialog) syncActiveDialog();
+  };
   const closeAllDialogs = () => {
-    document.querySelectorAll('dialog[open]').forEach((dialog) => dialog.close());
+    getOpenDialogs().forEach((dialog) => dialog.close());
+    backgroundDialogs.clear();
+    activeDialog = null;
   };
-  const enforceSingleDialog = (preferred) => {
-    const openDialogs = Array.from(document.querySelectorAll('dialog[open]'));
-    if (openDialogs.length < 2) return;
-    const activeDialog = preferred && openDialogs.includes(preferred) ? preferred : openDialogs[openDialogs.length - 1];
+  const enforceSingleDialog = () => {
+    const openDialogs = getOpenDialogs();
+    const preferred = activeDialog && openDialogs.includes(activeDialog) ? activeDialog : openDialogs[openDialogs.length - 1];
     openDialogs.forEach((dialog) => {
-      if (dialog !== activeDialog) dialog.close();
+      if (dialog !== preferred && !backgroundDialogs.has(dialog)) dialog.close();
     });
+    backgroundDialogs = new Set(Array.from(backgroundDialogs).filter((dialog) => dialog.open && dialog !== preferred));
+    activeDialog = preferred || null;
   };
-  const openDialog = (dialog) => {
+  const openDialog = (dialog, { keepOpen = [] } = {}) => {
     if (!dialog) return;
-    closeAllDialogs();
+    const keep = new Set(keepOpen.filter((item) => item && item !== dialog));
+    getOpenDialogs().forEach((openDialogItem) => {
+      if (openDialogItem !== dialog && !keep.has(openDialogItem)) openDialogItem.close();
+    });
+    backgroundDialogs = keep;
+    activeDialog = dialog;
     if (!dialog.open) dialog.showModal();
+    enforceSingleDialog();
   };
-  const dialogObserver = new MutationObserver(() => enforceSingleDialog());
+  document.querySelectorAll('dialog').forEach((dialog) => dialog.addEventListener('close', () => {
+    backgroundDialogs.delete(dialog);
+    if (activeDialog === dialog) syncActiveDialog();
+  }));
+  const dialogObserver = new MutationObserver(enforceSingleDialog);
   dialogObserver.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
-  document.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', closeAllDialogs));
-  document.querySelectorAll('dialog').forEach((dialog) => dialog.addEventListener('click', (event) => { if (event.target === dialog) closeAllDialogs(); }));
+  document.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => closeDialog(document.getElementById(button.dataset.closeDialog))));
+  document.querySelectorAll('dialog').forEach((dialog) => dialog.addEventListener('click', (event) => { if (event.target === dialog) closeDialog(dialog); }));
 
   const profiles = {{ profiles|tojson }};
   const profileDialog = document.getElementById('attendanceProfileDialog');
@@ -270,7 +309,7 @@
       voidForm.action = row.void_url;
       voidSummary.textContent = `${row.date_display || row.date} · ${row.student} · ${row.status}`;
       voidReason.value = '';
-      openDialog(voidDialog);
+      openDialog(voidDialog, { keepOpen: [recordsDialog] });
     }));
     document.querySelectorAll('[data-delete-record]').forEach((button) => button.addEventListener('click', () => {
       const row = recordRows.find((item) => String(item.record_id) === String(button.dataset.deleteRecord));
@@ -279,7 +318,7 @@
       deleteSummary.textContent = `${row.date_display || row.date} · ${row.student} · ${row.status}`;
       deleteReason.value = '';
       deleteConfirmation.value = '';
-      openDialog(deleteDialog);
+      openDialog(deleteDialog, { keepOpen: [recordsDialog] });
     }));
     document.querySelectorAll('[data-open-record-actions]').forEach((button) => button.addEventListener('click', () => {
       const row = recordRows.find((item) => String(item.record_id) === String(button.dataset.openRecordActions));
@@ -293,7 +332,7 @@
         : isVoided
         ? `<form method="post" action="${row.restore_url}" onsubmit="return confirm('Restore this Attendance record and include it in scoring?');"><input type="hidden" name="csrf_token" value="${csrfToken}"><button type="submit"><i class="fa-solid fa-rotate-left"></i> Restore Attendance</button></form>`
         : `<a href="${row.edit_url}"><i class="fa-solid fa-pen"></i> Edit Attendance</a><button type="button" class="is-danger" data-void-record="${row.record_id}"><i class="fa-solid fa-ban"></i> Void Attendance</button><button type="button" class="is-danger" data-delete-record="${row.record_id}"><i class="fa-solid fa-trash-can"></i> Delete Permanently</button>`;
-      openDialog(recordActionsDialog);
+      openDialog(recordActionsDialog, { keepOpen: [recordsDialog] });
       recordActions.querySelector('[data-void-record]')?.addEventListener('click', () => {
         recordActionsDialog.close();
         const target = recordRows.find((item) => String(item.record_id) === String(row.record_id));
@@ -301,7 +340,7 @@
         voidForm.action = target.void_url;
         voidSummary.textContent = `${target.date_display || target.date} · ${target.student} · ${target.status}`;
         voidReason.value = '';
-        openDialog(voidDialog);
+        openDialog(voidDialog, { keepOpen: [recordsDialog] });
       });
       recordActions.querySelector('[data-delete-record]')?.addEventListener('click', () => {
         recordActionsDialog.close();
@@ -311,7 +350,7 @@
         deleteSummary.textContent = `${target.date_display || target.date} · ${target.student} · ${target.status}`;
         deleteReason.value = '';
         deleteConfirmation.value = '';
-        openDialog(deleteDialog);
+        openDialog(deleteDialog, { keepOpen: [recordsDialog] });
       });
     }));
     const empty = document.getElementById('recordsEmpty');
@@ -367,6 +406,61 @@
   saveForm?.addEventListener('submit', () => { dirty = false; if (saveButton) { saveButton.disabled = true; saveButton.innerHTML = '<i class="fa-solid fa-arrows-rotate fa-spin"></i> Saving attendance...'; } if (saveState) { saveState.className = 'attendance-save-state is-saving'; saveState.textContent = 'Saving attendance...'; } });
   window.addEventListener('beforeunload', (event) => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
 
+  const settingsSaveState = document.getElementById('attendanceSettingsSaveState');
+  const settingsStates = new WeakMap();
+  const rawFetch = window.__rawFetch || window.fetch.bind(window);
+  const setSettingsSaveState = (state, message) => {
+    if (!settingsSaveState) return;
+    settingsSaveState.className = `attendance-settings-save-state${state ? ` is-${state}` : ''}`;
+    settingsSaveState.textContent = message;
+  };
+  const scheduleSettingsSave = (form, delay = 450) => {
+    const state = settingsStates.get(form) || { version: 0, timer: null, saving: false, queued: false };
+    state.version += 1;
+    clearTimeout(state.timer);
+    state.timer = setTimeout(() => persistSettingsForm(form), delay);
+    settingsStates.set(form, state);
+    setSettingsSaveState('saving', 'Saving changes...');
+  };
+  const persistSettingsForm = async (form) => {
+    const state = settingsStates.get(form);
+    if (!state) return;
+    state.timer = null;
+    if (state.saving) { state.queued = true; return; }
+    state.saving = true;
+    const version = state.version;
+    try {
+      const response = await rawFetch(form.action, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'X-CSRFToken': form.querySelector('[name="csrf_token"]')?.value || '',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-No-Loader': '1',
+          Accept: 'application/json',
+        },
+        body: new FormData(form),
+      });
+      let payload = {};
+      try { payload = await response.json(); } catch (error) { payload = {}; }
+      if (!response.ok || !payload.success) throw new Error(payload.error || 'Settings could not be saved.');
+      if (version === state.version) setSettingsSaveState('saved', 'Saved automatically');
+    } catch (error) {
+      if (version === state.version) setSettingsSaveState('error', error.message || 'Automatic save failed.');
+    } finally {
+      state.saving = false;
+      if (state.queued || state.version !== version) {
+        state.queued = false;
+        scheduleSettingsSave(form, 0);
+      }
+    }
+  };
+  document.querySelectorAll('[data-attendance-status-form], [data-attendance-days-form]').forEach((form) => {
+    form.addEventListener('submit', (event) => { event.preventDefault(); scheduleSettingsSave(form, 0); });
+    form.addEventListener('input', () => scheduleSettingsSave(form));
+    form.addEventListener('change', () => scheduleSettingsSave(form, 100));
+  });
+
   const drawer = document.getElementById('attendanceSettingsDrawer');
   const backdrop = document.querySelector('[data-close-attendance-drawer]');
   const openButton = document.querySelector('[data-open-attendance-drawer]');
@@ -374,7 +468,7 @@
   const openDrawer = () => { if (!drawer) return; drawer.classList.add('is-open'); drawer.setAttribute('aria-hidden', 'false'); if (backdrop) backdrop.hidden = false; document.body.classList.add('behavior-drawer-open'); };
   openButton?.addEventListener('click', openDrawer);
   document.querySelectorAll('[data-close-attendance-drawer]').forEach((element) => element.addEventListener('click', closeDrawer));
-  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { closeDrawer(); closeAllDialogs(); } });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { closeDrawer(); if (activeDialog) closeDialog(activeDialog); else closeAllDialogs(); } });
 })();
 </script>
 {% endblock %}

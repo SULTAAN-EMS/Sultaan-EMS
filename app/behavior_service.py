@@ -14,11 +14,11 @@ from .models import (
     AcademicYear,
     AcademicYearLevel,
     AcademicYearSubject,
+    AcademicYearLevelAttendanceDay,
     BehaviorAction,
     BehaviorAttendanceStatus,
     BehaviorAttendanceRecord,
     BehaviorAttendanceDeletion,
-    BehaviorAttendanceDay,
     BehaviorCategory,
     BehaviorConfiguration,
     BehaviorEvent,
@@ -105,10 +105,10 @@ def capture_attendance_session_policy(configuration, session):
     policy = attendance_policy_snapshot_for_configuration(configuration)
     session.attendance_policy_snapshot = json.dumps(policy, sort_keys=True)
     session.attendance_frequency_snapshot = (configuration.frequency or "monthly").strip().lower()
-    active_days = BehaviorAttendanceDay.query.filter_by(
-        behavior_configuration_id=configuration.id,
+    active_days = AcademicYearLevelAttendanceDay.query.filter_by(
+        academic_year_level_id=configuration.academic_year_level_id,
         is_active=True,
-    ).order_by(BehaviorAttendanceDay.weekday).all()
+    ).order_by(AcademicYearLevelAttendanceDay.weekday).all()
     session.attendance_weekdays_snapshot = ",".join(str(item.weekday) for item in active_days)
     weights = {
         key: Decimal(value)
@@ -648,13 +648,15 @@ def attendance_points_projection(records):
             continue
         record_count += 1
         points = abs(decimal_value(getattr(row, "points_applied", 0) or 0, "Attendance points"))
-        # Attendance polarity is defined by the five official status keys.  A
-        # legacy row may still contain the old positive Late snapshot; using
-        # the canonical key here prevents that row from inflating positives.
-        polarity = CANONICAL_ATTENDANCE_POLARITIES.get(
-            status_key,
-            (getattr(row, "polarity", None) or "neutral").strip().lower(),
-        )
+        # Prefer the immutable record snapshot so an edited status policy is
+        # respected by new marks without rewriting historical rows.  Late is
+        # the one invariant status: old positive Late rows are normalized to
+        # negative at aggregation time as well as when they are saved.
+        polarity = (getattr(row, "polarity", None) or "").strip().lower()
+        if status_key == "late":
+            polarity = "negative"
+        elif polarity not in {"positive", "negative", "neutral"}:
+            polarity = CANONICAL_ATTENDANCE_POLARITIES.get(status_key, "neutral")
         if polarity == "positive":
             positive += points
         elif polarity == "negative":

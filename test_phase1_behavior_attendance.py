@@ -5,12 +5,15 @@ from datetime import date
 from decimal import Decimal
 
 from werkzeug.datastructures import MultiDict
+from sqlalchemy.exc import IntegrityError
 
 from app import create_app, db
 from app.behavior_attendance import (
     attendance_days,
+    attendance_score_adjustments,
     attendance_statuses,
     ensure_attendance_defaults,
+    update_attendance_active_days,
     generate_daily_roster,
     mark_attendance,
 )
@@ -27,9 +30,11 @@ from app.models import (
     AcademicYear,
     AcademicYearClass,
     AcademicYearLevel,
+    AcademicYearLevelAttendanceDay,
     AcademicYearSubject,
     BehaviorAction,
     BehaviorActionChoice,
+    BehaviorAttendanceDay,
     BehaviorCategory,
     BehaviorConfiguration,
     BehaviorAttendanceRecord,
@@ -41,6 +46,7 @@ from app.models import (
     StudentEnrollment,
     User,
 )
+from migrations.phase_1d_behavior_level_attendance_days import _backfill
 
 
 class TestPhase1BehaviorAttendance(unittest.TestCase):
@@ -119,6 +125,177 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertEqual(generate_daily_roster(self.config, self.session, saturday), 1)
         self.assertEqual(generate_daily_roster(self.config, self.session, saturday), 0)
         self.assertEqual(BehaviorAttendanceRecord.query.count(), 1)
+
+    def test_attendance_scoring_is_automatic_without_legacy_toggle_or_status_switch(self):
+        ensure_attendance_defaults(self.config)
+        self.config.behavior_attendance_scoring_enabled = False
+        db.session.commit()
+
+        statuses = {item.key: item for item in attendance_statuses(self.config)}
+        present = mark_attendance(
+            self.config,
+            self.session,
+            self.enrollment,
+            statuses["present"].id,
+            date(2026, 8, 29),
+        )
+        projection = attendance_score_adjustments(
+            self.config,
+            self.session,
+            self.enrollment,
+            attendance_records=[present],
+        )
+
+        self.assertEqual(projection["positive_points"], Decimal("1.000"))
+        self.assertEqual(projection["record_count"], 1)
+        ensure_attendance_defaults(self.config)
+        self.assertTrue(self.config.behavior_attendance_scoring_enabled)
+        self.assertTrue(all(item.is_active for item in attendance_statuses(self.config)))
+
+    def test_active_days_are_scoped_to_year_level_and_not_display_name(self):
+        ensure_attendance_defaults(self.config)
+        db.session.commit()
+        before = {item.weekday for item in attendance_days(self.config)}
+        self.assertEqual(before, {0, 1, 2, 3, 5, 6})
+
+        self.config.academic_year_level.name = "Dugsi Sare"
+        old_days, saved_days = update_attendance_active_days(
+            self.config, {0, 1, 2, 5, 6}
+        )
+        db.session.commit()
+        self.assertEqual(old_days, before)
+        self.assertEqual(saved_days, {0, 1, 2, 5, 6})
+        self.assertEqual(
+            {item.weekday for item in attendance_days(self.config)},
+            {0, 1, 2, 5, 6},
+        )
+        self.assertEqual(
+            AcademicYearLevelAttendanceDay.query.filter_by(
+                academic_year_level_id=self.config.academic_year_level_id,
+                is_active=True,
+            ).count(),
+            5,
+        )
+
+    def test_active_days_isolate_two_year_levels_and_reject_invalid_weekdays(self):
+        ensure_attendance_defaults(self.config)
+        db.session.commit()
+        other_level = AcademicYearLevel(name="Another Track", academic_year=self.config.academic_year)
+        other_subject = AcademicYearSubject(
+            name="Other Anshax", subject_kind="behavior", max_score=0,
+            academic_year=self.config.academic_year, academic_year_level=other_level,
+        )
+        db.session.add_all([other_level, other_subject])
+        db.session.flush()
+        other_config = BehaviorConfiguration(
+            academic_year=self.config.academic_year,
+            academic_year_level=other_level,
+            behavior_subject=other_subject,
+            frequency="monthly",
+            status="active",
+        )
+        db.session.add(other_config)
+        db.session.commit()
+        ensure_attendance_defaults(other_config)
+        update_attendance_active_days(other_config, {5})
+        db.session.commit()
+
+        self.assertEqual({item.weekday for item in attendance_days(other_config)}, {5})
+        self.assertEqual(
+            {item.weekday for item in attendance_days(self.config)},
+            {0, 1, 2, 3, 5, 6},
+        )
+        with self.assertRaises(BehaviorValidationError):
+            update_attendance_active_days(self.config, {7})
+
+    def test_same_level_name_in_different_academic_years_has_an_independent_schedule(self):
+        ensure_attendance_defaults(self.config)
+        update_attendance_active_days(self.config, {5, 6, 0, 1, 2})
+
+        next_year = AcademicYear(name="2027-2028", is_current=False)
+        next_level = AcademicYearLevel(name="Form One", academic_year=next_year)
+        next_subject = AcademicYearSubject(
+            name="Anshax Next Year", subject_kind="behavior", max_score=0,
+            academic_year=next_year, academic_year_level=next_level,
+        )
+        next_config = BehaviorConfiguration(
+            academic_year=next_year,
+            academic_year_level=next_level,
+            behavior_subject=next_subject,
+            frequency="monthly",
+            status="active",
+        )
+        db.session.add_all([next_year, next_level, next_subject, next_config])
+        db.session.flush()
+        ensure_attendance_defaults(next_config)
+        update_attendance_active_days(next_config, {5, 6, 0, 1, 2, 3})
+        db.session.commit()
+
+        self.assertEqual(
+            {item.weekday for item in attendance_days(self.config)},
+            {0, 1, 2, 5, 6},
+        )
+        self.assertEqual(
+            {item.weekday for item in attendance_days(next_config)},
+            {0, 1, 2, 3, 5, 6},
+        )
+
+    def test_database_prevents_duplicate_level_weekday_rows(self):
+        ensure_attendance_defaults(self.config)
+        db.session.commit()
+        db.session.add(AcademicYearLevelAttendanceDay(
+            academic_year_level_id=self.config.academic_year_level_id,
+            weekday=5,
+            label="Saturday",
+            is_active=True,
+        ))
+        with self.assertRaises(IntegrityError):
+            db.session.commit()
+        db.session.rollback()
+
+    def test_attendance_date_validation_uses_the_enrollment_year_level_schedule(self):
+        ensure_attendance_defaults(self.config)
+        update_attendance_active_days(self.config, {5, 6, 0, 1, 2})
+        db.session.commit()
+        thursday = date(2026, 9, 17)
+        with self.assertRaises(BehaviorValidationError):
+            generate_daily_roster(self.config, self.session, thursday)
+
+        update_attendance_active_days(self.config, {5, 6, 0, 1, 2, 3})
+        db.session.commit()
+        self.assertEqual(generate_daily_roster(self.config, self.session, thursday), 1)
+
+    def test_level_schedule_migration_seeds_from_legacy_configuration_days(self):
+        db.session.add_all([
+            BehaviorAttendanceDay(
+                behavior_configuration_id=self.config.id,
+                weekday=5,
+                label="Saturday",
+                is_active=True,
+            ),
+            BehaviorAttendanceDay(
+                behavior_configuration_id=self.config.id,
+                weekday=4,
+                label="Friday",
+                is_active=False,
+            ),
+        ])
+        db.session.commit()
+        connection = db.engine.connect()
+        transaction = connection.begin()
+        _backfill(connection)
+        transaction.commit()
+        connection.close()
+        self.assertEqual(
+            {
+                item.weekday
+                for item in AcademicYearLevelAttendanceDay.query.filter_by(
+                    academic_year_level_id=self.config.academic_year_level_id,
+                    is_active=True,
+                ).all()
+            },
+            {5},
+        )
 
     def test_marking_upserts_one_record_and_feeds_score(self):
         ensure_attendance_defaults(self.config)

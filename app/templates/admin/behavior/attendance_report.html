@@ -316,7 +316,7 @@ table.abs tr.totals-row td{background:#eef4fb;border-top:2px solid #0d3b66;borde
 <script>const monthlyCalendarTitle=document.querySelector('.cal-panel .panel-title');if(monthlyCalendarTitle)monthlyCalendarTitle.textContent='XAADIRKA KALTIRSIGA BILEEDKA';const attendanceBreakdownTitle=document.querySelector('.donut-panel .panel-title');if(attendanceBreakdownTitle)attendanceBreakdownTitle.textContent='DULMARKA IMAANSHAHA';</script>
 <script>document.querySelectorAll('.bd-sub').forEach((node)=>node.textContent='LA XAADIRAY');</script>
 <script>(()=>{const statusMap={Present:'Joogid',Late:'Daahid',Absent:'Maqnaasho',Excused:'Cudur-daar','Official Leave':'Bixid Rasmi ah'};document.querySelectorAll('.legend span,.bd-list .bd-item span,.abs .tag').forEach((node)=>{const text=node.textContent.trim();const key=Object.keys(statusMap).find((candidate)=>text===candidate||text.startsWith(`${candidate} (`));if(!key)return;const translated=`${statusMap[key]}${text.slice(key.length)}`;if(node.classList.contains('tag'))node.textContent=translated;else if(node.lastChild?.nodeType===Node.TEXT_NODE)node.lastChild.nodeValue=` ${translated}`;});})();</script>
-<script>document.querySelectorAll('.legend span').forEach((node)=>{if(node.textContent.trim().endsWith('Holiday')&&node.lastChild?.nodeType===Node.TEXT_NODE)node.lastChild.nodeValue=' Maalin Fasax ah';});</script>
+<script>document.querySelectorAll('.legend span').forEach((node)=>{if(node.textContent.trim().endsWith('Holiday')&&node.lastChild?.nodeType===Node.TEXT_NODE)node.lastChild.nodeValue=' Nasiino';});</script>
 <script>document.querySelectorAll('.hol-badge').forEach((node)=>node.textContent='N');</script>
 </body>
 </html>

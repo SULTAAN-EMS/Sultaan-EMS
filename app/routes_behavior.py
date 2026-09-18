@@ -56,7 +56,6 @@ from .behavior_grading import (
 )
 from .behavior_reporting import get_behavior_report_data
 from .behavior_attendance import (
-    OFFICIAL_ATTENDANCE_LABELS,
     attendance_days,
     attendance_status_label,
     attendance_statuses,
@@ -64,18 +63,19 @@ from .behavior_attendance import (
     ensure_attendance_defaults,
     generate_daily_roster,
     mark_attendance,
+    update_attendance_active_days as apply_attendance_active_days,
 )
 from .models import (
     AcademicYear,
     AcademicYearClass,
     AcademicYearLevel,
+    AcademicYearLevelAttendanceDay,
     AcademicYearSubject,
     BehaviorAction,
     BehaviorActionChoice,
     BehaviorCategory,
     BehaviorConfiguration,
     BehaviorEvent,
-    BehaviorAttendanceDay,
     BehaviorAttendanceRecord,
     BehaviorAttendanceDeletion,
     BehaviorAttendanceStatus,
@@ -127,6 +127,15 @@ def _late_by_minutes(arrival_time, school_start_time):
     elif not hasattr(start, "hour"):
         start = _parse_time(start)
     return max(0, (arrival_time.hour * 60 + arrival_time.minute) - (start.hour * 60 + start.minute))
+
+
+def _wants_json_response():
+    """Identify the lightweight autosave requests used by Behavior settings."""
+    return (
+        request.is_json
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in request.headers.get("Accept", "")
+    )
 
 
 def _behavior_exam_options(year_id, configuration=None):
@@ -2304,15 +2313,15 @@ def attendance():
             before_statuses = BehaviorAttendanceStatus.query.filter_by(
                 behavior_configuration_id=config.id
             ).count()
-            before_days = BehaviorAttendanceDay.query.filter_by(
-                behavior_configuration_id=config.id
+            before_days = AcademicYearLevelAttendanceDay.query.filter_by(
+                academic_year_level_id=config.academic_year_level_id
             ).count()
             ensure_attendance_defaults(config)
             after_statuses = BehaviorAttendanceStatus.query.filter_by(
                 behavior_configuration_id=config.id
             ).count()
-            after_days = BehaviorAttendanceDay.query.filter_by(
-                behavior_configuration_id=config.id
+            after_days = AcademicYearLevelAttendanceDay.query.filter_by(
+                academic_year_level_id=config.academic_year_level_id
             ).count()
             if after_statuses != before_statuses or after_days != before_days:
                 db.session.commit()
@@ -2411,12 +2420,14 @@ def attendance():
                 flash("Attendance status saved.", "success")
             elif action == "save_days":
                 active_days = {_int(value) for value in request.form.getlist("school_days")}
-                if not active_days.issubset(set(range(7))):
-                    raise BehaviorValidationError("School day selection is invalid")
-                for day in config.attendance_days:
-                    day.is_active = day.weekday in active_days
+                before_days, saved_days = apply_attendance_active_days(config, active_days)
+                audit(
+                    "Behavior Attendance Calendar",
+                    f"Updated active days for Academic Year Level {config.academic_year_level_id} "
+                    f"(configuration {config.id}): {sorted(before_days)} -> {sorted(saved_days)}",
+                )
                 db.session.commit()
-                flash("School attendance days saved.", "success")
+                flash("Attendance active days saved for this Academic Year Level.", "success")
             else:
                 raise BehaviorValidationError("Unknown attendance action")
             return redirect(url_for(
@@ -2435,7 +2446,10 @@ def attendance():
                 flash(str(exc), "danger")
 
     statuses = attendance_statuses(config) if config else []
-    all_statuses = attendance_statuses(config, active_only=False) if config else []
+    # The settings drawer exposes only selectable statuses.  Availability is
+    # automatic now; retired/inactive historical rows remain in the database
+    # for audit and are not presented as editable settings.
+    all_statuses = attendance_statuses(config) if config else []
     all_days = attendance_days(config, active_only=False) if config else []
     school_day = bool(config and attendance_date.weekday() in {item.weekday for item in all_days if item.is_active})
     enrollments = (
@@ -2641,7 +2655,7 @@ def attendance():
         profiles=profiles,
         record_rows=record_rows,
         overview=overview,
-        official_status_labels=OFFICIAL_ATTENDANCE_LABELS,
+        official_status_labels={item.key: item.label for item in statuses},
         attendance_view=attendance_view,
         attendance_view_target=attendance_view or "records",
     )
@@ -2882,8 +2896,8 @@ def attendance_report(enrollment_id):
             key = report_status_key(record.status_key_snapshot, record.status_label_snapshot) if record else ""
             if key not in status_keys and record:
                 key = "excused" if record.polarity == "neutral" else ("absent" if record.polarity == "negative" else "present")
-            holiday = current.weekday() == 4
-            return {"pad": False, "day": day_value, "holiday": holiday, "active": current.weekday() in active_weekdays, "key": key, "marker": "H" if holiday else ("x" if key == "absent" else "." if key == "late" else "-" if key == "excused" else "check" if key == "present" else "")}
+            non_school_day = current.weekday() not in active_weekdays
+            return {"pad": False, "day": day_value, "holiday": non_school_day, "active": not non_school_day, "key": key, "marker": "N" if non_school_day else ("x" if key == "absent" else "." if key == "late" else "-" if key == "excused" else "check" if key == "present" else "")}
 
         calendar_weeks, week = [], []
         order = [5, 6, 0, 1, 2, 3, 4]
@@ -2909,7 +2923,11 @@ def attendance_report(enrollment_id):
             saved_attendance_time = record.attendance_time or (record.created_at.time() if record.created_at else None)
             display_time = saved_attendance_time if key == "present" else record.arrival_time
             raw_points = Decimal(str(record.points_applied or 0))
-            polarity = status_polarities.get(key, record.polarity)
+            polarity = (record.polarity or status_polarities.get(key, "neutral")).strip().lower()
+            if polarity not in {"positive", "negative", "neutral"}:
+                polarity = status_polarities.get(key, "neutral")
+            if key == "late":
+                polarity = "negative"
             signed_points = -abs(raw_points) if polarity == "negative" else abs(raw_points)
             point_text = format_points(signed_points, signed=True) if signed_points else "0.00"
             tag_label = label
@@ -3027,6 +3045,7 @@ def _attendance_redirect(config, session_id=None, attendance_date=None):
 def update_attendance_status(status_id):
     item = db.session.get(BehaviorAttendanceStatus, status_id)
     config = db.session.get(BehaviorConfiguration, _int(request.form.get("config_id")))
+    wants_json = _wants_json_response()
     try:
         if not item or not config or item.behavior_configuration_id != config.id:
             raise BehaviorValidationError("Attendance status is outside the selected configuration")
@@ -3036,13 +3055,30 @@ def update_attendance_status(status_id):
         if item.key == "late":
             item.polarity = "negative"
         item.points = decimal_value(request.form.get("points"), "Attendance points", minimum="0")
-        item.is_active = request.form.get("is_active") == "on"
+        # Status availability is automatic.  Keep the legacy column true for
+        # old clients and existing databases, but do not accept a user-facing
+        # Active checkbox anymore.
+        item.is_active = True
         if not item.label or item.polarity not in {"positive", "negative", "neutral"}:
             raise BehaviorValidationError("Attendance status label and polarity are required")
         db.session.commit()
+        if wants_json:
+            return jsonify(
+                success=True,
+                status={
+                    "id": item.id,
+                    "key": item.key,
+                    "label": item.label,
+                    "polarity": item.polarity,
+                    "points": f"{item.points:.3f}",
+                    "is_active": item.is_active,
+                },
+            )
         flash("Attendance status updated.", "success")
     except (BehaviorValidationError, ValueError, IntegrityError) as exc:
         db.session.rollback()
+        if wants_json:
+            return jsonify(success=False, error=str(exc) if not isinstance(exc, IntegrityError) else "Attendance status could not be updated."), 400
         flash(str(exc) if not isinstance(exc, IntegrityError) else "Attendance status could not be updated.", "danger")
     try:
         selected_date = date.fromisoformat(request.form.get("attendance_date"))
@@ -3050,20 +3086,35 @@ def update_attendance_status(status_id):
         selected_date = date.today()
     return _attendance_redirect(config, _int(request.form.get("session_id")), selected_date)
 
-
-@behavior_bp.route("/attendance/scoring", methods=["POST"])
-def update_attendance_scoring():
+@behavior_bp.route("/attendance/active-days", methods=["POST"])
+def update_attendance_active_days():
+    """Autosave the canonical Academic Year Level Attendance calendar."""
     config = db.session.get(BehaviorConfiguration, _int(request.form.get("config_id")))
+    wants_json = _wants_json_response()
     try:
         if not config:
             raise BehaviorValidationError("Behavior configuration was not found")
         ensure_configuration_editable(config)
-        config.behavior_attendance_scoring_enabled = request.form.get("enabled") == "on"
+        active_days = {_int(value) for value in request.form.getlist("school_days")}
+        before_days, saved_days = apply_attendance_active_days(config, active_days)
+        audit(
+            "Behavior Attendance Calendar",
+            f"Updated active days for Academic Year Level {config.academic_year_level_id} "
+            f"(configuration {config.id}): {sorted(before_days)} -> {sorted(saved_days)}",
+        )
         db.session.commit()
-        flash("Behavior attendance scoring setting updated.", "success")
-    except (BehaviorValidationError, ValueError) as exc:
+        if wants_json:
+            return jsonify(
+                success=True,
+                active_days=sorted(saved_days),
+                inactive_days=sorted(set(range(7)) - saved_days),
+            )
+        flash("Attendance active days saved for this Academic Year Level.", "success")
+    except (BehaviorValidationError, ValueError, IntegrityError) as exc:
         db.session.rollback()
-        flash(str(exc), "danger")
+        if wants_json:
+            return jsonify(success=False, error=str(exc) if not isinstance(exc, IntegrityError) else "Attendance active days could not be saved."), 400
+        flash(str(exc) if not isinstance(exc, IntegrityError) else "Attendance active days could not be saved.", "danger")
     try:
         selected_date = date.fromisoformat(request.form.get("attendance_date"))
     except (TypeError, ValueError):

@@ -342,8 +342,10 @@ def ensure_behavior_attendance_history_snapshots():
         "behavior_attendance_statuses",
         "behavior_attendance_days",
     }
-    if not required.issubset(set(inspector.get_table_names())):
+    tables = set(inspector.get_table_names())
+    if not required.issubset(tables):
         return
+    has_level_schedule = "academic_year_level_attendance_days" in tables
     try:
         sessions = db.session.execute(text(
             "SELECT id, behavior_configuration_id, attendance_policy_snapshot, "
@@ -364,11 +366,33 @@ def ensure_behavior_attendance_history_snapshots():
             if not frequency_snapshot:
                 frequency_snapshot = str(config[0] or "monthly").strip().lower()
             if weekdays_snapshot is None:
-                weekdays = db.session.execute(text(
-                    "SELECT weekday FROM behavior_attendance_days "
-                    "WHERE behavior_configuration_id = :id AND is_active = 1 "
-                    "ORDER BY weekday"
-                ), {"id": config_id}).scalars().all()
+                if has_level_schedule:
+                    level_id = db.session.execute(text(
+                        "SELECT academic_year_level_id FROM behavior_configurations "
+                        "WHERE id = :id"
+                    ), {"id": config_id}).scalar()
+                    weekdays = []
+                    if level_id is not None:
+                        weekdays = db.session.execute(text(
+                            "SELECT weekday FROM academic_year_level_attendance_days "
+                            "WHERE academic_year_level_id = :level_id AND is_active = 1 "
+                            "ORDER BY weekday"
+                        ), {"level_id": level_id}).scalars().all()
+                    # ``db.create_all()`` can create the new table before the
+                    # additive migration has backfilled it. Preserve historical
+                    # snapshots during that short compatibility window.
+                    if not weekdays:
+                        weekdays = db.session.execute(text(
+                            "SELECT weekday FROM behavior_attendance_days "
+                            "WHERE behavior_configuration_id = :id AND is_active = 1 "
+                            "ORDER BY weekday"
+                        ), {"id": config_id}).scalars().all()
+                else:
+                    weekdays = db.session.execute(text(
+                        "SELECT weekday FROM behavior_attendance_days "
+                        "WHERE behavior_configuration_id = :id AND is_active = 1 "
+                        "ORDER BY weekday"
+                    ), {"id": config_id}).scalars().all()
                 weekdays_snapshot = ",".join(str(value) for value in weekdays)
             if not policy_snapshot:
                 status_rows = db.session.execute(text(
