@@ -152,6 +152,51 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertTrue(self.config.behavior_attendance_scoring_enabled)
         self.assertTrue(all(item.is_active for item in attendance_statuses(self.config)))
 
+    def test_status_polarity_update_survives_refresh_and_controls_new_records(self):
+        ensure_attendance_defaults(self.config)
+        late = next(item for item in attendance_statuses(self.config) if item.key == "late")
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        response = client.post(
+            f"/admin/behavior/attendance/statuses/{late.id}",
+            data={
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+                "attendance_date": "2026-08-29",
+                "label": "Daahid",
+                "polarity": "neutral",
+                "points": "0.5",
+            },
+            headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+        )
+        self.assertEqual(response.status_code, 200)
+        db.session.expire(late)
+        ensure_attendance_defaults(self.config)
+        db.session.expire(late)
+        self.assertEqual(late.polarity, "neutral")
+        refreshed = client.get(
+            "/admin/behavior/attendance",
+            query_string={"config_id": self.config.id, "session_id": self.session.id},
+        )
+        self.assertEqual(refreshed.status_code, 200)
+        self.assertIn('name="polarity"><option value="neutral" selected', refreshed.get_data(as_text=True))
+        record = mark_attendance(
+            self.config,
+            self.session,
+            self.enrollment,
+            late.id,
+            date(2026, 8, 29),
+            attendance_time="07:30",
+            arrival_time="08:00",
+        )
+        self.assertEqual(record.polarity, "neutral")
+        self.assertEqual(
+            attendance_points_projection([record])["negative_points"],
+            Decimal("0.000"),
+        )
+
     def test_active_days_are_scoped_to_year_level_and_not_display_name(self):
         ensure_attendance_defaults(self.config)
         db.session.commit()

@@ -9,6 +9,8 @@ import json
 from collections import defaultdict
 from decimal import Decimal
 
+from sqlalchemy import and_, or_
+
 from .behavior_service import (
     BehaviorValidationError,
     attendance_points_projection,
@@ -23,6 +25,7 @@ from .models import (
     AcademicYearSubject,
     BehaviorAttendanceRecord,
     BehaviorConfiguration,
+    BehaviorConfigurationLevel,
     BehaviorEvent,
 )
 
@@ -257,7 +260,15 @@ def get_behavior_report_data(student, exam):
         )
         .filter(
             BehaviorConfiguration.academic_year_id == exam.academic_year_id,
-            BehaviorConfiguration.academic_year_level_id == year_level_id,
+            or_(
+                BehaviorConfiguration.academic_year_levels.any(
+                    BehaviorConfigurationLevel.academic_year_level_id == year_level_id
+                ),
+                and_(
+                    ~BehaviorConfiguration.academic_year_levels.any(),
+                    BehaviorConfiguration.academic_year_level_id == year_level_id,
+                ),
+            ),
             AcademicYearSubject.subject_kind == "behavior",
             AcademicYearSubject.is_active.is_(True),
         )

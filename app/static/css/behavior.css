@@ -124,6 +124,9 @@
 .behavior-table tr:last-child td { border-bottom: 0; }
 .behavior-muted { color: var(--behavior-muted); }
 .behavior-help { margin-top: 8px; color: var(--behavior-muted); font-size: .82rem; }
+.behavior-check-list { display: grid; gap: 7px; margin-top: 2px; padding: 10px 11px; border: 1px solid #dbe4ee; border-radius: 10px; background: #f8fafc; }
+.behavior-check-list .check { display: flex; align-items: center; gap: 8px; color: var(--behavior-ink); font-size: .88rem; line-height: 1.25; text-transform: none; letter-spacing: 0; }
+.behavior-check-list input[type="checkbox"] { width: auto; min-height: auto; margin: 0; accent-color: var(--behavior-teal); }
 .behavior-alert { margin: 12px 0; padding: 11px 13px; border-radius: 10px; background: #fff8e6; color: #765b20; }
 .behavior-alert--success { background: #e7f8f0; color: #17634f; }
 .behavior-alert--danger { background: #fff0ee; color: #863a33; }

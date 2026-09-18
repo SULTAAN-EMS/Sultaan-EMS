@@ -248,6 +248,57 @@ def configuration_for_scope(academic_year_id, academic_year_level_id, academic_y
     return query.order_by(BehaviorConfiguration.id).first()
 
 
+def configuration_level_ids(configuration):
+    """Return canonical AcademicYearLevel IDs for a configuration."""
+    if not configuration:
+        return set()
+    memberships = getattr(configuration, "academic_year_levels", None) or []
+    ids = {item.academic_year_level_id for item in memberships if item.academic_year_level_id}
+    if not ids and configuration.academic_year_level_id:
+        ids.add(configuration.academic_year_level_id)
+    return ids
+
+
+def configuration_applies_to_level(configuration, academic_year_level_id):
+    """Check level membership using IDs, never translated/display labels."""
+    if not configuration or not academic_year_level_id:
+        return False
+    return _int_or_none(academic_year_level_id) in configuration_level_ids(configuration)
+
+
+def validate_configuration_levels(configuration, academic_year_level_ids):
+    """Validate a complete, duplicate-free same-year level selection."""
+    configuration = validate_behavior_configuration(configuration)
+    ids = []
+    for value in academic_year_level_ids:
+        if value is None:
+            continue
+        try:
+            ids.append(int(value))
+        except (TypeError, ValueError) as exc:
+            raise BehaviorValidationError("Academic Level selection contains an invalid ID") from exc
+    if not ids:
+        raise BehaviorValidationError("Select at least one Academic Level")
+    if len(ids) != len(set(ids)):
+        raise BehaviorValidationError("An Academic Level cannot be selected more than once")
+    levels = AcademicYearLevel.query.filter(
+        AcademicYearLevel.id.in_(set(ids)),
+        AcademicYearLevel.academic_year_id == configuration.academic_year_id,
+        AcademicYearLevel.is_active.is_(True),
+    ).all()
+    valid_ids = {item.id for item in levels}
+    if valid_ids != set(ids):
+        raise BehaviorValidationError("Every selected Academic Level must belong to the selected Academic Year")
+    return levels
+
+
+def _int_or_none(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def allocation_total(configuration):
     configuration = validate_behavior_configuration(configuration)
     total = sum(
@@ -296,15 +347,13 @@ def validate_session_scope(configuration, exam_type_id=None, exam_id=None):
             or not exam.is_active
         ):
             raise BehaviorValidationError("Exam Type does not belong to the Behavior Academic Year")
-        configured_level = configuration.academic_year_level
-        if (
-            exam.academic_level_id is not None
-            and (
-                not configured_level
-                or configured_level.legacy_level_id != exam.academic_level_id
-            )
-        ):
-            raise BehaviorValidationError("Exam Type does not belong to the Behavior Academic Year and Level")
+        if exam.academic_level_id is not None:
+            exam_level = AcademicYearLevel.query.filter_by(
+                academic_year_id=configuration.academic_year_id,
+                legacy_level_id=exam.academic_level_id,
+            ).first()
+            if not exam_level or not configuration_applies_to_level(configuration, exam_level.id):
+                raise BehaviorValidationError("Exam Type does not belong to the Behavior Academic Year and Level")
         return exam
     exam_type = db.session.get(ExamType, exam_type_id) if exam_type_id is not None else None
     if (
@@ -649,13 +698,9 @@ def attendance_points_projection(records):
         record_count += 1
         points = abs(decimal_value(getattr(row, "points_applied", 0) or 0, "Attendance points"))
         # Prefer the immutable record snapshot so an edited status policy is
-        # respected by new marks without rewriting historical rows.  Late is
-        # the one invariant status: old positive Late rows are normalized to
-        # negative at aggregation time as well as when they are saved.
+        # respected by new marks without rewriting historical rows.
         polarity = (getattr(row, "polarity", None) or "").strip().lower()
-        if status_key == "late":
-            polarity = "negative"
-        elif polarity not in {"positive", "negative", "neutral"}:
+        if polarity not in {"positive", "negative", "neutral"}:
             polarity = CANONICAL_ATTENDANCE_POLARITIES.get(status_key, "neutral")
         if polarity == "positive":
             positive += points
@@ -696,7 +741,6 @@ def attendance_score_projection(
         )
     if not session or session.behavior_configuration_id != configuration.id:
         raise BehaviorValidationError("Attendance session is outside the selected Behavior configuration")
-
     # A NULL allocation identifies a pre-contract session. Its historical
     # behavior remains available through the legacy compatibility calculation.
     allocation_value = getattr(session, "attendance_allocation", None)
@@ -807,14 +851,17 @@ def validate_enrollment_scope(configuration, enrollment_id):
         raise BehaviorValidationError("Student enrollment was not found")
     if (
         enrollment.academic_year_id != configuration.academic_year_id
-        or enrollment.academic_year_level_id != configuration.academic_year_level_id
+        or not configuration_applies_to_level(configuration, enrollment.academic_year_level_id)
     ):
         raise BehaviorValidationError("Student enrollment does not belong to the selected Behavior scope")
     if (
         not enrollment.academic_year_level
         or enrollment.academic_year_level.academic_year_id != configuration.academic_year_id
         or not enrollment.academic_year_class
-        or enrollment.academic_year_class.academic_year_level_id != configuration.academic_year_level_id
+        or not configuration_applies_to_level(
+            configuration,
+            enrollment.academic_year_class.academic_year_level_id,
+        )
     ):
         raise BehaviorValidationError("Student enrollment class does not belong to the selected Behavior scope")
     if enrollment.status in {"withdrawn", "archived"}:

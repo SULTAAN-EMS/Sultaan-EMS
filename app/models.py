@@ -284,6 +284,12 @@ class BehaviorConfiguration(TimestampMixin, db.Model):
     academic_year_level = db.relationship("AcademicYearLevel")
     behavior_subject = db.relationship("AcademicYearSubject")
     creator = db.relationship("User", foreign_keys=[created_by])
+    academic_year_levels = db.relationship(
+        "BehaviorConfigurationLevel",
+        back_populates="behavior_configuration",
+        cascade="all, delete-orphan",
+        order_by="BehaviorConfigurationLevel.academic_year_level_id",
+    )
     sessions = db.relationship(
         "BehaviorSession",
         back_populates="configuration",
@@ -474,6 +480,40 @@ class BehaviorSession(TimestampMixin, db.Model):
             "(behavior_allocation IS NOT NULL AND attendance_allocation IS NOT NULL "
             "AND behavior_allocation + attendance_allocation = maximum_score)",
             name="ck_behavior_session_allocation_total",
+        ),
+    )
+
+
+class BehaviorConfigurationLevel(TimestampMixin, db.Model):
+    """Canonical Academic-Year-Level membership for one Behavior configuration."""
+
+    __tablename__ = "behavior_configuration_levels"
+
+    id = db.Column(db.Integer, primary_key=True)
+    behavior_configuration_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_configurations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_levels.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+
+    behavior_configuration = db.relationship(
+        "BehaviorConfiguration",
+        back_populates="academic_year_levels",
+    )
+    academic_year_level = db.relationship("AcademicYearLevel")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "behavior_configuration_id",
+            "academic_year_level_id",
+            name="uq_behavior_configuration_level",
         ),
     )
 

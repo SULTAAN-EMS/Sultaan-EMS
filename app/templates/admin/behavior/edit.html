@@ -6,7 +6,7 @@
   <header class="behavior-hero"><span class="behavior-hero__mark"><i class="fa-solid fa-pen-to-square"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow">Phase 2C · Audited edit</span><h1>Edit Behavior Event</h1><p>Material changes require a reason and preserve the old values in the existing AuditLog.</p></div></header>
   {% include "admin/behavior/_nav.html" %}
   <section class="behavior-card behavior-section">
-    <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-user-graduate"></i> {{ event.student.full_name }}</span><h2>{{ config.academic_year.name }} · {{ config.academic_year_level.name }} · {{ config.behavior_subject.name }}</h2></div><span class="behavior-scope-pill">Recorded event</span></div>
+    <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-user-graduate"></i> {{ event.student.full_name }}</span><h2>{{ config.academic_year.name }} · {{ event.student_enrollment.academic_year_level.name if event.student_enrollment else config|behavior_levels }} · {{ config.behavior_subject.name }}</h2></div><span class="behavior-scope-pill">Recorded event</span></div>
     <form class="behavior-form" method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="behavior-field"><label for="editSession">Behavior Session</label><select id="editSession" name="behavior_session_id" required>{% for item in sessions %}<option value="{{ item.id }}" data-maximum="{{ item.maximum_score|behavior_points }}" {% if item.id == event.behavior_session_id %}selected{% endif %}>{{ item.session_label }} · {{ item.maximum_score|behavior_points }}</option>{% endfor %}</select></div>

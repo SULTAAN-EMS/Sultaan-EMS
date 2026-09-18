@@ -161,6 +161,9 @@ def ensure_schema_compatibility():
     # Freeze the Attendance calendar/policy for normalized sessions so later
     # configuration edits cannot silently rewrite historical results.
     ensure_behavior_attendance_history_snapshots()
+    # Academic Level membership is additive and backfilled from the existing
+    # single-level column without changing sessions or historical records.
+    ensure_behavior_configuration_levels()
 
     # Update teacher_classes foreign key to reference academic_classes instead of school_classes
     # This requires manual migration for existing data
@@ -253,6 +256,36 @@ def ensure_behavior_foundation_attendance():
     except Exception as exc:
         db.session.rollback()
         print(f"Warning: Behavior Phase 1 schema sync failed: {exc}")
+
+
+def ensure_behavior_configuration_levels():
+    """Create the normalized config-to-year-level membership table."""
+    try:
+        inspector = inspect(db.engine)
+        if not inspector.has_table("behavior_configurations"):
+            return
+        from .models import BehaviorConfiguration, BehaviorConfigurationLevel
+
+        BehaviorConfigurationLevel.__table__.create(bind=db.engine, checkfirst=True)
+        add_index_if_missing(
+            "behavior_configuration_levels",
+            "ix_behavior_configuration_levels_year_level",
+            ["academic_year_level_id"],
+        )
+        for config in BehaviorConfiguration.query.order_by(BehaviorConfiguration.id).all():
+            if not config.academic_year_level_id:
+                continue
+            if not BehaviorConfigurationLevel.query.filter_by(
+                behavior_configuration_id=config.id,
+            ).first():
+                db.session.add(BehaviorConfigurationLevel(
+                    behavior_configuration_id=config.id,
+                    academic_year_level_id=config.academic_year_level_id,
+                ))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"Warning: Behavior configuration level sync failed: {exc}")
 
 
 def ensure_behavior_exam_scope():

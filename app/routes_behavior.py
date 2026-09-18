@@ -25,6 +25,7 @@ from .behavior_service import (
     calculate_session_score,
     capture_attendance_session_policy,
     canonical_response_type,
+    configuration_level_ids,
     configuration_for_scope,
     decimal_value,
     edit_event,
@@ -37,6 +38,7 @@ from .behavior_service import (
     scoring_ledger_projection,
     session_allocation_projection,
     storage_response_type,
+    validate_configuration_levels,
     validate_behavior_configuration,
     validate_enrollment_scope,
     validate_behavior_scope,
@@ -75,6 +77,7 @@ from .models import (
     BehaviorActionChoice,
     BehaviorCategory,
     BehaviorConfiguration,
+    BehaviorConfigurationLevel,
     BehaviorEvent,
     BehaviorAttendanceRecord,
     BehaviorAttendanceDeletion,
@@ -246,6 +249,11 @@ def _config_choices(selected_year_id=None, selected_config_id=None):
     configurations = (
         BehaviorConfiguration.query
         .filter_by(academic_year_id=selected_year_id)
+        .options(
+            selectinload(BehaviorConfiguration.academic_year_levels).joinedload(
+                BehaviorConfigurationLevel.academic_year_level
+            )
+        )
         .order_by(BehaviorConfiguration.id.desc())
         .all()
         if selected_year_id else []
@@ -283,6 +291,9 @@ def _behavior_configuration(config_id):
         options=[
             joinedload(BehaviorConfiguration.academic_year),
             joinedload(BehaviorConfiguration.academic_year_level),
+            selectinload(BehaviorConfiguration.academic_year_levels).joinedload(
+                BehaviorConfigurationLevel.academic_year_level
+            ),
             joinedload(BehaviorConfiguration.behavior_subject),
             selectinload(BehaviorConfiguration.sessions).joinedload(BehaviorSession.exam),
             selectinload(BehaviorConfiguration.sessions).joinedload(BehaviorSession.exam_type),
@@ -367,8 +378,16 @@ def _behavior_context(
         invalid_scope = True
     levels = year_levels(selected_year.id) if selected_year else []
     if requested_config and not invalid_scope:
-        selected_level = requested_config.academic_year_level
-        if has_level_selection and selected_level.id != requested_level_id:
+        configured_ids = configuration_level_ids(requested_config)
+        selected_level = _valid_level(selected_year.id, requested_level_id) if has_level_selection else next(
+            (
+                item.academic_year_level
+                for item in requested_config.academic_year_levels
+                if item.academic_year_level_id in configured_ids
+            ),
+            requested_config.academic_year_level,
+        )
+        if has_level_selection and requested_level_id not in configuration_level_ids(requested_config):
             invalid_scope = True
     elif has_level_selection:
         selected_level = _valid_level(selected_year.id, requested_level_id) if selected_year else None
@@ -381,20 +400,37 @@ def _behavior_context(
     configurations = []
     if selected_year:
         query = BehaviorConfiguration.query.filter_by(academic_year_id=selected_year.id)
+        configurations = query.options(
+            selectinload(BehaviorConfiguration.academic_year_levels)
+        ).order_by(BehaviorConfiguration.id.desc()).all()
         if selected_level:
-            query = query.filter_by(academic_year_level_id=selected_level.id)
-        configurations = query.order_by(BehaviorConfiguration.id.desc()).all()
+            configurations = [
+                item for item in configurations
+                if selected_level.id in configuration_level_ids(item)
+            ]
     selected_config = requested_config if not invalid_scope else None
     if selected_config and (
         not selected_year
         or selected_config.academic_year_id != selected_year.id
-        or (selected_level and selected_config.academic_year_level_id != selected_level.id)
+        or (selected_level and selected_level.id not in configuration_level_ids(selected_config))
     ):
         invalid_scope = True
         selected_config = None
     if selected_config is None and auto_select_config and configurations and not has_config_selection and not invalid_scope:
         selected_config = _behavior_configuration(configurations[0].id)
-        selected_level = selected_config.academic_year_level
+        # Keep an explicitly requested level.  The selected configuration may
+        # serve several levels, so replacing a valid Secondary/third-level
+        # selection with the legacy anchor level silently changed the page
+        # scope back to Primary.
+        if not has_level_selection:
+            selected_level = next(
+                (
+                    item.academic_year_level
+                    for item in selected_config.academic_year_levels
+                    if item.academic_year_level_id in configuration_level_ids(selected_config)
+                ),
+                selected_config.academic_year_level,
+            )
     classes = (
         AcademicYearClass.query
         .filter_by(academic_year_level_id=selected_level.id, is_active=True)
@@ -405,7 +441,10 @@ def _behavior_context(
     selected_class = _valid_class(selected_level.id, _int(class_id)) if selected_level and has_class_selection else None
     if has_class_selection and selected_class is None:
         invalid_scope = True
-    sessions = list(selected_config.sessions) if selected_config else []
+    sessions = (
+        selected_config.sessions
+        if selected_config else []
+    )
     selected_session = (
         next((item for item in sessions if item.id == _int(session_id)), None)
         if has_session_selection else None
@@ -429,9 +468,13 @@ def _behavior_context(
     }
 
 
-def _behavior_enrollments(config, class_id=None):
+def _behavior_enrollments(config, class_id=None, academic_year_level_id=None):
     if not config:
         return []
+    level_ids = configuration_level_ids(config)
+    requested_level_id = _int(academic_year_level_id)
+    if requested_level_id in level_ids:
+        level_ids = {requested_level_id}
     query = (
         StudentEnrollment.query
         .options(
@@ -444,8 +487,8 @@ def _behavior_enrollments(config, class_id=None):
         .join(AcademicYearClass, AcademicYearClass.id == StudentEnrollment.academic_year_class_id)
         .filter(
             StudentEnrollment.academic_year_id == config.academic_year_id,
-            StudentEnrollment.academic_year_level_id == config.academic_year_level_id,
-            AcademicYearClass.academic_year_level_id == config.academic_year_level_id,
+            StudentEnrollment.academic_year_level_id.in_(level_ids),
+            AcademicYearClass.academic_year_level_id.in_(level_ids),
             AcademicYearClass.is_active.is_(True),
             StudentEnrollment.status.notin_(("withdrawn", "archived")),
         )
@@ -455,10 +498,10 @@ def _behavior_enrollments(config, class_id=None):
     return query.order_by(Student.full_name, Student.student_code, StudentEnrollment.id).all()
 
 
-def _student_board_rows(config, selected_session, class_id=None):
+def _student_board_rows(config, selected_session, class_id=None, academic_year_level_id=None):
     if not config or not selected_session:
         return []
-    enrollments = _behavior_enrollments(config, class_id)
+    enrollments = _behavior_enrollments(config, class_id, academic_year_level_id)
     enrollment_ids = [item.id for item in enrollments]
     events_by_enrollment = defaultdict(list)
     attendance_by_enrollment = defaultdict(list)
@@ -534,7 +577,13 @@ def _event_page_data(args):
         ))
     if context["selected_level"]:
         query = query.filter(BehaviorEvent.configuration.has(
-            BehaviorConfiguration.academic_year_level_id == context["selected_level"].id
+            BehaviorConfiguration.academic_year_levels.any(
+                BehaviorConfigurationLevel.academic_year_level_id == context["selected_level"].id
+            )
+            | (
+                ~BehaviorConfiguration.academic_year_levels.any()
+                & (BehaviorConfiguration.academic_year_level_id == context["selected_level"].id)
+            )
         ))
     if context["config"]:
         query = query.filter_by(behavior_configuration_id=context["config"].id)
@@ -563,7 +612,11 @@ def _event_page_data(args):
         pass
     rows = query.order_by(BehaviorEvent.occurred_at.desc(), BehaviorEvent.id.desc()).limit(500).all()
     context["students"] = (
-        _behavior_enrollments(context["config"], context["selected_class"].id if context["selected_class"] else None)
+        _behavior_enrollments(
+            context["config"],
+            context["selected_class"].id if context["selected_class"] else None,
+            context["selected_level"].id if context["selected_level"] else None,
+        )
         if not context["scope_invalid"] else []
     )
     context["categories"] = context["config"].categories if context["config"] else []
@@ -586,6 +639,7 @@ def dashboard():
             context["config"],
             context["selected_session"],
             context["selected_class"].id if context["selected_class"] else None,
+            context["selected_level"].id if context["selected_level"] else None,
         )
         if not context["scope_invalid"] else []
     )
@@ -611,7 +665,10 @@ def dashboard():
         "session_average": average,
     }
     try:
-        session_allocation = session_allocation_projection(context["selected_session"]) if context["selected_session"] else None
+        session_allocation = (
+        session_allocation_projection(context["selected_session"])
+            if context["selected_session"] else None
+        )
         session_allocation_error = None
     except BehaviorValidationError as exc:
         session_allocation = None
@@ -740,13 +797,45 @@ def configuration():
     if request.method == "POST":
         try:
             year_id = _int(request.form.get("academic_year_id"))
-            level_id = _int(request.form.get("academic_year_level_id"))
+            existing_config = db.session.get(BehaviorConfiguration, config_id) if config_id else None
+            level_ids = [
+                item for item in (_int(value) for value in request.form.getlist("academic_year_level_ids"))
+                if item is not None
+            ]
+            # Keep older integrations and bookmarked/admin forms working while
+            # the current UI submits the multi-level checkbox field.
+            if not level_ids:
+                legacy_level_id = _int(request.form.get("academic_year_level_id"))
+                if legacy_level_id is not None:
+                    level_ids = [legacy_level_id]
+            mode = (request.form.get("academic_level_mode") or "selected").strip().lower()
+            year = db.session.get(AcademicYear, year_id) if year_id else None
+            if not year:
+                raise BehaviorValidationError("Academic Year does not exist")
+            available_levels = year_levels(year.id)
+            if mode == "all":
+                level_ids = [item.id for item in available_levels]
+            if mode not in {"all", "selected"}:
+                raise BehaviorValidationError("Select All Levels or Selected Levels")
+            if not level_ids:
+                raise BehaviorValidationError("Select at least one Academic Level")
+            if len(level_ids) != len(set(level_ids)):
+                raise BehaviorValidationError("An Academic Level cannot be selected more than once")
+            # Existing configurations retain their canonical subject/legacy
+            # anchor for history compatibility; membership is the level scope.
+            level_id = existing_config.academic_year_level_id if existing_config else level_ids[0]
+            level_check = SimpleNamespace(
+                id=config_id,
+                academic_year_id=year.id,
+                academic_year_level_id=level_id,
+                academic_year_subject_id=_int(request.form.get("academic_year_subject_id")),
+            )
+            validate_configuration_levels(level_check, level_ids)
             subject_id = _int(request.form.get("academic_year_subject_id"))
             year, level, subject = validate_behavior_scope(year_id, level_id, subject_id)
-            config = db.session.get(BehaviorConfiguration, config_id) if config_id else None
+            config = existing_config
             if config and (
                 config.academic_year_id != year.id
-                or config.academic_year_level_id != level.id
                 or config.academic_year_subject_id != subject.id
             ):
                 raise BehaviorValidationError("An existing Behavior configuration cannot change its academic scope")
@@ -769,12 +858,26 @@ def configuration():
             # Behavior workflow no longer gates valid configurations behind a
             # Draft/Active/Archived lifecycle.
             config.status = "active"
+            db.session.flush()
+            current_memberships = BehaviorConfigurationLevel.query.filter_by(
+                behavior_configuration_id=config.id,
+            ).all()
+            selected_ids = set(level_ids)
+            for membership in current_memberships:
+                if membership.academic_year_level_id not in selected_ids:
+                    db.session.delete(membership)
+            existing_ids = {item.academic_year_level_id for item in current_memberships}
+            for selected_id in selected_ids - existing_ids:
+                db.session.add(BehaviorConfigurationLevel(
+                    behavior_configuration_id=config.id,
+                    academic_year_level_id=selected_id,
+                ))
             # Configuration creation is immediately operational. Completeness
             # is reported separately from saving and never controls editing.
             db.session.flush()
             audit(
                 "Behavior Configuration",
-                f"Saved configuration {config.id} for {year.name} / {level.name} / {subject.name}",
+                f"Saved configuration {config.id} for {year.name} / {len(selected_ids)} Academic Level(s) / {subject.name}",
             )
             db.session.commit()
             flash("Behavior configuration saved.", "success")
@@ -793,6 +896,9 @@ def configuration():
         request.args.get("year_id") or request.form.get("academic_year_id"),
         config_id,
     )
+    selected_level_ids = configuration_level_ids(selected_config) if selected_config else set()
+    # The subject remains tied to the configuration's original canonical
+    # level; the membership set above is the authoritative multi-level scope.
     selected_level_id = (
         selected_config.academic_year_level_id
         if selected_config else _int(request.args.get("level_id"))
@@ -854,6 +960,8 @@ def configuration():
         selected_exam_ref=selected_exam_ref,
         visible_exam_types=visible_exam_types,
         configured_sessions=configured_sessions,
+        selected_level_ids=selected_level_ids,
+        academic_level_mode=("all" if selected_year and selected_level_ids == {item.id for item in levels} else "selected"),
         setup_complete=(
             active_session_count > 0
             and allocation == Decimal("100.000")
@@ -1192,13 +1300,11 @@ def sessions():
             item.maximum_score = maximum_score
             item.behavior_allocation = behavior_allocation
             item.attendance_allocation = attendance_allocation
-            # Capture the currently configured status policy and calendar on
-            # the session so later edits cannot rewrite historical scores.
-            ensure_attendance_defaults(config)
-            capture_attendance_session_policy(config, item)
             item.sort_order = _int(request.form.get("sort_order"), 0)
             item.is_active = True  # legacy column; all saved sessions are operational
             db.session.flush()
+            ensure_attendance_defaults(config)
+            capture_attendance_session_policy(config, item)
             config.annual_allocation = allocation_total(config)
             audit(
                 "Behavior Sessions",
@@ -1276,6 +1382,7 @@ def session_allocation():
     enrollments = _behavior_enrollments(
         config,
         context["selected_class"].id if context["selected_class"] else None,
+        context["selected_level"].id if context["selected_level"] else None,
     ) if config else []
     requested_enrollment_id = _int(request.args.get("enrollment_id"))
     selected_enrollment = next(
@@ -1910,6 +2017,7 @@ def students():
         _behavior_enrollments(
             config,
             context["selected_class"].id if context["selected_class"] else None,
+            context["selected_level"].id if context["selected_level"] else None,
         )
         if not context["scope_invalid"] else []
     )
@@ -1941,11 +2049,15 @@ def students():
             config,
             selected_session,
             context["selected_class"].id if context["selected_class"] else None,
+            context["selected_level"].id if context["selected_level"] else None,
         )
         if not context["scope_invalid"] else []
     )
     try:
-        session_allocation = session_allocation_projection(selected_session) if selected_session else None
+        session_allocation = (
+            session_allocation_projection(selected_session)
+            if selected_session else None
+        )
         session_allocation_error = None
     except BehaviorValidationError as exc:
         session_allocation = None
@@ -2313,15 +2425,16 @@ def attendance():
             before_statuses = BehaviorAttendanceStatus.query.filter_by(
                 behavior_configuration_id=config.id
             ).count()
+            selected_level_id = context["selected_level"].id
             before_days = AcademicYearLevelAttendanceDay.query.filter_by(
-                academic_year_level_id=config.academic_year_level_id
+                academic_year_level_id=selected_level_id
             ).count()
-            ensure_attendance_defaults(config)
+            ensure_attendance_defaults(config, selected_level_id)
             after_statuses = BehaviorAttendanceStatus.query.filter_by(
                 behavior_configuration_id=config.id
             ).count()
             after_days = AcademicYearLevelAttendanceDay.query.filter_by(
-                academic_year_level_id=config.academic_year_level_id
+                academic_year_level_id=selected_level_id
             ).count()
             if after_statuses != before_statuses or after_days != before_days:
                 db.session.commit()
@@ -2344,16 +2457,21 @@ def attendance():
                     attendance_date,
                     context["selected_class"].id if context["selected_class"] else None,
                     attendance_time=attendance_time,
+                    academic_year_level_id=context["selected_level"].id,
                 )
                 audit("Behavior Attendance", f"Generated {created} attendance rows for configuration {config.id}")
                 db.session.commit()
                 flash(f"{created} missing Present attendance row(s) generated.", "success")
             elif action == "save_all":
-                if attendance_date.weekday() not in {item.weekday for item in attendance_days(config)}:
+                if attendance_date.weekday() not in {
+                    item.weekday
+                    for item in attendance_days(config, academic_year_level_id=context["selected_level"].id)
+                }:
                     raise BehaviorValidationError("The selected date is not configured as a school attendance day")
                 enrollments = enrollments_for_class(
                     config,
                     context["selected_class"].id if context["selected_class"] else None,
+                    context["selected_level"].id,
                 )
                 existing_voided_ids = {
                     item.student_enrollment_id
@@ -2420,10 +2538,14 @@ def attendance():
                 flash("Attendance status saved.", "success")
             elif action == "save_days":
                 active_days = {_int(value) for value in request.form.getlist("school_days")}
-                before_days, saved_days = apply_attendance_active_days(config, active_days)
+                before_days, saved_days = apply_attendance_active_days(
+                    config,
+                    active_days,
+                    context["selected_level"].id,
+                )
                 audit(
                     "Behavior Attendance Calendar",
-                    f"Updated active days for Academic Year Level {config.academic_year_level_id} "
+                    f"Updated active days for Academic Year Level {context['selected_level'].id} "
                     f"(configuration {config.id}): {sorted(before_days)} -> {sorted(saved_days)}",
                 )
                 db.session.commit()
@@ -2433,6 +2555,7 @@ def attendance():
             return redirect(url_for(
                 "behavior.attendance",
                 config_id=config.id,
+                level_id=context["selected_level"].id,
                 class_id=context["selected_class"].id if context["selected_class"] else None,
                 session_id=selected_session.id,
                 attendance_date=attendance_date.isoformat(),
@@ -2450,10 +2573,17 @@ def attendance():
     # automatic now; retired/inactive historical rows remain in the database
     # for audit and are not presented as editable settings.
     all_statuses = attendance_statuses(config) if config else []
-    all_days = attendance_days(config, active_only=False) if config else []
+    all_days = (
+        attendance_days(config, active_only=False, academic_year_level_id=context["selected_level"].id)
+        if config and context["selected_level"] else []
+    )
     school_day = bool(config and attendance_date.weekday() in {item.weekday for item in all_days if item.is_active})
     enrollments = (
-        enrollments_for_class(config, context["selected_class"].id if context["selected_class"] else None)
+        enrollments_for_class(
+            config,
+            context["selected_class"].id if context["selected_class"] else None,
+            context["selected_level"].id,
+        )
         if config and selected_session and not context["scope_invalid"] else []
     )
     records = {}
@@ -2684,6 +2814,7 @@ def void_attendance(record_id):
     return redirect(url_for(
         "behavior.attendance",
         config_id=record.behavior_configuration_id if record else request.form.get("config_id"),
+        level_id=(record.student_enrollment.academic_year_level_id if record and record.student_enrollment else request.form.get("level_id")),
         session_id=record.behavior_session_id if record else request.form.get("session_id"),
         attendance_date=record.attendance_date.isoformat() if record else request.form.get("attendance_date"),
         attendance_view="records",
@@ -2710,6 +2841,7 @@ def restore_attendance(record_id):
     return redirect(url_for(
         "behavior.attendance",
         config_id=record.behavior_configuration_id if record else request.form.get("config_id"),
+        level_id=(record.student_enrollment.academic_year_level_id if record and record.student_enrollment else request.form.get("level_id")),
         session_id=record.behavior_session_id if record else request.form.get("session_id"),
         attendance_date=record.attendance_date.isoformat() if record else request.form.get("attendance_date"),
         attendance_view="records",
@@ -2749,6 +2881,7 @@ def delete_attendance(record_id):
     return redirect(url_for(
         "behavior.attendance",
         config_id=config_id,
+        level_id=(record.student_enrollment.academic_year_level_id if record and record.student_enrollment else request.form.get("level_id")),
         session_id=session_id,
         attendance_date=attendance_date,
         attendance_view="records",
@@ -2805,14 +2938,19 @@ def attendance_report(enrollment_id):
     behavior_grade_data = (behavior_report.get("grade") or {}) if behavior_report else {}
     behavior_grade = behavior_grade_data.get("grade") or "N/A"
 
-    active_weekdays = {item.weekday for item in attendance_days(config) if item.is_active}
+    active_weekdays = {
+        item.weekday
+        for item in attendance_days(
+            config,
+            academic_year_level_id=context["selected_level"].id if context["selected_level"] else None,
+        )
+        if item.is_active
+    }
     status_keys = {"present", "late", "absent", "excused", "official_leave"}
     status_polarities = {
-        "present": "positive",
-        "late": "negative",
-        "absent": "negative",
-        "excused": "neutral",
-        "official_leave": "neutral",
+        item.key: item.polarity
+        for item in attendance_statuses(config, active_only=False)
+        if item.key in status_keys
     }
     somali_weekdays = {0: "Isniin", 1: "Talaada", 2: "Arbaca", 3: "Khamiis", 4: "Jumca", 5: "Sabti", 6: "Axad"}
     aliases = {
@@ -2926,8 +3064,6 @@ def attendance_report(enrollment_id):
             polarity = (record.polarity or status_polarities.get(key, "neutral")).strip().lower()
             if polarity not in {"positive", "negative", "neutral"}:
                 polarity = status_polarities.get(key, "neutral")
-            if key == "late":
-                polarity = "negative"
             signed_points = -abs(raw_points) if polarity == "negative" else abs(raw_points)
             point_text = format_points(signed_points, signed=True) if signed_points else "0.00"
             tag_label = label
@@ -3032,11 +3168,12 @@ def attendance_report(enrollment_id):
     )
 
 
-def _attendance_redirect(config, session_id=None, attendance_date=None):
+def _attendance_redirect(config, session_id=None, attendance_date=None, level_id=None):
     return redirect(url_for(
         "behavior.attendance",
         config_id=config.id if config else None,
         session_id=session_id,
+        level_id=level_id,
         attendance_date=attendance_date.isoformat() if attendance_date else None,
     ))
 
@@ -3052,8 +3189,6 @@ def update_attendance_status(status_id):
         ensure_configuration_editable(config)
         item.label = (request.form.get("label") or "").strip()
         item.polarity = (request.form.get("polarity") or "neutral").strip().lower()
-        if item.key == "late":
-            item.polarity = "negative"
         item.points = decimal_value(request.form.get("points"), "Attendance points", minimum="0")
         # Status availability is automatic.  Keep the legacy column true for
         # old clients and existing databases, but do not accept a user-facing
@@ -3084,7 +3219,12 @@ def update_attendance_status(status_id):
         selected_date = date.fromisoformat(request.form.get("attendance_date"))
     except (TypeError, ValueError):
         selected_date = date.today()
-    return _attendance_redirect(config, _int(request.form.get("session_id")), selected_date)
+    return _attendance_redirect(
+        config,
+        _int(request.form.get("session_id")),
+        selected_date,
+        _int(request.form.get("level_id")),
+    )
 
 @behavior_bp.route("/attendance/active-days", methods=["POST"])
 def update_attendance_active_days():
@@ -3096,10 +3236,11 @@ def update_attendance_active_days():
             raise BehaviorValidationError("Behavior configuration was not found")
         ensure_configuration_editable(config)
         active_days = {_int(value) for value in request.form.getlist("school_days")}
-        before_days, saved_days = apply_attendance_active_days(config, active_days)
+        level_id = _int(request.form.get("level_id"))
+        before_days, saved_days = apply_attendance_active_days(config, active_days, level_id)
         audit(
             "Behavior Attendance Calendar",
-            f"Updated active days for Academic Year Level {config.academic_year_level_id} "
+            f"Updated active days for Academic Year Level {level_id} "
             f"(configuration {config.id}): {sorted(before_days)} -> {sorted(saved_days)}",
         )
         db.session.commit()
@@ -3119,4 +3260,9 @@ def update_attendance_active_days():
         selected_date = date.fromisoformat(request.form.get("attendance_date"))
     except (TypeError, ValueError):
         selected_date = date.today()
-    return _attendance_redirect(config, _int(request.form.get("session_id")), selected_date)
+    return _attendance_redirect(
+        config,
+        _int(request.form.get("session_id")),
+        selected_date,
+        _int(request.form.get("level_id")),
+    )

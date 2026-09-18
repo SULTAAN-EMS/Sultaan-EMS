@@ -55,6 +55,27 @@ def create_app(config_class=Config):
             return "-"
         return f"{number:.2f}"
 
+    @app.template_filter("behavior_levels")
+    def behavior_levels_filter(configuration):
+        """Render every Academic Year Level served by a Behavior configuration."""
+        if not configuration:
+            return "-"
+        memberships = getattr(configuration, "academic_year_levels", None) or []
+        names = []
+        for membership in memberships:
+            level = getattr(membership, "academic_year_level", None)
+            name = getattr(level, "name", None)
+            if name and name not in names:
+                names.append(name)
+        # Legacy configurations created before the normalized membership table
+        # remain readable until their memberships are repaired or migrated.
+        if not names:
+            level = getattr(configuration, "academic_year_level", None)
+            name = getattr(level, "name", None)
+            if name:
+                names.append(name)
+        return ", ".join(names) or "-"
+
     @app.template_filter("fromjson")
     def fromjson_filter(value):
         try:

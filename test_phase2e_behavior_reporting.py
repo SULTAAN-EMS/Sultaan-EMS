@@ -708,7 +708,18 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
             f"{self.configuration.id}/{self.session_one.id}/read?download=1"
         )
         self.assertEqual(behavior_download.status_code, 200)
-        self.assertIn("STUDENT BEHAVIOR REPORT", behavior_download.get_data(as_text=True))
+        self.assertEqual(behavior_download.mimetype, "application/pdf")
+        self.assertTrue(behavior_download.data.startswith(b"%PDF"))
+        self.assertIn(
+            "Behavior Report - Diiwaanka Hab-dhaqanka - (2026-2027).pdf",
+            behavior_download.headers["Content-Disposition"],
+        )
+        from app.routes_public import _behavior_download_filename
+
+        self.assertEqual(
+            _behavior_download_filename(self.student, self.exam_one),
+            "Behavior Report - Diiwaanka Hab-dhaqanka - (2026-2027).pdf",
+        )
 
         attendance_view = self.app.test_client().get(
             f"/behavior/{self.student.student_code}/{self.exam_one.id}/"
@@ -1303,14 +1314,19 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         self.assertIn("3.50 / 5.00", grand_card.group(0))
         self.assertNotIn("0.00 / 5.00", grand_card.group(0))
 
-    def test_late_is_canonical_negative_for_new_and_legacy_rows(self):
+    def test_late_polarity_is_configurable_for_new_and_legacy_rows(self):
         ensure_attendance_defaults(self.configuration)
         late = BehaviorAttendanceStatus.query.filter_by(
             behavior_configuration_id=self.configuration.id,
             key="late",
         ).one()
         self.assertEqual(late.polarity, "negative")
-        late.polarity = "positive"  # emulate an older configuration
+        late.polarity = "neutral"
+        db.session.commit()
+        db.session.expire(late)
+        ensure_attendance_defaults(self.configuration)
+        db.session.expire(late)
+        self.assertEqual(late.polarity, "neutral")
         db.session.flush()
         record = mark_attendance(
             self.configuration,
@@ -1321,11 +1337,10 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
             attendance_time="07:30",
             arrival_time="08:00",
         )
-        self.assertEqual(record.polarity, "negative")
-        record.polarity = "positive"  # emulate an old saved snapshot
+        self.assertEqual(record.polarity, "neutral")
         projection = attendance_points_projection([record])
         self.assertEqual(projection["positive_points"], Decimal("0.000"))
-        self.assertEqual(projection["negative_points"], Decimal("0.500"))
+        self.assertEqual(projection["negative_points"], Decimal("0.000"))
 
     def test_attendance_report_keeps_uploaded_school_logo(self):
         logo_url = "https://res.cloudinary.com/example/image/upload/v1/school-logo.png"

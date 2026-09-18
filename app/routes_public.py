@@ -467,14 +467,32 @@ def _render_portal_behavior_report(
             return response
         from .routes_behavior import student_report
 
-        return student_report(enrollment.id)
+        response = make_response(student_report(enrollment.id))
+        if pdf_download:
+            pdf_bytes = _html_report_to_pdf(
+                response.get_data(as_text=True),
+                request.url_root,
+            )
+            return send_file(
+                BytesIO(pdf_bytes),
+                as_attachment=True,
+                download_name=_behavior_download_filename(student, exam),
+                mimetype="application/pdf",
+                max_age=0,
+            )
+        return response
 
 
 @public_bp.route("/behavior/<student_code>/<int:exam_id>/<int:config_id>/<int:session_id>/read")
 def behavior_reading_view(student_code, exam_id, config_id, session_id):
     """Student read-only view of the exact Behavior PDF report."""
     return _render_portal_behavior_report(
-        student_code, exam_id, config_id, session_id, "behavior"
+        student_code,
+        exam_id,
+        config_id,
+        session_id,
+        "behavior",
+        pdf_download=request.args.get("download") == "1",
     )
 
 
@@ -557,6 +575,17 @@ def _attendance_download_filename(student, exam, report_date, month_keys=None):
         f"{student_name} - Diiwaanka Xaadirka - "
         f"{month_label} - ({year_name}).pdf"
     )
+
+
+def _behavior_download_filename(student, exam):
+    """Build the stable filename used by the portal Behavior PDF."""
+    name_parts = (student.full_name or "Student").split()[:2]
+    student_name = _safe_pdf_filename_part(" ".join(name_parts), "Student")
+    year_name = _safe_pdf_filename_part(
+        exam.academic_year.name if exam.academic_year else None,
+        "Academic Year",
+    )
+    return f"{student_name} - Diiwaanka Hab-dhaqanka - ({year_name}).pdf"
 
 
 def _html_report_to_pdf(html_text, base_url):
