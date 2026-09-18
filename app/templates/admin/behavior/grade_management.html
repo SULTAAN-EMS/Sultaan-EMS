@@ -55,7 +55,7 @@
       <i class="fa-solid {% if readiness.ready %}fa-circle-check{% else %}fa-circle-info{% endif %}"></i>
       {{ readiness.message }}
     </div>
-    <p class="behavior-help">This scale is completely independent from ordinary Grade Management. It is resolved from the percentage of this exact Behavior session only.</p>
+    <p class="behavior-help">This scale is completely independent from ordinary Grade Management. Enter natural scores from 0 to {{ selected_session.maximum_score }} for this exact Behavior session.</p>
   </section>
 
   <section class="behavior-card behavior-section">
@@ -69,8 +69,8 @@
       <input type="hidden" name="session_id" value="{{ selected_session.id }}">
       <input type="hidden" name="grade_id" id="behaviorGradeId">
       <div class="behavior-field"><label for="behaviorGradeLetter">Grade Letter</label><input id="behaviorGradeLetter" name="grade" maxlength="20" required placeholder="A"></div>
-      <div class="behavior-field"><label for="behaviorGradeMin">Minimum Percentage</label><input id="behaviorGradeMin" name="min_score" type="number" min="0" max="{{ 100 if selected_session.behavior_allocation is not none and selected_session.attendance_allocation is not none else selected_session.maximum_score }}" step="0.001" required placeholder="0"></div>
-      <div class="behavior-field"><label for="behaviorGradeMax">Maximum Percentage</label><input id="behaviorGradeMax" name="max_score" type="number" min="0" max="{{ 100 if selected_session.behavior_allocation is not none and selected_session.attendance_allocation is not none else selected_session.maximum_score }}" step="0.001" required placeholder="{{ 100 if selected_session.behavior_allocation is not none and selected_session.attendance_allocation is not none else selected_session.maximum_score }}"></div>
+      <div class="behavior-field"><label for="behaviorGradeMin">Minimum Score</label><input id="behaviorGradeMin" name="min_score" type="number" min="0" max="{{ selected_session.maximum_score }}" step="0.001" required placeholder="0"></div>
+      <div class="behavior-field"><label for="behaviorGradeMax">Maximum Score</label><input id="behaviorGradeMax" name="max_score" type="number" min="0" max="{{ selected_session.maximum_score }}" step="0.001" required placeholder="{{ selected_session.maximum_score }}"></div>
       <div class="behavior-field"><label for="behaviorGradePoint">Grade Point</label><input id="behaviorGradePoint" name="grade_point" type="number" min="0" step="0.001" required placeholder="4.00"></div>
       <div class="behavior-field"><label for="behaviorGradeOrder">Ordering</label><input id="behaviorGradeOrder" name="sort_order" type="number" min="0" step="1" value="0"></div>
       <div class="behavior-field behavior-field--full"><label for="behaviorGradeDescription">Label / Description</label><input id="behaviorGradeDescription" name="description" maxlength="160" placeholder="Excellent behavior"></div>
@@ -92,12 +92,12 @@
     {% endif %}
     <div class="behavior-table-wrap">
       <table class="behavior-table">
-        <thead><tr><th>Grade</th><th>Percentage band</th><th>Point</th><th>Status</th><th>Description</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Grade</th><th>Score range</th><th>Point</th><th>Status</th><th>Description</th><th>Actions</th></tr></thead>
         <tbody>
           {% for scale in scales %}
           <tr>
             <td><strong class="behavior-grade-badge {% if not scale.is_pass %}behavior-grade-badge--fail{% endif %}">{{ scale.grade }}</strong></td>
-            <td>{{ scale.min_score }}% - {{ scale.max_score }}%</td>
+            <td>{{ scale.min_score }} - {{ scale.max_score }}</td>
             <td>{{ scale.grade_point }}</td>
             <td><span class="behavior-status {% if scale.is_active %}behavior-status--recorded{% else %}behavior-status--voided{% endif %}">{{ 'Active' if scale.is_active else 'Inactive' }}{% if scale.is_pass %} · Pass{% else %} · Fail{% endif %}</span></td>
             <td>{{ scale.description or '-' }}</td>

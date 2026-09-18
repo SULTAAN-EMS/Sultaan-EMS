@@ -35,7 +35,7 @@ def create_app(config_class=Config):
 
     from .models import User, Setting
     from .permissions import can
-    from .services import format_academic_number, seed_grade_scales, seed_missing_settings
+    from .services import format_academic_number, get_settings, seed_grade_scales, seed_missing_settings
     from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
     @app.template_filter("academic_number")
@@ -98,9 +98,11 @@ def create_app(config_class=Config):
         """Enforce the owner-configured idle timeout for authenticated admin sessions."""
         if request.endpoint in {"static", "auth.login", "auth.logout"} or not current_user.is_authenticated:
             return None
-        timeout_setting = db.session.get(Setting, "admin_session_timeout_minutes")
+        # Reuse the request-local settings snapshot instead of issuing a
+        # second settings query on every authenticated admin request.
+        timeout_value = get_settings().get("admin_session_timeout_minutes", "60")
         try:
-            timeout_minutes = max(5, min(1440, int(timeout_setting.value if timeout_setting else 60)))
+            timeout_minutes = max(5, min(1440, int(timeout_value)))
         except (TypeError, ValueError):
             timeout_minutes = 60
         now = datetime.utcnow()

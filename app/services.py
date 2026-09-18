@@ -1703,6 +1703,20 @@ def critical_subject_badges(exam, academic_year_level_id=None):
 
 
 def result_payload(student, exam=None, public_only=True):
+    # A single portal request can render the same payload through the result,
+    # behavior, print, and download views.  Reuse only within this request so
+    # mutations in later requests always see fresh data.
+    payload_cache = None
+    payload_key = None
+    if has_request_context():
+        payload_cache = getattr(g, "_result_payload_cache", None)
+        if payload_cache is None:
+            payload_cache = {}
+            g._result_payload_cache = payload_cache
+        payload_key = (student.id, exam.id if exam else None, bool(public_only))
+        if payload_key in payload_cache:
+            return payload_cache[payload_key]
+
     query = Result.query.filter_by(student_id=student.id)
     if exam:
         query = query.filter_by(exam_id=exam.id)
@@ -2022,7 +2036,7 @@ def result_payload(student, exam=None, public_only=True):
             display_scale["max_score"] = Decimal(str(scale.max_score or 0))
         display_grade_scales.append(display_scale)
 
-    return {
+    payload = {
         "student": student,
         "exam": exam or (rows[0].exam if rows else None),
         "subjects": subject_rows,
@@ -2038,6 +2052,9 @@ def result_payload(student, exam=None, public_only=True):
         "portal_outcome": portal_outcome,
         "behavior_reports": behavior_reports,
     }
+    if payload_cache is not None:
+        payload_cache[payload_key] = payload
+    return payload
 
 
 def automatic_comment(average, exam_id=None):

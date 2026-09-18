@@ -1,7 +1,7 @@
 """The isolated grading authority for the Behavior domain.
 
-Allocation-backed Behavior sessions use percentage bands owned by one
-Behavior session. Legacy sessions retain raw-score compatibility. This module
+Behavior sessions use natural-score bands owned by one Behavior session.
+Legacy configuration-only rows retain percentage compatibility. This module
 intentionally does not import or query the ordinary ``GradeScale`` model, so
 no global grade fallback can leak into Behavior reports.
 """
@@ -195,12 +195,8 @@ def behavior_grade_readiness(scope):
     """Describe whether active bands cover every raw score in a session."""
     if isinstance(scope, BehaviorSession):
         maximum = _decimal(scope.maximum_score, "Session maximum")
-        normalized = (
-            getattr(scope, "behavior_allocation", None) is not None
-            and getattr(scope, "attendance_allocation", None) is not None
-        )
-        upper_bound = Decimal("100.000") if normalized else maximum
-        scope_label = "0 through 100%" if normalized else f"0 through {upper_bound:g}"
+        upper_bound = maximum
+        scope_label = f"0 through {upper_bound:g} natural score"
     elif isinstance(scope, BehaviorConfiguration):
         upper_bound = Decimal("100.000")
         scope_label = "0 through 100"
@@ -230,11 +226,11 @@ def behavior_grade_readiness(scope):
 
 
 def behavior_grade_for_score(session, score):
-    """Resolve one active Behavior grade for the session's score basis.
+    """Resolve one active Behavior grade from the session's natural score.
 
-    New allocation-backed sessions use percentage bands, so equal percentages
-    receive the same grade/GP even when their session maximums differ. Legacy
-    sessions retain their historical raw-score bands.
+    Behavior grade bands are configured against the exact session maximum.
+    The percentage remains available in reporting as a derived display value,
+    but it is never used to reinterpret a configured natural-score band.
     """
     if not isinstance(session, BehaviorSession):
         return _not_configured("A Behavior session is required for grade resolution.")
@@ -255,15 +251,7 @@ def behavior_grade_for_score(session, score):
             "is_pass": False,
             **_grade_colors(False),
         }
-    normalized = (
-        getattr(session, "behavior_allocation", None) is not None
-        and getattr(session, "attendance_allocation", None) is not None
-    )
-    comparable_value = (
-        (value / maximum * Decimal("100")).quantize(Decimal("0.001"))
-        if normalized and maximum > 0
-        else value
-    )
+    comparable_value = value
     try:
         scales = behavior_grade_scales(session, active_only=True)
     except OperationalError:
@@ -285,10 +273,9 @@ def behavior_grade_for_score(session, score):
     ]
     if len(matches) == 1:
         payload = behavior_grade_payload(matches[0])
-        # Preserve the approved half-of-maximum pass policy while expressing
-        # it in the same comparison basis as the grade lookup. This is 50%
-        # for normalized sessions and maximum / 2 for legacy sessions.
-        payload["is_pass"] = comparable_value >= Decimal("50") if normalized else value >= (maximum / Decimal("2"))
+        # Pass/Fail is resolved from the natural score, using the selected
+        # session's own maximum rather than a global or percentage scale.
+        payload["is_pass"] = value >= (maximum / Decimal("2"))
         payload.update(_grade_colors(payload["is_pass"]))
         return payload
     if len(matches) > 1:

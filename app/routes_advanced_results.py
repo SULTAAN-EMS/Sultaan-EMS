@@ -852,12 +852,25 @@ def class_roster():
             [subject.id for subject in subjects],
         )
         
+        # Load all published results for this roster in one query. The old
+        # loop queried Result once per student, which made navigation latency
+        # grow linearly with class size.
+        student_ids = [student.id for student in students]
+        results_by_student = defaultdict(list)
+        if student_ids:
+            roster_results = Result.query.filter(
+                Result.student_id.in_(student_ids),
+                Result.exam_id == selected_exam.id,
+                Result.is_published.is_(True),
+            ).all()
+            for result in roster_results:
+                results_by_student[result.student_id].append(result)
+
         # Build results data for each student
         from .routes_public import feedback_access_token
         roster_data = []
         for student in students:
-            # Get results for this student and exam (only published results)
-            results = Result.query.filter_by(student_id=student.id, exam_id=selected_exam.id, is_published=True).all()
+            results = results_by_student.get(student.id, [])
             results_dict = {r.subject_id: r for r in results}
             
             # Calculate totals and grades
@@ -4617,7 +4630,7 @@ def workbook_response(workbook, filename):
 def build_dashboard_stats(exam):
     """Build statistics for the dashboard"""
     students_query = students_for_scope_query(exam.academic_year_id, exam=exam)
-    student_ids = [student.id for student in students_query.all()]
+    student_ids = [student_id for (student_id,) in students_query.with_entities(Student.id).all()]
     total_students = len(student_ids)
 
     subjects = subjects_for_scope(exam)
@@ -4761,10 +4774,12 @@ def build_single_class_card(exam, academic_level=None, academic_class=None, sect
         label = "All Students"
         student_query = students_for_scope_query(exam.academic_year_id)
     
-    student_count = student_query.count()
-    
+    # Fetch IDs once and reuse them for both the count and completion query.
+    # This removes a duplicate full scope query from every dashboard card.
+    student_ids = [student_id for (student_id,) in student_query.with_entities(Student.id).all()]
+    student_count = len(student_ids)
+
     # Calculate completion for this scope (only published results)
-    student_ids = [s.id for s in student_query.all()]
     if student_ids:
         subjects = subjects_for_scope(
             exam,

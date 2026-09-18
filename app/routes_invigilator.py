@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, g, has_request_context, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash
 import functools
 
@@ -10,8 +10,7 @@ from .services import get_settings
 invigilator_bp = Blueprint("invigilator", __name__)
 
 def incident_setting_value(key, default=None):
-    row = IncidentReportSettings.query.filter_by(setting_key=key).first()
-    return row.setting_value if row else default
+    return incident_settings_dict().get(key, default)
 
 
 def incident_bool_setting(key, default=False):
@@ -26,7 +25,12 @@ def incident_int_setting(key, default):
 
 
 def incident_settings_dict():
-    return {row.setting_key: row.setting_value for row in IncidentReportSettings.query.all()}
+    if has_request_context() and hasattr(g, "_invigilator_incident_settings"):
+        return g._invigilator_incident_settings
+    values = {row.setting_key: row.setting_value for row in IncidentReportSettings.query.all()}
+    if has_request_context():
+        g._invigilator_incident_settings = values
+    return values
 
 
 def validate_invigilator_password(password):
@@ -85,9 +89,14 @@ def logout_invigilator():
 def current_invigilator():
     """Get the currently logged-in invigilator"""
     invigilator_id = session.get("invigilator_id")
-    if invigilator_id:
-        return ExamInvigilator.query.get(invigilator_id)
-    return None
+    if has_request_context():
+        cached = getattr(g, "_current_invigilator_cache", None)
+        if cached and cached[0] == invigilator_id:
+            return cached[1]
+    invigilator = db.session.get(ExamInvigilator, invigilator_id) if invigilator_id else None
+    if has_request_context():
+        g._current_invigilator_cache = (invigilator_id, invigilator)
+    return invigilator
 
 
 def check_invigilator_session():

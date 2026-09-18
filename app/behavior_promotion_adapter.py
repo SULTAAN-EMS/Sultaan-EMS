@@ -187,6 +187,14 @@ def behavior_promotion_evidence(enrollment, exam, subject):
             "score": None,
             "maximum_score": score["maximum_score"],
         }
+    if score.get("behavior_status") == "INCOMPLETE":
+        return {
+            **context,
+            "status": "INCOMPLETE",
+            "reason": score.get("behavior_reason") or "Behavior is incomplete for this session.",
+            "score": None,
+            "maximum_score": score["maximum_score"],
+        }
     grade = behavior_grade_for_score(session, score["final_score"])
     grade_status = str(grade.get("grade") or "").upper()
     if grade_status == "NOT CONFIGURED":

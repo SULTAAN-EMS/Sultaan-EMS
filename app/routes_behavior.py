@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload, selectinload
 
 from . import db
 from .academic_hierarchy import year_levels, year_subjects
@@ -222,7 +223,7 @@ def _config_choices(selected_year_id=None, selected_config_id=None):
     years = AcademicYear.query.order_by(AcademicYear.name.desc(), AcademicYear.id.desc()).all()
     has_year_selection = selected_year_id not in (None, "")
     selected_config = (
-        db.session.get(BehaviorConfiguration, _int(selected_config_id))
+        _behavior_configuration(_int(selected_config_id))
         if selected_config_id not in (None, "") else None
     )
     selected_year = _selected_year(selected_year_id)
@@ -246,7 +247,7 @@ def _selected_config(selected_config_id=None, year_id=None):
     requested_year_id = _int(year_id)
     selected_year = _selected_year(year_id)
     if has_config_selection:
-        config = db.session.get(BehaviorConfiguration, _int(selected_config_id))
+        config = _behavior_configuration(_int(selected_config_id))
         if not config:
             return None
         if requested_year_id is not None and config.academic_year_id != requested_year_id:
@@ -257,6 +258,32 @@ def _selected_config(selected_config_id=None, year_id=None):
     return BehaviorConfiguration.query.filter_by(
         academic_year_id=selected_year.id
     ).order_by(BehaviorConfiguration.id).first()
+
+
+def _behavior_configuration(config_id):
+    """Load a Behavior configuration and its page-facing graph efficiently."""
+    if not config_id:
+        return None
+    return db.session.get(
+        BehaviorConfiguration,
+        config_id,
+        options=[
+            joinedload(BehaviorConfiguration.academic_year),
+            joinedload(BehaviorConfiguration.academic_year_level),
+            joinedload(BehaviorConfiguration.behavior_subject),
+            selectinload(BehaviorConfiguration.sessions).joinedload(BehaviorSession.exam),
+            selectinload(BehaviorConfiguration.sessions).joinedload(BehaviorSession.exam_type),
+            selectinload(BehaviorConfiguration.categories)
+            .selectinload(BehaviorCategory.actions)
+            .selectinload(BehaviorAction.choices),
+            selectinload(BehaviorConfiguration.categories)
+            .selectinload(BehaviorCategory.subcategories)
+            .selectinload(BehaviorSubCategory.actions),
+            selectinload(BehaviorConfiguration.grade_scales),
+            selectinload(BehaviorConfiguration.attendance_statuses),
+            selectinload(BehaviorConfiguration.attendance_days),
+        ],
+    )
 
 
 def _scope_payload(year_id, level_id=None):
@@ -314,7 +341,7 @@ def _behavior_context(
     requested_year_id = _int(year_id)
     requested_level_id = _int(level_id)
     requested_config = (
-        db.session.get(BehaviorConfiguration, _int(config_id))
+        _behavior_configuration(_int(config_id))
         if has_config_selection else None
     )
     invalid_scope = has_config_selection and requested_config is None
@@ -353,7 +380,7 @@ def _behavior_context(
         invalid_scope = True
         selected_config = None
     if selected_config is None and auto_select_config and configurations and not has_config_selection and not invalid_scope:
-        selected_config = configurations[0]
+        selected_config = _behavior_configuration(configurations[0].id)
         selected_level = selected_config.academic_year_level
     classes = (
         AcademicYearClass.query
@@ -394,6 +421,12 @@ def _behavior_enrollments(config, class_id=None):
         return []
     query = (
         StudentEnrollment.query
+        .options(
+            joinedload(StudentEnrollment.student),
+            joinedload(StudentEnrollment.academic_year_level),
+            joinedload(StudentEnrollment.academic_year_class),
+            joinedload(StudentEnrollment.academic_section),
+        )
         .join(Student, Student.id == StudentEnrollment.student_id)
         .join(AcademicYearClass, AcademicYearClass.id == StudentEnrollment.academic_year_class_id)
         .filter(
@@ -448,7 +481,10 @@ def _student_board_rows(config, selected_session, class_id=None):
         rows.append({
             "enrollment": enrollment,
             "score": score,
-            "grade": behavior_grade_for_score(selected_session, score["final_score"]),
+            "grade": (
+                behavior_grade_for_score(selected_session, score["final_score"])
+                if score.get("final_score") is not None else None
+            ),
             "events": events,
             "positive_events": sum(1 for item in events if item.polarity == "positive"),
             "negative_events": sum(1 for item in events if item.polarity == "negative"),
@@ -465,7 +501,18 @@ def _event_page_data(args):
         args.get("session_id"),
         auto_select_config=False,
     )
-    query = BehaviorEvent.query
+    query = BehaviorEvent.query.options(
+        joinedload(BehaviorEvent.student),
+        joinedload(BehaviorEvent.student_enrollment).joinedload(
+            StudentEnrollment.academic_year_class
+        ),
+        joinedload(BehaviorEvent.configuration).joinedload(
+            BehaviorConfiguration.academic_year
+        ),
+        joinedload(BehaviorEvent.configuration).joinedload(
+            BehaviorConfiguration.academic_year_level
+        ),
+    )
     if context["scope_invalid"]:
         query = query.filter(BehaviorEvent.id == -1)
     if context["selected_year"]:
@@ -830,7 +877,7 @@ def delete_configuration(config_id):
 
 @behavior_bp.route("/grade-management", methods=["GET", "POST"])
 def grade_management():
-    """Manage percentage grade bands owned exclusively by one Behavior session."""
+    """Manage natural-score grade bands owned exclusively by one Behavior session."""
     config_id = _int(request.args.get("config_id") or request.form.get("config_id"))
     year_id = request.args.get("year_id") or request.form.get("year_id")
     config = _selected_config(config_id, year_id)
@@ -925,7 +972,7 @@ def grade_management():
                     f"to session {selected_session.id}",
                 )
                 db.session.commit()
-                flash("Behavior grade scale copied. Review the percentage ranges before using it.", "success")
+                flash("Behavior grade scale copied. Review the natural score ranges before using it.", "success")
                 return redirect(url_for(
                     "behavior.grade_management",
                     config_id=config.id,
@@ -948,12 +995,7 @@ def grade_management():
                 request.form.get("grade_point"),
                 request.form.get("description"),
                 request.form.get("sort_order"),
-                session_maximum=(
-                    Decimal("100")
-                    if selected_session.behavior_allocation is not None
-                    and selected_session.attendance_allocation is not None
-                    else selected_session.maximum_score
-                ),
+                session_maximum=selected_session.maximum_score,
             )
             if request.form.get("is_active"):
                 validate_behavior_grade_overlap(
@@ -1944,7 +1986,10 @@ def student_detail(enrollment_id):
         flash(str(exc), "danger")
         return redirect(url_for("behavior.students", config_id=config.id, enrollment_id=enrollment.id))
     score = calculate_session_score(config, session, enrollment)
-    grade = behavior_grade_for_score(session, score["final_score"])
+    grade = (
+        behavior_grade_for_score(session, score["final_score"])
+        if score.get("final_score") is not None else None
+    )
     events = BehaviorEvent.query.filter_by(
         behavior_configuration_id=config.id,
         student_enrollment_id=enrollment.id,

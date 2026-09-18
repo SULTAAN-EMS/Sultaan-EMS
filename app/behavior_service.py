@@ -898,15 +898,35 @@ def calculate_session_score(
         attendance_positive_applied = attendance.get("positive_applied", Decimal("0"))
         attendance_negative_applied = attendance.get("negative_applied", Decimal("0"))
         attendance_record_count = attendance.get("record_count", 0)
-        # An allocated but unrecorded Attendance component makes the session
-        # incomplete; it must never be mistaken for Absent or Present.
+        behavior_status = (
+            "NOT_APPLICABLE"
+            if behavior_allocation == 0 or attendance_allocation == 0
+            else "VALID" if rows else "INCOMPLETE"
+        )
+        behavior_reason = (
+            None
+            if behavior_status != "INCOMPLETE"
+            else "No active Behavior event exists for this valid session and student."
+        )
+        # Behavior and Attendance are independent components. Keep a partial
+        # component visible, but withhold the combined session score until
+        # every allocated component has a canonical record.
+        scoring_status = (
+            "INCOMPLETE"
+            if behavior_status == "INCOMPLETE" or attendance_status == "INCOMPLETE"
+            else attendance_status
+        )
         final = (
             None
-            if attendance_status == "INCOMPLETE"
+            if scoring_status == "INCOMPLETE"
             else (behavior_score + (attendance_score or Decimal("0"))).quantize(Decimal("0.001"))
         )
         if final is not None:
             final = max(Decimal("0.000"), min(maximum, final)).quantize(Decimal("0.001"))
+    if legacy_scoring:
+        behavior_status = "LEGACY_COMPATIBILITY"
+        behavior_reason = None
+        scoring_status = attendance_status
     percentage = (
         (final / maximum * Decimal("100")).quantize(Decimal("0.001"))
         if final is not None else None
@@ -929,7 +949,9 @@ def calculate_session_score(
         "attendance_record_count": attendance_record_count,
         "attendance_score": attendance_score,
         "attendance_status": attendance_status,
-        "scoring_status": public_scoring_status(attendance_status),
+        "behavior_status": behavior_status,
+        "behavior_reason": behavior_reason,
+        "scoring_status": public_scoring_status(scoring_status),
         "attendance_reason": attendance.get("reason"),
         "attendance": attendance,
         "negative_points": negative_applied,
@@ -950,7 +972,13 @@ def calculate_session_score(
     return result
 
 
-def calculate_annual_behavior_score(configuration, enrollment):
+def calculate_annual_behavior_score(
+    configuration,
+    enrollment,
+    *,
+    behavior_events_by_session=None,
+    attendance_records_by_session=None,
+):
     """Aggregate all active Behavior sessions without averaging sessions.
 
     Each session is calculated by ``calculate_session_score`` first. The
@@ -980,7 +1008,15 @@ def calculate_annual_behavior_score(configuration, enrollment):
     total_score = Decimal("0.000")
     total_maximum = Decimal("0.000")
     for session in sessions:
-        score = calculate_session_score(configuration, session, enrollment)
+        score = calculate_session_score(
+            configuration,
+            session,
+            enrollment,
+            behavior_events=(behavior_events_by_session or {}).get(session.id)
+            if behavior_events_by_session is not None else None,
+            attendance_records=(attendance_records_by_session or {}).get(session.id)
+            if attendance_records_by_session is not None else None,
+        )
         session_results.append(score)
         if score.get("attendance_status") == "INCOMPLETE" or score.get("final_score") is None:
             return {

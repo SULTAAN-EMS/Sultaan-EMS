@@ -6,6 +6,7 @@ configuration, then delegates every session score to ``behavior_service``.
 """
 
 import json
+from collections import defaultdict
 from decimal import Decimal
 
 from .behavior_service import (
@@ -387,36 +388,51 @@ def get_behavior_report_data(student, exam):
             reports.append(base_report)
             continue
 
-        try:
-            score = calculate_session_score(
-                configuration,
-                selected_session,
-                enrollment,
-            )
-            annual = calculate_annual_behavior_score(configuration, enrollment)
-        except BehaviorValidationError:
-            continue
-        events = (
+        # Read the configuration's student ledger in two bounded queries and
+        # reuse those rows for both the selected session and annual summary.
+        # This removes the per-session duplicate reads used by report pages.
+        events_by_session = defaultdict(list)
+        for event in (
             BehaviorEvent.query
             .filter_by(
                 behavior_configuration_id=configuration.id,
-                behavior_session_id=selected_session.id,
                 student_enrollment_id=enrollment.id,
                 status="active",
             )
             .order_by(BehaviorEvent.occurred_at.asc(), BehaviorEvent.id.asc())
             .all()
-        )
-        attendance_rows = (
+        ):
+            events_by_session[event.behavior_session_id].append(event)
+        attendance_by_session = defaultdict(list)
+        for record in (
             BehaviorAttendanceRecord.query
             .filter_by(
                 behavior_configuration_id=configuration.id,
-                behavior_session_id=selected_session.id,
                 student_enrollment_id=enrollment.id,
             )
             .order_by(BehaviorAttendanceRecord.attendance_date.asc(), BehaviorAttendanceRecord.id.asc())
             .all()
-        )
+        ):
+            attendance_by_session[record.behavior_session_id].append(record)
+
+        try:
+            score = calculate_session_score(
+                configuration,
+                selected_session,
+                enrollment,
+                behavior_events=events_by_session.get(selected_session.id, []),
+                attendance_records=attendance_by_session.get(selected_session.id, []),
+            )
+            annual = calculate_annual_behavior_score(
+                configuration,
+                enrollment,
+                behavior_events_by_session=events_by_session,
+                attendance_records_by_session=attendance_by_session,
+            )
+        except BehaviorValidationError:
+            continue
+        events = events_by_session.get(selected_session.id, [])
+        attendance_rows = attendance_by_session.get(selected_session.id, [])
         attendance_points = attendance_points_projection(attendance_rows)
         attendance = {
             "total": len(attendance_rows),
@@ -435,7 +451,7 @@ def get_behavior_report_data(student, exam):
             "positive_applied": _number((score.get("attendance") or {}).get("positive_applied")),
             "negative_applied": _number((score.get("attendance") or {}).get("negative_applied")),
             "scoring_status": score.get("scoring_status", score.get("attendance_status")),
-            "scoring_reason": score.get("attendance_reason"),
+            "scoring_reason": score.get("attendance_reason") or score.get("behavior_reason"),
         }
         attendance_records = [_attendance_record_payload(row) for row in attendance_rows]
         event_rows = [
@@ -470,8 +486,12 @@ def get_behavior_report_data(student, exam):
             "attendance_positive_points": _number(score.get("attendance_positive_points")),
             "attendance_negative_points": _number(score.get("attendance_negative_points")),
             "event_count": score["event_count"],
-            "scoring_status": score.get("attendance_status"),
-            "scoring_reason": score.get("attendance_reason"),
+            "behavior_status": score.get("behavior_status"),
+            "behavior_reason": score.get("behavior_reason"),
+            "attendance_status": score.get("attendance_status"),
+            "attendance_reason": score.get("attendance_reason"),
+            "scoring_status": score.get("scoring_status"),
+            "scoring_reason": score.get("attendance_reason") or score.get("behavior_reason"),
             "is_current": True,
             "events": event_rows,
             "attendance": attendance,
@@ -525,8 +545,10 @@ def get_behavior_report_data(student, exam):
                 "grade_point": grade.get("grade_point", 0.0) if grade else 0.0,
                 "is_pass": is_pass,
                 "score_tone": score_tone,
+                "behavior_status": score.get("behavior_status"),
+                "behavior_reason": score.get("behavior_reason"),
                 "scoring_status": score.get("scoring_status", score.get("attendance_status")),
-                "scoring_reason": score.get("attendance_reason"),
+                "scoring_reason": score.get("attendance_reason") or score.get("behavior_reason"),
                 "ledger": score.get("ledger"),
             }
         )

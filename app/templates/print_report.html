@@ -51,6 +51,9 @@
       --student-photo-shadow: {{ '0 10px 22px rgba(0,45,120,.14)' if result.settings.student_photo_shadow == 'on' else 'none' }};
     }
     .uf-result-indicator { cursor: pointer; }
+    .behavior-print-partial { display:inline-flex; flex-direction:column; gap:2px; line-height:1.15; }
+    .behavior-print-partial small { color:#64748b; font-size:8px; font-weight:700; }
+    .behavior-print-pending { color:#8a5a00; font-size:8px; font-weight:700; line-height:1.2; }
   </style>
   {% if download_mode|default(false) %}
   <style>
@@ -147,12 +150,14 @@
           {% endfor %}
           {% for behavior in result.behavior_reports|default([]) %}
             {% set behavior_session = behavior.current_sessions[0] if behavior.current_sessions else None %}
+            {% set behavior_event_count = behavior_session.event_count|default(0)|int if behavior_session else 0 %}
+            {% set attendance_record_count = behavior_session.attendance_records|default([])|length if behavior_session else 0 %}
             <tr class="behavior-report-row">
               <td>{{ result.subjects|length + loop.index }}</td>
               <td class="result-subject-cell"><span class="behavior-print-subject">{{ behavior_diamond_icon('behavior-print-diamond') }}<strong>{{ behavior.subject_name }}</strong>{{ critical_subject_badge(behavior.critical_badge, interactive=false, subject_name=behavior.subject_name) }}</span></td>
               <td>{% if behavior_session %}{{ behavior_session.maximum_score|academic_number(settings) }}{% else %}-{% endif %}</td>
-              <td>{% if behavior_session %}<strong class="print-grade-badge print-mark-badge behavior-print-score behavior-print-score--{{ behavior.score_tone }}">{{ behavior_session.final_score|academic_number(settings) }}</strong>{% else %}<span class="behavior-print-unavailable">Not available</span>{% endif %}</td>
-              <td>{% if behavior_session and behavior.grade and behavior.grade.grade != '-' %}<strong class="print-grade-badge" style="background: {{ behavior.grade.background_color }}; border-color: {{ behavior.grade.border_color }}; color: {{ behavior.grade.badge_color }};">{{ behavior.grade.grade }}</strong>{% else %}-{% endif %}</td>
+              <td>{% if behavior_session and behavior_session.final_score is not none %}<strong class="print-grade-badge print-mark-badge behavior-print-score behavior-print-score--{{ behavior.score_tone }}">{{ behavior_session.final_score|academic_number(settings) }}</strong>{% elif behavior_session and behavior_event_count > 0 %}<span class="behavior-print-partial"><strong>{{ behavior_session.behavior_score|academic_number(settings) }}</strong><small>Behavior la diiwaangeliyey</small></span>{% elif behavior_session and attendance_record_count > 0 %}<span class="behavior-print-partial"><strong>{{ behavior_session.attendance_score|academic_number(settings) }}</strong><small>Xaadir la diiwaangeliyey</small></span>{% elif behavior_session %}<span class="behavior-print-pending">Weli lama diiwaangelin</span>{% else %}<span class="behavior-print-unavailable">Not available</span>{% endif %}</td>
+              <td>{% if behavior_session and behavior_session.final_score is not none and behavior.grade and behavior.grade.grade != '-' %}<strong class="print-grade-badge" style="background: {{ behavior.grade.background_color }}; border-color: {{ behavior.grade.border_color }}; color: {{ behavior.grade.badge_color }};">{{ behavior.grade.grade }}</strong>{% else %}-{% endif %}</td>
               <td>{% if behavior.grade and behavior.grade.id and behavior.grade.description %}{{ behavior.grade.description }}{% else %}-{% endif %}</td>
             </tr>
           {% endfor %}

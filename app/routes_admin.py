@@ -532,7 +532,7 @@ def edit_result_set(student_id, exam_id):
             academic_level_id=placement.get("academic_level_id"),
         )
         percentage = round(float(row.score) / float(max_score) * 100, 2) if row and max_score else 0
-        subject_previews[subject.id] = grade_for(percentage)
+        subject_previews[subject.id] = grade_for(percentage, exam_id=exam.id)
     return render_template(
         "admin/result_edit.html",
         student=student,

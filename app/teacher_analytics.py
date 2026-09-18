@@ -3,10 +3,27 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from decimal import Decimal
 
+from flask import g, has_request_context
+
 from . import db
 from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AttendanceRecord, Exam, Result, SchoolClass, Student, Subject
 from .services import grade_for
 from .enrollment_service import EnrollmentValidationError, enrollment_placement_for_student, student_enrollment_legacy_scope_query, student_enrollment_scope_query
+
+
+def _request_cache(name):
+    """Return a request-local cache without affecting CLI/background callers."""
+    if not has_request_context():
+        return None
+    cache = getattr(g, name, None)
+    if cache is None:
+        cache = {}
+        setattr(g, name, cache)
+    return cache
+
+
+def _filter_cache_key(filters):
+    return tuple(sorted((str(key), repr(value)) for key, value in (filters or {}).items()))
 
 
 def _pct(result):
@@ -36,6 +53,11 @@ def _safe_stdev(values):
 
 def teacher_assignments(teacher):
     """Get teacher's academic assignments using new hierarchy with legacy fallback"""
+    cache = _request_cache("_teacher_assignments_cache")
+    cache_key = teacher.id
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
+
     # New academic hierarchy
     academic_levels = list(teacher.academic_levels)
     academic_classes = list(teacher.classes)  # Now references AcademicClass
@@ -50,7 +72,10 @@ def teacher_assignments(teacher):
     section_ids = {section.id for section in sections}
     subject_ids = {subject.id for subject in subjects}
     
-    return academic_levels, academic_classes, sections, subjects, academic_level_ids, class_ids, section_ids, subject_ids
+    assignments = (academic_levels, academic_classes, sections, subjects, academic_level_ids, class_ids, section_ids, subject_ids)
+    if cache is not None:
+        cache[cache_key] = assignments
+    return assignments
 
 
 def validate_filter_ids(teacher, filters):
@@ -69,6 +94,11 @@ def validate_filter_ids(teacher, filters):
 
 def scoped_students(teacher, filters):
     """Get students scoped to teacher's assignments using new academic hierarchy with legacy fallback"""
+    cache = _request_cache("_teacher_students_cache")
+    cache_key = (teacher.id, _filter_cache_key(filters))
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
+
     _, academic_classes, sections, _, _, class_ids, section_ids, _ = teacher_assignments(teacher)
     
     # Build the selected-year scope from StudentEnrollment first. Legacy
@@ -120,17 +150,30 @@ def scoped_students(teacher, filters):
         q = f"%{filters['q']}%"
         query = query.filter(db.or_(Student.full_name.like(q), Student.student_code.like(q)))
     
-    return query.order_by(Student.full_name.asc()).all()
+    students = query.order_by(Student.full_name.asc()).all()
+    if cache is not None:
+        cache[cache_key] = students
+    return students
 
 
 def scoped_results(teacher, filters, students=None):
     """Get results scoped to teacher's assignments using new academic hierarchy with legacy fallback"""
+    cache = _request_cache("_teacher_results_cache")
+    student_key = None if students is None else tuple(sorted(student.id for student in students))
+    cache_key = (teacher.id, _filter_cache_key(filters), student_key)
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
+
     _, _, _, _, _, class_ids, _, subject_ids = teacher_assignments(teacher)
     if not class_ids or not subject_ids:
+        if cache is not None:
+            cache[cache_key] = []
         return []
     students = students if students is not None else scoped_students(teacher, filters)
     student_ids = [student.id for student in students]
     if not student_ids:
+        if cache is not None:
+            cache[cache_key] = []
         return []
     query = (
         Result.query.filter(
@@ -147,7 +190,10 @@ def scoped_results(teacher, filters, students=None):
         query = query.filter(Result.exam_id == filters["exam_id"])
     if filters.get("academic_year_id"):
         query = query.filter(Exam.academic_year_id == filters["academic_year_id"])
-    return query.all()
+    results = query.all()
+    if cache is not None:
+        cache[cache_key] = results
+    return results
 
 
 def student_exam_averages(results):

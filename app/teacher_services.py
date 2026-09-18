@@ -100,10 +100,12 @@ DEFAULT_TEACHER_SETTINGS = {
 
 
 def get_teacher_settings():
-    settings = get_settings()
-    settings.update(DEFAULT_TEACHER_SETTINGS)
-    rows = Setting.query.filter(Setting.key.like("teacher_%")).all()
-    settings.update({row.key: row.value for row in rows})
+    # get_settings() already contains the stored Setting rows and is cached for
+    # this request.  Only fill missing defaults here instead of querying the
+    # same settings table again on every teacher page.
+    settings = dict(get_settings())
+    for key, value in DEFAULT_TEACHER_SETTINGS.items():
+        settings.setdefault(key, value)
     return settings
 
 

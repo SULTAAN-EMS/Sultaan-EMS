@@ -57,6 +57,9 @@
   .behavior-choice-card strong, .behavior-choice-card small { display: block; }
   .behavior-choice-card strong { font-size: .88rem; }
   .behavior-choice-card small { margin-top: 3px; color: #64748b; font-size: .72rem; line-height: 1.35; }
+  .behavior-pending-status { display: inline-block; max-width: 100%; color: #8a5a00; font-size: .68rem; font-weight: 700; line-height: 1.25; }
+  .behavior-score-cell { text-align: center !important; vertical-align: middle; }
+  @media (max-width: 760px) { .reference-result-table td.behavior-score-cell { justify-content: center !important; text-align: center !important; } }
   .behavior-reading-context { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 18px; padding: 12px; border: 1px solid #e4eaf2; border-radius: 14px; background: #fbfdff; }
   .behavior-reading-context span, .behavior-reading-context strong { display: block; }
   .behavior-reading-context span { color: #718096; font-size: .64rem; text-transform: uppercase; letter-spacing: .06em; }
@@ -377,13 +380,15 @@
                 {% endfor %}
                 {% for behavior in result.behavior_reports|default([]) %}
                   {% set behavior_session = behavior.current_sessions[0] if behavior.current_sessions else None %}
+                  {% set behavior_event_count = behavior_session.event_count|default(0)|int if behavior_session else 0 %}
+                  {% set attendance_record_count = behavior_session.attendance_records|default([])|length if behavior_session else 0 %}
                   <tr class="behavior-result-row">
                     <td data-label="TT.">{{ result.subjects|length + loop.index }}</td>
                     <td data-label="Maaddo" class="result-subject-cell"><span class="behavior-subject-label">{% if behavior.available %}<button type="button" class="behavior-subject-trigger" aria-label="Behavior menu: {{ behavior.subject_name }}" aria-controls="behaviorChoiceDialog{{ loop.index }}" data-behavior-menu="behaviorChoiceDialog{{ loop.index }}">{{ behavior_diamond_icon('behavior-subject-diamond') }}<span>{{ behavior.subject_name }}</span>{{ critical_subject_badge(behavior.critical_badge, interactive=false, subject_name=behavior.subject_name) }}</button>{% else %}<span>{{ behavior_diamond_icon('behavior-subject-diamond') }}<span>{{ behavior.subject_name }}</span>{{ critical_subject_badge(behavior.critical_badge, interactive=false, subject_name=behavior.subject_name) }}</span>{% endif %}</span></td>
                     <td data-label="Dhibcaha Guud">{% if behavior_session %}{{ behavior_session.maximum_score|behavior_points }}{% else %}-{% endif %}</td>
-                    <td data-label="Dhibcaha la helay">{% if behavior_session %}{% set session_ledger = behavior_session.ledger.session|default({}) %}<span class="dynamic-grade-badge mark-badge behavior-score-badge behavior-score-badge--{{ behavior.score_tone }}"><b>{{ session_ledger.grand_total|behavior_points if session_ledger.grand_total is not none else 'INCOMPLETE' }}</b></span>{% else %}<span class="behavior-unavailable">Not available</span>{% endif %}</td>
-                    <td data-label="Darajo">{% if behavior_session and behavior.grade and behavior.grade.grade != '-' %}<span class="dynamic-grade-badge" style="background: {{ behavior.grade.background_color }}; border-color: {{ behavior.grade.border_color }}; color: {{ behavior.grade.badge_color }};"><b style="background: {{ behavior.grade.badge_color }}; color: {{ behavior.grade.text_color }};">{{ behavior.grade.grade }}</b></span>{% else %}<span class="behavior-not-applicable">-</span>{% endif %}</td>
-                    <td data-label="Darajo Dhibceed">{% if behavior_session and behavior.grade and behavior.grade.grade != '-' %}{{ behavior.grade.grade_point|behavior_points }}{% else %}<span class="behavior-not-applicable">-</span>{% endif %}</td>
+                    <td data-label="Dhibcaha la helay" class="behavior-score-cell">{% if behavior_session %}{% set session_ledger = behavior_session.ledger.session|default({}) %}{% if session_ledger.grand_total is not none %}<span class="dynamic-grade-badge mark-badge behavior-score-badge behavior-score-badge--{{ behavior.score_tone }}"><b>{{ session_ledger.grand_total|behavior_points }}</b></span>{% elif behavior_event_count > 0 %}<b>{{ behavior_session.behavior_score|behavior_points }}</b>{% elif attendance_record_count > 0 %}<b>{{ behavior_session.attendance_score|behavior_points }}</b>{% else %}<span class="behavior-pending-status">Weli lama diiwaangelin</span>{% endif %}{% else %}<span class="behavior-unavailable">Not available</span>{% endif %}</td>
+                    <td data-label="Darajo">{% if behavior_session and behavior_session.final_score is not none and behavior.grade and behavior.grade.grade != '-' %}<span class="dynamic-grade-badge" style="background: {{ behavior.grade.background_color }}; border-color: {{ behavior.grade.border_color }}; color: {{ behavior.grade.badge_color }};"><b style="background: {{ behavior.grade.badge_color }}; color: {{ behavior.grade.text_color }};">{{ behavior.grade.grade }}</b></span>{% else %}<span class="behavior-not-applicable">-</span>{% endif %}</td>
+                    <td data-label="Darajo Dhibceed">{% if behavior_session and behavior_session.final_score is not none and behavior.grade and behavior.grade.grade != '-' %}{{ behavior.grade.grade_point|behavior_points }}{% else %}<span class="behavior-not-applicable">-</span>{% endif %}</td>
                   </tr>
             {% endfor %}
           </tbody>

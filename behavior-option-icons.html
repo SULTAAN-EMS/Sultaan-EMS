@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Behavior Option Icons</title>
+  <style>
+    :root {
+      --navy: #173868;
+      --green: #1e9150;
+      --green-tint: #e7f6ed;
+      --red: #d93b2b;
+      --red-tint: #fceae8;
+      --ink: #1b2333;
+      --muted: #657086;
+      --line: #dce3ed;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px;
+      background: #f5f7fa;
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    main { max-width: 920px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; color: var(--navy); font-size: 26px; }
+    .intro { margin: 0 0 24px; color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .panel { padding: 22px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+    .panel h2 { margin: 0 0 16px; font-size: 16px; }
+    .panel.positive h2 { color: var(--green); }
+    .panel.negative h2 { color: var(--red); }
+    .option { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; font-weight: 700; }
+    .icon {
+      width: 30px;
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 30px;
+      border-radius: 50%;
+      color: #fff;
+    }
+    .positive .icon { background: var(--green); }
+    .negative .icon { background: var(--red); }
+    .icon svg { width: 20px; height: 20px; display: block; }
+    .variant { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+    .variant:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
+    .variant-name { display: block; margin-bottom: 7px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+    .variant .icon { width: 34px; height: 34px; flex-basis: 34px; }
+    .variant .icon svg { width: 22px; height: 22px; }
+    .positive .variant .icon { background: var(--green); }
+    .negative .variant .icon { background: var(--red); }
+    .outline .icon { background: transparent !important; border: 2px solid currentColor; }
+    .positive .outline .icon { color: var(--green); }
+    .negative .outline .icon { color: var(--red); }
+    .square .icon { border-radius: 7px; }
+    .badge .icon { border-radius: 10px 10px 14px 14px; }
+    .double .icon { border-radius: 9px; }
+    .code-inline { display: block; margin-top: 5px; color: var(--muted); font: 10px Consolas, monospace; }
+    .code { margin-top: 18px; padding: 14px; overflow-x: auto; border-radius: 8px; background: #101827; color: #e9eef7; font: 12px/1.55 Consolas, monospace; white-space: pre; }
+    .note { margin-top: 22px; padding: 14px 16px; border-left: 4px solid var(--navy); background: #eaf0fa; color: var(--navy); }
+    @media (max-width: 680px) { body { padding: 18px; } .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Behavior Option Icons</h1>
+    <p class="intro">Standalone replacement for the ordinary tick. Positive and negative icons are separated so they can be copied into the report template.</p>
+
+    <section class="grid">
+      <article class="panel positive">
+        <h2>Positive · 5 templates</h2>
+        <div class="variant"><span class="variant-name">01 · Circle check</span><div class="option"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12.2 2.6 2.6 5.5-5.7"/></svg></span><span>Option selected</span></div><span class="code-inline">circle-check</span></div>
+        <div class="variant square"><span class="variant-name">02 · Square check</span><div class="option"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="m7.5 12.2 3 3 6-6.2"/></svg></span><span>Option selected</span></div><span class="code-inline">square-check</span></div>
+        <div class="variant badge"><span class="variant-name">03 · Badge check</span><div class="option"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.2 1.3 2.6-.1 1.3 2.2 2.2 1.3-.1 2.6 1.3 2.2-1.3 2.2.1 2.6-2.2 1.3-1.3 2.2-2.6-.1L12 21l-2.2-1.3-2.6.1-1.3-2.2-2.2-1.3.1-2.6-1.3-2.2 1.3-2.2-.1-2.6 2.2-1.3 1.3-2.2 2.6.1L12 3Z"/><path d="m8.3 12.2 2.5 2.5 5-5.2"/></svg></span><span>Option selected</span></div><span class="code-inline">badge-check</span></div>
+        <div class="variant double"><span class="variant-name">04 · Double check</span><div class="option"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 12.5 3.4 3.4 6.2-6.4"/><path d="m10.8 15.5 2.1 2.1 7.6-7.8"/></svg></span><span>Option selected</span></div><span class="code-inline">double-check</span></div>
+        <div class="variant outline"><span class="variant-name">05 · Outline check</span><div class="option"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"/></svg></span><span>Option selected</span></div><span class="code-inline">outline-check</span></div>
+      </article>
+
+      <article class="panel negative">
+        <h2>Negative · 5 templates</h2>
+        <div class="variant"><span class="variant-name">01 · Circle close</span><div class="option"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.5 8.5 7 7M15.5 8.5l-7 7"/></svg></span><span>Option selected</span></div><span class="code-inline">circle-close</span></div>
+        <div class="variant square"><span class="variant-name">02 · Square close</span><div class="option"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="m8 8 8 8M16 8l-8 8"/></svg></span><span>Option selected</span></div><span class="code-inline">square-close</span></div>
+        <div class="variant badge"><span class="variant-name">03 · Badge alert</span><div class="option"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.2 1.3 2.6-.1 1.3 2.2 2.2 1.3-.1 2.6 1.3 2.2-1.3 2.2.1 2.6-2.2 1.3-1.3 2.2-2.6-.1L12 21l-2.2-1.3-2.6.1-1.3-2.2-2.2-1.3.1-2.6-1.3-2.2 1.3-2.2-.1-2.6 2.2-1.3 1.3-2.2 2.6.1L12 3Z"/><path d="M12 8v5M12 16.5h.01"/></svg></span><span>Option selected</span></div><span class="code-inline">badge-alert</span></div>
+        <div class="variant double"><span class="variant-name">04 · Double close</span><div class="option"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.5 3.4 3.4 6.2-6.4"/><path d="m10.8 11.5 2.1 2.1 7.6-7.8"/><path d="m7 17 10-10"/></svg></span><span>Option selected</span></div><span class="code-inline">double-close</span></div>
+        <div class="variant outline"><span class="variant-name">05 · Outline close</span><div class="option"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></span><span>Option selected</span></div><span class="code-inline">outline-close</span></div>
+      </article>
+    </section>
+
+    <div class="note">
+      The icon color should come from the option polarity: green for positive and red for negative.
+    </div>
+  </main>
+</body>
+</html>

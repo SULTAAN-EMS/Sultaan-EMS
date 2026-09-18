@@ -303,9 +303,9 @@ class BehaviorGradeScale(TimestampMixin, db.Model):
     """Behavior-owned grade bands for one Behavior session.
 
     ``behavior_configuration_id`` remains as the historical parent scope, but
-    the session is the grading authority. New allocation-backed sessions
-    interpret these bands as percentages; legacy sessions retain raw-score
-    compatibility. The nullable session link keeps older Behavior-owned rows
+    the session is the grading authority. These bands are natural scores
+    bounded by the selected session maximum; legacy configuration-only rows
+    retain percentage compatibility. The nullable session link keeps older Behavior-owned rows
     readable until they are migrated or replaced.
     """
 
