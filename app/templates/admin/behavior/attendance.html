@@ -198,11 +198,21 @@
   const closeAllDialogs = () => {
     document.querySelectorAll('dialog[open]').forEach((dialog) => dialog.close());
   };
+  const enforceSingleDialog = (preferred) => {
+    const openDialogs = Array.from(document.querySelectorAll('dialog[open]'));
+    if (openDialogs.length < 2) return;
+    const activeDialog = preferred && openDialogs.includes(preferred) ? preferred : openDialogs[openDialogs.length - 1];
+    openDialogs.forEach((dialog) => {
+      if (dialog !== activeDialog) dialog.close();
+    });
+  };
   const openDialog = (dialog) => {
     if (!dialog) return;
     closeAllDialogs();
     if (!dialog.open) dialog.showModal();
   };
+  const dialogObserver = new MutationObserver(() => enforceSingleDialog());
+  dialogObserver.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
   document.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', closeAllDialogs));
   document.querySelectorAll('dialog').forEach((dialog) => dialog.addEventListener('click', (event) => { if (event.target === dialog) closeAllDialogs(); }));
 
