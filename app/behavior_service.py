@@ -898,22 +898,17 @@ def calculate_session_score(
         attendance_positive_applied = attendance.get("positive_applied", Decimal("0"))
         attendance_negative_applied = attendance.get("negative_applied", Decimal("0"))
         attendance_record_count = attendance.get("record_count", 0)
-        behavior_status = (
-            "NOT_APPLICABLE"
-            if behavior_allocation == 0 or attendance_allocation == 0
-            else "VALID" if rows else "INCOMPLETE"
-        )
-        behavior_reason = (
-            None
-            if behavior_status != "INCOMPLETE"
-            else "No active Behavior event exists for this valid session and student."
-        )
-        # Behavior and Attendance are independent components. Keep a partial
-        # component visible, but withhold the combined session score until
-        # every allocated component has a canonical record.
+        behavior_status = "NOT_APPLICABLE" if behavior_allocation == 0 or attendance_allocation == 0 else "VALID"
+        behavior_reason = None
+        # The behavior allocation always contributes its configured baseline.
+        # Events adjust that baseline; they are not a prerequisite for showing
+        # the score. This keeps a valid Attendance record from hiding the
+        # Behavior baseline when no event was recorded or an event was voided.
+        # Attendance still controls completeness for the combined score because
+        # it has no equivalent allocation baseline.
         scoring_status = (
             "INCOMPLETE"
-            if behavior_status == "INCOMPLETE" or attendance_status == "INCOMPLETE"
+            if attendance_status == "INCOMPLETE"
             else attendance_status
         )
         final = (

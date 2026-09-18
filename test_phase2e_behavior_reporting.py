@@ -18,6 +18,7 @@ from app.behavior_service import (
     calculate_annual_behavior_score,
     calculate_session_score,
     record_event,
+    void_event,
 )
 from app.models import (
     AcademicClass,
@@ -31,6 +32,7 @@ from app.models import (
     BehaviorAttendanceStatus,
     BehaviorAction,
     BehaviorCategory,
+    BehaviorEvent,
     BehaviorGradeScale,
     BehaviorSession,
     Exam,
@@ -288,10 +290,10 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         self.assertIn("9.00", portal_body)
         self.assertNotIn("Hab-dhaqan waa la diiwaangeliyey", portal_body)
 
-    def test_attendance_remains_visible_when_behavior_is_pending(self):
-        self.session_one.maximum_score = 20
-        self.session_one.behavior_allocation = 12
-        self.session_one.attendance_allocation = 8
+    def test_attendance_combines_with_behavior_baseline_when_behavior_is_pending(self):
+        self.session_one.maximum_score = 25
+        self.session_one.behavior_allocation = 15
+        self.session_one.attendance_allocation = 10
         ensure_attendance_defaults(self.configuration)
         db.session.flush()
         present = next(
@@ -308,17 +310,19 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         db.session.commit()
 
         score = calculate_session_score(self.configuration, self.session_one, self.enrollment)
-        self.assertEqual(score["behavior_status"], "INCOMPLETE")
+        self.assertEqual(score["behavior_status"], "VALID")
         self.assertEqual(score["attendance_status"], "VALID")
         self.assertEqual(score["attendance_score"], Decimal("1.000"))
-        self.assertIsNone(score["final_score"])
+        self.assertEqual(score["base_score"], Decimal("7.500"))
+        self.assertEqual(score["final_score"], Decimal("8.500"))
 
         report = get_behavior_report_data(self.student, self.exam_one)[0]
         session = report["current_sessions"][0]
         self.assertEqual(session["event_count"], 0)
         self.assertEqual(len(session["attendance_records"]), 1)
         self.assertEqual(session["attendance_score"], Decimal("1.000"))
-        self.assertEqual(session["behavior_status"], "INCOMPLETE")
+        self.assertEqual(session["behavior_status"], "VALID")
+        self.assertEqual(session["final_score"], Decimal("8.500"))
 
         portal = self.app.test_client().post(
             "/result",
@@ -330,8 +334,67 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         )
         self.assertEqual(portal.status_code, 200)
         portal_body = portal.get_data(as_text=True)
-        self.assertIn("1.00", portal_body)
+        self.assertIn("8.50", portal_body)
         self.assertNotIn("Xaadir waa la diiwaangeliyey", portal_body)
+
+    def test_voided_behavior_event_keeps_baseline_and_attendance_score(self):
+        self.session_one.maximum_score = 25
+        self.session_one.behavior_allocation = 15
+        self.session_one.attendance_allocation = 10
+        category = BehaviorCategory(
+            behavior_configuration_id=self.configuration.id,
+            name="Positive",
+            polarity="positive",
+            is_active=True,
+        )
+        db.session.add(category)
+        db.session.flush()
+        action = BehaviorAction(
+            behavior_category_id=category.id,
+            name="Helpful",
+            level_number=1,
+            points=1,
+            frequency="ad_hoc",
+            is_active=True,
+        )
+        db.session.add(action)
+        db.session.flush()
+        record_event(
+            self.configuration,
+            self.enrollment,
+            self.session_one,
+            category,
+            action,
+            idempotency_key="phase2e-voided-baseline",
+        )
+        ensure_attendance_defaults(self.configuration)
+        db.session.flush()
+        present = next(
+            item for item in self.configuration.attendance_statuses if item.key == "present"
+        )
+        mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            present.id,
+            date.today(),
+            attendance_time="07:30",
+        )
+        db.session.flush()
+        event = BehaviorEvent.query.filter_by(
+            student_enrollment_id=self.enrollment.id,
+            behavior_session_id=self.session_one.id,
+            status="active",
+        ).one()
+        void_event(event, self.admin.id, "Correction")
+        db.session.commit()
+
+        score = calculate_session_score(self.configuration, self.session_one, self.enrollment)
+        self.assertEqual(score["base_score"], Decimal("7.500"))
+        self.assertEqual(score["behavior_score"], Decimal("7.500"))
+        self.assertEqual(score["attendance_score"], Decimal("1.000"))
+        self.assertEqual(score["final_score"], Decimal("8.500"))
+        self.assertEqual(score["positive_applied_points"], Decimal("0.000"))
 
     def test_behavior_and_attendance_combine_after_both_are_recorded(self):
         self.session_one.maximum_score = 20
@@ -605,11 +668,11 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         self.assertEqual(ledger["session"]["session_maximum"], Decimal("20.000"))
         self.assertEqual(ledger["session"]["behavior_allocation"], Decimal("12.000"))
         self.assertEqual(ledger["session"]["attendance_allocation"], Decimal("8.000"))
-        self.assertIsNone(ledger["session"]["grand_total"])
+        self.assertEqual(ledger["session"]["grand_total"], Decimal("7.000"))
         self.assertEqual(ledger["behavior"]["earned_score"], session["behavior_score"])
         self.assertEqual(ledger["attendance"]["earned_score"], session["attendance_score"])
-        self.assertIsNone(session["final_score"])
-        self.assertEqual(session["behavior_status"], "INCOMPLETE")
+        self.assertEqual(session["final_score"], Decimal("7.000"))
+        self.assertEqual(session["behavior_status"], "VALID")
         self.assertEqual(session["attendance_status"], "VALID")
         self.assertEqual(session["attendance_records"][0]["status_label"], "Joogid")
 
@@ -696,7 +759,7 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
             response = self.app.test_client().get(path)
             self.assertEqual(response.status_code, 200)
             body = response.get_data(as_text=True)
-            self.assertIn(f"{float(session['attendance_score']):.2f}", body)
+            self.assertIn(f"{float(session['final_score']):.2f}", body)
             self.assertIn(f"{float(session['maximum_score']):.2f}", body)
 
     def test_whole_class_pdf_contains_behavior_column_and_combined_total(self):
