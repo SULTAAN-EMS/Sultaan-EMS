@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 {% block page_title %}Student Behavior Detail{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='behavior-brand-20260916e') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='behavior-config-levels-20260918a') }}">
 <div class="behavior-page view">
   <header class="behavior-hero"><span class="behavior-hero__mark"><i class="fa-solid fa-user-graduate"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow"><i class="fa-solid fa-clock-rotate-left"></i> Student timeline</span><h1>{{ enrollment.student.full_name }}</h1><p>{{ config.behavior_subject.name }} · {{ session.session_label }} · official event history</p></div><div class="behavior-hero__action"><a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.students', config_id=config.id, session_id=session.id, class_id=enrollment.academic_year_class_id) }}"><i class="fa-solid fa-arrow-left"></i> Back to board</a></div></header>
   {% include "admin/behavior/_nav.html" %}
