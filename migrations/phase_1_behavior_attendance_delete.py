@@ -47,9 +47,14 @@ def upgrade():
         with db.engine.begin() as connection:
             tables = inspect(connection).get_table_names()
             if "behavior_attendance_deletions" not in tables:
+                id_sql = (
+                    "SERIAL PRIMARY KEY"
+                    if connection.dialect.name == "postgresql"
+                    else "INTEGER PRIMARY KEY"
+                )
                 connection.execute(text(
                     "CREATE TABLE behavior_attendance_deletions ("
-                    "id INTEGER PRIMARY KEY, "
+                    f"id {id_sql}, "
                     "original_record_id INTEGER NOT NULL, "
                     "student_id INTEGER, student_enrollment_id INTEGER, "
                     "behavior_configuration_id INTEGER, behavior_session_id INTEGER, "
