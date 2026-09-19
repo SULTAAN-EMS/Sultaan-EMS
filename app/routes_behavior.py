@@ -56,7 +56,7 @@ from .behavior_grading import (
     validate_behavior_grade_overlap,
     validate_behavior_grade_values,
 )
-from .behavior_reporting import get_behavior_report_data
+from .behavior_reporting import build_behavior_report_categories, get_behavior_report_data
 from .behavior_attendance import (
     attendance_days,
     attendance_status_label,
@@ -1955,6 +1955,7 @@ def students():
                 BehaviorAction,
                 _int(request.form.get("behavior_action_id")),
             )
+            submitted_subcategory_id = _int(request.form.get("behavior_subcategory_id"))
             choice = db.session.get(
                 BehaviorActionChoice,
                 _int(request.form.get("behavior_action_choice_id")),
@@ -1970,6 +1971,10 @@ def students():
             if not all((enrollment, session, category, action)):
                 raise BehaviorValidationError(
                     "Student, session, category, and action are required"
+                )
+            if (submitted_subcategory_id or None) != (action.behavior_subcategory_id or None):
+                raise BehaviorValidationError(
+                    "Sub-category does not match the selected Behavior action"
                 )
             direction = request.form.get("direction")
             idempotency_key = normalize_idempotency_key(request.form.get("idempotency_key"))
@@ -2166,19 +2171,7 @@ def student_report(enrollment_id):
         return redirect(url_for("behavior.students", config_id=config.id, session_id=session.id))
 
     events = report.get("events", [])
-    category_map = {}
-    for event in events:
-        key = event.get("category_name") or "Behavior"
-        category = category_map.setdefault(
-            key,
-            {"name": key, "polarity": event.get("polarity") or "positive", "events": [], "total": Decimal("0")},
-        )
-        category["events"].append(event)
-        amount = Decimal(str(event.get("points") or 0))
-        category["total"] += amount if event.get("polarity") == "positive" else -amount
-    for category in category_map.values():
-        category["polarity"] = "positive" if category["total"] >= 0 else "negative"
-    categories = list(category_map.values())
+    categories = build_behavior_report_categories(events)
     positive_points = sum(
         (Decimal(str(item.get("points") or 0)) for item in events if item.get("polarity") == "positive"),
         Decimal("0"),
@@ -2258,6 +2251,7 @@ def edit(event_id):
             session = db.session.get(BehaviorSession, _int(request.form.get("behavior_session_id")))
             category = db.session.get(BehaviorCategory, _int(request.form.get("behavior_category_id")))
             action = db.session.get(BehaviorAction, _int(request.form.get("behavior_action_id")))
+            submitted_subcategory_id = _int(request.form.get("behavior_subcategory_id"))
             choice = db.session.get(
                 BehaviorActionChoice,
                 _int(request.form.get("behavior_action_choice_id")),
@@ -2282,6 +2276,10 @@ def edit(event_id):
                     choices = []
             if not all((session, category, action)):
                 raise BehaviorValidationError("Session, category, and action are required")
+            if (submitted_subcategory_id or None) != (action.behavior_subcategory_id or None):
+                raise BehaviorValidationError(
+                    "Sub-category does not match the selected Behavior action"
+                )
             response_text = request.form.get("response_text") if "response_text" in request.form else event.response_text
             response_rating = request.form.get("response_rating") if "response_rating" in request.form else event.response_rating
             _, old_values, new_values = edit_event(

@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 {% block page_title %}Edit Behavior Event{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='behavior-config-levels-20260918c') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='behavior-subcategory-20260919a') }}">
 <div class="behavior-page view">
   <header class="behavior-hero"><span class="behavior-hero__mark"><i class="fa-solid fa-pen-to-square"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow">Phase 2C · Audited edit</span><h1>Edit Behavior Event</h1><p>Material changes require a reason and preserve the old values in the existing AuditLog.</p></div></header>
   {% include "admin/behavior/_nav.html" %}
@@ -12,7 +12,8 @@
       <div class="behavior-field"><label for="editSession">Behavior Session</label><select id="editSession" name="behavior_session_id" required>{% for item in sessions %}<option value="{{ item.id }}" data-maximum="{{ item.maximum_score|behavior_points }}" {% if item.id == event.behavior_session_id %}selected{% endif %}>{{ item.session_label }} · {{ item.maximum_score|behavior_points }}</option>{% endfor %}</select></div>
       <div class="behavior-field"><label>Direction</label><select id="editDirection" name="direction" required><option value="positive" {% if event.polarity == 'positive' %}selected{% endif %}>Positive</option><option value="negative" {% if event.polarity == 'negative' %}selected{% endif %}>Negative</option></select></div>
       <div class="behavior-field"><label>Category</label><select id="editCategory" name="behavior_category_id" required>{% for item in categories %}<option value="{{ item.id }}" data-polarity="{{ item.polarity }}" {% if item.id == event.behavior_category_id %}selected{% endif %}>{{ item.name }} ({{ item.polarity|title }})</option>{% endfor %}</select></div>
-      <div class="behavior-field"><label>Action</label><select id="editAction" name="behavior_action_id" required>{% for item in actions %}<option value="{{ item.id }}" data-category="{{ item.behavior_category_id }}" data-points="{{ item.points|behavior_points }}" {% if item.id == event.behavior_action_id %}selected{% endif %}>{{ item.name }} · {{ item.points|behavior_points }} points · Level {{ item.level_number }}</option>{% endfor %}</select></div>
+      <div class="behavior-field"><label for="editSubcategory">Sub-category</label><select id="editSubcategory" name="behavior_subcategory_id"><option value="">No sub-category</option>{% for category in categories %}{% for item in category.subcategories %}<option value="{{ item.id }}" data-category="{{ category.id }}" {% if event.action and event.action.behavior_subcategory_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}{% endfor %}</select><small class="behavior-help">Recorded snapshot: {{ event.subcategory_name_snapshot or 'No sub-category' }}</small></div>
+      <div class="behavior-field"><label>Action</label><select id="editAction" name="behavior_action_id" required>{% for item in actions %}<option value="{{ item.id }}" data-category="{{ item.behavior_category_id }}" data-subcategory="{{ item.behavior_subcategory_id or '' }}" data-points="{{ item.points|behavior_points }}" {% if item.id == event.behavior_action_id %}selected{% endif %}>{{ item.name }} · {{ item.points|behavior_points }} points · Level {{ item.level_number }}</option>{% endfor %}</select></div>
       <div class="behavior-field behavior-field--full"><label>Event date and time</label><input name="occurred_at" type="datetime-local" value="{{ event.occurred_at.strftime('%Y-%m-%dT%H:%M') }}" required></div>
       <div class="behavior-field behavior-field--full"><label>Notes</label><textarea name="notes">{{ event.notes or '' }}</textarea></div>
       <div class="behavior-field behavior-field--full"><label>Edit reason</label><textarea name="reason" required placeholder="Explain why this official event is being corrected"></textarea></div>
@@ -23,6 +24,7 @@
 <script>
 (() => {
   const category = document.getElementById('editCategory');
+  const subcategory = document.getElementById('editSubcategory');
   const action = document.getElementById('editAction');
   const direction = document.getElementById('editDirection');
   const session = document.getElementById('editSession');
@@ -30,12 +32,23 @@
   if (!category || !action) return;
   const sync = (resetAction = false) => {
     const previousValue = action.value;
+    const previousSubcategory = subcategory?.value || '';
     const sessionMaximum = getSessionMaximum();
     const sessionMaximumLabel = Number.isFinite(sessionMaximum) ? sessionMaximum.toLocaleString(undefined, { maximumFractionDigits: 3 }) : '-';
+    if (subcategory) {
+      Array.from(subcategory.options).forEach((option) => {
+        const matchesCategory = !option.value || option.dataset.category === category.value;
+        option.hidden = !matchesCategory;
+        option.disabled = !matchesCategory;
+      });
+      const visibleSubcategories = Array.from(subcategory.options).filter((option) => !option.hidden && !option.disabled);
+      const selectedSubcategory = visibleSubcategories.find((option) => option.value === previousSubcategory);
+      subcategory.value = selectedSubcategory?.value || visibleSubcategories[0]?.value || '';
+    }
     Array.from(action.options).forEach((option) => {
       const pointsValue = Number(option.dataset.points);
       const exceedsMaximum = Number.isFinite(pointsValue) && pointsValue > sessionMaximum;
-      option.hidden = option.dataset.category !== category.value;
+      option.hidden = option.dataset.category !== category.value || option.dataset.subcategory !== (subcategory?.value || '');
       option.disabled = exceedsMaximum;
       option.title = exceedsMaximum ? `Exceeds session maximum (${sessionMaximumLabel})` : '';
     });
@@ -47,6 +60,7 @@
     if (direction && selectedCategory) direction.value = selectedCategory.dataset.polarity;
   };
   category.addEventListener('change', () => sync(true));
+  subcategory && subcategory.addEventListener('change', () => sync(true));
   session && session.addEventListener('change', () => sync(true));
   sync(false);
 })();

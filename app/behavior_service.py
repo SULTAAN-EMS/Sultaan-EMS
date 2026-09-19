@@ -1412,6 +1412,7 @@ def edit_event(
         "response_display": event.response_display_snapshot,
         "response_snapshot": event.response_snapshot,
         "action_level": event.action_level_snapshot,
+        "subcategory_name": event.subcategory_name_snapshot,
         "occurred_at": str(event.occurred_at),
         "notes": event.notes,
     }
@@ -1423,6 +1424,7 @@ def edit_event(
     event.action_level_snapshot = action.level_number
     event.category_name_snapshot = category.name
     event.action_name_snapshot = action.name
+    event.subcategory_name_snapshot = action.subcategory.name if action.subcategory else None
     event.session_label_snapshot = session.session_label
     event.occurred_at = occurred_at
     event.notes = (notes or "").strip() or None
@@ -1445,6 +1447,7 @@ def edit_event(
         "response_display": event.response_display_snapshot,
         "response_snapshot": event.response_snapshot,
         "action_level": event.action_level_snapshot,
+        "subcategory_name": event.subcategory_name_snapshot,
         "occurred_at": str(event.occurred_at),
         "notes": event.notes,
         "reason": reason,

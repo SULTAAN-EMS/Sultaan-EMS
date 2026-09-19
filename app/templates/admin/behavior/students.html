@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 {% block page_title %}Student Behavior{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='student-behavior-layout-20260902b') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='behavior-subcategory-20260919a') }}">
 <div class="behavior-page view">
   {% include "admin/behavior/_nav.html" %}
 
@@ -60,7 +60,8 @@
           <div class="rf-head"><div class="rf-ic c3"><i class="fa-solid fa-layer-group"></i></div><div><h4>Category &amp; action</h4><div class="d">The exact taxonomy leaf for this student.</div></div></div>
           <div class="grid cols-2">
             <div class="field"><label for="behaviorDialogCategory">Category</label><select id="behaviorDialogCategory" name="behavior_category_id" required>{% for item in config.categories %}<option value="{{ item.id }}" data-polarity="{{ item.polarity }}">{{ item.name }} ({{ item.polarity|title }})</option>{% endfor %}</select></div>
-            <div class="field"><label for="behaviorDialogAction">Action</label><select id="behaviorDialogAction" name="behavior_action_id" required>{% for category in config.categories %}{% for item in category.actions %}<option value="{{ item.id }}" data-category="{{ category.id }}" data-points="{{ item.points|behavior_points }}" data-type="{{ {'direct_action':'short_answer','choice':'multiple_choice','selection':'checkboxes','rating':'rating','text_note':'text_note','dropdown':'multiple_choice','linear_scale':'rating'}.get(item.behavior_type, 'short_answer') }}" data-rating-scale="{{ item.rating_scale or '' }}" data-required="{{ '1' if item.response_required else '0' }}" data-action-name="{{ item.name|e }}">{{ item.name }} · {{ item.points|behavior_points }} points · Level {{ item.level_number }}</option>{% endfor %}{% endfor %}</select></div>
+            <div class="field"><label for="behaviorDialogSubcategory">Sub-category</label><select id="behaviorDialogSubcategory" name="behavior_subcategory_id"><option value="">No sub-category</option>{% for category in config.categories %}{% for item in category.subcategories %}<option value="{{ item.id }}" data-category="{{ category.id }}">{{ item.name }}</option>{% endfor %}{% endfor %}</select></div>
+            <div class="field"><label for="behaviorDialogAction">Action</label><select id="behaviorDialogAction" name="behavior_action_id" required>{% for category in config.categories %}{% for item in category.actions %}<option value="{{ item.id }}" data-category="{{ category.id }}" data-subcategory="{{ item.behavior_subcategory_id or '' }}" data-points="{{ item.points|behavior_points }}" data-type="{{ {'direct_action':'short_answer','choice':'multiple_choice','selection':'checkboxes','rating':'rating','text_note':'text_note','dropdown':'multiple_choice','linear_scale':'rating'}.get(item.behavior_type, 'short_answer') }}" data-rating-scale="{{ item.rating_scale or '' }}" data-required="{{ '1' if item.response_required else '0' }}" data-action-name="{{ item.name|e }}">{{ item.name }} · {{ item.points|behavior_points }} points · Level {{ item.level_number }}</option>{% endfor %}{% endfor %}</select></div>
           </div>
           <div class="rf-preview"><span class="ic"><i class="fa-solid fa-circle-check"></i></span><span class="b"><span class="t" id="behaviorPreviewAction">Select an action</span><span class="m" id="behaviorPreviewMeta">Choose a category and action</span></span><span class="rf-pill pos" id="behaviorPreviewPolarity">Positive</span><span class="rf-pill info" id="behaviorPreviewBase">- base pts</span></div>
           <div class="rf-points-ledger" aria-live="polite"><div><span>Selected Points</span><strong id="behaviorSelectedPoints">0.00</strong></div><div><span>Category Total</span><strong id="behaviorCategoryTotal">0.00</strong><small>Reference only</small></div><div><span>Server-validated points</span><strong id="behaviorDialogValidatedPoints">{% if session_allocation and session_allocation.status != 'LEGACY_COMPATIBILITY' %}{{ session_allocation.behavior_allocation|behavior_points }}{% else %}{{ selected_session.maximum_score|behavior_points }}{% endif %}</strong></div></div>
@@ -95,6 +96,7 @@
   const token = document.getElementById('behaviorDialogIdempotency');
   const direction = dialog && dialog.querySelectorAll('input[name="direction"]');
   const category = document.getElementById('behaviorDialogCategory');
+  const subcategory = document.getElementById('behaviorDialogSubcategory');
   const action = document.getElementById('behaviorDialogAction');
   const choiceCards = dialog ? dialog.querySelectorAll('[data-choice-card], [data-checkbox-card]') : [];
   const choiceEmpty = document.querySelector('[data-choice-empty]');
@@ -155,6 +157,7 @@
     const sessionMaximum = getSessionMaximum();
     const sessionMaximumLabel = Number.isFinite(sessionMaximum) ? sessionMaximum.toLocaleString(undefined, { maximumFractionDigits: 3 }) : '-';
     const previousValue = action.value;
+    const previousSubcategory = subcategory?.value || '';
     const selectedDirection = Array.from(direction || []).find((radio) => radio.checked)?.value || 'positive';
     Array.from(category.options).forEach((option) => {
       const matchesDirection = !option.dataset.polarity || option.dataset.polarity === selectedDirection;
@@ -166,10 +169,20 @@
       category.value = firstCategory?.value || '';
     }
     const selectedCategory = category.options[category.selectedIndex];
+    if (subcategory) {
+      Array.from(subcategory.options).forEach((option) => {
+        const matchesCategory = !option.value || option.dataset.category === category.value;
+        option.hidden = !matchesCategory;
+        option.disabled = !matchesCategory;
+      });
+      const visibleSubcategories = Array.from(subcategory.options).filter((option) => !option.hidden && !option.disabled);
+      const selectedSubcategory = visibleSubcategories.find((option) => option.value === previousSubcategory);
+      subcategory.value = selectedSubcategory?.value || visibleSubcategories[0]?.value || '';
+    }
     Array.from(action.options).forEach((option) => {
       const pointsValue = Number(option.dataset.points);
       const exceedsMaximum = Number.isFinite(pointsValue) && pointsValue > sessionMaximum;
-      option.hidden = option.dataset.category !== category.value;
+      option.hidden = option.dataset.category !== category.value || option.dataset.subcategory !== (subcategory?.value || '');
       option.disabled = exceedsMaximum;
       option.title = exceedsMaximum ? `Exceeds session maximum (${sessionMaximumLabel})` : '';
     });
@@ -205,7 +218,7 @@
     syncLedger(responseType, currentAction, sessionMaximum);
     if (previewAction) previewAction.textContent = currentAction?.dataset.actionName || currentAction?.textContent.split(' · ')[0] || 'Select an action';
     if (previewMeta) previewMeta.textContent = selectedCategory && currentAction
-      ? `${selectedCategory.textContent.split(' (')[0]} · ${currentAction.dataset.type.replaceAll('_', ' ')} · Level ${currentAction.textContent.split('Level ')[1] || '-'}`
+      ? `${selectedCategory.textContent.split(' (')[0]}${subcategory?.value ? ` · ${subcategory.options[subcategory.selectedIndex]?.textContent || ''}` : ''} · ${currentAction.dataset.type.replaceAll('_', ' ')} · Level ${currentAction.textContent.split('Level ')[1] || '-'}`
       : 'Choose a category and action';
     if (previewPolarity) {
       const polarity = selectedCategory?.dataset.polarity || 'positive';
@@ -227,6 +240,7 @@
   }));
   student && student.addEventListener('change', () => { enrollment.value = student.value; label.textContent = student.options[student.selectedIndex].text; clearResponses(); sync(); });
   category && category.addEventListener('change', () => { clearResponses(); sync(true); });
+  subcategory && subcategory.addEventListener('change', () => { clearResponses(); sync(true); });
   session && session.addEventListener('change', () => { clearResponses(); sync(true); });
   action && action.addEventListener('change', () => { clearResponses(); sync(false); });
   direction && Array.from(direction).forEach((radio) => radio.addEventListener('change', () => { clearResponses(); sync(true); }));

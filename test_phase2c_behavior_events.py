@@ -26,6 +26,7 @@ from app.models import (
     BehaviorConfiguration,
     BehaviorEvent,
     BehaviorSession,
+    BehaviorSubCategory,
     ExamType,
     Student,
     StudentEnrollment,
@@ -124,6 +125,21 @@ class TestPhase2CBehaviorEvents(unittest.TestCase):
         self.negative = BehaviorCategory(behavior_configuration_id=self.config_one.id, name="Negative", polarity="negative", is_active=True)
         self.positive_other_year = BehaviorCategory(behavior_configuration_id=self.config_two.id, name="Positive", polarity="positive", is_active=True)
         self.positive_action = BehaviorAction(category=self.positive, name="Helpful", level_number=1, points=2, frequency="ad_hoc", is_active=True)
+        self.positive_subcategory = BehaviorSubCategory(
+            category=self.positive,
+            name="Respectful Conduct",
+            sort_order=1,
+            is_active=True,
+        )
+        self.subcategory_action = BehaviorAction(
+            category=self.positive,
+            subcategory=self.positive_subcategory,
+            name="Respectful Communication",
+            level_number=1,
+            points=1,
+            frequency="ad_hoc",
+            is_active=True,
+        )
         self.high_positive_action = BehaviorAction(category=self.positive, name="Outstanding", level_number=2, points=20, frequency="ad_hoc", is_active=True)
         self.negative_action = BehaviorAction(category=self.negative, name="Late", level_number=1, points=1, frequency="daily", is_active=True)
         self.high_negative_action = BehaviorAction(category=self.negative, name="Serious", level_number=2, points=20, frequency="ad_hoc", is_active=True)
@@ -132,6 +148,7 @@ class TestPhase2CBehaviorEvents(unittest.TestCase):
             self.session_a, self.session_b, self.session_other_year,
             self.positive, self.negative, self.positive_other_year,
             self.positive_action, self.high_positive_action,
+            self.positive_subcategory, self.subcategory_action,
             self.negative_action, self.high_negative_action, self.other_year_action,
         ])
         db.session.commit()
@@ -291,6 +308,73 @@ class TestPhase2CBehaviorEvents(unittest.TestCase):
         event = BehaviorEvent.query.filter_by(idempotency_key="route-form-time-1").one()
         self.assertEqual(event.occurred_at, datetime(2026, 8, 29, 12, 34))
         self.assertEqual(event.student_enrollment_id, self.enrollment_one.id)
+
+    def test_subcategory_is_constrained_and_visible_across_event_surfaces(self):
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+
+        form = client.get(
+            f"/admin/behavior/students?config_id={self.config_one.id}"
+            f"&session_id={self.session_a.id}"
+        )
+        self.assertEqual(form.status_code, 200)
+        form_body = form.get_data(as_text=True)
+        self.assertIn('id="behaviorDialogSubcategory"', form_body)
+        self.assertIn('data-subcategory="%s"' % self.positive_subcategory.id, form_body)
+        self.assertIn("Respectful Conduct", form_body)
+
+        invalid = client.post(
+            f"/admin/behavior/students?config_id={self.config_one.id}",
+            data={
+                "config_id": str(self.config_one.id),
+                "student_enrollment_id": str(self.enrollment_one.id),
+                "behavior_session_id": str(self.session_a.id),
+                "behavior_category_id": str(self.positive.id),
+                "behavior_subcategory_id": "",
+                "behavior_action_id": str(self.subcategory_action.id),
+                "direction": "positive",
+                "occurred_at": "2026-08-29T12:34",
+                "idempotency_key": "subcategory-invalid-1",
+            },
+            follow_redirects=True,
+        )
+        self.assertIn("Sub-category does not match", invalid.get_data(as_text=True))
+        self.assertIsNone(BehaviorEvent.query.filter_by(idempotency_key="subcategory-invalid-1").first())
+
+        valid = client.post(
+            f"/admin/behavior/students?config_id={self.config_one.id}",
+            data={
+                "config_id": str(self.config_one.id),
+                "student_enrollment_id": str(self.enrollment_one.id),
+                "behavior_session_id": str(self.session_a.id),
+                "behavior_category_id": str(self.positive.id),
+                "behavior_subcategory_id": str(self.positive_subcategory.id),
+                "behavior_action_id": str(self.subcategory_action.id),
+                "direction": "positive",
+                "occurred_at": "2026-08-29T12:34",
+                "notes": "Sub-category route coverage",
+                "idempotency_key": "subcategory-valid-1",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(valid.status_code, 302)
+        event = BehaviorEvent.query.filter_by(idempotency_key="subcategory-valid-1").one()
+        self.assertEqual(event.subcategory_name_snapshot, "Respectful Conduct")
+
+        checks = [
+            client.get(f"/admin/behavior/events?config_id={self.config_one.id}"),
+            client.get(f"/admin/behavior/history?config_id={self.config_one.id}"),
+            client.get(
+                f"/admin/behavior/students/{self.enrollment_one.id}"
+                f"?config_id={self.config_one.id}&session_id={self.session_a.id}"
+            ),
+            client.get(f"/admin/behavior/events/{event.id}"),
+        ]
+        for response in checks:
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("Respectful Conduct", response.get_data(as_text=True))
 
 
 if __name__ == "__main__":

@@ -129,6 +129,66 @@ def _attendance_record_payload(record):
     }
 
 
+def build_behavior_report_categories(events):
+    """Build ordered Category -> Sub-category -> event row groups.
+
+    The report must preserve the first-seen order supplied by the canonical
+    projection while consolidating every unique sub-category into one visual
+    group. Event rows remain in their original order inside each group.
+    """
+    categories = []
+    category_map = {}
+    for event in events or []:
+        category_id = event.get("category_id")
+        category_name = (event.get("category_name") or "Behavior").strip() or "Behavior"
+        category_key = ("id", category_id) if category_id is not None else ("name", category_name)
+        category = category_map.get(category_key)
+        if category is None:
+            category = {
+                "id": category_id,
+                "name": category_name,
+                "polarity": event.get("polarity") or "positive",
+                "events": [],
+                "subgroups": [],
+                # Kept for compatibility with existing report consumers.
+                "subcategories": [],
+                "_subgroup_map": {},
+                "total": Decimal("0"),
+            }
+            category_map[category_key] = category
+            categories.append(category)
+
+        category["events"].append(event)
+        subcategory_name = (event.get("subcategory_name") or "").strip() or None
+        if subcategory_name and subcategory_name not in category["subcategories"]:
+            category["subcategories"].append(subcategory_name)
+
+        subcategory_id = event.get("subcategory_id")
+        subgroup_key = (
+            ("id", subcategory_id)
+            if subcategory_id is not None
+            else ("name", subcategory_name) if subcategory_name else ("none",)
+        )
+        current_group = category["_subgroup_map"].get(subgroup_key)
+        if current_group is None:
+            current_group = {
+                "id": subcategory_id,
+                "name": subcategory_name,
+                "events": [],
+            }
+            category["_subgroup_map"][subgroup_key] = current_group
+            category["subgroups"].append(current_group)
+        current_group["events"].append(event)
+
+        amount = Decimal(str(event.get("points") or 0))
+        category["total"] += amount if event.get("polarity") == "positive" else -amount
+
+    for category in categories:
+        category["polarity"] = "positive" if category["total"] >= 0 else "negative"
+        category.pop("_subgroup_map", None)
+    return categories
+
+
 def serialize_behavior_reports(reports):
     """Convert the normalized projection to JSON-safe numeric values."""
     def serialize_value(value):
@@ -469,7 +529,13 @@ def get_behavior_report_data(student, exam):
         event_rows = [
             {
                 "id": event.id,
+                "category_id": event.behavior_category_id,
                 "category_name": event.category_name_snapshot,
+                "subcategory_id": (
+                    event.action.behavior_subcategory_id
+                    if event.action is not None
+                    else None
+                ),
                 "action_name": event.action_name_snapshot,
                 "polarity": event.polarity,
                 "points": _number(event.points_applied),

@@ -12,7 +12,7 @@ from app import create_app, db
 from app.behavior_grading import behavior_grade_for_score, behavior_grade_scales
 from sqlalchemy.exc import OperationalError
 from app.behavior_attendance import ensure_attendance_defaults, mark_attendance
-from app.behavior_reporting import get_behavior_report_data
+from app.behavior_reporting import build_behavior_report_categories, get_behavior_report_data
 from app.behavior_service import (
     attendance_points_projection,
     calculate_annual_behavior_score,
@@ -35,6 +35,7 @@ from app.models import (
     BehaviorEvent,
     BehaviorGradeScale,
     BehaviorSession,
+    BehaviorSubCategory,
     Exam,
     GradeScale,
     Result,
@@ -772,6 +773,223 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
             body = response.get_data(as_text=True)
             self.assertIn(f"{float(session['final_score']):.2f}", body)
             self.assertIn(f"{float(session['maximum_score']):.2f}", body)
+
+    def test_subcategory_reaches_admin_report_portal_and_pdf_without_new_column(self):
+        self.session_one.maximum_score = 20
+        self.session_one.behavior_allocation = 12
+        self.session_one.attendance_allocation = 8
+        category = BehaviorCategory(
+            behavior_configuration_id=self.configuration.id,
+            name="Positive Conduct",
+            polarity="positive",
+            is_active=True,
+        )
+        subcategory = BehaviorSubCategory(
+            category=category,
+            name="Respectful Conduct",
+            is_active=True,
+        )
+        action = BehaviorAction(
+            category=category,
+            subcategory=subcategory,
+            name="Respectful Communication",
+            level_number=1,
+            points=3,
+            frequency="ad_hoc",
+            is_active=True,
+        )
+        db.session.add_all([category, subcategory, action])
+        db.session.flush()
+        record_event(
+            self.configuration,
+            self.enrollment,
+            self.session_one,
+            category,
+            action,
+            notes="Sub-category report coverage",
+            idempotency_key="subcategory-report-1",
+        )
+        db.session.commit()
+
+        client = self._client_as_admin()
+        report_response = client.get(
+            f"/admin/behavior/students/{self.enrollment.id}/report"
+            f"?config_id={self.configuration.id}&session_id={self.session_one.id}"
+        )
+        self.assertEqual(report_response.status_code, 200)
+        report_body = report_response.get_data(as_text=True)
+        self.assertIn("Respectful Conduct", report_body)
+        self.assertNotRegex(report_body, r"<th[^>]*>Sub-category")
+        self.assertIn("Action / Behavior Details", report_body)
+
+        portal_response = client.get(
+            f"/behavior/{self.student.student_code}/{self.exam_one.id}/"
+            f"{self.configuration.id}/{self.session_one.id}/read"
+        )
+        self.assertEqual(portal_response.status_code, 200)
+        self.assertIn("Respectful Conduct", portal_response.get_data(as_text=True))
+
+        pdf_response = client.get(
+            f"/behavior/{self.student.student_code}/{self.exam_one.id}/"
+            f"{self.configuration.id}/{self.session_one.id}/read?download=1"
+        )
+        self.assertEqual(pdf_response.status_code, 200)
+        self.assertEqual(pdf_response.mimetype, "application/pdf")
+        self.assertTrue(pdf_response.data.startswith(b"%PDF"))
+
+    def test_report_grouping_consolidates_unique_subcategories_and_preserves_identity(self):
+        events = [
+            {"category_id": 1, "category_name": "Positive Conduct", "subcategory_id": 11, "subcategory_name": "Respectful Conduct", "action_name": "Action 1", "polarity": "positive", "points": Decimal("1.00")},
+            {"category_id": 1, "category_name": "Positive Conduct", "subcategory_id": 12, "subcategory_name": "Care for School Property", "action_name": "Action 2", "polarity": "positive", "points": Decimal("0.50")},
+            {"category_id": 1, "category_name": "Positive Conduct", "subcategory_id": 11, "subcategory_name": "Respectful Conduct", "action_name": "Action 3", "polarity": "positive", "points": Decimal("0.75")},
+            {"category_id": 1, "category_name": "Positive Conduct", "subcategory_id": None, "subcategory_name": None, "action_name": "Action 4", "polarity": "positive", "points": Decimal("1.25")},
+            {"category_id": 1, "category_name": "Positive Conduct", "subcategory_id": None, "subcategory_name": None, "action_name": "Action 5", "polarity": "positive", "points": Decimal("0.25")},
+        ]
+
+        categories = build_behavior_report_categories(events)
+
+        self.assertEqual(len(categories), 1)
+        category = categories[0]
+        self.assertEqual(category["name"], "Positive Conduct")
+        self.assertEqual(
+            [group["name"] for group in category["subgroups"]],
+            ["Respectful Conduct", "Care for School Property", None],
+        )
+        self.assertEqual([len(group["events"]) for group in category["subgroups"]], [2, 1, 2])
+        self.assertEqual(
+            [event["action_name"] for event in category["subgroups"][0]["events"]],
+            ["Action 1", "Action 3"],
+        )
+        self.assertEqual(
+            [event["action_name"] for event in category["subgroups"][2]["events"]],
+            ["Action 4", "Action 5"],
+        )
+        self.assertEqual(category["total"], Decimal("3.750"))
+        self.assertNotIn(" · ", category["name"])
+        self.assertEqual(len(category["subgroups"]), 3)
+
+        same_name_events = [
+            {"category_id": 1, "category_name": "Conduct", "subcategory_id": 11, "subcategory_name": "Respect", "action_name": "A", "polarity": "positive", "points": Decimal("1")},
+            {"category_id": 2, "category_name": "Conduct", "subcategory_id": 21, "subcategory_name": "Respect", "action_name": "B", "polarity": "positive", "points": Decimal("1")},
+        ]
+        same_name_categories = build_behavior_report_categories(same_name_events)
+        self.assertEqual(len(same_name_categories), 2)
+        self.assertEqual([category["id"] for category in same_name_categories], [1, 2])
+
+    def test_report_grouping_is_polarity_agnostic_and_preserves_category_total(self):
+        events = [
+            {"category_id": 1, "category_name": "ANSHAXA SUUBAN", "subcategory_id": 11, "subcategory_name": "Respect", "action_name": "Positive A", "polarity": "positive", "points": Decimal("1.00")},
+            {"category_id": 1, "category_name": "ANSHAXA SUUBAN", "subcategory_id": 11, "subcategory_name": "Respect", "action_name": "Negative A", "polarity": "negative", "points": Decimal("0.50")},
+            {"category_id": 1, "category_name": "ANSHAXA SUUBAN", "subcategory_id": 11, "subcategory_name": "Respect", "action_name": "Positive B", "polarity": "positive", "points": Decimal("0.75")},
+            {"category_id": 1, "category_name": "ANSHAXA SUUBAN", "subcategory_id": 11, "subcategory_name": "Respect", "action_name": "Negative B", "polarity": "negative", "points": Decimal("1.00")},
+            {"category_id": 1, "category_name": "ANSHAXA SUUBAN", "subcategory_id": 12, "subcategory_name": "Care", "action_name": "Negative C", "polarity": "negative", "points": Decimal("1.00")},
+            {"category_id": 1, "category_name": "ANSHAXA SUUBAN", "subcategory_id": 12, "subcategory_name": "Care", "action_name": "Negative D", "polarity": "negative", "points": Decimal("0.25")},
+            {"category_id": 1, "category_name": "ANSHAXA SUUBAN", "subcategory_id": 13, "subcategory_name": "Responsibility", "action_name": "Positive C", "polarity": "positive", "points": Decimal("1.00")},
+            {"category_id": 1, "category_name": "ANSHAXA SUUBAN", "subcategory_id": None, "subcategory_name": None, "action_name": "Negative E", "polarity": "negative", "points": Decimal("0.50")},
+            {"category_id": 1, "category_name": "ANSHAXA SUUBAN", "subcategory_id": None, "subcategory_name": None, "action_name": "Positive D", "polarity": "positive", "points": Decimal("0.25")},
+        ]
+
+        category = build_behavior_report_categories(events)[0]
+
+        self.assertEqual(
+            [group["name"] for group in category["subgroups"]],
+            ["Respect", "Care", "Responsibility", None],
+        )
+        self.assertEqual([len(group["events"]) for group in category["subgroups"]], [4, 2, 1, 2])
+        self.assertEqual(
+            [event["polarity"] for event in category["subgroups"][0]["events"]],
+            ["positive", "negative", "positive", "negative"],
+        )
+        self.assertEqual(category["total"], Decimal("-0.250"))
+
+    def test_admin_report_renders_separate_subcategory_rowspans(self):
+        category = BehaviorCategory(
+            behavior_configuration_id=self.configuration.id,
+            name="Positive Conduct",
+            polarity="positive",
+            is_active=True,
+        )
+        first_subcategory = BehaviorSubCategory(category=category, name="Respectful Conduct", is_active=True)
+        second_subcategory = BehaviorSubCategory(category=category, name="Care for School Property", is_active=True)
+        first_action = BehaviorAction(
+            category=category,
+            subcategory=first_subcategory,
+            name="Action One",
+            level_number=1,
+            points=1,
+            frequency="ad_hoc",
+            is_active=True,
+        )
+        second_action = BehaviorAction(
+            category=category,
+            subcategory=first_subcategory,
+            name="Action Two",
+            level_number=1,
+            points=1,
+            frequency="ad_hoc",
+            is_active=True,
+        )
+        third_action = BehaviorAction(
+            category=category,
+            subcategory=second_subcategory,
+            name="Action Three",
+            level_number=1,
+            points=1,
+            frequency="ad_hoc",
+            is_active=True,
+        )
+        fourth_action = BehaviorAction(
+            category=category,
+            name="Action Four",
+            level_number=1,
+            points=1,
+            frequency="ad_hoc",
+            is_active=True,
+        )
+        db.session.add_all([
+            category,
+            first_subcategory,
+            second_subcategory,
+            first_action,
+            second_action,
+            third_action,
+            fourth_action,
+        ])
+        db.session.flush()
+        for action, key in (
+            (first_action, "grouped-report-1"),
+            (third_action, "grouped-report-2"),
+            (second_action, "grouped-report-3"),
+            (fourth_action, "grouped-report-4"),
+        ):
+            record_event(
+                self.configuration,
+                self.enrollment,
+                self.session_one,
+                category,
+                action,
+                idempotency_key=key,
+            )
+        db.session.commit()
+
+        response = self._client_as_admin().get(
+            f"/admin/behavior/students/{self.enrollment.id}/report"
+            f"?config_id={self.configuration.id}&session_id={self.session_one.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn('rowspan="2"', body)
+        self.assertIn('rowspan="1"', body)
+        self.assertIn("Respectful Conduct", body)
+        self.assertIn("Care for School Property", body)
+        self.assertIn("Action One", body)
+        self.assertIn("Action Two", body)
+        self.assertIn("Action Three", body)
+        self.assertIn("Action Four", body)
+        self.assertEqual(body.count("Respectful Conduct"), 1)
+        self.assertEqual(body.count("No sub-category"), 1)
+        self.assertNotIn("Respectful Conduct · Care for School Property", body)
+        self.assertEqual(body.count("Category Total"), 1)
 
     def test_whole_class_pdf_contains_behavior_column_and_combined_total(self):
         client = self._client_as_admin()
