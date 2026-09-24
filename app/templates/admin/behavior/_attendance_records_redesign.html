@@ -1,0 +1,190 @@
+<script>
+(() => {
+  const recordsDialog = document.getElementById('attendanceRecordsDialog');
+  const actionDialog = document.getElementById('attendanceRecordActionsDialog');
+  if (!recordsDialog || !actionDialog) return;
+  if (!window.__attOpenDialog) {
+    window.__attOpenDialog = (dialog, {keepOpen = []} = {}) => {
+      const keep = new Set(keepOpen.filter(Boolean));
+      document.querySelectorAll('dialog[open]').forEach((item) => {
+        if (item !== dialog && !keep.has(item)) item.close();
+      });
+      if (!dialog.open) dialog.showModal();
+    };
+  }
+  let rows = {{ record_rows|tojson }};
+  const initialRows = rows.slice();
+  const recordsApiUrl = {{ url_for('behavior.attendance_records_api')|tojson }};
+  const scopeOptions = {
+    years: [{% for item in years %}{"id":{{ item.id }},"label":{{ item.name|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}],
+    levels: [{% for item in levels %}{"id":{{ item.id }},"label":{{ item.name|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}],
+    classes: [{% for item in classes %}{"id":{{ item.id }},"label":{{ item.name|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}],
+    configurations: [{% for item in configurations %}{"id":{{ item.id }},"label":{{ (item.behavior_subject.name if item.behavior_subject else 'Behavior')|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}],
+    sessions: [{% for item in sessions %}{"id":{{ item.id }},"label":{{ item.session_label|tojson }},"maximum":{{ item.maximum_score|string|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}],
+  };
+  const csrf = {{ csrf_token()|tojson }};
+  const statusOptions = [
+    {% for status in statuses %}{key: {{ status.key|tojson }}, id: {{ status.id }}, label: {{ official_status_labels.get(status.key, status.label)|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}
+  ];
+  const meta = {
+    present: {label:'Joogid', color:'#16a34a', icon:'att-user-check'},
+    late: {label:'Daahid', color:'#d97706', icon:'att-clock'},
+    absent: {label:'Maqnaansho', color:'#dc2626', icon:'att-x'},
+    excused: {label:'Cudur-daar', color:'#7c3aed', icon:'att-therm'},
+    official_leave: {label:'Fasax Rasmi ah', color:'#2563eb', icon:'att-shield'},
+  };
+  const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const displayValue = (value) => {
+    const text = value == null ? '' : String(value).trim();
+    return !text || ['none', 'null', 'undefined'].includes(text.toLowerCase()) ? '—' : text;
+  };
+  const icon = (name) => `<svg class="i" aria-hidden="true" focusable="false"><use href="#${name}"></use></svg>`;
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Seb','Oct','Nov','Dec'];
+  const shortDate = (value) => { if (!value) return '-'; const date = new Date(`${value}T00:00:00`); return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`; };
+  const rowColor = (value) => { let hash = 0; for (const char of String(value || '')) hash = ((hash << 5) - hash) + char.charCodeAt(0); return ['#0ea5e9','#14503a','#b45309','#7c3aed','#be185d','#2563eb'][Math.abs(hash) % 6]; };
+  const classColor = (value) => ({'8aad':'#14503a','7aad':'#0ea5e9'}[String(value || '').trim().toLowerCase()] || rowColor(value));
+  const stateLabel = (state) => state === 'deleted' ? 'LA TIRTIRAY' : state === 'voided' ? "LA BAABI'IYAY" : 'FIRFIRCOON';
+  const get = (id) => document.getElementById(id);
+  const statusPill = (row) => { const item = meta[row.status_key] || {label:displayValue(row.status), color:'#64748b', icon:'att-check'}; return `<span class="att-record-status" style="--att-status-color:${item.color}">${icon(item.icon)}${esc(displayValue(item.label))}</span>`; };
+  const stateBadge = (row) => `<span class="att-record-state att-record-state--${row.record_status}">${stateLabel(row.record_status)}</span>`;
+  const toast = (message, error = false) => { let el = get('attRecordsToast'); if (!el) { el = document.createElement('div'); el.id = 'attRecordsToast'; el.className = 'att-records-toast'; document.body.appendChild(el); } el.textContent = message; el.classList.toggle('is-error', error); el.classList.add('is-visible'); clearTimeout(el._timer); el._timer = setTimeout(() => el.classList.remove('is-visible'), 2600); };
+  const recordsHead = recordsDialog.querySelector('.attendance-dialog__head');
+  const recordsBody = recordsDialog.querySelector('.attendance-dialog__body');
+  recordsDialog.classList.add('att-records-dialog');
+  recordsDialog.setAttribute('aria-labelledby', 'attRecordsTitle');
+  if (recordsHead) { recordsHead.className = 'att-records-head'; recordsHead.innerHTML = `<div class="att-records-eyebrow">${icon('att-history')}Taariikhda la keydiyay</div><h2 id="attRecordsTitle">Diiwaanka Xaadirka</h2><p>Diiwaannada hore loo keydiyay ee sanadka, habaynta, heerka, fasalka iyo fadhiga la doortay.</p><button class="att-records-close" type="button" id="attRecordsClose" aria-label="Xir">${icon('att-x')}</button>`; }
+  if (recordsBody) { recordsBody.className = 'att-records-body'; recordsBody.innerHTML = `<div class="att-records-filter-card"><div class="att-records-filter"><label>Sanad-dugsiyeedka</label><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--green">${icon('att-cal')}</span><select id="attRecordsYear">{% for item in years %}<option value="{{ item.id }}"{% if selected_year and item.id == selected_year.id %} selected{% endif %}>{{ item.name|e }}</option>{% endfor %}</select></div></div><div class="att-records-filter"><label>Heerka</label><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--blue">${icon('att-cap')}</span><select id="attRecordsLevel">{% for item in levels %}<option value="{{ item.id }}"{% if selected_level and item.id == selected_level.id %} selected{% endif %}>{{ item.name|e }}</option>{% endfor %}</select></div></div><div class="att-records-filter"><label>Fasalka</label><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--amber">${icon('att-users')}</span><select id="attRecordsClass"><option value="">Dhammaan</option>{% for item in classes %}<option value="{{ item.id }}"{% if selected_class and item.id == selected_class.id %} selected{% endif %}>{{ item.name|e }}</option>{% endfor %}</select></div></div><div class="att-records-filter"><label>Habaynta Anshaxa</label><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--purple">${icon('att-sliders')}</span><select id="attRecordsConfig">{% for item in configurations %}<option value="{{ item.id }}"{% if config and item.id == config.id %} selected{% endif %}>{{ item.behavior_subject.name|e if item.behavior_subject else 'Behavior' }}</option>{% endfor %}</select></div></div><div class="att-records-filter"><label>Fadhiga / Nooca imtixaanka</label><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--pink">${icon('att-check')}</span><select id="attRecordsSession">{% for item in sessions %}<option value="{{ item.id }}"{% if selected_session and item.id == selected_session.id %} selected{% endif %}>{{ item.session_label|e }} · {{ item.maximum_score|behavior_points }}</option>{% endfor %}</select></div></div><div class="att-records-filter att-records-context"><label>Taariikhda + Waqtiga</label><div class="att-records-two"><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--teal">${icon('att-cal')}</span><input type="date" value="{{ attendance_date.isoformat() }}"></div><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--green">${icon('att-clock')}</span><input type="time" value="{{ attendance_time.strftime('%H:%M') }}"></div></div></div></div><div class="att-records-range"><div class="att-records-filter"><label>Taariikhda (laga bilaabo)</label><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--teal">${icon('att-cal')}</span><input id="recordsFrom" type="date"></div></div><div class="att-records-filter"><label>Taariikhda (ilaa)</label><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--teal">${icon('att-cal')}</span><input id="recordsTo" type="date"></div></div><div class="att-records-state"><span>Xaaladda diiwaanka</span><div class="seg3 att-records-segmented" id="attRecordStates"><button data-state="active" aria-pressed="true">${icon('att-user-check')}Firfircoon</button><button data-state="voided" aria-pressed="false">${icon('att-ban')}La baabi'iyay</button><button data-state="all" aria-pressed="false">Dhammaan</button><button data-state="deleted" aria-pressed="false">${icon('att-trash')}La Tirtiray</button></div><select id="recordsStatus" hidden><option value="active">active</option></select></div></div><div class="att-records-toolbar"><label class="att-records-search">${icon('att-search')}<input id="attRecordsSearch" type="search" placeholder="Raadi arday, hooyo ama ID"></label><span class="att-records-count" id="attRecordsCount"></span></div><div class="att-records-readonly" id="attRecordsReadonly" hidden>${icon('att-lock')}Aragti kaliya (read-only): diiwaannadan la tirtiray lama beddeli karo.</div><div class="att-records-table" id="recordsTable"><div class="att-records-grid att-records-grid--head"><span>Taariikhda</span><span>Arday / Hooyo / ID</span><span>Fasal</span><span>Xaaladda</span><span>Imaatinka</span><span>La diiwaan geliyay</span><span>Qoraal</span><span>Ficil</span></div><div id="recordsBody"></div></div><div id="recordsEmpty" class="att-record-empty" hidden>Diiwaan lama helin. Beddel shaandheynta.</div>`; }
+  actionDialog.classList.add('att-action-dialog');
+  actionDialog.setAttribute('aria-labelledby', 'attActionTitle');
+  actionDialog.setAttribute('aria-modal', 'true');
+  const actionHead = actionDialog.querySelector('.attendance-dialog__head');
+  const actionBody = actionDialog.querySelector('.attendance-dialog__body');
+  if (actionHead) { actionHead.className = 'att-action-head'; actionHead.innerHTML = `<div class="att-records-eyebrow" id="attActionEyebrow">${icon('att-list')}Ficillada diiwaanka</div><h2 id="attActionTitle"></h2><p id="attActionSubtitle"></p><button class="att-records-close" type="button" id="attActionClose" aria-label="Xir">${icon('att-x')}</button>`; }
+  if (actionBody) { actionBody.className = 'att-action-body'; actionBody.innerHTML = '<div id="attActionContent"></div>'; }
+  const state = {value:'active'};
+  const renderRecords = () => {
+    const from = get('recordsFrom')?.value || '';
+    const to = get('recordsTo')?.value || '';
+    const query = (get('attRecordsSearch')?.value || '').trim().toLowerCase();
+    const classSelect = get('attRecordsClass');
+    const className = classSelect?.value ? classSelect.selectedOptions[0]?.textContent.trim() : '';
+    const visible = rows.filter((row) => {
+      const current = row.record_status || 'active';
+      const matchState = state.value === 'all' ? current !== 'deleted' : current === state.value;
+      const text = `${displayValue(row.student)} ${displayValue(row.mother)} ${displayValue(row.student_code)}`.toLowerCase();
+      return matchState && (!className || row.class_name === className) && (!from || row.date >= from) && (!to || row.date <= to) && (!query || text.includes(query));
+    });
+    get('attRecordsCount').innerHTML = `<b>${visible.length}</b> diiwaan`;
+    get('attRecordsReadonly').hidden = state.value !== 'deleted';
+    get('recordsEmpty').hidden = visible.length > 0;
+    get('recordsTable').hidden = visible.length === 0;
+    get('recordsBody').innerHTML = visible.map((row) => {
+      const deleted = row.record_status === 'deleted';
+      const voided = row.record_status === 'voided';
+      const arrival = displayValue(row.arrival_time);
+      const recorded = displayValue(row.attendance_time);
+      const note = displayValue(row.note);
+      const student = displayValue(row.student);
+      const mother = displayValue(row.mother);
+      const studentCode = displayValue(row.student_code);
+      const className = displayValue(row.class_name);
+      const actionButtons = deleted
+        ? `<span class="att-record-readonly">${icon('att-lock')}Kaliya akhri</span>`
+        : voided
+          ? `<button class="att-record-icon att-record-icon--restore" data-att-action="restore" title="Soo celi xaadirka" aria-label="Soo celi xaadirka">${icon('att-reset')}</button>`
+          : `<button class="att-record-icon" data-att-action="edit" title="Wax ka beddel" aria-label="Wax ka beddel">${icon('att-pen')}</button><button class="att-record-icon att-record-icon--void" data-att-action="void" title="Baabi'i" aria-label="Baabi'i">${icon('att-ban')}</button><button class="att-record-icon att-record-icon--delete" data-att-action="delete" title="Tirtir" aria-label="Tirtir">${icon('att-trash')}</button>`;
+      return `<div class="att-records-grid att-records-grid--row ${voided ? 'voided' : ''}" data-record-row="${row.record_id}" title="${deleted ? 'Riix si aad u aragto faahfaahinta' : 'Riix si aad u aragto ficillada'}"><div class="att-record-cell" data-l="Taariikhda">${shortDate(row.date)}</div><div class="att-record-cell att-record-student"><span class="att-record-avatar" style="background:${classColor(className)}">${esc(student.slice(0,2).toUpperCase())}</span><div><strong>${esc(student)}</strong><small>Hooyo: ${esc(mother)} • ID ${esc(studentCode)}</small></div></div><div class="att-record-cell" data-l="Fasal"><span class="att-record-class" style="background:${classColor(className)}">${esc(className)}</span></div><div class="att-record-cell" data-l="Xaaladda">${statusPill(row)}<br>${stateBadge(row)}</div><div class="att-record-cell att-record-time ${arrival === '—' ? 'att-record-muted' : ''}" data-l="Imaatinka">${esc(arrival)}</div><div class="att-record-cell att-record-time ${recorded === '—' ? 'att-record-muted' : ''}" data-l="La diiwaan geliyay">${esc(recorded)}</div><div class="att-record-cell ${note === '—' ? 'att-record-muted' : ''}" data-l="Qoraal">${esc(note)}</div><div class="att-record-cell att-record-actions">${actionButtons}</div></div>`;
+    }).join('');
+  };
+  const selectedScope = () => ({
+    year_id: get('attRecordsYear')?.value || '',
+    level_id: get('attRecordsLevel')?.value || '',
+    class_id: get('attRecordsClass')?.value || '',
+    config_id: get('attRecordsConfig')?.value || '',
+    session_id: get('attRecordsSession')?.value || '',
+    state: state.value,
+    date_from: get('recordsFrom')?.value || '',
+    date_to: get('recordsTo')?.value || '',
+    q: (get('attRecordsSearch')?.value || '').trim(),
+  });
+  const replaceOptions = (select, options, selected, emptyLabel = '') => {
+    if (!select) return;
+    const current = selected == null ? select.value : String(selected);
+    select.innerHTML = `${emptyLabel ? `<option value="">${emptyLabel}</option>` : ''}${(options || []).map((item) => `<option value="${item.id}">${esc(item.label)}</option>`).join('')}`;
+    if ([...select.options].some((option) => option.value === current)) select.value = current;
+    else if (select.options.length) select.selectedIndex = emptyLabel ? 0 : 0;
+  };
+  const applyScopeOptions = (options, selected) => {
+    if (!options) return;
+    replaceOptions(get('attRecordsYear'), options.years, selected?.year_id);
+    replaceOptions(get('attRecordsLevel'), options.levels, selected?.level_id);
+    replaceOptions(get('attRecordsClass'), options.classes, selected?.class_id, 'Dhammaan');
+    replaceOptions(get('attRecordsConfig'), options.configurations, selected?.config_id);
+    replaceOptions(get('attRecordsSession'), (options.sessions || []).map((item) => ({id:item.id, label:`${item.label} · ${item.maximum}`})), selected?.session_id);
+  };
+  let loadingRows = false;
+  const loadRows = async () => {
+    if (loadingRows) return;
+    loadingRows = true;
+    const params = new URLSearchParams(selectedScope());
+    get('attRecordsCount').textContent = 'Loading...';
+    try {
+      const response = await fetch(`${recordsApiUrl}?${params.toString()}`, {credentials:'same-origin', headers:{'Accept':'application/json','X-Requested-With':'XMLHttpRequest'}});
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok) throw new Error(payload.message || 'Diiwaannada lama soo qaadi karin');
+      rows = payload.rows || [];
+      applyScopeOptions(payload.options, payload.selected);
+      renderRecords();
+    } catch (error) {
+      rows = [];
+      renderRecords();
+      toast(error.message, true);
+    } finally {
+      loadingRows = false;
+    }
+  };
+  const openAction = (row, mode = 'choose') => { if (!row) return; actionDialog.dataset.recordId = row.record_id; renderAction(row, mode); if (window.__attOpenDialog) window.__attOpenDialog(actionDialog, {keepOpen:[recordsDialog]}); else actionDialog.showModal(); window.setTimeout(() => get('attActionClose')?.focus(), 0); };
+  const closeAction = () => { if (actionDialog.open) actionDialog.close(); };
+  const renderAction = (row, mode) => { const deleted = row.record_status === 'deleted', voided = row.record_status === 'voided'; get('attActionTitle').textContent = `${displayValue(row.student)} · ${shortDate(row.date)}`; get('attActionSubtitle').textContent = mode === 'view' ? 'Aragti kaliya — waxba lagama beddeli karo.' : mode === 'choose' ? (voided ? 'Diiwaankan waa la baabiiyay; waxaad si cad u soo celin kartaa.' : 'Dooro ficil loogu talagalay diiwaankan la keydiyay.') : mode === 'restore' ? 'Xaqiiji in diiwaankan dib loogu daro xisaabinta xaadirka.' : ''; get('attActionEyebrow').innerHTML = `${icon(mode === 'view' ? 'att-lock' : mode === 'edit' ? 'att-pen' : mode === 'void' ? 'att-ban' : mode === 'delete' ? 'att-trash' : mode === 'restore' ? 'att-reset' : 'att-list')}${mode === 'view' ? 'Diiwaan la tirtiray' : mode === 'choose' ? 'Ficillada diiwaanka' : mode === 'edit' ? 'Wax ka beddel Xaadirka' : mode === 'void' ? "Baabi'i Xaadirka" : mode === 'restore' ? 'Soo celinta Xaadirka' : 'Tirtir diiwaanka'}`; const arrival = displayValue(row.arrival_time); const pill = `${statusPill(row)} ${stateBadge(row)}${arrival !== '—' ? `<span class="att-record-status" style="--att-status-color:#d97706">${icon('att-clock')}Imaatin ${esc(arrival)}</span>` : ''}`; const editPill = `${statusPill(row)}${arrival !== '—' ? `<span class="att-record-status" style="--att-status-color:#d97706">${icon('att-clock')}Imaatin ${esc(arrival)}</span>` : ''}`; let html = '';
+    if (mode === 'choose' && voided) html = `<div class="att-action-pill-row">${pill}</div><div class="att-action-warning" style="--warning-color:#64748b">${icon('att-ban')}<span><b>Diiwaankan waa la baabi'iyay.</b><br>Hadda scoring-ka kama qayb qaato, laakiin taariikhdiisa way jirtaa.</span></div><div class="att-action-option-grid"><button class="att-action-option att-action-option--restore" data-action-mode="restore"><span class="att-action-tile att-action-tile--restore">${icon('att-reset')}</span><span><b>Soo celi Xaadirka</b></span><span class="att-action-chevron">${icon('att-chevron')}</span></button></div>`;
+    else if (mode === 'choose' && !deleted) html = `<div class="att-action-pill-row">${pill}</div><div class="att-action-option-grid"><button class="att-action-option" data-action-mode="edit"><span class="att-action-tile att-action-tile--blue">${icon('att-pen')}</span><span><b>Wax ka beddel Xaadirka</b></span><span class="att-action-chevron">${icon('att-chevron')}</span></button><button class="att-action-option" data-action-mode="void"><span class="att-action-tile att-action-tile--amber">${icon('att-ban')}</span><span><b>Baabi'i Xaadirka</b></span><span class="att-action-chevron">${icon('att-chevron')}</span></button><button class="att-action-option" data-action-mode="delete"><span class="att-action-tile att-action-tile--red">${icon('att-trash')}</span><span><b>Tirtir diiwaanka</b></span><span class="att-action-chevron">${icon('att-chevron')}</span></button></div>`;
+    else if (mode === 'view' || deleted) html = `<div class="att-action-warning" style="--warning-color:#64748b">${icon('att-lock')}<span><b>Aragti kaliya (read-only).</b><br>Diiwaankan waa la tirtiray, waxba lagama beddeli karo.</span></div><div class="att-action-pill-row">${pill}</div><dl class="att-action-detail"><dt>Taariikhda</dt><dd>${shortDate(row.date)}</dd><dt>Fasal</dt><dd>${esc(displayValue(row.class_name))}</dd><dt>Hooyo / ID</dt><dd>${esc(displayValue(row.mother))} • ID ${esc(displayValue(row.student_code))}</dd><dt>La diiwaan geliyay</dt><dd>${esc(displayValue(row.attendance_time))}</dd><dt>Imaatinka</dt><dd>${esc(displayValue(row.arrival_time))}</dd><dt>Qoraal</dt><dd>${esc(displayValue(row.note))}</dd><dt>La tirtiray</dt><dd>${esc(displayValue(row.deleted_at))}</dd><dt>Tirtiray</dt><dd>${esc(displayValue(row.deleted_by))}</dd></dl><div class="att-action-buttons"><button class="att-action-button" data-action-close>Xir</button></div>`;
+    else if (mode === 'restore') html = `<div class="att-action-pill-row">${pill}</div><div class="att-action-warning" style="--warning-color:#16a34a">${icon('att-reset')}<span><b>Soo celi diiwaanka?</b><br>Wuxuu mar kale ku biirayaa xisaabinta Attendance, iyadoo isla record-ka la isticmaalayo.</span></div><div class="att-action-buttons"><button class="att-action-button" data-action-close>Jooji</button><button class="att-action-button att-action-button--restore" data-action-restore>Soo celi Xaadirka</button></div>`;
+    else if (mode === 'edit') html = `<div class="att-action-edit-topline"><button class="att-action-back" data-action-mode="choose">${icon('att-back')}Dib u noqo</button><div class="att-action-pill-row att-action-pill-row--edit">${editPill}</div></div><div class="att-action-status-grid">${statusOptions.map((option) => `<button class="att-action-status" style="--att-status-color:${meta[option.key].color}" data-edit-status="${option.key}" data-status-id="${option.id}" aria-pressed="${row.status_key === option.key}">${icon(meta[option.key].icon)}${meta[option.key].label}</button>`).join('')}</div><div class="att-action-field att-action-time-field" id="attEditTimeWrap" ${row.status_key === 'late' ? '' : 'hidden'}><label for="attEditTime">Waqtiga uu yimid</label><input type="time" id="attEditTime" value="${row.status_key === 'late' ? esc(displayValue(row.arrival_time) === '—' ? '' : row.arrival_time) : ''}"></div><div class="att-action-field att-action-note-field"><label for="attEditNote">Qoraal</label><textarea id="attEditNote" placeholder="Qoraal ikhtiyaari ah">${esc(displayValue(row.note) === '—' ? '' : row.note)}</textarea></div><div class="att-action-buttons"><button class="att-action-button" data-action-close>Jooji</button><button class="att-action-button att-action-button--gold" data-action-save-edit>Keydi isbeddelka</button></div>`;
+    else if (mode === 'void') html = `<button class="att-action-back" data-action-mode="choose">${icon('att-back')}Dib u noqo</button><div class="att-action-warning" style="--warning-color:#d97706">${icon('att-alert')}<span><b>Diiwaankan waa la baabi'inayaa.</b><br>Wuu hadhayaa taariikhda, laakiin lagama xisaabin doono xaadirka.</span></div><div class="att-action-field"><label for="attVoidReason">Sababta (ikhtiyaari)</label><textarea id="attVoidReason" placeholder="Qoraal ikhtiyaari ah"></textarea></div><div class="att-action-buttons"><button class="att-action-button" data-action-close>Jooji</button><button class="att-action-button att-action-button--amber" data-action-void>Xaqiiji baabi'inta</button></div>`;
+    else html = `<button class="att-action-back" data-action-mode="choose">${icon('att-back')}Dib u noqo</button><div class="att-action-warning" style="--warning-color:#dc2626">${icon('att-alert')}<span><b>Diiwaanka waa la tirtirayaa.</b><br>Wuxuu u wareegayaa qaybta La Tirtiray oo aragti kaliya ah. Lama beddeli karo lamana xisaabin doono.</span></div><label class="att-action-check"><input type="checkbox" id="attDeleteAck">Waan fahmay in diiwaanku noqon doono read-only</label><div class="att-action-buttons"><button class="att-action-button" data-action-close>Jooji</button><button class="att-action-button att-action-button--red" id="attDeleteConfirm" data-action-delete disabled>Tirtir</button></div>`;
+    get('attActionContent').innerHTML = html;
+  };
+  const post = async (url, data) => { data.append('csrf_token', csrf); const response = await fetch(url, {method:'POST', body:data, credentials:'same-origin', headers:{'X-Requested-With':'XMLHttpRequest','Accept':'application/json','X-CSRFToken':csrf}}); const payload = await response.json().catch(() => ({})); if (!response.ok || !payload.ok) throw new Error(payload.message || 'Ficilka lama fulin'); return payload; };
+  const updateRow = (row, key) => { const selected = statusOptions.find((item) => item.key === key); row.status_key = key; row.status = selected?.label || row.status; row.status_id = selected?.id || row.status_id; };
+  get('recordsBody').addEventListener('click', (event) => { const rowEl = event.target.closest('[data-record-row]'); if (!rowEl) return; const row = rows.find((item) => String(item.record_id) === rowEl.dataset.recordRow); const button = event.target.closest('[data-att-action]'); if (button) { event.stopPropagation(); openAction(row, button.dataset.attAction); return; } openAction(row, row.record_status === 'deleted' ? 'view' : 'choose'); });
+  get('attRecordStates').addEventListener('click', (event) => { const button = event.target.closest('[data-state]'); if (!button) return; state.value = button.dataset.state; get('recordsStatus').value = state.value; get('attRecordStates').querySelectorAll('button').forEach((item) => item.setAttribute('aria-pressed', item === button)); loadRows(); });
+  [get('recordsFrom'), get('recordsTo'), get('attRecordsClass'), get('attRecordsSession')].forEach((input) => input?.addEventListener('change', loadRows));
+  [get('attRecordsYear'), get('attRecordsLevel'), get('attRecordsConfig')].forEach((input) => input?.addEventListener('change', () => {
+    if (get('attRecordsClass')) get('attRecordsClass').value = '';
+    if (get('attRecordsSession')) get('attRecordsSession').value = '';
+    loadRows();
+  }));
+  let searchTimer = 0; get('attRecordsSearch').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadRows, 250); });
+  const actionBodyNode = actionBody;
+  actionBodyNode.addEventListener('click', async (event) => { const modeButton = event.target.closest('[data-action-mode]'); if (modeButton) { const row = rows.find((item) => String(item.record_id) === actionDialog.dataset.recordId); renderAction(row, modeButton.dataset.actionMode); return; } if (event.target.closest('[data-action-close]')) { closeAction(); return; } const row = rows.find((item) => String(item.record_id) === actionDialog.dataset.recordId); if (!row) return; const statusButton = event.target.closest('[data-edit-status]'); if (statusButton) { actionBodyNode.querySelectorAll('[data-edit-status]').forEach((item) => item.setAttribute('aria-pressed', item === statusButton)); const late = statusButton.dataset.editStatus === 'late'; get('attEditTimeWrap').hidden = !late; if (late && !get('attEditTime').value) { const now = new Date(); get('attEditTime').value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`; get('attEditTime').focus(); } if (!late) get('attEditTime').value = ''; return; } try { if (event.target.closest('[data-action-restore]')) { await post(row.restore_url, new FormData()); row.record_status = 'active'; row.void_reason = ''; row.voided_at = ''; row.voided_by = ''; closeAction(); renderRecords(); toast('Xaadirka waa la soo celiyay'); } if (event.target.closest('[data-action-save-edit]')) { const selected = actionBodyNode.querySelector('[data-edit-status][aria-pressed="true"]'); const data = new FormData(); data.append('status_id', selected.dataset.statusId); data.append('arrival_time', get('attEditTime')?.value || ''); data.append('note', get('attEditNote')?.value || ''); await post(row.edit_url, data); updateRow(row, selected.dataset.editStatus); row.arrival_time = row.status_key === 'late' ? get('attEditTime').value : ''; row.note = get('attEditNote').value.trim(); closeAction(); renderRecords(); toast('Xaadirka waa la cusboonaysiiyay'); } if (event.target.closest('[data-action-void]')) { const data = new FormData(); data.append('reason', get('attVoidReason')?.value || ''); await post(row.void_url, data); row.record_status = 'voided'; row.void_reason = get('attVoidReason')?.value || ''; closeAction(); renderRecords(); toast("Diiwaanka waa la baabi'iyay"); } if (event.target.closest('[data-action-delete]')) { if (!get('attDeleteAck').checked) return; const data = new FormData(); data.append('acknowledged','1'); data.append('reason','Deleted from Attendance Records'); await post(row.delete_url, data); row.record_status = 'deleted'; row.deleted_at = new Date().toISOString(); row.deleted_by = 'Admin'; closeAction(); renderRecords(); toast('Diiwaanka waxaa loo wareejiyay La Tirtiray'); } } catch (error) { toast(error.message, true); } });
+  actionBodyNode.addEventListener('change', (event) => { if (event.target.id === 'attDeleteAck') get('attDeleteConfirm').disabled = !event.target.checked; });
+  get('attRecordsClose')?.addEventListener('click', () => recordsDialog.close()); get('attActionClose')?.addEventListener('click', closeAction); recordsDialog.addEventListener('click', (event) => { if (event.target === recordsDialog) recordsDialog.close(); }); actionDialog.addEventListener('click', (event) => { if (event.target === actionDialog) closeAction(); }); document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; if (actionDialog.open) closeAction(); else if (recordsDialog.open) recordsDialog.close(); });
+  document.querySelectorAll('[data-open-records]').forEach((button) => button.addEventListener('click', () => {
+    renderRecords();
+    if (window.__attOpenDialog) window.__attOpenDialog(recordsDialog);
+    else if (!recordsDialog.open) recordsDialog.showModal();
+  }));
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest?.('[data-open-records]');
+    if (!button || button.offsetParent === null) return;
+    if (!recordsDialog.open) recordsDialog.showModal();
+  }, true);
+  renderRecords();
+  loadRows();
+  if ({{ attendance_view|tojson }} === 'records') {
+    if (window.__attOpenDialog) window.__attOpenDialog(recordsDialog);
+    else if (!recordsDialog.open) recordsDialog.showModal();
+  }
+})();
+</script>

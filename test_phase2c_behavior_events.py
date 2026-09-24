@@ -376,6 +376,24 @@ class TestPhase2CBehaviorEvents(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertIn("Respectful Conduct", response.get_data(as_text=True))
 
+        timeline_body = checks[2].get_data(as_text=True)
+        self.assertIn('class="behavior-back-card"', timeline_body)
+        self.assertIn("Dib-u-noqo", timeline_body)
+        self.assertIn(
+            f'href="/admin/behavior/students?config_id={self.config_one.id}'
+            f'&amp;session_id={self.session_a.id}',
+            timeline_body,
+        )
+
+        snapshot_body = checks[3].get_data(as_text=True)
+        self.assertIn('class="behavior-back-card"', snapshot_body)
+        self.assertIn("Dib-u-noqo", snapshot_body)
+        self.assertIn(
+            f'href="/admin/behavior/students/{self.enrollment_one.id}'
+            f'?config_id={self.config_one.id}&amp;session_id={self.session_a.id}"',
+            snapshot_body,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

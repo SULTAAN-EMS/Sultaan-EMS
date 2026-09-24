@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Behavior Report Table Design Preview</title>
+  <style>
+    :root {
+      --ink: #20342d;
+      --muted: #718078;
+      --cream: #f5f1e7;
+      --paper: #fffdfa;
+      --line: #ddd4c1;
+      --green: #2e795a;
+      --green-dark: #173b30;
+      --green-soft: #e9f3ed;
+      --gold: #b88925;
+      --gold-soft: #f3ead3;
+      --navy: #182f57;
+      --red: #a9443e;
+      --red-soft: #faece9;
+      --shadow: 0 12px 32px rgba(32, 52, 45, .08);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--cream); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .page { width: min(1280px, calc(100% - 28px)); margin: 0 auto; padding: 30px 0 56px; }
+    .masthead { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+    .eyebrow { color: var(--gold); font-size: 11px; font-weight: 900; letter-spacing: .15em; text-transform: uppercase; }
+    h1 { margin: 7px 0 0; color: var(--green-dark); font-family: Georgia, "Times New Roman", serif; font-size: clamp(28px, 4vw, 44px); line-height: 1.05; }
+    .intro { max-width: 700px; margin: 10px 0 0; color: var(--muted); line-height: 1.5; }
+    .selection { min-width: 225px; padding: 13px 16px; border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow); }
+    .selection small { display: block; color: var(--muted); font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+    .selection strong { display: block; margin-top: 5px; color: var(--green); font-size: 14px; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 22px; }
+    .option { border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow); overflow: hidden; }
+    .option.is-selected { border-color: var(--green); box-shadow: 0 0 0 3px rgba(46, 121, 90, .14), var(--shadow); }
+    .option-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: #fbf8ef; }
+    .option-head h2 { margin: 0; font-size: 15px; }
+    .option-head span { color: var(--muted); font-size: 12px; }
+    .preview { padding: 20px; overflow-x: auto; }
+    .report-table { width: 100%; min-width: 780px; border-collapse: collapse; table-layout: fixed; border: 1px solid var(--line); background: #fff; }
+    .report-table th { padding: 10px 12px; color: #fff; background: var(--navy); font-size: 10px; font-weight: 900; letter-spacing: .06em; text-align: left; text-transform: uppercase; }
+    .report-table td { padding: 11px 12px; border-bottom: 1px solid #e7e0d0; color: var(--ink); font-size: 12px; line-height: 1.35; vertical-align: top; }
+    .report-table tr:last-child td { border-bottom: 0; }
+    .report-table .category-cell { width: 22%; }
+    .report-table .action-cell { width: 22%; }
+    .report-table .date-cell { width: 13%; }
+    .report-table .note-cell { width: 23%; }
+    .report-table .points-cell { width: 9%; }
+    .report-table .type-cell { width: 11%; }
+    .category-name { color: var(--green-dark); font-family: Georgia, "Times New Roman", serif; font-size: 16px; font-weight: 700; line-height: 1.15; }
+    .subcategory-name { margin-top: 9px; color: var(--muted); font-size: 11px; font-weight: 700; }
+    .subcategory-line { display: flex; align-items: center; gap: 8px; margin-top: 9px; color: var(--green-dark); font-size: 11px; font-weight: 900; }
+    .subcategory-icon { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border: 1px solid #b88925; color: #fff; background: var(--green); box-shadow: 0 2px 0 rgba(184, 137, 37, .22); }
+    .subcategory-icon svg { display: block; width: 16px; height: 16px; }
+    .category-total { display: inline-block; margin-top: 12px; padding: 5px 8px; border: 1px solid #c5dccd; color: var(--green); background: var(--green-soft); font-size: 10px; font-weight: 900; }
+    .action-name { font-weight: 800; }
+    .muted { color: var(--muted); font-size: 10px; }
+    .points { color: var(--green); font-size: 14px; font-weight: 900; }
+    .type { display: inline-block; padding: 4px 7px; color: var(--green); background: var(--green-soft); font-size: 10px; font-weight: 900; }
+    .negative .category-total, .negative .points, .negative .type { color: var(--red); }
+    .negative .type { background: var(--red-soft); }
+    .choose { padding: 0 20px 20px; }
+    .select-btn { width: 100%; border: 1px solid var(--green); padding: 10px 14px; color: var(--green-dark); background: var(--green-soft); font: inherit; font-weight: 900; cursor: pointer; }
+    .select-btn:hover, .option.is-selected .select-btn { color: #fff; background: var(--green); }
+
+    /* 01: clean stacked category cell */
+    .design-1 .category-cell { border-left: 5px solid var(--green); background: #f8fcf9; }
+    .design-1 .subcategory-name { padding-left: 10px; border-left: 2px solid var(--gold); }
+
+    /* 02: labelled taxonomy cell */
+    .design-2 .category-cell { background: #fbfaf5; }
+    .design-2 .category-name::before { content: "CATEGORY"; display: block; margin-bottom: 4px; color: var(--gold); font-family: inherit; font-size: 9px; font-weight: 900; letter-spacing: .14em; }
+    .design-2 .subcategory-name::before { content: "SUB-CATEGORY"; display: block; margin-bottom: 2px; color: var(--muted); font-size: 9px; letter-spacing: .1em; }
+    .design-2 .category-total { display: block; text-align: center; }
+
+    /* 03: taxonomy branch */
+    .design-3 .category-cell { position: relative; padding-left: 29px; }
+    .design-3 .category-cell::before { content: ""; position: absolute; left: 13px; top: 14px; bottom: 14px; width: 1px; background: var(--gold); }
+    .design-3 .category-name, .design-3 .subcategory-name { position: relative; }
+    .design-3 .category-name::before, .design-3 .subcategory-name::before { content: ""; position: absolute; left: -17px; top: .65em; width: 12px; height: 1px; background: var(--gold); }
+    .design-3 .subcategory-name { color: var(--ink); }
+    .design-3 .category-total { margin-left: -16px; }
+
+    /* 04: category and subcategory ribbons */
+    .design-4 .category-cell { padding: 0; background: var(--green-soft); }
+    .design-4 .hierarchy { padding: 12px; border-left: 5px solid var(--green); }
+    .design-4 .category-name { font-family: inherit; font-size: 15px; font-weight: 900; }
+    .design-4 .subcategory-name { display: inline-block; margin-top: 9px; padding: 5px 7px; color: var(--green); background: #fff; font-size: 10px; font-weight: 800; }
+    .design-4 .category-total { margin-top: 10px; }
+
+    /* 05: split category cell */
+    .design-5 .category-cell { padding: 0; }
+    .design-5 .hierarchy { display: grid; grid-template-columns: 1fr 1fr; min-height: 100%; }
+    .design-5 .category-side { padding: 12px; color: #fff; background: var(--green-dark); }
+    .design-5 .category-name { color: #fff; font-size: 15px; }
+    .design-5 .subcategory-side { padding: 12px; background: var(--gold-soft); }
+    .design-5 .subcategory-name { margin-top: 0; color: var(--green-dark); font-size: 11px; }
+    .design-5 .category-total { grid-column: 1 / -1; margin: 0; border: 0; border-top: 1px solid #d8c28b; border-radius: 0; background: #f7edcf; }
+
+    /* 06: numbered report hierarchy */
+    .design-6 .category-cell { background: #fbfaf5; }
+    .design-6 .hierarchy { display: grid; grid-template-columns: 28px 1fr; gap: 9px; }
+    .design-6 .step { display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid #d7ba6c; color: var(--gold); background: var(--gold-soft); font-size: 10px; font-weight: 900; }
+    .design-6 .category-name { font-size: 15px; }
+    .design-6 .subcategory-name { margin-top: 6px; }
+
+    /* 07: compact table-safe hierarchy */
+    .design-7 .category-cell { background: #f7fbf8; }
+    .design-7 .category-name { display: inline; font-family: inherit; font-size: 14px; font-weight: 900; }
+    .design-7 .subcategory-name { display: block; margin-top: 6px; padding-top: 6px; border-top: 1px dotted #b8cbbd; font-size: 10px; }
+    .design-7 .subcategory-name::before { content: "Sub-category: "; color: var(--gold); font-weight: 900; }
+    .design-7 .category-total { margin-top: 9px; padding: 3px 6px; font-size: 9px; }
+
+    /* 08: sub-category icon */
+    .design-8 .category-cell { background: #f8fbf9; border-left: 4px solid var(--green); }
+    .design-8 .subcategory-line { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--green-dark); font-size: 11px; font-weight: 900; }
+    .design-8 .subcategory-icon { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border: 1px solid #b88925; color: #fff; background: var(--green); box-shadow: 0 2px 0 rgba(184, 137, 37, .22); }
+    .design-8 .subcategory-icon svg { display: block; width: 16px; height: 16px; }
+    .design-8 .category-total { margin-top: 11px; }
+
+    @media (max-width: 760px) {
+      .page { width: calc(100% - 18px); padding-top: 20px; }
+      .masthead { display: block; }
+      .selection { margin-top: 16px; }
+      .preview { padding: 12px; }
+      .option-head { align-items: start; flex-direction: column; gap: 5px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="masthead">
+      <div>
+        <div class="eyebrow">SULTAAN EMS / Behavior report table</div>
+        <h1>Category and Sub-category</h1>
+        <p class="intro">Eight table-based options using the same report columns and real report-style hierarchy.</p>
+      </div>
+      <div class="selection" aria-live="polite"><small>Selected design</small><strong id="selectedDesign">None selected</strong></div>
+    </header>
+
+    <section class="grid" aria-label="Report table design options">
+      <article class="option design-1" data-design="01. Clean stacked category cell">
+        <div class="option-head"><h2>01. Clean stacked category cell</h2><span>Closest to the current report</span></div>
+        <div class="preview"><table class="report-table"><thead><tr><th>Category</th><th>Action / Behavior Details</th><th>Date &amp; Time</th><th>Note / Description</th><th>Points</th><th>Type</th></tr></thead><tbody><tr><td class="category-cell"><div class="category-name">ANSHAXA SUUBAN</div><div class="subcategory-line"><span class="subcategory-icon" aria-label="Sub-category icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12l8 8-8 8H5.5A1.5 1.5 0 0 1 4 18.5v-13Z"/><circle cx="8" cy="8" r="1.2"/></svg></span><span>IXTIRAAMKA MACALLIMIINTA</span></div><div class="category-total">Category Total +2.50</div></td><td><div class="action-name">Respectful Communication</div><div class="muted">Level 1</div></td><td>18 Sep 2026<br><span class="muted">Recorded</span></td><td>Respectful response in class.</td><td class="points">+2.50</td><td><span class="type">POSITIVE</span></td></tr></tbody></table></div>
+        <div class="choose"><button class="select-btn" type="button">Select this design</button></div>
+      </article>
+
+      <article class="option design-2" data-design="02. Labelled taxonomy cell">
+        <div class="option-head"><h2>02. Labelled taxonomy cell</h2><span>Most explicit for administrators</span></div>
+        <div class="preview"><table class="report-table"><thead><tr><th>Category</th><th>Action / Behavior Details</th><th>Date &amp; Time</th><th>Note / Description</th><th>Points</th><th>Type</th></tr></thead><tbody><tr><td class="category-cell"><div class="category-name">ANSHAXA SUUBAN</div><div class="subcategory-name">IXTIRAAMKA MACALLIMIINTA</div><div class="category-total">Category Total +2.50</div></td><td><div class="action-name">Respectful Communication</div><div class="muted">Level 1</div></td><td>18 Sep 2026<br><span class="muted">Recorded</span></td><td>Respectful response in class.</td><td class="points">+2.50</td><td><span class="type">POSITIVE</span></td></tr></tbody></table></div>
+        <div class="choose"><button class="select-btn" type="button">Select this design</button></div>
+      </article>
+
+      <article class="option design-3" data-design="03. Taxonomy branch">
+        <div class="option-head"><h2>03. Taxonomy branch</h2><span>Shows the parent-child relationship</span></div>
+        <div class="preview"><table class="report-table"><thead><tr><th>Category</th><th>Action / Behavior Details</th><th>Date &amp; Time</th><th>Note / Description</th><th>Points</th><th>Type</th></tr></thead><tbody><tr><td class="category-cell"><div class="category-name">ANSHAXA SUUBAN</div><div class="subcategory-name">IXTIRAAMKA MACALLIMIINTA</div><div class="category-total">Category Total +2.50</div></td><td><div class="action-name">Respectful Communication</div><div class="muted">Level 1</div></td><td>18 Sep 2026<br><span class="muted">Recorded</span></td><td>Respectful response in class.</td><td class="points">+2.50</td><td><span class="type">POSITIVE</span></td></tr></tbody></table></div>
+        <div class="choose"><button class="select-btn" type="button">Select this design</button></div>
+      </article>
+
+      <article class="option design-4" data-design="04. Category and sub-category ribbons">
+        <div class="option-head"><h2>04. Category and sub-category ribbons</h2><span>Modern but still report-safe</span></div>
+        <div class="preview"><table class="report-table"><thead><tr><th>Category</th><th>Action / Behavior Details</th><th>Date &amp; Time</th><th>Note / Description</th><th>Points</th><th>Type</th></tr></thead><tbody><tr><td class="category-cell"><div class="hierarchy"><div class="category-name">ANSHAXA SUUBAN</div><div class="subcategory-name">IXTIRAAMKA MACALLIMIINTA</div><div class="category-total">Category Total +2.50</div></div></td><td><div class="action-name">Respectful Communication</div><div class="muted">Level 1</div></td><td>18 Sep 2026<br><span class="muted">Recorded</span></td><td>Respectful response in class.</td><td class="points">+2.50</td><td><span class="type">POSITIVE</span></td></tr></tbody></table></div>
+        <div class="choose"><button class="select-btn" type="button">Select this design</button></div>
+      </article>
+
+      <article class="option design-5" data-design="05. Split category cell">
+        <div class="option-head"><h2>05. Split category cell</h2><span>Strong visual separation</span></div>
+        <div class="preview"><table class="report-table"><thead><tr><th>Category</th><th>Action / Behavior Details</th><th>Date &amp; Time</th><th>Note / Description</th><th>Points</th><th>Type</th></tr></thead><tbody><tr><td class="category-cell"><div class="hierarchy"><div class="category-side"><div class="category-name">ANSHAXA SUUBAN</div></div><div class="subcategory-side"><div class="subcategory-name">IXTIRAAMKA MACALLIMIINTA</div></div><div class="category-total">Category Total +2.50</div></div></td><td><div class="action-name">Respectful Communication</div><div class="muted">Level 1</div></td><td>18 Sep 2026<br><span class="muted">Recorded</span></td><td>Respectful response in class.</td><td class="points">+2.50</td><td><span class="type">POSITIVE</span></td></tr></tbody></table></div>
+        <div class="choose"><button class="select-btn" type="button">Select this design</button></div>
+      </article>
+
+      <article class="option design-6" data-design="06. Numbered report hierarchy">
+        <div class="option-head"><h2>06. Numbered report hierarchy</h2><span>Structured and compact</span></div>
+        <div class="preview"><table class="report-table"><thead><tr><th>Category</th><th>Action / Behavior Details</th><th>Date &amp; Time</th><th>Note / Description</th><th>Points</th><th>Type</th></tr></thead><tbody><tr><td class="category-cell"><div class="hierarchy"><span class="step">01</span><div><div class="category-name">ANSHAXA SUUBAN</div><div class="subcategory-name">IXTIRAAMKA MACALLIMIINTA</div><div class="category-total">Category Total +2.50</div></div></div></td><td><div class="action-name">Respectful Communication</div><div class="muted">Level 1</div></td><td>18 Sep 2026<br><span class="muted">Recorded</span></td><td>Respectful response in class.</td><td class="points">+2.50</td><td><span class="type">POSITIVE</span></td></tr></tbody></table></div>
+        <div class="choose"><button class="select-btn" type="button">Select this design</button></div>
+      </article>
+
+      <article class="option design-7" data-design="07. Compact table-safe hierarchy">
+        <div class="option-head"><h2>07. Compact table-safe hierarchy</h2><span>Best for narrow PDF pages</span></div>
+        <div class="preview"><table class="report-table"><thead><tr><th>Category</th><th>Action / Behavior Details</th><th>Date &amp; Time</th><th>Note / Description</th><th>Points</th><th>Type</th></tr></thead><tbody><tr><td class="category-cell"><div class="category-name">ANSHAXA SUUBAN</div><div class="subcategory-name">IXTIRAAMKA MACALLIMIINTA</div><div class="category-total">Category Total +2.50</div></td><td><div class="action-name">Respectful Communication</div><div class="muted">Level 1</div></td><td>18 Sep 2026<br><span class="muted">Recorded</span></td><td>Respectful response in class.</td><td class="points">+2.50</td><td><span class="type">POSITIVE</span></td></tr></tbody></table></div>
+        <div class="choose"><button class="select-btn" type="button">Select this design</button></div>
+      </article>
+
+      <article class="option design-8" data-design="08. Sub-category icon">
+        <div class="option-head"><h2>08. Sub-category icon</h2><span>Clear visual taxonomy marker</span></div>
+        <div class="preview"><table class="report-table"><thead><tr><th>Category</th><th>Action / Behavior Details</th><th>Date &amp; Time</th><th>Note / Description</th><th>Points</th><th>Type</th></tr></thead><tbody><tr><td class="category-cell"><div class="category-name">ANSHAXA SUUBAN</div><div class="subcategory-line"><span class="subcategory-icon" aria-label="Sub-category icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12l8 8-8 8H5.5A1.5 1.5 0 0 1 4 18.5v-13Z"/><circle cx="8" cy="8" r="1.2"/></svg></span><span>IXTIRAAMKA MACALLIMIINTA</span></div><div class="category-total">Category Total +2.50</div></td><td><div class="action-name">Respectful Communication</div><div class="muted">Level 1</div></td><td>18 Sep 2026<br><span class="muted">Recorded</span></td><td>Respectful response in class.</td><td class="points">+2.50</td><td><span class="type">POSITIVE</span></td></tr></tbody></table></div>
+        <div class="choose"><button class="select-btn" type="button">Select this design</button></div>
+      </article>
+    </section>
+  </main>
+  <script>
+    const selected = document.getElementById('selectedDesign');
+    document.querySelectorAll('.option').forEach((option) => {
+      option.querySelector('.select-btn').addEventListener('click', () => {
+        document.querySelectorAll('.option').forEach((item) => item.classList.remove('is-selected'));
+        option.classList.add('is-selected');
+        selected.textContent = option.dataset.design;
+      });
+    });
+  </script>
+</body>
+</html>

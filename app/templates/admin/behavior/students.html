@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 {% block page_title %}Student Behavior{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='behavior-subcategory-20260919a') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='response-required-mark-20260920a') }}">
 <div class="behavior-page view">
   {% include "admin/behavior/_nav.html" %}
 
@@ -73,8 +73,8 @@
           <div class="rf-resp" data-response-panel="multiple_choice"><div class="rf-choice-list" id="behaviorChoiceCards">{% for category in config.categories %}{% for item in category.actions %}{% for choice in item.choices %}<label class="rf-opt" data-choice-card data-choice-id="{{ choice.id }}" data-action="{{ item.id }}"><input type="radio" name="behavior_action_choice_id" value="{{ choice.id }}" data-action="{{ item.id }}" data-points="{{ choice.points|behavior_points }}"><span class="mk round"><i class="fa-solid fa-circle"></i></span><span class="lb">{{ choice.label }}</span><span class="pt">{{ choice.points|behavior_points }} pts</span></label>{% endfor %}{% endfor %}{% endfor %}<p class="field hint" data-choice-empty hidden>No configured choices for this action.</p></div></div>
           <div class="rf-resp" data-response-panel="checkboxes"><div class="rf-choice-list">{% for category in config.categories %}{% for item in category.actions %}{% for choice in item.choices %}<label class="rf-opt" data-checkbox-card data-choice-id="{{ choice.id }}" data-action="{{ item.id }}"><input type="checkbox" name="behavior_action_choice_ids" value="{{ choice.id }}" data-action="{{ item.id }}" data-points="{{ choice.points|behavior_points }}"><span class="mk square"><i class="fa-solid fa-check"></i></span><span class="lb">{{ choice.label }}</span><span class="pt">{{ choice.points|behavior_points }} pts</span></label>{% endfor %}{% endfor %}{% endfor %}</div><p class="field hint">Select one or more configured options.</p></div>
           <div class="rf-resp" data-response-panel="rating"><div class="behavior-rating" id="behaviorRatingStars" role="radiogroup" aria-label="Behavior rating"></div><input type="hidden" id="behaviorDialogRating" name="response_rating"><p class="field hint" id="behaviorRatingHint">Choose a rating.</p></div>
-          <div class="rf-resp" data-response-panel="short_answer"><div class="field"><label for="behaviorDialogResponseText">Action response</label><input id="behaviorDialogResponseText" name="response_text" maxlength="2000" placeholder="Write the response..."></div></div>
-          <div class="rf-resp" data-response-panel="text_note"><div class="field"><label for="behaviorDialogResponseNote">Action response</label><textarea id="behaviorDialogResponseNote" name="response_text" maxlength="2000" placeholder="Write the contextual response..."></textarea></div></div>
+          <div class="rf-resp" data-response-panel="short_answer"><div class="field"><label for="behaviorDialogResponseText">Action response <span class="behavior-required-mark" data-required-mark hidden aria-hidden="true">*</span></label><input id="behaviorDialogResponseText" name="response_text" maxlength="2000" placeholder="Write the response..."></div></div>
+          <div class="rf-resp" data-response-panel="text_note"><div class="field"><label for="behaviorDialogResponseNote">Action response <span class="behavior-required-mark" data-required-mark hidden aria-hidden="true">*</span></label><textarea id="behaviorDialogResponseNote" name="response_text" maxlength="2000" placeholder="Write the contextual response..."></textarea></div></div>
           <div class="rf-score"><div><div class="l">Behavior Section Remaining</div></div><div class="v" id="behaviorDialogRemaining">-</div></div>
         </section>
 
@@ -108,6 +108,7 @@
   const previewBase = document.getElementById('behaviorPreviewBase');
   const responsePanels = dialog ? dialog.querySelectorAll('[data-response-panel]') : [];
   const responseTypeLabel = document.getElementById('behaviorResponseType');
+  const requiredMarks = dialog ? dialog.querySelectorAll('[data-required-mark]') : [];
   const responseInputs = dialog ? dialog.querySelectorAll('input[name="behavior_action_choice_id"], input[name="behavior_action_choice_ids"]') : [];
   const selectedPoints = document.getElementById('behaviorSelectedPoints');
   const categoryTotal = document.getElementById('behaviorCategoryTotal');
@@ -199,6 +200,8 @@
       panel.hidden = !active;
       panel.querySelectorAll('input, textarea, select').forEach((input) => { input.disabled = !active; input.required = active && currentAction?.dataset.required === '1' && ['text', 'textarea'].includes(input.type || input.tagName.toLowerCase()); });
     });
+    const responseRequired = currentAction?.dataset.required === '1' && ['short_answer', 'text_note'].includes(responseType);
+    requiredMarks.forEach((mark) => { mark.hidden = !responseRequired; });
     if (responseTypeLabel) responseTypeLabel.textContent = `Configured response: ${typeLabels[responseType] || 'Response'}`;
     responseInputs.forEach((input) => { input.closest('[data-choice-card], [data-checkbox-card]')?.classList.toggle('selected', input.checked); input.disabled = input.dataset.action !== action.value || !currentAction || !['multiple_choice', 'checkboxes'].includes(responseType); });
     const visibleCards = Array.from(choiceCards).filter((card) => card.dataset.action === action.value);

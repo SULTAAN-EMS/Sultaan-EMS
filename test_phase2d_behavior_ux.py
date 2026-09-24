@@ -41,12 +41,60 @@ class TestPhase2DBehaviorUX(TestPhase2CBehaviorEvents):
             with self.subTest(path=path):
                 self.assertEqual(client.get(path).status_code, 200)
 
+        configuration = client.get(f"/admin/behavior/configuration?config_id={self.config_one.id}")
+        configuration_body = configuration.get_data(as_text=True)
+        self.assertNotIn("Only active Academic Levels from the selected Academic Year are available.", configuration_body)
+        self.assertNotIn("Save Configuration", configuration_body)
+        self.assertIn('data-config-autosave', configuration_body)
+        self.assertIn('data-config-autosave-status', configuration_body)
+
         dashboard = client.get(f"/admin/behavior/?{query}").get_data(as_text=True)
         self.assertIn("Behavior One", dashboard)
         self.assertIn("Behavior Two", dashboard)
-        self.assertIn("Guddiga Fasalka", dashboard)
+        self.assertIn("Ardayga La Diiwaan Geliyey", dashboard)
         self.assertIn("Ardayda iyo Dhibcaha Hadda", dashboard)
         self.assertIn("Ugu Badnaan", dashboard)
+
+        allocation = client.get(
+            f"/admin/behavior/session-allocation?config_id={self.config_one.id}"
+            f"&session_id={self.session_a.id}&enrollment_id={self.enrollment_one.id}"
+        )
+        self.assertEqual(allocation.status_code, 200)
+        allocation_body = allocation.get_data(as_text=True)
+        attendance_start = allocation_body.index(
+            'class="allocation-ledger allocation-ledger--attendance"'
+        )
+        attendance_end = allocation_body.index(
+            '<div class="allocation-summary"', attendance_start
+        )
+        attendance_ledger = allocation_body[attendance_start:attendance_end]
+        self.assertIn("Positive Evidence", attendance_ledger)
+        self.assertIn("Negative Evidence", attendance_ledger)
+        self.assertNotIn("Shared total allocation", allocation_body)
+        self.assertNotIn("Positive Used / Remaining", attendance_ledger)
+
+    def test_configuration_autosave_returns_json(self):
+        client = self._client_as_admin()
+        self.admin.set_permissions(["behavior.view", "behavior.configure"])
+        db.session.commit()
+
+        response = client.post(
+            "/admin/behavior/configuration",
+            data={
+                "csrf_token": "",
+                "config_id": str(self.config_one.id),
+                "academic_year_id": str(self.year_one.id),
+                "academic_year_level_ids": str(self.level_one.id),
+                "academic_level_mode": "selected",
+                "academic_year_subject_id": str(self.subject_one.id),
+                "exam_ref": "",
+            },
+            headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["config_id"], self.config_one.id)
 
     def test_behavior_navigation_active_state_and_page_persistence(self):
         client = self._client_as_admin()

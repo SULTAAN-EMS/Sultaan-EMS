@@ -423,6 +423,10 @@ def mark_attendance(
         behavior_session_id=session.id,
         attendance_date=attendance_date,
     ).first()
+    if item and getattr(item, "deleted_at", None):
+        raise BehaviorValidationError(
+            "This Attendance record is deleted and read-only."
+        )
     if item and item.status == "voided":
         raise BehaviorValidationError(
             "This Attendance record is voided and immutable. Restore it before editing."

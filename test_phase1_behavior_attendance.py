@@ -32,6 +32,7 @@ from app.models import (
     AcademicYearLevel,
     AcademicYearLevelAttendanceDay,
     AcademicYearSubject,
+    AuditLog,
     BehaviorAction,
     BehaviorActionChoice,
     BehaviorAttendanceDay,
@@ -472,7 +473,7 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertEqual(restored["positive_points"], Decimal("1.000"))
         self.assertEqual(restored["negative_points"], Decimal("1.500"))
 
-    def test_void_route_requires_reason_and_keeps_record_in_history(self):
+    def test_void_route_allows_optional_reason_and_keeps_record_in_history(self):
         self.admin.set_permissions([
             "behavior.view", "behavior.record", "behavior.configure", "behavior.void",
         ])
@@ -490,23 +491,15 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
             session["_user_id"] = str(self.admin.id)
             session["_fresh"] = True
 
-        missing_reason = client.post(
-            f"/admin/behavior/attendance/records/{record.id}/void",
-            data={"config_id": self.config.id, "session_id": self.session.id, "reason": ""},
-            follow_redirects=False,
-        )
-        self.assertEqual(missing_reason.status_code, 302)
-        self.assertEqual(db.session.get(BehaviorAttendanceRecord, record.id).status, "active")
-
         response = client.post(
             f"/admin/behavior/attendance/records/{record.id}/void",
-            data={"config_id": self.config.id, "session_id": self.session.id, "reason": "Marked on wrong date"},
+            data={"config_id": self.config.id, "session_id": self.session.id, "reason": ""},
             follow_redirects=False,
         )
         self.assertEqual(response.status_code, 302)
         persisted = db.session.get(BehaviorAttendanceRecord, record.id)
         self.assertEqual(persisted.status, "voided")
-        self.assertEqual(persisted.void_reason, "Marked on wrong date")
+        self.assertIsNone(persisted.void_reason)
         records_page = client.get(
             "/admin/behavior/attendance",
             query_string={
@@ -516,8 +509,8 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
             },
         )
         self.assertEqual(records_page.status_code, 200)
-        self.assertIn(b"Record state", records_page.data)
-        self.assertIn(b"Void Attendance", records_page.data)
+        self.assertIn(b"Xaaladda diiwaanka", records_page.data)
+        self.assertIn(b"Baabi'i Xaadirka", records_page.data)
         self.assertIn(b"record_status", records_page.data)
         self.assertTrue(any(
             row.action == "Behavior Attendance"
@@ -525,7 +518,116 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
             for row in __import__("app.models", fromlist=["AuditLog"]).AuditLog.query.all()
         ))
 
-    def test_delete_route_hard_deletes_record_and_keeps_read_only_snapshot(self):
+    def test_restore_route_preserves_identity_context_and_audit(self):
+        self.admin.set_permissions([
+            "behavior.view", "behavior.record", "behavior.configure", "behavior.void",
+        ])
+        ensure_attendance_defaults(self.config)
+        db.session.commit()
+        present = next(item for item in self.config.attendance_statuses if item.key == "present")
+        record = mark_attendance(
+            self.config,
+            self.session,
+            self.enrollment,
+            present.id,
+            date(2026, 9, 19),
+            marked_by_id=self.admin.id,
+        )
+        db.session.commit()
+        original_id = record.id
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+
+        client.post(
+            f"/admin/behavior/attendance/records/{original_id}/void",
+            data={
+                "year_id": self.config.academic_year_id,
+                "level_id": self.config.academic_year_level_id,
+                "class_id": self.enrollment.academic_year_class_id,
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+                "reason": "Mistaken mark",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(db.session.get(BehaviorAttendanceRecord, original_id).status, "voided")
+        voided_projection = attendance_points_projection(BehaviorAttendanceRecord.query.all())
+        self.assertEqual(voided_projection["positive_points"], Decimal("0.000"))
+
+        response = client.post(
+            f"/admin/behavior/attendance/records/{original_id}/restore",
+            data={
+                "year_id": self.config.academic_year_id,
+                "level_id": self.config.academic_year_level_id,
+                "class_id": self.enrollment.academic_year_class_id,
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302)
+        location = response.headers["Location"]
+        self.assertIn("year_id=", location)
+        self.assertIn("level_id=", location)
+        self.assertIn("class_id=", location)
+        self.assertIn("config_id=", location)
+        self.assertIn("session_id=", location)
+        restored = db.session.get(BehaviorAttendanceRecord, original_id)
+        self.assertIsNotNone(restored)
+        self.assertEqual(restored.id, original_id)
+        self.assertEqual(restored.status, "active")
+        self.assertEqual(BehaviorAttendanceRecord.query.count(), 1)
+        restored_projection = attendance_points_projection(BehaviorAttendanceRecord.query.all())
+        self.assertEqual(restored_projection["positive_points"], Decimal("1.000"))
+        self.assertTrue(any(
+            row.action == "Behavior Attendance"
+            and f"Restored Attendance record {original_id}" in (row.details or "")
+            and "previous_state=voided" in (row.details or "")
+            and "new_state=active" in (row.details or "")
+            for row in AuditLog.query.all()
+        ))
+
+        records_page = client.get(
+            "/admin/behavior/attendance",
+            query_string={
+                "year_id": self.config.academic_year_id,
+                "level_id": self.config.academic_year_level_id,
+                "class_id": self.enrollment.academic_year_class_id,
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+                "attendance_view": "records",
+            },
+        )
+        self.assertEqual(records_page.status_code, 200)
+        body = records_page.get_data(as_text=True)
+        self.assertIn('data-att-action="restore"', body)
+        self.assertIn("data-action-restore", body)
+
+        response = client.get(
+            "/admin/behavior/attendance/records",
+            query_string={
+                "year_id": self.config.academic_year_id,
+                "level_id": self.config.academic_year_level_id,
+                "class_id": self.enrollment.academic_year_class_id,
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+                "state": "active",
+                "q": "BHV-P1-001",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["selected"]["year_id"], self.config.academic_year_id)
+        self.assertEqual(payload["selected"]["level_id"], self.config.academic_year_level_id)
+        self.assertEqual(payload["selected"]["class_id"], self.enrollment.academic_year_class_id)
+        self.assertEqual(payload["selected"]["config_id"], self.config.id)
+        self.assertEqual(payload["selected"]["session_id"], self.session.id)
+        self.assertEqual([item["record_id"] for item in payload["rows"]], [original_id])
+
+    def test_delete_route_soft_deletes_record_and_keeps_read_only_history(self):
         self.admin.set_permissions([
             "behavior.view", "behavior.record", "behavior.configure", "behavior.void",
         ])
@@ -561,17 +663,17 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
                 "config_id": self.config.id,
                 "session_id": self.session.id,
                 "reason": "Duplicate daily mark",
-                "confirmation": "DELETE ATTENDANCE RECORD",
+                "acknowledged": "1",
             },
             follow_redirects=False,
         )
         self.assertEqual(response.status_code, 302)
-        self.assertIsNone(db.session.get(BehaviorAttendanceRecord, record.id))
-        deletion = BehaviorAttendanceDeletion.query.one()
-        self.assertEqual(deletion.original_record_id, record.id)
-        self.assertEqual(deletion.student_code, self.enrollment.student.student_code)
-        self.assertEqual(deletion.deletion_reason, "Duplicate daily mark")
-        self.assertEqual(deletion.original_status, "active")
+        persisted = db.session.get(BehaviorAttendanceRecord, record.id)
+        self.assertIsNotNone(persisted)
+        self.assertIsNotNone(persisted.deleted_at)
+        self.assertEqual(persisted.deleted_by, self.admin.id)
+        self.assertEqual(persisted.deletion_reason, "Duplicate daily mark")
+        self.assertEqual(BehaviorAttendanceDeletion.query.count(), 0)
 
         records_page = client.get(
             "/admin/behavior/attendance",
@@ -583,10 +685,9 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         )
         self.assertEqual(records_page.status_code, 200)
         body = records_page.get_data(as_text=True)
-        self.assertIn('<option value="deleted">Deleted</option>', body)
+        self.assertIn('La Tirtiray', body)
         self.assertIn('"record_status": "deleted"', body)
-        self.assertIn("Read-only deletion snapshot", body)
-        self.assertNotIn('"record_status": "active"', body)
+        self.assertIn("read-only", body)
 
         score = calculate_session_score(self.config, self.session, self.enrollment)
         self.assertEqual(score["attendance_record_count"], 0)

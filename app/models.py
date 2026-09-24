@@ -957,6 +957,9 @@ class BehaviorAttendanceRecord(TimestampMixin, db.Model):
     voided_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     voided_at = db.Column(db.DateTime, nullable=True)
     void_reason = db.Column(db.String(255), nullable=True)
+    deleted_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
+    deletion_reason = db.Column(db.String(255), nullable=True)
 
     student = db.relationship("Student")
     student_enrollment = db.relationship("StudentEnrollment")
@@ -968,6 +971,7 @@ class BehaviorAttendanceRecord(TimestampMixin, db.Model):
     attendance_status = db.relationship("BehaviorAttendanceStatus", back_populates="records")
     marked_by = db.relationship("User", foreign_keys=[marked_by_id])
     voider = db.relationship("User", foreign_keys=[voided_by])
+    deleter = db.relationship("User", foreign_keys=[deleted_by])
 
     __table_args__ = (
         UniqueConstraint(

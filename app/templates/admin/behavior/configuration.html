@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 {% block page_title %}Behavior Setup{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='behavior-config-levels-20260918d') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='behavior-status-ui-20260920c') }}">
 <div class="behavior-page view">
   {% include "admin/behavior/_nav.html" %}
   {% set config = selected_config %}
@@ -10,62 +10,45 @@
   <section class="behavior-card card behavior-section">
     <div class="behavior-section__head card-head">
       <div>
-        <span class="behavior-kicker"><i class="fa-solid fa-link"></i> Exact hierarchy</span>
-        <h2>{% if selected_config %}Edit configuration{% else %}Create configuration{% endif %}</h2>
+        <h2>{% if selected_config %}Wax ka beddel habaynta{% else %}Abuur habayn{% endif %}</h2>
       </div>
+      <span class="behavior-autosave-status" data-config-autosave-status role="status" aria-live="polite">
+        <i class="fa-solid fa-cloud" aria-hidden="true"></i><span>Dhammaan isbeddellada waa la kaydiyey</span>
+      </span>
     </div>
-    <p class="behavior-help">Academic Year -&gt; year-aware Academic Level -&gt; Behavior Subject -&gt; same-year Exam Type Sessions. Exam Types come from the official registry for the selected year and never cross that year.</p>
-    <div class="behavior-hierarchy stepper" aria-label="Behavior configuration hierarchy">
-      <span><b>1</b> Academic Year</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-      <span><b>2</b> Academic Level</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-      <span><b>3</b> Behavior Subject</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-      <span><b>4</b> Exam Type Sessions</span>
-    </div>
-    <form class="behavior-form" method="post">
+    <form id="behaviorConfigurationForm" class="behavior-form behavior-form--config" method="post" data-config-autosave>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% if selected_config %}<input type="hidden" name="config_id" value="{{ selected_config.id }}">{% endif %}
       <div class="behavior-field">
-        <label for="configYear">Academic Year</label>
+        <label for="configYear">Sannad Dugsiyeedka</label>
         <select id="configYear" name="academic_year_id" onchange="window.location='{{ url_for('behavior.configuration') }}?year_id='+this.value">
           {% for year in years %}<option value="{{ year.id }}" {% if selected_year and selected_year.id == year.id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}
         </select>
       </div>
       <div class="behavior-field">
-        <label for="academicLevelMode">Academic Level</label>
+        <label for="academicLevelMode">Heerarka Dugsiga</label>
         <select id="academicLevelMode" name="academic_level_mode" required>
-          <option value="all" {% if academic_level_mode == 'all' %}selected{% endif %}>All Levels</option>
-          <option value="selected" {% if academic_level_mode != 'all' %}selected{% endif %}>Selected Levels</option>
+          <option value="all" {% if academic_level_mode == 'all' %}selected{% endif %}>Dhammaan Heerarka</option>
+          <option value="selected" {% if academic_level_mode != 'all' %}selected{% endif %}>Heerarka la doortay</option>
         </select>
-        <div class="behavior-check-list" aria-label="Academic Levels for this configuration">
+        <div class="behavior-check-list" aria-label="Heerarka dugsiga ee habayntan">
           {% for item in levels %}
           <label class="check"><input type="checkbox" name="academic_year_level_ids" value="{{ item.id }}" {% if item.id in selected_level_ids %}checked{% endif %}> {{ item.name }}</label>
           {% endfor %}
         </div>
-        <small class="behavior-help">Only active Academic Levels from the selected Academic Year are available.</small>
       </div>
       <div class="behavior-field">
-        <label for="configSubject">Behavior Subject</label>
+        <label for="configSubject">Maaddada Hab-dhaqanka</label>
         <select id="configSubject" name="academic_year_subject_id" required>
           {% for item in subjects %}<option value="{{ item.id }}" {% if selected_subject_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
         </select>
-        <small class="behavior-help">Only Behavior subjects in the selected year-level are listed.</small>
       </div>
       <div class="behavior-field">
-        <label for="configExam">Exam Type</label>
+        <label for="configExam">Nooca Imtixaanka</label>
         <select id="configExam" name="exam_ref" onchange="window.location='{{ url_for('behavior.configuration') }}?year_id={{ selected_year.id if selected_year else '' }}&amp;level_id={{ selected_level_id or '' }}{% if selected_config %}&amp;config_id={{ selected_config.id }}{% endif %}&amp;exam_ref='+encodeURIComponent(this.value)">
-          <option value="">All Exam Types</option>
+          <option value="">Dhammaan Noocyada Imtixaanka</option>
           {% for exam in exam_types %}<option value="{{ exam.value }}" {% if selected_exam_ref == exam.value %}selected{% endif %}>{{ exam.name }}</option>{% endfor %}
         </select>
-        <small class="behavior-help">Filter the session source list to this Academic Year’s Exam Type.</small>
-      </div>
-      <div class="behavior-form__actions">
-        <button class="behavior-btn btn behavior-btn--primary btn-brass" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save Configuration</button>
-        {% if selected_config %}
-        <a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.sessions', config_id=selected_config.id, exam_ref=selected_exam_ref) }}"><i class="fa-solid fa-calendar-days"></i> Sessions</a>
-        <a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.grade_management', config_id=selected_config.id) }}"><i class="fa-solid fa-graduation-cap"></i> Grade Management</a>
-        <a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.categories', config_id=selected_config.id) }}"><i class="fa-solid fa-tags"></i> Categories</a>
-        <a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.actions', config_id=selected_config.id) }}"><i class="fa-solid fa-list-check"></i> Actions</a>
-        {% endif %}
       </div>
     </form>
   </section>
@@ -73,25 +56,42 @@
   <section class="behavior-card behavior-section">
     <div class="behavior-section__head">
       <div>
-        <span class="behavior-kicker"><i class="fa-solid fa-calendar-check"></i> Same-year session sources</span>
-        <h2>Exam Types for this configuration</h2>
+        <span class="behavior-kicker"><i class="fa-solid fa-chart-line"></i> Qaab-dhismeedka Sanadlaha</span>
+      </div>
+      <span class="behavior-scope-pill">{{ 'Complete' if setup_complete else 'Needs setup' }}</span>
+    </div>
+    <div class="behavior-score-grid">
+      <div class="behavior-score-card"><span>Qoondada</span><strong>{{ allocation|behavior_points }} / 100</strong><small>{% if allocation == 100 %}Wadarta sannadlaha ah{% else %}{{ allocation_remaining|behavior_points }} Hadhaa{% endif %}</small></div>
+      <div class="behavior-score-card"><span>Xilliyada Shaqeynaya</span><strong>{{ active_session_count }}</strong></div>
+      <div class="behavior-score-card"><span>Qodobada</span><strong>{{ active_category_count }}</strong></div>
+      <div class="behavior-score-card"><span>Falalka</span><strong>{{ active_action_count }}</strong></div>
+      <div class="behavior-score-card behavior-score-card--final"><span>Setup check</span><strong>{% if setup_complete %}Complete{% else %}Incomplete{% endif %}</strong></div>
+    </div>
+  </section>
+
+  <section class="behavior-card behavior-section">
+    <div class="behavior-section__head">
+      <div>
+        <span class="behavior-kicker"><i class="fa-solid fa-calendar-check"></i> NUUCYADA IMTIXAANKA EE DEJINTA MAADADA</span>
       </div>
       <span class="behavior-scope-pill">{{ exam_types|length }} available exam type(s)</span>
     </div>
-    <p class="behavior-help">Only Exam Types belonging to <strong>{{ selected_year.name if selected_year else 'the selected Academic Year' }}</strong> can become Behavior sessions. The mapping and maximum score are managed in Sessions &amp; Allocation.</p>
     <div class="behavior-list behavior-exam-type-list">
       {% for exam in visible_exam_types %}
       {% set session = configured_sessions.get(exam.value) %}
       <div class="behavior-list__item">
         <div class="behavior-list__leading">
           <span class="behavior-list__icon"><i class="fa-solid fa-calendar-days"></i></span>
-          <div><strong>{{ exam.name }}</strong><small>{{ selected_year.name }} · {% if session %}{{ session.session_label }} · maximum {{ session.maximum_score }}{% else %}Available to map as a Behavior session{% endif %}</small></div>
+          <div class="behavior-exam-type-line"><strong>{{ exam.name }}</strong><span>{{ selected_year.name }}{% if session %} · {{ session.session_label }}{% endif %}</span></div>
         </div>
-        {% if selected_config %}
-        <a class="behavior-btn behavior-btn--outline behavior-btn--small" href="{{ url_for('behavior.sessions', config_id=selected_config.id, exam_ref=exam.value) }}"><i class="fa-solid fa-sliders"></i> {{ 'Review session' if session else 'Configure session' }}</a>
-        {% else %}
-        <span class="behavior-muted">Save configuration first</span>
-        {% endif %}
+        <div class="behavior-exam-type-status" aria-label="{{ 'Nooca imtixaanka waa shaqaynayaa' if session else 'Nooca imtixaanka waa diyaar' }}">
+          {% if session %}
+          <span class="behavior-status-badge behavior-status-badge--active"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> SHAQAYNAYA</span>
+          <span class="behavior-status-max"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> MAX {{ session.maximum_score|behavior_points }}</span>
+          {% else %}
+          <span class="behavior-status-badge behavior-status-badge--available"><i class="fa-solid fa-circle-plus" aria-hidden="true"></i> DIYAAR</span>
+          {% endif %}
+        </div>
       </div>
       {% else %}
       <div class="behavior-empty"><i class="fa-solid fa-calendar-xmark"></i><p>No Exam Types exist for this Academic Year.</p></div>
@@ -107,7 +107,6 @@
       </div>
       <span class="behavior-scope-pill">{{ selected_year.name if selected_year else 'No year' }} - {{ selected_level.name if selected_level else 'No level' }}</span>
     </div>
-    <p class="behavior-help">Create a Behavior-only subject here. It is stored in the existing year-aware subject registry with no ordinary Subject bridge and no subject-level maximum score.</p>
     <form class="behavior-form" method="post" action="{{ url_for('behavior.create_subject') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="academic_year_id" value="{{ selected_year.id if selected_year else '' }}">
@@ -140,31 +139,6 @@
   </section>
 
   <section class="behavior-card behavior-section">
-    <div class="behavior-section__head">
-      <div>
-        <span class="behavior-kicker"><i class="fa-solid fa-chart-line"></i> Readiness and assessment structure</span>
-        <h2>Annual Behavior Score</h2>
-      </div>
-      <span class="behavior-scope-pill">{{ 'Complete' if setup_complete else 'Needs setup' }}</span>
-    </div>
-    <div class="behavior-score-grid">
-      <div class="behavior-score-card"><span>Allocation</span><strong>{{ allocation|behavior_points }} / 100</strong><small>{% if allocation == 100 %}Exact annual total{% else %}{{ allocation_remaining|behavior_points }} remaining{% endif %}</small></div>
-      <div class="behavior-score-card"><span>Sessions</span><strong>{{ active_session_count }}</strong><small>Configured year exam sessions</small></div>
-      <div class="behavior-score-card"><span>Categories</span><strong>{{ active_category_count }}</strong><small>Configured positive/negative categories</small></div>
-      <div class="behavior-score-card"><span>Actions</span><strong>{{ active_action_count }}</strong><small>Configured category actions</small></div>
-      <div class="behavior-score-card behavior-score-card--final"><span>Setup check</span><strong>{% if setup_complete %}Complete{% else %}Incomplete{% endif %}</strong><small>Complete the annual allocation and event requirements</small></div>
-    </div>
-    {% if selected_config %}
-    <div class="behavior-list" style="margin-top: 14px;">
-      {% for session in selected_config.sessions|sort(attribute='sort_order') %}
-      <div class="behavior-list__item"><div><strong>{{ session.session_label }}</strong><small>{{ session.exam.name if session.exam else session.exam_type.name if session.exam_type else 'Exam Type unavailable' }} - maximum {{ session.maximum_score|behavior_points }}</small></div><span class="behavior-muted">Available for use</span></div>
-      {% else %}<p class="behavior-muted">No sessions configured yet.</p>{% endfor %}
-    </div>
-    {% endif %}
-    <p class="behavior-help">Session maximums are the only source of Behavior score allocation. Manage them under <a href="{{ url_for('behavior.sessions', config_id=selected_config.id) if selected_config else url_for('behavior.sessions') }}">Sessions &amp; Allocation</a>.</p>
-  </section>
-
-  <section class="behavior-card behavior-section">
     <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-database"></i> Existing scopes</span><h2>Configurations in this year</h2></div></div>
     <div class="behavior-list">
       {% for item in configurations %}
@@ -173,4 +147,77 @@
     </div>
   </section>
 </div>
+<script>
+(() => {
+  const form = document.querySelector('[data-config-autosave]');
+  const indicator = document.querySelector('[data-config-autosave-status]');
+  if (!form || !indicator) return;
+
+  let timer;
+  let request;
+  let saveVersion = 0;
+  const icon = indicator.querySelector('i');
+  const text = indicator.querySelector('span');
+  const setStatus = (state, message) => {
+    indicator.className = `behavior-autosave-status${state ? ` is-${state}` : ''}`;
+    icon.className = state === 'saving'
+      ? 'fa-solid fa-arrows-rotate'
+      : state === 'saved'
+        ? 'fa-solid fa-circle-check'
+        : state === 'error'
+          ? 'fa-solid fa-circle-exclamation'
+          : 'fa-solid fa-cloud';
+    text.textContent = message;
+  };
+
+  const save = async () => {
+    const version = ++saveVersion;
+    if (request) request.abort();
+    request = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    setStatus('saving', 'Isbeddellada waa la kaydinayaa...');
+    try {
+      const response = await (window.__rawFetch || window.fetch)(form.action || window.location.href, {
+        method: 'POST',
+        body: new FormData(form),
+        credentials: 'same-origin',
+        signal: request ? request.signal : undefined,
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-No-Loader': '1' },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.success) throw new Error(payload.message || 'Isbeddellada lama kaydin karin.');
+      if (version !== saveVersion) return;
+      if (payload.config_id && !form.querySelector('[name="config_id"]')) {
+        const configId = document.createElement('input');
+        configId.type = 'hidden';
+        configId.name = 'config_id';
+        configId.value = payload.config_id;
+        form.prepend(configId);
+      }
+      setStatus('saved', 'Waa la kaydiyey');
+      window.setTimeout(() => {
+        if (version === saveVersion) setStatus('', 'Dhammaan isbeddellada waa la kaydiyey');
+      }, 2200);
+    } catch (error) {
+      if (error.name === 'AbortError' || version !== saveVersion) return;
+      setStatus('error', error.message || 'Kaydintu way fashilantay');
+    }
+  };
+
+  const schedule = () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(save, 500);
+  };
+  form.addEventListener('input', (event) => {
+    if (event.target.matches('input, textarea')) schedule();
+  });
+  form.addEventListener('change', (event) => {
+    if (event.target.matches('input, select, textarea') && event.target.id !== 'configYear' && event.target.id !== 'configExam') schedule();
+  });
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    window.clearTimeout(timer);
+    save();
+  });
+})();
+</script>
 {% endblock %}
