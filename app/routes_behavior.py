@@ -3386,8 +3386,10 @@ def attendance_report(enrollment_id):
             if key not in {"late", "absent", "excused", "official_leave"}:
                 key = "present" if record.polarity == "positive" else ("excused" if record.polarity == "neutral" else "absent")
             label = attendance_status_label(key, record.status_label_snapshot)
-            saved_attendance_time = record.attendance_time or (record.created_at.time() if record.created_at else None)
-            display_time = saved_attendance_time if key == "present" else record.arrival_time
+            # The report's time column is the time the attendance status was
+            # recorded.  Arrival time is separate evidence for lateness and
+            # must not replace the recorded timestamp for other statuses.
+            display_time = record.attendance_time or (record.created_at.time() if record.created_at else None)
             raw_points = Decimal(str(record.points_applied or 0))
             polarity = (record.polarity or status_polarities.get(key, "neutral")).strip().lower()
             if polarity not in {"positive", "negative", "neutral"}:

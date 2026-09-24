@@ -1474,6 +1474,47 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         self.assertEqual(projection["signed_total"], Decimal("-1.500"))
         self.assertEqual(projection["record_count"], 4)
 
+    def test_attendance_report_uses_recorded_time_for_every_status(self):
+        ensure_attendance_defaults(self.configuration)
+        times = {
+            "present": "07:31",
+            "late": "07:32",
+            "absent": "07:33",
+            "excused": "07:34",
+            "official_leave": "07:35",
+        }
+        for offset, (key, recorded_time) in enumerate(times.items(), start=1):
+            status = BehaviorAttendanceStatus.query.filter_by(
+                behavior_configuration_id=self.configuration.id,
+                key=key,
+            ).one()
+            mark_attendance(
+                self.configuration,
+                self.session_one,
+                self.enrollment,
+                status.id,
+                date(2026, 9, offset),
+                attendance_time=recorded_time,
+                arrival_time="08:01" if key == "late" else None,
+            )
+
+        response = self._client_as_admin().get(
+            "/admin/behavior/attendance/students/%s/report"
+            "?year_id=%s&level_id=%s&config_id=%s&session_id=%s&attendance_date=2026-09-05"
+            % (
+                self.enrollment.id,
+                self.year_one.id,
+                self.year_level_one.id,
+                self.configuration.id,
+                self.session_one.id,
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        for expected_time in ("7:31 AM", "7:32 AM", "7:33 AM", "7:34 AM", "7:35 AM"):
+            self.assertIn(expected_time, body)
+        self.assertNotIn("8:01 AM", body)
+
     def test_negative_only_attendance_report_uses_allocation_baseline(self):
         self.session_one.maximum_score = 20
         self.session_one.behavior_allocation = Decimal("15.000")
