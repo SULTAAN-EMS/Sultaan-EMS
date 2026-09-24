@@ -11,7 +11,11 @@ from sqlalchemy import event
 from app import create_app, db
 from app.behavior_grading import behavior_grade_for_score, behavior_grade_scales
 from sqlalchemy.exc import OperationalError
-from app.behavior_attendance import ensure_attendance_defaults, mark_attendance
+from app.behavior_attendance import (
+    auto_attendance_note,
+    ensure_attendance_defaults,
+    mark_attendance,
+)
 from app.behavior_reporting import build_behavior_report_categories, get_behavior_report_data
 from app.behavior_service import (
     attendance_points_projection,
@@ -214,6 +218,100 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
             session["_user_id"] = str(self.admin.id)
             session["_fresh"] = True
         return client
+
+    def test_auto_attendance_notes_use_exact_gendered_templates_without_names(self):
+        self.assertEqual(
+            auto_attendance_note("Mahad Mohamed Adam", "present"),
+            "Maanta wuu soo xaadiray.",
+        )
+        self.assertEqual(
+            auto_attendance_note("Mahad Mohamed Adam", "excused"),
+            "Wuu cudur-daartay/loo cudur-daaray.",
+        )
+        self.assertEqual(
+            auto_attendance_note("Mahad Mohamed Adam", "absent"),
+            "Maalintani wuu maqan yahay, bilaa cudur-daar.",
+        )
+        self.assertEqual(
+            auto_attendance_note("Mahad Mohamed Adam", "official_leave"),
+            "Wuxuu helay Fasaxid Rasmi ah (Dugsiga/waalid).",
+        )
+        self.assertEqual(
+            auto_attendance_note("Mahad Mohamed Adam", "late"),
+            "Maanta wuu soo dib-dhacay (daahay).",
+        )
+        female_notes = {
+            "present": "Maanta wey soo xaadirtay.",
+            "excused": "Wey cudur-daaratay/loo cudur-daaray.",
+            "absent": "Maalintani wey maqan tahay, bilaa cudur-daar.",
+            "official_leave": "Waxa ay heshay Fasaxid Rasmi ah (Dugsiga/waalid).",
+            "late": "Maanta wey soo dib-dhacday (daahay).",
+        }
+        for status_key, expected in female_notes.items():
+            self.assertEqual(auto_attendance_note("Mahad Mohamed Adam", status_key, "Female"), expected)
+
+    def test_auto_note_state_regenerates_and_preserves_manual_note(self):
+        self.session_one.maximum_score = 25
+        self.session_one.behavior_allocation = 15
+        self.session_one.attendance_allocation = 10
+        ensure_attendance_defaults(self.configuration)
+        db.session.flush()
+        statuses = {
+            item.key: item for item in self.configuration.attendance_statuses
+        }
+
+        record = mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            statuses["present"].id,
+            date.today(),
+            note_is_auto_generated=True,
+            note="wrong client text must be normalized",
+            attendance_time="07:30",
+        )
+        self.assertEqual(record.note, "Maanta wuu soo xaadiray.")
+        self.assertTrue(record.note_is_auto_generated)
+
+        record = mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            statuses["absent"].id,
+            date.today(),
+            note_is_auto_generated=True,
+            note="ignored because server owns automatic text",
+            attendance_time="07:30",
+        )
+        self.assertEqual(record.note, "Maalintani wuu maqan yahay, bilaa cudur-daar.")
+        self.assertTrue(record.note_is_auto_generated)
+
+        record = mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            statuses["late"].id,
+            date.today(),
+            note_is_auto_generated=False,
+            note="Waqti gaar ah ayaa la diiwaangeliyey.",
+            attendance_time="07:30",
+            arrival_time="07:45",
+        )
+        self.assertEqual(record.note, "Waqti gaar ah ayaa la diiwaangeliyey.")
+        self.assertFalse(record.note_is_auto_generated)
+
+        record = mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            statuses["excused"].id,
+            date.today(),
+            note_is_auto_generated=True,
+            note="must not replace manual note",
+            attendance_time="07:30",
+        )
+        self.assertEqual(record.note, "Waqti gaar ah ayaa la diiwaangeliyey.")
+        self.assertFalse(record.note_is_auto_generated)
 
     def test_adapter_uses_service_base_score_and_dynamic_sessions(self):
         reports = get_behavior_report_data(self.student, self.exam_one)

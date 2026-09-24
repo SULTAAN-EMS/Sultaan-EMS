@@ -47,11 +47,40 @@ OFFICIAL_ATTENDANCE_LABELS = {
     "official_leave": "Fasaxid Rasmi ah",
 }
 
+AUTO_ATTENDANCE_NOTE_TEMPLATES = {
+    "male": {
+        "present": "Maanta wuu soo xaadiray.",
+        "late": "Maanta wuu soo dib-dhacay (daahay).",
+        "absent": "Maalintani wuu maqan yahay, bilaa cudur-daar.",
+        "excused": "Wuu cudur-daartay/loo cudur-daaray.",
+        "official_leave": "Wuxuu helay Fasaxid Rasmi ah (Dugsiga/waalid).",
+    },
+    "female": {
+        "present": "Maanta wey soo xaadirtay.",
+        "late": "Maanta wey soo dib-dhacday (daahay).",
+        "absent": "Maalintani wey maqan tahay, bilaa cudur-daar.",
+        "excused": "Wey cudur-daaratay/loo cudur-daaray.",
+        "official_leave": "Waxa ay heshay Fasaxid Rasmi ah (Dugsiga/waalid).",
+    },
+}
+
 
 def attendance_status_label(status_key, fallback=None):
     """Return one stable display label without rewriting historical records."""
     key = (status_key or "").strip().lower()
     return (fallback or "").strip() or OFFICIAL_ATTENDANCE_LABELS.get(key, key.replace("_", " ").title())
+
+
+def attendance_first_name(full_name):
+    """Return the first whitespace-separated token, or an empty value."""
+    return (str(full_name or "").strip().split() or [""])[0]
+
+
+def auto_attendance_note(full_name, status_key, gender=None):
+    """Build the approved automatic note without changing manual notes."""
+    gender_key = "female" if str(gender or "").strip().lower() == "female" else "male"
+    template = AUTO_ATTENDANCE_NOTE_TEMPLATES[gender_key].get((status_key or "").strip().lower())
+    return template or ""
 
 
 def _coerce_time(value):
@@ -64,28 +93,44 @@ def _coerce_time(value):
     except (TypeError, ValueError):
         raise BehaviorValidationError("Arrival time must use HH:MM format")
 
-# Python's weekday numbering is Monday=0.  Saturday through Thursday is the
-# useful default for the school's normal six-day week; administrators can
-# deactivate any day without changing the stored attendance history.
+# Python's weekday numbering is Monday=0.  The controls use the school's
+# Saturday-to-Friday display cycle; administrators can deactivate any day
+# without changing the stored attendance history.
 DEFAULT_ATTENDANCE_DAYS = (
-    (5, "Saturday"),
-    (6, "Sunday"),
-    (0, "Monday"),
-    (1, "Tuesday"),
-    (2, "Wednesday"),
-    (3, "Thursday"),
+    (5, "Sabti"),
+    (6, "Axad"),
+    (0, "Isniin"),
+    (1, "Talaado"),
+    (2, "Arbaca"),
+    (3, "Khamiis"),
 )
 
 CANONICAL_WEEKDAY_LABELS = {
-    0: "Monday",
-    1: "Tuesday",
-    2: "Wednesday",
-    3: "Thursday",
-    4: "Friday",
-    5: "Saturday",
-    6: "Sunday",
+    0: "Isniin",
+    1: "Talaado",
+    2: "Arbaca",
+    3: "Khamiis",
+    4: "Jumca",
+    5: "Sabti",
+    6: "Axad",
 }
 ALL_WEEKDAYS = tuple(CANONICAL_WEEKDAY_LABELS)
+ATTENDANCE_DAY_ORDER = (5, 6, 0, 1, 2, 3, 4)
+ATTENDANCE_DAY_ORDER_INDEX = {
+    weekday: index for index, weekday in enumerate(ATTENDANCE_DAY_ORDER)
+}
+
+
+def attendance_weekday_label(weekday):
+    """Return the stable Somali label used by controls and the day banner."""
+    return CANONICAL_WEEKDAY_LABELS.get(int(weekday), "")
+
+
+def _sort_attendance_days(days):
+    return sorted(
+        days,
+        key=lambda item: ATTENDANCE_DAY_ORDER_INDEX.get(item.weekday, len(ATTENDANCE_DAY_ORDER)),
+    )
 
 
 def _legacy_active_days_for_level(configuration, academic_year_level_id=None):
@@ -152,20 +197,23 @@ def ensure_level_attendance_days(configuration, academic_year_level_id=None):
     else:
         # Complete a partially migrated schedule conservatively. Missing days
         # are inactive; existing administrator choices are never overwritten.
+        for day in existing.values():
+            day.label = CANONICAL_WEEKDAY_LABELS[day.weekday]
         for weekday in ALL_WEEKDAYS:
             if weekday not in existing:
                 db.session.add(
                     AcademicYearLevelAttendanceDay(
-                        academic_year_level_id=configuration.academic_year_level_id,
+                        academic_year_level_id=level_id,
                         weekday=weekday,
                         label=CANONICAL_WEEKDAY_LABELS[weekday],
                         is_active=False,
                     )
                 )
     db.session.flush()
-    return AcademicYearLevelAttendanceDay.query.filter_by(
+    days = AcademicYearLevelAttendanceDay.query.filter_by(
         academic_year_level_id=level_id
-    ).order_by(AcademicYearLevelAttendanceDay.weekday).all()
+    ).all()
+    return _sort_attendance_days(days)
 
 
 def update_attendance_active_days(configuration, active_days, academic_year_level_id=None):
@@ -264,12 +312,10 @@ def attendance_statuses(configuration, active_only=True):
 def attendance_days(configuration, active_only=True, academic_year_level_id=None):
     configuration = validate_behavior_configuration(configuration)
     level_id = _attendance_level_id(configuration, academic_year_level_id)
-    query = AcademicYearLevelAttendanceDay.query.filter_by(
-        academic_year_level_id=level_id
-    ).order_by(AcademicYearLevelAttendanceDay.weekday)
+    query = AcademicYearLevelAttendanceDay.query.filter_by(academic_year_level_id=level_id)
     if active_only:
         query = query.filter_by(is_active=True)
-    return query.all()
+    return _sort_attendance_days(query.all())
 
 
 def validate_attendance_context(configuration, session, enrollment):
@@ -351,7 +397,7 @@ def generate_daily_roster(
     if attendance_date.weekday() not in {
         item.weekday for item in attendance_days(configuration, academic_year_level_id=academic_year_level_id)
     }:
-        raise BehaviorValidationError("The selected date is not configured as a school attendance day")
+        raise BehaviorValidationError("Taariikhda la xushay looma dejin in ay noqoto maalin xaadirin dugsi.")
     present = next((item for item in attendance_statuses(configuration) if item.key == "present"), None)
     if not present:
         raise BehaviorValidationError("A Present Attendance status is required")
@@ -406,6 +452,7 @@ def mark_attendance(
     attendance_time=None,
     arrival_time=None,
     late_by_minutes=None,
+    note_is_auto_generated=False,
 ):
     """Upsert exactly one daily mark while preserving the selected scope."""
     configuration, session, enrollment = validate_attendance_context(configuration, session, enrollment)
@@ -447,6 +494,12 @@ def mark_attendance(
         new_points,
         exclude_record_id=item.id if item else None,
     )
+    incoming_auto_note = bool(note_is_auto_generated)
+    incoming_note = (
+        auto_attendance_note(enrollment.student.full_name, status_key, enrollment.student.gender)
+        if incoming_auto_note
+        else (note or "").strip()
+    ) or None
     if not item:
         item = BehaviorAttendanceRecord(
             student_id=enrollment.student_id,
@@ -459,12 +512,20 @@ def mark_attendance(
             attendance_date=attendance_date,
         )
         db.session.add(item)
+    preserve_manual_note = bool(
+        item
+        and item.note
+        and not bool(getattr(item, "note_is_auto_generated", False))
+        and incoming_auto_note
+    )
     item.status_id = status.id
     item.status_key_snapshot = status_key
     item.status_label_snapshot = attendance_status_label(status_key, status.label)
     item.polarity = new_polarity
     item.points_applied = new_points
-    item.note = (note or "").strip() or None
+    if not preserve_manual_note:
+        item.note = incoming_note
+        item.note_is_auto_generated = bool(incoming_auto_note and incoming_note)
     item.marked_by_id = marked_by_id
     item.attendance_time = _coerce_time(attendance_time) or datetime.now().time().replace(microsecond=0)
     item.arrival_time = normalized_arrival_time

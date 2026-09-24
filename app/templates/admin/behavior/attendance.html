@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='daily-attendance-status-pill-20260924-5') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='active-days-typewriter-controls-order-20260924-1') }}">
 <style>
   .att-action-body > #attActionContent { display:flex; flex:0 0 auto; flex-direction:column; gap:18px; width:100%; min-width:0; min-height:0; }
   .att-action-dialog .att-action-back,
@@ -48,6 +48,31 @@
   .attendance-scope-filters .behavior-field { min-width:0; }
   .attendance-scope-filters__actions { display:flex; align-items:end; }
   .attendance-select:focus, .attendance-arrival:focus, .attendance-note:focus { border-color:var(--brass); box-shadow:0 0 0 3px rgba(173,127,44,.14); outline:0; }
+  .att-note-wrap { display:flex; align-items:center; min-width:0; width:100%; }
+  .att-note-wrap .att-note { flex:1 1 auto; min-width:0; }
+  .note-text { line-height:1.6; }
+  .auto-badge{
+    position:relative; display:inline-flex; align-items:center; justify-content:center;
+    margin-inline-start:0; vertical-align:middle;
+    color:var(--s-fg); cursor:default;
+    opacity:0; transform:scale(.6);
+    transition:opacity .3s ease, transform .3s cubic-bezier(.34,1.56,.64,1), color .2s ease;
+  }
+  .auto-badge.show{ opacity:1; transform:scale(1); }
+  .auto-badge svg{ width:15px; height:15px; }
+  .auto-badge .tip{
+    position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%) translateY(4px);
+    background:#0d271c; color:#fff; font-size:11px; font-weight:700; white-space:nowrap;
+    padding:5px 9px; border-radius:8px; opacity:0; pointer-events:none;
+    transition:.2s cubic-bezier(.34,1.56,.64,1);
+    box-shadow:0 6px 14px -6px rgba(15,41,66,.4);
+  }
+  .auto-badge .tip::after{
+    content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%);
+    border:5px solid transparent; border-top-color:#0d271c;
+  }
+  .auto-badge:hover .tip{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .auto-badge:hover{ transform:scale(1.15); }
   .attendance-row-actions { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
   .attendance-row-actions .behavior-btn { white-space:nowrap; }
   .attendance-footer { display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; margin:18px 0 20px; padding:14px 0 0; border-top:1.14px solid var(--line); }
@@ -136,7 +161,7 @@
 <div class="behavior-page view">
   <header class="behavior-hero" hidden><span class="behavior-hero__mark"><i class="fa-solid fa-user-check"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow"><i class="fa-solid fa-calendar-check"></i> Behavior Attendance</span><h1>Daily Attendance</h1><p>Record attendance inside the selected year-aware Behavior configuration and session.</p></div></header>
   {% include "admin/behavior/_nav.html" %}
-  <div class="att-daily" data-school-day="{{ '1' if school_day else '0' }}">
+  <div class="att-daily" data-school-day="{{ '1' if school_day else '0' }}" data-selected-weekday="{{ attendance_date.weekday() }}" data-active-weekdays="{{ active_weekdays|join(',') }}">
     <svg class="att-sprite" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;overflow:hidden">
       <defs>
       <symbol id="att-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
@@ -169,7 +194,7 @@
       <symbol id="att-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></symbol>
       <symbol id="att-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.7 2.7-2.3-.7-.7-2.3z"/></symbol>
     </defs></svg>
-    <div class="att-heading"><div><h1>Xaadirka Maalinlaha ah</h1><p id="attLongDate">{{ attendance_date.strftime('%A, %d %B %Y') }}</p></div><div class="att-day-banner{% if not school_day %} is-off{% endif %}"><svg><use href="#att-check"/></svg><span>{{ attendance_date.strftime('%A') }} {% if school_day %}waa maalin dugsi oo shaqeysa{% else %}ma aha maalin dugsi oo shaqeysa{% endif %}</span></div></div>
+    <div class="att-heading{% if not school_day %} is-off{% endif %}"><div><h1>Xaadirka Maalinlaha ah</h1><p id="attLongDate">{{ attendance_date.strftime('%A, %d %B %Y') }}</p></div><div class="att-day-banner{% if not school_day %} is-off{% endif %}" data-active-day-banner data-state="{{ 'working' if school_day else 'off' }}" role="status" aria-live="polite"><span class="att-day-ring-wrap" aria-hidden="true"><span class="att-day-core"><svg data-active-day-icon><use href="{{ '#att-check' if school_day else '#att-x' }}"></use></svg></span></span><span data-active-day-label>{{ weekday_label }} {% if school_day %}waa maalin dugsi oo shaqeysa{% else %}ma aha maalin dugsi oo shaqeysa{% endif %}</span></div></div>
     <form class="att-card att-filters" id="attFilters" method="get">
       <div class="att-filter"><label for="attYear">Sanad-dugsiyeedka</label><div class="att-filter-box"><span class="att-badge att-badge--year"><svg><use href="#att-cal"/></svg></span><select id="attYear" name="year_id"><option value="">Dooro sannad dugsiyeedka</option>{% for year in years %}<option value="{{ year.id }}" {% if selected_year and year.id == selected_year.id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}</select></div></div>
       <div class="att-filter"><label for="attConfig">Habaynta Anshaxa</label><div class="att-filter-box"><span class="att-badge att-badge--config"><svg><use href="#att-sliders"/></svg></span><select id="attConfig" name="config_id"><option value="">Dooro habaynta</option>{% for item in configurations %}<option value="{{ item.id }}" data-level-ids="{% if item.academic_year_levels %}{% for membership in item.academic_year_levels %}{{ membership.academic_year_level_id }}{% if not loop.last %},{% endif %}{% endfor %}{% else %}{{ item.academic_year_level_id }}{% endif %}" {% if config and item.id == config.id %}selected{% endif %}>{{ item|behavior_levels }} · {{ item.behavior_subject.name }}</option>{% endfor %}</select></div></div>
@@ -182,7 +207,7 @@
     {% set att_present = statuses|selectattr('key', 'equalto', 'present')|list|first %}
     <section class="att-card att-roster-card"><form id="attSaveForm" method="post" action="{{ url_for('behavior.attendance') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save_all"><input type="hidden" name="config_id" value="{{ config.id if config else '' }}"><input type="hidden" name="level_id" value="{{ selected_level.id if selected_level else '' }}"><input type="hidden" name="session_id" value="{{ selected_session.id if selected_session else '' }}"><input type="hidden" name="class_id" value="{{ selected_class.id if selected_class else '' }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><input type="hidden" name="attendance_time" value="{{ attendance_time.strftime('%H:%M') }}">
       <div class="att-toolbar"><label class="att-search"><svg><use href="#att-search"/></svg><input id="attSearch" type="search" placeholder="Raadi arday (magac ama fasal)"></label><button class="att-btn att-btn--ok" type="button" id="attAllPresent"><svg><use href="#att-user-check"/></svg>Dhammaan Joogid</button><button class="att-btn" type="button" id="attReset"><svg><use href="#att-reset"/></svg>Dib u celi</button></div>
-      <div class="att-list" style="--att-cols:36px minmax(200px,2.2fr) 84px minmax(280px,340px) minmax(160px,1.4fr) 88px"><div class="att-list-head"><span>#</span><span>Arday</span><span>Fasal</span><span>Xaaladda</span><span>Qoraal</span><span>Ficil</span></div><div id="attRows">{% if rows %}{% for row in rows %}{% set row_key = row.record.status_key_snapshot if row.record else 'present' %}{% set voided = row.record and row.record.status == 'voided' %}<div class="att-row{% if voided %} is-voided{% endif %}" data-row data-id="{{ row.enrollment.id }}" data-name="{{ row.enrollment.student.full_name|lower }}" data-class="{{ row.enrollment.academic_year_class.name|lower }}" data-saved-status="{{ row_key if not voided else '' }}" data-saved-note="{{ row.record.note if row.record else '' }}" data-saved-late="{{ row.record.arrival_time.strftime('%H:%M') if row.record and row.record.arrival_time else '' }}"><span class="att-number">{{ loop.index }}</span><div class="att-who"><div class="att-avatar" data-class-color="{{ row.enrollment.academic_year_class.id }}">{% if row.enrollment.student.photo_path %}<img src="{{ asset_url(row.enrollment.student.photo_path) }}" alt="{{ row.enrollment.student.full_name }} photo">{% else %}{{ row.enrollment.student.full_name[:2]|upper }}{% endif %}</div><div><strong>{{ row.enrollment.student.full_name }}</strong><small>Hooyo: {{ row.enrollment.student.mother_name or '-' }} · {{ row.enrollment.student.student_code }}</small></div></div><span class="att-class-badge" data-class-color="{{ row.enrollment.academic_year_class.id }}">{{ row.enrollment.academic_year_class.name }}</span><div class="att-status-cell"><div class="att-status-buttons" role="group" aria-label="Xaaladda {{ row.enrollment.student.full_name }}">{% for status in statuses %}{% if status.key in ['present','late','absent','excused','official_leave'] %}{% set ui = {'present':('Joogid','att-user-check'),'late':('Daahid','att-clock'),'absent':('Maqnaansho','att-x'),'excused':('Cudur-daar','att-therm'),'official_leave':('Fasax Rasmi ah','att-shield')}[status.key] %}<button type="button" class="att-status" data-status-key="{{ status.key }}" data-status-id="{{ status.id }}" style="--status-color:{{ {'present':'#16a34a','late':'#d97706','absent':'#dc2626','excused':'#7c3aed','official_leave':'#2563eb'}[status.key] }}" aria-pressed="{{ 'true' if row_key == status.key else 'false' }}" title="{{ ui[0] }}{% if row_key == status.key %} — riix mar kale si aad u ka saarto{% endif %}" {% if voided %}disabled{% endif %}><svg><use href="#{{ ui[1] }}"/></svg><span>{{ ui[0] }}</span></button>{% endif %}{% endfor %}</div><label class="att-late-time{% if row_key == 'late' %} is-visible{% endif %}"><svg><use href="#att-clock"/></svg><input type="time" name="arrival_time_{{ row.enrollment.id }}" value="{{ row.record.arrival_time.strftime('%H:%M') if row.record and row.record.arrival_time else '' }}" aria-label="Waqtiga uu yimid {{ row.enrollment.student.full_name }}" {% if voided %}disabled{% endif %}></label><input type="hidden" name="status_{{ row.enrollment.id }}" value="{{ row.record.status_id if row.record and not voided else (att_present.id if att_present and not voided else '') }}"></div><input class="att-note" name="note_{{ row.enrollment.id }}" value="{{ row.record.note if row.record else '' }}" placeholder="Qoraal ikhtiyaari ah" aria-label="Qoraal {{ row.enrollment.student.full_name }}" {% if voided %}disabled{% endif %}><div class="att-actions"><button type="button" class="att-icon-btn" data-open-profile data-profile-id="{{ row.enrollment.id }}" data-photo="{{ asset_url(row.enrollment.student.photo_path) if row.enrollment.student.photo_path else '' }}" title="Eeg" aria-label="Eeg {{ row.enrollment.student.full_name }}"><svg><use href="#att-eye"/></svg></button><a class="att-icon-btn" href="{{ url_for('behavior.attendance_report', enrollment_id=row.enrollment.id, year_id=config.academic_year_id, level_id=selected_level.id, config_id=config.id, session_id=selected_session.id, attendance_date=attendance_date.isoformat(), print=1) }}" target="_blank" rel="noopener" title="Warbixin PDF" aria-label="Warbixin PDF {{ row.enrollment.student.full_name }}"><svg><use href="#att-file"/></svg></a></div></div>{% endfor %}{% else %}<div class="att-empty">Arday lama helin. Beddel raadinta ama fasalka.</div>{% endif %}</div></div>
+      <div class="att-list" style="--att-cols:36px minmax(200px,2.2fr) 84px minmax(280px,340px) minmax(160px,1.4fr) 88px"><div class="att-list-head"><span class="att-list-head__cell att-list-head__cell--number"><svg><use href="#att-list"/></svg><b>#</b></span><span class="att-list-head__cell att-list-head__cell--student"><svg><use href="#att-users"/></svg><b>Arday</b></span><span class="att-list-head__cell att-list-head__cell--class"><svg><use href="#att-cap"/></svg><b>Fasal</b></span><span class="att-list-head__cell att-list-head__cell--status"><svg><use href="#att-check"/></svg><b>Xaaladda</b></span><span class="att-list-head__cell att-list-head__cell--note"><svg><use href="#att-file"/></svg><b>Qoraal</b></span><span class="att-list-head__cell att-list-head__cell--actions" style="background:#eef6ff;border-color:#cfe2f6;"><svg><use href="#att-pen"/></svg><b>Ficil</b></span></div><div id="attRows">{% if rows %}{% for row in rows %}{% set row_key = row.record.status_key_snapshot if row.record else 'present' %}{% set voided = row.record and row.record.status == 'voided' %}<div class="att-row{% if voided %} is-voided{% endif %}" data-row data-id="{{ row.enrollment.id }}" data-name="{{ row.enrollment.student.full_name|lower }}" data-student-name="{{ row.enrollment.student.full_name or '' }}" data-class="{{ row.enrollment.academic_year_class.name|lower }}" data-saved-status="{{ row_key if not voided else '' }}" data-saved-note="{{ row.display_note }}" data-note-auto-generated="{{ '1' if row.record and row.record.note_is_auto_generated and row.record.note else '0' }}" data-saved-note-auto-generated="{{ '1' if row.record and row.record.note_is_auto_generated and row.record.note else '0' }}" data-saved-late="{{ row.record.arrival_time.strftime('%H:%M') if row.record and row.record.arrival_time else '' }}"><span class="att-number">{{ loop.index }}</span><div class="att-who"><div class="att-avatar" data-class-color="{{ row.enrollment.academic_year_class.id }}">{% if row.enrollment.student.photo_path %}<img src="{{ asset_url(row.enrollment.student.photo_path) }}" alt="{{ row.enrollment.student.full_name }} photo">{% else %}{{ row.enrollment.student.full_name[:2]|upper }}{% endif %}</div><div><strong>{{ row.enrollment.student.full_name }}</strong><small>Hooyo: {{ row.enrollment.student.mother_name or '-' }} · {{ row.enrollment.student.student_code }}</small></div></div><span class="att-class-badge" data-class-color="{{ row.enrollment.academic_year_class.id }}">{{ row.enrollment.academic_year_class.name }}</span><div class="att-status-cell"><div class="att-status-buttons" role="group" aria-label="Xaaladda {{ row.enrollment.student.full_name }}">{% for status in statuses %}{% if status.key in ['present','late','absent','excused','official_leave'] %}{% set ui = {'present':('Joogid','att-user-check'),'late':('Daahid','att-clock'),'absent':('Maqnaansho','att-x'),'excused':('Cudur-daar','att-therm'),'official_leave':('Fasax Rasmi ah','att-shield')}[status.key] %}<button type="button" class="att-status" data-status-key="{{ status.key }}" data-status-id="{{ status.id }}" style="--status-color:{{ {'present':'#16a34a','late':'#d97706','absent':'#dc2626','excused':'#7c3aed','official_leave':'#2563eb'}[status.key] }}" aria-pressed="{{ 'true' if row_key == status.key else 'false' }}" title="{{ ui[0] }}{% if row_key == status.key %} — riix mar kale si aad u ka saarto{% endif %}" {% if voided %}disabled{% endif %}><svg><use href="#{{ ui[1] }}"/></svg><span>{{ ui[0] }}</span></button>{% endif %}{% endfor %}</div><label class="att-late-time{% if row_key == 'late' %} is-visible{% endif %}"><svg><use href="#att-clock"/></svg><input type="time" name="arrival_time_{{ row.enrollment.id }}" value="{{ row.record.arrival_time.strftime('%H:%M') if row.record and row.record.arrival_time else '' }}" aria-label="Waqtiga uu yimid {{ row.enrollment.student.full_name }}" {% if voided %}disabled{% endif %}></label><input type="hidden" name="status_{{ row.enrollment.id }}" value="{{ row.record.status_id if row.record and not voided else (att_present.id if att_present and not voided else '') }}"></div><div class="att-note-wrap"><input class="att-note note-text" name="note_{{ row.enrollment.id }}" value="{{ row.display_note }}" placeholder="Qoraal ikhtiyaari ah" aria-label="Qoraal {{ row.enrollment.student.full_name }}" {% if voided %}disabled{% endif %}><span class="auto-badge{% if row.record and row.record.note_is_auto_generated and row.record.note %} show{% endif %}" id="autoBadge-{{ row.enrollment.id }}" data-auto-badge aria-label="Auto-generated"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 5.4L19 9l-5.2 1.6L12 16l-1.8-5.4L5 9l5.2-1.6z"/></svg><span class="tip">Auto-generated</span></span></div><input type="hidden" name="note_auto_generated_{{ row.enrollment.id }}" value="{{ '1' if row.record and row.record.note_is_auto_generated and row.record.note else '0' }}" data-note-auto-flag><div class="att-actions"><button type="button" class="att-icon-btn" data-open-profile data-profile-id="{{ row.enrollment.id }}" data-photo="{{ asset_url(row.enrollment.student.photo_path) if row.enrollment.student.photo_path else '' }}" title="Eeg" aria-label="Eeg {{ row.enrollment.student.full_name }}"><svg><use href="#att-eye"/></svg></button><a class="att-icon-btn" href="{{ url_for('behavior.attendance_report', enrollment_id=row.enrollment.id, year_id=config.academic_year_id, level_id=selected_level.id, config_id=config.id, session_id=selected_session.id, attendance_date=attendance_date.isoformat(), print=1) }}" target="_blank" rel="noopener" title="Warbixin PDF" aria-label="Warbixin PDF {{ row.enrollment.student.full_name }}"><svg><use href="#att-file"/></svg></a></div></div>{% endfor %}{% else %}<div class="att-empty">Arday lama helin. Beddel raadinta ama fasalka.</div>{% endif %}</div></div>
     </form></section>
     <div class="att-bottom-bar" role="toolbar" aria-label="Xakamaynta xaadirka">
       <div class="status" id="status" role="status" aria-live="polite" style="--status-bg:rgba(31,157,85,.12);--status-fg:#1f9d55;">
@@ -197,7 +222,7 @@
         <button class="att-bar-icon" type="button" data-open-attendance-drawer title="Fur Dejinta Xaadirka" aria-label="Fur Dejinta Xaadirka"><svg><use href="#att-tool"/></svg></button>
       </nav>
       <button class="att-btn att-btn--save" type="button" id="attSaveButton" disabled><svg><use href="#att-save"/></svg>Keydi</button>
-    </div><div class="att-toast" id="attToast" role="status"><svg><use href="#att-shield"/></svg><span></span></div>
+    </div><div class="att-toast" id="attToast" role="status" aria-live="polite" aria-atomic="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span></span></div>
   </div>
   <div class="legacy-attendance-main" hidden>
   <form class="behavior-card card behavior-form attendance-filter-panel" id="attendanceFilters" method="get">
@@ -219,7 +244,7 @@
   </section>
   </div>
   <div class="behavior-drawer-backdrop drawer-overlay" data-close-attendance-drawer hidden></div>
-  <aside class="behavior-drawer attendance-controls-panel" id="attendanceSettingsDrawer" aria-hidden="true" aria-labelledby="attendanceSettingsTitle"><div class="behavior-drawer__head attendance-controls-header"><div><span class="attendance-controls-eyebrow"><i></i> ATTENDANCE CONTROLS</span><h2 id="attendanceSettingsTitle">Status points and active days</h2><p>{{ config.academic_year.name }} &bull; {{ config|behavior_levels }} — this schedule applies to the selected Academic Year Level</p><span class="attendance-settings-save-state attendance-controls-saved" id="attendanceSettingsSaveState" role="status" aria-live="polite"><span class="attendance-controls-saved-dot"></span>All changes auto-saved</span></div><button class="behavior-modal__close attendance-controls-close" type="button" data-close-attendance-drawer aria-label="Close attendance settings"><i class="fa-solid fa-xmark"></i></button></div><div class="behavior-drawer__body attendance-controls-body">
+  <aside class="behavior-drawer attendance-controls-panel" id="attendanceSettingsDrawer" aria-hidden="true" aria-labelledby="attendanceSettingsTitle"><div class="behavior-drawer__head attendance-controls-header"><div><h2 id="attendanceSettingsTitle">Status points and active days</h2><p>{{ config.academic_year.name }} &bull; {{ config|behavior_levels }}</p><span class="attendance-settings-save-state attendance-controls-saved" id="attendanceSettingsSaveState" role="status" aria-live="polite"><span class="attendance-controls-saved-dot"></span>All changes auto-saved</span></div><button class="behavior-modal__close attendance-controls-close" type="button" data-close-attendance-drawer aria-label="Close attendance settings"><i class="fa-solid fa-xmark"></i></button></div><div class="behavior-drawer__body attendance-controls-body">
     <section class="attendance-controls-section attendance-add-section"><div class="attendance-controls-section-head"><h3>Add new status</h3></div><form class="attendance-add-card behavior-form" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save_status"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="level_id" value="{{ selected_level.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><div class="attendance-add-grid"><div class="behavior-field"><label>Key</label><input name="key" required placeholder="e.g. late"><span class="attendance-controls-hint">Lowercase, no spaces — used internally</span></div><div class="behavior-field"><label>Label</label><input name="label" required placeholder="e.g. Late"></div><div class="behavior-field"><label>Polarity</label><select name="polarity"><option value="neutral">Neutral</option><option value="positive">Positive</option><option value="negative">Negative</option></select></div><div class="behavior-field"><label>Points</label><input name="points" type="number" min="0" step="0.001" value="0"></div></div><div class="attendance-add-footer"><span class="attendance-controls-hint">New statuses appear below immediately</span><button class="behavior-btn attendance-controls-add-btn" type="submit"><i class="fa-solid fa-plus"></i> Add status</button></div></form></section>
     <section class="attendance-controls-section"><div class="attendance-controls-section-head"><h3>Status points</h3><span>Auto-saved</span></div><div class="attendance-control-rows">{% for status in all_statuses %}<form class="attendance-control-row-form" data-attendance-status-form method="post" action="{{ url_for('behavior.update_attendance_status', status_id=status.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="level_id" value="{{ selected_level.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><div class="attendance-control-who"><span class="attendance-control-key">{{ status.key }}</span><div class="behavior-field"><input name="label" value="{{ status.label }}" required aria-label="Label for {{ status.key }}"></div></div><div class="behavior-field attendance-control-polarity-field"><label>Polarity</label><select name="polarity"><option value="neutral" {% if status.polarity == 'neutral' %}selected{% endif %}>Neutral</option><option value="positive" {% if status.polarity == 'positive' %}selected{% endif %}>Positive</option><option value="negative" {% if status.polarity == 'negative' %}selected{% endif %}>Negative</option></select></div><div class="behavior-field attendance-control-points-field"><label>Points</label><input name="points" type="text" inputmode="decimal" min="0" step="0.001" value="{{ status.points|behavior_points }}" aria-label="Points for {{ status.key }}"></div></form>{% endfor %}</div></section>
     <section class="attendance-controls-section"><div class="attendance-controls-section-head"><h3>Active days</h3><span>{{ config.academic_year.name }} &bull; {{ selected_level.name }}</span></div><form class="attendance-active-days" data-attendance-days-form method="post" action="{{ url_for('behavior.update_attendance_active_days') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="level_id" value="{{ selected_level.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><div class="attendance-controls-days">{% for day in all_days %}<label class="attendance-control-day"><input type="checkbox" name="school_days" value="{{ day.weekday }}" {% if day.is_active %}checked{% endif %}><span class="attendance-control-day-tick"><svg aria-hidden="true"><use href="#att-check"></use></svg></span><span>{{ _(day.label) }}</span></label>{% endfor %}</div></form></section>
@@ -237,6 +262,12 @@
 (() => {
   const root = document.querySelector('.att-daily');
   if (!root) return;
+  // Keep workflow notifications attached to the document so they remain
+  // visible while the attendance page scrolls through the roster or filters.
+  const toastElement = root.querySelector('#attToast');
+  if (toastElement && toastElement.parentNode !== document.body) {
+    document.body.appendChild(toastElement);
+  }
   const rows = [...root.querySelectorAll('[data-row]')];
   // Empty nullable notes must render as empty fields, never as the Jinja string "None".
   rows.forEach(row => {
@@ -244,29 +275,69 @@
     if (note?.value === 'None') note.value = '';
     if (row.dataset.savedNote === 'None') row.dataset.savedNote = '';
   });
+  const studentGenders = {
+    {% for row in rows %}{{ row.enrollment.id }}: {{ (row.enrollment.student.gender or '')|tojson }},{% endfor %}
+  };
   const statusMeta = {
-    present: { label: 'Joogid', color: '#16a34a' },
-    late: { label: 'Daahid', color: '#d97706' },
-    absent: { label: 'Maqnaansho', color: '#dc2626' },
-    excused: { label: 'Cudur-daar', color: '#7c3aed' },
-    official_leave: { label: 'Fasax Rasmi ah', color: '#2563eb' },
+    present: { label: 'Joogid', color: '#16a34a', bg: 'rgba(31,157,85,.12)', fg: '#1f9d55' },
+    late: { label: 'Daahid', color: '#d97706', bg: 'rgba(221,143,22,.14)', fg: '#dd8f16' },
+    absent: { label: 'Maqnaansho', color: '#dc2626', bg: 'rgba(217,53,53,.12)', fg: '#c93b3b' },
+    excused: { label: 'Cudur-daar', color: '#7c3aed', bg: 'rgba(30,73,118,.14)', fg: '#1e4976' },
+    official_leave: { label: 'Fasax Rasmi ah', color: '#2563eb', bg: 'rgba(112,72,196,.14)', fg: '#6f48c4' },
   };
   const keys = Object.keys(statusMeta);
+  const autoNoteTemplates = {
+    male: {
+      present: 'Maanta wuu soo xaadiray.',
+      late: 'Maanta wuu soo dib-dhacay (daahay).',
+      absent: 'Maalintani wuu maqan yahay, bilaa cudur-daar.',
+      excused: 'Wuu cudur-daartay/loo cudur-daaray.',
+      official_leave: 'Wuxuu helay Fasaxid Rasmi ah (Dugsiga/waalid).',
+    },
+    female: {
+      present: 'Maanta wey soo xaadirtay.',
+      late: 'Maanta wey soo dib-dhacday (daahay).',
+      absent: 'Maalintani wey maqan tahay, bilaa cudur-daar.',
+      excused: 'Wey cudur-daaratay/loo cudur-daaray.',
+      official_leave: 'Waxa ay heshay Fasaxid Rasmi ah (Dugsiga/waalid).',
+    },
+  };
+  const ATTENDANCE_TOAST_VISIBLE_MS = 10000;
   const toast = (message, error = false) => {
-    const el = root.querySelector('#attToast');
+    const el = document.getElementById('attToast');
     if (!el) return;
     el.querySelector('span').textContent = message;
     el.classList.toggle('is-error', error);
     el.classList.add('is-visible');
     window.clearTimeout(el._timer);
-    el._timer = window.setTimeout(() => el.classList.remove('is-visible'), 2600);
+    el._timer = window.setTimeout(() => el.classList.remove('is-visible'), ATTENDANCE_TOAST_VISIBLE_MS);
   };
   const currentStatus = row => row.querySelector('.att-status[aria-pressed="true"]')?.dataset.statusKey || '';
   const lateInput = row => row.querySelector('.att-late-time input');
   const noteInput = row => row.querySelector('.att-note');
+  const autoNoteFlag = row => row.querySelector('[data-note-auto-flag]');
   const hiddenStatus = row => row.querySelector('input[name^="status_"]');
-  const currentSnapshot = row => [currentStatus(row), noteInput(row)?.value || '', lateInput(row)?.value || ''];
-  const savedSnapshot = row => [row.dataset.savedStatus || '', row.dataset.savedNote || '', row.dataset.savedLate || ''];
+  const noteIsAutoGenerated = row => row.dataset.noteAutoGenerated === '1';
+  const setNoteAutoGenerated = (row, isAutoGenerated) => {
+    row.dataset.noteAutoGenerated = isAutoGenerated ? '1' : '0';
+    if (autoNoteFlag(row)) autoNoteFlag(row).value = isAutoGenerated ? '1' : '0';
+  };
+  const genderForRow = row => String(studentGenders[row.dataset.id] || '').trim().toLowerCase() === 'female' ? 'female' : 'male';
+  const autoAttendanceNote = (row, statusKey) => {
+    const template = autoNoteTemplates[genderForRow(row)][statusKey];
+    return template || '';
+  };
+  const renderAutoBadge = row => {
+    const badge = row.querySelector('[data-auto-badge]');
+    const note = noteInput(row);
+    const meta = statusMeta[currentStatus(row)] || statusMeta.present;
+    if (!badge) return;
+    badge.style.setProperty('--s-bg', meta.bg);
+    badge.style.setProperty('--s-fg', meta.fg);
+    badge.classList.toggle('show', noteIsAutoGenerated(row) && Boolean(note?.value));
+  };
+  const currentSnapshot = row => [currentStatus(row), noteInput(row)?.value || '', lateInput(row)?.value || '', noteIsAutoGenerated(row) ? '1' : '0'];
+  const savedSnapshot = row => [row.dataset.savedStatus || '', row.dataset.savedNote || '', row.dataset.savedLate || '', row.dataset.savedNoteAutoGenerated || '0'];
   const setRowStatus = (row, key, focusTime = true, force = false) => {
     const next = !force && currentStatus(row) === key ? '' : key;
     row.querySelectorAll('.att-status').forEach(button => {
@@ -286,6 +357,12 @@
     } else {
       if (input) input.value = '';
       timeWrap?.classList.remove('is-visible');
+    }
+    const note = noteInput(row);
+    if (note && (noteIsAutoGenerated(row) || !note.value)) {
+      const generated = autoAttendanceNote(row, next);
+      note.value = generated;
+      setNoteAutoGenerated(row, Boolean(generated));
     }
     if (hiddenStatus) {
       const selected = row.querySelector('.att-status[aria-pressed="true"]');
@@ -311,11 +388,13 @@
     const key = currentStatus(row);
     row.querySelector('.att-late-time')?.classList.toggle('is-visible', key === 'late');
     row.querySelectorAll('.att-status').forEach(button => button.setAttribute('aria-pressed', button.dataset.statusKey === key ? 'true' : 'false'));
+    renderAutoBadge(row);
   };
   const render = () => { rows.forEach(renderRow); renderSummary(); renderDirty(); };
   let saveInFlight = false;
   let saveState = 'saved';
   let successTimer = null;
+  let lastSaveUndoSnapshots = null;
   const SAVE_SUCCESS_VISIBLE_MS = 1500;
   const statusStates = {
     saved:   { bg:'rgba(31,157,85,.12)',  fg:'#1f9d55', label:'La keydiyey',                 icon:'check', pulse:true  },
@@ -353,6 +432,15 @@
     }, SAVE_SUCCESS_VISIBLE_MS);
   };
   const dirtyCount = () => rows.filter(row => JSON.stringify(currentSnapshot(row)) !== JSON.stringify(savedSnapshot(row))).length;
+  const applySnapshot = (row, snapshot) => {
+    const [key, note, late, auto] = snapshot;
+    row.querySelectorAll('.att-status').forEach(button => button.setAttribute('aria-pressed', button.dataset.statusKey === key ? 'true' : 'false'));
+    if (noteInput(row)) noteInput(row).value = note;
+    setNoteAutoGenerated(row, auto === '1');
+    if (lateInput(row)) lateInput(row).value = late;
+    if (hiddenStatus(row)) hiddenStatus(row).value = row.querySelector('.att-status[aria-pressed="true"]')?.dataset.statusId || '';
+    row.querySelector('.att-late-time')?.classList.toggle('is-visible', key === 'late');
+  };
   const renderDirty = () => {
     const dirty = dirtyCount();
     if (!saveInFlight) {
@@ -376,6 +464,7 @@
     if (!form) return false;
     saveInFlight = true;
     const snapshots = new Map(rows.map(row => [row, currentSnapshot(row)]));
+    const undoSnapshots = new Map(rows.map(row => [row, savedSnapshot(row)]));
     setSaveStatus('saving');
     try {
       const formData = new FormData(form);
@@ -385,7 +474,8 @@
       const contentType = response.headers.get('content-type') || '';
       const payload = contentType.includes('application/json') ? await response.json() : { ok: response.ok, unmarked: rows.filter(row => !currentStatus(row)).length };
       if (!response.ok || !payload.ok) throw new Error(payload.message || payload.error || `Xaadirka lama keydin (${response.status}).`);
-      snapshots.forEach(([key, note, late], row) => { row.dataset.savedStatus = key; row.dataset.savedNote = note; row.dataset.savedLate = late; });
+      lastSaveUndoSnapshots = undoSnapshots;
+      snapshots.forEach(([key, note, late, auto], row) => { row.dataset.savedStatus = key; row.dataset.savedNote = note; row.dataset.savedLate = late; row.dataset.savedNoteAutoGenerated = auto; });
       render();
       const stillDirty = dirtyCount();
       if (stillDirty) setSaveStatus('unsaved');
@@ -410,23 +500,32 @@
     render();
   });
   root.querySelector('#attRows')?.addEventListener('input', event => {
-    if (event.target.matches('.att-note, .att-late-time input')) { renderSummary(); renderDirty(); }
+    if (event.target.matches('.att-note')) {
+      setNoteAutoGenerated(event.target.closest('[data-row]'), false);
+      render();
+    } else if (event.target.matches('.att-late-time input')) {
+      renderSummary(); renderDirty();
+    }
   });
   root.querySelector('#attAllPresent')?.addEventListener('click', () => {
     rows.forEach(row => setRowStatus(row, 'present', false, true));
     render();
-    toast('Dhammaan ardayda waa la calaamadeeyay Joogid');
+    toast('Dhammaan Ardeyda waxaa loogu xaadiriyey JOOGID.');
   });
   root.querySelector('#attReset')?.addEventListener('click', () => {
-    rows.forEach(row => {
-      const [key, note, late] = savedSnapshot(row);
-      row.querySelectorAll('.att-status').forEach(button => button.setAttribute('aria-pressed', button.dataset.statusKey === key ? 'true' : 'false'));
-      if (noteInput(row)) noteInput(row).value = note;
-      if (lateInput(row)) lateInput(row).value = late;
-      if (hiddenStatus(row)) hiddenStatus(row).value = row.querySelector('.att-status[aria-pressed="true"]')?.dataset.statusId || '';
-      row.querySelector('.att-late-time')?.classList.toggle('is-visible', key === 'late');
-    });
+    if (lastSaveUndoSnapshots) {
+      rows.forEach(row => {
+        const snapshot = lastSaveUndoSnapshots.get(row);
+        if (snapshot) applySnapshot(row, snapshot);
+      });
+      lastSaveUndoSnapshots = null;
+      render();
+      toast('Save-kii ugu dambeeyey waa la soo celiyey. Riix Keydi si loo xaqiijiyo.');
+      return;
+    }
+    rows.forEach(row => applySnapshot(row, savedSnapshot(row)));
     render();
+    toast('Isbeddellada aan la keydin waa la baabi’iyey.');
   });
   root.querySelector('#attSearch')?.addEventListener('input', event => {
     const query = event.target.value.trim().toLowerCase();
@@ -457,6 +556,56 @@
   const configSelect = document.getElementById('attendanceConfig');
   const levelSelect = document.getElementById('attendanceLevel');
   const submitFilters = () => filterForm?.requestSubmit();
+  const dailyRoot = document.querySelector('.att-daily');
+  const activeDayLabel = dailyRoot?.querySelector('[data-active-day-label]');
+  const activeDayBanner = dailyRoot?.querySelector('[data-active-day-banner]');
+  const activeDayTypeDelay = 38;
+  const activeDayTypePause = 1200;
+  const somaliWeekdays = ['Isniin', 'Talaado', 'Arbaca', 'Khamiis', 'Jumca', 'Sabti', 'Axad'];
+  const selectedWeekday = Number(dailyRoot?.dataset.selectedWeekday);
+  const activeDayCheckboxes = () => [...document.querySelectorAll('[data-attendance-days-form] input[name="school_days"]')];
+  let activeDayTypeToken = 0;
+  const typeActiveDayLabel = (text) => {
+    if (!activeDayLabel) return;
+    const fullText = text ?? activeDayLabel.textContent.trim();
+    const token = ++activeDayTypeToken;
+    activeDayLabel.textContent = '';
+    let index = 0;
+    const typeNext = () => {
+      if (token !== activeDayTypeToken) return;
+      activeDayLabel.textContent = fullText.slice(0, index);
+      index += 1;
+      if (index <= fullText.length) {
+        window.setTimeout(typeNext, activeDayTypeDelay);
+        return;
+      }
+      window.setTimeout(() => {
+        if (token !== activeDayTypeToken) return;
+        index = 0;
+        typeNext();
+      }, activeDayTypePause);
+    };
+    typeNext();
+  };
+  const syncActiveDayBanner = () => {
+    if (!dailyRoot || !activeDayBanner || !activeDayLabel || !Number.isInteger(selectedWeekday)) return;
+    const activeWeekdays = new Set(activeDayCheckboxes().filter(input => input.checked).map(input => Number(input.value)));
+    const isWorking = activeWeekdays.has(selectedWeekday);
+    const heading = dailyRoot.querySelector('.att-heading');
+    const iconUse = dailyRoot.querySelector('[data-active-day-icon] use');
+    const dayName = somaliWeekdays[selectedWeekday] || '';
+    const message = `${dayName} ${isWorking ? 'waa maalin dugsi oo shaqeysa' : 'ma aha maalin dugsi oo shaqeysa'}`;
+    heading?.classList.toggle('is-off', !isWorking);
+    activeDayBanner.classList.toggle('is-off', !isWorking);
+    activeDayBanner.dataset.state = isWorking ? 'working' : 'off';
+    iconUse?.setAttribute('href', isWorking ? '#att-check' : '#att-x');
+    typeActiveDayLabel(message);
+  };
+  // The banner and the controls share the same level-scoped weekday values.
+  syncActiveDayBanner();
+  document.addEventListener('change', event => {
+    if (event.target.matches('[data-attendance-days-form] input[name="school_days"]')) syncActiveDayBanner();
+  });
   const syncArrivalField = (select) => {
     const cell = select?.closest('td');
     const arrivalWrap = cell?.querySelector('.attendance-arrival-wrap');

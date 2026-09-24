@@ -952,6 +952,12 @@ class BehaviorAttendanceRecord(TimestampMixin, db.Model):
     polarity = db.Column(db.String(10), nullable=False, default="neutral")
     points_applied = db.Column(db.Numeric(8, 3), nullable=False, default=0)
     note = db.Column(db.String(255), nullable=True)
+    note_is_auto_generated = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("FALSE"),
+    )
     marked_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     status = db.Column(db.String(10), nullable=False, default="active", index=True)
     voided_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)

@@ -61,6 +61,8 @@ from .behavior_grading import (
 from .behavior_reporting import build_behavior_report_categories, get_behavior_report_data
 from .behavior_attendance import (
     attendance_days,
+    attendance_weekday_label,
+    auto_attendance_note,
     attendance_status_label,
     attendance_statuses,
     enrollments_for_class,
@@ -2447,6 +2449,11 @@ def _attendance_record_rows(config, selected_session, enrollments):
     ).all()
     for item in history_records:
         key = (item.status_key_snapshot or "").strip().lower() or "unknown"
+        record_note = (
+            auto_attendance_note(item.student.full_name, key, item.student.gender)
+            if item.note_is_auto_generated
+            else item.note or ""
+        )
         rows.append({
             "date": item.attendance_date.isoformat(),
             "date_display": item.attendance_date.strftime("%B %d, %Y"),
@@ -2482,7 +2489,7 @@ def _attendance_record_rows(config, selected_session, enrollments):
             "late_by_minutes": item.late_by_minutes,
             "points": str(item.points_applied or 0),
             "polarity": item.polarity,
-            "note": item.note or "",
+            "note": record_note,
         })
     deleted_records = BehaviorAttendanceDeletion.query.filter(
         BehaviorAttendanceDeletion.behavior_configuration_id == config.id,
@@ -2672,7 +2679,7 @@ def attendance():
                     item.weekday
                     for item in attendance_days(config, academic_year_level_id=context["selected_level"].id)
                 }:
-                    raise BehaviorValidationError("The selected date is not configured as a school attendance day")
+                    raise BehaviorValidationError("Taariikhda la xushay looma dejin in ay noqoto maalin xaadirin dugsi.")
                 enrollments = enrollments_for_class(
                     config,
                     context["selected_class"].id if context["selected_class"] else None,
@@ -2733,6 +2740,9 @@ def attendance():
                         status_id,
                         attendance_date,
                         note=request.form.get(f"note_{enrollment.id}"),
+                        note_is_auto_generated=request.form.get(
+                            f"note_auto_generated_{enrollment.id}"
+                        ) == "1",
                         marked_by_id=current_user.id,
                         attendance_time=attendance_time,
                         arrival_time=arrival_time,
@@ -2830,6 +2840,7 @@ def attendance():
         if config and context["selected_level"] else []
     )
     school_day = bool(config and attendance_date.weekday() in {item.weekday for item in all_days if item.is_active})
+    active_weekdays = [item.weekday for item in all_days if item.is_active]
     enrollments = (
         enrollments_for_class(
             config,
@@ -2851,6 +2862,17 @@ def attendance():
             ).all()
         }
     rows = [{"enrollment": enrollment, "record": records.get(enrollment.id)} for enrollment in enrollments]
+    for row in rows:
+        record = row["record"]
+        row["display_note"] = (
+            auto_attendance_note(
+                row["enrollment"].student.full_name,
+                record.status_key_snapshot,
+                row["enrollment"].student.gender,
+            )
+            if record and record.note_is_auto_generated
+            else record.note if record else ""
+        )
     # The roster, contextual profile, records drawer, and class overview all
     # read this same scoped record set. No parallel attendance data is created.
     history_records = []
@@ -2867,6 +2889,11 @@ def attendance():
         ).order_by(BehaviorAttendanceRecord.attendance_date.desc(), BehaviorAttendanceRecord.id.desc()).all()
         for item in history_records:
             key = (item.status_key_snapshot or "").strip().lower() or "unknown"
+            record_note = (
+                auto_attendance_note(item.student.full_name, key, item.student.gender)
+                if item.note_is_auto_generated
+                else item.note or ""
+            )
             if not item.deleted_at:
                 history_by_enrollment[item.student_enrollment_id].append(item)
             record_rows.append({
@@ -2904,7 +2931,7 @@ def attendance():
                 "late_by_minutes": item.late_by_minutes,
                 "points": str(item.points_applied or 0),
                 "polarity": item.polarity,
-                "note": item.note or "",
+                "note": record_note,
             })
         deleted_records = BehaviorAttendanceDeletion.query.filter(
             BehaviorAttendanceDeletion.behavior_configuration_id == config.id,
@@ -3033,6 +3060,8 @@ def attendance():
         all_statuses=all_statuses,
         all_days=all_days,
         school_day=school_day,
+        active_weekdays=active_weekdays,
+        weekday_label=attendance_weekday_label(attendance_date.weekday()),
         rows=rows,
         profiles=profiles,
         record_rows=record_rows,
@@ -3399,7 +3428,13 @@ def attendance_report(enrollment_id):
             tag_label = label
             if key == "late" and record.late_by_minutes is not None:
                 tag_label = f"{label} ({record.late_by_minutes} daqiiqo)"
-            absence_rows.append({"date": record.attendance_date, "day": somali_weekdays[record.attendance_date.weekday()], "key": key, "label": label, "tag_label": tag_label, "time": display_time.strftime("%I:%M %p").lstrip("0") if display_time else "-", "points": point_text, "note": record.note or "-"})
+            note_is_auto_generated = bool(getattr(record, "note_is_auto_generated", False) and record.note)
+            report_note = (
+                auto_attendance_note(enrollment.student.full_name, key, enrollment.student.gender)
+                if note_is_auto_generated
+                else (record.note or "-")
+            )
+            absence_rows.append({"date": record.attendance_date, "day": somali_weekdays[record.attendance_date.weekday()], "key": key, "label": label, "tag_label": tag_label, "time": display_time.strftime("%I:%M %p").lstrip("0") if display_time else "-", "points": point_text, "note": report_note or "-", "note_is_auto_generated": bool(note_is_auto_generated and report_note)})
 
         weekly_max = max(len(active_weekdays), 1)
         trend = []
