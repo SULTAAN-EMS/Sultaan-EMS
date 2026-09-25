@@ -7,14 +7,14 @@
 {% set rh_school_name = rh_settings.school_name if rh_settings and rh_settings.school_name else rh_label("hub.brand.school", default="Taysiir International School") %}
 {% set rh_school_motto = rh_settings.school_motto if rh_settings and rh_settings.school_motto else rh_label("hub.brand.subtitle", default="Results Hub") %}
 {% set rh_page_titles = {
-  "dashboard": rh_label("hub.tab.dashboard", default="Dashboard"),
-  "entry": rh_label("hub.tab.entry", default="Result Entry"),
-  "roster": rh_label("hub.tab.roster", default="Class List"),
-  "analytics": rh_label("hub.tab.analytics", default="Analytics"),
-  "setup": rh_label("hub.tab.setup", default="Setup"),
-  "students": rh_label("hub.tab.students", default="Student Management"),
-  "grades": rh_label("hub.tab.grades", default="Grade Management"),
-  "settings": rh_label("hub.tab.settings", default="Settings")
+  "dashboard": rh_label("hub.tab.dashboard", default="Bogga Guud"),
+  "entry": rh_label("hub.tab.entry", default="Gelinta Natiijooyinka"),
+  "roster": rh_label("hub.tab.roster", default="Liiska Fasalka"),
+  "analytics": rh_label("hub.tab.analytics", default="Falanqaynta Xogta"),
+  "setup": rh_label("hub.tab.setup", default="Dejinta Nidaamka"),
+  "students": rh_label("hub.tab.students", default="Maamulka Ardayda"),
+  "grades": rh_label("hub.tab.grades", default="Maamulka Darajooyinka"),
+  "settings": rh_label("hub.tab.settings", default="Habaynta Nidaamka")
 } %}
 {% set rh_page_title = rh_page_titles.get(active_tab, active_tab|replace('_', ' ')|title) %}
 
@@ -33,9 +33,9 @@
     </div>
   </div>
   <div style="display: flex; align-items: center; gap: 14px;">
-    <a href="{{ url_for('public.portal') }}" target="_blank" title="Single Student Result Portal" style="background: rgba(255, 255, 255, 0.15); color: #fff; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 10px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-size: 0.85rem; font-weight: 600; transition: all 0.2s ease;">
+    <a href="{{ url_for('public.portal') }}" target="_blank" title="Website-ka Gaarka u ah Ardeyga" style="background: rgba(255, 255, 255, 0.15); color: #fff; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 10px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-size: 0.85rem; font-weight: 600; transition: all 0.2s ease;">
       <i class="fa-solid fa-graduation-cap"></i>
-      <span>Single Student Portal</span>
+      <span>Website-ka Gaarka u ah Ardeyga</span>
     </a>
     <div class="rh-user"><span></span>{{ current_user.full_name or rh_label("hub.user.role", default="Maamule - Super Admin") }}</div>
   </div>
@@ -52,27 +52,27 @@
 
 <nav class="rh-tabs">
   <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'dashboard' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.new_dashboard') }}?{{ rh_query }}'">
-    <i class="fa-solid fa-chart-line"></i>{{ rh_label("hub.tab.dashboard", default="Dashboard") }}
+    <i class="fa-solid fa-chart-line"></i>{{ rh_label("hub.tab.dashboard", default="Bogga Guud") }}
   </button>
   <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'entry' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.result_entry') }}?{{ rh_query }}{% if rh_level and scope_info.level %}&level_id={{ scope_info.level.id }}{% endif %}{% if rh_class and scope_info.class %}&class_id={{ scope_info.class.id }}{% endif %}{% if rh_section and scope_info.section %}&section_id={{ scope_info.section.id }}{% endif %}'">
-    <i class="fa-solid fa-pen-to-square"></i>{{ rh_label("hub.tab.entry", default="Result Entry") }}
+    <i class="fa-solid fa-pen-to-square"></i>{{ rh_label("hub.tab.entry", default="Gelinta Natiijooyinka") }}
   </button>
   <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'roster' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.class_roster') }}?{{ rh_query }}{% if rh_level and scope_info.level %}&level_id={{ scope_info.level.id }}{% endif %}{% if rh_class and scope_info.class %}&class_id={{ scope_info.class.id }}{% endif %}{% if rh_section and scope_info.section %}&section_id={{ scope_info.section.id }}{% endif %}'">
     <i class="fa-solid fa-table-list"></i>{{ rh_label("hub.tab.roster", default="Liiska Fasalka") }}
   </button>
   <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'analytics' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.analytics') }}?{{ rh_query }}{% if rh_level and scope_info.level %}&level_id={{ scope_info.level.id }}{% endif %}{% if rh_class and scope_info.class %}&class_id={{ scope_info.class.id }}{% endif %}{% if rh_section and scope_info.section %}&section_id={{ scope_info.section.id }}{% endif %}'">
-    <i class="fa-solid fa-chart-pie"></i>{{ rh_label("hub.tab.analytics", default="Analytics") }}
+    <i class="fa-solid fa-chart-pie"></i>{{ rh_label("hub.tab.analytics", default="Falanqaynta Xogta") }}
   </button>
-  <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'setup' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.new_setup') }}'">
-    <i class="fa-solid fa-sliders"></i>{{ rh_label("hub.tab.setup", default="Setup") }}
+  <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'setup' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.new_setup', return_url=request.full_path) }}'">
+    <i class="fa-solid fa-sliders"></i>{{ rh_label("hub.tab.setup", default="Dejinta Nidaamka") }}
   </button>
   <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'students' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.students_management') }}?{{ rh_query }}'">
-    <i class="fa-solid fa-user-graduate"></i>{{ rh_label("hub.tab.students", default="Students Mgmt") }}
+    <i class="fa-solid fa-user-graduate"></i>{{ rh_label("hub.tab.students", default="Maamulka Ardayda") }}
   </button>
   <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'grades' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.grade_management') }}?{{ rh_query }}'">
-    <i class="fa-solid fa-award"></i>{{ rh_label("hub.tab.grades", default="Grade Mgmt") }}
+    <i class="fa-solid fa-award"></i>{{ rh_label("hub.tab.grades", default="Maamulka Darajooyinka") }}
   </button>
   <button data-nav-loader="true" class="rh-tab {{ 'active' if active_tab == 'settings' else '' }}" onclick="window.location.href='{{ url_for('admin_advanced_results.results_settings') }}'">
-    <i class="fa-solid fa-gear"></i>{{ rh_label("hub.tab.settings", default="Settings") }}
+    <i class="fa-solid fa-gear"></i>{{ rh_label("hub.tab.settings", default="Habaynta Nidaamka") }}
   </button>
 </nav>

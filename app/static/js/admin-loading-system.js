@@ -143,7 +143,7 @@
   document.addEventListener('DOMContentLoaded', function () {
     document.addEventListener('submit', function (event) {
       var form = event.target;
-      if (form && !form.dataset.noLoader && !form.matches('[data-autosave-form], [data-security-settings]')) showForNavigation();
+      if (form && !event.defaultPrevented && !form.dataset.noLoader && !form.matches('[data-autosave-form], [data-security-settings]')) showForNavigation();
     });
     document.addEventListener('click', function (event) {
       var link = event.target.closest('a[href], [data-nav-loader]');

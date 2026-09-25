@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 {% set active_tab = "entry" %}
-{% block title %}Single Student Result Entry{% endblock %}
-{% block page_title %}Single Student Result Entry{% endblock %}
+{% block title %}Xareynta Natiijada Ardey Kaliya{% endblock %}
+{% block page_title %}Xareynta Natiijada Ardey Kaliya{% endblock %}
 {% block admin_content %}
 {% set placement = selected_placement or {} %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/results_module.css') }}">
@@ -13,8 +13,7 @@
     <header class="rh-single-header">
       <div>
         <div class="rh-eyebrow">{{ selected_exam.name }} &middot; {{ selected_year.name }}</div>
-        <h1 class="rh-title">Single Student Result Entry</h1>
-        <p class="rh-desc">Enter and manage examination results for an individual student.</p>
+        <h1 class="rh-title">Xareynta Natiijada Ardey Kaliya</h1>
       </div>
       <div class="rh-single-actions">
         <a class="rh-btn outline" href="{{ url_for('admin_advanced_results.result_entry', year_id=selected_year.id, exam_id=selected_exam.id, level_id=placement.get('academic_level_id') or '', class_id=placement.get('academic_class_id') or '', section_id=placement.get('academic_section_id') or '') }}">
@@ -102,12 +101,6 @@
           </div>
         </section>
 
-        <section class="rh-single-card">
-          <h3>Performance Visualization</h3>
-          <div class="rh-chart-wrap">
-            <canvas id="gradeChart" width="260" height="260" aria-label="Grade distribution chart"></canvas>
-          </div>
-        </section>
       </aside>
 
       <div class="rh-single-left">
@@ -177,14 +170,11 @@
   </main>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 const debounceTimers = new Map();
 const pendingInputs = new Set();
 const saveStatus = document.getElementById('saveStatus');
 const contextForm = document.getElementById('singleContextForm');
-const gradeLabels = {{ grade_distribution.keys()|list|tojson }};
-const gradeValues = {{ grade_distribution.values()|list|tojson }};
 
 document.getElementById('singleYearSelect')?.addEventListener('change', () => {
   document.getElementById('singleExamSelect').value = '';
@@ -271,28 +261,5 @@ window.addEventListener('beforeunload', event => {
   }
 });
 
-if (window.Chart && document.getElementById('gradeChart')) {
-  new Chart(document.getElementById('gradeChart'), {
-    type: 'doughnut',
-    data: {
-      labels: gradeLabels,
-      datasets: [{
-        data: gradeValues,
-        backgroundColor: ['#1B2A4A', '#2E5F8A', '#3F7D58', '#C9A227', '#B15A24', '#B23B3B'],
-        borderColor: '#ffffff',
-        borderWidth: 4,
-        hoverOffset: 8
-      }]
-    },
-    options: {
-      responsive: true,
-      cutout: '66%',
-      plugins: {
-        legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true } }
-      },
-      animation: { animateScale: true, animateRotate: true }
-    }
-  });
-}
 </script>
 {% endblock %}

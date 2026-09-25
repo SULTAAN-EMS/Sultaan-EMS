@@ -585,6 +585,7 @@ class BehaviorSubCategory(TimestampMixin, db.Model):
     actions = db.relationship(
         "BehaviorAction",
         back_populates="subcategory",
+        cascade="all, delete-orphan",
         order_by="BehaviorAction.level_number, BehaviorAction.sort_order, BehaviorAction.id",
     )
 

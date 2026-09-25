@@ -1573,7 +1573,7 @@ def delete_category(category_id):
         audit("Behavior Categories", f"Deleted category {item.id}: {item.name}")
         db.session.delete(item)
         db.session.commit()
-        flash("Behavior category deleted.", "success")
+        flash("Qodobka iyo xogtiisa hoos timaadda si buuxda ayaa loo tirtiray.", "behavior-delete-success")
     except (BehaviorValidationError, IntegrityError) as exc:
         db.session.rollback()
         flash(
@@ -1806,7 +1806,7 @@ def delete_action(action_id):
         audit("Behavior Actions", f"Deleted action {item.id}: {item.name}")
         db.session.delete(item)
         db.session.commit()
-        flash("Behavior action deleted.", "success")
+        flash("Falka iyo choices-kiisa si buuxda ayaa loo tirtiray.", "behavior-delete-success")
     except (BehaviorValidationError, IntegrityError) as exc:
         db.session.rollback()
         flash(
@@ -1873,11 +1873,18 @@ def delete_subcategory(subcategory_id):
             raise BehaviorValidationError("Behavior sub-category was not found")
         config = item.category.configuration if item.category else None
         ensure_configuration_editable(config)
-        if item.actions:
-            raise BehaviorValidationError("Move or remove the sub-category actions before deleting this sub-category")
+        action_ids = [action.id for action in item.actions]
+        if action_ids and BehaviorEvent.query.filter(BehaviorEvent.behavior_action_id.in_(action_ids)).first():
+            raise BehaviorValidationError(
+                "This Behavior sub-category cannot be deleted because one of its actions has historical events."
+            )
+        action_count = len(action_ids)
         db.session.delete(item)
         db.session.commit()
-        flash("Behavior sub-category deleted.", "success")
+        flash(
+            f"Qodob-hoosaadka iyo {action_count} falalkiisa si buuxda ayaa loo tirtiray.",
+            "behavior-delete-success",
+        )
     except (BehaviorValidationError, IntegrityError) as exc:
         db.session.rollback()
         flash(str(exc) if isinstance(exc, BehaviorValidationError) else "This sub-category is still in use.", "danger")

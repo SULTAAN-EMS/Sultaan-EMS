@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 {% set active_tab = "setup" %}
-{% block title %}Configuration Center{% endblock %}
-{% block page_title %}Configuration Center{% endblock %}
+{% block title %}Dejinta Nidaamka{% endblock %}
+{% block page_title %}Dejinta Nidaamka{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/config_center.css') }}">
 
@@ -48,12 +48,7 @@
 
 <div class="config-center">
   <main class="config-main">
-    <div class="config-header">
-      <div>
-        <div class="config-breadcrumb"><i class="fas fa-sliders-h"></i> Administration <span>/</span> Configuration Center</div>
-        <h1 class="config-title">{{ section_title }}</h1>
-        <p class="config-description">{{ section_description }}</p>
-      </div>
+    <div class="config-header config-header-compact">
       <a class="config-btn config-btn-secondary" href="{{ url_for('admin_advanced_results.new_setup') }}">
         <i class="fas fa-arrow-left"></i> Back to Setup
       </a>

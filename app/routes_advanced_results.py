@@ -106,13 +106,14 @@ RESULTS_LABEL_SEEDS = [
     ("hub.brand.school", "so", "Dugsiga — Nidaamka Maamulka", "Shell"),
     ("hub.brand.subtitle", "so", "Results Hub", "Shell"),
     ("hub.user.role", "so", "Maamule · Super Admin", "Shell"),
-    ("hub.tab.setup", "so", "Setup", "Shell"),
-    ("hub.tab.dashboard", "so", "Dashboard", "Shell"),
-    ("hub.tab.entry", "so", "Result Entry", "Shell"),
+    ("hub.tab.setup", "so", "Dejinta Nidaamka", "Shell"),
+    ("hub.tab.dashboard", "so", "Bogga Guud", "Shell"),
+    ("hub.tab.entry", "so", "Gelinta Natiijooyinka", "Shell"),
     ("hub.tab.roster", "so", "Liiska Fasalka", "Shell"),
-    ("hub.tab.analytics", "so", "Analytics", "Shell"),
-    ("hub.tab.grades", "so", "Grade Mgmt", "Shell"),
-    ("hub.tab.settings", "so", "Settings", "Shell"),
+    ("hub.tab.analytics", "so", "Falanqaynta Xogta", "Shell"),
+    ("hub.tab.students", "so", "Maamulka Ardayda", "Shell"),
+    ("hub.tab.grades", "so", "Maamulka Darajooyinka", "Shell"),
+    ("hub.tab.settings", "so", "Habaynta Nidaamka", "Shell"),
     ("dashboard.eyebrow", "so", "Guudmarka", "Dashboard"),
     ("dashboard.title", "so", "Results Dashboard", "Dashboard"),
     ("dashboard.year", "so", "Sanad Dugsiyeedka", "Dashboard"),
@@ -188,13 +189,28 @@ def ensure_results_label_seeds():
         return
 
     seed_keys = {label_key for label_key, _language, _text, _context in RESULTS_LABEL_SEEDS}
-    existing_keys = {
-        label_key
-        for (label_key,) in db.session.query(LabelTranslation.label_key).filter(
+    existing_labels = db.session.query(LabelTranslation).filter(
             LabelTranslation.language_code == "so",
             LabelTranslation.label_key.in_(seed_keys),
         ).all()
+    existing_keys = {label.label_key for label in existing_labels}
+    old_defaults = {
+        "Setup": "Dejinta Nidaamka",
+        "Dashboard": "Bogga Guud",
+        "Result Entry": "Gelinta Natiijooyinka",
+        "Analytics": "Falanqaynta Xogta",
+        "Grade Mgmt": "Maamulka Darajooyinka",
+        "Grade Management": "Maamulka Darajooyinka",
+        "Settings": "Habaynta Nidaamka",
+        "Class List": "Liiska Fasalka",
+        "Student Management": "Maamulka Ardayda",
     }
+    changed_existing = False
+    for label in existing_labels:
+        replacement = old_defaults.get(label.text_value)
+        if replacement:
+            label.text_value = replacement
+            changed_existing = True
     missing = [
         LabelTranslation(
             label_key=label_key,
@@ -207,6 +223,7 @@ def ensure_results_label_seeds():
     ]
     if missing:
         db.session.add_all(missing)
+    if missing or changed_existing:
         try:
             db.session.commit()
         except IntegrityError:
@@ -409,6 +426,9 @@ def dashboard():
 def new_setup():
     """Setup wizard - Master Configuration for the entire Results system - Read Only Dashboard"""
     level_id = int_or_none(request.args.get("level_id"))
+    return_url = request.args.get("return_url", "").strip()
+    if not return_url.startswith("/") or return_url.startswith("//"):
+        return_url = None
     
     # Get selected year (current year by default)
     selected_year = AcademicYear.query.filter_by(is_current=True).first()
@@ -483,7 +503,8 @@ def new_setup():
         step_states=step_states,
         current_step=current_step,
         last_updated=last_updated,
-        updated_by=updated_by
+        updated_by=updated_by,
+        return_url=return_url,
     )
 
 
@@ -1899,6 +1920,13 @@ def result_entry():
             selected_year=selected_year,
             selected_exam=None,
             scope_info={},
+            result_context={
+                "year_id": selected_year.id if selected_year else "",
+                "exam_id": "",
+                "level_id": "",
+                "class_id": "",
+                "section_id": "",
+            },
             subjects=[],
             entry_grid=[],
             years=years,
@@ -1944,6 +1972,13 @@ def result_entry():
         "level": db.session.get(AcademicLevel, level_id) if level_id else None,
         "class": db.session.get(AcademicClass, class_id) if class_id else None,
         "section": db.session.get(AcademicSection, section_id) if section_id else None,
+    }
+    result_context = {
+        "year_id": selected_year.id if selected_year else "",
+        "exam_id": selected_exam.id if selected_exam else "",
+        "level_id": level_id or "",
+        "class_id": class_id or "",
+        "section_id": section_id or "",
     }
     
     subjects = subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
@@ -1993,6 +2028,7 @@ def result_entry():
         selected_year=selected_year,
         selected_exam=selected_exam,
         scope_info=scope_info,
+        result_context=result_context,
         subjects=subjects,
         entry_grid=entry_grid,
         years=years,
@@ -4130,6 +4166,23 @@ def student_form(student_id=None):
         incident_reports=incident_reports,
         student_form_action=url_for("admin_advanced_results.student_form", student_id=student.id) if student.id else url_for("admin_advanced_results.student_form"),
     )
+
+
+@advanced_results_bp.get("/students/check-code")
+def student_code_status():
+    """Return the authoritative availability of a student code for the form."""
+    code = request.args.get("code", "").strip()
+    if not code:
+        return jsonify({"status": "empty"})
+
+    current_student_id = int_or_none(request.args.get("current_student_id"))
+    duplicate_query = Student.query.filter(
+        func.lower(func.trim(Student.student_code)) == code.casefold()
+    )
+    if current_student_id:
+        duplicate_query = duplicate_query.filter(Student.id != current_student_id)
+
+    return jsonify({"status": "used" if duplicate_query.first() else "available"})
 
 
 @advanced_results_bp.route("/students/<int:student_id>/delete", methods=["POST"])

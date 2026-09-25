@@ -14,16 +14,7 @@
 
   <main class="rh-screen">
     <div class="rh-toolbar">
-      <div>
-        <div class="rh-eyebrow">
-          {{ scope_info.class.name if scope_info and scope_info.class else rh_label("roster.eyebrow", default="Class Result List") }}
-          {% if selected_exam %} · {{ selected_exam.name }}{% endif %}
-          · {{ selected_year.name }}
-        </div>
-        <h1 class="rh-title">{{ rh_label("roster.title", default="Liiska Natiijada Fasalka") }}</h1>
-        <p class="rh-desc">{{ students|length }} {{ rh_label("roster.students", default="arday") }}</p>
-      </div>
-      <div style="display:flex; gap: 12px; align-items:center;">
+      <div style="display:flex; gap: 12px; align-items:center; margin-left:auto;">
         <button class="rh-btn outline" onclick="exportExcel()" {% if not (selected_exam and scope_info and scope_info.level and scope_info.class) %}disabled{% endif %}>{{ rh_label("roster.export_excel", default="Export Excel") }}</button>
         <button class="rh-btn outline" onclick="exportPDF()" {% if not (selected_exam and scope_info and scope_info.level and scope_info.class) %}disabled{% endif %}>{{ rh_label("roster.export_pdf", default="Export PDF") }}</button>
       </div>

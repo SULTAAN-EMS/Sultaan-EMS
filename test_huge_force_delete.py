@@ -4,6 +4,8 @@ import unittest
 from datetime import date
 from unittest.mock import patch
 
+from sqlalchemy import text
+
 from app import create_app, db
 from app.deletion_service import (
     PurgeValidationError,
@@ -336,6 +338,31 @@ class TestHugeForceDelete(unittest.TestCase):
         self.assertEqual(BehaviorAttendanceDay.query.count(), 0)
         self.assertEqual(BehaviorAttendanceRecord.query.count(), 0)
         self.assertEqual(ExamMarkingConfiguration.query.count(), 0)
+
+    def test_legacy_unmapped_behavior_subject_scopes_are_purged(self):
+        db.session.execute(text(
+            "CREATE TABLE behavior_subject_scopes ("
+            "id INTEGER PRIMARY KEY, academic_year_id INTEGER NOT NULL, "
+            "label VARCHAR(120) NOT NULL, is_active BOOLEAN NOT NULL, "
+            "created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL, "
+            "FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE)"
+        ))
+        db.session.execute(text(
+            "INSERT INTO behavior_subject_scopes "
+            "(id, academic_year_id, label, is_active, created_at, updated_at) "
+            "VALUES (1, :year_id, 'Legacy scope', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        ), {"year_id": self.target_id})
+        db.session.commit()
+
+        report = scan_academic_year(self.target_id)
+        categories = {item["category"]: item["count"] for item in report["dependencies"]}
+        self.assertEqual(categories["Legacy Behavior subject scopes"], 1)
+        self.assertTrue(report["eligible"])
+
+        purge_academic_year(self.target_id)
+        db.session.commit()
+        remaining = db.session.execute(text("SELECT COUNT(*) FROM behavior_subject_scopes")).scalar()
+        self.assertEqual(remaining, 0)
 
     def test_purge_deletes_student_owned_only_by_archived_year(self):
         orphan = Student(

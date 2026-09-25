@@ -6,7 +6,7 @@ dependency graph and transaction boundary cannot be confused with a normal
 delete.
 """
 
-from sqlalchemy import inspect, or_, select, func
+from sqlalchemy import Table, inspect, or_, select, func
 
 from . import db
 from .models import (
@@ -74,7 +74,27 @@ KNOWN_DIRECT_YEAR_TABLES = {
     "student_enrollments",
     "student_enrollment_movements",
     "students",  # identity is retained; only its legacy snapshot is cleared
+    # Legacy table retained by older Behavior subject setup versions. It is
+    # reflected and purged even though the current ORM no longer maps it.
+    "behavior_subject_scopes",
 }
+
+LEGACY_PURGE_TABLES = ("behavior_subject_scopes",)
+
+
+def _reflect_legacy_purge_tables():
+    """Reflect retired tables that still exist in older local databases."""
+    inspector = inspect(db.engine)
+    existing = set(inspector.get_table_names())
+    tables = {}
+    for table_name in LEGACY_PURGE_TABLES:
+        if table_name not in existing:
+            continue
+        table = db.metadata.tables.get(table_name)
+        if table is None:
+            table = Table(table_name, db.metadata, autoload_with=db.engine)
+        tables[table_name] = table
+    return tables
 
 
 def _ids(query):
@@ -98,6 +118,7 @@ def _add_entry(entries, category, count, *, retained=False):
 
 def _year_scope_ids(year_id):
     """Build the actual IDs used by the year-aware dependency graph."""
+    legacy_tables = _reflect_legacy_purge_tables()
     year_level_ids = _ids(
         db.session.query(AcademicYearLevel.id).filter(
             AcademicYearLevel.academic_year_id == year_id
@@ -286,6 +307,17 @@ def _year_scope_ids(year_id):
             BehaviorAttendanceRecord.academic_year_id == year_id
         )
     )
+    behavior_subject_scope_ids = set()
+    legacy_scope_table = legacy_tables.get("behavior_subject_scopes")
+    if legacy_scope_table is not None and "academic_year_id" in legacy_scope_table.c:
+        behavior_subject_scope_ids = {
+            row[0]
+            for row in db.session.execute(
+                select(legacy_scope_table.c.id).where(
+                    legacy_scope_table.c.academic_year_id == year_id
+                )
+            ).all()
+        }
 
     return {
         "year_level_ids": year_level_ids,
@@ -317,6 +349,7 @@ def _year_scope_ids(year_id):
         "incident_ids": incident_ids,
         "behavior_configuration_ids": behavior_configuration_ids,
         "behavior_attendance_record_ids": behavior_attendance_record_ids,
+        "behavior_subject_scope_ids": behavior_subject_scope_ids,
     }
 
 
@@ -362,6 +395,7 @@ _PURGE_SEED_TABLES = {
     "attendance_records": "attendance_ids",
     "behavior_configurations": "behavior_configuration_ids",
     "behavior_attendance_records": "behavior_attendance_record_ids",
+    "behavior_subject_scopes": "behavior_subject_scope_ids",
     "id_card_issues": "id_card_ids",
     "student_feedback": "feedback_ids",
     "student_complaints": "complaint_ids",
@@ -385,6 +419,7 @@ _PURGE_LABELS = {
     "behavior_attendance_days": "Behavior attendance days",
     "academic_year_level_attendance_days": "Academic level attendance active days",
     "behavior_attendance_records": "Behavior attendance records",
+    "behavior_subject_scopes": "Legacy Behavior subject scopes",
     "exam_marking_configurations": "Exam marking configurations",
     "students": "Student identities deleted",
     "student_enrollments": "Student enrollments",

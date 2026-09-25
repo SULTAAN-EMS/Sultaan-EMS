@@ -147,6 +147,39 @@ class ExcelImportContractTests(unittest.TestCase):
         ).one()
         self.assertEqual(float(result.score), 9.0)
 
+    def test_result_import_updates_existing_score_without_creating_duplicate(self):
+        first = process_result_import(
+            self._workbook(7),
+            year_id=self.year.id,
+            exam_id=self.exam.id,
+            level_id=self.level.id,
+            class_id=self.legacy_class.id,
+        )
+        second = process_result_import(
+            self._workbook(9),
+            year_id=self.year.id,
+            exam_id=self.exam.id,
+            level_id=self.level.id,
+            class_id=self.legacy_class.id,
+        )
+
+        self.assertEqual(first["success_count"], 1, first)
+        self.assertEqual(second["success_count"], 1, second)
+        self.assertEqual(
+            Result.query.filter_by(
+                student_id=self.student.id,
+                exam_id=self.exam.id,
+                subject_id=self.old_subject.id,
+            ).count(),
+            1,
+        )
+        result = Result.query.filter_by(
+            student_id=self.student.id,
+            exam_id=self.exam.id,
+            subject_id=self.old_subject.id,
+        ).one()
+        self.assertEqual(float(result.score), 9.0)
+
     def test_result_import_accepts_display_headers_for_exam_and_year(self):
         summary = process_result_import(
             self._workbook(9, display_headers=True),
@@ -312,6 +345,101 @@ class ExcelImportContractTests(unittest.TestCase):
         self.assertEqual(summary["failed_count"], 0, summary)
         self.assertIn("Result Entry -> Import Results", summary["errors"][0])
         self.assertEqual(Student.query.count(), 1)
+
+    def test_student_import_reuses_completely_orphaned_identity(self):
+        orphan = Student(
+            student_code="TIS-ORPHAN",
+            full_name="Old Seed Student",
+            mother_name="Old Mother",
+            phone="611000000",
+            gender="Male",
+        )
+        db.session.add(orphan)
+        db.session.commit()
+        orphan_id = orphan.id
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Students"
+        sheet.append([
+            "student_id", "full_name", "mother_name", "phone", "class",
+            "academic_year", "gender",
+        ])
+        sheet.append([
+            "TIS-ORPHAN", "Fresh Student", "Fresh Mother", "+252611234567",
+            self.year_class.name, self.year.name, "Female",
+        ])
+        stream = BytesIO()
+        workbook.save(stream)
+        stream.seek(0)
+
+        summary = process_student_import(stream)
+
+        self.assertEqual(summary["success_count"], 1, summary)
+        self.assertEqual(summary["failed_count"], 0, summary)
+        db.session.refresh(orphan)
+        self.assertEqual(orphan.id, orphan_id)
+        self.assertEqual(orphan.full_name, "Fresh Student")
+        self.assertEqual(orphan.enrollments.count(), 1)
+
+    def test_student_import_then_result_import_uses_the_new_year_enrollment(self):
+        orphan = Student(
+            student_code="TIS-CHAINED",
+            full_name="Old Seed Student",
+            mother_name="Old Mother",
+            gender="Male",
+        )
+        db.session.add(orphan)
+        db.session.commit()
+
+        student_workbook = Workbook()
+        student_sheet = student_workbook.active
+        student_sheet.title = "Students"
+        student_sheet.append([
+            "student_id", "full_name", "mother_name", "phone", "class",
+            "academic_year", "gender",
+        ])
+        student_sheet.append([
+            "TIS-CHAINED", "Imported Student", "Imported Mother", "611000000",
+            self.year_class.name, self.year.name, "Female",
+        ])
+        student_stream = BytesIO()
+        student_workbook.save(student_stream)
+        student_stream.seek(0)
+        student_summary = process_student_import(student_stream)
+        self.assertEqual(student_summary["success_count"], 1, student_summary)
+
+        imported_student = Student.query.filter_by(student_code="TIS-CHAINED").one()
+        result_workbook = Workbook()
+        result_sheet = result_workbook.active
+        result_sheet.title = "Result Entry"
+        result_sheet.append([
+            "student_id", "full_name", "class", "exam_type", "academic_year",
+            "Current English",
+        ])
+        result_sheet.append([
+            imported_student.student_code, imported_student.full_name,
+            self.year_class.name, self.exam.name, self.year.name, 8,
+        ])
+        result_stream = BytesIO()
+        result_workbook.save(result_stream)
+        result_stream.seek(0)
+
+        result_summary = process_result_import(
+            result_stream,
+            year_id=self.year.id,
+            exam_id=self.exam.id,
+            level_id=self.level.id,
+            class_id=self.legacy_class.id,
+        )
+        self.assertEqual(result_summary["success_count"], 1, result_summary)
+        self.assertEqual(result_summary["failed_count"], 0, result_summary)
+        saved_result = Result.query.filter_by(
+            student_id=imported_student.id,
+            exam_id=self.exam.id,
+            subject_id=self.old_subject.id,
+        ).one()
+        self.assertEqual(float(saved_result.score), 8.0)
 
     def test_result_template_excludes_unbound_year_subjects(self):
         db.session.add(AcademicYearSubject(

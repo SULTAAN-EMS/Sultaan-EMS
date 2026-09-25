@@ -51,6 +51,46 @@ PHOTO_SOURCE_MAX_BYTES = 8 * 1024 * 1024
 PHOTO_SOURCE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
 
 
+def _reclaimable_student_ids():
+    """Return only completely orphaned Student identities that can be reused.
+
+    Huge deletion intentionally preserves identities that may belong to another
+    academic year.  Old seed/test identities with no year, enrollment, or any
+    student-linked record are different: they are not usable records and must
+    not block a fresh student import with a false duplicate-ID error.
+    """
+    candidates = Student.query.filter(
+        Student.academic_year_id.is_(None),
+        Student.class_id.is_(None),
+        Student.academic_level_id.is_(None),
+        Student.academic_class_id.is_(None),
+        Student.academic_section_id.is_(None),
+        Student.level.is_(None),
+        Student.section.is_(None),
+        ~Student.enrollments.any(),
+    ).all()
+    reclaimable_ids = {student.id for student in candidates}
+    if not reclaimable_ids:
+        return set()
+
+    # Check every mapped table with a student_id FK so an orphan cannot be
+    # reused while historical results, attendance, reports, or feedback remain.
+    for table in db.metadata.tables.values():
+        student_id_column = table.c.get("student_id")
+        if student_id_column is None:
+            continue
+        referenced_ids = {
+            row[0]
+            for row in db.session.query(student_id_column).filter(
+                student_id_column.in_(reclaimable_ids)
+            ).all()
+        }
+        reclaimable_ids.difference_update(referenced_ids)
+        if not reclaimable_ids:
+            break
+    return reclaimable_ids
+
+
 def student_template():
     wb = Workbook()
     ws = wb.active
@@ -558,6 +598,7 @@ def process_student_import(file):
         clean_str(s.student_code).casefold(): s
         for s in Student.query.all()
     }
+    reclaimable_student_ids = _reclaimable_student_ids()
     existing_years = {y.name: y for y in AcademicYear.query.all()}
     current_year = AcademicYear.query.filter_by(is_current=True).order_by(AcademicYear.id.desc()).first()
     default_year_name = current_year.name if current_year else ""
@@ -612,8 +653,15 @@ def process_student_import(file):
         elif student_id.casefold() in seen_file_ids:
             row_errors.append(f"Row {row_idx}: student_id '{student_id}' is duplicated within this file.")
         elif student_id.casefold() in existing_students:
-            row_errors.append(f"Row {row_idx}: student_id '{student_id}' already exists in database.")
+            existing_student = existing_students[student_id.casefold()]
+            if existing_student.id not in reclaimable_student_ids:
+                row_errors.append(f"Row {row_idx}: student_id '{student_id}' already exists in database.")
         else:
+            seen_file_ids.add(student_id.casefold())
+
+        if student_id and student_id.casefold() in existing_students and (
+            existing_students[student_id.casefold()].id in reclaimable_student_ids
+        ):
             seen_file_ids.add(student_id.casefold())
 
         # 2. full_name validation
@@ -750,16 +798,39 @@ def process_student_import(file):
             else:
                 no_photo_count += 1
 
-            new_student = Student(
-                student_code=student_id,
-                full_name=full_name,
-                mother_name=mother_name,
-                phone=phone,
-                gender=gender,
-                academic_year=year_obj,
-                photo_path=photo_path,
-                is_active=True
-            )
+            reusable_student = existing_students.get(student_id.casefold())
+            if reusable_student and reusable_student.id in reclaimable_student_ids:
+                # Reuse the orphan identity instead of creating a duplicate
+                # student_code; this preserves the unique-ID invariant.
+                new_student = reusable_student
+                new_student.full_name = full_name
+                new_student.mother_name = mother_name
+                new_student.phone = phone
+                new_student.gender = gender
+                new_student.academic_year = year_obj
+                new_student.photo_path = photo_path
+                new_student.note = None
+                new_student.saved_signature_data = None
+                new_student.is_result_locked = False
+                new_student.lock_reason = None
+                new_student.is_active = True
+                new_student.class_id = None
+                new_student.level = None
+                new_student.section = None
+                new_student.academic_level_id = None
+                new_student.academic_class_id = None
+                new_student.academic_section_id = None
+            else:
+                new_student = Student(
+                    student_code=student_id,
+                    full_name=full_name,
+                    mother_name=mother_name,
+                    phone=phone,
+                    gender=gender,
+                    academic_year=year_obj,
+                    photo_path=photo_path,
+                    is_active=True
+                )
             if legacy_only_class:
                 new_student.academic_year_id = year_obj.id
                 new_student.academic_class_id = legacy_only_class.id

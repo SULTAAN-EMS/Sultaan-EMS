@@ -1423,6 +1423,21 @@ body:has(.att-daily) .behavior-hero { display:none !important; }
 .attendance-points-stepper button { display:grid; place-items:center; padding:0; text-align:center; line-height:1; user-select:none; }
 .attendance-points-stepper button:focus { outline:none; box-shadow:none; }
 .attendance-points-stepper button:focus-visible { outline:2px solid #b68a2a; outline-offset:1px; }
+
+/* Remove native number steppers from Behavior grade and configuration fields. */
+.behavior-page input[type="number"] {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
+}
+.behavior-page input[type="number"]::-webkit-inner-spin-button,
+.behavior-page input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  display: none !important;
+  width: 0;
+  height: 0;
+  margin: 0 !important;
+}
 .attendance-controls-days { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:8px; }
 .attendance-control-day { position:relative; display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 4px; border:1.5px solid #dde6df; border-radius:13px; color:#63766a; background:#fff; cursor:pointer; user-select:none; transition:border-color .15s,background .15s; }
 .attendance-control-day input { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; border:0; opacity:0; pointer-events:none; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; }
@@ -1763,4 +1778,96 @@ body:has(.att-daily) .behavior-hero { display:none !important; }
   color:#24588b;
   background:#eef6ff;
   border-color:#cfe2f6;
+}
+
+/* Keep destructive confirmations inside the app instead of using browser alerts. */
+.behavior-delete-modal[hidden] { display:none; }
+.behavior-delete-modal {
+  position:fixed;
+  inset:0;
+  z-index:10000;
+  display:grid;
+  place-items:center;
+  padding:24px;
+}
+.behavior-delete-modal__backdrop {
+  position:absolute;
+  inset:0;
+  background:rgba(10,24,42,.58);
+  backdrop-filter:blur(5px);
+}
+.behavior-delete-dialog {
+  position:relative;
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:16px 18px;
+  width:min(100%, 500px);
+  padding:26px;
+  border:1px solid #f0d6bc;
+  border-radius:20px;
+  background:linear-gradient(145deg,#fffdf9 0%,#fff 62%,#fff8f1 100%);
+  box-shadow:0 24px 70px -28px rgba(13,31,50,.72), 0 0 0 1px rgba(255,255,255,.7) inset;
+  animation:behaviorDeleteIn .22s ease-out both;
+}
+.behavior-delete-dialog__icon {
+  display:grid;
+  place-items:center;
+  width:52px;
+  height:52px;
+  color:#a45512;
+  background:#fff0dc;
+  border:1px solid #f3c991;
+  border-radius:16px;
+  font-size:22px;
+  box-shadow:0 10px 20px -14px rgba(164,85,18,.75);
+}
+.behavior-delete-dialog__content { min-width:0; }
+.behavior-delete-dialog__eyebrow {
+  display:block;
+  margin-bottom:5px;
+  color:#a45512;
+  font:800 11px/1.2 Figtree,system-ui,sans-serif;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+}
+.behavior-delete-dialog h2 {
+  margin:0;
+  color:#182433;
+  font:800 22px/1.2 Figtree,system-ui,sans-serif;
+}
+.behavior-delete-dialog p {
+  margin:8px 0 0;
+  color:#647386;
+  font:500 14px/1.55 Figtree,system-ui,sans-serif;
+}
+.behavior-delete-dialog__actions {
+  grid-column:1/-1;
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  padding-top:4px;
+  border-top:1px solid #f0e4d9;
+}
+.behavior-delete-dialog__actions .behavior-btn { min-height:40px; }
+.behavior-delete-dialog__actions .behavior-btn--danger {
+  color:#fff;
+  background:#b94747;
+  border-color:#b94747;
+  box-shadow:0 8px 18px -12px rgba(185,71,71,.8);
+}
+.behavior-delete-dialog__actions .behavior-btn--danger:hover {
+  background:#9f3636;
+  border-color:#9f3636;
+  transform:translateY(-1px);
+}
+@keyframes behaviorDeleteIn {
+  from { opacity:0; transform:translateY(8px) scale(.98); }
+  to { opacity:1; transform:translateY(0) scale(1); }
+}
+@media (max-width:520px) {
+  .behavior-delete-modal { padding:16px; }
+  .behavior-delete-dialog { padding:21px; gap:13px; }
+  .behavior-delete-dialog h2 { font-size:19px; }
+  .behavior-delete-dialog__actions { flex-direction:column-reverse; }
+  .behavior-delete-dialog__actions .behavior-btn { width:100%; justify-content:center; }
 }

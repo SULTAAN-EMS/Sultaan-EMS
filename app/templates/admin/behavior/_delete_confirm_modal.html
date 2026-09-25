@@ -1,0 +1,54 @@
+<div class="behavior-delete-modal" id="behaviorDeleteModal" hidden>
+  <div class="behavior-delete-modal__backdrop" data-delete-cancel></div>
+  <section class="behavior-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="behaviorDeleteTitle" aria-describedby="behaviorDeleteMessage">
+    <div class="behavior-delete-dialog__icon" aria-hidden="true"><i class="fa-solid fa-triangle-exclamation"></i></div>
+    <div class="behavior-delete-dialog__content">
+      <span class="behavior-delete-dialog__eyebrow">Xaqiijinta tirtirka</span>
+      <h2 id="behaviorDeleteTitle">Ma rabtaa inaad tirtirto?</h2>
+      <p id="behaviorDeleteMessage">Ficilkan lama soo celin karo. Haddii uu yahay category, waxyaabaha hoos yimaada sidoo kale waa la tirtiri doonaa.</p>
+    </div>
+    <div class="behavior-delete-dialog__actions">
+      <button class="behavior-btn behavior-btn--outline" type="button" data-delete-cancel><i class="fa-solid fa-xmark"></i> Jooji</button>
+      <button class="behavior-btn behavior-btn--danger" type="button" data-delete-confirm-submit><i class="fa-solid fa-trash-can"></i> Haa, tirtir</button>
+    </div>
+  </section>
+</div>
+<script>
+(() => {
+  const modal = document.getElementById('behaviorDeleteModal');
+  if (!modal) return;
+  let pendingForm = null;
+  const message = modal.querySelector('#behaviorDeleteMessage');
+  const close = () => {
+    modal.hidden = true;
+    pendingForm = null;
+    document.body.classList.remove('behavior-delete-modal-open');
+  };
+  document.querySelectorAll('[data-delete-confirm]').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      if (form.dataset.deleteConfirmed === 'true') {
+        delete form.dataset.deleteConfirmed;
+        return;
+      }
+      form.dataset.noLoader = 'true';
+      event.preventDefault();
+      pendingForm = form;
+      message.textContent = form.dataset.deleteMessage || 'Ficilkan lama soo celin karo. Xogta la xiriirta ayaa si buuxda looga saari karaa.';
+      modal.hidden = false;
+      document.body.classList.add('behavior-delete-modal-open');
+      modal.querySelector('[data-delete-confirm-submit]').focus();
+    });
+  });
+  modal.querySelectorAll('[data-delete-cancel]').forEach((button) => button.addEventListener('click', close));
+  modal.querySelector('[data-delete-confirm-submit]').addEventListener('click', () => {
+    if (!pendingForm) return;
+    pendingForm.removeAttribute('data-delete-confirm');
+    pendingForm.removeAttribute('data-no-loader');
+    pendingForm.dataset.deleteConfirmed = 'true';
+    pendingForm.requestSubmit();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !modal.hidden) close();
+  });
+})();
+</script>

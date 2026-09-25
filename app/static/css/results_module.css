@@ -2115,6 +2115,66 @@
     position: relative;
 }
 
+/* Result Entry keeps the table's horizontal scroll in one reusable container.
+   The second scroll track mirrors it at the viewport edge so subject columns
+   remain reachable while the student list is vertically scrolled. */
+.rh-entry-screen.has-entry-bottom-scroll {
+    padding-bottom: 32px;
+}
+
+.rh-entry-bottom-scroll {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: none;
+    height: 18px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-top: 1px solid rgba(27, 42, 74, .12);
+    background: rgba(255, 255, 255, .94);
+    box-shadow: 0 -5px 16px rgba(27, 42, 74, .08);
+    scrollbar-gutter: stable;
+}
+
+.rh-entry-bottom-scroll.is-needed {
+    display: block;
+}
+
+.rh-entry-bottom-scroll-spacer {
+    height: 1px;
+}
+
+.rh-entry-sticky-header {
+    position: fixed;
+    top: 0;
+    z-index: 35;
+    display: none;
+    overflow: hidden;
+    pointer-events: none;
+    background: var(--navy);
+    box-shadow: 0 7px 16px rgba(27, 42, 74, .16);
+}
+
+.rh-entry-sticky-header.is-visible {
+    display: block;
+}
+
+.rh-entry-sticky-header-table {
+    width: max-content;
+    min-width: 0;
+    table-layout: fixed;
+    transform: translateX(0);
+    transform-origin: top left;
+}
+
+.rh-entry-sticky-header .rh-entry-table thead th,
+.rh-entry-sticky-header .rh-entry-table .rh-sticky-name {
+    position: static;
+    box-sizing: border-box;
+}
+
 .rh-entry-toolbar {
     display: flex;
     justify-content: space-between;
@@ -2419,6 +2479,8 @@
 
 .rh-entry-table-card {
     max-width: 100%;
+    overflow-x: auto;
+    overflow-y: clip;
     box-shadow: 0 18px 42px rgba(27, 42, 74, .06);
 }
 
@@ -2429,6 +2491,15 @@
 .rh-entry-table th,
 .rh-entry-table td {
     vertical-align: middle;
+}
+
+.rh-entry-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    background: var(--navy);
+    color: #fff;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, .12);
 }
 
 .rh-entry-table .rh-view-col {
@@ -2453,7 +2524,7 @@
 }
 
 .rh-entry-table thead .rh-sticky-name {
-    z-index: 5;
+    z-index: 6;
     background: var(--navy);
     color: #fff;
 }
@@ -2616,7 +2687,7 @@
 }
 
 /* ========================================
-   Single Student Result Entry
+   Individual Student Result Entry
    ======================================== */
 .rh-single-entry {
     --single-gap: 22px;
@@ -4044,5 +4115,27 @@
 @media (max-width: 760px) {
     .decimal-precision-card { align-items: stretch; flex-direction: column; }
     .decimal-precision-options { justify-content: flex-start; }
+}
+
+/* Keep Result Entry and Grade Management numeric fields free of browser steppers. */
+.rh-input[type="number"],
+.rh-score[type="number"],
+.results-grade-table input[type="number"] {
+    -moz-appearance: textfield !important;
+    appearance: textfield !important;
+}
+
+.rh-input[type="number"]::-webkit-inner-spin-button,
+.rh-input[type="number"]::-webkit-outer-spin-button,
+.rh-score[type="number"]::-webkit-inner-spin-button,
+.rh-score[type="number"]::-webkit-outer-spin-button,
+.results-grade-table input[type="number"]::-webkit-inner-spin-button,
+.results-grade-table input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    display: none !important;
+    width: 0;
+    height: 0;
+    margin: 0 !important;
 }
 .sm-promotion-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:6px}.sm-promotion-status,.sm-promotion-eligibility,.sm-promotion-rules-link{display:inline-flex;align-items:center;gap:5px;padding:4px 7px;border:1px solid;border-radius:7px;font-size:10px;font-weight:800;line-height:1.1}.sm-promotion-status--muted{border-color:#dbe2ea;background:#f5f7f9;color:#687a91}.sm-promotion-status--info{border-color:#c7dbf2;background:#eff6ff;color:#326aa5}.sm-promotion-status--success{border-color:#b9dfca;background:#effaf2;color:#23734d}.sm-promotion-status--warning{border-color:#ead9a7;background:#fff9e8;color:#89651e}.sm-promotion-status--danger{border-color:#efc7bf;background:#fff4f1;color:#a2473c}.sm-promotion-eligibility{border-color:#b9ded6;background:#effaf7;color:#267768}.sm-promotion-rules-link{border-color:#cbbbea;background:#f4efff;color:#6840a5;text-decoration:none}.sm-promotion-rules-link:hover{background:#e9ddff;color:#4e2e84}

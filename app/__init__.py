@@ -19,6 +19,13 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # Local development should reflect template and static-file edits on the
+    # next browser refresh instead of serving an old browser-cached asset.
+    # Deployed processes keep their provider-controlled caching behavior.
+    if app.config.get("AUTO_INIT_DB", True):
+        app.config["TEMPLATES_AUTO_RELOAD"] = True
+        app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+
     db.init_app(app)
     csrf.init_app(app)
     login_manager.init_app(app)

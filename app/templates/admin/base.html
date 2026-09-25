@@ -360,10 +360,6 @@
       <a class="icon-btn" href="{{ url_for('public.portal') }}" title="Public portal" target="_blank"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
     </div>
   </header>
-  {% else %}
-  <header class="admin-top-compact">
-    {# Non-dashboard pages: no redundant header controls — navigation is via sidebar #}
-  </header>
   {% endif %}
 
   {% block admin_content %}{% endblock %}

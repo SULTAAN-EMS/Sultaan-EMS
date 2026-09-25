@@ -3,7 +3,7 @@
 {% block body_class %}{{ super() }} admin-page-hero-layout{% endblock %}
 {% block page_title %}{{ rh_label("entry.title", default="Whole-Class Result Entry") }}{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/results_module.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/results_module.css', v='result-entry-scroll-20260925') }}">
 <style>
   /* Keep the result-entry school header flush with the shared admin content edge. */
   .admin-page-hero-layout .admin-main{padding-top:0!important;gap:0!important;}
@@ -15,18 +15,8 @@
   {% include "admin/_results_hub_header.html" %}
 
   <main class="rh-screen rh-entry-screen">
-    <div class="rh-eyebrow">
-      {{ scope_info.class.name if scope_info and scope_info.class else rh_label("entry.eyebrow", default="Exam Entry") }}
-      {% if selected_exam %} &middot; {{ selected_exam.name }}{% endif %}
-      {% if selected_year %} &middot; {{ selected_year.name }}{% endif %}
-    </div>
-
     <div class="rh-toolbar rh-entry-toolbar">
-      <div class="rh-entry-toolbar-info">
-        <h1 class="rh-title">{{ rh_label("entry.title", default="Whole-Class Result Entry") }}</h1>
-        <p class="rh-desc">{{ rh_label("entry.subtitle", default="Select the academic context first, then enter marks. Scores save automatically.") }}</p>
-      </div>
-      <div class="rh-entry-toolbar-actions">
+      <div class="rh-entry-toolbar-actions" style="margin-left:auto;">
         <!-- Status Card (shifted left for clean alignment) -->
         <div class="rh-save-status" id="saveStatus" data-state="idle">
           <i class="fa-solid fa-circle-check"></i>
@@ -41,11 +31,11 @@
         <!-- ACTION 2: Import Results (Plain Upload) -->
         <form method="post" action="{{ url_for('admin_advanced_results.import_results') }}" enctype="multipart/form-data" style="display: inline;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="year_id" value="{{ selected_year.id if selected_year else '' }}">
-          <input type="hidden" name="exam_id" value="{{ selected_exam.id if selected_exam else '' }}">
-          <input type="hidden" name="level_id" value="{{ scope_info.level.id if scope_info and scope_info.level else '' }}">
-          <input type="hidden" name="class_id" value="{{ scope_info.class.id if scope_info and scope_info.class else '' }}">
-          <input type="hidden" name="section_id" value="{{ scope_info.section.id if scope_info and scope_info.section else '' }}">
+          <input type="hidden" name="year_id" value="{{ result_context.year_id if result_context else (selected_year.id if selected_year else '') }}">
+          <input type="hidden" name="exam_id" value="{{ result_context.exam_id if result_context else (selected_exam.id if selected_exam else '') }}">
+          <input type="hidden" name="level_id" value="{{ result_context.level_id if result_context else (scope_info.level.id if scope_info and scope_info.level else '') }}">
+          <input type="hidden" name="class_id" value="{{ result_context.class_id if result_context else (scope_info.class.id if scope_info and scope_info.class else '') }}">
+          <input type="hidden" name="section_id" value="{{ result_context.section_id if result_context else (scope_info.section.id if scope_info and scope_info.section else '') }}">
           <label class="rh-btn primary" style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 600; border-radius: 10px; background: #0f172a; color: white;">
             <i class="fa-solid fa-file-import"></i> Import Results
             <input type="file" name="file" accept=".xlsx" required style="display: none;" onchange="handleResultImport(this)">
@@ -230,11 +220,11 @@
     </form>
 
     <input type="hidden" id="csrfToken" value="{{ csrf_token() }}">
-    <input type="hidden" id="yearId" value="{{ selected_year.id if selected_year else '' }}">
-    <input type="hidden" id="examId" value="{{ selected_exam.id if selected_exam else '' }}">
-    <input type="hidden" id="levelId" value="{{ scope_info.level.id if scope_info and scope_info.level else '' }}">
-    <input type="hidden" id="classId" value="{{ scope_info.class.id if scope_info and scope_info.class else '' }}">
-    <input type="hidden" id="sectionId" value="{{ scope_info.section.id if scope_info and scope_info.section else '' }}">
+    <input type="hidden" id="yearId" value="{{ result_context.year_id if result_context else (selected_year.id if selected_year else '') }}">
+    <input type="hidden" id="examId" value="{{ result_context.exam_id if result_context else (selected_exam.id if selected_exam else '') }}">
+    <input type="hidden" id="levelId" value="{{ result_context.level_id if result_context else (scope_info.level.id if scope_info and scope_info.level else '') }}">
+    <input type="hidden" id="classId" value="{{ result_context.class_id if result_context else (scope_info.class.id if scope_info and scope_info.class else '') }}">
+    <input type="hidden" id="sectionId" value="{{ result_context.section_id if result_context else (scope_info.section.id if scope_info and scope_info.section else '') }}">
 
     {% if not selected_exam %}
       <div class="rh-entry-empty">
@@ -256,7 +246,7 @@
         <div><strong>{{ scope_info.section.name if scope_info.section else "All" }}</strong><span>Section</span></div>
       </div>
 
-      <div class="rh-table-card rh-entry-table-card">
+      <div class="rh-table-card rh-entry-table-card" id="entryTableScroll">
         <table class="rh-table rh-entry-table" id="entryTable">
           <thead>
             <tr>
@@ -305,6 +295,12 @@
           </tbody>
         </table>
       </div>
+
+      <div class="rh-entry-sticky-header" id="entryStickyHeader" aria-hidden="true"></div>
+
+      <div class="rh-entry-bottom-scroll" id="entryBottomScroll" aria-label="Scroll result subjects horizontally">
+        <div class="rh-entry-bottom-scroll-spacer" id="entryBottomScrollSpacer"></div>
+      </div>
     {% endif %}
   </main>
 </div>
@@ -314,6 +310,140 @@ const debounceTimers = new Map();
 const pendingInputs = new Set();
 const saveStatus = document.getElementById('saveStatus');
 const filterForm = document.getElementById('entryFilterForm');
+
+function syncResultContextFields() {
+  const contextFields = {
+    yearId: 'yearSelect',
+    examId: 'examSelect',
+    levelId: 'levelSelect',
+    classId: 'classSelect',
+    sectionId: 'sectionSelect'
+  };
+
+  Object.entries(contextFields).forEach(([hiddenId, selectId]) => {
+    const hidden = document.getElementById(hiddenId);
+    const select = document.getElementById(selectId);
+    if (hidden && select) hidden.value = select.value || '';
+  });
+}
+
+function initResultEntryTableScroll() {
+  const tableScroll = document.getElementById('entryTableScroll');
+  const bottomScroll = document.getElementById('entryBottomScroll');
+  const bottomSpacer = document.getElementById('entryBottomScrollSpacer');
+  const entryScreen = document.querySelector('.rh-entry-screen');
+  if (!tableScroll || !bottomScroll || !bottomSpacer) return;
+
+  let syncing = false;
+
+  function syncFrom(source, target) {
+    if (syncing) return;
+    syncing = true;
+    target.scrollLeft = source.scrollLeft;
+    syncing = false;
+  }
+
+  function updateMetrics() {
+    const sidebar = document.querySelector('.sidebar');
+    const sidebarStyle = sidebar ? getComputedStyle(sidebar) : null;
+    const sidebarRight = sidebar && sidebarStyle?.position !== 'static'
+      ? Math.max(0, sidebar.getBoundingClientRect().right)
+      : 0;
+    bottomScroll.style.left = `${sidebarRight}px`;
+
+    const contentWidth = tableScroll.scrollWidth;
+    const needsScroll = contentWidth > tableScroll.clientWidth + 1;
+    bottomScroll.classList.toggle('is-needed', needsScroll);
+    entryScreen?.classList.toggle('has-entry-bottom-scroll', needsScroll);
+
+    // Match the bottom track's maximum scrollLeft to the table's maximum
+    // scrollLeft, even when their visible widths differ.
+    if (needsScroll) {
+      const overflowWidth = contentWidth - tableScroll.clientWidth;
+      bottomSpacer.style.width = `${bottomScroll.clientWidth + overflowWidth}px`;
+    } else {
+      bottomSpacer.style.width = '100%';
+    }
+
+    if (!needsScroll) {
+      bottomScroll.scrollLeft = 0;
+      tableScroll.scrollLeft = 0;
+    }
+  }
+
+  tableScroll.addEventListener('scroll', () => syncFrom(tableScroll, bottomScroll), { passive: true });
+  bottomScroll.addEventListener('scroll', () => syncFrom(bottomScroll, tableScroll), { passive: true });
+  window.addEventListener('resize', updateMetrics, { passive: true });
+
+  if (window.ResizeObserver) {
+    const observer = new ResizeObserver(updateMetrics);
+    observer.observe(tableScroll);
+    observer.observe(document.getElementById('entryTable'));
+  }
+
+  updateMetrics();
+}
+
+function initResultEntryStickyHeader() {
+  const tableScroll = document.getElementById('entryTableScroll');
+  const table = document.getElementById('entryTable');
+  const stickyHeader = document.getElementById('entryStickyHeader');
+  if (!tableScroll || !table || !stickyHeader || !table.tHead) return;
+
+  const stickyTable = document.createElement('table');
+  stickyTable.className = 'rh-table rh-entry-table rh-entry-sticky-header-table';
+  stickyTable.appendChild(table.tHead.cloneNode(true));
+  stickyHeader.appendChild(stickyTable);
+
+  const stickyCells = Array.from(stickyTable.tHead.rows[0].cells);
+  const sourceCells = Array.from(table.tHead.rows[0].cells);
+
+  function syncColumnWidths() {
+    stickyTable.style.width = `${table.scrollWidth}px`;
+    stickyTable.style.minWidth = `${table.scrollWidth}px`;
+    stickyCells.forEach((cell, index) => {
+      const sourceCell = sourceCells[index];
+      if (!sourceCell) return;
+      const width = sourceCell.getBoundingClientRect().width;
+      cell.style.width = `${width}px`;
+      cell.style.minWidth = `${width}px`;
+    });
+  }
+
+  function updateStickyHeader() {
+    const tableRect = tableScroll.getBoundingClientRect();
+    const sourceHeaderRect = table.tHead.getBoundingClientRect();
+    const headerHeight = sourceHeaderRect.height;
+    const shouldShow = sourceHeaderRect.top <= 0 && tableRect.bottom > headerHeight;
+
+    stickyHeader.classList.toggle('is-visible', shouldShow);
+    if (!shouldShow) return;
+
+    stickyHeader.style.left = `${tableRect.left}px`;
+    stickyHeader.style.width = `${tableRect.width}px`;
+    stickyHeader.style.height = `${headerHeight}px`;
+    stickyTable.style.transform = `translateX(${-tableScroll.scrollLeft}px)`;
+  }
+
+  tableScroll.addEventListener('scroll', updateStickyHeader, { passive: true });
+  window.addEventListener('scroll', updateStickyHeader, { passive: true });
+  window.addEventListener('resize', () => {
+    syncColumnWidths();
+    updateStickyHeader();
+  }, { passive: true });
+
+  if (window.ResizeObserver) {
+    const observer = new ResizeObserver(() => {
+      syncColumnWidths();
+      updateStickyHeader();
+    });
+    observer.observe(tableScroll);
+    observer.observe(table);
+  }
+
+  syncColumnWidths();
+  updateStickyHeader();
+}
 
 function setSaveStatus(state, text) {
   if (!saveStatus) return;
@@ -365,6 +495,9 @@ document.getElementById('classSelect')?.addEventListener('change', () => submitF
 document.getElementById('sectionSelect')?.addEventListener('change', () => filterForm.submit());
 // Initial client-side filter pass
 filterClassesByLevel();
+syncResultContextFields();
+initResultEntryTableScroll();
+initResultEntryStickyHeader();
 
 function focusStudentRow(input) {
   const row = input.closest('tr');
@@ -394,6 +527,7 @@ async function autosaveScore(input) {
     return;
   }
 
+  syncResultContextFields();
   const formData = new FormData();
   formData.append('csrf_token', document.getElementById('csrfToken').value);
   formData.append('year_id', document.getElementById('yearId').value);
@@ -516,6 +650,7 @@ function reloadTemplateYear(yearId) {
 async function handleResultImport(inputElement) {
   if (!inputElement.files || inputElement.files.length === 0) return;
   const form = inputElement.form;
+  syncResultContextFields();
   const formData = new FormData(form);
   
   // Safe showAlert helper

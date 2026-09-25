@@ -95,7 +95,7 @@
           <div class="behavior-form__actions"><button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save changes</button></div>
         </form>
         <div class="behavior-row-actions behavior-action-footer">
-          <form method="post" action="{{ url_for('behavior.delete_action', action_id=item.id) }}" onsubmit="return confirm('Delete this Behavior action?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><button class="behavior-btn behavior-btn--danger behavior-btn--small" type="submit" title="Delete action" aria-label="Delete action"><i class="fa-solid fa-trash-can"></i> Delete action</button></form>
+          <form method="post" action="{{ url_for('behavior.delete_action', action_id=item.id) }}" data-delete-confirm data-delete-message="Action-kan iyo choices-kiisa ayaa si buuxda loo tirtiri karaa. Hubi inaad rabto inaad sii waddo."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><button class="behavior-btn behavior-btn--danger behavior-btn--small" type="submit" title="Delete action" aria-label="Delete action"><i class="fa-solid fa-trash-can"></i> Delete action</button></form>
         </div>
       </details>
       {% endfor %}{% else %}<div class="behavior-empty"><i class="fa-solid fa-list-check"></i><p>No categories or actions configured.</p></div>{% endfor %}
@@ -176,4 +176,5 @@
   }
 })();
 </script>
+{% include "admin/behavior/_delete_confirm_modal.html" %}
 {% endblock %}

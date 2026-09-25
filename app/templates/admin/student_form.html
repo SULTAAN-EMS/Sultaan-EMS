@@ -1,312 +1,194 @@
 {% extends "admin/base.html" %}
+{% set selected_level = namespace(name='-') %}
+{% set selected_class = namespace(name='-') %}
+{% set selected_section = namespace(name='-') %}
+{% for level in year_levels %}
+  {% if level.id == selected_year_level_id %}{% set selected_level.name = level.name %}{% endif %}
+  {% for cls in year_class_map.get(level.id, []) %}
+    {% if cls.id == selected_year_class_id %}{% set selected_class.name = cls.name %}{% endif %}
+  {% endfor %}
+{% endfor %}
+{% for section in form_sections %}
+  {% if section.id == selected_section_id %}{% set selected_section.name = section.name %}{% endif %}
+{% endfor %}
+{% set initial_active = student.is_active if student.id else true %}
+{% set initial_locked = student.is_result_locked if student.id else false %}
 {% block page_title %}{{ "Edit" if student.id else "Add" }} Student{% endblock %}
 {% block admin_content %}
-<form method="post" action="{{ student_form_action or request.path }}" enctype="multipart/form-data" class="panel form-grid premium-form">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div class="section-heading wide"><span><i class="fa-solid fa-user-graduate"></i></span><div><h2>Student Profile</h2><p>Core identity, academic placement, photo, and result lock status.</p></div></div>
-  <label><i class="fa-solid fa-id-card"></i> Student ID<input name="student_code" value="{{ student.student_code or '' }}" required></label>
-  <label class="span-2"><i class="fa-solid fa-user-graduate"></i> Full Name<input name="full_name" value="{{ student.full_name or '' }}" required></label>
-  <label class="span-2"><i class="fa-solid fa-person-dress"></i> Mother Name<input name="mother_name" value="{{ student.mother_name or '' }}"></label>
-  <label><i class="fa-solid fa-phone"></i> Phone Number<input name="phone" value="{{ student.phone or '' }}"></label>
-  <label><i class="fa-solid fa-venus-mars"></i> Gender<select name="gender" required>
-    <option value="">Select Gender</option>
-    <option value="Male" {% if student.gender == 'Male' %}selected{% endif %}>Male</option>
-    <option value="Female" {% if student.gender == 'Female' %}selected{% endif %}>Female</option>
-  </select></label>
-  
-  <!-- Academic placement is year-aware; existing student placement is read-only here. -->
-  <label><i class="fa-solid fa-calendar-days"></i> Academic Year<select name="academic_year_id" id="academic_year_id" required {% if placement_locked %}disabled{% endif %}>
-    <option value="">Select Year</option>
-    {% for y in years %}
-    <option value="{{ y.id }}" {% if selected_year and selected_year.id==y.id %}selected{% endif %}>{{ y.name }}</option>
-    {% endfor %}
-  </select></label>
-  {% if placement_locked %}<input type="hidden" name="academic_year_id" value="{{ selected_year.id if selected_year else '' }}">{% endif %}
-  <label><i class="fa-solid fa-layer-group"></i> Academic Level<select name="academic_year_level_id" id="academic_level_id" {% if placement_locked %}disabled{% endif %}>
-    <option value="">Select Level</option>
-    {% for level in year_levels %}
-    <option value="{{ level.id }}" {% if selected_year_level_id==level.id %}selected{% endif %}>{{ level.name }}</option>
-    {% endfor %}
-  </select></label>
-  {% if placement_locked %}<input type="hidden" name="academic_year_level_id" value="{{ selected_year_level_id or '' }}">{% endif %}
-  <label><i class="fa-solid fa-graduation-cap"></i> Class<select name="academic_year_class_id" id="academic_class_id" data-selected="{{ selected_year_class_id or '' }}" {% if placement_locked %}disabled{% endif %}>
-    <option value="">Select Class</option>
-    {% for level in year_levels %}
-      {% for cls in year_class_map.get(level.id, []) %}
-      <option value="{{ cls.id }}" data-level-id="{{ level.id }}" {% if selected_year_class_id==cls.id %}selected{% endif %}>{{ cls.name }}</option>
-      {% endfor %}
-    {% endfor %}
-  </select></label>
-  {% if placement_locked %}<input type="hidden" name="academic_year_class_id" value="{{ selected_year_class_id or '' }}">{% endif %}
-  <label><i class="fa-solid fa-table-cells"></i> Section<select name="academic_section_id" id="academic_section_id" data-selected="{{ selected_section_id or '' }}" {% if placement_locked %}disabled{% endif %}>
-    <option value="">Select Section</option>
-    {% for section in form_sections %}<option value="{{ section.id }}" {% if selected_section_id==section.id %}selected{% endif %}>{{ section.name }}</option>{% endfor %}
-  </select></label>
-  {% if placement_locked %}<input type="hidden" name="academic_section_id" value="{{ selected_section_id or '' }}">{% endif %}
-  
-  <div class="photo-upload-section">
-    <label><i class="fa-solid fa-image"></i> Student Photo<input type="file" name="photo" id="photo-input" accept="image/*"></label>
-    <div class="photo-preview" id="photo-preview">
-      {% if student.photo_path %}
-      <img src="{{ student.photo_path }}" alt="Student Photo" id="current-photo">
-      <div class="photo-status success"><i class="fa-solid fa-check-circle"></i> Photo saved</div>
-      {% else %}
-      <div class="photo-placeholder">
-        <i class="fa-solid fa-user"></i>
-        <span>No photo uploaded</span>
-      </div>
-      {% endif %}
+<div class="student-enrollment-page">
+  <div class="preview-bar" id="previewBar">
+    <div class="pb-header"><div class="pb-id-block">
+      <div class="pb-avatar" id="pvAvatar" data-initials="{{ (student.full_name or 'S').split()[:2] | map('first') | join | upper or 'S' }}"></div>
+      <div class="pb-identity"><div class="pb-name" id="pvName">{{ student.full_name or '-' }}</div><div class="pb-idcode" id="pvId">{{ student.student_code or '-' }}</div></div>
+    </div></div>
+    <div class="pb-stats">
+      <div class="stat-chip chip-year"><span class="chip-ic"><i class="fa-solid fa-calendar-days"></i></span><div class="chip-body"><span class="chip-label">Year</span><span class="chip-val" id="pvYear">{{ selected_year.name if selected_year else '-' }}</span></div></div>
+      <div class="stat-chip chip-level"><span class="chip-ic"><i class="fa-solid fa-layer-group"></i></span><div class="chip-body"><span class="chip-label">Level</span><span class="chip-val" id="pvLevel">{{ selected_level.name }}</span></div></div>
+      <div class="stat-chip chip-class"><span class="chip-ic"><i class="fa-solid fa-graduation-cap"></i></span><div class="chip-body"><span class="chip-label">Class</span><span class="chip-val" id="pvClass">{{ selected_class.name }}</span></div></div>
+      <div class="stat-chip chip-section"><span class="chip-ic"><i class="fa-solid fa-table-cells"></i></span><div class="chip-body"><span class="chip-label">Qaybta</span><span class="chip-val" id="pvSection">{{ selected_section.name }}</span></div></div>
+      <div class="stat-chip chip-status"><span class="chip-ic"><i class="fa-solid fa-circle-check"></i></span><div class="chip-body"><span class="chip-label">Status</span><span class="pb-pill {{ 'pill-good' if initial_active else 'pill-bad' }}" id="pvActive">{{ 'Active' if initial_active else 'Inactive' }}</span></div></div>
+      <div class="stat-chip chip-result"><span class="chip-ic"><i class="fa-solid fa-lock"></i></span><div class="chip-body"><span class="chip-label">Result</span><span class="pb-pill {{ 'pill-bad' if initial_locked else 'pill-good' }}" id="pvLock">{{ 'Locked' if initial_locked else 'Unlocked' }}</span></div></div>
     </div>
   </div>
-  <label class="wide"><i class="fa-solid fa-message"></i> Special Comment<textarea name="note">{{ student.note or '' }}</textarea></label>
-  <label class="wide"><i class="fa-solid fa-triangle-exclamation"></i> Lock Reason<input name="lock_reason" value="{{ student.lock_reason or '' }}" placeholder="Outstanding school fees, missing documents, library fine..."></label>
-  <label class="check"><input type="checkbox" name="is_result_locked" {% if student.is_result_locked %}checked{% endif %}> <i class="fa-solid fa-lock"></i> Lock Result</label>
-  <label class="check"><input type="checkbox" name="is_active" {% if student.is_active or not student.id %}checked{% endif %}> <i class="fa-solid fa-circle-check"></i> Active Student</label>
-  <button class="premium"><i class="fa-solid fa-floppy-disk"></i> Save Student</button>
-</form>
 
-{% if student.id and incident_reports %}
-<section class="panel" style="margin-top: 2rem;">
-  <div class="section-heading"><span><i class="fa-solid fa-triangle-exclamation"></i></span><div><h2>Incident History</h2><p>Recent examination incident reports for this student.</p></div></div>
-  <div class="responsive-table">
-    <table class="premium-table">
-      <thead>
-        <tr>
-          <th>Report #</th>
-          <th>Category</th>
-          <th>Severity</th>
-          <th>Date</th>
-          <th>Status</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for report in incident_reports %}
-        <tr>
-          <td><strong>{{ report.report_number }}</strong></td>
-          <td>{{ report.selected_categories|map(attribute='name')|join(', ') or 'N/A' }}</td>
-          <td>
-            <span class="severity-badge" style="background: {{ report.severity.color if report.severity else '#64748b' }}; color: white; font-size: 0.8rem; padding: 0.2rem 0.6rem; border-radius: 12px;">
-              {{ report.severity.name if report.severity else 'N/A' }}
-            </span>
-          </td>
-          <td>{{ report.incident_date.strftime('%b %d, %Y') }}</td>
-          <td>
-            <span class="status-pill {{ 'warn' if report.status == 'Pending Review' else 'ok' }}">
-              {{ report.status }}
-            </span>
-          </td>
-          <td>
-            <a class="icon-btn small" href="{{ url_for('admin.incident_view', report_id=report.id) }}" title="View Details">
-              <i class="fa-solid fa-eye"></i>
-            </a>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  <div style="margin-top: 1rem;">
-    <a class="btn ghost" href="{{ url_for('admin.incidents') }}?q={{ student.student_code }}">
-      <i class="fa-solid fa-list"></i> View All Incidents
-    </a>
-  </div>
-</section>
-{% endif %}
+  <form method="post" action="{{ student_form_action or request.path }}" enctype="multipart/form-data" id="studentForm" data-no-loader="true">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if placement_locked %}<input type="hidden" name="academic_year_id" value="{{ selected_year.id if selected_year else '' }}"><input type="hidden" name="academic_year_level_id" value="{{ selected_year_level_id or '' }}"><input type="hidden" name="academic_year_class_id" value="{{ selected_year_class_id or '' }}"><input type="hidden" name="academic_section_id" value="{{ selected_section_id or '' }}">{% endif %}
+    <div class="layout">
+      <div class="layout-column">
+        <div class="card card-profile">
+          <div class="card-head"><span class="ic"><i class="fa-solid fa-user-graduate"></i></span><div><h2>XOGTA ARDEYGA</h2></div></div>
+          <div class="grid">
+            <div class="field full-field"><label><i class="fa-solid fa-user"></i> Magaca Ardayga oo Buuxa</label><div class="input-shell"><input id="nameInput" name="full_name" type="text" value="{{ student.full_name or '' }}" placeholder="Magaca ardayga oo buuxa" required></div></div>
+            <div class="field"><label><i class="fa-solid fa-id-card"></i> Tira-taxanaha</label><div class="input-shell"><input id="idInput" name="student_code" type="text" value="{{ student.student_code or '' }}" placeholder="Tira-taxanaha ardayga" required data-check-url="{{ url_for('admin_advanced_results.student_code_status') }}" data-current-student-id="{{ student.id or '' }}"><span class="id-status" id="idStatus"><span class="sd"></span><span id="idStatusText">Madhan</span></span></div><span class="id-hint" id="idHint">Si toos ah ayaa loo hubinayaa in tira-taxanuhu u gaar yahay ardaygan.</span></div>
+            <div class="field"><label><i class="fa-solid fa-person-dress"></i> Magaca Hooyada</label><div class="input-shell"><input name="mother_name" type="text" value="{{ student.mother_name or '' }}" placeholder="Magaca hooyada"></div></div>
+            <div class="field"><label><i class="fa-solid fa-phone"></i> Lambarka Taleefanka</label><div class="input-shell"><input name="phone" type="tel" value="{{ student.phone or '' }}" placeholder="Lambarka taleefanka"></div></div>
+            <div class="field"><label><i class="fa-solid fa-venus-mars"></i> Jinsiga</label><select name="gender" id="genderSelect" required><option value="">Dooro Jinsiga</option><option value="Male" {% if student.gender == 'Male' %}selected{% endif %}>Lab</option><option value="Female" {% if student.gender == 'Female' %}selected{% endif %}>Dhedig</option></select></div>
+            <div class="field"><label><i class="fa-solid fa-calendar-days"></i> Sannad Dugsiyeedka</label><select name="academic_year_id" id="academic_year_id" required {% if placement_locked %}disabled{% endif %}><option value="">Dooro Sannadka</option>{% for y in years %}<option value="{{ y.id }}" {% if selected_year and selected_year.id == y.id %}selected{% endif %}>{{ y.name }}</option>{% endfor %}</select></div>
+            <div class="field"><label><i class="fa-solid fa-layer-group"></i> Heerka</label><select name="academic_year_level_id" id="academic_level_id" {% if placement_locked %}disabled{% endif %}><option value="">Dooro Heerka</option>{% for level in year_levels %}<option value="{{ level.id }}" {% if selected_year_level_id == level.id %}selected{% endif %}>{{ level.name }}</option>{% endfor %}</select></div>
+            <div class="field"><label><i class="fa-solid fa-graduation-cap"></i> Fasalka</label><select name="academic_year_class_id" id="academic_class_id" data-selected="{{ selected_year_class_id or '' }}" {% if placement_locked %}disabled{% endif %}><option value="">Dooro Fasalka</option>{% for level in year_levels %}{% for cls in year_class_map.get(level.id, []) %}<option value="{{ cls.id }}" data-level-id="{{ level.id }}" {% if selected_year_class_id == cls.id %}selected{% endif %}>{{ cls.name }}</option>{% endfor %}{% endfor %}</select></div>
+            <div class="field"><label><i class="fa-solid fa-table-cells"></i> Qaybta</label><select name="academic_section_id" id="academic_section_id" data-selected="{{ selected_section_id or '' }}" {% if placement_locked %}disabled{% endif %}><option value="">Dooro Qaybta</option>{% for section in form_sections %}<option value="{{ section.id }}" {% if selected_section_id == section.id %}selected{% endif %}>{{ section.name }}</option>{% endfor %}</select></div>
+          </div>
+        </div>
+        <div class="card card-photo"><div class="card-head"><span class="ic"><i class="fa-solid fa-camera"></i></span><div><h2>Sawirka Ardayga</h2></div></div><div class="dropzone" id="dropzone"><input type="file" name="photo" id="photoInput" accept="image/*" hidden><div id="dropzoneEmpty" class="dropzone-content" {% if student.photo_path %}style="display:none"{% endif %}><span class="circle"><i class="fa-solid fa-camera"></i></span><div><div class="t1">Sawir lama gelin</div><div class="t2">Guji ama jiid sawirka oo halkan ku rid</div></div></div><div id="dropzonePreview" class="dropzone-content" {% if not student.photo_path %}style="display:none"{% endif %}><div class="photo-thumb-wrap"><img id="photoThumb" class="photo-thumb" src="{{ asset_url(student.photo_path) if student.photo_path else '' }}" alt="Sawirka ardayga"><span class="verify-badge"><i class="fa-solid fa-check"></i></span></div><div><div class="t1 photo-success">Sawirka waa la soo shubay</div><div class="t2" id="photoFileName">{{ student.photo_path or '-' }}</div><button type="button" class="change-photo-btn" id="changePhotoBtn">Beddel sawirka</button></div></div></div></div>
+      </div>
+      <div class="layout-column">
+        <div class="card card-status"><div class="card-head"><span class="ic"><i class="fa-solid fa-shield-halved"></i></span><div><h2>Xaalad &amp; Faallooyin</h2></div></div><div class="status-fields"><div class="field"><label><i class="fa-solid fa-message"></i> Faallo Gaar ah</label><textarea name="note" placeholder="Qoraal ama faallo muhiim ah oo ku saabsan ardaygan...">{{ student.note or '' }}</textarea></div><div class="field"><label><i class="fa-solid fa-triangle-exclamation"></i> Sababta Natiijada Looga Xidhay</label><div class="input-shell"><input name="lock_reason" value="{{ student.lock_reason or '' }}" placeholder="Sugaya Xaqiijinta Dukumentiga"></div></div><div class="toggle-row"><div class="tinfo"><span class="ic2 red"><i class="fa-solid fa-lock"></i></span><div><div class="tt">Xidh Natiijada</div></div></div><button type="button" class="switch red {% if initial_locked %}on{% endif %}" id="lockToggle" aria-label="Xidh natiijada"></button><input type="checkbox" name="is_result_locked" id="lockInput" {% if initial_locked %}checked{% endif %} hidden></div><div class="toggle-row"><div class="tinfo"><span class="ic2 green"><i class="fa-solid fa-circle-check"></i></span><div><div class="tt">Arday Firfircoon</div></div></div><button type="button" class="switch {% if initial_active %}on{% endif %}" id="activeToggle" aria-label="Beddel xaaladda ardayga"></button><input type="checkbox" name="is_active" id="activeInput" {% if initial_active %}checked{% endif %} hidden></div></div></div>
+        <button type="submit" class="save-btn"><i class="fa-solid fa-floppy-disk"></i> Keydi Ardayga</button><p class="preview-note">Isbeddellada waxaa lagu arki karaa isla markiiba.</p>
+      </div>
+    </div>
+  </form>
 
-<script>
-// Academic hierarchy cascading dropdowns
-const academicClasses = {
-  {% for level in year_levels %}
-  {{ level.id }}: [
-    {% for cls in year_class_map.get(level.id, []) %}
-    {id: {{ cls.id }}, name: "{{ cls.name }}", sections: [
-      {% if cls.legacy_class_id %}{% for section in cls.legacy_class.sections %}
-      {id: {{ section.id }}, name: "{{ section.name }}"}
-      {% if not loop.last %},{% endif %}
-      {% endfor %}{% endif %}
-    ]}{% if not loop.last %},{% endif %}
-    {% endfor %}
-  ]{% if not loop.last %},{% endif %}
-  {% endfor %}
-};
+  {% if student.id and incident_reports %}<section class="panel incident-history"><div class="section-heading"><span><i class="fa-solid fa-triangle-exclamation"></i></span><div><h2>Incident History</h2><p>Recent examination incident reports for this student.</p></div></div><div class="responsive-table"><table class="premium-table"><thead><tr><th>Report #</th><th>Category</th><th>Severity</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead><tbody>{% for report in incident_reports %}<tr><td><strong>{{ report.report_number }}</strong></td><td>{{ report.selected_categories|map(attribute='name')|join(', ') or 'N/A' }}</td><td><span class="severity-badge" style="background: {{ report.severity.color if report.severity else '#64748b' }}; color:white; font-size:.8rem; padding:.2rem .6rem; border-radius:12px;">{{ report.severity.name if report.severity else 'N/A' }}</span></td><td>{{ report.incident_date.strftime('%b %d, %Y') }}</td><td><span class="status-pill {{ 'warn' if report.status == 'Pending Review' else 'ok' }}">{{ report.status }}</span></td><td><a class="icon-btn small" href="{{ url_for('admin.incident_view', report_id=report.id) }}" title="View Details"><i class="fa-solid fa-eye"></i></a></td></tr>{% endfor %}</tbody></table></div><div class="incident-link"><a class="btn ghost" href="{{ url_for('admin.incidents') }}?q={{ student.student_code }}"><i class="fa-solid fa-list"></i> View All Incidents</a></div></section>{% endif %}
+</div>
 
-const yearSelect = document.getElementById('academic_year_id');
-const levelSelect = document.getElementById('academic_level_id');
-const classSelect = document.getElementById('academic_class_id');
-const sectionSelect = document.getElementById('academic_section_id');
-
-// Photo preview functionality
-const photoInput = document.getElementById('photo-input');
-const photoPreview = document.getElementById('photo-preview');
-
-if (photoInput) {
-  photoInput.addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        photoPreview.innerHTML = `
-          <img src="${e.target.result}" alt="Photo Preview">
-          <div class="photo-status preview"><i class="fa-solid fa-eye"></i> Photo selected</div>
-        `;
-      };
-      reader.readAsDataURL(file);
-    }
-  });
-}
-
-// Academic hierarchy cascading
-function populateClasses() {
-  const levelId = parseInt(levelSelect.value);
-  const selectedClassId = classSelect.dataset.selected || '';
-  classSelect.innerHTML = '<option value="">Select Class</option>';
-  sectionSelect.innerHTML = '<option value="">Select Section</option>';
-  if (levelId && academicClasses[levelId]) {
-    academicClasses[levelId].forEach(cls => {
-      const option = document.createElement('option');
-      option.value = cls.id;
-      option.textContent = cls.name;
-      if (String(cls.id) === String(selectedClassId)) option.selected = true;
-      classSelect.appendChild(option);
-    });
-  }
-  populateSections();
-}
-
-function populateSections() {
-  const levelId = parseInt(levelSelect.value);
-  const classId = parseInt(classSelect.value);
-  const selectedSectionId = sectionSelect.dataset.selected || '';
-  sectionSelect.innerHTML = '<option value="">Select Section</option>';
-  const selectedClass = academicClasses[levelId]?.find(cls => cls.id === classId);
-  (selectedClass?.sections || []).forEach(section => {
-    const option = document.createElement('option');
-    option.value = section.id;
-    option.textContent = section.name;
-    if (String(section.id) === String(selectedSectionId)) option.selected = true;
-    sectionSelect.appendChild(option);
-  });
-}
-
-{% if not placement_locked %}levelSelect.addEventListener('change', function() {
-  const levelId = parseInt(this.value);
-  classSelect.innerHTML = '<option value="">Select Class</option>';
-  sectionSelect.innerHTML = '<option value="">Select Section</option>';
-  
-  if (levelId && academicClasses[levelId]) {
-    academicClasses[levelId].forEach(cls => {
-      const option = document.createElement('option');
-      option.value = cls.id;
-      option.textContent = cls.name;
-      classSelect.appendChild(option);
-    });
-  }
-});{% endif %}
-
-{% if not placement_locked %}classSelect.addEventListener('change', function() {
-  const levelId = parseInt(levelSelect.value);
-  const classId = parseInt(this.value);
-  sectionSelect.innerHTML = '<option value="">Select Section</option>';
-  
-  if (levelId && classId && academicClasses[levelId]) {
-    const selectedClass = academicClasses[levelId].find(cls => cls.id === classId);
-    if (selectedClass && selectedClass.sections) {
-      selectedClass.sections.forEach(section => {
-        const option = document.createElement('option');
-        option.value = section.id;
-        option.textContent = section.name;
-        sectionSelect.appendChild(option);
-      });
-    }
-  }
-});{% endif %}
-
-populateClasses();
-
-// Initialize on page load
-if (levelSelect.value) {
-  levelSelect.dispatchEvent(new Event('change'));
-  if (classSelect.dataset.selected) {
-    classSelect.value = classSelect.dataset.selected;
-  }
-  if (classSelect.value) {
-    classSelect.dispatchEvent(new Event('change'));
-    if (sectionSelect.dataset.selected) {
-      sectionSelect.value = sectionSelect.dataset.selected;
-    }
-  }
-}
-</script>
+<div class="modal-overlay" id="modalOverlay" aria-hidden="true"><div class="modal-card" id="modalCard" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-head"><span class="modal-icon"><i class="fa-solid fa-shield-halved"></i></span><div><h3 id="modalTitle">Xaqiiji Diiwaan-gelinta Ardeyga</h3><p class="modal-sub">Fadlan hubi xogta hoose ka hor intaadan gudbin.</p></div></div><div class="review-grid"><div class="review-item full ri-name" style="animation-delay:.04s;"><span class="ric"><i class="fa-solid fa-user"></i></span><div class="rbody"><span class="rlabel">Magaca Buuxa</span><span class="rval" id="mName">-</span></div></div><div class="review-pair"><div class="review-item ri-id compact" style="animation-delay:.08s;"><span class="ric"><i class="fa-solid fa-id-card"></i></span><div class="rbody"><span class="rlabel">Tira-taxanaha</span><span class="rval" id="mId">-</span></div></div><div class="review-item ri-mother wide" style="animation-delay:.10s;"><span class="ric"><i class="fa-solid fa-person-dress"></i></span><div class="rbody"><span class="rlabel">Magaca Hooyada</span><span class="rval" id="mMother">-</span></div></div></div><div class="review-item ri-phone" style="animation-delay:.14s;"><span class="ric"><i class="fa-solid fa-phone"></i></span><div class="rbody"><span class="rlabel">Lambarka Taleefanka</span><span class="rval" id="mPhone">-</span></div></div><div class="review-item ri-gender" style="animation-delay:.18s;"><span class="ric"><i class="fa-solid fa-venus-mars"></i></span><div class="rbody"><span class="rlabel">Jinsiga</span><span class="rval" id="mGender">-</span></div></div><div class="review-item ri-year" style="animation-delay:.22s;"><span class="ric"><i class="fa-solid fa-calendar-days"></i></span><div class="rbody"><span class="rlabel">Sannad Dugsiyeedka</span><span class="rval" id="mYear">-</span></div></div><div class="review-item ri-level" style="animation-delay:.26s;"><span class="ric"><i class="fa-solid fa-layer-group"></i></span><div class="rbody"><span class="rlabel">Heerka</span><span class="rval" id="mLevel">-</span></div></div><div class="review-item ri-class" style="animation-delay:.30s;"><span class="ric"><i class="fa-solid fa-graduation-cap"></i></span><div class="rbody"><span class="rlabel">Fasalka</span><span class="rval" id="mClass">-</span></div></div><div class="review-item ri-section" style="animation-delay:.34s;"><span class="ric"><i class="fa-solid fa-table-cells"></i></span><div class="rbody"><span class="rlabel">Qaybta</span><span class="rval" id="mSection">-</span></div></div><div class="review-item ri-status" id="riStatus" style="animation-delay:.38s;"><span class="ric"><i class="fa-solid fa-circle-check"></i></span><div class="rbody"><span class="rlabel">Xaaladda</span><span class="rval" id="mActive">-</span></div></div><div class="review-item ri-result" id="riResult" style="animation-delay:.42s;"><span class="ric"><i class="fa-solid fa-lock"></i></span><div class="rbody"><span class="rlabel">Natiijada</span><span class="rval" id="mLock">-</span></div></div></div><div class="modal-actions"><button type="button" class="modal-btn ghost" id="modalCancel"><i class="fa-solid fa-pen"></i> Wax ka beddel</button><button type="button" class="modal-btn solid" id="modalConfirm"><i class="fa-solid fa-check"></i> Xaqiiji &amp; Keydi</button></div></div></div>
 
 <style>
-.photo-upload-section {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: 1fr 200px;
-  gap: 20px;
-  align-items: start;
-}
+  .student-enrollment-page{--sidebar:#0d1c38;--bg:#eef3fc;--card:#fff;--border:#e2e9f5;--ink:#16233a;--muted:#67748c;--faint:#9aa6ba;--blue:#2f6fed;--blue-bg:rgba(47,111,237,.09);--blue-dark:#16326e;--green:#1f9d55;--green-bg:rgba(31,157,85,.09);--red:#c23b3b;--red-bg:rgba(194,59,59,.09);font-family:'Manrope',system-ui,sans-serif;color:var(--ink);padding:0 26px 60px;min-width:0}.student-enrollment-page *{box-sizing:border-box}.preview-bar{position:sticky;top:0;z-index:30;max-width:1180px;margin:0 auto 20px;border-radius:22px;padding:14px 26px;display:flex;align-items:center;gap:18px;overflow-x:auto;background:radial-gradient(420px 160px at 100% 0%,rgba(255,255,255,.16),transparent 60%),linear-gradient(120deg,var(--sidebar),var(--blue-dark) 60%,var(--blue));color:#fff;box-shadow:0 24px 48px -28px rgba(13,28,56,.55);animation:studentCardIn .5s cubic-bezier(.22,1,.36,1) backwards;white-space:nowrap}.pb-header{display:flex;align-items:center;flex:none;padding-right:18px;border-right:1px solid rgba(255,255,255,.14)}.pb-id-block{display:flex;align-items:center;gap:12px;flex:none}.pb-avatar{width:46px;height:46px;border-radius:14px;flex:none;padding:2px;background:linear-gradient(155deg,#5a91f6,#ffd98a);animation:studentAvatarFloat 3.4s ease-in-out infinite}.pb-avatar::before{content:attr(data-initials);width:100%;height:100%;border-radius:12px;background:var(--sidebar);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#fff}.pb-name{font-size:15px;font-weight:800;white-space:nowrap;line-height:1.25}.pb-idcode{font-size:10.5px;color:#9fc1e6;font-weight:700;font-family:monospace;white-space:nowrap}.pb-stats{display:flex;flex-wrap:nowrap;gap:10px}.stat-chip{display:flex;align-items:center;gap:10px;flex:none;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);border-radius:15px;padding:9px 13px;transition:transform .18s ease,background .18s ease,border-color .18s ease}.stat-chip:hover{transform:translateY(-2px);background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.24)}.chip-ic{width:32px;height:32px;border-radius:10px;flex:none;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 14px -6px rgba(0,0,0,.5),inset 0 1px 1px rgba(255,255,255,.3)}.chip-ic i{font-size:15px}.chip-body{display:flex;flex-direction:column;gap:2px;min-width:0}.chip-label{font-size:8.5px;text-transform:uppercase;letter-spacing:.09em;font-weight:800;color:rgba(255,255,255,.62);white-space:nowrap}.chip-val{font-size:12.5px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pb-pill{display:inline-block;font-size:10px;font-weight:800;padding:2.5px 9px;border-radius:999px;background:rgba(255,255,255,.16)}.pb-pill.pill-good{background:rgba(74,222,128,.22);color:#a8f5c0}.pb-pill.pill-bad{background:rgba(248,113,113,.22);color:#ffc2c2}.chip-year .chip-ic{background:linear-gradient(155deg,#818cf8,#4f46e5)}.chip-level .chip-ic{background:linear-gradient(155deg,#c084fc,#9333ea)}.chip-class .chip-ic{background:linear-gradient(155deg,#2dd4bf,#0d9488)}.chip-section .chip-ic{background:linear-gradient(155deg,#fbbf24,#d97706)}.chip-status .chip-ic{background:linear-gradient(155deg,#4ade80,#16a34a)}.chip-result .chip-ic{background:linear-gradient(155deg,#60a5fa,#2563eb)}
+  .layout{display:grid;grid-template-columns:1.15fr 1fr;gap:20px;align-items:flex-start;max-width:1180px;margin:0 auto}.layout-column{display:flex;flex-direction:column;gap:18px}.card{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--border);border-radius:22px;padding:28px;box-shadow:0 1px 2px rgba(13,28,56,.04),0 24px 48px -30px rgba(13,28,56,.45);animation:studentCardIn .5s cubic-bezier(.22,1,.36,1) backwards;transition:box-shadow .3s ease,transform .3s ease}.card::before{content:'';position:absolute;inset:0;background:radial-gradient(260px 140px at 100% 0%,var(--wash,transparent),transparent 65%);pointer-events:none}.card>*{position:relative;z-index:1}.card-profile{--wash:rgba(47,111,237,.1)}.card-photo{--wash:rgba(13,148,136,.12)}.card-status{--wash:rgba(194,65,12,.1)}.card-profile .card-head .ic{background:linear-gradient(155deg,#5a91f6,#2f6fed);box-shadow:0 10px 20px -8px rgba(47,111,237,.55),inset 0 1px 1px rgba(255,255,255,.35)}.card-photo .card-head .ic{background:linear-gradient(155deg,#2dd4bf,#0d9488);box-shadow:0 10px 20px -8px rgba(13,148,136,.55),inset 0 1px 1px rgba(255,255,255,.35)}.card-status .card-head .ic{background:linear-gradient(155deg,#fb923c,#c2410c);box-shadow:0 10px 20px -8px rgba(194,65,12,.55),inset 0 1px 1px rgba(255,255,255,.35)}.card:hover{box-shadow:0 1px 2px rgba(13,28,56,.05),0 30px 56px -26px rgba(13,28,56,.5)}@keyframes studentCardIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}@keyframes studentAvatarFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}.card-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:22px}.card-head .ic{width:46px;height:46px;border-radius:50%;flex:none;color:#fff;display:flex;align-items:center;justify-content:center}.card-head .ic i{font-size:20px}.card-head h2{font-size:19px;font-weight:800;margin:0 0 3px;color:var(--blue-dark)}.card-head p{margin:0;font-size:12.5px;color:var(--muted);font-weight:600}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.full-field{grid-column:1/-1}.field{display:flex;flex-direction:column;gap:7px;min-width:0}.field>label{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:800;color:var(--ink)}.field>label i{width:15px;color:var(--blue)}.input-shell{display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:0 12px;transition:border-color .18s ease,box-shadow .18s ease,background .18s ease}.input-shell:focus-within{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-bg);background:var(--card)}.input-shell input,.field>select{border:1px solid var(--border);background:var(--bg);outline:none;font-family:inherit;font-size:13.5px;font-weight:700;color:var(--ink);min-width:0;padding:11px 12px;border-radius:12px;width:100%;height:44px}.input-shell input{border:0;background:transparent;padding:11px 0;height:auto;flex:1}.field>select:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-bg);background:var(--card)}.id-status{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;padding:4px 9px;border-radius:999px;white-space:nowrap;flex:none;background:var(--st-bg,#eceff3);color:var(--st-fg,var(--muted));transition:.25s ease}.id-status .sd{width:6px;height:6px;border-radius:50%;background:var(--st-fg,var(--muted))}.id-status.checking .sd{animation:studentBlinkDot 1s ease-in-out infinite}@keyframes studentBlinkDot{50%{opacity:.25}}.id-hint{font-size:11px;color:var(--faint);font-weight:600}.status-fields{display:flex;flex-direction:column;gap:14px}textarea{width:100%;border:1px solid var(--border);border-radius:12px;background:var(--bg);font-family:inherit;font-size:13.5px;font-weight:600;color:var(--ink);padding:12px;resize:vertical;min-height:66px}textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-bg);background:var(--card)}.toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;border-radius:12px;background:var(--bg);border:1px solid var(--border)}.tinfo{display:flex;align-items:center;gap:10px;min-width:0}.ic2{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:none}.ic2 i{font-size:16px}.ic2.red{background:var(--red-bg);color:var(--red)}.ic2.green{background:var(--green-bg);color:var(--green)}.tt{font-size:13px;font-weight:800}.ts{font-size:11px;color:var(--muted);font-weight:600}.switch{position:relative;width:44px;height:25px;border-radius:999px;background:#d7dde6;flex:none;cursor:pointer;border:0;transition:.25s ease}.switch::after{content:'';position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:.25s cubic-bezier(.34,1.56,.64,1)}.switch.on{background:var(--green)}.switch.on::after{transform:translateX(19px)}.switch.red.on{background:var(--red)}.save-btn{position:relative;overflow:hidden;width:100%;display:flex;align-items:center;justify-content:center;gap:9px;background:linear-gradient(180deg,#4a86f5,var(--blue));color:#fff;border:none;cursor:pointer;font-family:inherit;font-weight:800;font-size:14.5px;padding:16px;border-radius:15px;box-shadow:0 16px 30px -12px rgba(47,111,237,.6);transition:transform .15s ease,box-shadow .15s ease}.save-btn:hover{transform:translateY(-2px)}.save-btn i{font-size:17px}.preview-note{font-size:11.5px;color:var(--muted);font-weight:600;text-align:center;margin-top:8px}
+  .dropzone{border:1.5px dashed var(--border);border-radius:16px;padding:22px 18px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:.2s ease;background:var(--bg)}.dropzone:hover{border-color:var(--blue);background:var(--blue-bg)}.dropzone-content{display:flex;align-items:center;gap:14px;width:100%}.dropzone .circle{width:48px;height:48px;border-radius:50%;background:var(--card);border:1px solid var(--border);flex:none;display:flex;align-items:center;justify-content:center;color:var(--faint)}.dropzone .circle i{font-size:20px}.dropzone .t1{font-size:13px;font-weight:800;color:var(--ink)}.dropzone .t2{font-size:11.5px;color:var(--muted);font-weight:600}.photo-thumb-wrap{position:relative;width:64px;height:64px;flex:none}.photo-thumb{width:64px;height:64px;border-radius:16px;object-fit:cover;display:block;box-shadow:0 8px 16px -8px rgba(13,28,56,.35)}.verify-badge{position:absolute;bottom:-4px;right:-4px;width:22px;height:22px;border-radius:50%;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;border:2.5px solid var(--card);box-shadow:0 4px 10px -3px rgba(31,157,85,.6)}.verify-badge i{font-size:11px}.photo-success{color:var(--green)!important}.change-photo-btn{margin-top:5px;font-family:inherit;font-size:11.5px;font-weight:800;color:var(--blue);background:none;border:none;cursor:pointer;padding:0;text-decoration:underline}.incident-history{margin:20px auto 0;max-width:1180px}.incident-link{margin-top:1rem}
+  .modal-overlay{position:fixed;inset:0;background:rgba(13,28,56,.6);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;z-index:100;padding:32px 20px;overflow-y:auto}.modal-overlay.show{display:flex;animation:studentOverlayIn .2s ease}@keyframes studentOverlayIn{from{opacity:0}to{opacity:1}}.modal-card{position:relative;overflow:hidden;background:#fff;border-radius:28px;padding:36px 32px 32px;max-width:520px;width:100%;box-shadow:0 34px 64px -22px rgba(13,28,56,.5);animation:studentModalPop .4s cubic-bezier(.25,1.4,.4,1);margin:auto}.modal-card::before{content:'';position:absolute;top:0;left:0;right:0;height:5px;background:linear-gradient(90deg,#5a91f6,#9333ea,#0d9488,#d97706,#16a34a);background-size:220% 100%;animation:studentBarFlow 5s ease-in-out infinite}@keyframes studentBarFlow{0%,100%{background-position:0 0}50%{background-position:100% 0}}@keyframes studentModalPop{from{opacity:0;transform:scale(.9) translateY(14px)}to{opacity:1;transform:scale(1) translateY(0)}}.modal-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:24px}.modal-icon{position:relative;width:50px;height:50px;border-radius:16px;flex:none;background:linear-gradient(155deg,#5a91f6,#2f6fed);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 12px 22px -8px rgba(47,111,237,.6),inset 0 1px 1px rgba(255,255,255,.35)}.modal-icon::after{content:'';position:absolute;inset:-6px;border-radius:20px;border:2px solid rgba(47,111,237,.35);animation:studentRingPulse 2.2s ease-out infinite}@keyframes studentRingPulse{0%{transform:scale(.85);opacity:.9}100%{transform:scale(1.25);opacity:0}}.modal-icon i{font-size:23px}.modal-card h3{font-size:17.5px;font-weight:800;margin:2px 0 4px;color:var(--ink);letter-spacing:-.01em}.modal-sub{font-size:12.5px;color:var(--muted);font-weight:600;margin:0}.review-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:26px}.review-item{display:flex;align-items:center;gap:11px;min-width:0;border-radius:15px;background:var(--r-bg,var(--bg));border:1px solid var(--border);padding:12px 13px;opacity:0;transform:translateY(8px);animation:studentReviewIn .4s cubic-bezier(.22,1,.36,1) forwards;transition:transform .18s ease,box-shadow .18s ease}.review-item:hover{transform:translateY(-2px);box-shadow:0 10px 18px -12px rgba(13,28,56,.35)}.review-item.full{grid-column:1/-1}@keyframes studentReviewIn{to{opacity:1;transform:translateY(0)}}.review-pair{grid-column:1/-1;display:flex;gap:9px}.review-pair .review-item{margin:0}.ri-id.compact{flex:0 0 34%}.ri-mother.wide{flex:1 1 auto}.ri-id.compact .rval{font-size:12px}.ric{width:30px;height:30px;border-radius:9px;flex:none;color:#fff;display:flex;align-items:center;justify-content:center;background:var(--r-ic,var(--blue));box-shadow:0 6px 12px -6px rgba(0,0,0,.35),inset 0 1px 1px rgba(255,255,255,.3)}.ric i{font-size:14px}.rbody{min-width:0;display:flex;flex-direction:column;gap:1px}.rlabel{font-size:8.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:800;color:var(--muted);white-space:nowrap}.rval{font-size:12.5px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ri-name .ric{--r-ic:linear-gradient(155deg,#5a91f6,#2f6fed)}.ri-id .ric{--r-ic:linear-gradient(155deg,#64748b,#334155)}.ri-mother .ric{--r-ic:linear-gradient(155deg,#f472b6,#db2777)}.ri-phone .ric{--r-ic:linear-gradient(155deg,#22d3ee,#0891b2)}.ri-gender .ric{--r-ic:linear-gradient(155deg,#a78bfa,#7c3aed)}.ri-year .ric{--r-ic:linear-gradient(155deg,#818cf8,#4f46e5)}.ri-level .ric{--r-ic:linear-gradient(155deg,#c084fc,#9333ea)}.ri-class .ric{--r-ic:linear-gradient(155deg,#2dd4bf,#0d9488)}.ri-section .ric{--r-ic:linear-gradient(155deg,#fbbf24,#d97706)}.ri-status .ric{--r-ic:linear-gradient(155deg,#4ade80,#16a34a)}.ri-result .ric{--r-ic:linear-gradient(155deg,#60a5fa,#2563eb)}.ri-status.is-bad .ric,.ri-result.is-bad .ric{--r-ic:linear-gradient(155deg,#fb7185,#dc2626)}.modal-actions{display:flex;gap:10px}.modal-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px;border-radius:14px;font-family:inherit;font-weight:800;font-size:13.5px;cursor:pointer;border:none;transition:transform .15s ease,box-shadow .15s ease,background .15s ease}.modal-btn i{font-size:15px}.modal-btn.ghost{background:var(--bg);color:var(--muted);border:1px solid var(--border)}.modal-btn.ghost:hover{background:#eceff5;color:var(--ink)}.modal-btn.solid{background:linear-gradient(180deg,#4a86f5,var(--blue));color:#fff;box-shadow:0 14px 26px -12px rgba(47,111,237,.65)}.modal-btn.solid:hover{transform:translateY(-2px);box-shadow:0 18px 30px -12px rgba(47,111,237,.75)}.modal-success{text-align:center;padding:10px 0 4px}.modal-success .chk{width:64px;height:64px;border-radius:50%;background:var(--green-bg);color:var(--green);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;animation:studentBadgePop .4s cubic-bezier(.34,1.56,.64,1)}.modal-success .chk i{font-size:30px}@keyframes studentBadgePop{from{transform:scale(0)}to{transform:scale(1)}}
+  @media (max-width:900px){.student-enrollment-page{padding-inline:18px}.layout{grid-template-columns:1fr}}@media (max-width:520px){.student-enrollment-page{padding-inline:10px}.grid{grid-template-columns:1fr}.full-field{grid-column:auto}.review-grid{grid-template-columns:1fr}.review-item.full,.review-pair{grid-column:auto}.review-pair{flex-direction:column}.ri-id.compact,.ri-mother.wide{flex:auto}.modal-card{padding:30px 20px 24px}}
+</style>
 
-.photo-preview {
-  width: 200px;
-  height: 200px;
-  border: 2px dashed var(--paper-line);
-  border-radius: 12px;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #fff;
-  position: relative;
-}
+<style>
+  @keyframes ringPulse{0%{transform:scale(.85);opacity:.9}100%{transform:scale(1.25);opacity:0}}
+  @keyframes barFlow{0%,100%{background-position:0 0}50%{background-position:100% 0}}
+  @keyframes reviewIn{to{opacity:1;transform:translateY(0)}}
+  .modal-icon::after{animation-name:ringPulse}
+  .modal-card::before{animation-name:barFlow}
+  .review-item{animation-name:reviewIn}
+</style>
 
-.photo-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
+<style>
+  /* Keep the confirmation actions faithful to the reference despite global button styles. */
+  .modal-overlay .modal-actions{display:flex!important;align-items:stretch!important;gap:10px!important}
+  .modal-overlay .modal-btn{flex:1 1 0!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:7px!important;min-height:48px!important;padding:13px!important;border-radius:14px!important;font-family:'Manrope',system-ui,sans-serif!important;font-size:13.5px!important;font-weight:800!important;line-height:1.2!important;opacity:1!important;visibility:visible!important}
+  .modal-overlay .modal-btn.ghost{background:var(--bg)!important;color:var(--muted)!important;border:1px solid var(--border)!important;box-shadow:none!important}
+  .modal-overlay .modal-btn.ghost:hover{background:#eceff5!important;color:var(--ink)!important}
+  .modal-overlay .modal-btn.solid{background:linear-gradient(180deg,#4a86f5,#2f6fed)!important;color:#fff!important;border:0!important;box-shadow:0 14px 26px -12px rgba(47,111,237,.65)!important}
+  .modal-overlay .modal-btn.solid:hover{background:linear-gradient(180deg,#5a91f6,#2f6fed)!important;color:#fff!important;transform:translateY(-2px)!important;box-shadow:0 18px 30px -12px rgba(47,111,237,.75)!important}
+  .modal-overlay .modal-btn i,.modal-overlay .modal-btn svg{color:currentColor!important;flex:0 0 auto}
+  .modal-overlay .modal-btn.solid i,.modal-overlay .modal-btn.solid svg{color:#fff!important}
+  .modal-overlay .modal-success .chk{background:rgba(31,157,85,.09)!important;color:#1f9d55!important}
+  .modal-overlay .modal-success h3{color:#16233a!important}
+  .modal-overlay .modal-success .modal-sub{color:#67748c!important}
+  .modal-overlay .modal-success .chk svg{width:30px!important;height:30px!important;display:block!important}
+</style>
 
-.photo-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  color: var(--slate);
-}
+<style>
+  #studentForm.id-conflict input:not(#idInput),#studentForm.id-conflict select,#studentForm.id-conflict textarea,#studentForm.id-conflict button,#studentForm.id-conflict #dropzone{opacity:.55;cursor:not-allowed}
+  #studentForm.id-conflict .id-hint{color:var(--red)!important}
+</style>
 
-.photo-placeholder i {
-  font-size: 2rem;
-  opacity: 0.5;
-}
+<script>
+(() => {
+  const form = document.getElementById('studentForm'), idInput = document.getElementById('idInput'), idStatus = document.getElementById('idStatus'), idStatusText = document.getElementById('idStatusText'), idHint = document.getElementById('idHint'), nameInput = document.getElementById('nameInput'), pvName = document.getElementById('pvName'), pvId = document.getElementById('pvId'), pvAvatar = document.getElementById('pvAvatar');
+  const formControls = [...form.querySelectorAll('input, select, textarea, button')], initiallyDisabled = new Map(formControls.map(control => [control, control.disabled]));
+  const setStatus = (label, bg, fg, checking = false) => { idStatus.className = `id-status${checking ? ' checking' : ''}`; idStatusText.textContent = label; idStatus.style.setProperty('--st-bg', bg); idStatus.style.setProperty('--st-fg', fg); };
+  function updateIdentity() { const value = nameInput.value.trim(); pvName.textContent = value || '-'; pvAvatar.setAttribute('data-initials', value.split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0]?.toUpperCase() || '').join('') || 'S'); }
+  const idCheckUrl = idInput.dataset.checkUrl, currentStudentId = idInput.dataset.currentStudentId || '';
+  let idTimer, idRequest, idCheckSequence = 0;
+  const idStatusStyles = {
+    empty: { label: 'Madhan', bg: '#eceff3', fg: '#67748c' },
+    checking: { label: 'La Hubinayo', bg: 'var(--blue-bg)', fg: 'var(--blue)' },
+    available: { label: 'La Heli Karo', bg: 'var(--green-bg)', fg: 'var(--green)' },
+    used: { label: 'La Adeegsaday', bg: 'var(--red-bg)', fg: 'var(--red)' },
+  };
+  function syncFormEditability(locked) { form.classList.toggle('id-conflict', locked); formControls.forEach(control => { if (control === idInput || control.type === 'hidden') return; control.disabled = locked || initiallyDisabled.get(control); }); idHint.textContent = locked ? 'Tira-taxanahan ardayga hore ayaa loo adeegsaday. Beddel si aad u sii waddo.' : 'Si toos ah ayaa loo hubinayaa in tira-taxanuhu u gaar yahay ardaygan.'; }
+  function setIdStatus(state) { const status = idStatusStyles[state] || idStatusStyles.checking; setStatus(status.label, status.bg, status.fg, state === 'checking'); idStatus.dataset.state = state; syncFormEditability(state === 'used'); }
+  function checkId() {
+    clearTimeout(idTimer);
+    idRequest?.abort();
+    const value = idInput.value.trim();
+    const sequence = ++idCheckSequence;
+    pvId.textContent = value || '-';
+    if (!value) { setIdStatus('empty'); return; }
+    setIdStatus('checking');
+    idTimer = setTimeout(async () => {
+      const controller = new AbortController();
+      idRequest = controller;
+      const params = new URLSearchParams({ code: value });
+      if (currentStudentId) params.set('current_student_id', currentStudentId);
+      try {
+        const response = await fetch(`${idCheckUrl}?${params.toString()}`, { headers: { Accept: 'application/json' }, signal: controller.signal });
+        if (!response.ok) throw new Error(`Student ID check failed (${response.status})`);
+        const data = await response.json();
+        if (sequence !== idCheckSequence) return;
+        setIdStatus(data.status === 'used' ? 'used' : 'available');
+      } catch (error) {
+        if (error.name !== 'AbortError' && sequence === idCheckSequence) setIdStatus('checking');
+      }
+    }, 350);
+  }
+  nameInput.addEventListener('input', updateIdentity); idInput.addEventListener('input', checkId); updateIdentity(); checkId();
+  [['academic_year_id', 'pvYear'], ['academic_level_id', 'pvLevel'], ['academic_class_id', 'pvClass'], ['academic_section_id', 'pvSection']].forEach(([source, target]) => { const select = document.getElementById(source); select?.addEventListener('change', () => { document.getElementById(target).textContent = select.options[select.selectedIndex]?.textContent || '-'; }); });
+  const activeToggle = document.getElementById('activeToggle'), activeInput = document.getElementById('activeInput'), pvActive = document.getElementById('pvActive'); activeToggle.addEventListener('click', () => { activeToggle.classList.toggle('on'); const active = activeToggle.classList.contains('on'); activeInput.checked = active; pvActive.textContent = active ? 'Active' : 'Inactive'; pvActive.classList.toggle('pill-good', active); pvActive.classList.toggle('pill-bad', !active); });
+  const lockToggle = document.getElementById('lockToggle'), lockInput = document.getElementById('lockInput'), pvLock = document.getElementById('pvLock'); lockToggle.addEventListener('click', () => { lockToggle.classList.toggle('on'); const locked = lockToggle.classList.contains('on'); lockInput.checked = locked; pvLock.textContent = locked ? 'Locked' : 'Unlocked'; pvLock.classList.toggle('pill-bad', locked); pvLock.classList.toggle('pill-good', !locked); });
+  const photoInput = document.getElementById('photoInput'), dropzone = document.getElementById('dropzone'), dropzoneEmpty = document.getElementById('dropzoneEmpty'), dropzonePreview = document.getElementById('dropzonePreview'), photoThumb = document.getElementById('photoThumb'), photoFileName = document.getElementById('photoFileName'); dropzone.addEventListener('click', event => { if (!event.target.closest('#changePhotoBtn')) photoInput.click(); }); photoInput.addEventListener('change', () => { const file = photoInput.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => { photoThumb.src = reader.result; photoFileName.textContent = file.name; dropzoneEmpty.style.display = 'none'; dropzonePreview.style.display = 'flex'; }; reader.readAsDataURL(file); }); document.getElementById('changePhotoBtn')?.addEventListener('click', event => { event.stopPropagation(); photoInput.click(); });
+  const modalOverlay = document.getElementById('modalOverlay'), modalCard = document.getElementById('modalCard'), modalDefaultHTML = modalCard.innerHTML, SUCCESS_DISPLAY_MS = 2000; let confirmedSubmit = false;
+  function fillReview() { const text = selector => document.querySelector(selector)?.value.trim() || '-'; document.getElementById('mName').textContent = text('[name="full_name"]'); document.getElementById('mId').textContent = text('[name="student_code"]'); document.getElementById('mMother').textContent = text('[name="mother_name"]'); document.getElementById('mPhone').textContent = text('[name="phone"]'); document.getElementById('mGender').textContent = text('[name="gender"]'); document.getElementById('mYear').textContent = document.getElementById('academic_year_id').selectedOptions[0]?.textContent || '-'; document.getElementById('mLevel').textContent = document.getElementById('academic_level_id').selectedOptions[0]?.textContent || '-'; document.getElementById('mClass').textContent = document.getElementById('academic_class_id').selectedOptions[0]?.textContent || '-'; document.getElementById('mSection').textContent = document.getElementById('academic_section_id').selectedOptions[0]?.textContent || '-'; document.getElementById('mActive').textContent = activeInput.checked ? 'Firfircoon' : 'Aan firfircoonayn'; document.getElementById('mLock').textContent = lockInput.checked ? 'La xidhay' : 'Furan'; document.getElementById('riStatus').classList.toggle('is-bad', !activeInput.checked); document.getElementById('riResult').classList.toggle('is-bad', lockInput.checked); }
+  form.addEventListener('submit', event => { if (confirmedSubmit) return; if (idStatus.dataset.state !== 'available') { event.preventDefault(); idInput.focus(); checkId(); return; } event.preventDefault(); fillReview(); modalOverlay.classList.add('show'); modalOverlay.setAttribute('aria-hidden', 'false'); }); document.getElementById('modalCancel').addEventListener('click', () => { modalOverlay.classList.remove('show'); modalOverlay.setAttribute('aria-hidden', 'true'); }); modalOverlay.addEventListener('click', event => { if (event.target === modalOverlay) { modalOverlay.classList.remove('show'); modalOverlay.setAttribute('aria-hidden', 'true'); } }); document.getElementById('modalConfirm').addEventListener('click', () => { modalCard.innerHTML = '<div class="modal-success"><div class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div><h3>Si guul leh ayaa loo keydiyey!</h3><p class="modal-sub">Xogta ardeyga waa la diiwaan geliyay.</p></div>'; setTimeout(() => { confirmedSubmit = true; modalOverlay.classList.remove('show'); modalOverlay.setAttribute('aria-hidden', 'true'); form.submit(); }, SUCCESS_DISPLAY_MS); });
+  const yearSelect = document.getElementById('academic_year_id'), levelSelect = document.getElementById('academic_level_id'), classSelect = document.getElementById('academic_class_id'), sectionSelect = document.getElementById('academic_section_id');
+  const academicClasses = { {% for level in year_levels %}{{ level.id }}: [{% for cls in year_class_map.get(level.id, []) %}{id: {{ cls.id }}, name: {{ cls.name|tojson }}, sections: [{% if cls.legacy_class_id %}{% for section in cls.legacy_class.sections %}{id: {{ section.id }}, name: {{ section.name|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}]}{% if not loop.last %},{% endif %}{% endfor %}],{% endfor %} };
+  function populateClasses() { const levelId = Number(levelSelect.value), selected = classSelect.dataset.selected || ''; classSelect.innerHTML = '<option value="">Dooro Fasalka</option>'; sectionSelect.innerHTML = '<option value="">Dooro Qaybta</option>'; (academicClasses[levelId] || []).forEach(item => { const option = new Option(item.name, item.id); if (String(item.id) === String(selected)) option.selected = true; classSelect.appendChild(option); }); populateSections(); }
+  function populateSections() { const levelId = Number(levelSelect.value), classId = Number(classSelect.value), selected = sectionSelect.dataset.selected || ''; sectionSelect.innerHTML = '<option value="">Dooro Qaybta</option>'; const item = (academicClasses[levelId] || []).find(entry => entry.id === classId); (item?.sections || []).forEach(section => { const option = new Option(section.name, section.id); if (String(section.id) === String(selected)) option.selected = true; sectionSelect.appendChild(option); }); }
+  {% if not placement_locked %}levelSelect?.addEventListener('change', populateClasses); classSelect?.addEventListener('change', populateSections); yearSelect?.addEventListener('change', () => { if (yearSelect.value) window.location.href = `${window.location.pathname}?year_id=${encodeURIComponent(yearSelect.value)}`; });{% endif %}
+  if (levelSelect && classSelect && !{{ 'true' if placement_locked else 'false' }}) populateClasses();
+})();
+</script>
+<style>
+  /* Keep the confirmation dialog fully visible at normal desktop zoom. */
+  @media (min-width:521px) and (max-height:900px){
+    .modal-overlay{padding:12px 16px;overflow:hidden}
+    .modal-card{padding:22px 24px 20px;border-radius:24px}
+    .modal-head{gap:12px;margin-bottom:16px}
+    .modal-icon{width:44px;height:44px;border-radius:14px}
+    .modal-icon i{font-size:20px}
+    .modal-card h3{font-size:16.5px;margin-top:1px}
+    .modal-sub{font-size:12px}
+    .review-grid{gap:7px;margin-bottom:16px}
+    .review-item{gap:8px;padding:8px 10px;border-radius:12px}
+    .ric{width:26px;height:26px;border-radius:8px}
+    .ric i{font-size:12px}
+    .rlabel{font-size:8px}
+    .rval{font-size:11.5px}
+    .modal-overlay .modal-btn{min-height:42px!important;padding:10px!important}
+  }
 
-.photo-placeholder span {
-  font-size: 0.85rem;
-  text-align: center;
-}
-
-.photo-status {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 8px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-}
-
-.photo-status.success {
-  background: var(--green-bg);
-  color: var(--green);
-}
-
-.photo-status.preview {
-  background: var(--blue-bg);
-  color: var(--blue);
-}
+  /* Give each confirmation card a soft tint that matches its icon accent. */
+  .review-item.ri-name{--r-bg:#eef4ff;border-color:#d8e5ff}
+  .review-item.ri-id{--r-bg:#f1f4f8;border-color:#dce3eb}
+  .review-item.ri-mother{--r-bg:#fff0f7;border-color:#f8d9e9}
+  .review-item.ri-phone{--r-bg:#eafaff;border-color:#cceff7}
+  .review-item.ri-gender{--r-bg:#f5efff;border-color:#e7d9ff}
+  .review-item.ri-year{--r-bg:#eff0ff;border-color:#dcdfff}
+  .review-item.ri-level{--r-bg:#f5efff;border-color:#e7d9ff}
+  .review-item.ri-class{--r-bg:#eafbf7;border-color:#cdeee6}
+  .review-item.ri-section{--r-bg:#fff7e5;border-color:#f5e2b7}
+  .review-item.ri-status{--r-bg:#ecfbf2;border-color:#cdeed9}
+  .review-item.ri-result{--r-bg:#edf5ff;border-color:#d2e4ff}
+  .id-status.checking .sd{animation:none}
 </style>
 {% endblock %}

@@ -10,9 +10,6 @@
   {% include "admin/_results_hub_header.html" %}
 
   <main class="rh-screen" id="dashboard-screen">
-    <div class="rh-eyebrow">{{ rh_label("dashboard.eyebrow", default="Guudmarka") }}</div>
-    <h1 class="rh-title">{{ rh_label("dashboard.title", default="Results Dashboard") }}</h1>
-
     <div class="rh-selector-row">
       <input type="hidden" id="year-selector" value="{{ selected_year.id if selected_year else '' }}">
       <div class="rh-selector year-selector" id="yearSelector" onclick="toggleYearDropdown(event)">

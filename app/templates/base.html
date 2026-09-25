@@ -38,6 +38,16 @@
                 <i class="fa-solid fa-xmark" aria-hidden="true"></i>
               </button>
             </div>
+          {% elif category == "behavior-delete-success" %}
+            <div class="toast behavior-delete-success-toast" role="status" data-auto-dismiss="5000">
+              <span class="behavior-delete-success-icon" aria-hidden="true"><i class="fa-solid fa-check"></i><span></span></span>
+              <span class="behavior-delete-success-copy">
+                <strong>Si guul leh ayaa loo tirtiray</strong>
+                <span>{{ _(message) }}</span>
+                <span class="behavior-delete-success-tags"><b><i class="fa-solid fa-shield-check"></i> La xaqiijiyey</b><b><i class="fa-solid fa-database"></i> Xogta waa la cusbooneysiiyey</b></span>
+              </span>
+              <button type="button" class="behavior-delete-success-close" aria-label="Xir fariinta" onclick="this.closest('.behavior-delete-success-toast').remove()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
           {% else %}
             <div class="toast {{ category }}">{{ _(message) }}</div>
           {% endif %}
@@ -45,7 +55,25 @@
       </div>
     {% endif %}
   {% endwith %}
+  <script>
+    document.querySelectorAll('[data-auto-dismiss]').forEach((toast) => {
+      const delay = Number(toast.dataset.autoDismiss) || 5000;
+      window.setTimeout(() => {
+        toast.classList.add('is-leaving');
+        window.setTimeout(() => toast.remove(), 260);
+      }, delay);
+    });
+  </script>
   {% block content %}{% endblock %}
+  <style id="global-focus-reset">
+    /* Permanent UI preference: focused controls keep their normal border only. */
+    html body *:not(#__global_focus_reset_never_match):focus,
+    html body *:not(#__global_focus_reset_never_match):focus-visible,
+    html body *:not(#__global_focus_reset_never_match):focus-within {
+      outline: none !important;
+      box-shadow: none !important;
+    }
+  </style>
   <script>window.APP_TRANSLATIONS = {{ active_translations|tojson }};</script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
