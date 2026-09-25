@@ -61,6 +61,16 @@ from .promotion_service import (
 admin_bp = Blueprint("admin", __name__)
 
 
+@admin_bp.after_request
+def prevent_cached_promotion_pages(response):
+    """Always show the latest evaluation/history state after an admin action."""
+    if request.path.startswith("/admin/promotion-rules/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 def _top10_tunnel_tracks(raw_value):
     """Read the small, persistent Top 10 music library defensively."""
     try:
@@ -3283,14 +3293,19 @@ def promotion_rules_evaluate():
             # default mode.
             action = "execute_new"
         reevaluate_enrollment_ids = request.form.getlist("reevaluate_enrollment_ids")
+        reevaluation_reason = request.form.get("reevaluation_reason", "").strip()
     else:
         year_id = request.args.get("year_id", type=int)
         level_id = request.args.get("level_id", type=int)
         exam_id = request.args.get("exam_id", type=int)
         class_id = request.args.get("class_id", type=int)
         subject_ids = request.args.getlist("subject_id") or None
-        action = "preview" if request.args.get("preview") else None
+        # A selected exam on a GET is a read-only preview request.  This keeps
+        # the evaluation list current when a result is entered later and the
+        # evaluator page is opened again, without persisting anything.
+        action = "preview" if (request.args.get("preview") or exam_id) else None
         reevaluate_enrollment_ids = []
+        reevaluation_reason = ""
 
     page_data = _promotion_evaluation_page_data(year_id, level_id, exam_id, class_id)
     preview_result = None
@@ -3307,6 +3322,8 @@ def promotion_rules_evaluate():
                 raise PromotionValidationError("Exact Exam is required. Select the exam whose results should be evaluated.")
             if not page_data["selected_exam"] or page_data["selected_exam"].id != exam_id:
                 raise PromotionValidationError("The selected Exam does not belong to the selected Academic Year. Choose an exam from that year.")
+            if action == "reevaluate_selected" and not reevaluation_reason:
+                raise PromotionValidationError("A reason is required for re-evaluation.")
             preview_result = evaluate_promotion_scope(
                 page_data["selected_year_id"],
                 page_data["selected_level_id"],
@@ -3316,6 +3333,7 @@ def promotion_rules_evaluate():
                 persist=action != "preview",
                 evaluation_mode="reevaluate" if action == "reevaluate_selected" else "new",
                 reevaluate_enrollment_ids=reevaluate_enrollment_ids,
+                reevaluation_reason=reevaluation_reason,
             )
             if action in {"execute_new", "reevaluate_selected"}:
                 counts = preview_result["counts"]
@@ -3332,14 +3350,6 @@ def promotion_rules_evaluate():
                     raise PromotionValidationError(
                         "No eligible StudentEnrollments were found for the selected Academic Year + Level + Class scope."
                     )
-                elif page_data["selected_exam"].is_final_evaluation and (
-                    counts["save_incomplete"] or counts["save_invalid"]
-                ):
-                    raise PromotionValidationError(
-                        "Evaluation was not saved because the selected final scope contains "
-                        f"{counts['save_incomplete']} incomplete and {counts['save_invalid']} invalid enrollment(s). "
-                        "Complete the required results and correct invalid data, then try again."
-                    )
                 else:
                     audit(
                         "Promotion Evaluation",
@@ -3353,6 +3363,13 @@ def promotion_rules_evaluate():
                             f"Student {row['student'].student_code}; scope year={current.academic_year_id}, level={current.academic_year_level_id}, exam={current.exam_id}; "
                             f"previous outcome={previous.final_outcome or previous.evaluation_status} at {previous.evaluated_at.isoformat()}; "
                             f"new outcome={current.final_outcome or current.evaluation_status} at {current.evaluated_at.isoformat()}",
+                        )
+                    for correction in preview_result["outcome_corrections"]:
+                        audit(
+                            "Promotion Academic Outcome Correction",
+                            f"Student {correction['student'].student_code}; "
+                            f"academic outcome {correction['previous_outcome']} -> {correction['new_outcome']} "
+                            f"after re-evaluation for exam {exam_id}; reason={correction['reason']}",
                         )
                     db.session.commit()
                     verify_committed_evaluation_scope(
@@ -3441,6 +3458,13 @@ def promotion_rules_evaluations():
         PromotionEvaluation.evaluated_at.desc(),
         PromotionEvaluation.id.desc(),
     ).limit(200).all()
+    evaluation_reasons = {}
+    for evaluation in evaluations:
+        try:
+            context_snapshot = json.loads(evaluation.evaluation_context_json or "{}")
+        except (TypeError, ValueError):
+            context_snapshot = {}
+        evaluation_reasons[evaluation.id] = context_snapshot.get("reevaluation_reason")
     return render_template(
         "admin/promotion_rules_evaluations.html",
         years=years,
@@ -3454,6 +3478,7 @@ def promotion_rules_evaluations():
         selected_final_outcome=final_outcome,
         exams=(Exam.query.filter_by(academic_year_id=year_id, is_active=True).order_by(Exam.sort_order, Exam.name).all() if year_id else []),
         evaluations=evaluations,
+        evaluation_reasons=evaluation_reasons,
     )
 
 

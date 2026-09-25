@@ -267,7 +267,7 @@ class TestPhase3CPromotionEvaluation(unittest.TestCase):
         db.session.commit()
         self.assertEqual(executed["counts"]["evaluated"], 1)
         self.assertEqual(executed["counts"]["outcomes_saved"], 0)
-        self.assertEqual(PromotionEvaluation.query.count(), 2)
+        self.assertEqual(PromotionEvaluation.query.count(), 1)
         self.assertEqual(StudentEnrollmentMovement.query.count(), 0)
         self.assertEqual(self.enrollment.academic_outcome, "pending")
 
@@ -300,6 +300,7 @@ class TestPhase3CPromotionEvaluation(unittest.TestCase):
         original_ids = {
             row["enrollment"].id: row["evaluation"].id
             for row in first_run["preview_rows"]
+            if row["evaluation"].id is not None
         }
 
         later_student = Student(
@@ -327,8 +328,8 @@ class TestPhase3CPromotionEvaluation(unittest.TestCase):
             subject_ids=[self.math_a.id],
             persist=False,
         )
-        self.assertEqual(preview["counts"]["not_yet_evaluated"], 1)
-        self.assertEqual(preview["counts"]["already_evaluated"], 2)
+        self.assertEqual(preview["counts"]["not_yet_evaluated"], 2)
+        self.assertEqual(preview["counts"]["already_evaluated"], 1)
 
         second_run = evaluate_promotion_scope(
             self.year_a.id,
@@ -340,7 +341,7 @@ class TestPhase3CPromotionEvaluation(unittest.TestCase):
         )
         db.session.commit()
         self.assertEqual(second_run["counts"]["new_evaluated"], 1)
-        self.assertEqual(PromotionEvaluation.query.count(), 3)
+        self.assertEqual(PromotionEvaluation.query.count(), 2)
         for enrollment_id, evaluation_id in original_ids.items():
             self.assertEqual(
                 latest_promotion_evaluation(
@@ -402,6 +403,66 @@ class TestPhase3CPromotionEvaluation(unittest.TestCase):
             portal_academic_outcome(self.enrollment, exam_id=self.exam_a.id)["label"],
             "HADHAY",
         )
+
+    def test_rule_threshold_change_marks_saved_evaluation_for_re_evaluation(self):
+        self._result(self.student, self.exam_a, self.subject_math, 60)
+        set_promotion_rules_enabled(True)
+        upsert_promotion_rule(
+            self.year_a.id,
+            self.level_a.id,
+            exam_id=self.exam_a.id,
+            overall_pass_threshold=50,
+            critical_subject_pass_threshold=50,
+            critical_subject_ids=[],
+        )
+        first = evaluate_promotion_scope(
+            self.year_a.id,
+            self.level_a.id,
+            self.exam_a.id,
+            academic_year_class_id=self.class_a.id,
+            subject_ids=[self.math_a.id],
+            persist=True,
+        )
+        db.session.commit()
+        self.assertEqual(first["counts"]["new_evaluated"], 1)
+
+        upsert_promotion_rule(
+            self.year_a.id,
+            self.level_a.id,
+            exam_id=self.exam_a.id,
+            overall_pass_threshold=70,
+            critical_subject_pass_threshold=50,
+            critical_subject_ids=[],
+        )
+        db.session.commit()
+        preview = evaluate_promotion_scope(
+            self.year_a.id,
+            self.level_a.id,
+            self.exam_a.id,
+            academic_year_class_id=self.class_a.id,
+            subject_ids=[self.math_a.id],
+            persist=False,
+        )
+        row = next(item for item in preview["preview_rows"] if item["enrollment"].id == self.enrollment.id)
+        self.assertEqual(row["state"], "CHANGED")
+        self.assertTrue(row["can_reevaluate"])
+
+        updated = evaluate_promotion_scope(
+            self.year_a.id,
+            self.level_a.id,
+            self.exam_a.id,
+            academic_year_class_id=self.class_a.id,
+            subject_ids=[self.math_a.id],
+            persist=True,
+            evaluation_mode="reevaluate",
+            reevaluate_enrollment_ids=[self.enrollment.id],
+            reevaluation_reason="Promotion threshold was updated",
+        )
+        db.session.commit()
+        self.assertEqual(updated["counts"]["reevaluated"], 1)
+        latest = latest_promotion_evaluation(self.enrollment, exam_id=self.exam_a.id)
+        self.assertEqual(latest.final_outcome, "FAIL")
+        self.assertIn("Promotion threshold was updated", latest.evaluation_context_json)
 
     def test_evaluation_page_preview_is_read_only(self):
         self._result(self.student, self.exam_a, self.subject_math, 75)

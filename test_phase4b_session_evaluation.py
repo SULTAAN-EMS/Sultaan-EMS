@@ -174,16 +174,16 @@ class TestPhase4BSessionEvaluation(TestPhase4AExamAwarePromotion):
         self.assertEqual(plan["items"][0]["classification"], "READY")
 
     def test_final_scope_incomplete_is_atomic_and_creates_no_partial_rows(self):
-        with self.assertRaisesRegex(PromotionValidationError, "No evaluation or academic outcome was committed"):
-            evaluate_promotion_scope(
-                self.year.id,
-                self.level.id,
-                self.final_exam.id,
-                academic_year_class_id=self.year_class.id,
-                subject_ids=[self.math.id, self.english.id],
-                persist=True,
-            )
-        db.session.rollback()
+        executed = evaluate_promotion_scope(
+            self.year.id,
+            self.level.id,
+            self.final_exam.id,
+            academic_year_class_id=self.year_class.id,
+            subject_ids=[self.math.id, self.english.id],
+            persist=True,
+        )
+        db.session.commit()
+        self.assertEqual(executed["counts"]["new_evaluated"], 0)
         self.assertEqual(PromotionEvaluation.query.count(), 0)
         self.assertEqual(self.enrollment.academic_outcome, "pending")
 

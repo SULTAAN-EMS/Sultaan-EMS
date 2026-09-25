@@ -66,6 +66,7 @@
   }
 
   document.addEventListener('submit', (event) => {
+    if (event.defaultPrevented) return;
     const form = event.target.closest('.promotion-page form[method="post"]');
     const submitter = event.submitter;
     if (!form || !submitter || !submitter.classList.contains('promotion-button')) return;

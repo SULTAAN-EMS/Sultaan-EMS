@@ -572,6 +572,10 @@ document.querySelectorAll('.rh-score').forEach(input => {
     clearTimeout(debounceTimers.get(input.name));
     debounceTimers.set(input.name, setTimeout(() => autosaveScore(input), 1200));
   });
+  input.addEventListener('change', () => {
+    clearTimeout(debounceTimers.get(input.name));
+    autosaveScore(input);
+  });
 });
 
 window.addEventListener('online', () => setSaveStatus('idle', 'Back online'));

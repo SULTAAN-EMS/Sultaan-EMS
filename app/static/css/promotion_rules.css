@@ -323,3 +323,28 @@ body:has(.promotion-page) .sidebar-toggle-btn{background:rgba(255,255,255,.1);bo
 body.promotion-modal-open{overflow:hidden;}
 @media(max-width:900px){.promotion-modal-scope-grid{grid-template-columns:1fr 1fr;}.promotion-modal-thresholds{grid-template-columns:1fr;}}
 @media(max-width:560px){.promotion-modal-shell{padding:12px;}.promotion-modal-content{padding:20px 16px 18px;}.promotion-modal-scope-grid{grid-template-columns:1fr;}.promotion-modal-header{margin-bottom:18px;}.promotion-modal-heading{align-items:flex-start;}.promotion-modal-heading p{font-size:11.5px;}.promotion-modal-actions{justify-content:stretch;}.promotion-modal-actions .promotion-button{flex:1;}.promotion-modal-subject-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}}
+
+/* Re-evaluation selection and reason dialog. */
+.promotion-selection-tools--changed{justify-content:flex-start;padding:11px 13px;border:1px solid #e1d6b8;border-radius:11px;background:#fffdf7;transition:border-color .18s,background .18s,transform .18s;}
+.promotion-selection-tools--changed>span{margin-right:0;color:#7a5d1f;}
+.promotion-selection-tools--changed>small{color:#7a715b;font-size:12px;}
+.promotion-selection-tools--changed .promotion-selection-feedback{flex-basis:100%;min-height:16px;color:#a2473c;font-weight:800;}
+.promotion-selection-tools--changed.is-attention{border-color:#b4924a;background:#faf4e7;transform:translateX(3px);}
+.promotion-student-select{display:grid;place-items:center;flex:0 0 20px;width:20px;height:20px;}
+.promotion-student-select input{width:16px;height:16px;margin:0;accent-color:#9c7a2e;cursor:pointer;}
+.promotion-reason-modal[hidden]{display:none;}
+.promotion-reason-modal{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:22px;background:rgba(20,15,6,.48);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);}
+.promotion-reason-dialog{width:min(100%,500px);padding:24px;border:1px solid #e1d6b8;border-radius:16px;background:#fffdf7;box-shadow:0 24px 64px rgba(20,15,6,.28);}
+.promotion-reason-dialog__header{display:flex;align-items:flex-start;gap:12px;margin-bottom:20px;}
+.promotion-reason-dialog__header>div:nth-child(2){min-width:0;flex:1;}
+.promotion-reason-dialog__icon{display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;border-radius:12px;background:#f3e9ce;color:#7a5d1f;font-size:18px;}
+.promotion-reason-dialog h2{margin:3px 0 4px;color:#201c13;font:700 19px/1.2 'Fraunces',Georgia,serif;}
+.promotion-reason-dialog p{margin:0;color:#7a715b;font-size:12px;line-height:1.45;}
+.promotion-reason-dialog__close{display:grid;place-items:center;width:32px;height:32px;border:1px solid #e1d6b8;border-radius:9px;background:#fffdf7;color:#7a715b;cursor:pointer;}
+.promotion-reason-dialog__close:hover{background:#faf4e7;color:#4e4736;}
+.promotion-reason-dialog__field{display:grid;gap:7px;color:#4e4736;font-size:12px;font-weight:800;}
+.promotion-reason-dialog__field textarea{width:100%;min-height:104px;padding:11px 12px;border:1px solid #e1d6b8;border-radius:11px;background:#faf4e7;color:#201c13;font:inherit;line-height:1.45;resize:vertical;outline:0;}
+.promotion-reason-dialog__field textarea:focus{border-color:#b4924a;box-shadow:none;outline:0;}
+.promotion-reason-dialog__field small{min-height:16px;color:#a2473c;font-size:11px;}
+.promotion-reason-dialog__actions{display:flex;justify-content:flex-end;gap:9px;margin-top:4px;}
+@media(max-width:560px){.promotion-reason-modal{padding:12px;}.promotion-reason-dialog{padding:18px;}.promotion-reason-dialog__actions{justify-content:stretch;}.promotion-reason-dialog__actions .promotion-button{flex:1;}}

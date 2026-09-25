@@ -4446,6 +4446,8 @@ def save_student_from_form(student):
     student.is_result_locked = bool(request.form.get("is_result_locked"))
     student.lock_reason = request.form.get("lock_reason", "").strip()
     student.is_active = bool(request.form.get("is_active"))
+    if request.form.get("clear_photo") == "1":
+        student.photo_path = None
     photo = request.files.get("photo")
     if photo and photo.filename:
         if not allowed_file(photo.filename, ALLOWED_PHOTOS):

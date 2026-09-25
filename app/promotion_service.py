@@ -907,12 +907,15 @@ def evaluate_promotion_scope(
     persist=False,
     evaluation_mode="new",
     reevaluate_enrollment_ids=None,
+    selected_enrollment_ids=None,
+    allow_outcome_correction=False,
+    reevaluation_reason=None,
 ):
-    """Preview a scope or save only new/explicitly selected evaluations.
+    """Preview a scope or save complete new/explicitly selected evaluations.
 
     Existing snapshots remain immutable history.  A normal save creates rows
-    only for enrollments without an exact exam snapshot; re-evaluation creates
-    a newer snapshot only for explicitly selected existing enrollments.
+    only for complete enrollments without an exact exam snapshot; re-evaluation
+    creates a newer snapshot only for explicitly selected changed enrollments.
     """
     year, level, exam = resolve_evaluation_context(
         academic_year_id, academic_year_level_id, exam_id
@@ -950,27 +953,49 @@ def evaluate_promotion_scope(
             reevaluate_ids = {int(item) for item in reevaluate_enrollment_ids}
         except (TypeError, ValueError):
             raise PromotionValidationError("Re-evaluation student selection is invalid")
+    selected_ids = set()
+    if selected_enrollment_ids:
+        try:
+            selected_ids = {int(item) for item in selected_enrollment_ids}
+        except (TypeError, ValueError):
+            raise PromotionValidationError("Evaluation student selection is invalid")
     if evaluation_mode not in {"new", "reevaluate"}:
         raise PromotionValidationError("Evaluation mode is invalid")
+    reevaluation_reason = str(reevaluation_reason or "").strip()[:500] or None
     # A session/non-final evaluation is immutable history only.  A Final
     # Evaluation is the one workflow that also persists the canonical
     # PASS/FAIL outcome on the exact source enrollment.  The explicit outcome
     # application ledger remains separate and is still created only when the
     # administrator applies or transitions that saved result.
     outcomes_saved = 0
+    outcomes_corrected = 0
     outcomes_confirmed = 0
+    outcome_corrections = []
     preview_rows = []
     for enrollment in enrollments:
         saved_evaluation = latest_promotion_evaluation(enrollment, exam_id=exam.id)
-        should_persist = persist and (
-            (evaluation_mode == "new" and saved_evaluation is None)
+        snapshot_context = dict(context)
+        if reevaluation_reason:
+            snapshot_context["reevaluation_reason"] = reevaluation_reason
+        snapshot = evaluate_student_promotion(enrollment, snapshot_context, persist=False)
+        state = "NOT_YET_EVALUATED" if saved_evaluation is None else (
+            "CHANGED" if evaluation_changed_since(saved_evaluation, snapshot) else "ALREADY_EVALUATED"
+        )
+        should_persist = persist and snapshot.evaluation_status == "EVALUATED" and (
+            (
+                evaluation_mode == "new"
+                and saved_evaluation is None
+                and (not selected_ids or enrollment.id in selected_ids)
+            )
             or (
                 evaluation_mode == "reevaluate"
-                and saved_evaluation is not None
+                and state == "CHANGED"
                 and enrollment.id in reevaluate_ids
             )
         )
-        snapshot = evaluate_student_promotion(enrollment, context, persist=should_persist)
+        if should_persist:
+            db.session.add(snapshot)
+            db.session.flush()
         if should_persist:
             snapshots.append(snapshot)
         if persist and should_persist and exam.is_final_evaluation and snapshot.evaluation_status == "EVALUATED":
@@ -983,35 +1008,33 @@ def evaluate_promotion_scope(
                 enrollment.academic_outcome = expected_outcome
                 outcomes_saved += 1
             elif enrollment.academic_outcome not in terminal_outcomes[expected_outcome]:
-                raise PromotionValidationError(
-                    "The saved final evaluation conflicts with the existing academic outcome "
-                    f"for student {enrollment.student.student_code}"
-                )
+                if evaluation_mode != "reevaluate" and not allow_outcome_correction:
+                    raise PromotionValidationError(
+                        "The saved final evaluation conflicts with the existing academic outcome "
+                        f"for student {enrollment.student.student_code}."
+                    )
+                previous_outcome = enrollment.academic_outcome
+                enrollment.academic_outcome = expected_outcome
+                outcomes_corrected += 1
+                outcome_corrections.append({
+                    "student": enrollment.student,
+                    "previous_outcome": previous_outcome,
+                    "new_outcome": expected_outcome,
+                    "reason": reevaluation_reason or "Re-evaluation changed the PASS/FAIL outcome",
+                })
             outcomes_confirmed += 1
-        state = "NOT_YET_EVALUATED" if saved_evaluation is None else (
-            "CHANGED" if evaluation_changed_since(saved_evaluation, snapshot) else "ALREADY_EVALUATED"
-        )
         row = {
             "evaluation": snapshot,
             "existing_evaluation": saved_evaluation,
             "student": enrollment.student,
             "enrollment": enrollment,
             "state": state,
-            "can_reevaluate": saved_evaluation is not None,
+            "can_reevaluate": state == "CHANGED" and snapshot.evaluation_status == "EVALUATED",
             "selected_for_reevaluation": enrollment.id in reevaluate_ids,
         }
         preview_rows.append(row)
         if should_persist and saved_evaluation is not None:
             reevaluated_rows.append(row)
-    if persist and exam.is_final_evaluation:
-        incomplete = sum(item.evaluation_status == "INCOMPLETE" for item in snapshots)
-        invalid = sum(item.evaluation_status == "INVALID" for item in snapshots)
-        if incomplete or invalid:
-            raise PromotionValidationError(
-                "Final Evaluation was not saved because the selected scope contains "
-                f"{incomplete} incomplete and {invalid} invalid enrollment(s). "
-                "No evaluation or academic outcome was committed."
-            )
     if persist:
         verify_evaluation_scope_persistence(
             {
@@ -1042,6 +1065,7 @@ def evaluate_promotion_scope(
         ),
         "reevaluated": len(reevaluated_rows),
         "outcomes_saved": outcomes_saved,
+        "outcomes_corrected": outcomes_corrected,
         "outcomes_confirmed": outcomes_confirmed,
         "save_incomplete": sum(item.evaluation_status == "INCOMPLETE" for item in snapshots),
         "save_invalid": sum(item.evaluation_status == "INVALID" for item in snapshots),
@@ -1055,6 +1079,7 @@ def evaluate_promotion_scope(
         "snapshots": snapshots,
         "preview_rows": preview_rows,
         "reevaluated_rows": reevaluated_rows,
+        "outcome_corrections": outcome_corrections,
         "counts": counts,
     }
 
