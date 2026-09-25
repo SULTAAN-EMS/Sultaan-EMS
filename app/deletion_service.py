@@ -6,7 +6,10 @@ dependency graph and transaction boundary cannot be confused with a normal
 delete.
 """
 
+from pathlib import Path
+
 from sqlalchemy import Table, inspect, or_, select, func
+from flask import current_app
 
 from . import db
 from .models import (
@@ -52,6 +55,273 @@ from .models import (
 
 class PurgeValidationError(ValueError):
     """A purge cannot safely proceed with the current data or authorization."""
+
+
+STUDENT_DELETE_CONFIRMATION = "TIRTIR ARDEYGAN"
+_STUDENT_PURGE_EXCLUDED_TABLES = {"audit_logs", "students", "student_enrollments", "behavior_attendance_deletions"}
+_STUDENT_PURGE_LINK_COLUMNS = (
+    "student_id",
+    "student_enrollment_id",
+    "enrollment_id",
+    "source_enrollment_id",
+    "destination_enrollment_id",
+    "movement_id",
+)
+
+
+def _student_purge_unknown_dependencies(student_id):
+    """Find direct student FKs that are not represented in the ORM metadata."""
+    inspector = inspect(db.engine)
+    known_tables = set(db.metadata.tables)
+    unknown = []
+    for table_name in inspector.get_table_names():
+        if table_name not in known_tables:
+            foreign_keys = inspector.get_foreign_keys(table_name)
+            for foreign_key in foreign_keys:
+                referred = foreign_key.get("referred_table")
+                referred_columns = foreign_key.get("referred_columns") or []
+                if referred not in {"students", "student_enrollments", "student_enrollment_movements"}:
+                    continue
+                local_columns = foreign_key.get("constrained_columns") or []
+                if not local_columns or not referred_columns:
+                    continue
+                table = Table(table_name, db.metadata, autoload_with=db.engine)
+                for local_column, referred_column in zip(local_columns, referred_columns):
+                    if referred_column != "id" or local_column not in table.c:
+                        continue
+                    count = db.session.execute(
+                        select(func.count()).select_from(table).where(table.c[local_column] == student_id)
+                    ).scalar_one()
+                    if count:
+                        unknown.append({"table": table_name, "column": local_column, "count": int(count)})
+            reflected = Table(table_name, db.metadata, autoload_with=db.engine)
+            direct_columns = [
+                column_name
+                for column_name in _STUDENT_PURGE_LINK_COLUMNS
+                if column_name in reflected.c
+            ]
+            if direct_columns:
+                unknown.append({
+                    "table": table_name,
+                    "column": ", ".join(direct_columns),
+                    "count": "unknown",
+                })
+    return unknown
+
+
+def _student_purge_graph(student_id):
+    """Build the complete graph, including legacy tables without FKs."""
+    seed = {"students": {student_id}}
+    enrollment_table = db.metadata.tables.get("student_enrollments")
+    if enrollment_table is not None:
+        enrollment_ids = {
+            row[0]
+            for row in db.session.execute(
+                select(enrollment_table.c.id).where(enrollment_table.c.student_id == student_id)
+            ).all()
+        }
+        if enrollment_ids:
+            seed["student_enrollments"] = enrollment_ids
+    else:
+        enrollment_ids = set()
+
+    movement_ids = set()
+    for table in db.metadata.tables.values():
+        if table.name in _STUDENT_PURGE_EXCLUDED_TABLES or "id" not in table.c:
+            continue
+        clauses = []
+        if "student_id" in table.c:
+            clauses.append(table.c.student_id == student_id)
+        for column_name in (
+            "student_enrollment_id",
+            "enrollment_id",
+            "source_enrollment_id",
+            "destination_enrollment_id",
+        ):
+            if enrollment_ids and column_name in table.c:
+                clauses.append(table.c[column_name].in_(enrollment_ids))
+        if not clauses:
+            continue
+        ids = {
+            row[0]
+            for row in db.session.execute(select(table.c.id).where(or_(*clauses))).all()
+        }
+        if ids:
+            seed.setdefault(table.name, set()).update(ids)
+            if table.name == "student_enrollment_movements":
+                movement_ids.update(ids)
+
+    if movement_ids:
+        for table in db.metadata.tables.values():
+            if table.name in _STUDENT_PURGE_EXCLUDED_TABLES or "id" not in table.c or "movement_id" not in table.c:
+                continue
+            movement_rows = {
+                row[0]
+                for row in db.session.execute(
+                    select(table.c.id).where(table.c.movement_id.in_(movement_ids))
+                ).all()
+            }
+            if movement_rows:
+                seed.setdefault(table.name, set()).update(movement_rows)
+
+    graph = _collect_fk_descendants(seed)
+    graph["students"] = {student_id}
+    return graph
+
+
+def _student_enrollment_ids(student_id):
+    table = db.metadata.tables.get("student_enrollments")
+    if table is None:
+        return set()
+    return {
+        row[0]
+        for row in db.session.execute(
+            select(table.c.id).where(table.c.student_id == student_id)
+        ).all()
+    }
+
+
+def _student_tombstone_filter(table, student_id, enrollment_ids):
+    clauses = [table.c.student_id == student_id]
+    if enrollment_ids and "student_enrollment_id" in table.c:
+        clauses.append(table.c.student_enrollment_id.in_(enrollment_ids))
+    return or_(*clauses)
+
+
+def _student_purge_counts(graph, tombstone_count=0):
+    counts = {table_name: len(ids) for table_name, ids in sorted(graph.items()) if ids}
+    if tombstone_count:
+        counts["behavior_attendance_deletions"] = int(tombstone_count)
+    return counts
+
+
+def _delete_student_photo(path):
+    """Remove a student photo from Cloudinary or local uploads when possible."""
+    if not path:
+        return
+    value = str(path)
+    if value.startswith(("http://", "https://")) and "res.cloudinary.com" in value:
+        cloud_name = current_app.config.get("CLOUDINARY_CLOUD_NAME")
+        if not cloud_name:
+            raise PurgeValidationError("The student photo is stored in Cloudinary, but Cloudinary is not configured.")
+        try:
+            import cloudinary
+            import cloudinary.uploader
+
+            cloudinary.config(
+                cloud_name=cloud_name,
+                api_key=current_app.config.get("CLOUDINARY_API_KEY"),
+                api_secret=current_app.config.get("CLOUDINARY_API_SECRET"),
+                secure=True,
+            )
+            parts = value.split("/upload/", 1)
+            if len(parts) != 2:
+                raise PurgeValidationError("The stored student photo URL is not a valid Cloudinary asset URL.")
+            public_path = parts[1].split("/", 1)[-1]
+            if public_path.startswith("v") and public_path[1:].split("/", 1)[0].isdigit():
+                public_path = public_path.split("/", 1)[-1]
+            public_id = public_path.rsplit(".", 1)[0]
+            result = cloudinary.uploader.destroy(public_id, resource_type="image")
+            if result.get("result") not in {"ok", "not found"}:
+                raise PurgeValidationError("The student photo could not be removed from Cloudinary.")
+            return
+        except PurgeValidationError:
+            raise
+        except Exception as error:
+            raise PurgeValidationError(f"The student photo could not be removed from Cloudinary: {error}") from error
+
+    relative = value.removeprefix("/static/").removeprefix("uploads/")
+    uploads_root = (Path(current_app.root_path) / "static" / "uploads").resolve()
+    candidate = (uploads_root / relative).resolve()
+    if candidate == uploads_root or uploads_root not in candidate.parents:
+        raise PurgeValidationError("The stored student photo path is outside the allowed uploads directory.")
+    if candidate.exists() and candidate.is_file():
+        candidate.unlink()
+
+
+def scan_student_purge(student_id):
+    """Return a read-only dependency report for a permanent student purge."""
+    student = db.session.get(Student, student_id)
+    if not student:
+        raise PurgeValidationError("Student was not found.")
+    graph = _student_purge_graph(student_id)
+    tombstone_table = db.metadata.tables.get("behavior_attendance_deletions")
+    enrollment_ids = _student_enrollment_ids(student_id)
+    tombstone_count = db.session.execute(
+        select(func.count()).select_from(tombstone_table).where(
+            _student_tombstone_filter(tombstone_table, student_id, enrollment_ids)
+        )
+    ).scalar_one() if tombstone_table is not None else 0
+    unknown = _student_purge_unknown_dependencies(student_id)
+    return {
+        "student_id": student.id,
+        "student_code": student.student_code,
+        "student_name": student.full_name,
+        "counts": _student_purge_counts(graph, tombstone_count),
+        "total_records": sum(_student_purge_counts(graph, tombstone_count).values()),
+        "unknown_dependencies": unknown,
+        "photo_path": bool(student.photo_path),
+    }
+
+
+def purge_student(student_id, confirmation):
+    """Permanently delete one Student and every related non-audit record."""
+    if confirmation != STUDENT_DELETE_CONFIRMATION:
+        raise PurgeValidationError(f"Type {STUDENT_DELETE_CONFIRMATION} exactly to continue.")
+    student = db.session.get(Student, student_id, with_for_update=True)
+    if not student:
+        raise PurgeValidationError("Student was not found.")
+
+    report = scan_student_purge(student_id)
+    if report["unknown_dependencies"]:
+        details = ", ".join(
+            f"{item['table']}.{item['column']} ({item['count']})"
+            for item in report["unknown_dependencies"]
+        )
+        raise PurgeValidationError(
+            "The purge is blocked because unregistered student dependencies were found: " + details
+        )
+
+    photo_path = student.photo_path
+    graph = _student_purge_graph(student_id)
+    tombstones = db.metadata.tables.get("behavior_attendance_deletions")
+    if tombstones is not None:
+        db.session.execute(
+            tombstones.delete().where(
+                _student_tombstone_filter(
+                    tombstones,
+                    student_id,
+                    set(graph.get("student_enrollments", set())),
+                )
+            )
+        )
+    _delete_student_photo(photo_path)
+    deleted = _delete_fk_graph(graph)
+    db.session.flush()
+
+    remaining_student = db.session.execute(
+        select(func.count()).select_from(Student.__table__).where(Student.__table__.c.id == student_id)
+    ).scalar_one()
+    if remaining_student:
+        raise PurgeValidationError("Permanent student deletion verification failed.")
+
+    for table_name, column_name in (
+        ("behavior_attendance_deletions", "student_id"),
+    ):
+        table = db.metadata.tables.get(table_name)
+        if table is not None:
+            remaining = db.session.execute(
+                select(func.count()).select_from(table).where(
+                    _student_tombstone_filter(
+                        table,
+                        student_id,
+                        set(graph.get("student_enrollments", set())),
+                    )
+                )
+            ).scalar_one()
+            if remaining:
+                raise PurgeValidationError(f"Permanent deletion verification failed for {table_name}.")
+    return report, deleted
 
 
 # These are the direct AcademicYear foreign keys known to the application.

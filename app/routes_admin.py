@@ -176,16 +176,46 @@ def require_login():
 
 @admin_bp.route("/")
 def dashboard():
-    current_year = AcademicYear.query.filter_by(is_current=True).first()
-    stats = {
-        "students": Student.query.count(),
-        "classes": SchoolClass.query.count(),
-        "exams": Exam.query.count(),
-        "published": Exam.query.filter_by(is_published=True).count(),
-        "subjects": Subject.query.count(),
-        "locked": Student.query.filter_by(is_result_locked=True).count(),
-    }
-    latest_results = Result.query.order_by(Result.updated_at.desc()).limit(10).all()
+    current_year = AcademicYear.query.filter_by(is_current=True).order_by(AcademicYear.id.desc()).first()
+    if current_year:
+        student_scope = student_enrollment_scope_query(current_year.id).filter(
+            Student.is_active.is_(True)
+        )
+        current_year_levels = AcademicYearLevel.query.filter_by(
+            academic_year_id=current_year.id,
+            is_active=True,
+        )
+        current_year_level_ids = current_year_levels.with_entities(AcademicYearLevel.id).subquery()
+        stats = {
+            "students": student_scope.with_entities(func.count(func.distinct(Student.id))).scalar() or 0,
+            "classes": AcademicYearClass.query.filter(
+                AcademicYearClass.academic_year_level_id.in_(select(current_year_level_ids.c.id)),
+                AcademicYearClass.is_active.is_(True),
+            ).count(),
+            "exams": Exam.query.filter_by(academic_year_id=current_year.id).count(),
+            "published": Exam.query.filter_by(
+                academic_year_id=current_year.id,
+                is_published=True,
+            ).count(),
+            "subjects": AcademicYearSubject.query.filter_by(
+                academic_year_id=current_year.id,
+                is_active=True,
+            ).count(),
+            "locked": student_scope.filter(
+                Student.is_result_locked.is_(True)
+            ).with_entities(func.count(func.distinct(Student.id))).scalar() or 0,
+        }
+        latest_results = (
+            Result.query
+            .join(Exam, Result.exam_id == Exam.id)
+            .filter(Exam.academic_year_id == current_year.id)
+            .order_by(Result.updated_at.desc())
+            .limit(10)
+            .all()
+        )
+    else:
+        stats = {"students": 0, "classes": 0, "exams": 0, "published": 0, "subjects": 0, "locked": 0}
+        latest_results = []
     return render_template("admin/dashboard.html", stats=stats, current_year=current_year, latest_results=latest_results)
 
 

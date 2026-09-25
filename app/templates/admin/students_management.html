@@ -436,22 +436,24 @@
         <div style="width: 64px; height: 64px; border-radius: 50%; background: #fef2f2; border: 2px solid #fecdd3; color: #dc2626; display: inline-flex; align-items: center; justify-content: center; font-size: 1.75rem; margin: 0 auto 16px; box-shadow: 0 0 20px rgba(239, 68, 68, 0.18);">
           <i class="fa-solid fa-triangle-exclamation"></i>
         </div>
-        <h3 style="margin: 0 0 8px; font-size: 1.35rem; font-weight: 700; color: #0f172a;">Confirm Student Deletion</h3>
+        <h3 style="margin: 0 0 8px; font-size: 1.35rem; font-weight: 700; color: #0f172a;">Xaqiiji Tirtiridda Ardayga</h3>
         <p style="margin: 0 0 16px; color: #64748b; font-size: 0.95rem; line-height: 1.5;">
-          Are you sure you want to delete <strong id="deleteStudentName" style="color: #0f172a;"></strong> (<span id="deleteStudentCode" style="color: #475569;"></span>)?
+          Ma hubtaa inaad si joogto ah u tirtirayso <strong id="deleteStudentName" style="color: #0f172a;"></strong> (<span id="deleteStudentCode" style="color: #475569;"></span>)?
         </p>
         <div style="background: #fff1f2; border: 1px solid #ffe4e6; border-radius: 12px; padding: 12px 16px; color: #9f1239; font-size: 0.85rem; font-weight: 500; text-align: left; margin-bottom: 22px;">
           <i class="fa-solid fa-circle-info" style="margin-right: 6px;"></i>
-          Warning: This action will permanently remove this student and all associated exam results.
+          <strong>Digniin:</strong> Tirtiriddan dhamaystiran waxay ka saaraysaa ardaygan dhammaan diiwaangelintiisa, natiijooyinkiisa, xaadirintiisa, hab-dhaqankiisa, dallacsiintiisa, xogta isku-dhafidda fadhiga, cabashooyinka, faallooyinka, kaarka aqoonsiga iyo sawirka la geliyey. Diiwaannada Audit Log-ga waa la haynayaa.
         </div>
         <form id="deleteStudentForm" method="post" action="">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label for="deleteStudentConfirmation" style="display: block; margin: 0 0 8px; color: #475569; font-size: 0.8rem; font-weight: 700; text-align: left;">Qor <strong style="color: #991b1b;">TIRTIR ARDEYGAN</strong> si aad u xaqiijiso.</label>
+          <input id="deleteStudentConfirmation" name="confirmation" type="text" autocomplete="off" spellcheck="false" required placeholder="TIRTIR ARDEYGAN" style="display: block; width: 100%; box-sizing: border-box; margin: 0 0 16px; padding: 11px 13px; border: 1px solid #fecaca; border-radius: 10px; color: #1f2937; background: #fff; font-weight: 700; letter-spacing: .03em;">
           <div style="display: flex; gap: 12px;">
             <button type="button" class="btn" style="flex: 1; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px 18px; font-weight: 600; cursor: pointer;" onclick="closeDeleteStudentModal()">
-              Cancel
+              Ka laabo
             </button>
-            <button type="submit" class="btn" style="flex: 1; background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; border: none; border-radius: 12px; padding: 12px 18px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px rgba(220, 38, 38, 0.4);">
-              <i class="fa-solid fa-trash-can" style="margin-right: 6px;"></i> Delete Student
+            <button id="deleteStudentSubmit" type="submit" class="btn" disabled style="flex: 1; background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; border: none; border-radius: 12px; padding: 12px 18px; font-weight: 600; cursor: not-allowed; opacity: .5; box-shadow: 0 4px 14px rgba(220, 38, 38, 0.4);">
+              <i class="fa-solid fa-trash-can" style="margin-right: 6px;"></i> Tirtir Ardeyga
             </button>
           </div>
         </form>
@@ -467,8 +469,9 @@
   <div class="student-delete-success__spark student-delete-success__spark--two"></div>
   <span class="student-delete-success__icon"><i class="fa-solid fa-circle-check"></i></span>
   <div>
-    <strong>Student deleted successfully</strong>
-    <p><b>{{ deleted_student_notice.name }}</b>{% if deleted_student_notice.code %} ({{ deleted_student_notice.code }}){% endif %} was removed safely.</p>
+    <strong>Ardayga si joogto ah ayaa loo tirtiray</strong>
+    <p><b>{{ deleted_student_notice.name }}</b>{% if deleted_student_notice.code %} ({{ deleted_student_notice.code }}){% endif %} iyo dhammaan diiwaannadii ku xidhnaa waa la tirtiray.</p>
+    {% if deleted_student_notice.related_records is defined %}<small><b>{{ deleted_student_notice.related_records }} diiwaan oo ku xidhnaa ayaa la tirtiray.</b></small>{% endif %}
   </div>
   <button type="button" class="student-delete-success__close" aria-label="Dismiss confirmation"><i class="fa-solid fa-xmark"></i></button>
 </div>
@@ -478,6 +481,16 @@
 {# Build the delete URL base by using a real student id of 0 — Flask resolves 0 as a valid int,
    then we replace the trailing /0/delete with the real id at click time #}
 var _deleteStudentBaseUrl = "{{ url_for('admin_advanced_results.students_management') }}".replace(/\/students-management.*/, '');
+var _deleteStudentConfirmation = document.getElementById('deleteStudentConfirmation');
+var _deleteStudentSubmit = document.getElementById('deleteStudentSubmit');
+function _syncDeleteStudentConfirmation() {
+  var confirmed = _deleteStudentConfirmation && _deleteStudentConfirmation.value.trim() === 'TIRTIR ARDEYGAN';
+  if (_deleteStudentSubmit) {
+    _deleteStudentSubmit.disabled = !confirmed;
+    _deleteStudentSubmit.style.cursor = confirmed ? 'pointer' : 'not-allowed';
+    _deleteStudentSubmit.style.opacity = confirmed ? '1' : '.5';
+  }
+}
 function _makeDeleteUrl(id) {
   return _deleteStudentBaseUrl + '/students/' + encodeURIComponent(id) + '/delete';
 }
@@ -488,9 +501,17 @@ function openDeleteStudentModal(studentId, studentName, studentCode) {
   document.getElementById('deleteStudentName').textContent = studentName;
   document.getElementById('deleteStudentCode').textContent = studentCode;
   form.action = _makeDeleteUrl(studentId);
+  if (_deleteStudentConfirmation) {
+    _deleteStudentConfirmation.value = '';
+    _syncDeleteStudentConfirmation();
+  }
   modal.style.display = 'flex';
   modal.removeAttribute('aria-hidden');
   requestAnimationFrame(function() { modal.classList.add('is-open'); });
+}
+
+if (_deleteStudentConfirmation) {
+  _deleteStudentConfirmation.addEventListener('input', _syncDeleteStudentConfirmation);
 }
 
 function closeDeleteStudentModal() {
@@ -515,7 +536,7 @@ document.addEventListener('click', function(e) {
   if (!notice) return;
   var dismiss = function () { notice.classList.add('is-leaving'); window.setTimeout(function () { notice.remove(); }, 220); };
   notice.querySelector('.student-delete-success__close').addEventListener('click', dismiss);
-  window.setTimeout(dismiss, 6200);
+  window.setTimeout(dismiss, 10000);
 })();
 </script>
 

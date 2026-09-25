@@ -40,6 +40,7 @@ from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import DEFAULT_GRADE_SCALES, ScopedSubjectView, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, critical_subject_badges, get_exam_marking_configuration, get_label, get_settings, grade_for, grade_for_from_cache, grade_scale_input_bounds, load_grade_scale_cache, performance_tier_for, resolved_subject_maxima, result_payload, resolve_subject_max_score, scoped_legacy_subjects, subject_display_name
 from .attendance_rules import counts_as_exam_sitting
 from .behavior_reporting import get_behavior_report_data
+from .deletion_service import PurgeValidationError, purge_student
 
 advanced_results_bp = Blueprint("admin_advanced_results", __name__)
 
@@ -4188,20 +4189,54 @@ def student_code_status():
 @advanced_results_bp.route("/students/<int:student_id>/delete", methods=["POST"])
 def delete_student(student_id):
     student = db.session.get(Student, student_id) or abort(404)
-    if StudentEnrollment.query.filter_by(student_id=student.id).first():
-        flash("Student has academic enrollment history and cannot be deleted from this screen.", "warning")
-        return redirect(url_for("admin_advanced_results.students_management", year_id=student.academic_year_id))
+    return_year_id = student.academic_year_id
     deleted_student = {
         "name": student.full_name,
         "code": student.student_code,
     }
-    db.session.delete(student)
-    audit("Student Updates", f"Deleted student {student.student_code}")
-    db.session.commit()
+
+    try:
+        report, deleted_count = purge_student(
+            student_id,
+            request.form.get("confirmation", "").strip(),
+        )
+        audit(
+            "Student Deleted",
+            "Permanently deleted student "
+            f"{deleted_student['code']} (id {student_id}); "
+            f"{deleted_count} related records removed. Audit log retained.",
+        )
+        db.session.commit()
+    except PurgeValidationError as error:
+        db.session.rollback()
+        flash(str(error), "danger")
+        return redirect(
+            url_for(
+                "admin_advanced_results.students_management",
+                year_id=return_year_id,
+            )
+        )
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Student purge failed for student_id=%s", student_id)
+        flash("Student deletion failed; no database records were changed.", "danger")
+        return redirect(
+            url_for(
+                "admin_advanced_results.students_management",
+                year_id=return_year_id,
+            )
+        )
+
     # Keep the successful result specific to this destructive action instead of
     # relying on a generic toast that can be missed after the list reloads.
+    deleted_student["related_records"] = report["total_records"]
     session["student_deleted_notice"] = deleted_student
-    return redirect(url_for("admin_advanced_results.students_management"))
+    return redirect(
+        url_for(
+            "admin_advanced_results.students_management",
+            year_id=return_year_id,
+        )
+    )
 
 
 @advanced_results_bp.route("/students/<int:student_id>/data")
