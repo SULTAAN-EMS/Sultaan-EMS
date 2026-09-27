@@ -101,7 +101,7 @@
         </select>
       </div>
       <div class="sm-filter-item">
-        <label for="level-selector"><i class="fa-solid fa-layer-group"></i> {{ rh_label("students.level", default="Level") }}</label>
+        <label for="level-selector"><i class="fa-solid fa-layer-group"></i> Heer</label>
         <select id="level-selector">
           <option value="">{{ rh_label("students.all_levels", default="Dhammaan") }}</option>
           {% for level in levels %}
@@ -110,7 +110,7 @@
         </select>
       </div>
       <div class="sm-filter-item">
-        <label for="exam-selector"><i class="fa-solid fa-file-signature"></i> Exam Outcome</label>
+        <label for="exam-selector"><i class="fa-solid fa-file-signature"></i> Imtixaannada</label>
         <select id="exam-selector">
           <option value="">Current placement only</option>
           {% for exam in exams %}
@@ -146,13 +146,12 @@
       </div>
       <div class="sm-filter-item sm-filter-search">
         <label><i class="fa-solid fa-search"></i> {{ rh_label("students.search", default="Raadi") }}</label>
-        <input type="text" id="sm-search-input" class="sm-search" placeholder="{{ rh_label("students.search_placeholder", default="Raadi arday...") }}" value="{{ q }}">
-      </div>
-      <div class="sm-filter-item sm-filter-apply">
-        <label style="visibility:hidden;">_</label>
-        <button type="button" id="applyStudentFilters" class="btn btn-gold" style="width:100%;height:38px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:0.85rem;font-weight:700;">
-          <i class="fa-solid fa-magnifying-glass"></i> Apply
-        </button>
+        <div class="sm-search-control">
+          <input type="text" id="sm-search-input" class="sm-search" placeholder="{{ rh_label("students.search_placeholder", default="Raadi arday...") }}" value="{{ q }}">
+          <button type="button" id="sm-search-submit" class="sm-search-submit" aria-label="Raadi" title="Raadi">
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -182,7 +181,7 @@
         {{ rh_label("students.export_excel", default="Excel Export") }}
       </a>
       <a href="{{ url_for('admin_advanced_results.student_verification', year_id=selected_year.id if selected_year else '', return_to=request.full_path) }}" class="btn btn-outline">
-        <i class="fa-solid fa-shield-check"></i>
+        <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>
         Xaqiijin Xogta
       </a>
     </div>
@@ -552,57 +551,62 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-// ── Apply-only filter: fires once on button click ──
+// ── Automatic filters: select changes apply immediately; search is debounced ──
 document.addEventListener('DOMContentLoaded', function() {
-  var applyBtn = document.getElementById('applyStudentFilters');
-  if (applyBtn) {
-    applyBtn.addEventListener('click', function() {
-      var yearId     = (document.getElementById('year-selector')   || {}).value || '';
-      var levelId    = (document.getElementById('level-selector')  || {}).value || '';
-      var examId     = (document.getElementById('exam-selector')   || {}).value || '';
-      var classId    = (document.getElementById('class-selector')  || {}).value || '';
-      var sectionId  = (document.getElementById('section-selector') || {}).value || '';
-      var statusVal  = (document.getElementById('status-filter')   || {}).value || '';
-      var query      = (document.getElementById('sm-search-input') || {}).value || '';
+  var filterIds = ['year-selector', 'level-selector', 'exam-selector', 'class-selector', 'section-selector', 'status-filter'];
+  filterIds.forEach(function(id) {
+    var field = document.getElementById(id);
+    if (field) field.addEventListener('change', applyStudentFilters);
+  });
 
-      var url = new URL(window.location.href);
-      url.searchParams.set('page', '1');
-      if (yearId)   url.searchParams.set('year_id',      yearId);
-      if (levelId)  url.searchParams.set('level_id',     levelId);
-      else          url.searchParams.delete('level_id');
-      if (examId)   url.searchParams.set('exam_id',      examId);
-      else          url.searchParams.delete('exam_id');
-      if (classId)  url.searchParams.set('class_id',     classId);
-      else          url.searchParams.delete('class_id');
-      if (sectionId) url.searchParams.set('section_id', sectionId);
-      else           url.searchParams.delete('section_id');
-      if (statusVal) url.searchParams.set('status_filter', statusVal);
-      else           url.searchParams.delete('status_filter');
-      if (query)    url.searchParams.set('q', query);
-      else          url.searchParams.delete('q');
-
-      if (window.AdminLoader) window.AdminLoader.show();
-      window.location.href = url.toString();
-    });
-  }
-
-  // Also allow Enter key on the search input to trigger apply
   var searchInput = document.getElementById('sm-search-input');
+  var searchSubmit = document.getElementById('sm-search-submit');
+  if (searchSubmit) searchSubmit.addEventListener('click', applyStudentFilters);
   if (searchInput) {
     searchInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') {
         e.preventDefault();
-        document.getElementById('applyStudentFilters').click();
+        applyStudentFilters();
       }
     });
   }
 });
 
-function changeYear() { /* no-op: handled by Apply */ }
-function changeLevel() { /* no-op: handled by Apply */ }
-function changeClass() { /* no-op: handled by Apply */ }
-function handleSearch(event) { /* no-op: handled by Apply */ }
-function handleFilter() { /* no-op: handled by Apply */ }
+function applyStudentFilters() {
+  var yearId     = (document.getElementById('year-selector')   || {}).value || '';
+  var levelId    = (document.getElementById('level-selector')  || {}).value || '';
+  var examId     = (document.getElementById('exam-selector')   || {}).value || '';
+  var classId    = (document.getElementById('class-selector')  || {}).value || '';
+  var sectionId  = (document.getElementById('section-selector') || {}).value || '';
+  var statusVal  = (document.getElementById('status-filter')   || {}).value || '';
+  var query      = (document.getElementById('sm-search-input') || {}).value || '';
+
+  var url = new URL(window.location.href);
+  url.searchParams.set('page', '1');
+  if (yearId) url.searchParams.set('year_id', yearId);
+  else url.searchParams.delete('year_id');
+  if (levelId) url.searchParams.set('level_id', levelId);
+  else url.searchParams.delete('level_id');
+  if (examId) url.searchParams.set('exam_id', examId);
+  else url.searchParams.delete('exam_id');
+  if (classId) url.searchParams.set('class_id', classId);
+  else url.searchParams.delete('class_id');
+  if (sectionId) url.searchParams.set('section_id', sectionId);
+  else url.searchParams.delete('section_id');
+  if (statusVal) url.searchParams.set('status_filter', statusVal);
+  else url.searchParams.delete('status_filter');
+  if (query.trim()) url.searchParams.set('q', query.trim());
+  else url.searchParams.delete('q');
+
+  if (window.AdminLoader) window.AdminLoader.show();
+  window.location.href = url.toString();
+}
+
+function changeYear() { applyStudentFilters(); }
+function changeLevel() { applyStudentFilters(); }
+function changeClass() { applyStudentFilters(); }
+function handleSearch() { applyStudentFilters(); }
+function handleFilter() { applyStudentFilters(); }
 
 function goToPage(pageNum) {
   const url = new URL(window.location.href);
@@ -735,7 +739,7 @@ document.addEventListener('DOMContentLoaded', function() {
 /* Single row filter bar */
 .sm-filters-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(110px, 1fr)) minmax(180px, 2fr) 110px;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) minmax(0, 1.7fr);
   gap: 12px;
   align-items: flex-end;
   background: #ffffff;
@@ -750,6 +754,7 @@ document.addEventListener('DOMContentLoaded', function() {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  min-width: 0;
 }
 
 .sm-filters-row .sm-filter-item label {
@@ -772,6 +777,51 @@ document.addEventListener('DOMContentLoaded', function() {
   background: #ffffff;
   color: #0f172a;
   width: 100%;
+  min-width: 0;
+}
+
+.sm-search-control {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.sm-filters-row .sm-search-control .sm-search {
+  height: 38px;
+  padding-right: 42px;
+}
+
+.sm-search-submit {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--navy, #1b2a4a);
+  cursor: pointer;
+  font-size: 13px;
+  box-shadow: none;
+  text-shadow: none;
+  transition: none;
+  animation: none;
+}
+
+.sm-search-submit:hover,
+.sm-search-submit:focus,
+.sm-search-submit:focus-visible,
+.sm-search-submit:active {
+  background: rgba(27, 42, 74, 0.08);
+  box-shadow: none;
+  outline: none;
+  transform: translateY(-50%);
+  transition: none;
+  animation: none;
 }
 
 /* Summary Cards */
@@ -1147,6 +1197,10 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 @media (max-width: 1024px) {
+  .sm-filters-row {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
+
   .sm-filters-section {
     flex-direction: column;
     align-items: stretch;
@@ -1166,6 +1220,14 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 @media (max-width: 768px) {
+  .sm-filters-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sm-filter-search {
+    grid-column: 1 / -1;
+  }
+
   .sm-summary-cards {
     grid-template-columns: repeat(2, 1fr);
   }
