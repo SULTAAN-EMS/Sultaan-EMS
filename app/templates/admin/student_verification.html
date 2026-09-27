@@ -283,9 +283,29 @@
   .photo-preview-card img{
     display:block;
     max-width:100%;
-    max-height:calc(88vh - 16px);
+    max-height:calc(88vh - 78px);
     object-fit:contain;
     border-radius:4px;
+  }
+  .photo-preview-meta{
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+    margin-top:10px;
+    padding:10px 12px 2px;
+    border-top:1px solid var(--gold-soft);
+    text-align:center;
+  }
+  .photo-preview-name{
+    color:var(--forest-deep);
+    font:600 14px 'Fraunces',serif;
+    line-height:1.25;
+  }
+  .photo-preview-id{
+    color:#6b6558;
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.25px;
   }
   .photo-preview-close{
     position:absolute;
@@ -719,7 +739,7 @@
   <div class="slip">
     <div class="photo-col">
       {% if student.photo_url %}
-      <button class="photo-box photo-box--preview" type="button" data-photo-preview="{{ student.photo_url|e }}" data-photo-alt="Sawirka {{ student.name|e }}" aria-label="Eeg sawirka {{ student.name|e }}">
+      <button class="photo-box photo-box--preview" type="button" data-photo-preview="{{ student.photo_url|e }}" data-photo-alt="Sawirka {{ student.name|e }}" data-photo-name="{{ student.name|e }}" data-photo-id="{{ student.student_code|e }}" aria-label="Eeg sawirka {{ student.name|e }}">
         <img src="{{ student.photo_url }}" alt="Sawirka {{ student.name }}">
       </button>
       {% else %}
@@ -762,6 +782,10 @@
   <div class="photo-preview-card">
     <button class="photo-preview-close" type="button" id="photoPreviewClose" aria-label="Xir preview-ga">&times;</button>
     <img id="photoPreviewImage" src="" alt="">
+    <div class="photo-preview-meta">
+      <strong class="photo-preview-name" id="photoPreviewName"></strong>
+      <span class="photo-preview-id" id="photoPreviewId"></span>
+    </div>
   </div>
 </div>
 
@@ -771,12 +795,17 @@
     var modal = document.getElementById('photoPreviewModal');
     var image = document.getElementById('photoPreviewImage');
     var close = document.getElementById('photoPreviewClose');
-    if (!modal || !image || !close) return;
+    var name = document.getElementById('photoPreviewName');
+    var studentId = document.getElementById('photoPreviewId');
+    if (!modal || !image || !close || !name || !studentId) return;
 
     function closePreview() {
       modal.classList.remove('is-open');
       modal.hidden = true;
       image.removeAttribute('src');
+      image.alt = '';
+      name.textContent = '';
+      studentId.textContent = '';
       document.body.classList.remove('photo-preview-open');
     }
 
@@ -784,6 +813,8 @@
       button.addEventListener('click', function () {
         image.src = button.getAttribute('data-photo-preview');
         image.alt = button.getAttribute('data-photo-alt') || 'Sawirka ardayga';
+        name.textContent = button.getAttribute('data-photo-name') || '';
+        studentId.textContent = button.getAttribute('data-photo-id') ? 'ID: ' + button.getAttribute('data-photo-id') : '';
         modal.hidden = false;
         modal.classList.add('is-open');
         document.body.classList.add('photo-preview-open');
