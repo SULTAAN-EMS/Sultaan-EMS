@@ -4001,6 +4001,16 @@
     color: #fff;
 }
 
+/* Each class keeps a stable accent so adjacent class cards are easy to scan. */
+.sm-class-badge--class-0 { background:#0f766e; border-color:#0f766e; color:#fff; }
+.sm-class-badge--class-1 { background:#7c3aed; border-color:#7c3aed; color:#fff; }
+.sm-class-badge--class-2 { background:#d97706; border-color:#d97706; color:#fff; }
+.sm-class-badge--class-3 { background:#4f46e5; border-color:#4f46e5; color:#fff; }
+.sm-class-badge--class-4 { background:#db2777; border-color:#db2777; color:#fff; }
+.sm-class-badge--class-5 { background:#0891b2; border-color:#0891b2; color:#fff; }
+.sm-class-badge--class-6 { background:#16a34a; border-color:#16a34a; color:#fff; }
+.sm-class-badge--class-7 { background:#c2410c; border-color:#c2410c; color:#fff; }
+
 .status-pill {
     font-size: 9.5px;
     font-weight: 700;
