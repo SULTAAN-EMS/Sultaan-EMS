@@ -100,6 +100,7 @@ ENDPOINT_PERMISSIONS = {
     "admin_advanced_results.autosave_result_entry": "results",
     "admin_advanced_results.student_view": "results",
     "admin_advanced_results.students_management": "students",
+    "admin_advanced_results.student_verification": "students",
     "admin_advanced_results.student_form": "students",
     "admin_advanced_results.delete_student": "students",
     "admin_advanced_results.toggle_student_lock": "students",

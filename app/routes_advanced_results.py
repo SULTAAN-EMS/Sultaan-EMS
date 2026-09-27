@@ -4203,6 +4203,103 @@ def student_code_status():
     return jsonify({"status": "used" if duplicate_query.first() else "available"})
 
 
+@advanced_results_bp.route("/student-verification")
+@login_required
+def student_verification():
+    """Render live student self-check slips for one year/level/class scope."""
+    default_return_to = url_for("admin_advanced_results.students_management")
+    requested_return_to = (request.args.get("return_to") or "").strip()
+    students_management_return_url = (
+        requested_return_to
+        if requested_return_to.startswith("/admin/advanced-results/students-management")
+        and not requested_return_to.startswith("//")
+        else default_return_to
+    )
+    requested_year_id = int_or_none(request.args.get("year_id"))
+    requested_level_id = int_or_none(request.args.get("level_id"))
+    requested_class_id = int_or_none(request.args.get("class_id"))
+    generate_requested = request.args.get("generate") == "1"
+
+    years = AcademicYear.query.order_by(AcademicYear.name.desc(), AcademicYear.id.desc()).all()
+    selected_year = (
+        db.session.get(AcademicYear, requested_year_id)
+        if requested_year_id else AcademicYear.query.filter_by(is_current=True).first()
+    )
+    if requested_year_id and not selected_year:
+        abort(404)
+
+    levels = year_levels(selected_year.id) if selected_year else []
+    selected_level = next((item for item in levels if item.id == requested_level_id), None)
+    classes = year_classes(selected_level.id) if selected_level else []
+    selected_class = next((item for item in classes if item.id == requested_class_id), None)
+    selection_complete = bool(selected_year and selected_level and selected_class)
+
+    student_rows = []
+    if selection_complete and generate_requested:
+        students = (
+            student_enrollment_scope_query(
+                selected_year.id,
+                academic_year_level_id=selected_level.id,
+                academic_year_class_id=selected_class.id,
+            )
+            .order_by(Student.full_name, Student.student_code, Student.id)
+            .all()
+        )
+        student_ids = [student.id for student in students]
+        enrollments = {
+            enrollment.student_id: enrollment
+            for enrollment in StudentEnrollment.query.filter(
+                StudentEnrollment.student_id.in_(student_ids),
+                StudentEnrollment.academic_year_id == selected_year.id,
+            ).all()
+        } if student_ids else {}
+
+        for student in students:
+            enrollment = enrollments.get(student.id)
+            gender_key = (student.gender or "").strip().lower()
+            gender_label = {"male": "Lab", "female": "Dhedig"}.get(
+                gender_key,
+                student.gender or "—",
+            )
+            student_rows.append({
+                "name": student.full_name or "—",
+                "mother_name": student.mother_name or "—",
+                "gender": gender_label,
+                "class_name": enrollment.academic_year_class.name if enrollment and enrollment.academic_year_class else selected_class.name,
+                "phone": student.phone or "—",
+                "photo_url": stored_asset_url(student.photo_path),
+                "student_code": student.student_code or "—",
+            })
+
+    page_size = 5
+    pages = [student_rows[index:index + page_size] for index in range(0, len(student_rows), page_size)]
+    settings = get_settings()
+    school_name = settings.get("school_name") or settings.get("dashboard_title") or "Taysir International School"
+    school_logo_url = stored_asset_url(settings.get("logo_path"))
+
+    return render_template(
+        "admin/student_verification.html",
+        years=years,
+        levels=levels,
+        classes=classes,
+        selected_year=selected_year,
+        selected_level=selected_level,
+        selected_class=selected_class,
+        selected_year_id=selected_year.id if selected_year else None,
+        selected_level_id=selected_level.id if selected_level else None,
+        selected_class_id=selected_class.id if selected_class else None,
+        selection_complete=selection_complete,
+        generate_requested=generate_requested,
+        student_count=len(student_rows),
+        pages=pages,
+        total_pages=len(pages),
+        school_name=school_name,
+        school_logo_url=school_logo_url,
+        students_management_return_url=students_management_return_url,
+        generated_date=datetime.now().strftime("%d/%m/%Y"),
+    )
+
+
 @advanced_results_bp.route("/students/<int:student_id>/delete", methods=["POST"])
 def delete_student(student_id):
     student = db.session.get(Student, student_id) or abort(404)

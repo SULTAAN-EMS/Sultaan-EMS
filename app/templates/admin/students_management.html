@@ -181,6 +181,10 @@
         <i class="fa-solid fa-file-export"></i>
         {{ rh_label("students.export_excel", default="Excel Export") }}
       </a>
+      <a href="{{ url_for('admin_advanced_results.student_verification', year_id=selected_year.id if selected_year else '', return_to=request.full_path) }}" class="btn btn-outline">
+        <i class="fa-solid fa-shield-check"></i>
+        Xaqiijin Xogta
+      </a>
     </div>
 
     {% set import_summary = session.pop('import_summary', None) %}

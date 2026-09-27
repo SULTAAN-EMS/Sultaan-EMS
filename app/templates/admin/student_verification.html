@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="so">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Warqadda Hubinta Xogta Ardayga</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1E2723;
+    --forest:#1F4B3F;
+    --forest-deep:#153732;
+    --gold:#B7913C;
+    --gold-soft:#E7D9AF;
+    --ivory:#FBF8F1;
+    --paper:#F4EFE3;
+    --brick:#9C4630;
+    --line:#C9BFA6;
+    --gray-photo:#DAD3C2;
+    --c-name:#1F4B3F;
+    --c-mom:#9C4630;
+    --c-gender:#B7913C;
+    --c-class:#3E5C76;
+    --c-phone:#6B4863;
+  }
+
+  *{box-sizing:border-box;}
+
+  body{
+    margin:0;
+    background:#6b6558;
+    font-family:'Inter',sans-serif;
+    color:var(--ink);
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+
+  .verification-back{
+    width:max-content;
+    display:inline-flex;
+    align-items:center;
+    gap:9px;
+    margin:14px max(6px, calc((100% - 210mm) / 2)) 0;
+    padding:9px 14px 9px 10px;
+    border:1px solid rgba(231,217,175,.7);
+    border-radius:999px;
+    background:linear-gradient(135deg,var(--forest-deep),var(--forest));
+    color:#fff;
+    box-shadow:0 7px 18px rgba(21,55,50,.24);
+    font:700 12px 'Inter',sans-serif;
+    text-decoration:none;
+    transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+  }
+  .verification-back:hover{
+    color:#fff;
+    border-color:var(--gold);
+    transform:translateY(-2px);
+    box-shadow:0 10px 22px rgba(21,55,50,.3);
+  }
+  .verification-back__icon{
+    width:26px;
+    height:26px;
+    display:grid;
+    place-items:center;
+    border-radius:50%;
+    background:rgba(255,255,255,.14);
+    color:var(--gold-soft);
+    flex:none;
+  }
+  .verification-back__icon svg{width:15px;height:15px;animation:backArrow 1.8s ease-in-out infinite;}
+  @keyframes backArrow{0%,100%{transform:translateX(0)}50%{transform:translateX(-3px)}}
+
+  .selector-shell{
+    max-width:210mm;
+    margin:0 auto;
+    padding:14px 6px 0;
+  }
+  .selector-card{
+    background:#fff;
+    border-radius:4px;
+    padding:14px 16px;
+    box-shadow:0 4px 18px rgba(0,0,0,.2);
+  }
+  .selector-card h1{
+    margin:0 0 4px;
+    font-family:'Fraunces',serif;
+    font-size:18px;
+    color:var(--forest-deep);
+  }
+  .selector-card p{
+    margin:0 0 12px;
+    color:#5b5648;
+    font-size:12px;
+  }
+  .selector-row{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr)) auto;
+    gap:10px;
+    align-items:end;
+  }
+  .selector-field{display:flex;flex-direction:column;gap:4px;min-width:0;}
+  .selector-field label{font-size:10px;font-weight:700;color:var(--forest-deep);}
+  .selector-field select{
+    width:100%;
+    min-height:36px;
+    padding:7px 9px;
+    border:1px solid var(--line);
+    border-radius:3px;
+    background:#fff;
+    color:var(--ink);
+    font:600 12px 'Inter',sans-serif;
+  }
+  .selector-actions{display:flex;gap:7px;align-items:center;}
+  .selector-actions button,
+  .selector-actions a{
+    min-height:36px;
+    border:0;
+    border-radius:3px;
+    padding:8px 13px;
+    font:700 12px 'Inter',sans-serif;
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    text-decoration:none;
+  }
+  .selector-actions .generate{background:var(--forest);color:#fff;}
+  .selector-actions .print{background:var(--gold);color:var(--forest-deep);}
+  .selector-actions button:disabled{opacity:.45;cursor:not-allowed;}
+  .selector-actions .generate.is-disabled{opacity:.45;cursor:not-allowed;pointer-events:none;}
+  .empty-state{
+    max-width:210mm;
+    margin:14px auto 24px;
+    padding:22px;
+    background:var(--ivory);
+    color:var(--forest-deep);
+    text-align:center;
+    font-size:13px;
+  }
+
+  .page{
+    width:210mm;
+    min-height:297mm;
+    margin:14px auto 24px auto;
+    background:var(--ivory);
+    padding:9mm 8mm;
+    position:relative;
+  }
+
+  .page-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    border-bottom:2px solid var(--forest);
+    padding-bottom:2mm;
+    margin-bottom:2mm;
+  }
+  .page-head h1{
+    font-family:'Fraunces',serif;
+    font-size:16px;
+    font-weight:600;
+    margin:0;
+    color:var(--forest-deep);
+  }
+  .page-head p{
+    margin:2px 0 0 0;
+    font-size:10.5px;
+    color:#5b5648;
+  }
+  .page-head .meta{
+    text-align:right;
+    font-size:9.5px;
+    color:#5b5648;
+    line-height:1.5;
+  }
+
+  .slip{
+    display:grid;
+    grid-template-columns:22mm 1fr;
+    gap:0;
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:2px;
+    overflow:hidden;
+  }
+
+  .slip + .cut{
+    position:relative;
+    height:3.5mm;
+    display:flex;
+    align-items:center;
+  }
+  .cut::before{
+    content:"";
+    position:absolute;
+    left:0; right:0; top:50%;
+    border-top:1px dashed #9a917a;
+  }
+  .cut .scissor{
+    position:absolute;
+    left:2mm;
+    background:transparent;
+    padding:0 3px;
+    font-size:10px;
+    color:#8a8168;
+    z-index:2;
+  }
+
+  .photo-col{
+    background:var(--forest);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:3mm 2mm;
+    position:relative;
+  }
+  .photo-box{
+    width:15mm;
+    height:18mm;
+    background:var(--gray-photo);
+    border:1.5px solid var(--gold);
+    border-radius:2px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+  }
+  .photo-box img{width:100%;height:100%;object-fit:cover;}
+  .photo-box svg{ width:9mm; height:9mm; opacity:.55; }
+  .id-tag{
+    margin-top:2.5mm;
+    font-size:6.6px;
+    color:var(--gold-soft);
+    text-align:center;
+    letter-spacing:.3px;
+    line-height:1.35;
+  }
+  .id-tag .id-code{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:1mm;
+  }
+  .id-tag .id-code svg{
+    width:3.4mm;
+    height:3.4mm;
+    color:var(--gold-soft);
+    flex-shrink:0;
+  }
+  .id-tag b{
+    display:block;
+    font-family:'Fraunces',serif;
+    font-size:8px;
+    color:#fff;
+    letter-spacing:.4px;
+  }
+  .photo-checks{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:1.1mm;
+    width:100%;
+    margin-top:2mm;
+    color:var(--gold-soft);
+    font-size:5.7px;
+    line-height:1.2;
+    text-align:left;
+  }
+  .photo-check{
+    display:flex;
+    align-items:center;
+    gap:1.1mm;
+    white-space:nowrap;
+  }
+  .photo-check input{
+    appearance:none;
+    width:2mm;
+    height:2mm;
+    margin:0;
+    border:1px solid var(--gold-soft);
+    border-radius:1px;
+    background:#fff;
+    flex:none;
+    cursor:pointer;
+  }
+  .photo-check input:checked{
+    border-color:var(--gold);
+    background-color:#fff;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m2 6 2.3 2.3L10 2.8' fill='none' stroke='%23B7913C' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-position:center;
+    background-repeat:no-repeat;
+    background-size:100% 100%;
+  }
+
+  .data-col{
+    padding:2.4mm 3.5mm 2mm 4mm;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+  }
+  .school-row{
+    display:grid;
+    grid-template-columns:5.6mm 20mm 46mm 1fr;
+    align-items:center;
+    column-gap:2mm;
+    margin-bottom:1mm;
+    padding-bottom:1mm;
+    border-bottom:1px solid var(--forest);
+  }
+  .school-row .brand{
+    grid-column:1 / 4;
+    display:flex;
+    align-items:center;
+    gap:2mm;
+  }
+  .school-row .crest{
+    width:6.2mm;height:6.2mm;border-radius:50%;
+    background:var(--forest);
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .school-row .crest svg{ width:3.6mm; height:3.6mm; }
+  .school-row .crest img{
+    width:100%;
+    height:100%;
+    padding:1mm;
+    object-fit:contain;
+    border-radius:50%;
+  }
+  .school-row .sname{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:10.8px;
+    color:var(--forest-deep);
+  }
+  .school-row .stag{
+    font-size:7.5px;
+    color:var(--brick);
+    margin-left:auto;
+    font-weight:600;
+    letter-spacing:.2px;
+  }
+  .school-row .corr-hd{
+    display:block;
+    align-self:center;
+    justify-self:end;
+    height:max-content;
+    min-height:0;
+    min-width:0;
+    padding:.65mm;
+    border:1px solid #e1bd68;
+    border-radius:2.5px;
+    background:#fff7df;
+    text-align:left;
+  }
+  .school-row .corr-hd__inner{
+    display:inline-flex;
+    align-items:center;
+    justify-content:flex-start;
+    gap:1.2mm;
+    max-width:100%;
+    padding:.65mm 1.5mm;
+    border:1px solid #185aa8;
+    border-radius:2px;
+    background:#2563c7;
+    color:#fff;
+    font-size:6.7px;
+    font-weight:700;
+    letter-spacing:.2px;
+    line-height:1.1;
+  }
+  .school-row .corr-hd__inner svg{
+    width:2.8mm;
+    height:2.8mm;
+    padding:.4mm;
+    border-radius:50%;
+    background:#fff;
+    color:#c93b3b;
+    flex:none;
+  }
+
+  .frow{
+    display:grid;
+    grid-template-columns:5.6mm 20mm 46mm 1fr;
+    align-items:center;
+    column-gap:2mm;
+    padding:0.8mm 0;
+  }
+  .frow .ic{
+    width:5.2mm;height:5.2mm;
+    background:var(--ic-bg,var(--paper));
+    border:1px solid var(--ic-border,var(--gold-soft));
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+    color:var(--ic-fg,var(--forest));
+    box-shadow:0 1px 2px rgba(30,20,10,.08), inset 0 0 0 .5px rgba(255,255,255,.75);
+  }
+  .frow .ic svg{ width:2.9mm;height:2.9mm; color:currentColor; }
+  .frow .ic--name{ --ic-bg:#e2f0eb; --ic-border:#acd0c2; --ic-fg:#1f4b3f; }
+  .frow .ic--mom{ --ic-bg:#f8e7e2; --ic-border:#e5b7aa; --ic-fg:#9c4630; }
+  .frow .ic--gender{ --ic-bg:#f8efd9; --ic-border:#dfc47f; --ic-fg:#9a741f; }
+  .frow .ic--class{ --ic-bg:#e4ebf1; --ic-border:#b8c9d8; --ic-fg:#3e5c76; }
+  .frow .ic--phone{ --ic-bg:#eee5ec; --ic-border:#d2b9ce; --ic-fg:#6b4863; }
+  .frow .lbl{ font-size:6.8px; color:#8a8168; }
+  .frow .val{
+    position:relative;
+    font-size:9.3px;
+    font-weight:600;
+    color:var(--ink);
+    line-height:1.15;
+    background:#fff;
+    border:1px solid var(--line);
+    border-left:2.6px solid var(--card-color, var(--forest));
+    border-radius:2.5px;
+    padding:0.8mm 2.2mm 2.9mm;
+    box-shadow:0 1px 2px rgba(30,20,10,.05);
+    overflow-wrap:anywhere;
+  }
+  .val--name{ --card-color:var(--c-name); }
+  .val--mom{ --card-color:var(--c-mom); }
+  .val--gender{ --card-color:var(--c-gender); }
+  .val--class{ --card-color:var(--c-class); }
+  .val--phone{ --card-color:var(--c-phone); }
+  .val-check{
+    position:absolute;
+    right:1.2mm;
+    bottom:.8mm;
+    width:2mm;
+    height:2mm;
+    margin:0;
+    padding:0;
+    appearance:none;
+    border:1px solid var(--gold);
+    border-radius:1px;
+    background:#fff;
+    cursor:pointer;
+  }
+  .val-check:checked{
+    background-color:#fff;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m2 6 2.3 2.3L10 2.8' fill='none' stroke='%231F4B3F' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-position:center;
+    background-repeat:no-repeat;
+    background-size:100% 100%;
+  }
+  .frow .corr{
+    height:5.2mm;
+    background:var(--paper);
+    border:1px solid var(--gold-soft);
+    border-radius:2px;
+    display:flex;
+    align-items:center;
+    gap:1.6mm;
+    padding:0 2mm;
+  }
+  .frow .corr .tag{
+    font-size:6px;
+    color:var(--brick);
+    font-weight:700;
+    letter-spacing:.2px;
+    flex-shrink:0;
+  }
+  .frow .corr .rule{
+    flex:1;
+    align-self:center;
+    border-bottom:1.4px solid var(--ink);
+    height:1px;
+  }
+
+  .page-foot{
+    margin-top:2mm;
+    display:flex;
+    justify-content:space-between;
+    font-size:8px;
+    color:#8a8168;
+    border-top:1px solid var(--paper);
+    padding-top:1mm;
+  }
+
+  @media print{
+    body{ background:#fff; }
+    .verification-back,.selector-shell,.empty-state{ display:none; }
+    .page{
+      margin:0;
+      box-shadow:none;
+      width:auto;
+      min-height:0;
+      padding:4mm 6mm;
+      page-break-after:always;
+    }
+    .page-head{ padding-bottom:1.5mm; margin-bottom:1.5mm; border-bottom-width:1.5px; }
+    .page-head h1{ font-size:15px; }
+    .page-head p{ font-size:9.5px; margin-top:1px; }
+    .page-head .meta{ font-size:8.8px; line-height:1.35; }
+    .slip + .cut{ height:2.5mm; }
+    .slip{ min-height:51mm; }
+    .photo-col{ padding:2.5mm 1.8mm; }
+    .photo-box{ width:14mm; height:17mm; }
+    .id-tag{ margin-top:1.8mm; font-size:5.9px; }
+    .id-tag .id-code svg{ width:3mm; height:3mm; }
+    .id-tag b{ font-size:7.4px; }
+    .photo-checks{ gap:.8mm; margin-top:1.4mm; font-size:5.2px; }
+    .photo-check{ gap:.9mm; }
+    .photo-check input{ width:1.8mm; height:1.8mm; }
+    .data-col{ padding:2mm 3mm 1.5mm 3.5mm; }
+    .school-row{ margin-bottom:.7mm; padding-bottom:.7mm; }
+    .school-row .crest{ width:5.8mm; height:5.8mm; }
+    .school-row .crest svg{ width:3.3mm; height:3.3mm; }
+    .school-row .sname{ font-size:10px; }
+    .school-row .stag{ font-size:7px; }
+    .school-row .corr-hd__inner{ gap:1mm; padding:.5mm 1.3mm; font-size:6px; }
+    .school-row .corr-hd__inner svg{ width:2.5mm; height:2.5mm; padding:.35mm; }
+    .frow{ padding:.45mm 0; }
+    .frow .ic{ width:5mm; height:5mm; }
+    .frow .ic svg{ width:2.7mm; height:2.7mm; }
+    .frow .lbl{ font-size:6.3px; }
+    .frow .val{ font-size:8.8px; padding:.65mm 2mm 1.6mm; }
+    .val-check{ right:1mm; bottom:.55mm; width:1.8mm; height:1.8mm; }
+    .frow .corr{ height:4.3mm; gap:1.2mm; padding:0 1.5mm; }
+    .frow .corr .tag{ font-size:5.6px; }
+    .frow .corr .rule{ border-bottom-width:1.1px; }
+    .page-foot{ margin-top:1.4mm; padding-top:.8mm; font-size:7px; }
+    .page:last-of-type{ page-break-after:auto; }
+    @page{ size:A4; margin:0; }
+  }
+  @media screen{
+    .page{ box-shadow:0 4px 22px rgba(0,0,0,.28); }
+  }
+  @media (max-width:800px){
+    .selector-row{grid-template-columns:1fr 1fr;}
+    .selector-actions{grid-column:1 / -1;}
+    .page{width:100%;min-height:auto;margin-top:14px;overflow-x:auto;}
+  }
+</style>
+</head>
+<body>
+
+<a class="verification-back" href="{{ students_management_return_url }}" aria-label="Dib-u-noqo Maamulka Ardeyda">
+  <span class="verification-back__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m11 18-6-6 6-6"/></svg></span>
+  <span>Dib-u-noqo</span>
+</a>
+
+<div class="selector-shell">
+  <div class="selector-card">
+    <h1>Warqadda Hubinta Xogta Ardayga</h1>
+    <p>Dooro Sannad Dugsiyeedka, Heerka iyo Fasalka si aad u soo saarto warqadaha hubinta.</p>
+    <form id="verification-form" method="get" action="{{ url_for('admin_advanced_results.student_verification') }}">
+      <input type="hidden" name="return_to" value="{{ students_management_return_url }}">
+      <div class="selector-row">
+        <div class="selector-field">
+          <label for="verification-year">1. Sannad Dugsiyeedka</label>
+          <select id="verification-year" name="year_id" onchange="this.form.submit()" required>
+            <option value="">Dooro sannadka</option>
+            {% for year in years %}
+              <option value="{{ year.id }}" {% if selected_year_id == year.id %}selected{% endif %}>{{ year.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="selector-field">
+          <label for="verification-level">2. Heerka</label>
+          <select id="verification-level" name="level_id" onchange="this.form.submit()" {% if not selected_year_id %}disabled{% endif %} required>
+            <option value="">Dooro heerka</option>
+            {% for level in levels %}
+              <option value="{{ level.id }}" {% if selected_level_id == level.id %}selected{% endif %}>{{ level.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="selector-field">
+          <label for="verification-class">3. Fasalka</label>
+          <select id="verification-class" name="class_id" onchange="this.form.submit()" {% if not selected_level_id %}disabled{% endif %} required>
+            <option value="">Dooro fasalka</option>
+            {% for academic_class in classes %}
+              <option value="{{ academic_class.id }}" {% if selected_class_id == academic_class.id %}selected{% endif %}>{{ academic_class.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="selector-actions">
+          {% if selection_complete %}
+            <a class="generate" id="verification-generate" href="{{ url_for('admin_advanced_results.student_verification', year_id=selected_year_id, level_id=selected_level_id, class_id=selected_class_id, generate=1, return_to=students_management_return_url) }}">Samee Warqadaha</a>
+          {% else %}
+            <button class="generate is-disabled" id="verification-generate" type="button" disabled>Samee Warqadaha</button>
+          {% endif %}
+          <button class="print" type="button" onclick="window.print()" {% if not student_count %}disabled{% endif %}>Daabac / Print</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if generate_requested and not student_count %}
+  <div class="empty-state">Arday lagama helin fasalka la doortay.</div>
+{% endif %}
+
+{% macro icon_user() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+{%- endmacro %}
+{% macro icon_mom() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="9" r="2.4"/><path d="M2 21v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1"/></svg>
+{%- endmacro %}
+{% macro icon_gender() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="14" r="5"/><path d="M17 7l4-4m0 0h-4m4 0v4M13.5 10.5L17 7"/></svg>
+{%- endmacro %}
+{% macro icon_class() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="1.8"/><path d="M8 21h8M12 17v4M7 8h10M7 11h6"/></svg>
+{%- endmacro %}
+{% macro icon_phone() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>
+{%- endmacro %}
+{% macro icon_cam() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="var(--forest)" stroke-width="1.8"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>
+{%- endmacro %}
+{% macro icon_crest() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="var(--ivory)" stroke-width="1.8"><path d="M12 2 3 6v6c0 5 3.8 9 9 10 5.2-1 9-5 9-10V6Z"/><path d="M9 12l2 2 4-4"/></svg>
+{%- endmacro %}
+{% macro icon_lock() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="1.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+{%- endmacro %}
+{% macro icon_id() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8" cy="10" r="1.7"/><path d="M12 9h5M12 12h5M6 15h11"/></svg>
+{%- endmacro %}
+{% macro icon_warning() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 10 18H2L12 3Z"/><path d="M12 9v5M12 18h.01"/></svg>
+{%- endmacro %}
+
+{% for page_rows in pages %}
+{% set page_loop = loop %}
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>{{ school_name }}</h1>
+      <p>Warqadda Hubinta Xogta Ardayga — Sannad Dugsiyeedka {{ selected_year.name }}</p>
+    </div>
+    <div class="meta">
+      Fasalka: {{ selected_class.name }} · Tirada: {{ student_count }} arday · {{ generated_date }}
+    </div>
+  </div>
+
+  {% for student in page_rows %}
+  <div class="slip">
+    <div class="photo-col">
+      <div class="photo-box">
+        {% if student.photo_url %}<img src="{{ student.photo_url }}" alt="Sawirka {{ student.name }}">{% else %}{{ icon_cam() }}{% endif %}
+      </div>
+      <div class="id-tag"><span class="id-code">{{ icon_id() }}<b>{{ student.student_code }}</b></span></div>
+      <div class="photo-checks" aria-label="Hubinta sawirka">
+        <label class="photo-check"><input type="checkbox" name="photo_correct_{{ student.student_code }}"><span>Sawirku sax weeye!</span></label>
+        <label class="photo-check"><input type="checkbox" name="photo_incorrect_{{ student.student_code }}"><span>Sawirku sax ma'aha!</span></label>
+      </div>
+    </div>
+    <div class="data-col">
+      <div class="school-row">
+        <div class="brand">
+          <div class="crest">{% if school_logo_url %}<img src="{{ school_logo_url }}" alt="{{ school_name }} logo">{% else %}{{ icon_crest() }}{% endif %}</div>
+          <span class="sname">{{ school_name }}</span>
+          <span class="stag">Ardeyga {{ page_loop.index0 * 5 + loop.index }}-aad</span>
+        </div>
+        <span class="corr-hd"><span class="corr-hd__inner">{{ icon_warning() }}<span>FADLAN SI SAX AH OO DEGGAN U HUBI XOGTAADA. FADLAN SAX WIXII KHALAD AH.</span></span></span>
+      </div>
+
+      <div class="frow"><div class="ic ic--name">{{ icon_user() }}</div><div class="lbl">Magaca Afaran</div><div class="val val--name">{{ student.name }}<input class="val-check" type="checkbox" aria-label="Magaca sax" title="Sax"></div><div class="corr"><span class="tag">Sax:</span></div></div>
+      <div class="frow"><div class="ic ic--mom">{{ icon_mom() }}</div><div class="lbl">Magaca Hooyada</div><div class="val val--mom">{{ student.mother_name }}<input class="val-check" type="checkbox" aria-label="Magaca hooyada sax" title="Sax"></div><div class="corr"><span class="tag">Sax:</span></div></div>
+      <div class="frow"><div class="ic ic--gender">{{ icon_gender() }}</div><div class="lbl">Jinsiga</div><div class="val val--gender">{{ student.gender }}<input class="val-check" type="checkbox" aria-label="Jinsiga sax" title="Sax"></div><div class="corr"><span class="tag">Sax:</span></div></div>
+      <div class="frow"><div class="ic ic--class">{{ icon_class() }}</div><div class="lbl">Fasalka</div><div class="val val--class">{{ student.class_name }}<input class="val-check" type="checkbox" aria-label="Fasalka sax" title="Sax"></div><div class="corr"><span class="tag">Sax:</span></div></div>
+      <div class="frow"><div class="ic ic--phone">{{ icon_phone() }}</div><div class="lbl">Teleefanka</div><div class="val val--phone">{{ student.phone }}<input class="val-check" type="checkbox" aria-label="Teleefanka sax" title="Sax"></div><div class="corr"><span class="tag">Sax:</span></div></div>
+    </div>
+  </div>
+  {% if not loop.last %}<div class="cut"><span class="scissor">&#9987;</span></div>{% endif %}
+  {% endfor %}
+
+  <div class="page-foot">
+    <span>{{ school_name }} · Waaxda Diiwaanka Ardayda</span>
+    <span>Bog {{ page_loop.index }} / {{ total_pages }}</span>
+  </div>
+</div>
+{% endfor %}
+
+</body>
+</html>
