@@ -227,8 +227,77 @@
     justify-content:center;
     overflow:hidden;
   }
+  .photo-box--preview{
+    position:relative;
+    padding:0;
+    font:inherit;
+    cursor:zoom-in;
+  }
   .photo-box img{width:100%;height:100%;object-fit:cover;}
   .photo-box svg{ width:9mm; height:9mm; opacity:.55; }
+  .photo-box--preview::after{
+    content:'+';
+    position:absolute;
+    right:1mm;
+    bottom:1mm;
+    width:3.4mm;
+    height:3.4mm;
+    display:grid;
+    place-items:center;
+    border:1px solid rgba(255,255,255,.9);
+    border-radius:50%;
+    background:rgba(31,75,63,.86);
+    color:#fff;
+    font-size:10px;
+    font-weight:700;
+    line-height:1;
+    box-shadow:0 1px 3px rgba(0,0,0,.25);
+  }
+  .photo-preview-modal{
+    position:fixed;
+    inset:0;
+    z-index:1000;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    background:rgba(15,27,22,.78);
+  }
+  .photo-preview-modal.is-open{ display:flex; }
+  .photo-preview-card{
+    position:relative;
+    max-width:min(86vw,520px);
+    max-height:88vh;
+    padding:8px;
+    border:1px solid rgba(255,255,255,.55);
+    border-radius:10px;
+    background:#fff;
+    box-shadow:0 18px 55px rgba(0,0,0,.38);
+  }
+  .photo-preview-card img{
+    display:block;
+    max-width:100%;
+    max-height:calc(88vh - 16px);
+    object-fit:contain;
+    border-radius:4px;
+  }
+  .photo-preview-close{
+    position:absolute;
+    top:-13px;
+    right:-13px;
+    width:30px;
+    height:30px;
+    display:grid;
+    place-items:center;
+    border:1px solid rgba(255,255,255,.7);
+    border-radius:50%;
+    background:var(--brick);
+    color:#fff;
+    font-size:20px;
+    line-height:1;
+    cursor:pointer;
+  }
+  body.photo-preview-open{ overflow:hidden; }
   .id-tag{
     margin-top:2.5mm;
     font-size:6.6px;
@@ -326,7 +395,7 @@
   .school-row .crest img{
     width:100%;
     height:100%;
-    padding:.6mm;
+    padding:.3mm;
     object-fit:contain;
     border-radius:.8mm;
   }
@@ -523,6 +592,8 @@
     .frow .corr .tag{ font-size:5.6px; }
     .frow .corr .rule{ border-bottom-width:1.1px; }
     .page-foot{ margin-top:1.4mm; padding-top:.8mm; font-size:7px; }
+    .photo-box--preview::after{ display:none; }
+    .photo-preview-modal{ display:none !important; }
     .page:last-of-type{ page-break-after:auto; }
     @page{ size:A4; margin:0; }
   }
@@ -641,9 +712,13 @@
   {% for student in page_rows %}
   <div class="slip">
     <div class="photo-col">
-      <div class="photo-box">
-        {% if student.photo_url %}<img src="{{ student.photo_url }}" alt="Sawirka {{ student.name }}">{% else %}{{ icon_cam() }}{% endif %}
-      </div>
+      {% if student.photo_url %}
+      <button class="photo-box photo-box--preview" type="button" data-photo-preview="{{ student.photo_url|e }}" data-photo-alt="Sawirka {{ student.name|e }}" aria-label="Eeg sawirka {{ student.name|e }}">
+        <img src="{{ student.photo_url }}" alt="Sawirka {{ student.name }}">
+      </button>
+      {% else %}
+      <div class="photo-box">{{ icon_cam() }}</div>
+      {% endif %}
       <div class="id-tag"><span class="id-code">{{ icon_id() }}<b>{{ student.student_code }}</b></span></div>
       <div class="photo-checks" aria-label="Hubinta sawirka">
         <label class="photo-check"><input type="checkbox" name="photo_correct_{{ student.student_code }}"><span>Sawirku sax weeye!</span></label>
@@ -677,5 +752,46 @@
 </div>
 {% endfor %}
 
+<div class="photo-preview-modal" id="photoPreviewModal" role="dialog" aria-modal="true" aria-label="Preview-ga sawirka" hidden>
+  <div class="photo-preview-card">
+    <button class="photo-preview-close" type="button" id="photoPreviewClose" aria-label="Xir preview-ga">&times;</button>
+    <img id="photoPreviewImage" src="" alt="">
+  </div>
+</div>
+
 </body>
+<script>
+  (function () {
+    var modal = document.getElementById('photoPreviewModal');
+    var image = document.getElementById('photoPreviewImage');
+    var close = document.getElementById('photoPreviewClose');
+    if (!modal || !image || !close) return;
+
+    function closePreview() {
+      modal.classList.remove('is-open');
+      modal.hidden = true;
+      image.removeAttribute('src');
+      document.body.classList.remove('photo-preview-open');
+    }
+
+    document.querySelectorAll('[data-photo-preview]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        image.src = button.getAttribute('data-photo-preview');
+        image.alt = button.getAttribute('data-photo-alt') || 'Sawirka ardayga';
+        modal.hidden = false;
+        modal.classList.add('is-open');
+        document.body.classList.add('photo-preview-open');
+        close.focus();
+      });
+    });
+
+    close.addEventListener('click', closePreview);
+    modal.addEventListener('click', function (event) {
+      if (event.target === modal) closePreview();
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && modal.classList.contains('is-open')) closePreview();
+    });
+  }());
+</script>
 </html>
