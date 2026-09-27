@@ -252,7 +252,13 @@
     font-weight:700;
     line-height:1;
     box-shadow:0 1px 3px rgba(0,0,0,.25);
+    opacity:0;
+    transform:scale(.72);
+    transition:opacity .16s ease, transform .16s ease;
+    pointer-events:none;
   }
+  .photo-box--preview:hover::after,
+  .photo-box--preview:focus::after{ opacity:1; transform:scale(1); }
   .photo-preview-modal{
     position:fixed;
     inset:0;
