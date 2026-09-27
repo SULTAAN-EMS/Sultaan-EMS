@@ -73,6 +73,8 @@ class AcademicYearLevel(TimestampMixin, db.Model):
 
     __tablename__ = "academic_year_levels"
 
+    SCHOOL_STAGE_VALUES = ("secondary", "upper_primary", "lower_primary", "kindergarten")
+
     id = db.Column(db.Integer, primary_key=True)
     academic_year_id = db.Column(
         db.Integer,
@@ -87,6 +89,7 @@ class AcademicYearLevel(TimestampMixin, db.Model):
         index=True,
     )
     name = db.Column(db.String(100), nullable=False)
+    school_stage = db.Column(db.String(30), nullable=True, index=True)
     sort_order = db.Column(db.Integer, default=0, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 

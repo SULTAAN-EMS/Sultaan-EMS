@@ -2257,7 +2257,7 @@ CONFIG_CENTER_SECTIONS = {
     'levels': {
         'title': 'Levels & Classes',
         'description': 'Manage academic levels, classes, and sections as one hierarchy',
-        'columns': ['Level / Class', 'Status', 'Type', 'Students', 'Sections', 'Created By']
+        'columns': ['Level / Class', 'School Stage', 'Status', 'Type', 'Students', 'Sections', 'Created By']
     },
     'subjects': {
         'title': 'Subjects',
@@ -2286,6 +2286,13 @@ CONFIG_CENTER_MODEL_MAP = {
 }
 
 CONFIG_CENTER_MUTABLE_TYPES = {'academic-years', 'exam-types', 'levels', 'classes', 'subjects'}
+
+SCHOOL_STAGE_LABELS = {
+    'secondary': 'Dugsi Sare',
+    'upper_primary': 'Dugsi Dhexe',
+    'lower_primary': 'Dugsi Hoose',
+    'kindergarten': 'Xannaano',
+}
 
 
 def _config_center_auth_valid():
@@ -2809,6 +2816,7 @@ def config_center():
                          class_student_counts=class_student_counts,
                          subject_class_map=subject_class_map,
                          subject_icons=subject_icons,
+                         school_stage_labels=SCHOOL_STAGE_LABELS,
                          selected_subject_year_id=selected_subject_year_id,
                          selected_subject_level_id=selected_subject_level_id)
 
@@ -3869,7 +3877,7 @@ def config_year_levels():
     return jsonify({
         'success': True,
         'data': [
-            {'id': item.id, 'name': item.name, 'academic_year_id': item.academic_year_id}
+            {'id': item.id, 'name': item.name, 'academic_year_id': item.academic_year_id, 'school_stage': item.school_stage}
             for item in year_levels(year_id)
         ],
     })
@@ -3970,11 +3978,14 @@ def config_create_level():
     name = data.get('name', '').strip()
     sort_order = _parse_int(data.get('sort_order'))
     academic_year_id = _parse_int(data.get('academic_year_id'))
+    school_stage = str(data.get('school_stage', '')).strip().lower()
 
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'})
     if not academic_year_id or not db.session.get(AcademicYear, academic_year_id):
         return jsonify({'success': False, 'message': 'Academic year is required'})
+    if school_stage not in AcademicYearLevel.SCHOOL_STAGE_VALUES:
+        return jsonify({'success': False, 'message': 'School stage is required'})
 
     try:
         from sqlalchemy import func
@@ -3993,6 +4004,7 @@ def config_create_level():
             academic_year_id=academic_year_id,
             legacy_level_id=level.id,
             name=name,
+            school_stage=school_stage,
             is_active=True,
             sort_order=sort_order if sort_order is not None else max_sort + 1,
         )
@@ -4000,7 +4012,7 @@ def config_create_level():
         db.session.commit()
 
         audit("Configuration Center", f"Created academic level: {name}")
-        return jsonify({'success': True, 'message': 'Academic level created successfully', 'data': {'id': year_level.id, 'name': year_level.name}})
+        return jsonify({'success': True, 'message': 'Academic level created successfully', 'data': {'id': year_level.id, 'name': year_level.name, 'school_stage': year_level.school_stage}})
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)})
@@ -4017,10 +4029,13 @@ def config_update_level(level_id):
 
     name = data.get('name', level.name).strip()
     academic_year_id = _parse_int(data.get('academic_year_id'), level.academic_year_id)
+    school_stage = str(data.get('school_stage', level.school_stage or '')).strip().lower()
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'})
     if not academic_year_id or not db.session.get(AcademicYear, academic_year_id):
         return jsonify({'success': False, 'message': 'Academic year is required'})
+    if school_stage not in AcademicYearLevel.SCHOOL_STAGE_VALUES:
+        return jsonify({'success': False, 'message': 'School stage is required'})
     if academic_year_id != level.academic_year_id and (
         AcademicYearClass.query.filter_by(academic_year_level_id=level.id).first()
         or AcademicYearSubject.query.filter_by(academic_year_level_id=level.id).first()
@@ -4031,8 +4046,9 @@ def config_update_level(level_id):
         })
     if _duplicate_exists(AcademicYearLevel, {'name': name, 'academic_year_id': academic_year_id}, exclude_id=level.id):
         return jsonify({'success': False, 'message': 'Academic level already exists for this academic year'})
-    old_value = {'name': level.name, 'sort_order': level.sort_order, 'is_active': level.is_active}
+    old_value = {'name': level.name, 'school_stage': level.school_stage, 'sort_order': level.sort_order, 'is_active': level.is_active}
     level.name = name
+    level.school_stage = school_stage
     level.academic_year_id = academic_year_id
     if 'sort_order' in data:
         level.sort_order = _parse_int(data.get('sort_order'), level.sort_order)
@@ -4041,7 +4057,7 @@ def config_update_level(level_id):
 
     try:
         db.session.commit()
-        _audit_config_change("Configuration Center Updated", "levels", level, old_value=old_value, new_value={'name': level.name, 'sort_order': level.sort_order, 'is_active': level.is_active})
+        _audit_config_change("Configuration Center Updated", "levels", level, old_value=old_value, new_value={'name': level.name, 'school_stage': level.school_stage, 'sort_order': level.sort_order, 'is_active': level.is_active})
         return jsonify({'success': True, 'message': 'Academic level updated successfully'})
     except Exception as e:
         db.session.rollback()

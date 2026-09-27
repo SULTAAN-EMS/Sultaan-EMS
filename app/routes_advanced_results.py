@@ -3650,6 +3650,31 @@ def results_settings():
     )
 
 
+STUDENT_STAGE_KEYS = {
+    "secondary": "secondary",
+    "upper_primary": "upper_primary",
+    "lower_primary": "lower_primary",
+    "kindergarten": "kindergarten",
+}
+
+
+def _student_stage_key(level):
+    """Return the configured school stage, with a safe legacy-name fallback."""
+    configured = (getattr(level, "school_stage", None) or "").strip().lower()
+    if configured in STUDENT_STAGE_KEYS:
+        return configured
+    normalized = " ".join((level.name or "").strip().lower().replace("-", " ").split())
+    if "kindergarten" in normalized or normalized in {"kg", "xanaan", "xannaano", "xanaano"}:
+        return "kindergarten"
+    if "secondary" in normalized or "dugsi sare" in normalized or normalized == "sare":
+        return "secondary"
+    if "lower primary" in normalized or "dugsi hoose" in normalized or "hoose" in normalized:
+        return "lower_primary"
+    if "upper primary" in normalized or "primary" in normalized or "middle" in normalized or "dugsi dhexe" in normalized or "dhexe" in normalized:
+        return "upper_primary"
+    return None
+
+
 @advanced_results_bp.route("/students-management")
 def students_management():
     """Enrollment-aware Student Management listing with legacy fallback."""
@@ -3725,31 +3750,23 @@ def students_management():
     
     if selected_year:
         scope_query = student_enrollment_scope_query(selected_year.id)
-        stats["total_students"] = scope_query.count()
+        stats["total_students"] = scope_query.with_entities(func.count(func.distinct(Student.id))).scalar() or 0
 
         # Students by year-aware level
         for level in levels:
             level_count = student_enrollment_scope_query(
                 selected_year.id,
                 academic_year_level_id=level.id,
-            ).count()
-            level_name_lower = level.name.lower()
-            if "kindergarten" in level_name_lower or "kg" in level_name_lower:
-                stats["kindergarten"] = level_count
-            elif "upper" in level_name_lower and "primary" in level_name_lower:
-                stats["upper_primary"] = level_count
-            elif "lower" in level_name_lower and "primary" in level_name_lower:
-                stats["lower_primary"] = level_count
-            elif "primary" in level_name_lower:
-                # If just "primary" without upper/lower, count as upper primary
-                stats["upper_primary"] += level_count
-            elif "middle" in level_name_lower:
-                stats["upper_primary"] += level_count  # Count middle as upper primary for this context
-            elif "secondary" in level_name_lower:
-                stats["secondary"] = level_count
+            ).with_entities(func.count(func.distinct(Student.id))).scalar() or 0
+            stage_key = _student_stage_key(level)
+            if stage_key:
+                stats[stage_key] += level_count
         
-        # Active students (not locked)
-        stats["active_students"] = scope_query.filter(Student.is_result_locked.is_(False)).count()
+        # A locked result is still an active student; use the enrollment record's
+        # actual student status instead of treating result lock as inactivity.
+        stats["active_students"] = scope_query.filter(
+            Student.is_active.is_(True)
+        ).with_entities(func.count(func.distinct(Student.id))).scalar() or 0
     
     # Get students with filters
     students_query = (

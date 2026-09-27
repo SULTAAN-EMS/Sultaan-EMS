@@ -18,7 +18,7 @@
         </div>
         <div class="sm-card-content">
           <div class="sm-card-value" data-target="{{ stats.total_students }}">0</div>
-          <div class="sm-card-label">{{ rh_label("students.total_students", default="Total Students") }}</div>
+          <div class="sm-card-label">Wadarta Ardayda</div>
         </div>
         <div class="sm-card-trend">
           <i class="fa-solid fa-chart-line"></i>
@@ -31,7 +31,7 @@
         </div>
         <div class="sm-card-content">
           <div class="sm-card-value" data-target="{{ stats.secondary }}">0</div>
-          <div class="sm-card-label">{{ rh_label("students.secondary", default="Secondary") }}</div>
+          <div class="sm-card-label">Dugsi Sare</div>
         </div>
         <div class="sm-card-trend">
           <i class="fa-solid fa-award"></i>
@@ -44,7 +44,7 @@
         </div>
         <div class="sm-card-content">
           <div class="sm-card-value" data-target="{{ stats.upper_primary }}">0</div>
-          <div class="sm-card-label">{{ rh_label("students.upper_primary", default="Upper Primary") }}</div>
+          <div class="sm-card-label">Dugsi Dhexe</div>
         </div>
         <div class="sm-card-trend">
           <i class="fa-solid fa-arrow-trend-up"></i>
@@ -57,7 +57,7 @@
         </div>
         <div class="sm-card-content">
           <div class="sm-card-value" data-target="{{ stats.lower_primary }}">0</div>
-          <div class="sm-card-label">{{ rh_label("students.lower_primary", default="Lower Primary") }}</div>
+          <div class="sm-card-label">Dugsi Hoose</div>
         </div>
         <div class="sm-card-trend">
           <i class="fa-solid fa-seedling"></i>
@@ -70,7 +70,7 @@
         </div>
         <div class="sm-card-content">
           <div class="sm-card-value" data-target="{{ stats.kindergarten }}">0</div>
-          <div class="sm-card-label">{{ rh_label("students.kindergarten", default="Kindergarten") }}</div>
+          <div class="sm-card-label">Xannaano</div>
         </div>
         <div class="sm-card-trend">
           <i class="fa-solid fa-shapes"></i>
@@ -83,7 +83,7 @@
         </div>
         <div class="sm-card-content">
           <div class="sm-card-value" data-target="{{ stats.active_students }}">0</div>
-          <div class="sm-card-label">{{ rh_label("students.active_students", default="Active Students") }}</div>
+          <div class="sm-card-label">Ardayda Firfircoon</div>
         </div>
         <div class="sm-card-trend">
           <i class="fa-solid fa-circle-check"></i>
@@ -159,7 +159,7 @@
     <div class="sm-toolbar">
       <a href="{{ url_for('admin_advanced_results.student_form') }}" class="btn btn-gold">
         <i class="fa-solid fa-plus"></i>
-        {{ rh_label("students.add_student", default="Cali Arday Cusub") }}
+        {{ rh_label("students.add_student", default="Diiwaangeli Ardey Cusub") }}
       </a>
       <a href="{{ url_for('admin_advanced_results.class_transition') }}" class="btn btn-outline">
         <i class="fa-solid fa-users-gear"></i>
@@ -805,23 +805,43 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .sm-card-magenta::before {
-  background: linear-gradient(90deg, #c026d3, #e879f9, #f0abfc);
+  background: linear-gradient(90deg, #4338ca, #4f46e5, #818cf8);
 }
 
 .sm-card-teal::before {
-  background: linear-gradient(90deg, #0d9488, #14b8a6, #2dd4bf);
+  background: linear-gradient(90deg, #0f766e, #14b8a6, #5eead4);
 }
 
 .sm-card-lime::before {
-  background: linear-gradient(90deg, #65a30d, #84cc16, #a3e635);
+  background: linear-gradient(90deg, #b45309, #d97706, #fbbf24);
 }
 
 .sm-card-violet::before {
-  background: linear-gradient(90deg, #7c3aed, #8b5cf6, #a78bfa);
+  background: linear-gradient(90deg, #7e22ce, #a855f7, #d8b4fe);
 }
 
 .sm-card-success::before {
   background: linear-gradient(90deg, #059669, #10b981, #34d399);
+}
+
+.sm-card-magenta {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+.sm-card-teal {
+  background: #ecfeff;
+  border-color: #a5f3fc;
+}
+
+.sm-card-lime {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.sm-card-violet {
+  background: #fdf4ff;
+  border-color: #f5d0fe;
 }
 
 .sm-card-icon {
@@ -841,23 +861,23 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .sm-card-magenta .sm-card-icon {
-  background: linear-gradient(135deg, rgba(192, 38, 211, 0.15), rgba(232, 121, 249, 0.15));
-  color: #c026d3;
+  background: linear-gradient(135deg, #e0e7ff, #c7d2fe);
+  color: #4f46e5;
 }
 
 .sm-card-teal .sm-card-icon {
-  background: linear-gradient(135deg, rgba(13, 148, 136, 0.15), rgba(20, 184, 166, 0.15));
-  color: #0d9488;
+  background: linear-gradient(135deg, #ccfbf1, #99f6e4);
+  color: #0f766e;
 }
 
 .sm-card-lime .sm-card-icon {
-  background: linear-gradient(135deg, rgba(101, 163, 13, 0.15), rgba(132, 204, 22, 0.15));
-  color: #65a30d;
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  color: #d97706;
 }
 
 .sm-card-violet .sm-card-icon {
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.15), rgba(139, 92, 246, 0.15));
-  color: #7c3aed;
+  background: linear-gradient(135deg, #f3e8ff, #e9d5ff);
+  color: #a855f7;
 }
 
 .sm-card-success .sm-card-icon {
@@ -905,23 +925,23 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .sm-card-magenta .sm-card-trend {
-  color: #c026d3;
-  background: rgba(192, 38, 211, 0.08);
+  color: #4f46e5;
+  background: rgba(79, 70, 229, 0.1);
 }
 
 .sm-card-teal .sm-card-trend {
-  color: #0d9488;
-  background: rgba(13, 148, 136, 0.08);
+  color: #0f766e;
+  background: rgba(15, 118, 110, 0.1);
 }
 
 .sm-card-lime .sm-card-trend {
-  color: #65a30d;
-  background: rgba(101, 163, 13, 0.08);
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.1);
 }
 
 .sm-card-violet .sm-card-trend {
-  color: #7c3aed;
-  background: rgba(124, 58, 237, 0.08);
+  color: #a855f7;
+  background: rgba(168, 85, 247, 0.1);
 }
 
 .sm-card-success .sm-card-trend {

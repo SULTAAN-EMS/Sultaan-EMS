@@ -489,6 +489,41 @@ body:has(.config-dashboard) .admin-top-compact {
   color: white;
 }
 
+/* School-stage badges use the same palette as the Student Management cards. */
+.config-stage-secondary {
+  background: #4f46e5;
+  color: #ffffff;
+  border: 1px solid #4f46e5;
+  font-weight: 700;
+}
+
+.config-stage-upper-primary {
+  background: #0f766e;
+  color: #ffffff;
+  border: 1px solid #0f766e;
+  font-weight: 700;
+}
+
+.config-stage-lower-primary {
+  background: #d97706;
+  color: #ffffff;
+  border: 1px solid #d97706;
+  font-weight: 700;
+}
+
+.config-stage-kindergarten {
+  background: #a855f7;
+  color: #ffffff;
+  border: 1px solid #a855f7;
+  font-weight: 700;
+}
+
+.config-stage-neutral {
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+}
+
 .config-badge-neutral {
   background: var(--gray-400);
   color: white;

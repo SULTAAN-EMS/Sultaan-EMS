@@ -168,7 +168,7 @@
           {% elif section == 'levels' %}
             {% for item in items %}
             {% set level_classes = classes_by_level.get(item.id, []) %}
-            <tr data-id="{{ item.id }}" data-item-type="levels" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-sort-order="{{ item.sort_order }}" data-academic-year-id="{{ item.academic_year_id }}" data-legacy-level-id="{{ item.legacy_level_id or '' }}">
+            <tr data-id="{{ item.id }}" data-item-type="levels" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-school-stage="{{ item.school_stage or '' }}" data-sort-order="{{ item.sort_order }}" data-academic-year-id="{{ item.academic_year_id }}" data-legacy-level-id="{{ item.legacy_level_id or '' }}">
               <td>
                 <div class="config-hierarchy-cell">
                   <strong>{{ item.name }}</strong>
@@ -180,6 +180,10 @@
                     {% endfor %}
                   </div>
                 </div>
+              </td>
+              <td>
+                {% set stage_badge_classes = {'secondary': 'config-stage-secondary', 'upper_primary': 'config-stage-upper-primary', 'lower_primary': 'config-stage-lower-primary', 'kindergarten': 'config-stage-kindergarten'} %}
+                <span class="config-badge {{ stage_badge_classes.get(item.school_stage, 'config-stage-neutral') }}">{{ school_stage_labels.get(item.school_stage, 'Aan la qeexin') }}</span>
               </td>
               <td><span class="config-badge {{ 'config-badge-success' if item.is_active else 'config-badge-neutral' }}">{{ 'Active' if item.is_active else 'Inactive' }}</span></td>
               <td>Academic Level</td>
@@ -199,6 +203,7 @@
                   </div>
                 </div>
               </td>
+              <td><span class="config-muted">-</span></td>
               <td><span class="config-badge {{ 'config-badge-success' if cls.is_active else 'config-badge-neutral' }}">{{ 'Active' if cls.is_active else 'Inactive' }}</span></td>
               <td>Class</td>
               <td>{{ class_student_counts.get(cls.id, 0) }} Students</td>
@@ -309,6 +314,17 @@
             <option value="{{ year.id }}">{{ year.name }}</option>
             {% endfor %}
           </select>
+        </div>
+        <div class="config-form-group js-stage-group">
+          <label class="config-form-label" for="itemSchoolStage">Heerka Dugsiga</label>
+          <select class="config-form-select" id="itemSchoolStage">
+            <option value="">Dooro Heerka Dugsiga</option>
+            <option value="secondary">Dugsi Sare</option>
+            <option value="upper_primary">Dugsi Dhexe</option>
+            <option value="lower_primary">Dugsi Hoose</option>
+            <option value="kindergarten">Xannaano</option>
+          </select>
+          <small class="config-form-help">Waxaa loo isticmaalaa kala-soocidda ardayda dashboard-ka.</small>
         </div>
         <div class="config-form-group js-level-group">
           <label class="config-form-label">Academic Level</label>
@@ -466,6 +482,7 @@ function configureForm() {
   const apiType = apiTypeForSection();
   setGroup('.js-kind-group', currentSection === 'levels' && !editingItemId);
   setGroup('.js-year-group', ['exam-types', 'levels', 'classes', 'subjects'].includes(apiType));
+  setGroup('.js-stage-group', apiType === 'levels');
   setGroup('.js-level-group', apiType === 'subjects' || apiType === 'classes');
   setGroup('.js-subject-kind-group', apiType === 'subjects');
   setGroup('.js-code-group', apiType === 'exam-types');
@@ -525,6 +542,7 @@ function editItem(itemType, itemId) {
   const yearId = row.dataset.academicYearId || '';
   const yearLevelId = row.dataset.academicYearLevelId || '';
   document.getElementById('itemAcademicYearId').value = yearId;
+  document.getElementById('itemSchoolStage').value = row.dataset.schoolStage || '';
   document.getElementById('itemSortOrder').value = row.dataset.sortOrder || '';
   configureForm();
   loadYearLevels(yearId, yearLevelId);
@@ -775,6 +793,7 @@ function payloadFor(apiType) {
   }
   if (apiType === 'levels') {
     payload.academic_year_id = document.getElementById('itemAcademicYearId').value;
+    payload.school_stage = document.getElementById('itemSchoolStage').value;
     payload.sort_order = document.getElementById('itemSortOrder').value;
   }
   if (apiType === 'subjects') {

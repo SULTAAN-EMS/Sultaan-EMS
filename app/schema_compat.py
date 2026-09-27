@@ -89,6 +89,9 @@ def ensure_schema_compatibility():
     add_column_if_missing("students", "academic_level_id", column_sql(dialect, "academic_level_id", "INTEGER"))
     add_column_if_missing("students", "academic_class_id", column_sql(dialect, "academic_class_id", "INTEGER"))
     add_column_if_missing("students", "academic_section_id", column_sql(dialect, "academic_section_id", "INTEGER"))
+    add_column_if_missing("academic_year_levels", "school_stage", column_sql(dialect, "school_stage", "VARCHAR(30)"))
+    add_index_if_missing("academic_year_levels", "idx_academic_year_levels_school_stage", ["school_stage"])
+    backfill_academic_year_level_stages()
     add_column_if_missing("subjects", "academic_level_id", column_sql(dialect, "academic_level_id", "INTEGER"))
     add_column_if_missing("exams", "academic_level_id", column_sql(dialect, "academic_level_id", "INTEGER"))
     add_column_if_missing("exams", "academic_class_id", column_sql(dialect, "academic_class_id", "INTEGER"))
@@ -1153,6 +1156,54 @@ def _model_column_default_sql(column):
         if isinstance(value, str):
             return "'" + value.replace("'", "''") + "'"
     return None
+
+
+def _infer_school_stage(level_name):
+    normalized = " ".join(str(level_name or "").strip().lower().replace("-", " ").split())
+    if "kindergarten" in normalized or normalized in {"kg", "xanaan", "xannaano", "xanaano"}:
+        return "kindergarten"
+    if "secondary" in normalized or "dugsi sare" in normalized or normalized == "sare":
+        return "secondary"
+    if "lower primary" in normalized or "dugsi hoose" in normalized or "hoose" in normalized:
+        return "lower_primary"
+    if (
+        "upper primary" in normalized
+        or "primary" in normalized
+        or "middle" in normalized
+        or "dugsi dhexe" in normalized
+        or "dhexe" in normalized
+    ):
+        return "upper_primary"
+    return None
+
+
+def backfill_academic_year_level_stages():
+    """Give existing year-level rows an explicit school-stage classification."""
+    inspector = inspect(db.engine)
+    if not inspector.has_table("academic_year_levels"):
+        return
+    columns = {row["name"] for row in inspector.get_columns("academic_year_levels")}
+    if "school_stage" not in columns:
+        return
+    try:
+        rows = db.session.execute(
+            text("SELECT id, name, school_stage FROM academic_year_levels")
+        ).mappings().all()
+        changed = False
+        for row in rows:
+            if row["school_stage"]:
+                continue
+            stage = _infer_school_stage(row["name"])
+            if stage:
+                db.session.execute(
+                    text("UPDATE academic_year_levels SET school_stage = :stage WHERE id = :id"),
+                    {"stage": stage, "id": row["id"]},
+                )
+                changed = True
+        if changed:
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def add_column_if_missing(table, column, ddl):
