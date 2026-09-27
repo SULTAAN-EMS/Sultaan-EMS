@@ -3877,11 +3877,70 @@
 }
 
 .sm-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
     font-size: 10px;
     color: var(--slate);
     font-family: 'JetBrains Mono', monospace;
     text-align: right;
     white-space: nowrap;
+}
+
+.sm-meta-code {
+    line-height: 1.1;
+}
+
+.sm-class-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 92px;
+    padding: 3px 7px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-family: 'Inter', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sm-class-badge span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sm-class-badge--secondary {
+    background: #4f46e5;
+    border-color: #4f46e5;
+    color: #fff;
+}
+
+.sm-class-badge--upper_primary {
+    background: #0f766e;
+    border-color: #0f766e;
+    color: #fff;
+}
+
+.sm-class-badge--lower_primary {
+    background: #d97706;
+    border-color: #d97706;
+    color: #fff;
+}
+
+.sm-class-badge--kindergarten {
+    background: #a855f7;
+    border-color: #a855f7;
+    color: #fff;
+}
+
+.sm-class-badge--neutral {
+    background: #64748b;
+    border-color: #64748b;
+    color: #fff;
 }
 
 .status-pill {

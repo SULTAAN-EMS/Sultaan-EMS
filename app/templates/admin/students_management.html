@@ -302,7 +302,14 @@
               {% endif %}
             </div>
             <div class="sm-meta">
-              <div>{{ student.student_code }}</div>
+              <div class="sm-meta-code">{{ student.student_code }}</div>
+              {% if enrollment and enrollment.academic_year_class %}
+                {% set student_stage = enrollment.academic_year_level.school_stage if enrollment.academic_year_level else '' %}
+                <span class="sm-class-badge sm-class-badge--{{ student_stage or 'neutral' }}" title="{{ enrollment.academic_year_class.name }}">
+                  <i class="fa-solid fa-chalkboard-user" aria-hidden="true"></i>
+                  <span>{{ enrollment.academic_year_class.name }}</span>
+                </span>
+              {% endif %}
               <span class="status-pill {{ 'locked' if student.is_result_locked else 'active' }}">
                 <i class="fa-solid {{ 'fa-lock' if student.is_result_locked else 'fa-unlock' }}"></i>
                 {{ "Locked" if student.is_result_locked else "Active" }}
