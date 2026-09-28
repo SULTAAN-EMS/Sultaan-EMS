@@ -3675,6 +3675,15 @@ def _student_stage_key(level):
     return None
 
 
+def _safe_students_management_return(value):
+    """Keep student-management navigation internal while preserving its context."""
+    fallback = url_for("admin_advanced_results.students_management")
+    candidate = (value or "").strip()
+    if candidate.startswith("/admin/advanced-results/students-management") and not candidate.startswith("//"):
+        return candidate
+    return fallback
+
+
 @advanced_results_bp.route("/students-management")
 def students_management():
     """Enrollment-aware Student Management listing with legacy fallback."""
@@ -3685,6 +3694,9 @@ def students_management():
     section_id = int_or_none(request.args.get("section_id"))
     search_query = request.args.get("q", "").strip()
     status_filter = request.args.get("status_filter", "")
+    sort_order = request.args.get("sort", "name_asc")
+    if sort_order not in {"name_asc", "name_desc", "id_asc", "id_desc"}:
+        sort_order = "name_asc"
     page = int_or_none(request.args.get("page", 1)) or 1
     per_page = 7  # Students per page for balanced layout
     
@@ -3782,10 +3794,11 @@ def students_management():
     if search_query:
         search_pattern = f"%{search_query}%"
         students_query = students_query.filter(
-            db.or_(
-                Student.student_code.like(search_pattern),
-                Student.full_name.like(search_pattern),
-                Student.mother_name.like(search_pattern)
+            db_or(
+                Student.student_code.ilike(search_pattern),
+                Student.full_name.ilike(search_pattern),
+                Student.mother_name.ilike(search_pattern),
+                Student.phone.ilike(search_pattern),
             )
         )
     
@@ -3799,7 +3812,15 @@ def students_management():
     total_students = students_query.count()
     
     # Apply pagination
-    students = students_query.order_by(Student.student_code).offset((page - 1) * per_page).limit(per_page).all()
+    if sort_order == "name_desc":
+        ordering = [func.lower(func.trim(Student.full_name)).desc(), Student.id.desc()]
+    elif sort_order == "id_asc":
+        ordering = [func.lower(func.trim(Student.student_code)), Student.id]
+    elif sort_order == "id_desc":
+        ordering = [func.lower(func.trim(Student.student_code)).desc(), Student.id.desc()]
+    else:
+        ordering = [func.lower(func.trim(Student.full_name)), Student.id]
+    students = students_query.order_by(*ordering).offset((page - 1) * per_page).limit(per_page).all()
     student_ids = [student.id for student in students]
     enrollments = {}
     if student_ids and selected_year:
@@ -3864,6 +3885,7 @@ def students_management():
         promotion_statuses=promotion_statuses,
         q=search_query,
         status_filter=status_filter,
+        sort_order=sort_order,
         stats=stats,
         page=page,
         per_page=per_page,
@@ -3918,6 +3940,8 @@ def student_transition(student_id):
     student = db.session.get(Student, student_id)
     if not student:
         abort(404)
+    requested_return_to = request.values.get("return_to")
+    student_management_return_url = _safe_students_management_return(requested_return_to)
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
     source_enrollments = _transition_source_enrollments(student)
     source_id = int_or_none(request.values.get("source_enrollment_id"))
@@ -3959,6 +3983,8 @@ def student_transition(student_id):
                     f"{student.full_name} moved successfully to {destination.academic_year.name} — {destination.academic_year_class.name}.",
                     "transition-success",
                 )
+                if requested_return_to and student_management_return_url != url_for("admin_advanced_results.students_management"):
+                    return redirect(student_management_return_url)
                 return redirect(url_for("admin_advanced_results.students_management", year_id=destination.academic_year_id))
             except (EnrollmentValidationError, ValueError) as exc:
                 db.session.rollback()
@@ -3984,6 +4010,7 @@ def student_transition(student_id):
         .limit(50)
         .all(),
         error=error,
+        student_management_return_url=student_management_return_url,
         settings=get_settings(),
     )
 
@@ -3991,6 +4018,8 @@ def student_transition(student_id):
 @advanced_results_bp.route("/student-transitions/class", methods=["GET", "POST"])
 def class_transition():
     """Preview and execute a controlled whole-class transition."""
+    requested_return_to = request.values.get("return_to")
+    student_management_return_url = _safe_students_management_return(requested_return_to)
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
     values = request.form if request.method == "POST" else request.args
     source_year_id = int_or_none(values.get("source_academic_year_id"))
@@ -4064,6 +4093,8 @@ def class_transition():
                         f"{preview['invalid']} invalid.",
                         "success",
                     )
+                    if requested_return_to and student_management_return_url != url_for("admin_advanced_results.students_management"):
+                        return redirect(student_management_return_url)
                     return redirect(url_for("admin_advanced_results.students_management", year_id=destination_year_id))
         except (EnrollmentValidationError, ValueError) as exc:
             db.session.rollback()
@@ -4093,6 +4124,7 @@ def class_transition():
         },
         preview=preview,
         error=error,
+        student_management_return_url=student_management_return_url,
         settings=get_settings(),
     )
 
@@ -4109,6 +4141,8 @@ def student_form(student_id=None):
     student = db.session.get(Student, student_id) if student_id else Student()
     if student_id and not student:
         abort(404)
+    requested_return_to = request.values.get("return_to")
+    student_management_return_url = _safe_students_management_return(requested_return_to)
     requested_year_id = int_or_none(request.args.get("year_id"))
     selected_year = (
         db.session.get(AcademicYear, requested_year_id)
@@ -4131,6 +4165,8 @@ def student_form(student_id=None):
         audit("Student Updates", f"Saved student {student.student_code}")
         db.session.commit()
         flash("Student saved successfully.", "success")
+        if requested_return_to and student_management_return_url != url_for("admin_advanced_results.students_management"):
+            return redirect(student_management_return_url)
         return redirect(url_for(
             "admin_advanced_results.students_management",
             year_id=saved_scope.get("academic_year_id") if saved_scope else student.academic_year_id,
@@ -4182,7 +4218,15 @@ def student_form(student_id=None):
         selected_section_id=selected_section_id,
         placement_locked=bool(student.id),
         incident_reports=incident_reports,
-        student_form_action=url_for("admin_advanced_results.student_form", student_id=student.id) if student.id else url_for("admin_advanced_results.student_form"),
+        student_management_return_url=student_management_return_url,
+        student_form_action=url_for(
+            "admin_advanced_results.student_form",
+            student_id=student.id,
+            return_to=student_management_return_url,
+        ) if student.id else url_for(
+            "admin_advanced_results.student_form",
+            return_to=student_management_return_url,
+        ),
     )
 
 
@@ -4303,6 +4347,8 @@ def student_verification():
 @advanced_results_bp.route("/students/<int:student_id>/delete", methods=["POST"])
 def delete_student(student_id):
     student = db.session.get(Student, student_id) or abort(404)
+    requested_return_to = request.form.get("return_to")
+    student_management_return_url = _safe_students_management_return(requested_return_to)
     return_year_id = student.academic_year_id
     deleted_student = {
         "name": student.full_name,
@@ -4324,6 +4370,8 @@ def delete_student(student_id):
     except PurgeValidationError as error:
         db.session.rollback()
         flash(str(error), "danger")
+        if requested_return_to and student_management_return_url != url_for("admin_advanced_results.students_management"):
+            return redirect(student_management_return_url)
         return redirect(
             url_for(
                 "admin_advanced_results.students_management",
@@ -4334,6 +4382,8 @@ def delete_student(student_id):
         db.session.rollback()
         current_app.logger.exception("Student purge failed for student_id=%s", student_id)
         flash("Student deletion failed; no database records were changed.", "danger")
+        if requested_return_to and student_management_return_url != url_for("admin_advanced_results.students_management"):
+            return redirect(student_management_return_url)
         return redirect(
             url_for(
                 "admin_advanced_results.students_management",
@@ -4345,6 +4395,8 @@ def delete_student(student_id):
     # relying on a generic toast that can be missed after the list reloads.
     deleted_student["related_records"] = report["total_records"]
     session["student_deleted_notice"] = deleted_student
+    if requested_return_to and student_management_return_url != url_for("admin_advanced_results.students_management"):
+        return redirect(student_management_return_url)
     return redirect(
         url_for(
             "admin_advanced_results.students_management",
@@ -4395,6 +4447,8 @@ def student_data_json(student_id):
 @advanced_results_bp.route("/students/<int:student_id>/toggle-lock", methods=["POST"])
 def toggle_student_lock(student_id):
     student = db.session.get(Student, student_id) or abort(404)
+    requested_return_to = request.form.get("return_to")
+    student_management_return_url = _safe_students_management_return(requested_return_to)
     if student.is_result_locked and not can("unlock_results"):
         abort(403)
     if not student.is_result_locked and not can("lock_results"):
@@ -4408,6 +4462,8 @@ def toggle_student_lock(student_id):
         audit("Result Locking", f"Unlocked result for {student.student_code}")
     db.session.commit()
     flash("Result lock status updated.", "success")
+    if requested_return_to and student_management_return_url != url_for("admin_advanced_results.students_management"):
+        return redirect(student_management_return_url)
     enrollment = get_enrollment_for_student_year(student.id, student.academic_year_id) if student.academic_year_id else None
     return redirect(url_for(
         "admin_advanced_results.students_management",

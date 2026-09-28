@@ -144,10 +144,19 @@
           <option value="locked" {% if status_filter == 'locked' %}selected{% endif %}>{{ rh_label("students.status_locked", default="Locked") }}</option>
         </select>
       </div>
+      <div class="sm-filter-item">
+        <label for="sort-selector"><i class="fa-solid fa-arrow-down-a-z"></i> Kala hormarin</label>
+        <select id="sort-selector">
+          <option value="name_asc" {% if sort_order == 'name_asc' %}selected{% endif %}>Magaca: A–Z</option>
+          <option value="name_desc" {% if sort_order == 'name_desc' %}selected{% endif %}>Magaca: Z–A</option>
+          <option value="id_asc" {% if sort_order == 'id_asc' %}selected{% endif %}>Tira-taxanaha: A–Z</option>
+          <option value="id_desc" {% if sort_order == 'id_desc' %}selected{% endif %}>Tira-taxanaha: Z–A</option>
+        </select>
+      </div>
       <div class="sm-filter-item sm-filter-search">
         <label><i class="fa-solid fa-search"></i> {{ rh_label("students.search", default="Raadi") }}</label>
-        <div class="sm-search-control">
-          <input type="text" id="sm-search-input" class="sm-search" placeholder="{{ rh_label("students.search_placeholder", default="Raadi arday...") }}" value="{{ q }}">
+        <div class="sm-search-control" role="search">
+          <input type="text" id="sm-search-input" class="sm-search" placeholder="Raadi arday: magac, Tira-taxane, magaca hooyada..." value="{{ q }}" autocomplete="off">
           <button type="button" id="sm-search-submit" class="sm-search-submit" aria-label="Raadi" title="Raadi">
             <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
           </button>
@@ -156,11 +165,11 @@
     </div>
 
     <div class="sm-toolbar">
-      <a href="{{ url_for('admin_advanced_results.student_form') }}" class="btn btn-gold">
+      <a href="{{ url_for('admin_advanced_results.student_form', return_to=request.full_path) }}" class="btn btn-gold">
         <i class="fa-solid fa-plus"></i>
         {{ rh_label("students.add_student", default="Diiwaangeli Ardey Cusub") }}
       </a>
-      <a href="{{ url_for('admin_advanced_results.class_transition') }}" class="btn btn-outline">
+      <a href="{{ url_for('admin_advanced_results.class_transition', return_to=request.full_path) }}" class="btn btn-outline">
         <i class="fa-solid fa-users-gear"></i>
         Transfer / Promote Class
       </a>
@@ -271,7 +280,7 @@
     {% endif %}
 
     <div class="sm-grid">
-      <div class="sm-list">
+      <div class="sm-list" id="student-list">
         {% for student in students %}
           {% set enrollment = enrollments.get(student.id) %}
           <div class="sm-row" data-student-id="{{ student.id }}" data-student-class-id="{{ enrollment.academic_year_class_id if enrollment else '' }}" data-student-class-name="{{ (enrollment.academic_year_class.name if enrollment else (student.academic_class.name if student.academic_class else (student.school_class.name if student.school_class else '')))|e }}" onclick="selectStudent('{{ student.id }}')">
@@ -320,14 +329,15 @@
               </span>
             </div>
             <div class="sm-actions">
-              <a class="icon-btn small" href="{{ url_for('admin_advanced_results.student_transition', student_id=student.id) }}" title="Transfer or promote">
+              <a class="icon-btn small" href="{{ url_for('admin_advanced_results.student_transition', student_id=student.id, return_to=request.full_path) }}" title="Transfer or promote">
                 <i class="fa-solid fa-right-left"></i>
               </a>
-              <a class="icon-btn small" href="{{ url_for('admin_advanced_results.student_form', student_id=student.id, year_id=selected_year.id if selected_year else '') }}" title="Edit">
+              <a class="icon-btn small" href="{{ url_for('admin_advanced_results.student_form', student_id=student.id, year_id=selected_year.id if selected_year else '', return_to=request.full_path) }}" title="Edit">
                 <i class="fa-solid fa-pen"></i>
               </a>
               <form method="post" action="{{ url_for('admin_advanced_results.toggle_student_lock', student_id=student.id) }}" class="inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="return_to" value="{{ request.full_path }}">
                 <button class="icon-btn small" title="Lock or unlock">
                   <i class="fa-solid {{ 'fa-unlock' if student.is_result_locked else 'fa-lock' }}"></i>
                 </button>
@@ -457,6 +467,7 @@
         </div>
         <form id="deleteStudentForm" method="post" action="">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="return_to" value="{{ request.full_path }}">
           <label for="deleteStudentConfirmation" style="display: block; margin: 0 0 8px; color: #475569; font-size: 0.8rem; font-weight: 700; text-align: left;">Qor <strong style="color: #991b1b;">TIRTIR ARDEYGAN</strong> si aad u xaqiijiso.</label>
           <input id="deleteStudentConfirmation" name="confirmation" type="text" autocomplete="off" spellcheck="false" required placeholder="TIRTIR ARDEYGAN" style="display: block; width: 100%; box-sizing: border-box; margin: 0 0 16px; padding: 11px 13px; border: 1px solid #fecaca; border-radius: 10px; color: #1f2937; background: #fff; font-weight: 700; letter-spacing: .03em;">
           <div style="display: flex; gap: 12px;">
@@ -552,9 +563,129 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-// ── Automatic filters: select changes apply immediately; search is debounced ──
+// ── Automatic filters: selects navigate; search refreshes the list in place ──
+var studentSearchTimer;
+
+function currentStudentManagementUrl(resetPage) {
+  var url = new URL(window.location.href);
+  var fields = {
+    year_id: 'year-selector',
+    level_id: 'level-selector',
+    exam_id: 'exam-selector',
+    class_id: 'class-selector',
+    section_id: 'section-selector',
+    status_filter: 'status-filter',
+    sort: 'sort-selector'
+  };
+
+  Object.keys(fields).forEach(function(param) {
+    var field = document.getElementById(fields[param]);
+    var value = field ? field.value : '';
+    if (value) url.searchParams.set(param, value);
+    else url.searchParams.delete(param);
+  });
+
+  var queryField = document.getElementById('sm-search-input');
+  var query = queryField ? queryField.value.trim() : '';
+  if (query) url.searchParams.set('q', query);
+  else url.searchParams.delete('q');
+  url.searchParams.set('page', resetPage ? '1' : (url.searchParams.get('page') || '1'));
+  return url;
+}
+
+function applyStudentFilters() {
+  var url = currentStudentManagementUrl(true);
+  if (window.AdminLoader) window.AdminLoader.show();
+  window.location.href = url.toString();
+}
+
+function refreshStudentList() {
+  var url = currentStudentManagementUrl(true);
+  var list = document.getElementById('student-list');
+  if (!list) {
+    window.location.href = url.toString();
+    return;
+  }
+
+  list.setAttribute('aria-busy', 'true');
+  fetch(url.toString(), {
+    credentials: 'same-origin',
+    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' }
+  }).then(function(response) {
+    if (!response.ok) throw new Error('Student list refresh failed');
+    return response.text();
+  }).then(function(html) {
+    var parsed = new DOMParser().parseFromString(html, 'text/html');
+    var updatedList = parsed.getElementById('student-list');
+    if (!updatedList) throw new Error('Updated student list was not found');
+    list.replaceWith(updatedList);
+    history.replaceState({}, '', url.toString());
+    applySearchHighlights();
+    bindPaginationLinks();
+  }).catch(function() {
+    window.location.href = url.toString();
+  });
+}
+
+function scheduleStudentSearch() {
+  window.clearTimeout(studentSearchTimer);
+  applySearchHighlights();
+  studentSearchTimer = window.setTimeout(refreshStudentList, 300);
+}
+
+function escapeSearchPattern(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function applySearchHighlights() {
+  var list = document.getElementById('student-list');
+  var input = document.getElementById('sm-search-input');
+  if (!list || !input) return;
+
+  list.querySelectorAll('.sm-search-match').forEach(function(match) {
+    match.replaceWith(document.createTextNode(match.textContent));
+  });
+
+  var query = input.value.trim();
+  if (!query) return;
+  var pattern = new RegExp(escapeSearchPattern(query), 'gi');
+  list.querySelectorAll('.sm-info, .sm-meta').forEach(function(container) {
+    var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+      acceptNode: function(node) {
+        if (!node.nodeValue.trim() || node.parentElement.closest('.sm-search-match')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    var textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    textNodes.forEach(function(node) {
+      var text = node.nodeValue;
+      if (!pattern.test(text)) {
+        pattern.lastIndex = 0;
+        return;
+      }
+      pattern.lastIndex = 0;
+      var fragment = document.createDocumentFragment();
+      var lastIndex = 0;
+      text.replace(pattern, function(match, offset) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex, offset)));
+        var highlighted = document.createElement('mark');
+        highlighted.className = 'sm-search-match';
+        highlighted.textContent = match;
+        fragment.appendChild(highlighted);
+        lastIndex = offset + match.length;
+        return match;
+      });
+      fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+      node.replaceWith(fragment);
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-  var filterIds = ['year-selector', 'level-selector', 'exam-selector', 'class-selector', 'section-selector', 'status-filter'];
+  var filterIds = ['year-selector', 'level-selector', 'exam-selector', 'class-selector', 'section-selector', 'status-filter', 'sort-selector'];
   filterIds.forEach(function(id) {
     var field = document.getElementById(id);
     if (field) field.addEventListener('change', applyStudentFilters);
@@ -562,70 +693,41 @@ document.addEventListener('DOMContentLoaded', function() {
 
   var searchInput = document.getElementById('sm-search-input');
   var searchSubmit = document.getElementById('sm-search-submit');
-  if (searchSubmit) searchSubmit.addEventListener('click', applyStudentFilters);
+  if (searchSubmit) searchSubmit.addEventListener('click', refreshStudentList);
   if (searchInput) {
+    searchInput.addEventListener('input', scheduleStudentSearch);
     searchInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') {
         e.preventDefault();
-        applyStudentFilters();
+        window.clearTimeout(studentSearchTimer);
+        refreshStudentList();
       }
     });
   }
+  applySearchHighlights();
+  bindPaginationLinks();
 });
-
-function applyStudentFilters() {
-  var yearId     = (document.getElementById('year-selector')   || {}).value || '';
-  var levelId    = (document.getElementById('level-selector')  || {}).value || '';
-  var examId     = (document.getElementById('exam-selector')   || {}).value || '';
-  var classId    = (document.getElementById('class-selector')  || {}).value || '';
-  var sectionId  = (document.getElementById('section-selector') || {}).value || '';
-  var statusVal  = (document.getElementById('status-filter')   || {}).value || '';
-  var query      = (document.getElementById('sm-search-input') || {}).value || '';
-
-  var url = new URL(window.location.href);
-  url.searchParams.set('page', '1');
-  if (yearId) url.searchParams.set('year_id', yearId);
-  else url.searchParams.delete('year_id');
-  if (levelId) url.searchParams.set('level_id', levelId);
-  else url.searchParams.delete('level_id');
-  if (examId) url.searchParams.set('exam_id', examId);
-  else url.searchParams.delete('exam_id');
-  if (classId) url.searchParams.set('class_id', classId);
-  else url.searchParams.delete('class_id');
-  if (sectionId) url.searchParams.set('section_id', sectionId);
-  else url.searchParams.delete('section_id');
-  if (statusVal) url.searchParams.set('status_filter', statusVal);
-  else url.searchParams.delete('status_filter');
-  if (query.trim()) url.searchParams.set('q', query.trim());
-  else url.searchParams.delete('q');
-
-  if (window.AdminLoader) window.AdminLoader.show();
-  window.location.href = url.toString();
-}
 
 function changeYear() { applyStudentFilters(); }
 function changeLevel() { applyStudentFilters(); }
 function changeClass() { applyStudentFilters(); }
-function handleSearch() { applyStudentFilters(); }
+function handleSearch() { refreshStudentList(); }
 function handleFilter() { applyStudentFilters(); }
 
 function goToPage(pageNum) {
-  const url = new URL(window.location.href);
+  var url = currentStudentManagementUrl(false);
   url.searchParams.set('page', pageNum);
   window.location.href = url.toString();
 }
 
-// Add event listeners for pagination links
-document.addEventListener('DOMContentLoaded', function() {
-  const paginationLinks = document.querySelectorAll('.pagination-nav');
-  paginationLinks.forEach(link => {
+function bindPaginationLinks() {
+  document.querySelectorAll('.pagination-nav').forEach(function(link) {
     link.addEventListener('click', function(e) {
       e.preventDefault();
-      const pageNum = this.getAttribute('data-page');
-      goToPage(pageNum);
+      goToPage(this.getAttribute('data-page'));
     });
   });
-});
+}
 
 function selectStudent(studentId) {
   console.log('selectStudent called with ID:', studentId);
@@ -740,7 +842,7 @@ document.addEventListener('DOMContentLoaded', function() {
 /* Single row filter bar */
 .sm-filters-row {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr)) minmax(0, 1.7fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr)) minmax(0, 1.7fr);
   gap: 12px;
   align-items: flex-end;
   background: #ffffff;
@@ -785,6 +887,29 @@ document.addEventListener('DOMContentLoaded', function() {
   position: relative;
   width: 100%;
   min-width: 0;
+}
+
+.sm-meta-code {
+  font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  font-size: 8px;
+  font-weight: 800;
+  color: #16326e;
+  letter-spacing: .02em;
+  line-height: 1.1;
+}
+
+.sm-search-match {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #dc2626;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: 800;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 .sm-filters-row .sm-search-control .sm-search {

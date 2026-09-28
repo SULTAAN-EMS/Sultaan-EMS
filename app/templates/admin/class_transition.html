@@ -9,11 +9,13 @@
       <p>Review the year-aware source roster before creating new destination enrollments.</p>
     </div>
   </div>
+  <a class="btn btn-outline" href="{{ student_management_return_url }}"><i class="fa-solid fa-arrow-left"></i> Back</a>
 
   {% if error %}<div class="alert alert-danger"><i class="fa-solid fa-circle-exclamation"></i> {{ error }}</div>{% endif %}
 
   <form method="post" id="class-transition-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="return_to" value="{{ student_management_return_url }}">
     <div class="transition-grid">
       <fieldset>
         <legend>1. Source class</legend>
@@ -61,6 +63,7 @@
     </div>
     <form method="post" class="preview-review-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="{{ student_management_return_url }}">
       <input type="hidden" name="source_academic_year_id" value="{{ values.source_year_id }}">
       <input type="hidden" name="source_academic_year_level_id" value="{{ values.source_level_id }}">
       <input type="hidden" name="source_academic_year_class_id" value="{{ values.source_class_id }}">
@@ -97,6 +100,7 @@
     {% if preview.ready %}
     <form method="post" class="execute-box">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="{{ student_management_return_url }}">
       <input type="hidden" name="source_academic_year_id" value="{{ values.source_year_id }}">
       <input type="hidden" name="source_academic_year_level_id" value="{{ values.source_level_id }}">
       <input type="hidden" name="source_academic_year_class_id" value="{{ values.source_class_id }}">

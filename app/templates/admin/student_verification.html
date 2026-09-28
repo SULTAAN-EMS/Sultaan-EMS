@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Warqadda Hubinta Xogta Ardayga</title>
+<title>TIS - Foomka Hubinta Xogta Ardeyga - Fasalka Ardeyda</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -125,10 +125,34 @@
     justify-content:center;
     text-decoration:none;
   }
+  .selector-actions svg{
+    width:15px;
+    height:15px;
+    flex:none;
+  }
   .selector-actions .generate{background:var(--forest);color:#fff;}
-  .selector-actions .print{background:var(--gold);color:var(--forest-deep);}
+  .selector-actions .download{background:var(--gold);color:var(--forest-deep);}
   .selector-actions button:disabled{opacity:.45;cursor:not-allowed;}
   .selector-actions .generate.is-disabled{opacity:.45;cursor:not-allowed;pointer-events:none;}
+  .verification-print-fab{
+    position:fixed;
+    right:18px;
+    bottom:18px;
+    z-index:30;
+    width:48px;
+    height:48px;
+    display:grid;
+    place-items:center;
+    border:1px solid rgba(231,217,175,.85);
+    border-radius:50%;
+    background:var(--forest-deep);
+    color:#fff;
+    box-shadow:0 8px 22px rgba(21,55,50,.28);
+    cursor:pointer;
+  }
+  .verification-print-fab:hover{background:var(--forest);transform:translateY(-2px);}
+  .verification-print-fab:disabled{opacity:.45;cursor:not-allowed;transform:none;}
+  .verification-print-fab svg{width:21px;height:21px;}
   .empty-state{
     max-width:210mm;
     margin:14px auto 24px;
@@ -577,7 +601,7 @@
 
   @media print{
     body{ background:#fff; }
-    .verification-back,.selector-shell,.empty-state{ display:none; }
+    .verification-back,.selector-shell,.empty-state,.verification-print-fab{ display:none; }
     .page{
       margin:0;
       box-shadow:none;
@@ -676,11 +700,20 @@
         </div>
         <div class="selector-actions">
           {% if selection_complete %}
-            <a class="generate" id="verification-generate" href="{{ url_for('admin_advanced_results.student_verification', year_id=selected_year_id, level_id=selected_level_id, class_id=selected_class_id, generate=1, return_to=students_management_return_url) }}">Samee Warqadaha</a>
+            <a class="generate" id="verification-generate" href="{{ url_for('admin_advanced_results.student_verification', year_id=selected_year_id, level_id=selected_level_id, class_id=selected_class_id, generate=1, return_to=students_management_return_url) }}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v5h5M10 14h6M10 18h6M10 10h2"/></svg>
+              <span>Abuur Foomka Hubinta</span>
+            </a>
           {% else %}
-            <button class="generate is-disabled" id="verification-generate" type="button" disabled>Samee Warqadaha</button>
+            <button class="generate is-disabled" id="verification-generate" type="button" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v5h5M10 14h6M10 18h6M10 10h2"/></svg>
+              <span>Abuur Foomka Hubinta</span>
+            </button>
           {% endif %}
-          <button class="print" type="button" onclick="window.print()" {% if not student_count %}disabled{% endif %}>Daabac / Print</button>
+          <button class="download" id="verification-download" type="button" {% if not student_count %}disabled{% endif %}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/><path d="M5 3h4"/></svg>
+            <span>Daabac / Ladag</span>
+          </button>
         </div>
       </div>
     </form>
@@ -722,6 +755,7 @@
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 10 18H2L12 3Z"/><path d="M12 9v5M12 18h.01"/></svg>
 {%- endmacro %}
 
+<div class="verification-pages">
 {% for page_rows in pages %}
 {% set page_loop = loop %}
 <div class="page">
@@ -777,6 +811,7 @@
   </div>
 </div>
 {% endfor %}
+</div>
 
 <div class="photo-preview-modal" id="photoPreviewModal" role="dialog" aria-modal="true" aria-label="Preview-ga sawirka" hidden>
   <div class="photo-preview-card">
@@ -788,6 +823,66 @@
     </div>
   </div>
 </div>
+
+<button class="verification-print-fab" type="button" aria-label="Daabac foomka" title="Daabac foomka" {% if not student_count %}disabled{% endif %}>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6zM18 12h.01"/></svg>
+</button>
+
+<script>
+  (() => {
+    const downloadButton = document.getElementById('verification-download');
+    const printButton = document.querySelector('.verification-print-fab');
+    const source = document.querySelector('.verification-pages');
+    const filename = 'TIS - Foomka Hubinta Xogta Ardeyga - Fasalka Ardeyda.pdf';
+
+    function loadHtml2Pdf() {
+      if (typeof window.html2pdf === 'function') return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('PDF download library failed to load'));
+        document.head.appendChild(script);
+      });
+    }
+
+    function waitForImages(container) {
+      return Promise.all([...container.querySelectorAll('img')].map((image) => {
+        if (image.complete) return Promise.resolve();
+        return new Promise((resolve) => {
+          image.addEventListener('load', resolve, {once:true});
+          image.addEventListener('error', resolve, {once:true});
+        });
+      }));
+    }
+
+    async function downloadPdf() {
+      if (!downloadButton || downloadButton.disabled || !source) return;
+      downloadButton.disabled = true;
+      try {
+        await loadHtml2Pdf();
+        if (document.fonts && document.fonts.ready) await document.fonts.ready;
+        await waitForImages(source);
+        await window.html2pdf().set({
+          margin: 0,
+          filename,
+          image: {type:'jpeg', quality:.98},
+          html2canvas: {scale:2, useCORS:true, backgroundColor:'#FBF8F1'},
+          jsPDF: {unit:'mm', format:'a4', orientation:'portrait'},
+          pagebreak: {mode:['css','legacy']}
+        }).from(source).save();
+      } catch (error) {
+        console.error('Student verification download failed:', error);
+        window.print();
+      } finally {
+        downloadButton.disabled = false;
+      }
+    }
+
+    downloadButton?.addEventListener('click', downloadPdf);
+    printButton?.addEventListener('click', () => window.print());
+  })();
+</script>
 
 </body>
 <script>

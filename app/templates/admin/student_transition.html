@@ -19,6 +19,7 @@
 
   <form method="post" id="transition-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="return_to" value="{{ student_management_return_url }}">
     <div class="transition-grid">
       <fieldset>
         <legend>1. Source enrollment</legend>
@@ -75,7 +76,7 @@
 
     <label class="confirm-line"><input type="checkbox" name="confirm_transition" id="confirm-transition"> <span id="confirm-copy">I understand the current enrollment will be updated and the movement will be recorded in history.</span></label>
     <div class="transition-actions">
-      <a class="btn btn-outline" href="{{ url_for('admin_advanced_results.students_management') }}"><i class="fa-solid fa-arrow-left"></i> Back</a>
+      <a class="btn btn-outline" href="{{ student_management_return_url }}"><i class="fa-solid fa-arrow-left"></i> Back</a>
       <button class="btn btn-gold" type="submit" id="submit-transition" disabled><i class="fa-solid fa-check"></i> Confirm transition</button>
     </div>
   </form>
