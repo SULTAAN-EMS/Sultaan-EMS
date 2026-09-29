@@ -18,7 +18,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import normalize_student_phone, process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, ExamMarkingConfiguration, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentEnrollment, StudentEnrollmentMovement, Subject, LabelTranslation
+from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, ExamMarkingConfiguration, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentCodeAlias, StudentEnrollment, StudentEnrollmentMovement, Subject, LabelTranslation
 from .academic_hierarchy import students_for_year_scope_query, year_classes, year_levels, year_subjects
 from .enrollment_service import (
     EnrollmentValidationError,
@@ -41,6 +41,7 @@ from .services import DEFAULT_GRADE_SCALES, ScopedSubjectView, academic_decimal_
 from .attendance_rules import counts_as_exam_sitting
 from .behavior_reporting import get_behavior_report_data
 from .deletion_service import PurgeValidationError, purge_student
+from .student_identity import student_code_taken
 
 advanced_results_bp = Blueprint("admin_advanced_results", __name__)
 
@@ -3694,6 +3695,9 @@ def students_management():
     section_id = int_or_none(request.args.get("section_id"))
     search_query = request.args.get("q", "").strip()
     status_filter = request.args.get("status_filter", "")
+    gender_filter = request.args.get("gender", "").strip().lower()
+    if gender_filter not in {"", "male", "female"}:
+        gender_filter = ""
     sort_order = request.args.get("sort", "name_asc")
     if sort_order not in {"name_asc", "name_desc", "id_asc", "id_desc"}:
         sort_order = "name_asc"
@@ -3807,6 +3811,9 @@ def students_management():
         students_query = students_query.filter_by(is_result_locked=True)
     elif status_filter == "active":
         students_query = students_query.filter_by(is_result_locked=False)
+
+    if gender_filter:
+        students_query = students_query.filter(func.lower(Student.gender) == gender_filter)
     
     # Get total count for pagination
     total_students = students_query.count()
@@ -3885,6 +3892,7 @@ def students_management():
         promotion_statuses=promotion_statuses,
         q=search_query,
         status_filter=status_filter,
+        gender_filter=gender_filter,
         sort_order=sort_order,
         stats=stats,
         page=page,
@@ -4238,13 +4246,9 @@ def student_code_status():
         return jsonify({"status": "empty"})
 
     current_student_id = int_or_none(request.args.get("current_student_id"))
-    duplicate_query = Student.query.filter(
-        func.lower(func.trim(Student.student_code)) == code.casefold()
-    )
-    if current_student_id:
-        duplicate_query = duplicate_query.filter(Student.id != current_student_id)
-
-    return jsonify({"status": "used" if duplicate_query.first() else "available"})
+    return jsonify({
+        "status": "used" if student_code_taken(code, exclude_student_id=current_student_id) else "available"
+    })
 
 
 @advanced_results_bp.route("/student-verification")
@@ -4629,17 +4633,28 @@ def export_students():
 
 def save_student_from_form(student):
     is_new = student.id is None
-    student.student_code = request.form["student_code"].strip()
-    if not student.student_code:
+    previous_code = (student.student_code or "").strip() if not is_new else ""
+    requested_code = request.form["student_code"].strip()
+    if not requested_code:
         raise ValueError("Student ID is required.")
-    duplicate_query = Student.query.filter(
-        func.lower(func.trim(Student.student_code)) == student.student_code.casefold()
-    )
-    if student.id:
-        duplicate_query = duplicate_query.filter(Student.id != student.id)
-    duplicate = duplicate_query.first()
-    if duplicate:
+    if student_code_taken(requested_code, exclude_student_id=student.id):
         raise ValueError("Student ID already exists.")
+    student.student_code = requested_code
+    if not is_new and previous_code and previous_code.casefold() != requested_code.casefold():
+        existing_alias = StudentCodeAlias.query.filter(
+            func.lower(func.trim(StudentCodeAlias.old_code)) == previous_code.casefold()
+        ).first()
+        if existing_alias and existing_alias.student_id != student.id:
+            raise ValueError("The previous Student ID is already reserved by another student.")
+        if not existing_alias:
+            db.session.add(
+                StudentCodeAlias(
+                    student_id=student.id,
+                    old_code=previous_code,
+                    new_code=requested_code,
+                    changed_by_id=getattr(current_user, "id", None),
+                )
+            )
     student.full_name = request.form["full_name"].strip()
     student.mother_name = request.form.get("mother_name", "").strip()
     student.phone = normalize_student_phone(request.form.get("phone", ""))

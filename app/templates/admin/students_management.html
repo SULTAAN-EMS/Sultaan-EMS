@@ -145,6 +145,14 @@
         </select>
       </div>
       <div class="sm-filter-item">
+        <label for="gender-filter"><i class="fa-solid fa-venus-mars"></i> Jinsiga</label>
+        <select id="gender-filter">
+          <option value="" {% if not gender_filter %}selected{% endif %}>Dhammaan</option>
+          <option value="male" {% if gender_filter == 'male' %}selected{% endif %}>Lab</option>
+          <option value="female" {% if gender_filter == 'female' %}selected{% endif %}>Dhedig</option>
+        </select>
+      </div>
+      <div class="sm-filter-item">
         <label for="sort-selector"><i class="fa-solid fa-arrow-down-a-z"></i> Kala hormarin</label>
         <select id="sort-selector">
           <option value="name_asc" {% if sort_order == 'name_asc' %}selected{% endif %}>Magaca: A–Z</option>
@@ -575,6 +583,7 @@ function currentStudentManagementUrl(resetPage) {
     class_id: 'class-selector',
     section_id: 'section-selector',
     status_filter: 'status-filter',
+    gender: 'gender-filter',
     sort: 'sort-selector'
   };
 
@@ -685,7 +694,7 @@ function applySearchHighlights() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-  var filterIds = ['year-selector', 'level-selector', 'exam-selector', 'class-selector', 'section-selector', 'status-filter', 'sort-selector'];
+  var filterIds = ['year-selector', 'level-selector', 'exam-selector', 'class-selector', 'section-selector', 'status-filter', 'gender-filter', 'sort-selector'];
   filterIds.forEach(function(id) {
     var field = document.getElementById(id);
     if (field) field.addEventListener('change', applyStudentFilters);
@@ -842,7 +851,7 @@ document.addEventListener('DOMContentLoaded', function() {
 /* Single row filter bar */
 .sm-filters-row {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr)) minmax(0, 1.7fr);
+  grid-template-columns: repeat(8, minmax(0, 1fr)) minmax(0, 1.7fr);
   gap: 12px;
   align-items: flex-end;
   background: #ffffff;

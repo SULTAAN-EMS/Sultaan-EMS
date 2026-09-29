@@ -167,6 +167,9 @@ def ensure_schema_compatibility():
     # Academic Level membership is additive and backfilled from the existing
     # single-level column without changing sessions or historical records.
     ensure_behavior_configuration_levels()
+    # Student IDs are editable identity fields. Keep old IDs resolvable after
+    # an edit without rewriting historical records or generated documents.
+    ensure_student_code_aliases_table()
 
     # Update teacher_classes foreign key to reference academic_classes instead of school_classes
     # This requires manual migration for existing data
@@ -177,6 +180,18 @@ def ensure_schema_compatibility():
     sync_all_model_columns()
     seed_legacy_student_genders()
     remove_obsolete_subject_short_name_settings()
+
+
+def ensure_student_code_aliases_table():
+    """Create the additive student-ID alias table when it is missing."""
+    table = db.metadata.tables.get("student_code_aliases")
+    if table is None:
+        return
+    try:
+        table.create(bind=db.engine, checkfirst=True)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def ensure_exam_marking_configuration_table():

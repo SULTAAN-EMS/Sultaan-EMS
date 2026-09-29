@@ -1326,11 +1326,47 @@ class Student(TimestampMixin, db.Model):
     academic_level = db.relationship("AcademicLevel")
     academic_class = db.relationship("AcademicClass")
     academic_section = db.relationship("AcademicSection")
+    code_aliases = db.relationship(
+        "StudentCodeAlias",
+        back_populates="student",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     # ✅ FIX: allow system to use "student_id" in queries safely
     @property
     def student_id(self):
         return self.student_code
+
+
+class StudentCodeAlias(TimestampMixin, db.Model):
+    """Historical student IDs that should continue resolving to one identity.
+
+    ``Student.student_code`` remains the canonical current ID.  This table is
+    deliberately separate so changing an ID never rewrites historical audit,
+    result, attendance, or generated-record data.
+    """
+
+    __tablename__ = "student_code_aliases"
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(
+        db.Integer,
+        db.ForeignKey("students.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    old_code = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    new_code = db.Column(db.String(50), nullable=False)
+    changed_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    student = db.relationship("Student", back_populates="code_aliases")
+    changed_by = db.relationship("User")
 
 
 class StudentEnrollment(TimestampMixin, db.Model):

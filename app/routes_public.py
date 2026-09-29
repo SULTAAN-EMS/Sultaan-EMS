@@ -9,7 +9,6 @@ from tempfile import TemporaryDirectory
 
 from flask import Blueprint, abort, current_app, flash, jsonify, make_response, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
@@ -25,6 +24,7 @@ from .enrollment_service import (
 )
 from .verification import verification_payload
 from .import_wizard import normalize_student_phone
+from .student_identity import find_student_by_code
 
 public_bp = Blueprint("public", __name__)
 
@@ -162,9 +162,7 @@ def result():
     selected_year_id = request.form.get("year_id", type=int)
     selected_exam_id = request.form.get("exam_id", type=int)
 
-    student = Student.query.filter(
-        func.lower(func.trim(Student.student_code)) == student_id.casefold()
-    ).first()
+    student = find_student_by_code(student_id)
 
     if not student:
         return render_template(
@@ -264,9 +262,9 @@ def result():
 @public_bp.route("/result/view/<student_code>/<int:exam_id>")
 def result_view(student_code, exam_id):
     """Open the published Student Result Portal for a specific student/exam."""
-    student = Student.query.filter(
-        func.lower(func.trim(Student.student_code)) == student_code.strip().casefold()
-    ).first_or_404()
+    student = find_student_by_code(student_code)
+    if not student:
+        abort(404)
     settings = get_settings()
     if student.is_result_locked:
         return render_template("locked_result.html", settings=settings, student=student), 403
@@ -369,9 +367,9 @@ def _render_portal_behavior_report(
     request context. The browser view and the downloadable PDF therefore share
     the exact same template, report assembly, and canonical scoring projection.
     """
-    student = Student.query.filter(
-        func.lower(func.trim(Student.student_code)) == student_code.strip().casefold()
-    ).first_or_404()
+    student = find_student_by_code(student_code)
+    if not student:
+        abort(404)
     if student.is_result_locked:
         abort(403)
     exam = _published_exam_for_student(student, exam_id) or abort(404)
@@ -518,9 +516,9 @@ def print_report(student_code):
     student_code = student_code.strip()
     settings = get_settings()
 
-    student = Student.query.filter(
-        func.lower(func.trim(Student.student_code)) == student_code.casefold()
-    ).first_or_404()
+    student = find_student_by_code(student_code)
+    if not student:
+        abort(404)
 
     if student.is_result_locked:
         return render_template(
@@ -648,9 +646,9 @@ def download_report(student_code):
     """Render the canonical report and let the browser download it as PDF."""
     student_code = student_code.strip()
     settings = get_settings()
-    student = Student.query.filter(
-        func.lower(func.trim(Student.student_code)) == student_code.casefold()
-    ).first_or_404()
+    student = find_student_by_code(student_code)
+    if not student:
+        abort(404)
     if student.is_result_locked:
         return render_template("locked_result.html", settings=settings, student=student), 403
 
@@ -683,9 +681,7 @@ def download_report(student_code):
 def api_result(student_code):
     student_code = student_code.strip()
 
-    student = Student.query.filter(
-        func.lower(func.trim(Student.student_code)) == student_code.casefold()
-    ).first()
+    student = find_student_by_code(student_code)
 
     if not student:
         return jsonify({"ok": False, "message": "Student ID not found."}), 404
@@ -1148,9 +1144,7 @@ def mark_feedback_replies_read():
 def api_top_students(student_code):
     """Return the published Top 10 for the viewer's class and chosen exam."""
     normalized_code = student_code.strip()
-    student = Student.query.filter(
-        func.lower(func.trim(Student.student_code)) == normalized_code.casefold()
-    ).first()
+    student = find_student_by_code(normalized_code)
     exam_id = request.args.get("exam_id", type=int)
     if not student or not exam_id:
         return jsonify(ok=False, message="Student and examination are required."), 404

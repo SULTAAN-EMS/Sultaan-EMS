@@ -24,6 +24,7 @@ from .models import (
     Result,
     SchoolClass,
     Student,
+    StudentCodeAlias,
     Subject,
 )
 from .enrollment_service import (
@@ -598,6 +599,10 @@ def process_student_import(file):
         clean_str(s.student_code).casefold(): s
         for s in Student.query.all()
     }
+    historical_student_codes = {
+        clean_str(alias.old_code).casefold()
+        for alias in StudentCodeAlias.query.all()
+    }
     reclaimable_student_ids = _reclaimable_student_ids()
     existing_years = {y.name: y for y in AcademicYear.query.all()}
     current_year = AcademicYear.query.filter_by(is_current=True).order_by(AcademicYear.id.desc()).first()
@@ -656,6 +661,10 @@ def process_student_import(file):
             existing_student = existing_students[student_id.casefold()]
             if existing_student.id not in reclaimable_student_ids:
                 row_errors.append(f"Row {row_idx}: student_id '{student_id}' already exists in database.")
+        elif student_id.casefold() in historical_student_codes:
+            row_errors.append(
+                f"Row {row_idx}: student_id '{student_id}' is a historical ID reserved for an existing student."
+            )
         else:
             seen_file_ids.add(student_id.casefold())
 
