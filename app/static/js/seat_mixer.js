@@ -26,6 +26,9 @@
     levelsByYear: {},
     academicYears: [],
     academicYearId: null,
+    exams: [],
+    examId: null,
+    examScope: '',
     classPalette: PALETTE,
     csrfToken: '',
     schoolName: 'School',
@@ -111,6 +114,15 @@
       return '<option value="' + year.id + '">' + escapeHtml(year.name) + '</option>';
     }).join('');
     if (SM.academicYearId) select.value = String(SM.academicYearId);
+  }
+
+  function renderAcademicExamSelect() {
+    var select = $('smAcademicExam');
+    if (!select) return;
+    select.innerHTML = SM.exams.map(function (exam) {
+      return '<option value="' + exam.id + '">' + escapeHtml(exam.name) + '</option>';
+    }).join('') + '<option value="unassigned">Halls aan imtixaan loo qoondeyn</option>';
+    select.value = SM.examScope || (SM.examId ? String(SM.examId) : '');
   }
 
   function setAcademicYear(yearId, resetBuilderSelection) {
@@ -615,7 +627,7 @@
       var expired = isExpired(h);
       return '<div class="sm-hall-card" data-hall="' + h.id + '">' +
         '<div><div class="hname">' + escapeHtml(h.name) + '</div>' +
-        '<div class="hmeta">' + fmtRange(h.start_time, h.end_time) + ' · ' + h.version_count + ' version' + (h.version_count > 1 ? 's' : '') + (h.academic_year_name ? ' · ' + escapeHtml(h.academic_year_name) : '') + '</div></div>' +
+        '<div class="hmeta">' + fmtRange(h.start_time, h.end_time) + ' · ' + h.version_count + ' version' + (h.version_count > 1 ? 's' : '') + (h.academic_year_name ? ' · ' + escapeHtml(h.academic_year_name) : '') + (h.exam_name ? ' · ' + escapeHtml(h.exam_name) : ' · Exam aan loo qoondeyn') + '</div></div>' +
         '<span class="sm-badge ' + (expired ? 'b-expired' : 'b-active') + '">' + (expired ? 'Expired' : 'Active') + '</span>' +
         '<div class="sm-card-actions"><button class="sm-menu-btn" data-menu-kind="hall" data-menu-id="' + h.id + '" aria-label="Manage hall"><i class="fa-solid fa-ellipsis"></i></button></div>' +
         '</div>';
@@ -667,7 +679,7 @@
     fetch('/admin/seat-mixer/api/create-hall', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': SM.csrfToken },
-      body: JSON.stringify({ name: name, start: start || null, end: end || null, academic_year_id: SM.academicYearId })
+      body: JSON.stringify({ name: name, start: start || null, end: end || null, academic_year_id: SM.academicYearId, exam_id: SM.examId })
     })
       .then(function (r) { return r.json(); })
       .then(function (data) {
@@ -699,7 +711,7 @@
     $('smHallStatusBadge').innerHTML = '<span class="sm-badge ' + (expired ? 'b-expired' : 'b-active') + '">' + (expired ? 'Expired' : 'Active') + '</span>';
 
     // Fetch versions from API
-    fetch('/admin/seat-mixer/api/hall/' + hallId + '/versions?academic_year_id=' + encodeURIComponent(SM.academicYearId || ''))
+    fetch('/admin/seat-mixer/api/hall/' + hallId + '/versions?academic_year_id=' + encodeURIComponent(SM.academicYearId || '') + '&exam_id=' + encodeURIComponent(SM.examId || ''))
       .then(function (r) { return r.json(); })
       .then(function (data) {
         SM.currentVersions = data.versions || [];
@@ -780,7 +792,7 @@
     }
     var fields = '';
     if (action === 'rename') fields = '<div class="sm-field"><label>Hall name</label><input id="smManageName" type="text" value="' + escapeHtml(hall.name) + '"></div>';
-    else if (action === 'edit') fields = '<div class="sm-manage-fields two"><div class="sm-field"><label>Hall name</label><input id="smManageName" type="text" value="' + escapeHtml(hall.name) + '"></div><div class="sm-field"><label>Start</label><input id="smManageStart" type="datetime-local" value="' + (hall.start_time || '') + '"></div><div class="sm-field"><label>End</label><input id="smManageEnd" type="datetime-local" value="' + (hall.end_time || '') + '"></div></div>';
+    else if (action === 'edit') fields = '<div class="sm-manage-fields two"><div class="sm-field"><label>Hall name</label><input id="smManageName" type="text" value="' + escapeHtml(hall.name) + '"></div><div class="sm-field"><label>Exam type</label><select id="smManageExam">' + SM.exams.map(function (exam) { return '<option value="' + exam.id + '"' + (String(hall.exam_id || '') === String(exam.id) ? ' selected' : '') + '>' + escapeHtml(exam.name) + '</option>'; }).join('') + '</select></div><div class="sm-field"><label>Start</label><input id="smManageStart" type="datetime-local" value="' + (hall.start_time || '') + '"></div><div class="sm-field"><label>End</label><input id="smManageEnd" type="datetime-local" value="' + (hall.end_time || '') + '"></div></div>';
     else fields = '<div class="sm-field"><label>' + (action === 'start' ? 'Exam start' : 'Exam end') + '</label><input id="smManageDate" type="datetime-local" value="' + ((action === 'start' ? hall.start_time : hall.end_time) || '') + '"></div>';
     openManage({
       title: action === 'rename' ? 'Rename hall' : (action === 'edit' ? 'Edit hall details' : 'Update exam ' + action + ' date'),
@@ -790,6 +802,7 @@
         if ($('smManageName')) body.name = $('smManageName').value;
         if ($('smManageStart')) body.start = $('smManageStart').value || null;
         if ($('smManageEnd')) body.end = $('smManageEnd').value || null;
+        if ($('smManageExam')) body.exam_id = $('smManageExam').value;
         if ($('smManageDate')) body[action] = $('smManageDate').value || null;
         requestJson('/admin/seat-mixer/api/hall/' + hallId, 'PATCH', body)
           .then(function (data) { Object.assign(hall, data.hall); closeManage(); renderHallsScreen(); notify('Hall details updated.'); })
@@ -854,6 +867,11 @@
           SM.academicYearId = parseInt(data.academic_year_id, 10);
           SM.levels = SM.levelsByYear[String(data.academic_year_id)];
           renderAcademicYearSelect();
+        }
+        if (data.exam_id) {
+          SM.examId = parseInt(data.exam_id, 10);
+          SM.examScope = String(SM.examId);
+          renderAcademicExamSelect();
         }
         combo.cfg = data.config;
         combo.academicYearId = SM.academicYearId;
@@ -1218,6 +1236,7 @@
     params.append('class_ids', classId);
     params.append('hall_id', SM.currentHallId || '');
     params.append('academic_year_id', SM.academicYearId || '');
+    params.append('exam_id', SM.examId || '');
 
     return fetch('/admin/seat-mixer/api/students?' + params.toString())
       .then(function (r) { return r.json(); })
@@ -1605,6 +1624,7 @@
         config: combo.cfg,
         selected_students: selectedStudents,
         academic_year_id: combo.academicYearId || SM.academicYearId,
+        exam_id: SM.examId,
         last_meta: combo.lastMeta || 'Saved layout'
       })
     })
@@ -1734,6 +1754,13 @@
       var url = new URL(window.location.href);
       ['hall_id', 'version_id', 'snapshot_id'].forEach(function (key) { url.searchParams.delete(key); });
       url.searchParams.set('academic_year_id', this.value);
+      url.searchParams.delete('exam_id');
+      window.location.assign(url.pathname + url.search + url.hash);
+    });
+    $('smAcademicExam').addEventListener('change', function () {
+      var url = new URL(window.location.href);
+      ['hall_id', 'version_id', 'snapshot_id'].forEach(function (key) { url.searchParams.delete(key); });
+      url.searchParams.set('exam_id', this.value);
       window.location.assign(url.pathname + url.search + url.hash);
     });
     $('smBackToVersionsBtn').addEventListener('click', function () {
@@ -2133,8 +2160,11 @@
   window.SM_init = function (opts) {
     SM.halls = opts.halls || [];
     SM.academicYears = opts.academicYears || [];
+    SM.exams = opts.exams || [];
     SM.levelsByYear = opts.levelsByYear || {};
     SM.academicYearId = parseInt(opts.academicYearId, 10) || (SM.academicYears[0] && SM.academicYears[0].id) || null;
+    SM.examId = parseInt(opts.examId, 10) || null;
+    SM.examScope = opts.examScope || (SM.examId ? String(SM.examId) : '');
     SM.levels = SM.levelsByYear[String(SM.academicYearId)] || opts.levels || [];
     SM.classPalette = opts.classPalette || PALETTE;
     SM.csrfToken = opts.csrfToken || '';
@@ -2148,6 +2178,7 @@
     }
 
     renderAcademicYearSelect();
+    renderAcademicExamSelect();
     initEvents();
     fetch('/admin/seat-mixer/api/appearance')
       .then(function (response) { return response.json(); })

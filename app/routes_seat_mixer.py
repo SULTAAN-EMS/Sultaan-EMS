@@ -23,6 +23,7 @@ from .models import (
     AcademicClass,
     AcademicLevel,
     AcademicYear,
+    Exam,
     ExamHall,
     ExamHallVersion,
     IdCardIssue,
@@ -134,6 +135,23 @@ def seat_mixer_hall_year_id(hall, fallback_year_id=None):
     if hall.exam_type and hall.exam_type.academic_year_id:
         return hall.exam_type.academic_year_id
     return fallback_year_id
+
+
+def seat_mixer_exams_for_year(academic_year_id):
+    """Return active exams available for one Seat Mixer year scope."""
+    if not academic_year_id:
+        return []
+    return (
+        Exam.query
+        .filter_by(academic_year_id=academic_year_id, is_active=True)
+        .order_by(Exam.sort_order, Exam.name, Exam.id)
+        .all()
+    )
+
+
+def seat_mixer_hall_exam_id(hall):
+    """Return the canonical exam scope for a hall, if it has one."""
+    return hall.exam_id or None
 
 
 def seat_mixer_levels_for_year(academic_year_id):
@@ -540,6 +558,18 @@ def index():
     if requested_year_id and not selected_year:
         abort(404)
 
+    requested_exam_scope = request.args.get("exam_id")
+    exams = seat_mixer_exams_for_year(selected_year.id if selected_year else None)
+    unassigned_exam_scope = requested_exam_scope == "unassigned"
+    if unassigned_exam_scope:
+        selected_exam = None
+    elif requested_exam_scope:
+        selected_exam = db.session.get(Exam, request.args.get("exam_id", type=int))
+        if not selected_exam or not selected_year or selected_exam.academic_year_id != selected_year.id:
+            abort(404)
+    else:
+        selected_exam = exams[0] if exams else None
+
     # Legacy halls without an explicit scope remain visible only in the
     # current-year bucket. New halls always carry their selected year.
     legacy_fallback_year_id = current_year.id if current_year else None
@@ -549,9 +579,27 @@ def index():
         .order_by(ExamHall.sort_order, ExamHall.name)
         .all()
     )
+    if not requested_exam_scope and selected_year and selected_exam:
+        has_selected_exam_hall = any(
+            seat_mixer_hall_year_id(hall, legacy_fallback_year_id) == selected_year.id
+            and seat_mixer_hall_exam_id(hall) == selected_exam.id
+            for hall in all_halls
+        )
+        has_unassigned_hall = any(
+            seat_mixer_hall_year_id(hall, legacy_fallback_year_id) == selected_year.id
+            and seat_mixer_hall_exam_id(hall) is None
+            for hall in all_halls
+        )
+        if not has_selected_exam_hall and has_unassigned_hall:
+            unassigned_exam_scope = True
+            selected_exam = None
     halls = [
         hall for hall in all_halls
         if seat_mixer_hall_year_id(hall, legacy_fallback_year_id) == (selected_year.id if selected_year else None)
+        and (
+            (unassigned_exam_scope and seat_mixer_hall_exam_id(hall) is None)
+            or (not unassigned_exam_scope and selected_exam and seat_mixer_hall_exam_id(hall) == selected_exam.id)
+        )
     ]
 
     # The builder must use the year-aware hierarchy, not the global legacy
@@ -571,6 +619,8 @@ def index():
             "name": h.name,
             "code": h.code,
             "academic_year_id": seat_mixer_hall_year_id(h, legacy_fallback_year_id),
+            "exam_id": seat_mixer_hall_exam_id(h),
+            "exam_name": h.exam.name if h.exam else None,
             "academic_year_name": (
                 h.academic_year.name if h.academic_year else
                 h.exam.academic_year.name if h.exam and h.exam.academic_year else
@@ -589,6 +639,9 @@ def index():
         levels=levels,
         academic_years=[{"id": year.id, "name": year.name} for year in academic_years],
         academic_year_id=selected_year.id if selected_year else None,
+        exams=[{"id": exam.id, "name": exam.name} for exam in exams],
+        exam_id=selected_exam.id if selected_exam else None,
+        exam_scope="unassigned" if unassigned_exam_scope else (str(selected_exam.id) if selected_exam else ""),
         levels_by_year=levels_by_year,
         class_palette=CLASS_PALETTE,
         school_name=get_school_name(),
@@ -603,16 +656,24 @@ def api_create_hall():
     start = data.get("start")
     end = data.get("end")
     requested_year_id = data.get("academic_year_id")
+    requested_exam_id = data.get("exam_id")
     try:
         requested_year_id = int(requested_year_id) if requested_year_id else None
     except (TypeError, ValueError):
         requested_year_id = None
+    try:
+        requested_exam_id = int(requested_exam_id) if requested_exam_id else None
+    except (TypeError, ValueError):
+        requested_exam_id = None
     academic_year = db.session.get(AcademicYear, requested_year_id) if requested_year_id else get_current_academic_year()
+    exam = db.session.get(Exam, requested_exam_id) if requested_exam_id else None
 
     if not name:
         return jsonify({"error": "Hall name is required"}), 400
     if not academic_year:
         return jsonify({"error": "Select a valid academic year before creating an exam hall."}), 400
+    if not exam or exam.academic_year_id != academic_year.id or not exam.is_active:
+        return jsonify({"error": "Select a valid exam type for the selected academic year."}), 400
 
     # Parse datetimes
     try:
@@ -638,6 +699,7 @@ def api_create_hall():
         end_time=end_dt,
         sort_order=existing_count,
         academic_year_id=academic_year.id,
+        exam_id=exam.id,
     )
     db.session.add(hall)
     db.session.flush()
@@ -663,6 +725,8 @@ def api_create_hall():
                 get_current_academic_year().id if get_current_academic_year() else None,
             ),
             "academic_year_name": hall.academic_year.name if hall.academic_year else None,
+            "exam_id": hall.exam_id,
+            "exam_name": hall.exam.name if hall.exam else None,
             "start_time": hall.start_time.strftime("%Y-%m-%dT%H:%M") if hall.start_time else None,
             "end_time": hall.end_time.strftime("%Y-%m-%dT%H:%M") if hall.end_time else None,
             "version_count": 1,
@@ -710,6 +774,17 @@ def api_manage_hall(hall_id):
     if start_dt and end_dt and end_dt <= start_dt:
         return jsonify({"error": "End time must be after start time"}), 400
 
+    if "exam_id" in data:
+        try:
+            requested_exam_id = int(data.get("exam_id"))
+        except (TypeError, ValueError):
+            requested_exam_id = None
+        exam = db.session.get(Exam, requested_exam_id) if requested_exam_id else None
+        hall_year_id = seat_mixer_hall_year_id(hall)
+        if not exam or exam.academic_year_id != hall_year_id or not exam.is_active:
+            return jsonify({"error": "Select a valid exam type for this hall's academic year."}), 400
+        hall.exam_id = exam.id
+
     hall.name = name
     hall.start_time = start_dt
     hall.end_time = end_dt
@@ -726,6 +801,8 @@ def api_manage_hall(hall_id):
                 get_current_academic_year().id if get_current_academic_year() else None,
             ),
             "academic_year_name": hall.academic_year.name if hall.academic_year else None,
+            "exam_id": hall.exam_id,
+            "exam_name": hall.exam.name if hall.exam else None,
             "start_time": hall.start_time.strftime("%Y-%m-%dT%H:%M") if hall.start_time else None,
             "end_time": hall.end_time.strftime("%Y-%m-%dT%H:%M") if hall.end_time else None,
             "version_count": len(hall.versions),
@@ -850,6 +927,7 @@ def api_versions(hall_id):
     """List all versions for a hall with their saved status."""
     hall = db.session.get(ExamHall, hall_id) or abort(404)
     selected_year_id = request.args.get("academic_year_id", type=int)
+    selected_exam_id = request.args.get("exam_id", type=int)
     if selected_year_id:
         effective_year_id = seat_mixer_hall_year_id(
             hall,
@@ -857,6 +935,8 @@ def api_versions(hall_id):
         )
         if effective_year_id != selected_year_id:
             return jsonify({"error": "This exam hall belongs to a different academic year."}), 409
+    if selected_exam_id and hall.exam_id != selected_exam_id:
+        return jsonify({"error": "This exam hall belongs to a different exam type."}), 409
 
     ordered_versions = sorted(
         hall.versions,
@@ -892,6 +972,8 @@ def api_versions(hall_id):
                 get_current_academic_year().id if get_current_academic_year() else None,
             ),
             "academic_year_name": hall.academic_year.name if hall.academic_year else None,
+            "exam_id": hall.exam_id,
+            "exam_name": hall.exam.name if hall.exam else None,
             "start_time": hall.start_time.strftime("%Y-%m-%dT%H:%M") if hall.start_time else None,
             "end_time": hall.end_time.strftime("%Y-%m-%dT%H:%M") if hall.end_time else None,
             "is_expired": is_expired(hall),
@@ -908,8 +990,9 @@ def api_students():
     """
     class_ids = request.args.getlist("class_ids", type=int)
     hall_id = request.args.get("hall_id", type=int)
+    exam_id = request.args.get("exam_id", type=int)
 
-    if not class_ids:
+    if not class_ids or not exam_id:
         return jsonify({"students": []})
 
     academic_year_id = request.args.get("academic_year_id", type=int)
@@ -937,7 +1020,11 @@ def api_students():
         )
         .join(ExamHallVersion, SeatMixerAssignment.version_id == ExamHallVersion.id)
         .join(ExamHall, ExamHallVersion.exam_hall_id == ExamHall.id)
-        .filter(SeatMixerAssignment.student_id.in_(student_ids))
+        .filter(
+            SeatMixerAssignment.student_id.in_(student_ids),
+            ExamHall.exam_id == exam_id,
+            ExamHall.academic_year_id == current_year.id,
+        )
         .all()
     )
     assignment_map = {}
@@ -1026,6 +1113,8 @@ def api_version_data(version_id):
         "version_id": version_id,
         "hall_id": hall.id,
         "hall_name": hall.name,
+        "exam_id": hall.exam_id,
+        "exam_name": hall.exam.name if hall.exam else None,
         "version_label": version.label,
         "is_expired": is_expired(hall),
         "config": config,
@@ -1109,10 +1198,15 @@ def api_save():
     selected_students = normalized_selected_students(data.get("selected_students", {}))
     last_meta = str(data.get("last_meta") or "Saved layout").strip()[:160] or "Saved layout"
     requested_academic_year_id = data.get("academic_year_id")
+    requested_exam_id = data.get("exam_id")
     try:
         requested_academic_year_id = int(requested_academic_year_id) if requested_academic_year_id else None
     except (TypeError, ValueError):
         requested_academic_year_id = None
+    try:
+        requested_exam_id = int(requested_exam_id) if requested_exam_id else None
+    except (TypeError, ValueError):
+        requested_exam_id = None
 
     hall_scope_year_id = seat_mixer_hall_year_id(hall)
     if hall_scope_year_id and requested_academic_year_id and requested_academic_year_id != hall_scope_year_id:
@@ -1122,6 +1216,8 @@ def api_save():
     )
     if not academic_year_id or not db.session.get(AcademicYear, academic_year_id):
         return jsonify({"error": "Select a valid academic year before saving the arrangement."}), 400
+    if not requested_exam_id or hall.exam_id != requested_exam_id:
+        return jsonify({"error": "Select the exam type assigned to this hall before saving the arrangement."}), 400
 
     try:
         replace_active_assignments(version_id, normalized_rows, normalized_config)
@@ -1134,6 +1230,7 @@ def api_save():
                 "selected_students": selected_students,
                 "last_meta": last_meta,
                 "academic_year_id": academic_year_id,
+                "exam_id": requested_exam_id,
             }, separators=(",", ":"), sort_keys=True),
             integrity_score=metrics["integrity_score"],
             near_adjacency_count=metrics["near_adjacency_count"],
@@ -1429,7 +1526,7 @@ def print_arrangement():
         # and creates a fresh issue when the previous card has expired.
         issue = get_or_create_issue(student, academic_year_id=issue_year_id)
         issues_created = True
-        student_qr[str(student.id)] = id_card_qr_payload(issue)
+        student_qr[str(student.id)] = id_card_qr_payload(issue, exam_id=hall.exam_id)
     if issues_created:
         db.session.commit()
 

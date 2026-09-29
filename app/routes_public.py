@@ -15,7 +15,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from . import csrf, db
 from .i18n import language_redirect
-from .models import AcademicLevel, AcademicYear, AcademicYearSubject, Exam, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, StudentEnrollment, Subject
+from .models import AcademicLevel, AcademicYear, AcademicYearSubject, Exam, ExamHall, ExamHallVersion, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeatMixerAssignment, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, StudentEnrollment, Subject
 from .services import active_exam_for_student, attendance_uf_record, get_settings, result_payload, result_success_overlay_config, scoped_legacy_subjects, top_students_for_class
 from .attendance_rules import normalize_attendance_status
 from .enrollment_service import (
@@ -1256,7 +1256,32 @@ def verify_id_card(token):
     logger.info(f"VERIFY STUDENT - Student academic_class_id: {issue.student.academic_class_id}")
     logger.info(f"VERIFY STUDENT - Student academic_section_id: {issue.student.academic_section_id}")
     
-    exam = active_exam_for_student(issue.student, preferred_year_id=issue.academic_year_id)
+    requested_exam_id = request.args.get("exam_id", type=int)
+    exam = (
+        Exam.query.filter_by(id=requested_exam_id, academic_year_id=issue.academic_year_id).first()
+        if requested_exam_id else None
+    )
+    exam = exam or active_exam_for_student(issue.student, preferred_year_id=issue.academic_year_id)
+
+    seating = None
+    if exam:
+        seating_row = (
+            SeatMixerAssignment.query
+            .join(ExamHallVersion, SeatMixerAssignment.version_id == ExamHallVersion.id)
+            .join(ExamHall, ExamHallVersion.exam_hall_id == ExamHall.id)
+            .options(joinedload(SeatMixerAssignment.version).joinedload(ExamHallVersion.hall))
+            .filter(
+                SeatMixerAssignment.student_id == issue.student_id,
+                ExamHall.exam_id == exam.id,
+            )
+            .order_by(SeatMixerAssignment.updated_at.desc(), SeatMixerAssignment.id.desc())
+            .first()
+        )
+        if seating_row and seating_row.version and seating_row.version.hall:
+            seating = {
+                "hall_name": seating_row.version.hall.name,
+                "seat_label": f"Saf {seating_row.row_number + 1} · Miis {seating_row.table_number + 1} · Kursi {seating_row.seat_number + 1}",
+            }
     
     if exam:
         # Debug logging - Exam details
@@ -1284,6 +1309,7 @@ def verify_id_card(token):
         display_status=status,
         status_details=status_details,
         exam=exam,
+        seating=seating,
     )
 
 
@@ -1297,12 +1323,18 @@ def qr_landing(token):
     from .routes_id_cards import effective_issue_status, ensure_issue_dates
     if ensure_issue_dates(issue, settings=settings):
         db.session.commit()
+    requested_exam_id = request.args.get("exam_id", type=int)
+    qr_exam = (
+        Exam.query.filter_by(id=requested_exam_id, academic_year_id=issue.academic_year_id).first()
+        if requested_exam_id else None
+    )
     return render_template(
         "qr_landing.html",
         settings=settings,
         token=token,
         student=issue.student,
         id_card_status=effective_issue_status(issue),
+        qr_exam_id=qr_exam.id if qr_exam else None,
     )
 
 
@@ -1353,7 +1385,12 @@ def incident_report_form(token):
     student_subjects = incident_subjects_for_student(student, issue.academic_year_id, placement=placement)
     student_subject_ids = {subject.id for subject in student_subjects}
 
-    exam = active_exam_for_student(
+    requested_exam_id = request.args.get("exam_id", type=int)
+    exam = (
+        Exam.query.filter_by(id=requested_exam_id, academic_year_id=issue.academic_year_id).first()
+        if requested_exam_id else None
+    )
+    exam = exam or active_exam_for_student(
         student,
         preferred_year_id=issue.academic_year_id,
         placement=placement,

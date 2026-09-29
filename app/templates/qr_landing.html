@@ -5,6 +5,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/qr-landing.css') }}">
 {% endblock %}
 {% block content %}
+{% set qr_context = {'exam_id': qr_exam_id} if qr_exam_id else {} %}
 <div class="qr-landing-container">
   <div class="landing-header">
     <div class="school-logo">
@@ -18,7 +19,7 @@
 
   <div class="action-cards">
     <!-- Verify Student Card -->
-    <a href="{{ url_for('public.verify_id_card', token=token) }}" class="action-card verify-card">
+    <a href="{{ url_for('public.verify_id_card', token=token, **qr_context) }}" class="action-card verify-card">
       <div class="card-icon verify-icon">
         <i class="fa-solid fa-user-check"></i>
       </div>
@@ -34,7 +35,7 @@
 
     <!-- Submit Incident Report Card -->
     <a
-      {% if id_card_status == 'Active' %}href="{{ url_for('public.incident_report_form', token=token) }}"{% endif %}
+      {% if id_card_status == 'Active' %}href="{{ url_for('public.incident_report_form', token=token, **qr_context) }}"{% endif %}
       class="action-card incident-card{% if id_card_status != 'Active' %} is-disabled{% endif %}"
       {% if id_card_status != 'Active' %}aria-disabled="true"{% endif %}
     >

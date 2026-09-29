@@ -33,7 +33,12 @@
         <div class="sm-year-scope sm-year-scope-front">
           <label for="smAcademicYear"><i class="fa-solid fa-calendar-days"></i> Academic Year</label>
           <select id="smAcademicYear" aria-label="Select academic year for exam halls"></select>
-          <span class="sm-year-scope-note">Exam halls, versions, levels and classes are isolated to the selected academic year.</span>
+          <span class="sm-year-scope-note">Exam halls, versions, levels, classes and seating are isolated to the selected year and exam.</span>
+        </div>
+        <div class="sm-year-scope sm-year-scope-front">
+          <label for="smAcademicExam"><i class="fa-solid fa-file-circle-check"></i> Exam Type</label>
+          <select id="smAcademicExam" aria-label="Select exam type for exam halls"></select>
+          <span class="sm-year-scope-note">Each exam keeps its own halls, students and saved arrangements.</span>
         </div>
         <h2><span class="ico"><i class="fa-solid fa-building-columns"></i></span>Exam Halls</h2>
         <div class="sm-hall-list" id="smHallList"></div>
@@ -221,6 +226,9 @@ window.SM_init({
   levels: {{ levels|tojson }},
   academicYears: {{ academic_years|tojson }},
   academicYearId: {{ academic_year_id|tojson }},
+  exams: {{ exams|tojson }},
+  examId: {{ exam_id|tojson }},
+  examScope: {{ exam_scope|tojson }},
   levelsByYear: {{ levels_by_year|tojson }},
   classPalette: {{ class_palette|tojson }},
   schoolName: {{ school_name|tojson }},

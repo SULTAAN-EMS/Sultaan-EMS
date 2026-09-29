@@ -33,6 +33,7 @@ def verification_payload(student, exam):
     return {"record": record, "url": verify_url, "qr_code": qr_data_uri(verify_url)}
 
 
-def id_card_qr_payload(issue):
-    verify_url = url_for("public.qr_landing", token=issue.token, _external=True)
+def id_card_qr_payload(issue, exam_id=None):
+    query = {"exam_id": int(exam_id)} if exam_id else {}
+    verify_url = url_for("public.qr_landing", token=issue.token, _external=True, **query)
     return {"url": verify_url, "qr_code": qr_data_uri(verify_url)}
