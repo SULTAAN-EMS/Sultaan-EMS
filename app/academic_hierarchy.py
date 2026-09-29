@@ -8,6 +8,7 @@ students/results that still point at legacy IDs.
 from collections import defaultdict
 from pathlib import Path
 import json
+from types import SimpleNamespace
 
 from sqlalchemy import and_, or_
 
@@ -32,6 +33,34 @@ def year_levels(year_id, active_only=True):
     if active_only:
         query = query.filter_by(is_active=True)
     return query.order_by(AcademicYearLevel.sort_order, AcademicYearLevel.name, AcademicYearLevel.id).all()
+
+
+def year_level_options(year_id, active_only=True):
+    """Return year-scoped level options with canonical display names.
+
+    Results Hub selectors still submit legacy level IDs for compatibility, but
+    their visible label must come from the selected year's mapping. A legacy
+    level can retain an old name (for example ``8aad``) while its current
+    year-scoped mapping is named ``Dugsi Dhexe``; exposing the mapping name
+    prevents stale legacy labels from leaking into Academic Records.
+    """
+    options = []
+    for scope in year_levels(year_id, active_only=active_only):
+        legacy_level = scope.legacy_level
+        if not scope.legacy_level_id or not legacy_level or not legacy_level.is_active:
+            continue
+        options.append(
+            SimpleNamespace(
+                id=scope.legacy_level_id,
+                name=scope.name or legacy_level.name,
+                is_active=scope.is_active,
+                sort_order=scope.sort_order,
+                year_level_id=scope.id,
+                year_level_scope=scope,
+                legacy_level=legacy_level,
+            )
+        )
+    return options
 
 
 def year_classes(year_level_id, active_only=True):

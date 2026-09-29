@@ -2584,8 +2584,10 @@ def _get_or_create_legacy_subject(name, academic_level_id, max_score, sort_order
 
     Some deployed databases still enforce ``UNIQUE(subjects.name)`` even
     though the current model scopes the unique key by academic level. Reuse
-    an exact level match, remove an unreferenced stale conflict, and never
-    remove a Subject that is still referenced by live application data.
+    an exact level match, reuse a referenced same-name subject as a shared
+    identity across year-level mappings, remove an unreferenced stale
+    conflict, and never remove a Subject that is still referenced by live
+    application data.
     """
     legacy_subject = Subject.query.filter_by(
         name=name,
@@ -2601,13 +2603,11 @@ def _get_or_create_legacy_subject(name, academic_level_id, max_score, sort_order
             conflicting_subject.id,
         )
         if references:
-            reference_summary = ", ".join(
-                f"{item['table']}.{item['column']} ({item['count']})"
-                for item in references
-            )
-            raise ValueError(
-                f"Subject '{name}' already exists and is used by existing records: {reference_summary}."
-            )
+            # A legacy Subject is the canonical identity used by results and
+            # other historical records. Reusing it lets the same subject be
+            # mapped to multiple academic-year levels without duplicating or
+            # rewriting those records.
+            return conflicting_subject
         db.session.delete(conflicting_subject)
         db.session.flush()
 

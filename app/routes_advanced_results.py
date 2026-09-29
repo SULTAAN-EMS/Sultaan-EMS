@@ -19,7 +19,7 @@ from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import normalize_student_phone, process_result_import, process_student_import, result_entry_import_template, student_template
 from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, ExamMarkingConfiguration, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentCodeAlias, StudentEnrollment, StudentEnrollmentMovement, Subject, LabelTranslation
-from .academic_hierarchy import students_for_year_scope_query, year_classes, year_levels, year_subjects
+from .academic_hierarchy import students_for_year_scope_query, year_classes, year_level_options, year_levels, year_subjects
 from .enrollment_service import (
     EnrollmentValidationError,
     apply_legacy_placement,
@@ -672,13 +672,9 @@ def new_dashboard():
     # selected year's hierarchy. Legacy level IDs are still used by the
     # existing templates, but only mapped IDs are exposed here.
     year_level_scopes = year_levels(selected_year.id) if selected_year else []
-    levels = [
-        scope.legacy_level
-        for scope in year_level_scopes
-        if scope.legacy_level and scope.legacy_level.is_active
-    ]
+    levels = year_level_options(selected_year.id) if selected_year else []
     valid_level_ids = {level.id for level in levels}
-    selected_level = db.session.get(AcademicLevel, level_id) if level_id in valid_level_ids else None
+    selected_level = next((level for level in levels if level.id == level_id), None)
 
     exam_scope_ready = True
     if selected_exam and selected_exam.academic_level_id:
@@ -758,11 +754,7 @@ def class_roster():
         years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
         exams = Exam.query.filter_by(academic_year_id=selected_year.id).order_by(Exam.id.desc()).all() if selected_year else []
         year_level_scopes = year_levels(selected_year.id) if selected_year else []
-        levels = [
-            scope.legacy_level
-            for scope in year_level_scopes
-            if scope.legacy_level and scope.legacy_level.is_active
-        ]
+        levels = year_level_options(selected_year.id) if selected_year else []
         valid_level_ids = {item.id for item in levels}
         requested_level_id = level_id or (selected_exam.academic_level_id if selected_exam else None)
         level_id = requested_level_id if requested_level_id in valid_level_ids else None
@@ -788,7 +780,7 @@ def class_roster():
             section_id = None
 
         scope_info = {
-            "level": db.session.get(AcademicLevel, level_id) if level_id else None,
+            "level": next((level for level in levels if level.id == level_id), None),
             "class": db.session.get(AcademicClass, class_id) if class_id else None,
             "section": db.session.get(AcademicSection, section_id) if section_id else None,
         }
@@ -1909,11 +1901,7 @@ def result_entry():
     # This prevents a level or class created in another academic year from
     # appearing in this form.
     year_level_scopes = year_levels(selected_year.id) if selected_year else []
-    levels = [
-        scope.legacy_level
-        for scope in year_level_scopes
-        if scope.legacy_level and scope.legacy_level.is_active
-    ]
+    levels = year_level_options(selected_year.id) if selected_year else []
     
     # If no exam selected, show exam selection interface
     if not selected_exam:
@@ -1971,7 +1959,7 @@ def result_entry():
     
     # Build scope info
     scope_info = {
-        "level": db.session.get(AcademicLevel, level_id) if level_id else None,
+        "level": next((level for level in levels if level.id == level_id), None),
         "class": db.session.get(AcademicClass, class_id) if class_id else None,
         "section": db.session.get(AcademicSection, section_id) if section_id else None,
     }
@@ -2502,7 +2490,7 @@ def build_analytics_results_report_data(academic_year, exam):
             if legacy_level_ids else []
         )
     else:
-        levels = [scope.legacy_level for scope in year_level_scopes if scope.legacy_level and scope.legacy_level.is_active]
+        levels = year_level_options(academic_year.id)
         classes = [
             year_class.legacy_class
             for scope in year_level_scopes
@@ -3264,11 +3252,7 @@ def grade_management():
     valid_level_ids = {scope.legacy_level_id for scope in year_level_scopes if scope.legacy_level_id}
     if level_id not in valid_level_ids:
         level_id = None
-    levels = [
-        scope.legacy_level
-        for scope in year_level_scopes
-        if scope.legacy_level and scope.legacy_level.is_active
-    ]
+    levels = year_level_options(selected_year.id) if selected_year else []
     selected_year_level = next(
         (scope for scope in year_level_scopes if scope.legacy_level_id == level_id),
         None,
@@ -5006,10 +4990,14 @@ def build_class_cards(exam, level_filter=None):
             cards.append(build_single_class_card(exam, academic_class=cls))
     else:
         # No scope - show level cards
+        year_level_options_by_id = {
+            option.id: option
+            for option in year_level_options(exam.academic_year_id)
+        } if exam.academic_year_id else {}
         levels = [
-            item.legacy_level
+            year_level_options_by_id.get(item.legacy_level_id)
             for item in year_scope_by_level.values()
-            if item.legacy_level and item.legacy_level.is_active
+            if year_level_options_by_id.get(item.legacy_level_id)
         ] if exam.academic_year_id else AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
         for level in levels:
             cards.append(build_single_class_card(exam, academic_level=level))
