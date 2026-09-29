@@ -1222,7 +1222,7 @@ def verify_id_card(token):
             "label": "Firfircoon",
             "message": "Ardeygan waqti xaadirkan wuu firfircoon yahay.",
             "class_name": "status-active",
-            "icon": "fa-shield-check",
+            "icon": "fa-shield-halved",
         },
         "Expired": {
             "label": "Wuu dhacay",
