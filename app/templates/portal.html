@@ -82,6 +82,20 @@
   .behavior-reading-record__points { color: #087f5b; font-size: .78rem; font-weight: 850; white-space: nowrap; }
   .behavior-reading-record__points--negative { color: #c2410c; }
   .behavior-reading-empty { margin: 0; color: #64748b; font-size: .74rem; }
+  .premium-portal-hero h1{font-size:clamp(1.35rem,2.5vw,2.15rem);line-height:1.1;font-weight:900}
+  .premium-portal-hero .premium-motto{font-size:clamp(.62rem,1.1vw,.78rem);letter-spacing:.1em;text-transform:none!important}
+  .premium-portal-hero .premium-motto strong{font-size:inherit;text-transform:none!important}
+  .premium-exam-title h2{font-size:clamp(1.2rem,2.1vw,1.85rem);line-height:1.1}
+  .premium-search-shell .premium-search-hint{width:100%;justify-self:stretch;justify-content:center;text-align:center}
+  .premium-portal-services{display:flex;align-items:center;justify-content:center;gap:12px;margin:12px auto 0;max-width:100%;text-align:left}
+  .premium-portal-services__intro{display:flex;align-items:center;justify-content:center;flex:0 0 auto;margin:0;color:#ffc43d;font-size:.72rem;font-weight:700;line-height:1.25;text-align:center;letter-spacing:0!important;text-transform:none!important}
+  .premium-exam-title .premium-portal-services__intro{display:flex!important;width:auto;margin:0!important;padding:0;grid-template-columns:none!important;gap:0!important;font-size:.72rem!important;letter-spacing:0!important;text-transform:none!important;white-space:nowrap}
+  .premium-portal-services__list{display:contents}
+  .premium-portal-service{display:flex;align-items:center;gap:5px;min-width:0;padding:5px 5px;border:0;border-radius:0;background:transparent;box-shadow:none}
+  .premium-portal-service__icon{display:grid;place-items:center;width:26px;height:26px;flex:0 0 26px;border-radius:0;background:transparent!important;color:#fff;font-size:.82rem}
+  .premium-portal-service:nth-child(2){transform:none}
+  .premium-portal-service__label{min-width:0;color:#fff;font-size:.78rem;font-weight:750;line-height:1.25;letter-spacing:0;text-transform:none!important;white-space:nowrap}
+  @media (max-width:700px){.premium-portal-services{flex-direction:column;gap:8px}.premium-portal-service{justify-content:center}.premium-portal-service__label{font-size:.82rem;white-space:normal}}
   .nrp-overlay{--nrp-ink:#12233F;--nrp-ink-soft:#4A5B78;--nrp-paper:#FFFFFF;--nrp-mist:#EEF3F9;--nrp-line:#DCE5F0;--nrp-amber:#F2A20C;--nrp-amber-soft:#FFF4D9;--nrp-teal:#0E8F7E;--nrp-teal-soft:#DDF5F0;--nrp-shadow:0 30px 80px -20px rgba(18,35,63,.45);position:fixed;inset:0;z-index:1800;display:flex;overflow-y:auto;overscroll-behavior:contain;padding:20px;background:rgba(12,24,44,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);opacity:0;visibility:hidden;transition:opacity .3s ease,visibility .3s;font-family:'Outfit','Segoe UI',system-ui,-apple-system,Roboto,Arial,sans-serif}
   .nrp-overlay.is-open{opacity:1;visibility:visible}
   .nrp-card{position:relative;width:100%;max-width:440px;margin:auto;flex:none;background:var(--nrp-paper);border-radius:28px;box-shadow:var(--nrp-shadow);overflow:hidden;transform:translateY(24px) scale(.94);opacity:0;transition:transform .5s cubic-bezier(.2,1.1,.3,1),opacity .35s ease}
@@ -97,7 +111,8 @@
   .nrp-ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--nrp-amber);opacity:0;animation:nrp-pulse 2.8s ease-out infinite}
   .nrp-ring:nth-child(2){animation-delay:1.4s}
   .nrp-badge{position:absolute;inset:14px;border-radius:50%;background:linear-gradient(145deg,#FFC24A,#F2A20C);box-shadow:0 12px 28px -8px rgba(242,162,12,.7),inset 0 -4px 8px rgba(160,90,0,.25);display:grid;place-items:center;animation:nrp-pop .7s .25s cubic-bezier(.2,1.4,.4,1) both}
-  .nrp-badge svg{width:46px;height:46px;overflow:visible}
+  .nrp-badge svg{width:46px;height:46px;overflow:visible}.nrp-error-icon{display:none}
+  .nrp-invalid .nrp-clock-icon{display:none}.nrp-invalid .nrp-error-icon{display:block}.nrp-invalid .nrp-ring{border-color:#D63A41}.nrp-invalid .nrp-badge{background:linear-gradient(145deg,#F06A70,#D63A41);box-shadow:0 12px 28px -8px rgba(214,58,65,.7),inset 0 -4px 8px rgba(130,20,25,.25)}.nrp-invalid .nrp-msg{border-color:#F6C6C8;box-shadow:0 14px 28px -18px rgba(214,58,65,.7)}.nrp-invalid .nrp-msg::after{background:linear-gradient(90deg,#D63A41,#F2A20C)}.nrp-invalid .nrp-msg-head{background:linear-gradient(180deg,rgba(253,236,236,.9),rgba(253,236,236,0))}.nrp-invalid .nrp-msg-head::after{background:linear-gradient(90deg,#D63A41,#F2A20C)}.nrp-invalid .nrp-step.nrp-now .nrp-dot{border-color:#D63A41;background:#FDECEC}.nrp-invalid .nrp-step.nrp-now .nrp-dot::after{background:#D63A41}.nrp-invalid .nrp-tag{background:#FDECEC;color:#A52C32}.nrp-invalid .nrp-primary{background:#D63A41}.nrp-invalid .nrp-primary:hover{background:#B92F35}
   .nrp-hand-long{transform-origin:24px 24px;animation:nrp-spin 6s linear infinite}
   .nrp-hand-short{transform-origin:24px 24px;animation:nrp-spin 36s linear infinite}
   .nrp-spark{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--nrp-teal);animation:nrp-float 3.4s ease-in-out infinite}
@@ -115,9 +130,9 @@
   .nrp-id{display:inline-flex;align-items:center;gap:10px;margin-top:18px;padding:6px 18px 6px 6px;border-radius:14px;text-align:left;white-space:nowrap;background:linear-gradient(180deg,#fff,#F3FBF9);border:1px solid #BFE9E1;box-shadow:0 12px 24px -16px rgba(14,143,126,.8)}
   .nrp-id-ic{flex:none;width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(145deg,#19B7A1,#0E8F7E);box-shadow:0 8px 16px -8px rgba(14,143,126,.9),inset 0 -3px 6px rgba(0,60,50,.25)}
   .nrp-id-ic svg{width:18px;height:18px}.nrp-id-txt{display:flex;flex-direction:row;align-items:baseline;gap:8px;line-height:1.2}.nrp-id-txt small{font-size:14px;font-weight:500;color:var(--nrp-ink-soft)}.nrp-id-txt b{font-size:18px;font-weight:700;color:var(--nrp-ink);letter-spacing:.6px}
-  .nrp-body{padding:26px 28px 8px}.nrp-steps{list-style:none;position:relative}.nrp-steps::before{content:"";position:absolute;left:15px;top:16px;bottom:16px;width:2px;background:var(--nrp-line)}.nrp-step{position:relative;display:flex;align-items:center;gap:14px;padding:9px 0;font-size:15px}.nrp-dot{position:relative;z-index:1;flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#fff;border:2px solid var(--nrp-line);color:var(--nrp-ink-soft)}.nrp-step.nrp-done .nrp-dot{background:var(--nrp-teal);border-color:var(--nrp-teal);color:#fff}.nrp-step.nrp-now .nrp-dot{border-color:var(--nrp-amber);background:var(--nrp-amber-soft)}.nrp-step.nrp-now .nrp-dot::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--nrp-amber);animation:nrp-blink 1.4s ease-in-out infinite}.nrp-step.nrp-now{font-weight:600}.nrp-step.nrp-done span{color:var(--nrp-ink)}.nrp-tag{margin-left:auto;font-size:12.5px;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--nrp-amber-soft);color:#9A6300}
+  .nrp-body{padding:26px 28px 8px}.nrp-steps{list-style:none;position:relative}.nrp-steps::before{content:"";position:absolute;left:15px;top:16px;bottom:16px;width:2px;background:var(--nrp-line)}.nrp-step{position:relative;display:flex;align-items:center;gap:14px;padding:9px 0;font-size:15px}.nrp-dot{position:relative;z-index:1;flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#fff;border:2px solid var(--nrp-line);color:var(--nrp-ink-soft)}.nrp-step.nrp-done .nrp-dot{background:var(--nrp-teal);border-color:var(--nrp-teal);color:#fff}.nrp-step.nrp-now .nrp-dot{border-color:var(--nrp-amber);background:var(--nrp-amber-soft)}.nrp-step.nrp-now .nrp-dot::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--nrp-amber);animation:nrp-blink 1.4s ease-in-out infinite}.nrp-step.nrp-now{font-weight:600}.nrp-step.nrp-done span{color:var(--nrp-ink)}.nrp-step-check{display:block}.nrp-error-dot-icon,.nrp-inspect-dot-icon{display:none}.nrp-invalid #nrpStepOne .nrp-step-check{display:none!important}.nrp-invalid #nrpStepOne .nrp-error-dot-icon,.nrp-invalid #nrpStepTwo .nrp-inspect-dot-icon{display:block!important}.nrp-invalid #nrpStepOne .nrp-dot::after{display:none}.nrp-invalid #nrpStepOne .nrp-dot{border-color:#D63A41;background:#D63A41;color:#fff}.nrp-invalid #nrpStepTwo .nrp-dot{border-color:var(--nrp-amber);background:var(--nrp-amber-soft);color:#A96B00}.nrp-tag{margin-left:auto;font-size:12.5px;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--nrp-amber-soft);color:#9A6300}
   .nrp-note{display:flex;gap:10px;align-items:flex-start;margin:18px 0 0;padding:12px 14px;background:var(--nrp-mist);border-radius:14px;font-size:14px;line-height:1.5;color:var(--nrp-ink-soft)}.nrp-note svg{flex:none;margin-top:2px}
-  .nrp-actions{display:flex;flex-direction:column;gap:10px;padding:22px 28px 28px}.nrp-btn{height:52px;border-radius:14px;border:0;font:inherit;font-size:16px;font-weight:600;cursor:pointer;transition:background .2s,box-shadow .2s}.nrp-btn:active{transform:scale(.98)}.nrp-primary{background:var(--nrp-ink);color:#fff;box-shadow:0 10px 22px -10px rgba(18,35,63,.7)}.nrp-primary:hover{background:#1B3358}
+  .nrp-actions{display:flex;flex-direction:column;align-items:center;gap:10px;padding:22px 28px 28px}.nrp-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:max-content;max-width:100%;height:52px;padding:0 22px;border-radius:14px;border:0;font:inherit;font-size:16px;font-weight:600;cursor:pointer;transition:background .2s,box-shadow .2s}.nrp-btn svg{flex:none;width:18px;height:18px}.nrp-btn:active{transform:scale(.98)}.nrp-primary{background:var(--nrp-ink);color:#fff;box-shadow:0 10px 22px -10px rgba(18,35,63,.7)}.nrp-primary:hover{background:#1B3358}
   @keyframes nrp-pulse{0%{transform:scale(.62);opacity:.7}100%{transform:scale(1.25);opacity:0}}@keyframes nrp-pop{0%{transform:scale(0) rotate(-40deg)}100%{transform:scale(1) rotate(0)}}@keyframes nrp-spin{to{transform:rotate(360deg)}}@keyframes nrp-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes nrp-fly{0%{opacity:0;transform:translate(var(--fx,0px),var(--fy,48px))}100%{opacity:1;transform:translate(0,0)}}@keyframes nrp-blink{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.55);opacity:.5}}
   @media(max-width:420px){.nrp-top{padding:40px 20px 26px}.nrp-body{padding:22px 20px 4px}.nrp-actions{padding:20px}.nrp-msg-title{font-size:20px}}
   @media(max-height:860px){.nrp-top{padding:32px 24px 20px}.nrp-icon{width:92px;height:92px;margin-bottom:14px}.nrp-badge{inset:12px}.nrp-badge svg{width:38px;height:38px}.nrp-msg-head{padding:14px 18px 10px}.nrp-msg-title{font-size:20px}.nrp-msg-body{padding:2px 18px 16px}.nrp-msg-ic{width:38px;height:38px}.nrp-msg-txt .nrp-l2{font-size:14px}.nrp-id{margin-top:12px}.nrp-body{padding:16px 24px 0}.nrp-step{padding:6px 0}.nrp-note{margin-top:12px;padding:10px 12px;font-size:13.5px}.nrp-actions{padding:16px 24px 22px;gap:8px}.nrp-btn{height:48px}}
@@ -224,11 +239,18 @@
     <div class="premium-school-logo">
       {% if settings.logo_path %}<img src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">{% else %}<i class="fa-solid fa-school"></i>{% endif %}
     </div>
-    <h1>Taysiir International School <span>(TIS)</span></h1>
-    <div class="premium-motto"><span></span><strong>{{ settings.school_motto }}</strong><span></span></div>
+    <h1>{{ settings.school_name|upper }}</h1>
+    <div class="premium-motto"><span></span><strong>{{ settings.school_motto|capitalize }}</strong><span></span></div>
     <div class="premium-exam-title glass-card">
-      <h2>NATIIJADA IMTIXAANKA FINAL-KA</h2>
-      <p><span></span>Academic Year {{ result.student.academic_year.name if result else settings.current_academic_year or settings.academic_year or '2025 - 2026' }}<span></span></p>
+      <h2>WAAXDA ADEEGYADA ARDEYGA</h2>
+      <div class="premium-portal-services">
+        <p class="premium-portal-services__intro">Halakan waxaad ka heli doontaa:</p>
+        <div class="premium-portal-services__list">
+          <div class="premium-portal-service"><span class="premium-portal-service__icon" aria-hidden="true"><i class="fa-solid fa-square-poll-vertical"></i></span><span class="premium-portal-service__label">Natiijooyinka Imtixaannada</span></div>
+          <div class="premium-portal-service"><span class="premium-portal-service__icon" aria-hidden="true"><i class="fa-solid fa-calendar-check"></i></span><span class="premium-portal-service__label">Warbixinnada Anshaxa iyo Xaadirka</span></div>
+          <div class="premium-portal-service"><span class="premium-portal-service__icon" aria-hidden="true"><i class="fa-solid fa-file-lines"></i></span><span class="premium-portal-service__label">Dokumentiyada muhiimka ah</span></div>
+        </div>
+      </div>
     </div>
   </section>
   {% endif %}
@@ -242,8 +264,8 @@
           <span class="result-options-photo">{% if result_options.student.photo_path %}<img src="{{ asset_url(result_options.student.photo_path) }}" alt="{{ result_options.student.full_name }} photo">{% elif settings.result_dashboard_default_avatar %}<img src="{{ asset_url(settings.result_dashboard_default_avatar) }}" alt="Default student avatar">{% else %}<i class="fa-solid fa-user-graduate"></i>{% endif %}</span>
           <div class="selection-profile-copy"><h2 id="selectionSheetTitle">{{ result_options.student.full_name }}{{ verified_name_badge(label='Verified', variant='white') }}</h2><p>{{ result_options.student.student_code }}</p></div>
         </div>
-        <form method="post" action="{{ url_for('public.result') }}" class="selection-wizard-form" id="selectionWizardForm">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="student_id" value="{{ result_options.student.student_code }}"><input type="hidden" name="phone" value="{{ result_options.phone or '' }}"><input type="hidden" name="year_id" id="selectionYearValue"><input type="hidden" name="exam_id" id="selectionExamValue">
+        <form method="get" action="{{ url_for('public.result') }}" class="selection-wizard-form" id="selectionWizardForm">
+          <input type="hidden" name="student_id" value="{{ result_options.student.student_code }}"><input type="hidden" name="phone" value="{{ result_options.phone or '' }}"><input type="hidden" name="year_id" id="selectionYearValue"><input type="hidden" name="exam_id" id="selectionExamValue">
           <div class="selection-progress"><div class="selection-progress-copy"><span id="selectionStepLabel">Step 1 of 2</span><strong id="selectionStepTitle">Select Academic Year</strong></div><div class="selection-progress-track"><span id="selectionProgressFill"></span></div><div class="selection-progress-dots"><i class="is-current"></i><i></i></div></div>
           <div class="selection-wizard-viewport"><div class="selection-wizard-track" id="selectionWizardTrack">
             <section class="selection-wizard-step"><div class="selection-step-heading"><span class="selection-step-icon year"><i class="fa-solid fa-calendar-days"></i></span><div><h3>Select Academic Year</h3><p>Choose the academic record you want to view.</p></div></div><div class="selection-choice-list">{% for year in result_options.years %}<button type="button" class="selection-choice year-choice{% if year.id == result_options.selected_year_id %} is-selected{% endif %}" data-year-id="{{ year.id }}"><span class="selection-choice-icon"><i class="fa-solid fa-calendar-check"></i></span><span class="selection-choice-copy"><strong>{{ year.name }}</strong><small>Academic Year</small></span><span class="selection-choice-check"><i class="fa-solid fa-check"></i></span></button>{% endfor %}</div></section>
@@ -297,8 +319,7 @@
           <p>{{ result_options.student.student_code }} · Select an academic record to continue.</p>
         </div>
       </div>
-      <form method="post" action="{{ url_for('public.result') }}" class="premium-result-options-form">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <form method="get" action="{{ url_for('public.result') }}" class="premium-result-options-form">
         <input type="hidden" name="student_id" value="{{ result_options.student.student_code }}">
         <input type="hidden" name="phone" value="{{ result_options.phone or '' }}">
         <label class="result-option-field">
@@ -343,11 +364,10 @@
     {% endif %}
   {% elif not result %}
     <section class="premium-search-shell glass-card">
-      <form method="post" action="{{ url_for('public.result') }}" class="premium-search-form {% if settings.enable_phone_verification == 'on' %}has-phone{% endif %}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <form method="get" action="{{ url_for('public.result') }}" class="premium-search-form {% if settings.enable_phone_verification == 'on' %}has-phone{% endif %}">
         <div class="premium-input-icon"><i class="fa-regular fa-user"></i></div>
         <div class="floating-field">
-          <input id="student_id" class="student-id-input premium-floating-input" name="student_id" required placeholder="Fadlan Halakan geli Tira-taxanaha">
+          <input id="student_id" class="student-id-input premium-floating-input" name="student_id" value="{{ (invalid_student_id or unpublished_student_id or '')|e }}" required placeholder="Fadlan Halakan geli Tira-taxanaha">
           <label for="student_id">Fadlan halakan geli tira-taxanaha</label>
         </div>
         {% if settings.enable_phone_verification == 'on' %}
@@ -357,36 +377,62 @@
           </div>
         {% endif %}
         <button type="submit" class="student-search-button premium-search-button"><i class="fa-solid fa-magnifying-glass"></i><span>RAADI</span></button>
-        <div class="premium-search-hint"><span></span>Geli ID-ga si aad u aragto natiijada<span></span></div>
+        <div class="premium-search-hint"><span></span>Geli Tira-taxanahaaga si aad u gudubto.<span></span></div>
       </form>
       {% if error and not unpublished_result %}<div class="empty-state premium-error"><i class="fa-solid fa-circle-exclamation"></i>{{ error }}</div>{% endif %}
     </section>
   {% endif %}
 
-  {% if unpublished_result %}
-    <div class="nrp-overlay" id="nrpOverlay" role="dialog" aria-modal="true" aria-labelledby="nrpTitle" aria-describedby="nrpText" aria-hidden="true">
+  {% if unpublished_result or invalid_student_id %}
+    <div class="nrp-overlay{% if invalid_student_id %} nrp-invalid{% endif %}" id="nrpOverlay" role="dialog" aria-modal="true" aria-labelledby="nrpTitle" aria-describedby="nrpText" aria-hidden="true">
       <div class="nrp-card">
         <div class="nrp-top">
           <button class="nrp-close" type="button" data-nrp-close aria-label="Xir"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
-          <div class="nrp-icon" aria-hidden="true"><span class="nrp-ring"></span><span class="nrp-ring"></span><span class="nrp-spark nrp-s1"></span><span class="nrp-spark nrp-s2"></span><span class="nrp-spark nrp-s3"></span><div class="nrp-badge"><svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="19" stroke="#fff" stroke-width="3.5"/><line class="nrp-hand-short" x1="24" y1="24" x2="24" y2="14" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/><line class="nrp-hand-long" x1="24" y1="24" x2="24" y2="9" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="24" r="2.6" fill="#fff"/></svg></div></div>
+          <div class="nrp-icon" aria-hidden="true"><span class="nrp-ring"></span><span class="nrp-ring"></span><span class="nrp-spark nrp-s1"></span><span class="nrp-spark nrp-s2"></span><span class="nrp-spark nrp-s3"></span><div class="nrp-badge"><svg class="nrp-clock-icon" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="19" stroke="#fff" stroke-width="3.5"/><line class="nrp-hand-short" x1="24" y1="24" x2="24" y2="14" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/><line class="nrp-hand-long" x1="24" y1="24" x2="24" y2="9" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="24" r="2.6" fill="#fff"/></svg><svg class="nrp-error-icon" viewBox="0 0 48 48" fill="none"><path d="M24 7 43 41H5L24 7Z" stroke="#fff" stroke-width="3.4" stroke-linejoin="round"/><path d="M24 18v11M24 35v.5" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/></svg></div></div>
           <div class="nrp-msg nrp-pop" style="--d:.5s" id="nrpText">
             <div class="nrp-msg-head"><span class="nrp-msg-title nrp-pop" id="nrpTitle" role="heading" aria-level="2" style="--d:.8s;--fx:-46px;--fy:0px">Natiijadaada weli lama daabicin</span></div>
-            <div class="nrp-msg-body"><span class="nrp-msg-ic" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 26 26" fill="none"><path d="M6 3.5h8.2L20 9.3V21a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 5 21V5A1.5 1.5 0 0 1 6 3.5Z" stroke="#0E8F7E" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 3.7V9.5h5.8" stroke="#0E8F7E" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.5 13.5h6M8.5 17h3.5" stroke="#0E8F7E" stroke-width="1.7" stroke-linecap="round"/><circle cx="19" cy="19" r="5" fill="#fff" stroke="#F2A20C" stroke-width="1.7"/><path d="M19 16.5V19l1.6 1" stroke="#F2A20C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="nrp-msg-txt"><span class="nrp-l2 nrp-pop" style="--d:1.05s;--fx:46px;--fy:0px">Marka la xareeyo, halkan ayaad ka arki doontaa.</span></span></div>
+            <div class="nrp-msg-body"><span class="nrp-msg-ic" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 26 26" fill="none"><path d="M6 3.5h8.2L20 9.3V21a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 5 21V5A1.5 1.5 0 0 1 6 3.5Z" stroke="#0E8F7E" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 3.7V9.5h5.8" stroke="#0E8F7E" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.5 13.5h6M8.5 17h3.5" stroke="#0E8F7E" stroke-width="1.7" stroke-linecap="round"/><circle cx="19" cy="19" r="5" fill="#fff" stroke="#F2A20C" stroke-width="1.7"/><path d="M19 16.5V19l1.6 1" stroke="#F2A20C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="nrp-msg-txt"><span class="nrp-l2 nrp-pop" id="nrpDescription" style="--d:1.05s;--fx:46px;--fy:0px">Marka la xareeyo, halakan ayaad ka arki doontaa.</span></span></div>
           </div>
           <div class="nrp-id nrp-pop" style="--d:1.6s"><span class="nrp-id-ic" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="4.5" width="19" height="15" rx="3" stroke="#fff" stroke-width="1.8"/><circle cx="8.6" cy="10.6" r="2.1" stroke="#fff" stroke-width="1.7"/><path d="M5.4 16c.5-1.7 1.8-2.6 3.2-2.6s2.7.9 3.2 2.6" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/><path d="M14.5 10h4M14.5 13.5h3" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg></span><span class="nrp-id-txt"><small>Tirataxaneha:</small><b id="nrpId">—</b></span></div>
         </div>
-        <div class="nrp-body"><ul class="nrp-steps"><li class="nrp-step nrp-pop nrp-done" style="--d:1.9s;--fx:-60px;--fy:0px"><span class="nrp-dot"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7.5l3 3 6-6.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Tirataxanahaaga waa la helay</span></li><li class="nrp-step nrp-pop nrp-now" style="--d:2.15s;--fx:-60px;--fy:0px"><span class="nrp-dot"></span><span>Sugitaanka daabacaadda</span><span class="nrp-tag">Hadda</span></li></ul><div class="nrp-note nrp-pop" style="--d:2.45s"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8.5" stroke="#4A5B78" stroke-width="1.6"/><path d="M10 9v5M10 6.2v.1" stroke="#4A5B78" stroke-width="1.8" stroke-linecap="round"/></svg><span>Fadlan isku day dib dambe, ama la xidhiidh maamulka dugsiga haddii aad wax su'aal ah qabto.</span></div></div>
-        <div class="nrp-actions nrp-pop" style="--d:2.75s"><button class="nrp-btn nrp-primary" type="button" data-nrp-close>Waan fahmay</button></div>
+        <div class="nrp-body"><ul class="nrp-steps"><li class="nrp-step nrp-pop nrp-done" id="nrpStepOne" style="--d:1.9s;--fx:-60px;--fy:0px"><span class="nrp-dot"><svg class="nrp-step-check" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7.5l3 3 6-6.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="nrp-error-dot-icon" width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M7.5 7.5l9 9M16.5 7.5l-9 9" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg></span><span id="nrpStepOneText">Tirataxanahaaga waa la helay</span></li><li class="nrp-step nrp-pop nrp-now" id="nrpStepTwo" style="--d:2.15s;--fx:-60px;--fy:0px"><span class="nrp-dot"><svg class="nrp-inspect-dot-icon" width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="10.8" cy="10.8" r="6.3" stroke="currentColor" stroke-width="2.2"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span><span id="nrpStepTwoText">Sugitaanka daabacaadda</span><span class="nrp-tag" id="nrpStepTag">Hadda</span></li></ul><div class="nrp-note nrp-pop" style="--d:2.45s"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8.5" stroke="#4A5B78" stroke-width="1.6"/><path d="M10 9v5M10 6.2v.1" stroke="#4A5B78" stroke-width="1.8" stroke-linecap="round"/></svg><span id="nrpNote">Fadlan isku day dib dambe, ama la xidhiidh maamulka dugsiga haddii aad wax su'aal ah qabto.</span></div></div>
+        <div class="nrp-actions nrp-pop" style="--d:2.75s"><button class="nrp-btn nrp-primary" type="button" data-nrp-close><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.2 4.2L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Gartay! Shukran</span></button></div>
       </div>
     </div>
     <script>
       (() => {
         const overlay = document.getElementById('nrpOverlay');
         const idLabel = document.getElementById('nrpId');
+        const studentInput = document.getElementById('student_id');
+        const title = document.getElementById('nrpTitle');
+        const description = document.getElementById('nrpDescription');
+        const stepOne = document.getElementById('nrpStepOne');
+        const stepTwo = document.getElementById('nrpStepTwo');
+        const stepOneText = document.getElementById('nrpStepOneText');
+        const stepTwoText = document.getElementById('nrpStepTwoText');
+        const stepTag = document.getElementById('nrpStepTag');
+        const note = document.getElementById('nrpNote');
+        const stepOneCheck = stepOne.querySelector('svg');
         let lastFocus = null;
         let previousOverflow = '';
-        window.showNotPublished = (studentId) => {
+        const showPopup = (studentId, mode) => {
+          const invalid = mode === 'invalid';
           idLabel.textContent = studentId || '—';
+          overlay.classList.toggle('nrp-invalid', invalid);
+          title.textContent = invalid ? "TIRA-TAXANAHA MA'AHA MID JIRA!" : 'Natiijadaada weli lama daabicin';
+          description.textContent = invalid
+            ? 'Fadlan hubi oo isku day mar kale.'
+            : 'Marka la xareeyo, halakan ayaad ka arki doontaa.';
+          stepOneText.textContent = invalid ? 'Tira-taxanaha lama helin.' : 'Tirataxanahaaga waa la helay';
+          stepTwoText.textContent = invalid ? 'Hubi Tira-taxanaha aad gelisay.' : 'Sugitaanka daabacaadda';
+          stepTag.textContent = invalid ? 'Hubi' : 'Hadda';
+          note.textContent = invalid
+            ? 'Haddii dhibaatadu sii socoto, la xidhiidh maamulka dugsiga.'
+            : 'Fadlan isku day dib dambe, ama la xidhiidh maamulka dugsiga haddii aad wax su\'aal ah qabto.';
+          stepOne.classList.toggle('nrp-done', !invalid);
+          stepOne.classList.toggle('nrp-now', invalid);
+          stepTwo.classList.toggle('nrp-now', !invalid);
+          stepOneCheck.hidden = invalid;
           lastFocus = document.activeElement;
           previousOverflow = document.body.style.overflow;
           overlay.classList.add('is-open');
@@ -394,11 +440,18 @@
           document.body.style.overflow = 'hidden';
           window.setTimeout(() => overlay.querySelector('.nrp-primary')?.focus(), 300);
         };
+        window.showNotPublished = (studentId) => showPopup(studentId, 'unpublished');
+        window.showInvalidStudentId = (studentId) => showPopup(studentId, 'invalid');
         window.hideNotPublished = () => {
           overlay.classList.remove('is-open');
           overlay.setAttribute('aria-hidden', 'true');
           document.body.style.overflow = previousOverflow;
-          if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+          if (studentInput) {
+            studentInput.focus({ preventScroll: true });
+            studentInput.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+          } else if (lastFocus && typeof lastFocus.focus === 'function') {
+            lastFocus.focus();
+          }
         };
         overlay.querySelectorAll('[data-nrp-close]').forEach(button => button.addEventListener('click', window.hideNotPublished));
         overlay.addEventListener('click', event => { if (event.target === overlay) window.hideNotPublished(); });
@@ -412,7 +465,11 @@
             else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
           }
         });
-        window.showNotPublished({{ (unpublished_student_id or '')|tojson }});
+        {% if invalid_student_id %}
+          window.showInvalidStudentId({{ (invalid_student_id or '')|tojson }});
+        {% else %}
+          window.showNotPublished({{ (unpublished_student_id or '')|tojson }});
+        {% endif %}
       })();
     </script>
   {% endif %}

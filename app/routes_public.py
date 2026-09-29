@@ -156,13 +156,26 @@ def set_language(lang):
 # =========================
 # RESULT SUBMIT (MAIN FIX)
 # =========================
-@public_bp.route("/result", methods=["POST"])
+@public_bp.route("/result", methods=["GET", "POST"])
 def result():
-    student_id = request.form.get("student_id", "").strip()
+    # Use POST -> Redirect -> GET so refreshing the result page never repeats
+    # the lookup form submission.
+    if request.method == "POST":
+        redirect_values = {
+            "student_id": request.form.get("student_id", "").strip(),
+            "phone": request.form.get("phone", "").strip(),
+        }
+        for field in ("year_id", "exam_id"):
+            value = request.form.get(field, type=int)
+            if value is not None:
+                redirect_values[field] = value
+        return redirect(url_for("public.result", **redirect_values))
+
+    student_id = request.args.get("student_id", "").strip()
     settings = get_settings()
-    phone = request.form.get("phone", "").strip()
-    selected_year_id = request.form.get("year_id", type=int)
-    selected_exam_id = request.form.get("exam_id", type=int)
+    phone = request.args.get("phone", "").strip()
+    selected_year_id = request.args.get("year_id", type=int)
+    selected_exam_id = request.args.get("exam_id", type=int)
 
     student = find_student_by_code(student_id)
 
@@ -170,7 +183,7 @@ def result():
         return render_template(
             "portal.html",
             settings=get_settings(),
-            error="Ma jiro Student ID-ga aad gelisay."
+            invalid_student_id=student_id,
         )
 
     if settings.get("enable_phone_verification") == "on":
@@ -897,6 +910,18 @@ def feedback_subjects():
                 AcademicYearSubject.id,
             ).all()
         mapped_ids = [row.legacy_subject_id for row in year_items if row.legacy_subject_id]
+        behavior_items = AcademicYearSubject.query.filter_by(
+                academic_year_id=exam.academic_year_id,
+                academic_year_level_id=placement.get("academic_year_level_id"),
+                subject_kind="behavior",
+                is_active=True,
+            ).order_by(
+                AcademicYearSubject.sort_order,
+                AcademicYearSubject.name,
+                AcademicYearSubject.id,
+            ).all()
+    else:
+        behavior_items = []
     level_id = placement.get("academic_level_id")
     if not level_id:
         return jsonify(ok=True, subjects=[])
@@ -910,20 +935,41 @@ def feedback_subjects():
         )
     )
     if placement.get("academic_year_level_id"):
-        if not mapped_ids:
-            return jsonify(ok=True, subjects=[])
-        subject_query = subject_query.filter(Subject.id.in_(mapped_ids))
+        if mapped_ids:
+            subject_query = subject_query.filter(Subject.id.in_(mapped_ids))
+        else:
+            subject_query = subject_query.filter(db.false())
     elif level_id:
         subject_query = subject_query.filter(Subject.academic_level_id == level_id)
     else:
         return jsonify(ok=True, subjects=[])
     subjects = subject_query.order_by(Subject.sort_order, Subject.name).distinct().all()
-    if year_items:
+    if year_items and mapped_ids:
         scoped_by_id = {
             subject.id: subject for subject in scoped_legacy_subjects(year_items)
         }
         subjects = [scoped_by_id[subject.id] for subject in subjects if subject.id in scoped_by_id]
-    return jsonify(ok=True, subjects=[subject.name for subject in subjects])
+
+    subject_entries = [
+        (getattr(subject, "sort_order", 0) or 0, subject.name)
+        for subject in subjects
+        if subject.name
+    ]
+    subject_entries.extend(
+        (item.sort_order or 0, item.name)
+        for item in behavior_items
+        if item.name
+    )
+    subject_entries.sort(key=lambda entry: (entry[0], entry[1].casefold()))
+    names = []
+    seen_names = set()
+    for _sort_order, name in subject_entries:
+        normalized_name = name.strip()
+        name_key = normalized_name.casefold()
+        if normalized_name and name_key not in seen_names:
+            names.append(normalized_name)
+            seen_names.add(name_key)
+    return jsonify(ok=True, subjects=names)
 
 
 @public_bp.route("/api/falcelin/result-summary")
@@ -941,6 +987,17 @@ def feedback_result_summary():
             "max_score": item.get("max_score"),
             "grade": grade.get("grade") if isinstance(grade, dict) else str(grade or ""),
             "is_uf": bool(item.get("is_uf")),
+        })
+    for behavior in payload.get("behavior_reports", []):
+        grade = behavior.get("grade") or {}
+        score = behavior.get("session_score")
+        maximum = behavior.get("session_maximum")
+        rows.append({
+            "subject": behavior.get("subject_name") or "HAB-DHAQAN",
+            "score": float(score) if score is not None else None,
+            "max_score": float(maximum) if maximum is not None else None,
+            "grade": grade.get("grade") if isinstance(grade, dict) else str(grade or ""),
+            "is_uf": False,
         })
     overall = payload.get("overall_grade") or {}
     return jsonify(ok=True, subjects=rows, total=payload.get("total"), max_total=payload.get("max_total"), average=payload.get("average"), grade=overall.get("grade") if isinstance(overall, dict) else str(overall or ""))
