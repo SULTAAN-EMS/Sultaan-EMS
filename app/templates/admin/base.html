@@ -81,6 +81,10 @@
   max-width: 200px;
 }
 
+/* The collapsed rail reuses the existing profile slot for the official logo.
+   It stays out of the expanded sidebar and therefore does not add a new row. */
+.admin-collapsed-logo { display: none; }
+
 /* Nav labels fade and contract; icons, active state, and link hit targets stay
    present in the compact rail. */
 .side-nav a {
@@ -163,6 +167,46 @@
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
+  }
+  .sidebar.collapsed .admin-profile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    height: 68px;
+    min-height: 68px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    opacity: 1;
+    pointer-events: none;
+  }
+  .sidebar.collapsed .admin-profile > .admin-avatar,
+  .sidebar.collapsed .admin-profile > .admin-profile-text {
+    display: none;
+  }
+  .sidebar.collapsed .admin-collapsed-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 46px;
+    box-sizing: border-box;
+    padding: 0.5px;
+    border: 2px solid rgba(255,255,255,.72);
+    border-radius: 12px;
+    background: rgba(255,255,255,.98);
+    overflow: hidden;
+  }
+  .sidebar.collapsed .admin-collapsed-logo img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
   .sidebar.collapsed .sidebar-fixed > div { justify-content: center; }
   .sidebar.collapsed .sidebar-toggle-btn { margin: 0; }
@@ -279,6 +323,11 @@
       </button>
     </div>
     <div class="admin-profile">
+      {% if ui_settings.admin_logo_path or ui_settings.logo_path %}
+        <span class="admin-collapsed-logo" role="img" aria-label="{{ ui_settings.school_name or 'Official school logo' }}">
+          <img src="{{ asset_url(ui_settings.admin_logo_path or ui_settings.logo_path) }}" alt="{{ ui_settings.school_name or 'Official school' }} logo">
+        </span>
+      {% endif %}
       <span class="admin-avatar" style="flex-shrink:0;">
         {% if current_user.photo_path %}<img src="{{ asset_url(current_user.photo_path) }}" alt="{{ current_user.full_name }} photo">{% else %}<i class="fa-solid fa-user-shield"></i>{% endif %}
       </span>
