@@ -316,7 +316,7 @@
             <i class="fa-solid fa-graduation-cap" style="font-size:1rem;"></i>
           {% endif %}
         </span>
-        <span class="brand-text-wrap"><strong style="color:#fff;display:block;font-size:0.9rem;line-height:1.1;">{{ ui_settings.dashboard_title }}</strong><small style="color:#bfdbfe;font-size:0.72rem;">Administration</small></span>
+        <span class="brand-text-wrap"><strong style="color:#fff;display:block;font-size:0.9rem;line-height:1.1;">{{ ui_settings.dashboard_title }}</strong><small style="color:#bfdbfe;font-size:0.72rem;">Maamulaha Nidaamka</small></span>
       </a>
       <button type="button" class="sidebar-toggle-btn" id="adminSidebarToggle" aria-label="Collapse navigation" aria-expanded="true" style="flex-shrink:0;">
         <i class="fa-solid fa-bars"></i>
@@ -335,42 +335,42 @@
         <strong style="display:block;color:#fff;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ current_user.full_name }}</strong>
         <div class="admin-status-indicator">
           <span class="admin-status-dot" id="adminStatusDot"></span>
-          <span class="admin-status-label" id="adminStatusLabel">Active</span>
+          <span class="admin-status-label" id="adminStatusLabel">Firfircoon</span>
         </div>
       </div>
     </div>
   </div>
   <nav class="side-nav">
-    {% if can('dashboard') %}<a href="{{ url_for('admin.dashboard') }}"><i class="fa-solid fa-chart-pie" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">{{ _('Dashboard') }}</span></a>{% endif %}
+    {% if can('dashboard') %}<a href="{{ url_for('admin.dashboard') }}"><i class="fa-solid fa-chart-pie" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Bogga Guud</span></a>{% endif %}
     
     <!-- Academic Records Group -->
     <div class="nav-group">
-      <div class="nav-group-header">Academic Records</div>
-      {% if can('results') %}<a href="{{ url_for('admin_advanced_results.new_dashboard') }}"><i class="fa-solid fa-square-poll-vertical" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Academic Records</span></a>{% endif %}
-      {% if can('results') %}<a href="{{ url_for('admin.promotion_rules_dashboard') }}"><i class="fa-solid fa-scale-balanced" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Promotion Rules</span></a>{% endif %}
-      {% if can('behavior.view') %}<a href="{{ url_for('behavior.dashboard') }}" class="{% if request.endpoint and request.endpoint.startswith('behavior.') %}is-active{% endif %}"><i class="fa-solid fa-person-chalkboard" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Behavior</span></a>{% endif %}
+      <div class="nav-group-header">Diiwaannada Waxbarashada</div>
+      {% if can('results') %}<a href="{{ url_for('admin_advanced_results.new_dashboard') }}"><i class="fa-solid fa-square-poll-vertical" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Diiwaannada Waxbarashada</span></a>{% endif %}
+      {% if can('results') %}<a href="{{ url_for('admin.promotion_rules_dashboard') }}"><i class="fa-solid fa-scale-balanced" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Xeerarka Gudbidda</span></a>{% endif %}
+      {% if can('behavior.view') %}<a href="{{ url_for('behavior.dashboard') }}" class="{% if request.endpoint and request.endpoint.startswith('behavior.') %}is-active{% endif %}"><i class="fa-solid fa-person-chalkboard" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Anshaxa iyo Xaadirka</span></a>{% endif %}
     </div>
 
     <div class="nav-group">
-      <div class="nav-group-header">Operations</div>
-      {% if can('seat_arrangement') %}<a href="{{ url_for('seat_mixer.index') }}"><i class="fa-solid fa-chair" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Seat Mixer</span></a>{% endif %}
-      {% if can('attendance') %}<a href="{{ url_for('admin_attendance.dashboard') }}"><i class="fa-solid fa-user-check" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Attendance</span></a>{% endif %}
-      <a href="{{ url_for('admin.invigilators') }}"><i class="fa-solid fa-user-shield" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Exam Invigilators</span></a>
-      <a href="{{ url_for('admin.incidents') }}"><i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Incident Reports</span></a>
+      <div class="nav-group-header">Hawlgelinta</div>
+      {% if can('seat_arrangement') %}<a href="{{ url_for('seat_mixer.index') }}"><i class="fa-solid fa-chair" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Habaynta Fadhiga Ardeyda</span></a>{% endif %}
+      {% if can('attendance') %}<a href="{{ url_for('admin_attendance.dashboard') }}"><i class="fa-solid fa-user-check" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Xaadirka Fasal imtixaan</span></a>{% endif %}
+      <a href="{{ url_for('admin.invigilators') }}"><i class="fa-solid fa-user-shield" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Ilaaliyaasha Imtixaanka</span></a>
+      <a href="{{ url_for('admin.incidents') }}"><i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Warbixinnada Dhacdooyinka</span></a>
       {% if can('settings') %}<a href="{{ url_for('admin.feedback_complaints') }}"><i class="fa-solid fa-comments" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Falcelin &amp; Cabasho</span></a>{% endif %}
-      <a href="{{ url_for('admin.incident_settings') }}"><i class="fa-solid fa-sliders" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Incident Settings</span></a>
-      {% if can('id_cards') %}<a href="{{ url_for('admin_id_cards.dashboard') }}"><i class="fa-solid fa-id-card-clip" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">ID Cards</span></a>{% endif %}
-      {% if can('teachers') %}<a href="{{ url_for('admin_teachers.dashboard') }}"><i class="fa-solid fa-chalkboard-user" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Teacher Department</span></a>{% endif %}
-      {% if can('users') %}<a href="{{ url_for('admin.users') }}"><i class="fa-solid fa-users-gear" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">{{ _('Users') }}</span></a>{% endif %}
+      <a href="{{ url_for('admin.incident_settings') }}"><i class="fa-solid fa-sliders" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Dejinta Dhacdooyinka</span></a>
+      {% if can('id_cards') %}<a href="{{ url_for('admin_id_cards.dashboard') }}"><i class="fa-solid fa-id-card-clip" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Kaadhadhka Aqoonsiga</span></a>{% endif %}
+      {% if can('teachers') %}<a href="{{ url_for('admin_teachers.dashboard') }}"><i class="fa-solid fa-chalkboard-user" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Waaxda Macallimiinta</span></a>{% endif %}
+      {% if can('users') %}<a href="{{ url_for('admin.users') }}"><i class="fa-solid fa-users-gear" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Isticmaalayaasha</span></a>{% endif %}
       {% if can('settings') or can('system_settings') %}<a href="{{ url_for('admin.loading_animations') }}"><i class="fa-solid fa-spinner" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Loading Animations</span></a>{% endif %}
-      {% if can('system_settings') %}<a href="{{ url_for('admin.audit_logs') }}"><i class="fa-solid fa-clipboard-list" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Audit Log</span></a>{% endif %}
-      <a href="{{ url_for('auth.change_password') }}"><i class="fa-solid fa-shield-halved" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Security</span></a>
-      {% if can('settings') or can('system_settings') %}<a href="{{ url_for('admin.settings') }}"><i class="fa-solid fa-sliders" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">{{ _('Settings') }}</span></a>{% endif %}
+      {% if can('system_settings') %}<a href="{{ url_for('admin.audit_logs') }}"><i class="fa-solid fa-clipboard-list" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Diiwaanka Hawlgallada</span></a>{% endif %}
+      <a href="{{ url_for('auth.change_password') }}"><i class="fa-solid fa-shield-halved" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Amniga Nidaamka</span></a>
+      {% if can('settings') or can('system_settings') %}<a href="{{ url_for('admin.settings') }}"><i class="fa-solid fa-sliders" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Dejinta</span></a>{% endif %}
     </div>
   </nav>
   <form method="post" action="{{ url_for('auth.logout') }}" class="sidebar-logout">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="logout"><i class="fa-solid fa-right-from-bracket" style="flex-shrink:0;"></i><span class="logout-text">Logout</span></button>
+    <button class="logout"><i class="fa-solid fa-right-from-bracket" style="flex-shrink:0;"></i><span class="logout-text">Ka-bixid</span></button>
   </form>
 </aside>
 <style>
@@ -547,16 +547,16 @@ document.addEventListener("DOMContentLoaded", function() {
         if (timeoutId) clearTimeout(timeoutId);
         if (res.ok) {
           const ms = Date.now() - start;
-          if (ms < 250) updateStatus('green', 'Active');
-          else if (ms < 700) updateStatus('yellow', 'Active');
-          else updateStatus('red', 'Active');
+          if (ms < 250) updateStatus('green', 'Firfircoon');
+          else if (ms < 700) updateStatus('yellow', 'Firfircoon');
+          else updateStatus('red', 'Firfircoon');
         } else {
-          updateStatus('yellow', 'Active');
+          updateStatus('yellow', 'Firfircoon');
         }
       })
       .catch(() => {
         if (timeoutId) clearTimeout(timeoutId);
-        updateStatus('red', 'Poor Conn');
+        updateStatus('red', 'Xidhiidh Liita');
       });
     }
 
