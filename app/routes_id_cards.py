@@ -8,7 +8,7 @@ from urllib.request import Request, urlopen
 
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import login_required
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 
 from . import db
 from .audit import audit
@@ -484,8 +484,8 @@ def filter_level_options(filters):
             name
             for name, in db.session.query(AcademicYearLevel.name)
             .filter_by(academic_year_id=filters["year_id"], is_active=True)
-            .distinct()
-            .order_by(AcademicYearLevel.sort_order, AcademicYearLevel.name)
+            .group_by(AcademicYearLevel.name)
+            .order_by(func.min(AcademicYearLevel.sort_order), AcademicYearLevel.name)
             .all()
         ]
     return [
@@ -509,8 +509,8 @@ def filter_section_options(filters):
                 AcademicYearLevel.academic_year_id == filters["year_id"],
                 AcademicSection.is_active.is_(True),
             )
-            .distinct()
-            .order_by(AcademicSection.sort_order, AcademicSection.name)
+            .group_by(AcademicSection.name)
+            .order_by(func.min(AcademicSection.sort_order), AcademicSection.name)
             .all()
         ]
     return [
