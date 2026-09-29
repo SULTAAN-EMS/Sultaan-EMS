@@ -82,6 +82,48 @@
   .behavior-reading-record__points { color: #087f5b; font-size: .78rem; font-weight: 850; white-space: nowrap; }
   .behavior-reading-record__points--negative { color: #c2410c; }
   .behavior-reading-empty { margin: 0; color: #64748b; font-size: .74rem; }
+  .nrp-overlay{--nrp-ink:#12233F;--nrp-ink-soft:#4A5B78;--nrp-paper:#FFFFFF;--nrp-mist:#EEF3F9;--nrp-line:#DCE5F0;--nrp-amber:#F2A20C;--nrp-amber-soft:#FFF4D9;--nrp-teal:#0E8F7E;--nrp-teal-soft:#DDF5F0;--nrp-shadow:0 30px 80px -20px rgba(18,35,63,.45);position:fixed;inset:0;z-index:1800;display:flex;overflow-y:auto;overscroll-behavior:contain;padding:20px;background:rgba(12,24,44,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);opacity:0;visibility:hidden;transition:opacity .3s ease,visibility .3s;font-family:'Outfit','Segoe UI',system-ui,-apple-system,Roboto,Arial,sans-serif}
+  .nrp-overlay.is-open{opacity:1;visibility:visible}
+  .nrp-card{position:relative;width:100%;max-width:440px;margin:auto;flex:none;background:var(--nrp-paper);border-radius:28px;box-shadow:var(--nrp-shadow);overflow:hidden;transform:translateY(24px) scale(.94);opacity:0;transition:transform .5s cubic-bezier(.2,1.1,.3,1),opacity .35s ease}
+  .nrp-overlay.is-open .nrp-card{transform:none;opacity:1}
+  .nrp-top{position:relative;padding:44px 28px 30px;text-align:center;background:radial-gradient(260px 160px at 50% 0%,#FFE9B0 0%,transparent 70%),linear-gradient(180deg,var(--nrp-amber-soft) 0%,#FFFFFF 100%)}
+  .nrp-top::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--nrp-line)}
+  .nrp-close{position:absolute;z-index:3;top:14px;right:14px;width:40px;height:40px;border-radius:50%;border:1.5px solid #F6C6C8;background:#FDECEC;color:#D63A41;cursor:pointer;display:grid;place-items:center;transition:background-color .2s,color .2s,border-color .2s,box-shadow .2s}
+  .nrp-close svg{display:block}
+  .nrp-close:hover{background:#E5484D;border-color:#E5484D;color:#fff;box-shadow:0 8px 18px -6px rgba(229,72,77,.65)}
+  .nrp-close:active{background:#C9333A;border-color:#C9333A}
+  .nrp-close:focus-visible,.nrp-btn:focus-visible{outline:3px solid var(--nrp-amber);outline-offset:2px}
+  .nrp-icon{position:relative;width:112px;height:112px;margin:0 auto 22px}
+  .nrp-ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--nrp-amber);opacity:0;animation:nrp-pulse 2.8s ease-out infinite}
+  .nrp-ring:nth-child(2){animation-delay:1.4s}
+  .nrp-badge{position:absolute;inset:14px;border-radius:50%;background:linear-gradient(145deg,#FFC24A,#F2A20C);box-shadow:0 12px 28px -8px rgba(242,162,12,.7),inset 0 -4px 8px rgba(160,90,0,.25);display:grid;place-items:center;animation:nrp-pop .7s .25s cubic-bezier(.2,1.4,.4,1) both}
+  .nrp-badge svg{width:46px;height:46px;overflow:visible}
+  .nrp-hand-long{transform-origin:24px 24px;animation:nrp-spin 6s linear infinite}
+  .nrp-hand-short{transform-origin:24px 24px;animation:nrp-spin 36s linear infinite}
+  .nrp-spark{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--nrp-teal);animation:nrp-float 3.4s ease-in-out infinite}
+  .nrp-spark.nrp-s1{top:6px;left:2px}.nrp-spark.nrp-s2{bottom:10px;right:-4px;width:7px;height:7px;background:var(--nrp-amber);animation-delay:1s}.nrp-spark.nrp-s3{top:22px;right:-10px;width:6px;height:6px;animation-delay:1.9s}
+  .nrp-msg{position:relative;overflow:hidden;text-align:center;width:100%;max-width:384px;margin:0 auto;background:#fff;border:1px solid #F3DFA8;border-radius:20px;box-shadow:0 14px 28px -18px rgba(242,162,12,.7)}
+  .nrp-msg::before{content:"";position:absolute;top:0;right:0;width:120px;height:100%;pointer-events:none;background-image:radial-gradient(circle,rgba(242,162,12,.32) 1.4px,transparent 1.6px);background-size:10px 10px;-webkit-mask-image:linear-gradient(270deg,#000 0%,transparent 85%);mask-image:linear-gradient(270deg,#000 0%,transparent 85%)}
+  .nrp-msg::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,var(--nrp-teal),var(--nrp-amber))}
+  .nrp-msg-head{position:relative;z-index:1;padding:18px 20px 14px;background:linear-gradient(180deg,rgba(255,244,217,.85),rgba(255,244,217,0))}
+  .nrp-msg-head::after{content:"";display:block;width:40px;height:4px;border-radius:4px;margin:10px auto 0;background:linear-gradient(90deg,var(--nrp-amber),var(--nrp-teal))}
+  .nrp-msg-title{display:block;font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.2px;color:var(--nrp-ink);text-wrap:balance}
+  .nrp-msg-body{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;gap:12px;padding:4px 20px 20px;text-align:left}
+  .nrp-msg-ic{flex:none;width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(145deg,var(--nrp-teal-soft),#fff);border:1px solid #BFE9E1}
+  .nrp-msg-txt{display:block;min-width:0}.nrp-msg-txt span{display:block}.nrp-msg-txt .nrp-l2{font-size:15px;line-height:1.45;color:var(--nrp-ink-soft)}
+  .nrp-pop{opacity:0}.nrp-overlay.is-open .nrp-pop{animation:nrp-fly .55s var(--d,0s) cubic-bezier(.16,1,.3,1) forwards}
+  .nrp-id{display:inline-flex;align-items:center;gap:10px;margin-top:18px;padding:6px 18px 6px 6px;border-radius:14px;text-align:left;white-space:nowrap;background:linear-gradient(180deg,#fff,#F3FBF9);border:1px solid #BFE9E1;box-shadow:0 12px 24px -16px rgba(14,143,126,.8)}
+  .nrp-id-ic{flex:none;width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(145deg,#19B7A1,#0E8F7E);box-shadow:0 8px 16px -8px rgba(14,143,126,.9),inset 0 -3px 6px rgba(0,60,50,.25)}
+  .nrp-id-ic svg{width:18px;height:18px}.nrp-id-txt{display:flex;flex-direction:row;align-items:baseline;gap:8px;line-height:1.2}.nrp-id-txt small{font-size:14px;font-weight:500;color:var(--nrp-ink-soft)}.nrp-id-txt b{font-size:18px;font-weight:700;color:var(--nrp-ink);letter-spacing:.6px}
+  .nrp-body{padding:26px 28px 8px}.nrp-steps{list-style:none;position:relative}.nrp-steps::before{content:"";position:absolute;left:15px;top:16px;bottom:16px;width:2px;background:var(--nrp-line)}.nrp-step{position:relative;display:flex;align-items:center;gap:14px;padding:9px 0;font-size:15px}.nrp-dot{position:relative;z-index:1;flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#fff;border:2px solid var(--nrp-line);color:var(--nrp-ink-soft)}.nrp-step.nrp-done .nrp-dot{background:var(--nrp-teal);border-color:var(--nrp-teal);color:#fff}.nrp-step.nrp-now .nrp-dot{border-color:var(--nrp-amber);background:var(--nrp-amber-soft)}.nrp-step.nrp-now .nrp-dot::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--nrp-amber);animation:nrp-blink 1.4s ease-in-out infinite}.nrp-step.nrp-now{font-weight:600}.nrp-step.nrp-done span{color:var(--nrp-ink)}.nrp-tag{margin-left:auto;font-size:12.5px;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--nrp-amber-soft);color:#9A6300}
+  .nrp-note{display:flex;gap:10px;align-items:flex-start;margin:18px 0 0;padding:12px 14px;background:var(--nrp-mist);border-radius:14px;font-size:14px;line-height:1.5;color:var(--nrp-ink-soft)}.nrp-note svg{flex:none;margin-top:2px}
+  .nrp-actions{display:flex;flex-direction:column;gap:10px;padding:22px 28px 28px}.nrp-btn{height:52px;border-radius:14px;border:0;font:inherit;font-size:16px;font-weight:600;cursor:pointer;transition:background .2s,box-shadow .2s}.nrp-btn:active{transform:scale(.98)}.nrp-primary{background:var(--nrp-ink);color:#fff;box-shadow:0 10px 22px -10px rgba(18,35,63,.7)}.nrp-primary:hover{background:#1B3358}
+  @keyframes nrp-pulse{0%{transform:scale(.62);opacity:.7}100%{transform:scale(1.25);opacity:0}}@keyframes nrp-pop{0%{transform:scale(0) rotate(-40deg)}100%{transform:scale(1) rotate(0)}}@keyframes nrp-spin{to{transform:rotate(360deg)}}@keyframes nrp-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes nrp-fly{0%{opacity:0;transform:translate(var(--fx,0px),var(--fy,48px))}100%{opacity:1;transform:translate(0,0)}}@keyframes nrp-blink{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.55);opacity:.5}}
+  @media(max-width:420px){.nrp-top{padding:40px 20px 26px}.nrp-body{padding:22px 20px 4px}.nrp-actions{padding:20px}.nrp-msg-title{font-size:20px}}
+  @media(max-height:860px){.nrp-top{padding:32px 24px 20px}.nrp-icon{width:92px;height:92px;margin-bottom:14px}.nrp-badge{inset:12px}.nrp-badge svg{width:38px;height:38px}.nrp-msg-head{padding:14px 18px 10px}.nrp-msg-title{font-size:20px}.nrp-msg-body{padding:2px 18px 16px}.nrp-msg-ic{width:38px;height:38px}.nrp-msg-txt .nrp-l2{font-size:14px}.nrp-id{margin-top:12px}.nrp-body{padding:16px 24px 0}.nrp-step{padding:6px 0}.nrp-note{margin-top:12px;padding:10px 12px;font-size:13.5px}.nrp-actions{padding:16px 24px 22px;gap:8px}.nrp-btn{height:48px}}
+  @media(max-height:700px){.nrp-top{padding:26px 20px 16px}.nrp-icon{width:76px;height:76px;margin-bottom:10px}.nrp-badge{inset:10px}.nrp-badge svg{width:32px;height:32px}.nrp-msg-title{font-size:18px}.nrp-msg-head{padding:12px 16px 8px}.nrp-msg-head::after{margin-top:7px}.nrp-msg-txt .nrp-l2{font-size:13px}.nrp-note{margin-top:8px;padding:8px 10px;font-size:12.5px}.nrp-btn{height:44px;font-size:15px}}
+  @media(max-height:560px){.nrp-top{padding:20px 18px 12px}.nrp-icon{width:64px;height:64px;margin-bottom:8px}.nrp-badge{inset:8px}.nrp-badge svg{width:28px;height:28px}.nrp-msg-ic{display:none}.nrp-id{margin-top:8px}.nrp-body{padding:10px 20px 0}.nrp-step{padding:4px 0;font-size:14px}.nrp-dot{width:28px;height:28px}.nrp-steps::before{left:13px}.nrp-actions{padding:12px 20px 16px}}
+  @media(prefers-reduced-motion:reduce){.nrp-ring,.nrp-hand-long,.nrp-hand-short,.nrp-spark,.nrp-step.nrp-now .nrp-dot::after{animation:none}.nrp-pop{opacity:1}.nrp-overlay.is-open .nrp-pop{animation:none}.nrp-card,.nrp-overlay{transition:none}.nrp-badge{animation:none}}
   .behavior-result-breakdown { display: grid; grid-template-columns: repeat(3, auto); gap: 4px 8px; margin-top: 5px; color: #64748b; font-size: .66rem; line-height: 1.2; }
   .behavior-result-breakdown b { color: #334155; }
   .behavior-result-breakdown__grand { color: #087f5b; font-weight: 800; }
@@ -317,8 +359,62 @@
         <button type="submit" class="student-search-button premium-search-button"><i class="fa-solid fa-magnifying-glass"></i><span>RAADI</span></button>
         <div class="premium-search-hint"><span></span>Geli ID-ga si aad u aragto natiijada<span></span></div>
       </form>
-      {% if error %}<div class="empty-state premium-error"><i class="fa-solid fa-circle-exclamation"></i>{{ error }}</div>{% endif %}
+      {% if error and not unpublished_result %}<div class="empty-state premium-error"><i class="fa-solid fa-circle-exclamation"></i>{{ error }}</div>{% endif %}
     </section>
+  {% endif %}
+
+  {% if unpublished_result %}
+    <div class="nrp-overlay" id="nrpOverlay" role="dialog" aria-modal="true" aria-labelledby="nrpTitle" aria-describedby="nrpText" aria-hidden="true">
+      <div class="nrp-card">
+        <div class="nrp-top">
+          <button class="nrp-close" type="button" data-nrp-close aria-label="Xir"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
+          <div class="nrp-icon" aria-hidden="true"><span class="nrp-ring"></span><span class="nrp-ring"></span><span class="nrp-spark nrp-s1"></span><span class="nrp-spark nrp-s2"></span><span class="nrp-spark nrp-s3"></span><div class="nrp-badge"><svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="19" stroke="#fff" stroke-width="3.5"/><line class="nrp-hand-short" x1="24" y1="24" x2="24" y2="14" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/><line class="nrp-hand-long" x1="24" y1="24" x2="24" y2="9" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="24" r="2.6" fill="#fff"/></svg></div></div>
+          <div class="nrp-msg nrp-pop" style="--d:.5s" id="nrpText">
+            <div class="nrp-msg-head"><span class="nrp-msg-title nrp-pop" id="nrpTitle" role="heading" aria-level="2" style="--d:.8s;--fx:-46px;--fy:0px">Natiijadaada weli lama daabicin</span></div>
+            <div class="nrp-msg-body"><span class="nrp-msg-ic" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 26 26" fill="none"><path d="M6 3.5h8.2L20 9.3V21a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 5 21V5A1.5 1.5 0 0 1 6 3.5Z" stroke="#0E8F7E" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 3.7V9.5h5.8" stroke="#0E8F7E" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.5 13.5h6M8.5 17h3.5" stroke="#0E8F7E" stroke-width="1.7" stroke-linecap="round"/><circle cx="19" cy="19" r="5" fill="#fff" stroke="#F2A20C" stroke-width="1.7"/><path d="M19 16.5V19l1.6 1" stroke="#F2A20C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="nrp-msg-txt"><span class="nrp-l2 nrp-pop" style="--d:1.05s;--fx:46px;--fy:0px">Marka la xareeyo, halkan ayaad ka arki doontaa.</span></span></div>
+          </div>
+          <div class="nrp-id nrp-pop" style="--d:1.6s"><span class="nrp-id-ic" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="4.5" width="19" height="15" rx="3" stroke="#fff" stroke-width="1.8"/><circle cx="8.6" cy="10.6" r="2.1" stroke="#fff" stroke-width="1.7"/><path d="M5.4 16c.5-1.7 1.8-2.6 3.2-2.6s2.7.9 3.2 2.6" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/><path d="M14.5 10h4M14.5 13.5h3" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg></span><span class="nrp-id-txt"><small>Tirataxaneha:</small><b id="nrpId">—</b></span></div>
+        </div>
+        <div class="nrp-body"><ul class="nrp-steps"><li class="nrp-step nrp-pop nrp-done" style="--d:1.9s;--fx:-60px;--fy:0px"><span class="nrp-dot"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7.5l3 3 6-6.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Tirataxanahaaga waa la helay</span></li><li class="nrp-step nrp-pop nrp-now" style="--d:2.15s;--fx:-60px;--fy:0px"><span class="nrp-dot"></span><span>Sugitaanka daabacaadda</span><span class="nrp-tag">Hadda</span></li></ul><div class="nrp-note nrp-pop" style="--d:2.45s"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8.5" stroke="#4A5B78" stroke-width="1.6"/><path d="M10 9v5M10 6.2v.1" stroke="#4A5B78" stroke-width="1.8" stroke-linecap="round"/></svg><span>Fadlan isku day dib dambe, ama la xidhiidh maamulka dugsiga haddii aad wax su'aal ah qabto.</span></div></div>
+        <div class="nrp-actions nrp-pop" style="--d:2.75s"><button class="nrp-btn nrp-primary" type="button" data-nrp-close>Waan fahmay</button></div>
+      </div>
+    </div>
+    <script>
+      (() => {
+        const overlay = document.getElementById('nrpOverlay');
+        const idLabel = document.getElementById('nrpId');
+        let lastFocus = null;
+        let previousOverflow = '';
+        window.showNotPublished = (studentId) => {
+          idLabel.textContent = studentId || '—';
+          lastFocus = document.activeElement;
+          previousOverflow = document.body.style.overflow;
+          overlay.classList.add('is-open');
+          overlay.setAttribute('aria-hidden', 'false');
+          document.body.style.overflow = 'hidden';
+          window.setTimeout(() => overlay.querySelector('.nrp-primary')?.focus(), 300);
+        };
+        window.hideNotPublished = () => {
+          overlay.classList.remove('is-open');
+          overlay.setAttribute('aria-hidden', 'true');
+          document.body.style.overflow = previousOverflow;
+          if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+        };
+        overlay.querySelectorAll('[data-nrp-close]').forEach(button => button.addEventListener('click', window.hideNotPublished));
+        overlay.addEventListener('click', event => { if (event.target === overlay) window.hideNotPublished(); });
+        document.addEventListener('keydown', event => {
+          if (!overlay.classList.contains('is-open')) return;
+          if (event.key === 'Escape') { window.hideNotPublished(); return; }
+          if (event.key === 'Tab') {
+            const focusable = [...overlay.querySelectorAll('button:not([disabled])')];
+            const first = focusable[0]; const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+          }
+        });
+        window.showNotPublished({{ (unpublished_student_id or '')|tojson }});
+      })();
+    </script>
   {% endif %}
 
   {% if result %}

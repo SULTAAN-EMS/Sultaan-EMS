@@ -80,6 +80,17 @@
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
 }
 
+.action-card.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+  filter: grayscale(0.15);
+}
+
+.action-card.is-disabled:hover {
+  transform: none;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
 .card-icon {
   width: 80px;
   height: 80px;

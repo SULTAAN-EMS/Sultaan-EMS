@@ -1417,21 +1417,18 @@ def print_arrangement():
     # Reuse the ID-card verification token/QR mechanism. Existing active
     # issues are preferred; missing issues are created through the same helper
     # used by ID Cards so every printed student receives a valid destination.
-    from .routes_id_cards import get_or_create_issue
+    from .routes_id_cards import get_or_create_issue, resolve_id_card_year_id
     student_qr = {}
     issues_created = False
     for assignment in assignments:
         student = assignment.student
         if not student or student.id in student_qr:
             continue
-        issue = IdCardIssue.query.filter_by(
-            student_id=student.id,
-            academic_year_id=academic_year_id or student.academic_year_id,
-            status="Active",
-        ).first()
-        if not issue:
-            issue = get_or_create_issue(student, academic_year_id=academic_year_id)
-            issues_created = True
+        issue_year_id = resolve_id_card_year_id(student, academic_year_id)
+        # The shared helper repairs missing dates, expires stale Active rows,
+        # and creates a fresh issue when the previous card has expired.
+        issue = get_or_create_issue(student, academic_year_id=issue_year_id)
+        issues_created = True
         student_qr[str(student.id)] = id_card_qr_payload(issue)
     if issues_created:
         db.session.commit()

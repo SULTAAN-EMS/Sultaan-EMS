@@ -22,6 +22,10 @@
   {% if settings.verify_id_show_verification_area == 'off' %}.verification-area { display:none !important; }{% endif %}
   {% if settings.verify_id_show_footer == 'off' %}.verification-footer { display:none !important; }{% endif %}
   {% if settings.verify_id_show_icons == 'off' %}.field-icon, .status-icon, .verify-icon, .identity-tag i { display:none !important; }{% endif %}
+  .status-card.status-expired { background:linear-gradient(155deg,#b45309,#92400e); }
+  .status-card.status-inactive { background:linear-gradient(155deg,#64748b,#475569); }
+  .status-card.status-blocked { background:linear-gradient(155deg,#b91c1c,#7f1d1d); }
+  .status-card.status-unknown { background:linear-gradient(155deg,#475569,#1e293b); }
 </style>
 {% endblock %}
 {% block content %}
@@ -58,7 +62,7 @@
         {% endif %}
         <div class="student-details-section">
           {% if settings.verify_id_show_student_name != 'off' %}<h2 class="student-name"><span class="student-name-text">{{ issue.student.full_name }}</span>{{ verified_name_badge() }}</h2>{% endif %}
-          {% set student_level = issue.student.academic_level.name if issue.student.academic_level else issue.student.level or 'Ardeyga' %}
+          {% set student_level = placement.get('level_name') or 'Ardeyga' %}
           {% set normalized_level = student_level|lower %}
           <p class="student-identity-line"><span class="student-id-code">{{ issue.student.student_code }}</span><b></b><span class="student-level-tag {% if 'secondary' in normalized_level or 'sare' in normalized_level %}level-secondary{% elif 'upper' in normalized_level or 'middle' in normalized_level or 'dhexe' in normalized_level %}level-upper{% elif 'lower' in normalized_level or 'hoose' in normalized_level %}level-lower{% elif 'kg' in normalized_level or 'kindergarten' in normalized_level %}level-kg{% else %}level-default{% endif %}">{{ student_level }}</span></p>
         </div>
@@ -66,17 +70,17 @@
 
       <section class="info-grid" aria-label="Faahfaahinta aqoonsiga Ardeyga">
         {% if settings.verify_id_show_mother_name != 'off' and issue.student.mother_name %}<div class="info-item wide c-purple"><span class="field-icon"><i class="fa-solid fa-user"></i></span><span class="info-label">MAGACA HOOYADA</span><span class="info-value">{{ issue.student.mother_name }}</span></div>{% endif %}
-        {% if settings.verify_id_show_class != 'off' %}<div class="info-item c-green"><span class="field-icon"><i class="fa-solid fa-graduation-cap"></i></span><span class="info-label">FASALKA</span><span class="info-value">{% if issue.student.academic_class %}{{ issue.student.academic_class.name }}{% elif issue.student.school_class %}{{ issue.student.school_class.name }}{% else %}Lama hayo{% endif %}</span></div>{% endif %}
-        {% if settings.verify_id_show_section != 'off' %}<div class="info-item c-amber"><span class="field-icon"><i class="fa-solid fa-layer-group"></i></span><span class="info-label">QEYBTA</span><span class="info-value">{% if issue.student.academic_section %}{{ issue.student.academic_section.name }}{% elif issue.student.section %}{{ issue.student.section }}{% else %}Lama hayo{% endif %}</span></div>{% endif %}
+        {% if settings.verify_id_show_class != 'off' %}<div class="info-item c-green"><span class="field-icon"><i class="fa-solid fa-graduation-cap"></i></span><span class="info-label">FASALKA</span><span class="info-value">{{ placement.get('class_name') or 'Lama hayo' }}</span></div>{% endif %}
+        {% if settings.verify_id_show_section != 'off' %}<div class="info-item c-amber"><span class="field-icon"><i class="fa-solid fa-layer-group"></i></span><span class="info-label">QEYBTA</span><span class="info-value">{{ placement.get('section_name') or 'Lama hayo' }}</span></div>{% endif %}
         {% if settings.verify_id_show_academic_year != 'off' %}<div class="info-item c-blue"><span class="field-icon"><i class="fa-solid fa-calendar-days"></i></span><span class="info-label">SANAD DUGSIYEEDKA</span><span class="info-value">{{ issue.academic_year.name }}</span></div>{% endif %}
         {% if settings.verify_id_show_exam_type != 'off' %}<div class="info-item c-sky"><span class="field-icon"><i class="fa-solid fa-file-circle-check"></i></span><span class="info-label">NUUCA IMTIXAANKA</span><span class="info-value">{{ exam.name if exam else 'Lama helin imtixaan firfircoon' }}</span></div>{% endif %}
         {% if settings.verify_id_show_issue_date != 'off' %}<div class="info-item c-indigo"><span class="field-icon"><i class="fa-solid fa-calendar-check"></i></span><span class="info-label">XILLIGA BIXIDDA</span><span class="info-value">{{ long_date(issue.issue_date) if issue.issue_date else '-' }}</span></div>{% endif %}
         {% if settings.verify_id_show_expiry_date != 'off' %}<div class="info-item c-red"><span class="field-icon"><i class="fa-solid fa-clock"></i></span><span class="info-label">XILLIGA DHICIDDA</span><span class="info-value">{{ long_date(issue.expiry_date) if issue.expiry_date else '-' }}</span></div>{% endif %}
       </section>
 
-      <section class="status-card active-status">
-        <span class="status-icon"><i class="fa-solid fa-shield-halved"></i></span>
-        <div class="status-content"><h3>Xaaladda: Firfircoon</h3><p class="status-text">Ardeygan waqti xaadirkan wuu firfircoon yahay.</p></div>
+      <section class="status-card {{ status_details.class_name }}">
+        <span class="status-icon"><i class="fa-solid {{ status_details.icon }}"></i></span>
+        <div class="status-content"><h3>Xaaladda: {{ status_details.label }}</h3><p class="status-text">{{ status_details.message }}</p></div>
       </section>
 
       <section class="verification-area glass-card">
@@ -98,4 +102,13 @@
   {% set footer_logo_override = issue.student.photo_path if verified and issue.student.photo_path else none %}
   {% include 'partials/sultan_footer.html' %}
 </main>
+<button class="verification-public-back-fab" id="verification-public-back" type="button" aria-label="Dib-u-noqo" title="Dib-u-noqo">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m11 18-6-6 6-6"/></svg>
+</button>
+<script>
+  document.getElementById('verification-public-back')?.addEventListener('click', () => {
+    if (window.history.length > 1) window.history.back();
+    else window.location.assign('/');
+  });
+</script>
 {% endblock %}

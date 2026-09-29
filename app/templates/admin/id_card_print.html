@@ -54,7 +54,7 @@
       background:
         radial-gradient(circle at 84% 34%, rgba(0, 59, 120, .06), transparent 30mm),
         repeating-radial-gradient(circle at 86% 35%, rgba(0, 59, 120, .045) 0 1px, transparent 1px 4mm),
-        #fff;
+        {{ settings.id_card_background or '#fff' }};
       border: 1.5px solid #cad6e5;
       border-radius: {{ '4mm' if settings.id_card_rounded_corners == 'on' else '0' }};
       box-shadow: 0 4mm 8mm rgba(0, 25, 55, .18);
@@ -448,11 +448,12 @@
                     <div class="info-icon"><i class="fa-solid fa-person-dress"></i></div>
                     <div><span>MAGACA HOOYADA</span><strong>{{ issue.student.mother_name or '-' }}</strong></div>
                   </div>
+                  {% set placement = item.placement or {} %}
                   <div class="info-row compact">
                     <div class="info-icon"><i class="fa-solid fa-id-card"></i></div>
                     <div><span>TIRATAXANE</span><strong>{{ issue.student.student_code }}</strong></div>
                     <div class="info-icon"><i class="fa-solid fa-users"></i></div>
-                    <div><span>FASALKA</span><strong>{{ issue.student.school_class.name }}</strong></div>
+                    <div><span>FASALKA</span><strong>{{ placement.get('class_name') or '-' }}</strong></div>
                   </div>
                   <div class="info-row compact">
                     <div class="info-icon"><i class="fa-solid fa-calendar-days"></i></div>

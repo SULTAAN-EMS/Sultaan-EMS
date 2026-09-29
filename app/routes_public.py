@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 from flask import Blueprint, abort, current_app, flash, jsonify, make_response, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import joinedload
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from . import csrf, db
@@ -100,9 +101,10 @@ def submitted_incident_category_ids():
     return category_ids
 
 
-def incident_subjects_for_student(student, academic_year_id=None):
+def incident_subjects_for_student(student, academic_year_id=None, placement=None):
     """Return only the configured subjects for the identified student's level."""
-    placement = resolve_student_academic_context(student, academic_year_id) if academic_year_id else None
+    if placement is None:
+        placement = resolve_student_academic_context(student, academic_year_id) if academic_year_id else None
     if academic_year_id and not placement:
         return []
     enrollment = placement.get("enrollment") if placement else None
@@ -200,7 +202,8 @@ def result():
         return render_template(
             "portal.html",
             settings=settings,
-            error="Natiijada ardaygan wali lama daabicin."
+            unpublished_result=True,
+            unpublished_student_id=student.student_code,
         )
 
     if not selected_exam_id:
@@ -237,7 +240,8 @@ def result():
         return render_template(
             "portal.html",
             settings=get_settings(),
-            error="Natiijada ardaygan wali lama daabicin."
+            unpublished_result=True,
+            unpublished_student_id=student.student_code,
         )
 
     result_scope = public_result_scope(student, exam)
@@ -1200,7 +1204,50 @@ def verify_id_card(token):
     issue = IdCardIssue.query.filter_by(token=token).first()
     if not issue:
         return render_template("verify_id.html", settings=settings, verified=False), 404
-    status = "Expired" if issue.expiry_date and issue.expiry_date < date.today() else issue.status
+    from .routes_id_cards import effective_issue_status, ensure_issue_dates
+    if ensure_issue_dates(issue, settings=settings):
+        db.session.commit()
+    status = effective_issue_status(issue)
+    placement = resolve_student_academic_context(issue.student, issue.academic_year_id) or {}
+    if not placement and issue.student.academic_year_id == issue.academic_year_id:
+        placement = {
+            "source": "legacy",
+            "academic_year_id": issue.academic_year_id,
+            "class_name": issue.student.academic_class.name if issue.student.academic_class else issue.student.school_class.name if issue.student.school_class else None,
+            "level_name": issue.student.academic_level.name if issue.student.academic_level else issue.student.level,
+            "section_name": issue.student.academic_section.name if issue.student.academic_section else issue.student.section,
+        }
+    status_details = {
+        "Active": {
+            "label": "Firfircoon",
+            "message": "Ardeygan waqti xaadirkan wuu firfircoon yahay.",
+            "class_name": "status-active",
+            "icon": "fa-shield-check",
+        },
+        "Expired": {
+            "label": "Wuu dhacay",
+            "message": "Muddadii ansaxnimada kaarkani way dhammaatay.",
+            "class_name": "status-expired",
+            "icon": "fa-clock-rotate-left",
+        },
+        "Inactive": {
+            "label": "Aan firfircoonayn",
+            "message": "Kaarkani hadda ma aha mid firfircoon.",
+            "class_name": "status-inactive",
+            "icon": "fa-circle-pause",
+        },
+        "Blocked": {
+            "label": "La xannibay",
+            "message": "Kaarkani waxaa si ku meel gaar ah loo xannibay.",
+            "class_name": "status-blocked",
+            "icon": "fa-ban",
+        },
+    }.get(status, {
+        "label": status,
+        "message": "Xaaladda kaarkani lama xaqiijin.",
+        "class_name": "status-unknown",
+        "icon": "fa-circle-question",
+    })
     
     # Debug logging - Student details
     logger.info(f"VERIFY STUDENT - Student ID: {issue.student.id}, Student Code: {issue.student.student_code}")
@@ -1228,7 +1275,16 @@ def verify_id_card(token):
         logger.info(f"VERIFY STUDENT - ID card year exams: {[(e.id, e.name, e.is_active, e.is_published, e.academic_level_id, e.academic_class_id, e.academic_section_id) for e in issue_year_exams]}")
         logger.info(f"VERIFY STUDENT - Student year exams: {[(e.id, e.name, e.is_active, e.is_published, e.academic_level_id, e.academic_class_id, e.academic_section_id) for e in student_year_exams]}")
     
-    return render_template("verify_id.html", settings=settings, verified=True, issue=issue, display_status=status, exam=exam)
+    return render_template(
+        "verify_id.html",
+        settings=settings,
+        verified=True,
+        issue=issue,
+        placement=placement,
+        display_status=status,
+        status_details=status_details,
+        exam=exam,
+    )
 
 
 @public_bp.route("/qr/<token>")
@@ -1238,66 +1294,72 @@ def qr_landing(token):
     issue = IdCardIssue.query.filter_by(token=token).first()
     if not issue:
         return render_template("qr_landing.html", settings=settings, token=token, student=None), 404
-    return render_template("qr_landing.html", settings=settings, token=token, student=issue.student)
+    from .routes_id_cards import effective_issue_status, ensure_issue_dates
+    if ensure_issue_dates(issue, settings=settings):
+        db.session.commit()
+    return render_template(
+        "qr_landing.html",
+        settings=settings,
+        token=token,
+        student=issue.student,
+        id_card_status=effective_issue_status(issue),
+    )
 
 
 @public_bp.route("/incident-report/<token>", methods=["GET", "POST"])
 def incident_report_form(token):
     """Incident Report Form - Requires invigilator authentication"""
     from .routes_invigilator import current_invigilator, invigilator_login_required
-    
-    settings = get_settings()
-    issue = IdCardIssue.query.filter_by(token=token).first()
+
+    issue = (
+        IdCardIssue.query
+        .options(
+            joinedload(IdCardIssue.student).joinedload(Student.school_class),
+            joinedload(IdCardIssue.student).joinedload(Student.academic_year),
+        )
+        .filter_by(token=token)
+        .first()
+    )
     
     if not issue:
+        settings = get_settings()
         return render_template("qr_landing.html", settings=settings, token=token, student=None), 404
-    
-    student = issue.student
-    student_subjects = incident_subjects_for_student(student, issue.academic_year_id)
-    student_subject_ids = {subject.id for subject in student_subjects}
-    
-    # Debug logging - Student details
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.info(f"INCIDENT REPORT - Student ID: {student.id}, Student Code: {student.student_code}")
-    logger.info(f"INCIDENT REPORT - Student academic_year_id: {student.academic_year_id}")
-    logger.info(f"INCIDENT REPORT - Student academic_level_id: {student.academic_level_id}")
-    logger.info(f"INCIDENT REPORT - Student academic_class_id: {student.academic_class_id}")
-    logger.info(f"INCIDENT REPORT - Student academic_section_id: {student.academic_section_id}")
-    
-    exam = active_exam_for_student(student, preferred_year_id=issue.academic_year_id)
-    
-    if exam:
-        # Debug logging - Exam details
-        logger.info(f"INCIDENT REPORT - Exam found: ID={exam.id}, Name={exam.name}")
-        logger.info(f"INCIDENT REPORT - Exam academic_year_id: {exam.academic_year_id}")
-        logger.info(f"INCIDENT REPORT - Exam academic_level_id: {exam.academic_level_id}")
-        logger.info(f"INCIDENT REPORT - Exam academic_class_id: {exam.academic_class_id}")
-        logger.info(f"INCIDENT REPORT - Exam academic_section_id: {exam.academic_section_id}")
-        logger.info(f"INCIDENT REPORT - Exam is_active: {exam.is_active}")
-        logger.info(f"INCIDENT REPORT - Exam is_published: {exam.is_published}")
-    else:
-        logger.warning(f"INCIDENT REPORT - No exam found through shared active exam lookup")
-        # Log all exams for this academic year for debugging
-        issue_year_exams = Exam.query.filter_by(academic_year_id=issue.academic_year_id).all()
-        student_year_exams = Exam.query.filter_by(academic_year_id=student.academic_year_id).all()
-        logger.info(f"INCIDENT REPORT - ID card year exams: {[(e.id, e.name, e.is_active, e.is_published, e.academic_level_id, e.academic_class_id, e.academic_section_id) for e in issue_year_exams]}")
-        logger.info(f"INCIDENT REPORT - Student year exams: {[(e.id, e.name, e.is_active, e.is_published, e.academic_level_id, e.academic_class_id, e.academic_section_id) for e in student_year_exams]}")
-    
-    # Check if invigilator is logged in
+
+    from .routes_id_cards import effective_issue_status, ensure_issue_dates
+    if ensure_issue_dates(issue):
+        db.session.commit()
+    if effective_issue_status(issue) != "Active":
+        return redirect(url_for("public.verify_id_card", token=token))
+
+    # Authenticate before loading placement, subjects, exams, or settings. A
+    # stale/unauthenticated QR request should finish with one lightweight
+    # lookup instead of building the entire reporting form first.
     invigilator = current_invigilator()
     if not invigilator:
         from flask import session
         session["invigilator_next"] = request.url
         return redirect(url_for("invigilator.login"))
 
+    settings = get_settings()
     from .models import IncidentReportSettings
     settings_dict = {
         setting.setting_key: setting.setting_value
         for setting in IncidentReportSettings.query.all()
     }
     allow_signature_reuse = incident_bool_setting(settings_dict, "allow_signature_reuse", True)
-    
+
+    student = issue.student
+    placement = resolve_student_academic_context(student, issue.academic_year_id)
+    student_subjects = incident_subjects_for_student(student, issue.academic_year_id, placement=placement)
+    student_subject_ids = {subject.id for subject in student_subjects}
+
+    exam = active_exam_for_student(
+        student,
+        preferred_year_id=issue.academic_year_id,
+        placement=placement,
+        strict_preferred_year=True,
+    )
+
     if request.method == "POST":
         # Generate report number
         from .models import IncidentReport
@@ -1483,7 +1545,6 @@ def incident_report_form(token):
     other_category_ids = [category.id for category in categories if is_other_lookup_value(category.name)]
     severities = SeverityLevel.query.order_by(SeverityLevel.sort_order).all()
     actions = IncidentAction.query.order_by(IncidentAction.sort_order).all()
-    exams = Exam.query.filter_by(is_published=True).order_by(Exam.id.desc()).all()
     subjects = student_subjects
     
     # Pre-compute current date/time for form defaults
@@ -1509,7 +1570,6 @@ def incident_report_form(token):
         other_category_ids=other_category_ids,
         severities=severities,
         actions=actions,
-        exams=exams,
         subjects=subjects,
         current_date=current_date,
         current_time=current_time,

@@ -9,7 +9,7 @@
   <div class="landing-header">
     <div class="school-logo">
       {% if settings.logo_path %}
-      <img src="{{ settings.logo_path }}" alt="School Logo">
+      <img src="{{ asset_url(settings.logo_path) }}" alt="School Logo">
       {% endif %}
     </div>
     <h1>{{ settings.school_name or 'School' }}</h1>
@@ -33,12 +33,16 @@
     </a>
 
     <!-- Submit Incident Report Card -->
-    <a href="{{ url_for('public.incident_report_form', token=token) }}" class="action-card incident-card">
+    <a
+      {% if id_card_status == 'Active' %}href="{{ url_for('public.incident_report_form', token=token) }}"{% endif %}
+      class="action-card incident-card{% if id_card_status != 'Active' %} is-disabled{% endif %}"
+      {% if id_card_status != 'Active' %}aria-disabled="true"{% endif %}
+    >
       <div class="card-icon incident-icon">
         <i class="fa-solid fa-triangle-exclamation"></i>
       </div>
       <h2>Gudbi Warbixin Dhacdo</h2>
-      <p>Tabi Dhacdo Fasal-imtixaan oo uu ku lug-leeyahay ardeygan (Ilaaliyeyaal &amp; Guddiga Kaliya).</p>
+      <p>{% if id_card_status == 'Expired' %}Kaarkani wuu dhacay; warbixin cusub lagama gudbin karo.{% elif id_card_status != 'Active' %}Kaarkani ma aha mid firfircoon; warbixin cusub lagama gudbin karo.{% else %}Tabi Dhacdo Fasal-imtixaan oo uu ku lug-leeyahay ardeygan (Ilaaliyeyaal &amp; Guddiga Kaliya).{% endif %}</p>
       <div class="card-footer">
         <span class="badge restricted-access">
           <i class="fa-solid fa-lock"></i> Kaliya howl-wadeenada

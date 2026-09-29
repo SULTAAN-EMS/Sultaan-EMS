@@ -4,7 +4,6 @@
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/incident-form.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/verified-name-badge.css') }}">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 {% endblock %}
 {% block content %}
 {% from 'partials/verified_name_badge.html' import verified_name_badge %}
@@ -882,7 +881,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const actionDescriptionCount = document.getElementById('actionDescriptionCount');
 
     const selectedCategoryIds = new Set();
-    const categoryItems = () => Array.from(categorySelectorList?.querySelectorAll('.category-selector-item') || []);
+    // The category list is rendered once by the server. Keep one node cache so
+    // selection and search do not repeatedly query the whole modal tree.
+    const categoryItemNodes = Array.from(categorySelectorList?.querySelectorAll('.category-selector-item') || []);
+    const categoryItems = () => categoryItemNodes;
     const selectedCategoryIsOther = () => categoryItems().some((item) => (
       selectedCategoryIds.has(String(item.dataset.categoryId)) && item.dataset.isOther === 'true'
     ));
@@ -977,8 +979,11 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     categorySearch?.addEventListener('input', () => {
       const needle = categorySearch.value.trim().toLocaleLowerCase();
-      categoryItems().forEach((item) => {
-        item.hidden = Boolean(needle) && !String(item.dataset.categoryName || '').toLocaleLowerCase().includes(needle);
+      window.cancelAnimationFrame(categorySearch._rafId);
+      categorySearch._rafId = window.requestAnimationFrame(() => {
+        categoryItems().forEach((item) => {
+          item.hidden = Boolean(needle) && !String(item.dataset.categoryName || '').toLocaleLowerCase().includes(needle);
+        });
       });
     });
     incidentForm.querySelectorAll('input[name="actions_taken"]').forEach((input) => input.addEventListener('change', syncActionDescription));
@@ -1031,15 +1036,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const submitTitle = document.getElementById('submitTitle');
     const submitMessage = document.getElementById('submitMessage');
     const submitRetry = document.getElementById('submitRetry');
+    const submitProgressTickMs = 320;
     let progressTimer = null;
     const updateProgress = (value, failed = false) => {
       if (submitPercent) submitPercent.textContent = `${value}%`;
       if (submitProgressBar) submitProgressBar.style.inlineSize = `${value}%`;
+      const currentStep = Math.min(4, Math.max(1, Math.ceil(value / 25)));
       document.querySelectorAll('.submit-steps li').forEach((step) => {
         const stepNumber = Number(step.dataset.step || 0);
-        step.classList.toggle('is-complete', stepNumber < Math.ceil(value / 25));
-        step.classList.toggle('is-active', stepNumber === Math.ceil(value / 25) && !failed);
-        step.classList.toggle('is-failed', failed && stepNumber === Math.ceil(value / 25));
+        step.classList.toggle('is-complete', stepNumber < currentStep || (value >= 100 && stepNumber === currentStep));
+        step.classList.toggle('is-visible', stepNumber <= currentStep || value >= 100);
+        step.classList.toggle('is-active', stepNumber === currentStep && !failed && value < 100);
+        step.classList.toggle('is-failed', failed && stepNumber === currentStep);
       });
     };
     const openSubmitOverlay = () => {
@@ -1048,13 +1056,14 @@ document.addEventListener('DOMContentLoaded', function() {
       if (submitTitle) submitTitle.textContent = 'Warbixinta waa la gudbinayaa';
       if (submitMessage) submitMessage.textContent = 'Waxaa la diyaarinayaa diiwaankaaga ammaan ah ee dhacdada.';
       if (submitRetry) submitRetry.hidden = true;
+      submitOverlay?.classList.remove('is-success', 'has-error');
       updateProgress(8);
       let progress = 8;
       clearInterval(progressTimer);
       progressTimer = window.setInterval(() => {
         progress = Math.min(progress + (progress < 55 ? 9 : 3), 86);
         updateProgress(progress);
-      }, 380);
+      }, submitProgressTickMs);
     };
     const failSubmission = (message) => {
       clearInterval(progressTimer);
@@ -1126,29 +1135,27 @@ document.addEventListener('DOMContentLoaded', function() {
           const fileCard = document.createElement('div');
           fileCard.className = 'file-preview-card';
           
-          const reader = new FileReader();
-          
-          reader.onload = function(e) {
-            if (file.type.startsWith('image/')) {
-              const img = document.createElement('img');
-              img.src = e.target.result;
-              img.className = 'preview-image';
-              fileCard.appendChild(img);
-            } else if (file.type.startsWith('video/')) {
-              const video = document.createElement('video');
-              video.src = e.target.result;
-              video.className = 'preview-video';
-              video.controls = true;
-              fileCard.appendChild(video);
-            } else {
-              const icon = document.createElement('div');
-              icon.className = 'preview-icon';
-              icon.innerHTML = '<i class="fa-solid fa-file"></i>';
-              fileCard.appendChild(icon);
-            }
-          };
-          
-          reader.readAsDataURL(file);
+          // Object URLs preview media without copying large files into a
+          // base64 string, which keeps the invigilator's phone responsive.
+          if (file.type.startsWith('image/')) {
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            img.className = 'preview-image';
+            fileCard.dataset.previewUrl = img.src;
+            fileCard.appendChild(img);
+          } else if (file.type.startsWith('video/')) {
+            const video = document.createElement('video');
+            video.src = URL.createObjectURL(file);
+            video.className = 'preview-video';
+            video.controls = true;
+            fileCard.dataset.previewUrl = video.src;
+            fileCard.appendChild(video);
+          } else {
+            const icon = document.createElement('div');
+            icon.className = 'preview-icon';
+            icon.innerHTML = '<i class="fa-solid fa-file"></i>';
+            fileCard.appendChild(icon);
+          }
           
           const fileInfo = document.createElement('div');
           fileInfo.className = 'file-info';
@@ -1173,6 +1180,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (e.target.closest('.remove-file')) {
         const button = e.target.closest('.remove-file');
         const fileCard = button.closest('.file-preview-card');
+        if (fileCard?.dataset.previewUrl) URL.revokeObjectURL(fileCard.dataset.previewUrl);
         fileCard.remove();
         
         const remainingCards = uploadPreview.querySelectorAll('.file-preview-card');

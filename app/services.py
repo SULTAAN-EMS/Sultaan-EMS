@@ -4,6 +4,7 @@ import re
 from flask import current_app, g, has_request_context
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload
 
 from . import db
 from .models import (
@@ -60,19 +61,27 @@ def scoped_legacy_subjects(year_subject_items):
     These request-local values keep every read path aligned without updating
     a legacy row that may be shared by another academic scope.
     """
-    subjects = []
-    for year_subject in year_subject_items:
-        # Only examination offerings have a legacy Subject identity that can
-        # safely participate in the existing result/reporting schema.
-        if (getattr(year_subject, "subject_kind", None) or "exam") != "exam":
-            continue
-        if not year_subject.legacy_subject_id:
-            continue
-        legacy_subject = db.session.get(Subject, year_subject.legacy_subject_id)
-        if not legacy_subject:
-            continue
-        subjects.append(ScopedSubjectView(legacy_subject, year_subject))
-    return subjects
+    exam_items = [
+        item for item in year_subject_items
+        if (getattr(item, "subject_kind", None) or "exam") == "exam"
+        and item.legacy_subject_id
+    ]
+    if not exam_items:
+        return []
+
+    # Fetch the legacy identities in one query. This helper is used by the
+    # invigilator report form, where one subject lookup per item made the
+    # first screen unnecessarily chatty on slower connections.
+    subject_ids = {item.legacy_subject_id for item in exam_items}
+    legacy_by_id = {
+        subject.id: subject
+        for subject in Subject.query.filter(Subject.id.in_(subject_ids)).all()
+    }
+    return [
+        ScopedSubjectView(legacy_by_id[item.legacy_subject_id], item)
+        for item in exam_items
+        if item.legacy_subject_id in legacy_by_id
+    ]
 
 
 DEFAULT_SETTINGS = {
@@ -1278,7 +1287,7 @@ def grade_scale_payload(scale):
     }
 
 
-def active_exam_for_student(student, preferred_year_id=None):
+def active_exam_for_student(student, preferred_year_id=None, placement=None, strict_preferred_year=False):
     """Return the generated active exam that best matches a student's academic scope."""
     if not student:
         return None
@@ -1287,26 +1296,38 @@ def active_exam_for_student(student, preferred_year_id=None):
     year_ids = []
     if preferred_year_id:
         year_ids.append(preferred_year_id)
-    enrollment_year_ids = [
-        year_id
-        for year_id, in (
+    current_year = None
+    if strict_preferred_year and preferred_year_id:
+        enrollment = placement.get("enrollment") if placement else None
+        enrollments = [enrollment] if enrollment else []
+    else:
+        enrollments = (
             StudentEnrollment.query
+            .options(
+                joinedload(StudentEnrollment.academic_year_level),
+                joinedload(StudentEnrollment.academic_year_class),
+                joinedload(StudentEnrollment.academic_section),
+            )
             .filter_by(student_id=student.id)
-            .with_entities(StudentEnrollment.academic_year_id)
             .order_by(StudentEnrollment.academic_year_id.desc(), StudentEnrollment.id.desc())
             .all()
         )
-        if year_id
-    ]
+    enrollment_by_year = {
+        enrollment.academic_year_id: enrollment
+        for enrollment in enrollments
+        if enrollment.academic_year_id
+    }
+    enrollment_year_ids = list(enrollment_by_year)
     for year_id in enrollment_year_ids:
         if year_id not in year_ids:
             year_ids.append(year_id)
     if student.academic_year_id:
         if student.academic_year_id not in year_ids:
             year_ids.append(student.academic_year_id)
-    current_year = AcademicYear.query.filter_by(is_current=True).order_by(AcademicYear.id.desc()).first()
-    if current_year and current_year.id not in year_ids:
-        year_ids.append(current_year.id)
+    if not strict_preferred_year:
+        current_year = AcademicYear.query.filter_by(is_current=True).order_by(AcademicYear.id.desc()).first()
+        if current_year and current_year.id not in year_ids:
+            year_ids.append(current_year.id)
 
     def collect(rows, bucket, seen):
         for row in rows:
@@ -1316,38 +1337,46 @@ def active_exam_for_student(student, preferred_year_id=None):
 
     candidates = []
     seen = set()
-    for year_id in year_ids:
+    if year_ids:
         collect(
-            Exam.query.filter(Exam.academic_year_id == year_id, active_filter)
+            Exam.query.filter(Exam.academic_year_id.in_(year_ids), active_filter)
             .order_by(Exam.id.desc())
             .all(),
             candidates,
             seen,
         )
 
-    if not candidates:
-        for year_id in year_ids:
+    if not candidates and not strict_preferred_year:
+        if year_ids:
             collect(
-                Exam.query.filter(Exam.academic_year_id == year_id)
+                Exam.query.filter(Exam.academic_year_id.in_(year_ids))
                 .order_by(Exam.id.desc())
                 .all(),
                 candidates,
                 seen,
             )
 
-    if not candidates:
+    if not candidates and not strict_preferred_year:
         candidates = Exam.query.filter(active_filter).order_by(Exam.id.desc()).all()
-    if not candidates:
+    if not candidates and not strict_preferred_year:
         candidates = Exam.query.order_by(Exam.id.desc()).all()
     if not candidates:
         return None
 
     def score(exam):
         value = 0
-        enrollment = get_enrollment_for_student_year(student.id, exam.academic_year_id)
-        enrollment_level_id = enrollment.academic_year_level.legacy_level_id if enrollment and enrollment.academic_year_level else None
-        enrollment_class_id = enrollment.academic_year_class.legacy_class_id if enrollment and enrollment.academic_year_class else None
-        enrollment_section_id = enrollment.academic_section_id if enrollment else None
+        enrollment = enrollment_by_year.get(exam.academic_year_id)
+        if strict_preferred_year and placement and exam.academic_year_id == preferred_year_id:
+            # The incident form already resolved and validated this placement.
+            # Reuse those IDs instead of lazily loading the same hierarchy
+            # relationships a second time during exam scoring.
+            enrollment_level_id = placement.get("academic_level_id")
+            enrollment_class_id = placement.get("academic_class_id")
+            enrollment_section_id = placement.get("academic_section_id")
+        else:
+            enrollment_level_id = enrollment.academic_year_level.legacy_level_id if enrollment and enrollment.academic_year_level else None
+            enrollment_class_id = enrollment.academic_year_class.legacy_class_id if enrollment and enrollment.academic_year_class else None
+            enrollment_section_id = enrollment.academic_section_id if enrollment else None
         if preferred_year_id and exam.academic_year_id == preferred_year_id:
             value += 20
         if enrollment:

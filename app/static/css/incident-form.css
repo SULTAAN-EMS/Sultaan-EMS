@@ -8,6 +8,28 @@
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+/* The incident form is used during time-sensitive exam work. Keep the
+   interface visually intact while avoiding GPU-heavy blur and motion on the
+   reporting surface. */
+.incident-form-body .glass-card {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.incident-form-body .header-icon,
+.incident-form-body .header-badge,
+.incident-form-body .security-header .back-link a,
+.incident-form-body .incident-submit-overlay {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.incident-form-body .liquid-wave,
+.incident-form-body .wave-svg,
+.incident-form-body .border-glow-svg rect {
+  animation: none;
+}
+
 .upload-preview {
   margin-top: 1rem;
 }
@@ -1263,20 +1285,25 @@
 .incident-submit-dialog p { margin: .55rem 0 1.35rem; color: #64748b; }
 .submit-progress { block-size: 9px; overflow: hidden; border-radius: 999px; background: #e2e8f0; }
 .submit-progress span { display: block; inline-size: 0; block-size: 100%; border-radius: inherit; background: linear-gradient(90deg, #4f46e5, #06b6d4, #10b981); transition: inline-size .35s ease; }
-.submit-steps { display: grid; gap: .8rem; margin: 1.4rem 0 0; padding: 0; text-align: left; list-style: none; }
-.submit-steps li { display: flex; align-items: center; gap: .65rem; color: #94a3b8; font-size: .9rem; font-weight: 650; transition: color .2s ease; }
+.submit-steps { display: grid; gap: .8rem; min-height: 8.8rem; margin: 1.4rem 0 0; padding: 0; text-align: left; list-style: none; }
+.submit-steps li { display: flex; align-items: center; gap: .65rem; visibility: hidden; opacity: 0; color: #94a3b8; font-size: .9rem; font-weight: 650; transform: translate3d(0, 7px, 0); transition: color .2s ease, opacity .2s ease, transform .2s ease; }
+.submit-steps li.is-visible { visibility: visible; opacity: 1; transform: translate3d(0, 0, 0); animation: submit-step-in .32s cubic-bezier(.22, 1, .36, 1) both; }
 .submit-steps li i { font-size: .6rem; }
 .submit-steps li.is-active { color: #4f46e5; }
 .submit-steps li.is-complete { color: #059669; }
 .submit-steps li.is-complete i::before { content: '\\f058'; }
 .submit-steps li.is-failed { color: #dc2626; }
+@keyframes submit-step-in {
+  from { opacity: 0; transform: translate3d(0, 7px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
 .incident-submit-overlay.is-success .submit-orbit { color: #059669; background: conic-gradient(#059669, #34d399, #059669); }
 .incident-submit-overlay.has-error .submit-orbit { color: #dc2626; background: conic-gradient(#dc2626, #fb7185, #dc2626); }
 .submit-retry { margin-top: 1.35rem; padding: .7rem 1rem; border: 0; border-radius: 12px; color: #fff; background: #4f46e5; font: inherit; font-weight: 750; cursor: pointer; }
 .submit-retry:hover, .submit-retry:focus-visible { background: #3730a3; outline: 3px solid rgba(79,70,229,.28); outline-offset: 3px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .severity-badge, .severity-badge:has(input:checked), .severity-badge:has(input:checked)::before, .other-description-group, .incident-submit-overlay, .submit-progress span { animation: none; transition: none; }
+  .severity-badge, .severity-badge:has(input:checked), .severity-badge:has(input:checked)::before, .other-description-group, .incident-submit-overlay, .submit-progress span, .submit-steps li.is-visible { animation: none; transition: none; }
 }
 
 /* Actions Checkboxes */

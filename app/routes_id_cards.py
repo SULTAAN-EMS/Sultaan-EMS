@@ -1,7 +1,10 @@
 import secrets
 import calendar
 from datetime import date
+from io import BytesIO
 from tempfile import NamedTemporaryFile
+from pathlib import Path
+from urllib.request import Request, urlopen
 
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import login_required
@@ -9,7 +12,7 @@ from sqlalchemy import or_
 
 from . import db
 from .audit import audit
-from .models import AcademicClass, AcademicYear, IdCardIssue, SchoolClass, Setting, Student
+from .models import AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, IdCardIssue, SchoolClass, Setting, Student, StudentEnrollment
 from .permissions import enforce_endpoint_permission
 from .enrollment_service import EnrollmentValidationError, student_enrollment_legacy_scope_query, student_enrollment_scope_query
 from .services import get_settings
@@ -51,9 +54,17 @@ def dashboard():
             "id_card_office_signature", "id_card_stamp_text", "id_card_found_contact_text", "id_card_exam_type",
             "id_card_header_text", "id_card_signature_text",
         ]
+        raw_issue_months = request.form.get("id_card_issue_months", "12").strip()
+        try:
+            issue_months = int(raw_issue_months)
+        except (TypeError, ValueError):
+            issue_months = 0
+        if not 1 <= issue_months <= 120:
+            flash("Valid Months waa inuu noqdaa tiro u dhexeysa 1 iyo 120 bilood.", "danger")
+            return redirect(url_for("admin_id_cards.dashboard"))
         for key in editable_keys:
             setting = db.session.get(Setting, key) or Setting(key=key)
-            setting.value = request.form.get(key, "").strip()
+            setting.value = str(issue_months) if key == "id_card_issue_months" else request.form.get(key, "").strip()
             db.session.add(setting)
         audit("Settings Changes", "Updated ID card designer settings")
         db.session.commit()
@@ -62,17 +73,33 @@ def dashboard():
 
     filters = card_filters()
     students = filtered_students(filters).order_by(Student.full_name).limit(500).all()
+    student_placements = {
+        student.id: resolve_student_placement(student, filters["year_id"])
+        for student in students
+    }
+    # ID-card generation must only show students with a valid placement in the
+    # selected academic year. Unlinked legacy rows stay in the database for
+    # other modules, but cannot leak into this year-scoped workflow.
+    students = [student for student in students if student_placements.get(student.id)]
     issues = IdCardIssue.query.order_by(IdCardIssue.updated_at.desc()).limit(200).all()
+    issue_dates_changed = sync_issue_dates(issues, settings=get_settings())
+    if issue_dates_changed:
+        db.session.commit()
+    issue_placements = {issue.id: resolve_issue_placement(issue) for issue in issues}
+    issue_statuses = {issue.id: effective_issue_status(issue) for issue in issues}
     return render_template(
         "admin/id_cards.html",
         settings=get_settings(),
         students=students,
+        student_placements=student_placements,
         issues=issues,
+        issue_placements=issue_placements,
+        issue_statuses=issue_statuses,
         filters=filters,
-        classes=SchoolClass.query.order_by(SchoolClass.name).all(),
+        classes=filter_class_options(filters),
         years=AcademicYear.query.order_by(AcademicYear.name.desc()).all(),
-        levels=distinct_values(Student.level),
-        sections=distinct_values(Student.section),
+        levels=filter_level_options(filters),
+        sections=filter_section_options(filters),
         templates=ID_CARD_TEMPLATES,
     )
 
@@ -97,7 +124,13 @@ def apply_template(template_name):
 @id_cards_bp.route("/generate/<int:student_id>", methods=["POST"])
 def generate(student_id):
     student = db.session.get(Student, student_id) or abort(404)
-    issue = get_or_create_issue(student)
+    academic_year_id = int_or_none(request.form.get("academic_year_id"))
+    try:
+        issue = get_or_create_issue(student, academic_year_id=academic_year_id)
+    except EnrollmentValidationError as exc:
+        db.session.rollback()
+        flash(str(exc), "warning")
+        return redirect(url_for("admin_id_cards.dashboard"))
     audit("ID Card Operations", f"Generated ID card for {student.student_code}")
     db.session.commit()
     flash("ID card generated.", "success")
@@ -108,22 +141,45 @@ def generate(student_id):
 def bulk_generate():
     scope = request.form.get("scope", "selected")
     ids = [int(value) for value in request.form.getlist("student_ids") if value.isdigit()]
+    academic_year_id = int_or_none(request.form.get("academic_year_id"))
+    academic_year_class_id = int_or_none(request.form.get("academic_year_class_id"))
     query = Student.query
-    if scope == "class" and request.form.get("class_id"):
+    has_scope_value = bool(
+        (scope == "class" and request.form.get("academic_year_class_id"))
+        or (scope == "level" and request.form.get("level", "").strip())
+        or (scope == "section" and request.form.get("section", "").strip())
+    )
+    if scope in {"class", "level", "section"} and academic_year_id and has_scope_value:
+        scope_filters = {
+            "q": "",
+            "year_id": academic_year_id,
+            "academic_year_class_id": academic_year_class_id if scope == "class" else None,
+            "level": request.form.get("level", "").strip() if scope == "level" else "",
+            "section": request.form.get("section", "").strip() if scope == "section" else "",
+        }
+        ids = [s.id for s in filtered_students(scope_filters).all()]
+    elif scope == "class" and request.form.get("class_id"):
         query = query.filter_by(class_id=int(request.form["class_id"]))
         ids = [s.id for s in query.all()]
     elif scope == "level" and request.form.get("level"):
         ids = [s.id for s in query.filter_by(level=request.form["level"].strip()).all()]
     elif scope == "section" and request.form.get("section"):
         ids = [s.id for s in query.filter_by(section=request.form["section"].strip()).all()]
+    elif scope == "all" and academic_year_id:
+        ids = [s.id for s in student_enrollment_scope_query(academic_year_id).all()]
     elif scope == "all":
         ids = [s.id for s in query.all()]
     if not ids:
         flash("Select students or choose a valid bulk scope.", "warning")
         return redirect(url_for("admin_id_cards.dashboard"))
     issue_ids = []
-    for student in Student.query.filter(Student.id.in_(ids)).all():
-        issue_ids.append(get_or_create_issue(student).id)
+    try:
+        for student in Student.query.filter(Student.id.in_(ids)).all():
+            issue_ids.append(get_or_create_issue(student, academic_year_id=academic_year_id).id)
+    except EnrollmentValidationError as exc:
+        db.session.rollback()
+        flash(str(exc), "warning")
+        return redirect(url_for("admin_id_cards.dashboard"))
     audit("ID Card Operations", f"Bulk generated {len(issue_ids)} ID cards")
     db.session.commit()
     flash(f"Generated {len(issue_ids)} ID cards.", "success")
@@ -133,8 +189,18 @@ def bulk_generate():
 @id_cards_bp.route("/print")
 def print_cards():
     issues = selected_issues()
-    cards = [{"issue": issue, "qr": id_card_qr_payload(issue)} for issue in issues]
-    return render_template("admin/id_card_print.html", cards=cards, settings=get_settings())
+    settings = get_settings()
+    if sync_issue_dates(issues, settings=settings):
+        db.session.commit()
+    cards = [
+        {
+            "issue": issue,
+            "placement": resolve_issue_placement(issue),
+            "qr": id_card_qr_payload(issue),
+        }
+        for issue in issues
+    ]
+    return render_template("admin/id_card_print.html", cards=cards, settings=settings)
 
 
 @id_cards_bp.route("/export.pdf")
@@ -151,6 +217,8 @@ def export_pdf():
     tmp = NamedTemporaryFile(delete=False, suffix=".pdf")
     pdf = canvas.Canvas(tmp.name, pagesize=A4)
     settings = get_settings()
+    if sync_issue_dates(issues, settings=settings):
+        db.session.commit()
     page_w, page_h = A4
     margin = max(5, min(float(settings.get("id_card_print_margin") or 8), 15)) * mm
     gap = 5 * mm
@@ -162,7 +230,6 @@ def export_pdf():
     if template:
         primary = colors.HexColor(template["primary"])
         accent = colors.HexColor(template["accent"])
-
     for index, issue in enumerate(issues):
         slot = index % 4
         if index and slot == 0:
@@ -192,7 +259,7 @@ def draw_id_card_pdf(pdf, issue, settings, x, y, w, h, primary, accent, qrcode, 
     card_x, card_y = x + pad, y + pad
     card_w, card_h = w - 2 * pad, h - 2 * pad
     pdf.setStrokeColor(primary)
-    pdf.setFillColor(colors.white)
+    pdf.setFillColor(colors.HexColor(settings.get("id_card_background") or "#ffffff"))
     pdf.roundRect(card_x, card_y, card_w, card_h, 8, stroke=1, fill=1)
 
     header_h = 22 * mm
@@ -202,10 +269,10 @@ def draw_id_card_pdf(pdf, issue, settings, x, y, w, h, primary, accent, qrcode, 
     logo_x, logo_y = card_x + 4 * mm, card_y + card_h - header_h + 4 * mm
     pdf.roundRect(logo_x, logo_y, 14 * mm, 14 * mm, 5, stroke=0, fill=1)
     if settings.get("logo_path"):
-        logo_path = current_app.static_folder + "/" + settings.get("logo_path").replace("\\", "/")
-        try:
-            pdf.drawImage(logo_path, logo_x + 1, logo_y + 1, 14 * mm - 2, 14 * mm - 2, preserveAspectRatio=True, mask="auto")
-        except Exception:
+        logo_image = reportlab_image_source(settings.get("logo_path"), ImageReader, BytesIO)
+        if logo_image:
+            pdf.drawImage(logo_image, logo_x + 1, logo_y + 1, 14 * mm - 2, 14 * mm - 2, preserveAspectRatio=True, mask="auto")
+        else:
             pdf.setFillColor(primary)
             pdf.setFont("Helvetica-Bold", 7)
             pdf.drawCentredString(logo_x + 7 * mm, logo_y + 6 * mm, "LOGO")
@@ -235,11 +302,9 @@ def draw_id_card_pdf(pdf, issue, settings, x, y, w, h, primary, accent, qrcode, 
     pdf.setFillColor(colors.HexColor("#eef6ff"))
     pdf.roundRect(photo_x, photo_y, photo_size, photo_size, photo_radius, stroke=1 if settings.get("student_photo_border") == "on" else 0, fill=1)
     if issue.student.photo_path:
-        image_path = current_app.static_folder + "/" + issue.student.photo_path.replace("\\", "/")
-        try:
-            pdf.drawImage(image_path, photo_x + 1, photo_y + 1, photo_size - 2, photo_size - 2, preserveAspectRatio=True, mask="auto")
-        except Exception:
-            pass
+        photo_image = reportlab_image_source(issue.student.photo_path, ImageReader, BytesIO)
+        if photo_image:
+            pdf.drawImage(photo_image, photo_x + 1, photo_y + 1, photo_size - 2, photo_size - 2, preserveAspectRatio=True, mask="auto")
     pdf.setFillColor(primary)
     pdf.setFont("Helvetica-Bold", 7)
     pdf.drawCentredString(photo_x + 14.5 * mm, photo_y - 4 * mm, (issue.student.phone or "-")[:18])
@@ -283,10 +348,14 @@ def draw_id_card_pdf(pdf, issue, settings, x, y, w, h, primary, accent, qrcode, 
 
 def get_or_create_issue(student, academic_year_id=None):
     """Get/create an ID card in the requested historical year scope."""
-    year_id = academic_year_id or student.academic_year_id
+    year_id = resolve_id_card_year_id(student, academic_year_id)
     issue = IdCardIssue.query.filter_by(student_id=student.id, academic_year_id=year_id, status="Active").first()
     settings = get_settings()
-    months = int(settings.get("id_card_issue_months") or 12)
+    months = configured_issue_months(settings)
+    if issue:
+        ensure_issue_dates(issue, months=months)
+        if effective_issue_status(issue) != "Active":
+            issue = None
     if not issue:
         issue = IdCardIssue(
             token=secrets.token_urlsafe(32),
@@ -301,6 +370,180 @@ def get_or_create_issue(student, academic_year_id=None):
     return issue
 
 
+def configured_issue_months(settings=None):
+    """Return a safe validity period for newly issued and repaired cards."""
+    if settings is None:
+        settings = get_settings()
+    try:
+        value = int(str(settings.get("id_card_issue_months") or "12").strip())
+    except (TypeError, ValueError):
+        value = 12
+    return max(1, min(value, 120))
+
+
+def ensure_issue_dates(issue, *, settings=None, months=None, today=None):
+    """Repair missing/invalid dates and mark an active expired card."""
+    if not issue:
+        return False
+    today = today or date.today()
+    if months is None:
+        months = configured_issue_months(settings)
+    changed = False
+    if not issue.issue_date:
+        issue.issue_date = issue.created_at.date() if issue.created_at else today
+        changed = True
+    if not issue.expiry_date or issue.expiry_date < issue.issue_date:
+        issue.expiry_date = add_months(issue.issue_date, months)
+        changed = True
+    if issue.status == "Active" and issue.expiry_date < today:
+        issue.status = "Expired"
+        changed = True
+    return changed
+
+
+def sync_issue_dates(issues, *, settings=None):
+    """Apply date repair and expiry transitions to every issue in a collection."""
+    changed = False
+    for issue in issues:
+        if ensure_issue_dates(issue, settings=settings):
+            changed = True
+    return changed
+
+
+def resolve_id_card_year_id(student, academic_year_id=None):
+    """Resolve the required year from the selected scope or authoritative enrollment.
+
+    ``Student.academic_year_id`` is a legacy snapshot and may be empty after
+    enrollment migration. ID cards still require a concrete year, so never
+    allow a missing value to reach the non-null ``id_card_issues`` column.
+    """
+    if academic_year_id:
+        year = db.session.get(AcademicYear, academic_year_id)
+        if not year:
+            raise EnrollmentValidationError("The selected academic year does not exist.")
+        from .enrollment_service import resolve_student_academic_context
+
+        if not resolve_student_academic_context(student, year.id) and student.academic_year_id != year.id:
+            raise EnrollmentValidationError(
+                f"Ardayga {student.student_code} kuma jiro sannadka la doortay."
+            )
+        return year.id
+
+    enrollment = (
+        StudentEnrollment.query
+        .filter_by(student_id=student.id)
+        .join(AcademicYear, StudentEnrollment.academic_year_id == AcademicYear.id)
+        .order_by(
+            AcademicYear.is_current.desc(),
+            StudentEnrollment.enrolled_at.desc(),
+            StudentEnrollment.academic_year_id.desc(),
+        )
+        .first()
+    )
+    if enrollment:
+        return enrollment.academic_year_id
+
+    if student.academic_year_id:
+        year = db.session.get(AcademicYear, student.academic_year_id)
+        if year:
+            return year.id
+
+    raise EnrollmentValidationError(
+        f"ID card lama abuuri karo: ardayga {student.student_code} kuma xirna sannad dugsiyeed sax ah."
+    )
+
+
+def resolve_issue_placement(issue):
+    """Return the issue-year placement, never a newer legacy snapshot."""
+    from .enrollment_service import resolve_student_academic_context
+
+    placement = resolve_student_academic_context(issue.student, issue.academic_year_id)
+    if placement:
+        return placement
+    if issue.student.academic_year_id != issue.academic_year_id:
+        return {}
+    return {
+        "source": "legacy",
+        "academic_year_id": issue.academic_year_id,
+        "class_name": issue.student.academic_class.name if issue.student.academic_class else issue.student.school_class.name if issue.student.school_class else None,
+        "level_name": issue.student.academic_level.name if issue.student.academic_level else issue.student.level,
+        "section_name": issue.student.academic_section.name if issue.student.academic_section else issue.student.section,
+    }
+
+
+def effective_issue_status(issue):
+    """Return the status a user should see after applying expiry rules."""
+    if issue.expiry_date and issue.expiry_date < date.today() and issue.status == "Active":
+        return "Expired"
+    return issue.status
+
+
+def filter_level_options(filters):
+    if filters["year_id"]:
+        return [
+            name
+            for name, in db.session.query(AcademicYearLevel.name)
+            .filter_by(academic_year_id=filters["year_id"], is_active=True)
+            .distinct()
+            .order_by(AcademicYearLevel.sort_order, AcademicYearLevel.name)
+            .all()
+        ]
+    return [
+        name
+        for name, in db.session.query(AcademicYearLevel.name)
+        .filter_by(is_active=True)
+        .distinct()
+        .order_by(AcademicYearLevel.name)
+        .all()
+    ]
+
+
+def filter_section_options(filters):
+    if filters["year_id"]:
+        return [
+            name
+            for name, in db.session.query(AcademicSection.name)
+            .join(AcademicYearClass, AcademicYearClass.legacy_class_id == AcademicSection.academic_class_id)
+            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+            .filter(
+                AcademicYearLevel.academic_year_id == filters["year_id"],
+                AcademicSection.is_active.is_(True),
+            )
+            .distinct()
+            .order_by(AcademicSection.sort_order, AcademicSection.name)
+            .all()
+        ]
+    return [
+        name
+        for name, in db.session.query(AcademicSection.name)
+        .join(AcademicYearClass, AcademicYearClass.legacy_class_id == AcademicSection.academic_class_id)
+        .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+        .filter(AcademicSection.is_active.is_(True), AcademicYearLevel.is_active.is_(True))
+        .distinct()
+        .order_by(AcademicSection.name)
+        .all()
+    ]
+
+
+def reportlab_image_source(path, image_reader, bytes_io):
+    """Return a ReportLab image source for local or Cloudinary assets."""
+    if not path:
+        return None
+    value = str(path)
+    try:
+        if value.startswith(("http://", "https://")):
+            request = Request(value, headers={"User-Agent": "SULTAAN-EMS ID card renderer"})
+            with urlopen(request, timeout=8) as response:
+                return image_reader(bytes_io(response.read()))
+        relative = value.removeprefix("/static/").lstrip("/")
+        local_path = Path(current_app.static_folder) / relative
+        if local_path.is_file():
+            return image_reader(str(local_path))
+    except Exception as exc:
+        current_app.logger.warning("Unable to load ID card asset %s: %s", value, exc)
+    return None
+
+
 def selected_issues():
     raw = request.args.get("issue_ids", "")
     ids = [int(value) for value in raw.split(",") if value.isdigit()]
@@ -310,10 +553,16 @@ def selected_issues():
 
 
 def card_filters():
+    raw_year_id = request.args.get("year_id")
+    year_id = int_or_none(raw_year_id)
+    if raw_year_id is None:
+        current_year = AcademicYear.query.filter_by(is_current=True).first()
+        year_id = current_year.id if current_year else None
     return {
         "q": request.args.get("q", "").strip(),
         "class_id": int_or_none(request.args.get("class_id")),
-        "year_id": int_or_none(request.args.get("year_id")),
+        "academic_year_class_id": int_or_none(request.args.get("academic_year_class_id")),
+        "year_id": year_id,
         "level": request.args.get("level", "").strip(),
         "section": request.args.get("section", "").strip(),
     }
@@ -322,19 +571,12 @@ def card_filters():
 def filtered_students(filters):
     query = Student.query
     if filters["year_id"]:
-        if filters["class_id"]:
-            legacy_school_class = db.session.get(SchoolClass, filters["class_id"])
-            academic_class = (
-                AcademicClass.query.filter_by(name=legacy_school_class.name).first()
-                if legacy_school_class else None
-            )
+        if filters["academic_year_class_id"]:
             try:
-                query = student_enrollment_legacy_scope_query(
+                query = student_enrollment_scope_query(
                     filters["year_id"],
-                    legacy_class_id=academic_class.id if academic_class else None,
+                    academic_year_class_id=filters["academic_year_class_id"],
                 )
-                if not academic_class:
-                    query = query.filter(Student.class_id == filters["class_id"])
             except EnrollmentValidationError:
                 query = student_enrollment_scope_query(filters["year_id"]).filter(Student.id == -1)
         else:
@@ -345,14 +587,80 @@ def filtered_students(filters):
     if filters["class_id"] and not filters["year_id"]:
         query = query.filter(Student.class_id == filters["class_id"])
     if filters["level"]:
-        query = query.filter(Student.level == filters["level"])
+        if not filters["year_id"]:
+            query = query.filter(Student.level == filters["level"])
+        else:
+            level_ids = [
+                row.id
+                for row in AcademicYearLevel.query.filter_by(
+                    academic_year_id=filters["year_id"],
+                    name=filters["level"],
+                ).all()
+            ]
+            query = query.filter(
+                or_(
+                    StudentEnrollment.academic_year_level_id.in_(level_ids),
+                    Student.level == filters["level"],
+                )
+            )
     if filters["section"]:
-        query = query.filter(Student.section == filters["section"])
+        section_ids = [
+            row.id for row in AcademicSection.query.filter_by(name=filters["section"]).all()
+        ]
+        if filters["year_id"]:
+            query = query.filter(
+                or_(
+                    StudentEnrollment.academic_section_id.in_(section_ids),
+                    Student.section == filters["section"],
+                )
+            )
+        else:
+            query = query.filter(Student.section == filters["section"])
     return query
 
 
 def distinct_values(column):
     return [value[0] for value in db.session.query(column).filter(column.isnot(None), column != "").distinct().order_by(column).all()]
+
+
+def filter_class_options(filters):
+    """Return only classes configured under the active academic-year scope."""
+    query = (
+        AcademicYearClass.query
+        .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+        .filter(
+            AcademicYearClass.is_active.is_(True),
+            AcademicYearLevel.is_active.is_(True),
+        )
+        .order_by(AcademicYearClass.sort_order, AcademicYearClass.name, AcademicYearClass.id)
+    )
+    if filters["year_id"]:
+        query = query.filter(AcademicYearLevel.academic_year_id == filters["year_id"])
+    else:
+        # Without a selected year there is no safe class ID to apply. Do not
+        # expose legacy classes or duplicate names from unrelated years.
+        return []
+    return query.all()
+
+
+def resolve_student_placement(student, academic_year_id=None):
+    """Resolve display placement without allowing a newer year to leak in."""
+    if academic_year_id:
+        from .enrollment_service import resolve_student_academic_context
+
+        placement = resolve_student_academic_context(student, academic_year_id)
+        if placement:
+            return placement
+        if student.academic_year_id != academic_year_id:
+            return {}
+        return {
+            "source": "legacy",
+            "academic_year_id": academic_year_id,
+            "class_name": student.academic_class.name if student.academic_class else student.school_class.name if student.school_class else None,
+            "level_name": student.academic_level.name if student.academic_level else student.level,
+            "section_name": student.academic_section.name if student.academic_section else student.section,
+        }
+    return {}
 
 
 def int_or_none(value):
