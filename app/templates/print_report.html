@@ -120,15 +120,15 @@
           {% if result.student.photo_path %}<img src="{{ asset_url(result.student.photo_path) }}" alt="{{ result.student.full_name }} photo">{% else %}<i class="fa-solid fa-user-graduate"></i>{% endif %}
         </div>
         <div class="tis-student-lines">
-          <div><span><i class="fa-solid fa-user"></i></span><small>Magaca Ardeyga</small><strong>{{ result.student.full_name }}</strong></div>
-          <div><span><i class="fa-solid fa-person-dress"></i></span><small>Magaca Hooyada</small><strong>{{ result.student.mother_name }}</strong></div>
-          <div><span><i class="fa-solid fa-id-card"></i></span><small>Tirataxaane (ID)</small><strong>{{ result.student.student_code }}</strong></div>
-          <div><span><i class="fa-solid fa-graduation-cap"></i></span><small>Fasalka</small><strong>{{ result_scope.class_name }}</strong></div>
-          <div class="download-date-row"><span><i class="fa-solid fa-calendar-day"></i></span><small>Download Date</small><strong>{{ download_date_text }}</strong></div>
+          <div class="student-line--name"><span><i class="fa-solid fa-user"></i></span><small>Magaca Ardeyga</small><strong>{{ result.student.full_name }}</strong></div>
+          <div class="student-line--mother"><span><i class="fa-solid fa-person-dress"></i></span><small>Magaca Hooyada</small><strong>{{ result.student.mother_name }}</strong></div>
+          <div class="student-line--id"><span><i class="fa-solid fa-id-card"></i></span><small>Tirataxaane (ID)</small><strong>{{ result.student.student_code }}</strong></div>
+          <div class="student-line--class"><span><i class="fa-solid fa-graduation-cap"></i></span><small>Heerka / Fasalka</small><strong>{{ result_scope.level_name }} / {{ result_scope.class_name }}</strong></div>
+          <div class="download-date-row student-line--date"><span><i class="fa-solid fa-calendar-day"></i></span><small>Download Date</small><strong>{{ download_date_text }}</strong></div>
         </div>
         <div class="tis-verify-qr">
           {% if result.verification %}<a class="tis-verify-qr-link" href="{{ result.verification.url }}" aria-label="Click to Verify" data-tooltip="Click to Verify"><img src="{{ result.verification.qr_code }}" alt="Verification QR Code"></a>{% else %}<i class="fa-solid fa-qrcode"></i>{% endif %}
-          <strong>{{ result.settings.print_qr_label }}</strong>
+          <strong>HALAKAN KA XAQIIJI</strong>
         </div>
       </div>
     </section>
