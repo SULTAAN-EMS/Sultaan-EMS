@@ -122,8 +122,9 @@ def hall_context(academic_year_id, exam_id, exam_type_id, exam_hall_id):
             h_type = db.session.get(ExamType, hall.exam_type_id)
             if h_type and h_type.academic_year_id == academic_year_id:
                 return hall, exam, h_type
-        if hall.academic_class_id:
-            return hall, exam, None
+        # A class link by itself cannot prove that a hall belongs to the
+        # selected examination. Reject an unscoped legacy hall instead of
+        # allowing attendance data to cross exam boundaries.
         raise ValueError("The selected hall does not belong to this academic year and exam type")
 
     legacy_exam_type = db.session.get(ExamType, exam_type_id)
@@ -527,13 +528,60 @@ def timetable_level_scope(year_id, exam=None):
     if exam and exam.academic_level_id:
         query = query.filter(AcademicYearLevel.legacy_level_id == exam.academic_level_id)
 
-    level_data = []
-    allowed_pairs = set()
-    for year_level in query.order_by(
+    year_levels = query.order_by(
         AcademicYearLevel.sort_order,
         AcademicYearLevel.name,
         AcademicYearLevel.id,
-    ).all():
+    ).all()
+
+    # A legacy-only year has no year-level bridge at all. Keep that historical
+    # setup usable by deriving only the levels used by that year's students or
+    # the exam's explicit level; never mix this fallback into a year that has
+    # active year-aware levels.
+    if not year_levels:
+        legacy_level_ids = {
+            student.academic_level_id
+            for student in Student.query.filter_by(
+                academic_year_id=year_id,
+                is_active=True,
+            ).all()
+            if student.academic_level_id
+        }
+        if exam and exam.academic_level_id:
+            legacy_level_ids.add(exam.academic_level_id)
+        legacy_levels = (
+            AcademicLevel.query
+            .filter(AcademicLevel.id.in_(legacy_level_ids))
+            .filter(AcademicLevel.is_active.is_(True))
+            .order_by(AcademicLevel.sort_order, AcademicLevel.name, AcademicLevel.id)
+            .all()
+            if legacy_level_ids else []
+        )
+        return [
+            {
+                "id": level.id,
+                "name": level.name,
+                "subjects": [
+                    {"id": subject.id, "name": subject.name}
+                    for subject in Subject.query.filter_by(
+                        academic_level_id=level.id,
+                        is_active=True,
+                    ).order_by(Subject.sort_order, Subject.name, Subject.id).all()
+                ],
+            }
+            for level in legacy_levels
+        ], {
+            (level.id, subject.id)
+            for level in legacy_levels
+            for subject in Subject.query.filter_by(
+                academic_level_id=level.id,
+                is_active=True,
+            ).all()
+        }
+
+    level_data = []
+    allowed_pairs = set()
+    for year_level in year_levels:
         subjects = (
             AcademicYearSubject.query
             .join(Subject, AcademicYearSubject.legacy_subject_id == Subject.id)
@@ -714,9 +762,21 @@ def api_sessions():
         hall = db.session.get(ExamHall, hall_id)
         if not hall or not hall.is_active:
             return jsonify({"success": False, "error": "Hall-ka la doortay lama heli karo.", "sessions": []}), 404
+        try:
+            # Validate the full year -> exam -> hall relationship before using
+            # the hall roster to filter timetable sessions.
+            hall_context(year_id, exam_id, exam_type_id, hall_id)
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc), "sessions": []}), 400
         enrolled_ids = [row.student_id for row in ExamHallEnrollment.query.filter_by(exam_hall_id=hall.id).all()]
         students = Student.query.filter(Student.id.in_(enrolled_ids)).all() if enrolled_ids else []
-        hall_level_ids = {effective_student_level_id(student) for student in students}
+        # Resolve each student's level from the selected academic year. The
+        # legacy Student.academic_level_id can describe an older placement and
+        # must not hide timetable sessions for the current year's hall roster.
+        hall_level_ids = {
+            effective_student_level_id(student, year_id)
+            for student in students
+        }
         hall_level_ids.discard(None)
         sessions = [
             session for session in sessions
@@ -943,6 +1003,9 @@ def api_halls():
         "halls": [{
             "id": h.id,
             "name": h.name,
+            "academic_year_id": h.academic_year_id or (
+                h.exam.academic_year_id if h.exam else h.exam_type.academic_year_id if h.exam_type else None
+            ),
             "academic_class_id": h.academic_class_id,
             "academic_level_id": h.academic_class.academic_level_id if h.academic_class else None,
             "exam_id": h.exam_id or exam_id,
@@ -981,6 +1044,7 @@ def api_create_hall():
         code=unique_code,
         exam_id=exam.id if exam else None,
         exam_type_id=legacy_exam_type.id if legacy_exam_type else None,
+        academic_year_id=academic_year_id,
         academic_class_id=academic_class.id,
         is_active=True,
     )
@@ -992,7 +1056,14 @@ def api_create_hall():
 
     return jsonify({
         "success": True,
-        "hall": {"id": hall.id, "name": hall.name, "academic_class_id": hall.academic_class_id, "exam_id": hall.exam_id}
+        "hall": {
+            "id": hall.id,
+            "name": hall.name,
+            "academic_year_id": hall.academic_year_id,
+            "academic_class_id": hall.academic_class_id,
+            "exam_id": hall.exam_id,
+            "exam_type_id": hall.exam_type_id,
+        }
     })
 
 

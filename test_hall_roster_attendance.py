@@ -11,7 +11,7 @@ from config import Config
 from app.models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord,
     Exam, ExamHall, ExamHallEnrollment, ExamHallSubject, ExamSession,
-    ExamSessionSubject, ExamType, SchoolClass, Student, Subject, User
+    ExamSessionSubject, ExamType, SchoolClass, Student, StudentEnrollment, Subject, User
 )
 from app.attendance_rules import scheduled_subject_scope_key
 from sqlalchemy.exc import IntegrityError
@@ -710,6 +710,35 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertEqual(student_slots[self.student1.id], {self.subject.id})
         self.assertEqual(student_slots[primary_student.id], {primary_subject.id})
         print("[PASS] Test (m): Timetable session persistence + strictly level-specific roster verified.")
+
+    def test_m1_year_enrollment_controls_session_visibility_over_legacy_student_level(self):
+        """A current-year enrollment must override a stale legacy student level when loading sessions."""
+        self.login()
+        # Simulate the production data shape: the student's legacy snapshot
+        # still points to another level, while the selected year's enrollment
+        # correctly places the student in the timetable's level.
+        self.student1.academic_level_id = self.other_level.id
+        db.session.add(StudentEnrollment(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            academic_year_level_id=self.year_scope_level.id,
+            academic_year_class_id=self.year_scope_class.id,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source="manual",
+        ))
+        db.session.add(ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student1.id))
+        db.session.commit()
+
+        session_id = self._create_schedule_session([
+            {'level_id': self.level_sec.id, 'subject_id': self.subject.id},
+        ])
+        sessions = self.client.get(
+            f'/admin/attendance/api/sessions?academic_year_id={self.year.id}'
+            f'&exam_type_id={self.exam_type.id}&exam_hall_id={self.hall.id}'
+        ).get_json()
+        self.assertIn(session_id, [item['id'] for item in sessions['sessions']])
+        print("[PASS] Test (m1): Year-aware enrollment wins over stale legacy student level.")
 
     def test_p_timetable_scope_excludes_levels_from_other_academic_years(self):
         """Timetable options and saves stay inside the selected year's hierarchy."""

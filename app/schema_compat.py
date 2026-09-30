@@ -6,6 +6,25 @@ from sqlalchemy import inspect, text
 from . import db
 
 
+def backfill_exam_hall_years():
+    """Repair legacy halls whose year was inferable from their exam link."""
+    from .models import ExamHall
+
+    try:
+        halls = ExamHall.query.filter(ExamHall.academic_year_id.is_(None)).all()
+        changed = 0
+        for hall in halls:
+            context = hall.exam or hall.exam_type
+            year_id = getattr(context, "academic_year_id", None) if context else None
+            if year_id:
+                hall.academic_year_id = year_id
+                changed += 1
+        if changed:
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def ensure_schema_compatibility():
     """Apply additive compatibility changes and data-preserving repairs."""
     inspector = inspect(db.engine)
@@ -125,6 +144,7 @@ def ensure_schema_compatibility():
     add_column_if_missing("exam_halls", "exam_type_id", column_sql(dialect, "exam_type_id", "INTEGER"))
     add_column_if_missing("exam_halls", "academic_class_id", column_sql(dialect, "academic_class_id", "INTEGER"))
     add_column_if_missing("exam_halls", "academic_year_id", column_sql(dialect, "academic_year_id", "INTEGER"))
+    backfill_exam_hall_years()
     add_column_if_missing("attendance_records", "exam_hall_id", column_sql(dialect, "exam_hall_id", "INTEGER"))
     add_column_if_missing("attendance_records", "subject_id", column_sql(dialect, "subject_id", "INTEGER"))
     add_column_if_missing("attendance_records", "exam_session_id", column_sql(dialect, "exam_session_id", "INTEGER"))

@@ -2579,6 +2579,33 @@ def build_analytics_results_report_data(academic_year, exam):
     scoped_students = []
     for student in students:
         placement = resolve_student_academic_context(student, academic_year.id)
+        if legacy_report_mode and (
+            not placement or placement.get("context_status") == "unresolved"
+        ):
+            # Legacy-only years do not have AcademicYearLevel/Class bridge
+            # rows yet. Keep their historical Student placement readable for
+            # the report without enabling this fallback for year-aware data.
+            legacy_class = student.academic_class
+            legacy_level_id = student.academic_level_id or (
+                legacy_class.academic_level_id if legacy_class else None
+            )
+            legacy_class_id = student.academic_class_id or (
+                legacy_class.id if legacy_class else None
+            )
+            if legacy_level_id and legacy_class_id:
+                placement = {
+                    "source": "legacy-report",
+                    "context_status": "legacy_compatible",
+                    "academic_year_id": academic_year.id,
+                    "academic_year_level_id": None,
+                    "academic_year_class_id": None,
+                    "academic_level_id": legacy_level_id,
+                    "academic_class_id": legacy_class_id,
+                    "academic_section_id": student.academic_section_id,
+                    "class_name": legacy_class.name if legacy_class else None,
+                    "level_name": student.level,
+                    "section_name": None,
+                }
         level_id = placement.get("academic_level_id") if placement else None
         class_id = placement.get("academic_class_id") if placement else None
         if (
@@ -2615,12 +2642,6 @@ def build_analytics_results_report_data(academic_year, exam):
         if not record.subject_id:
             continue
         latest_attendance.setdefault((record.student_id, record.subject_id), record)
-
-    subject_sitting_student_ids = defaultdict(set)
-    for (student_id, subject_id), record in latest_attendance.items():
-        if counts_as_exam_sitting(record.status):
-            subject_sitting_student_ids[subject_id].add(student_id)
-    exam_sitting_student_ids = set().union(*subject_sitting_student_ids.values()) if subject_sitting_student_ids else set()
 
     results_by_student = defaultdict(list)
     results_by_level_subject = defaultdict(lambda: defaultdict(list))
@@ -2666,6 +2687,25 @@ def build_analytics_results_report_data(academic_year, exam):
         for scope in year_level_scopes
         if scope.legacy_level_id
     }
+
+    # Attendance only counts toward this report when the recorded subject is
+    # an official exam subject for the student's resolved year-level. A stale
+    # or cross-level attendance row must never make a student appear as having
+    # sat this examination.
+    subject_sitting_student_ids = defaultdict(set)
+    for (student_id, subject_id), record in latest_attendance.items():
+        student_level_id = student_level_lookup.get(student_id)
+        if (
+            student_level_id
+            and subject_id in subject_ids_by_level.get(student_level_id, set())
+            and counts_as_exam_sitting(record.status)
+        ):
+            subject_sitting_student_ids[subject_id].add(student_id)
+    exam_sitting_student_ids = (
+        set().union(*subject_sitting_student_ids.values())
+        if subject_sitting_student_ids else set()
+    )
+
     for result in results:
         level_id = student_level_lookup.get(result.student_id)
         if (
