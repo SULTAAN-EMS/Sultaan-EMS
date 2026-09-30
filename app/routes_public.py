@@ -17,7 +17,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from . import csrf, db
 from .i18n import language_redirect
 from .models import AcademicLevel, AcademicYear, AcademicYearSubject, Exam, ExamHall, ExamHallVersion, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeatMixerAssignment, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, StudentEnrollment, Subject
-from .services import active_exam_for_student, attendance_uf_record, get_settings, result_payload, result_success_overlay_config, scoped_legacy_subjects, top_students_for_class
+from .services import attendance_uf_record, get_settings, result_payload, result_success_overlay_config, scoped_legacy_subjects, top_students_for_class
 from .attendance_rules import normalize_attendance_status
 from .enrollment_service import (
     enrollment_placement_for_student,
@@ -1419,12 +1419,14 @@ def verify_id_card(token):
     logger.info(f"VERIFY STUDENT - Student academic_class_id: {issue.student.academic_class_id}")
     logger.info(f"VERIFY STUDENT - Student academic_section_id: {issue.student.academic_section_id}")
     
+    # A bound ID-card exam is authoritative. Older general cards may use an
+    # explicitly supplied, same-year exam, but must never guess the current
+    # active exam because that could attach the wrong seating plan.
     requested_exam_id = request.args.get("exam_id", type=int)
-    exam = (
+    exam = issue.exam if issue.exam_id else (
         Exam.query.filter_by(id=requested_exam_id, academic_year_id=issue.academic_year_id).first()
         if requested_exam_id else None
     )
-    exam = exam or active_exam_for_student(issue.student, preferred_year_id=issue.academic_year_id)
 
     seating = None
     if exam:
@@ -1488,8 +1490,9 @@ def qr_landing(token):
         db.session.commit()
     requested_exam_id = request.args.get("exam_id", type=int)
     qr_exam = (
+        issue.exam if issue.exam_id else
         Exam.query.filter_by(id=requested_exam_id, academic_year_id=issue.academic_year_id).first()
-        if requested_exam_id else None
+        if (issue.exam_id or requested_exam_id) else None
     )
     return render_template(
         "qr_landing.html",
@@ -1548,16 +1551,13 @@ def incident_report_form(token):
     student_subjects = incident_subjects_for_student(student, issue.academic_year_id, placement=placement)
     student_subject_ids = {subject.id for subject in student_subjects}
 
-    requested_exam_id = request.args.get("exam_id", type=int)
+    # Preserve the exam scope when the form posts back without query-string
+    # parameters. The hidden field is validated against the ID-card year
+    # before it is used, so a tampered exam cannot cross academic years.
+    requested_exam_id = issue.exam_id or request.args.get("exam_id", type=int) or request.form.get("exam_id", type=int)
     exam = (
         Exam.query.filter_by(id=requested_exam_id, academic_year_id=issue.academic_year_id).first()
         if requested_exam_id else None
-    )
-    exam = exam or active_exam_for_student(
-        student,
-        preferred_year_id=issue.academic_year_id,
-        placement=placement,
-        strict_preferred_year=True,
     )
 
     if request.method == "POST":

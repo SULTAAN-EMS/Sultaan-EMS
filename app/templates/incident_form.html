@@ -139,7 +139,7 @@
   </div>
 
   <!-- Incident Form -->
-  <form method="POST" action="{{ url_for('public.incident_report_form', token=token) }}" enctype="multipart/form-data" class="incident-form">
+  <form method="POST" action="{{ url_for('public.incident_report_form', token=token, exam_id=exam.id) if exam else url_for('public.incident_report_form', token=token) }}" enctype="multipart/form-data" class="incident-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="validation-summary" id="validationSummary" hidden>
       <i class="fa-solid fa-circle-exclamation"></i>

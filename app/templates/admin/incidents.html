@@ -146,7 +146,7 @@
               <select name="exam_session">
                 <option value="">All Sessions</option>
                 {% for session in exam_sessions %}
-                <option value="{{ session.id }}" {% if session_filter == session.id|string %}selected{% endif %}>{{ session.name }}</option>
+                <option value="{{ session.id }}" {% if session_filter == session.id|string %}selected{% endif %}>{{ session.sitting_label }}{% if session.session_date %} · {{ session.session_date.strftime('%d %b %Y') }}{% endif %}</option>
                 {% endfor %}
               </select>
             </div>

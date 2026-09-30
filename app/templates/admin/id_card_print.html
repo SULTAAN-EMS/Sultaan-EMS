@@ -421,7 +421,7 @@
                 </div>
                 <div class="school-block">
                   <h1>{{ settings.school_name }}</h1>
-                  <strong>{{ settings.id_card_exam_type }}</strong>
+                  <strong>{{ issue.exam.name if issue.exam else settings.id_card_exam_type }}</strong>
                 </div>
                 <div class="year-block">
                   <span>Sanad Dugsiyeed</span>

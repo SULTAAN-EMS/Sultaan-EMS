@@ -19,6 +19,24 @@ def ensure_schema_compatibility():
     add_column_if_missing("students", "section", column_sql(dialect, "section", "VARCHAR(80)"))
     add_column_if_missing("students", "lock_admin_message", column_sql(dialect, "lock_admin_message", "TEXT"))
     add_column_if_missing("students", "lock_admin_message_at", column_sql(dialect, "lock_admin_message_at", "DATETIME"))
+    # Exam-scoped ID cards: old cards remain readable with a NULL exam until
+    # an administrator regenerates them with an explicit exam selection.
+    add_column_if_missing("id_card_issues", "exam_id", column_sql(dialect, "exam_id", "INTEGER"))
+    add_index_if_missing("id_card_issues", "idx_id_card_issues_exam_id", ["exam_id"])
+    add_index_if_missing(
+        "id_card_issues",
+        "uq_id_card_student_year_exam",
+        ["student_id", "academic_year_id", "exam_id"],
+        unique=True,
+    )
+    add_foreign_key_if_missing(
+        "id_card_issues",
+        "fk_id_card_issues_exam_id",
+        ["exam_id"],
+        "exams",
+        ["id"],
+        ondelete="SET NULL",
+    )
     add_column_if_missing("results", "grade_override", column_sql(dialect, "grade_override", "VARCHAR(10)"))
     add_column_if_missing("results", "comment", column_sql(dialect, "comment", "VARCHAR(255)"))
     add_column_if_missing("incident_reports", "signature_data", column_sql(dialect, "signature_data", "TEXT"))

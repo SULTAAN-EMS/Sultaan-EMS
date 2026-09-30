@@ -34,6 +34,9 @@ def verification_payload(student, exam):
 
 
 def id_card_qr_payload(issue, exam_id=None):
-    query = {"exam_id": int(exam_id)} if exam_id else {}
+    # The persisted issue is authoritative. The explicit argument is retained
+    # for seating-print compatibility, but cannot override a bound card exam.
+    effective_exam_id = getattr(issue, "exam_id", None) or exam_id
+    query = {"exam_id": int(effective_exam_id)} if effective_exam_id else {}
     verify_url = url_for("public.qr_landing", token=issue.token, _external=True, **query)
     return {"url": verify_url, "qr_code": qr_data_uri(verify_url)}

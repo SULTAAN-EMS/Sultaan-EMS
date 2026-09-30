@@ -29,6 +29,22 @@ def get_class_color(class_id):
     return CLASS_PALETTE[class_id % len(CLASS_PALETTE)]
 
 
+def resolve_scoped_exam_hall(exam_id, hall_id, *, require_active=False):
+    """Resolve one hall only when it is explicitly bound to the selected exam."""
+    exam = db.session.get(Exam, exam_id) if exam_id else None
+    hall = db.session.get(ExamHall, hall_id) if hall_id else None
+    if not exam or not hall:
+        return None, None, "The selected exam or hall does not exist."
+    if hall.exam_id != exam.id:
+        return None, None, "This exam hall is linked to a different exam type."
+    hall_year_id = hall.academic_year_id or (hall.exam.academic_year_id if hall.exam else None)
+    if hall_year_id != exam.academic_year_id:
+        return None, None, "This exam hall and exam type belong to different academic years."
+    if require_active and not exam.is_active:
+        return None, None, "The selected exam type is inactive."
+    return exam, hall, None
+
+
 def students_for_exam_classes(exam, class_ids):
     """Resolve seat candidates through the selected exam year's enrollments."""
     student_ids = set()
@@ -144,8 +160,10 @@ def builder():
         flash("Please select an exam and hall.", "warning")
         return redirect(url_for("seat_arrangement.index"))
     
-    exam = db.session.get(Exam, exam_id) or abort(404)
-    hall = db.session.get(ExamHall, hall_id) or abort(404)
+    exam, hall, scope_error = resolve_scoped_exam_hall(exam_id, hall_id)
+    if scope_error:
+        flash(scope_error, "warning")
+        return redirect(url_for("seat_arrangement.index"))
     
     # Load existing assignments or start fresh
     existing_assignments = SeatAssignment.query.filter_by(
@@ -200,6 +218,8 @@ def api_students():
         return jsonify({'error': 'Missing parameters'}), 400
     
     exam = db.session.get(Exam, exam_id) or abort(404)
+    if not exam.is_active:
+        return jsonify({'error': 'The selected exam type is inactive.'}), 400
     
     students = students_for_exam_classes(exam, class_ids)
     
@@ -231,7 +251,9 @@ def api_generate():
     if not exam_id or not hall_id or not class_ids:
         return jsonify({'error': 'Missing parameters'}), 400
     
-    exam = db.session.get(Exam, exam_id) or abort(404)
+    exam, hall, scope_error = resolve_scoped_exam_hall(exam_id, hall_id, require_active=True)
+    if scope_error:
+        return jsonify({'error': scope_error}), 409
     
     # Get students for selected classes
     students = students_for_exam_classes(exam, class_ids)
@@ -335,7 +357,9 @@ def api_optimize():
     if not exam_id or not hall_id or not class_ids:
         return jsonify({'error': 'Missing parameters'}), 400
     
-    exam = db.session.get(Exam, exam_id) or abort(404)
+    exam, hall, scope_error = resolve_scoped_exam_hall(exam_id, hall_id, require_active=True)
+    if scope_error:
+        return jsonify({'error': scope_error}), 409
     
     # Get students for selected classes
     students = students_for_exam_classes(exam, class_ids)
@@ -519,6 +543,10 @@ def api_save():
     
     if not exam_id or not hall_id:
         return jsonify({'error': 'Missing parameters'}), 400
+
+    exam, hall, scope_error = resolve_scoped_exam_hall(exam_id, hall_id, require_active=True)
+    if scope_error:
+        return jsonify({'error': scope_error}), 409
     
     try:
         # Delete existing assignments for this exam + hall
@@ -561,7 +589,9 @@ def api_class_students():
     if not class_id or not exam_id:
         return jsonify({'error': 'Missing parameters'}), 400
     
-    exam = db.session.get(Exam, exam_id) or abort(404)
+    exam, hall, scope_error = resolve_scoped_exam_hall(exam_id, hall_id)
+    if scope_error:
+        return jsonify({'error': scope_error}), 409
     
     # Get all students from this class
     students = students_for_exam_classes(exam, [class_id])
@@ -622,7 +652,11 @@ def api_validate():
     
     if not exam_id or not hall_id:
         return jsonify({'error': 'Missing parameters'}), 400
-    
+
+    exam, hall, scope_error = resolve_scoped_exam_hall(exam_id, hall_id)
+    if scope_error:
+        return jsonify({'error': scope_error}), 409
+
     rows = config.get("rows", 3)
     tables_per_row = config.get("tables_per_row", 5)
     
@@ -644,8 +678,10 @@ def print_arrangement():
         flash("Missing exam or hall ID.", "danger")
         return redirect(url_for("seat_arrangement.index"))
     
-    exam = db.session.get(Exam, exam_id) or abort(404)
-    hall = db.session.get(ExamHall, hall_id) or abort(404)
+    exam, hall, scope_error = resolve_scoped_exam_hall(exam_id, hall_id)
+    if scope_error:
+        flash(scope_error, "warning")
+        return redirect(url_for("seat_arrangement.index"))
     
     # Get saved assignments
     assignments = SeatAssignment.query.filter_by(

@@ -12,7 +12,7 @@ from sqlalchemy import func, or_
 
 from . import db
 from .audit import audit
-from .models import AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, IdCardIssue, SchoolClass, Setting, Student, StudentEnrollment
+from .models import AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, Exam, IdCardIssue, SchoolClass, Setting, Student, StudentEnrollment
 from .permissions import enforce_endpoint_permission
 from .enrollment_service import EnrollmentValidationError, student_enrollment_legacy_scope_query, student_enrollment_scope_query
 from .services import get_settings
@@ -72,6 +72,13 @@ def dashboard():
         return redirect(url_for("admin_id_cards.dashboard"))
 
     filters = card_filters()
+    exams = (
+        Exam.query
+        .filter_by(academic_year_id=filters["year_id"], is_active=True)
+        .order_by(Exam.sort_order, Exam.name, Exam.id)
+        .all()
+        if filters["year_id"] else []
+    )
     students = filtered_students(filters).order_by(Student.full_name).limit(500).all()
     student_placements = {
         student.id: resolve_student_placement(student, filters["year_id"])
@@ -100,6 +107,7 @@ def dashboard():
         years=AcademicYear.query.order_by(AcademicYear.name.desc()).all(),
         levels=filter_level_options(filters),
         sections=filter_section_options(filters),
+        exams=exams,
         templates=ID_CARD_TEMPLATES,
     )
 
@@ -125,8 +133,9 @@ def apply_template(template_name):
 def generate(student_id):
     student = db.session.get(Student, student_id) or abort(404)
     academic_year_id = int_or_none(request.form.get("academic_year_id"))
+    exam_id = int_or_none(request.form.get("exam_id"))
     try:
-        issue = get_or_create_issue(student, academic_year_id=academic_year_id)
+        issue = get_or_create_issue(student, academic_year_id=academic_year_id, exam_id=exam_id)
     except EnrollmentValidationError as exc:
         db.session.rollback()
         flash(str(exc), "warning")
@@ -142,6 +151,7 @@ def bulk_generate():
     scope = request.form.get("scope", "selected")
     ids = [int(value) for value in request.form.getlist("student_ids") if value.isdigit()]
     academic_year_id = int_or_none(request.form.get("academic_year_id"))
+    exam_id = int_or_none(request.form.get("exam_id"))
     academic_year_class_id = int_or_none(request.form.get("academic_year_class_id"))
     query = Student.query
     has_scope_value = bool(
@@ -175,7 +185,7 @@ def bulk_generate():
     issue_ids = []
     try:
         for student in Student.query.filter(Student.id.in_(ids)).all():
-            issue_ids.append(get_or_create_issue(student, academic_year_id=academic_year_id).id)
+            issue_ids.append(get_or_create_issue(student, academic_year_id=academic_year_id, exam_id=exam_id).id)
     except EnrollmentValidationError as exc:
         db.session.rollback()
         flash(str(exc), "warning")
@@ -286,6 +296,10 @@ def draw_id_card_pdf(pdf, issue, settings, x, y, w, h, primary, accent, qrcode, 
     pdf.drawString(card_x + 21 * mm, card_y + card_h - 8 * mm, (settings.get("school_name") or "School")[:36])
     pdf.setFont("Helvetica-Bold", 7)
     pdf.drawString(card_x + 21 * mm, card_y + card_h - 14 * mm, f"Academic Year: {issue.academic_year.name[:18]}")
+    pdf.setFont("Helvetica-Bold", 6)
+    exam_name = issue.exam.name if issue.exam else (settings.get("id_card_exam_type") or "")
+    if exam_name:
+        pdf.drawString(card_x + 21 * mm, card_y + card_h - 19 * mm, f"Exam: {exam_name[:28]}")
 
     title_y = card_y + card_h - header_h - 8 * mm
     pdf.setFillColor(accent)
@@ -346,10 +360,20 @@ def draw_id_card_pdf(pdf, issue, settings, x, y, w, h, primary, accent, qrcode, 
     pdf.drawCentredString(card_x + card_w / 2, card_y + 4.5 * mm, contact[:95])
 
 
-def get_or_create_issue(student, academic_year_id=None):
-    """Get/create an ID card in the requested historical year scope."""
+def get_or_create_issue(student, academic_year_id=None, exam_id=None):
+    """Get/create an ID card in one year + exam scope."""
     year_id = resolve_id_card_year_id(student, academic_year_id)
-    issue = IdCardIssue.query.filter_by(student_id=student.id, academic_year_id=year_id, status="Active").first()
+    exam = db.session.get(Exam, exam_id) if exam_id else None
+    if not exam:
+        raise EnrollmentValidationError("Dooro Exam Type ka hor intaadan sameyn ID Card.")
+    if exam.academic_year_id != year_id or not exam.is_active:
+        raise EnrollmentValidationError("Exam Type-ka la doortay kuma xirna sannadka ardayga.")
+    issue = IdCardIssue.query.filter_by(
+        student_id=student.id,
+        academic_year_id=year_id,
+        exam_id=exam.id,
+        status="Active",
+    ).first()
     settings = get_settings()
     months = configured_issue_months(settings)
     if issue:
@@ -361,6 +385,7 @@ def get_or_create_issue(student, academic_year_id=None):
             token=secrets.token_urlsafe(32),
             student=student,
             academic_year_id=year_id,
+            exam_id=exam.id,
             issue_date=date.today(),
             expiry_date=add_months(date.today(), months),
             status="Active",

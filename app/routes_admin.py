@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, date, timedelta
 from functools import wraps
+from types import SimpleNamespace
 
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
@@ -219,6 +220,15 @@ def dashboard():
     return render_template("admin/dashboard.html", stats=stats, current_year=current_year, latest_results=latest_results)
 
 
+def _incident_int_filter(value):
+    """Parse optional incident filters without turning bad URLs into 500s."""
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
 @admin_bp.route("/incidents")
 def incidents():
     """Incident Reports Dashboard"""
@@ -228,13 +238,25 @@ def incidents():
     category_filter = request.args.get("category", "")
     room_filter = request.args.get("room", "").strip()
     subject_filter = request.args.get("subject", "").strip()
-    session_filter = request.args.get("exam_session", "")
-    academic_year_filter = request.args.get("academic_year_id", "")
-    exam_filter = request.args.get("exam_id", "") or session_filter
+    session_filter = request.args.get("exam_session", "").strip()
+    academic_year_filter = request.args.get("academic_year_id", "").strip()
+    exam_filter = request.args.get("exam_id", "").strip()
     level_filter = request.args.get("level_id", "")
     class_filter = request.args.get("class_id", "")
     date_from = request.args.get("date_from", "")
     date_to = request.args.get("date_to", "")
+
+    academic_year_id = _incident_int_filter(academic_year_filter)
+    exam_id = _incident_int_filter(exam_filter)
+    session_id = _incident_int_filter(session_filter)
+    level_id = _incident_int_filter(level_filter)
+    class_id = _incident_int_filter(class_filter)
+
+    selected_exam = db.session.get(Exam, exam_id) if exam_id else None
+    selected_session = db.session.get(ExamSession, session_id) if session_id else None
+    scope_year_id = academic_year_id or (selected_exam.academic_year_id if selected_exam else None)
+    if selected_session and not scope_year_id:
+        scope_year_id = selected_session.academic_year_id
 
     query = (
         IncidentReport.query
@@ -254,14 +276,16 @@ def incidents():
     if status_filter:
         query = query.filter(IncidentReport.status == status_filter)
 
-    if severity_filter:
-        query = query.filter(IncidentReport.severity_id == int(severity_filter))
+    severity_id = _incident_int_filter(severity_filter)
+    category_id = _incident_int_filter(category_filter)
+    if severity_id:
+        query = query.filter(IncidentReport.severity_id == severity_id)
 
-    if category_filter:
+    if category_id:
         query = query.filter(
             or_(
-                IncidentReport.category_id == int(category_filter),
-                IncidentReportCategory.category_id == int(category_filter),
+                IncidentReport.category_id == category_id,
+                IncidentReportCategory.category_id == category_id,
             )
         )
 
@@ -271,11 +295,19 @@ def incidents():
     if subject_filter:
         query = query.filter(IncidentReport.subject.has(Subject.name.like(f"%{subject_filter}%")))
 
-    if academic_year_filter:
-        query = query.filter(Exam.academic_year_id == int(academic_year_filter))
+    if academic_year_id:
+        query = query.filter(Exam.academic_year_id == academic_year_id)
 
-    if exam_filter:
-        query = query.filter(IncidentReport.exam_id == int(exam_filter))
+    if exam_id:
+        query = query.filter(IncidentReport.exam_id == exam_id)
+
+    if session_id:
+        # Incident reports persist the canonical Exam ID.  A session can be
+        # used as a filter only when it is linked to that same canonical exam.
+        if selected_session and selected_session.exam_id:
+            query = query.filter(IncidentReport.exam_id == selected_session.exam_id)
+        else:
+            query = query.filter(IncidentReport.id == -1)
 
     if date_from:
         query = query.filter(IncidentReport.incident_date >= datetime.strptime(date_from, "%Y-%m-%d").date())
@@ -284,21 +316,36 @@ def incidents():
         query = query.filter(IncidentReport.incident_date <= datetime.strptime(date_to, "%Y-%m-%d").date())
 
     reports = query.distinct().order_by(IncidentReport.created_at.desc()).all()
+    report_level_scopes = set()
+    report_class_scopes = set()
+    for report in reports:
+        if not report.exam or not report.student:
+            continue
+        report_year_id = report.exam.academic_year_id
+        placement = enrollment_placement_for_student(report.student, report_year_id) or {}
+        report_level_id = placement.get("academic_level_id") or report.exam.academic_level_id
+        report_class_id = placement.get("academic_class_id") or report.exam.academic_class_id
+        if report_level_id:
+            report_level_scopes.add((report_year_id, report_level_id))
+        if report_class_id:
+            report_class_scopes.add((report_year_id, report_class_id))
     if level_filter or class_filter:
-        selected_level_id = int(level_filter) if level_filter else None
-        selected_class_id = int(class_filter) if class_filter else None
+        selected_level_id = level_id
+        selected_class_id = class_id
 
         def matches_historical_placement(report):
             year_id = (
                 report.exam.academic_year_id if report.exam
-                else int(academic_year_filter) if academic_year_filter.isdigit()
-                else report.student.academic_year_id
+                else (academic_year_id if academic_year_id else report.student.academic_year_id)
             )
             placement = enrollment_placement_for_student(report.student, year_id) if year_id else None
             placement = placement or {}
+            report_exam = report.exam
             return (
                 (selected_level_id is None or placement.get("academic_level_id") == selected_level_id)
                 and (selected_class_id is None or placement.get("academic_class_id") == selected_class_id)
+                and (selected_level_id is None or not report_exam or not report_exam.academic_level_id or report_exam.academic_level_id == selected_level_id)
+                and (selected_class_id is None or not report_exam or not report_exam.academic_class_id or report_exam.academic_class_id == selected_class_id)
             )
 
         reports = [report for report in reports if matches_historical_placement(report)]
@@ -314,10 +361,97 @@ def incidents():
     categories = IncidentCategory.query.order_by(IncidentCategory.sort_order).all()
     severities = SeverityLevel.query.order_by(SeverityLevel.sort_order).all()
     academic_years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
-    exams = Exam.query.order_by(Exam.id.desc()).all()
-    levels = AcademicLevel.query.order_by(AcademicLevel.sort_order, AcademicLevel.name).all()
-    classes = AcademicClass.query.order_by(AcademicClass.sort_order, AcademicClass.name).all()
-    exam_sessions = exams
+
+    # Keep the filter controls aligned to the selected academic scope.  The
+    # report table stores the legacy level/class IDs for compatibility, so the
+    # year-aware mapping is converted back to those IDs for submitted filters.
+    exams_query = Exam.query.filter(Exam.is_active.is_(True)).order_by(Exam.id.desc())
+    if scope_year_id:
+        exams_query = exams_query.filter(Exam.academic_year_id == scope_year_id)
+    exams = exams_query.all()
+
+    year_level_query = AcademicYearLevel.query.filter_by(is_active=True)
+    if scope_year_id:
+        year_level_query = year_level_query.filter_by(academic_year_id=scope_year_id)
+    year_level_scopes = year_level_query.order_by(
+        AcademicYearLevel.academic_year_id,
+        AcademicYearLevel.sort_order,
+        AcademicYearLevel.name,
+    ).all()
+    year_level_scopes = [
+        item for item in year_level_scopes
+        if (item.academic_year_id, item.legacy_level_id) in report_level_scopes
+    ]
+    if selected_exam and selected_exam.academic_level_id:
+        year_level_scopes = [
+            item for item in year_level_scopes
+            if item.legacy_level_id in (None, selected_exam.academic_level_id)
+        ]
+    level_options = {}
+    for item in year_level_scopes:
+        if not item.legacy_level_id:
+            continue
+        option = level_options.setdefault(
+            item.legacy_level_id,
+            {"names": set(), "sort_order": item.sort_order or 0},
+        )
+        option["names"].add(item.name or (item.legacy_level.name if item.legacy_level else ""))
+        option["sort_order"] = min(option["sort_order"], item.sort_order or 0)
+    levels = [
+        SimpleNamespace(
+            id=legacy_id,
+            name=" / ".join(sorted(name for name in option["names"] if name)) or "Heer aan la magacaabin",
+            sort_order=option["sort_order"],
+        )
+        for legacy_id, option in level_options.items()
+    ]
+    levels.sort(key=lambda item: (item.sort_order, item.name, item.id))
+
+    year_class_scopes = []
+    for year_level in year_level_scopes:
+        if level_id and year_level.legacy_level_id != level_id:
+            continue
+        year_class_scopes.extend(
+            AcademicYearClass.query.filter_by(
+                academic_year_level_id=year_level.id,
+                is_active=True,
+            ).order_by(AcademicYearClass.sort_order, AcademicYearClass.name).all()
+        )
+    year_class_scopes = [
+        item for item in year_class_scopes
+        if (item.academic_year_level.academic_year_id, item.legacy_class_id) in report_class_scopes
+    ]
+    if selected_exam and selected_exam.academic_class_id:
+        year_class_scopes = [
+            item for item in year_class_scopes
+            if item.legacy_class_id in (None, selected_exam.academic_class_id)
+        ]
+    class_options = {}
+    for item in year_class_scopes:
+        if not item.legacy_class_id:
+            continue
+        option = class_options.setdefault(
+            item.legacy_class_id,
+            {"names": set(), "sort_order": item.sort_order or 0},
+        )
+        option["names"].add(item.name or (item.legacy_class.name if item.legacy_class else ""))
+        option["sort_order"] = min(option["sort_order"], item.sort_order or 0)
+    classes = [
+        SimpleNamespace(
+            id=legacy_id,
+            name=" / ".join(sorted(name for name in option["names"] if name)) or "Fasal aan la magacaabin",
+            sort_order=option["sort_order"],
+        )
+        for legacy_id, option in class_options.items()
+    ]
+    classes.sort(key=lambda item: (item.sort_order, item.name, item.id))
+
+    exam_sessions_query = ExamSession.query.order_by(ExamSession.session_date.desc(), ExamSession.id.desc())
+    if scope_year_id:
+        exam_sessions_query = exam_sessions_query.filter(ExamSession.academic_year_id == scope_year_id)
+    if exam_id:
+        exam_sessions_query = exam_sessions_query.filter(ExamSession.exam_id == exam_id)
+    exam_sessions = exam_sessions_query.all()
 
     return render_template(
         "admin/incidents.html",
@@ -1752,6 +1886,10 @@ def simple_crud(model, template, fields):
 
 def delete_row(model, row_id, endpoint):
     row = db.session.get(model, row_id) or abort_404()
+    if model is Exam:
+        # An exam-scoped QR must never survive as an unscoped card after its
+        # canonical exam is deleted; remove only cards bound to this exam.
+        IdCardIssue.query.filter_by(exam_id=row_id).delete(synchronize_session=False)
     db.session.delete(row)
     audit("Admin Updates", f"Deleted {model.__name__} {row_id}")
     db.session.commit()
@@ -2664,6 +2802,7 @@ def _cascade_delete_config_item(item_type, item_id):
             db.session.delete(student)
 
     elif item_type == 'exam-types':
+        IdCardIssue.query.filter_by(exam_id=item_id).delete(synchronize_session=False)
         Result.query.filter_by(exam_id=item_id).delete()
         ReportVerification.query.filter_by(exam_id=item_id).delete()
         IncidentReport.query.filter_by(exam_id=item_id).delete()

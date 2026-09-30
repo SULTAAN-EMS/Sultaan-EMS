@@ -154,6 +154,44 @@ def seat_mixer_hall_exam_id(hall):
     return hall.exam_id or None
 
 
+def seat_mixer_scope_error(hall, *, academic_year_id=None, exam_id=None, require_active_exam=False):
+    """Return a precise error when a hall is not safely scoped to one exam/year."""
+    if not hall:
+        return "The selected exam hall does not exist."
+    if not hall.exam_id or not hall.exam:
+        return "This exam hall is not linked to an official exam type yet."
+    hall_year_id = seat_mixer_hall_year_id(hall)
+    if not hall_year_id or hall.exam.academic_year_id != hall_year_id:
+        return "This exam hall has an inconsistent academic year and exam type scope."
+    if academic_year_id and hall_year_id != academic_year_id:
+        return "This exam hall belongs to a different academic year."
+    if exam_id and hall.exam_id != exam_id:
+        return "This exam hall belongs to a different exam type."
+    if require_active_exam and not hall.exam.is_active:
+        return "The selected exam type is inactive."
+    return None
+
+
+def validate_seat_mixer_students(student_ids, academic_year_id):
+    """Reject saved seats that are not students in the selected year's roster."""
+    student_ids = {int(student_id) for student_id in student_ids}
+    if not student_ids:
+        return
+    eligible_ids = {
+        student_id
+        for (student_id,) in student_enrollment_legacy_scope_query(academic_year_id)
+        .filter(Student.id.in_(student_ids), Student.is_active.is_(True))
+        .with_entities(Student.id)
+        .all()
+    }
+    missing = sorted(student_ids - eligible_ids)
+    if missing:
+        raise ValueError(
+            "One or more selected students do not belong to the selected academic year: "
+            + ", ".join(str(student_id) for student_id in missing)
+        )
+
+
 def seat_mixer_levels_for_year(academic_year_id):
     """Serialize only the year-aware levels/classes for Seat Mixer selectors."""
     result = []
@@ -405,6 +443,16 @@ def normalized_selected_students(raw_selection):
     return selected
 
 
+def optional_scope_id(value):
+    """Parse a persisted scope ID without allowing malformed history to 500."""
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def seat_mixer_metrics(assignments, academic_year_id=None):
     """Calculate the same class-separation metrics used by the live map."""
     student_ids = [item["student_id"] for item in assignments]
@@ -476,7 +524,8 @@ def snapshot_payload(snapshot):
         "assignments": assignments,
         "selected_students": normalized_selected_students(payload.get("selected_students", {})),
         "last_meta": str(payload.get("last_meta") or "Saved layout"),
-        "academic_year_id": payload.get("academic_year_id"),
+        "academic_year_id": optional_scope_id(payload.get("academic_year_id")),
+        "exam_id": optional_scope_id(payload.get("exam_id")),
     }
 
 
@@ -783,6 +832,15 @@ def api_manage_hall(hall_id):
         hall_year_id = seat_mixer_hall_year_id(hall)
         if not exam or exam.academic_year_id != hall_year_id or not exam.is_active:
             return jsonify({"error": "Select a valid exam type for this hall's academic year."}), 400
+        if hall.exam_id != exam.id and any(
+            SeatMixerAssignment.query.filter_by(version_id=version.id).first()
+            or SeatMixerSaveSnapshot.query.filter_by(version_id=version.id).first()
+            or SeatAssignment.query.filter_by(exam_hall_id=hall.id).first()
+            for version in hall.versions
+        ):
+            return jsonify({
+                "error": "A hall with saved seating cannot be moved to another exam type. Create a new hall for the new exam."
+            }), 409
         hall.exam_id = exam.id
 
     hall.name = name
@@ -1000,6 +1058,19 @@ def api_students():
     if not current_year:
         return jsonify({"error": "No current academic year found"}), 400
 
+    selected_exam = db.session.get(Exam, exam_id)
+    if not selected_exam or selected_exam.academic_year_id != current_year.id or not selected_exam.is_active:
+        return jsonify({"error": "Select an active exam type from the selected academic year."}), 400
+    if hall_id:
+        scope_error = seat_mixer_scope_error(
+            db.session.get(ExamHall, hall_id),
+            academic_year_id=current_year.id,
+            exam_id=selected_exam.id,
+            require_active_exam=True,
+        )
+        if scope_error:
+            return jsonify({"error": scope_error}), 409
+
     # Single query with eager loading — no N+1
     students = students_for_current_classes(current_year, class_ids)
 
@@ -1020,10 +1091,11 @@ def api_students():
         )
         .join(ExamHallVersion, SeatMixerAssignment.version_id == ExamHallVersion.id)
         .join(ExamHall, ExamHallVersion.exam_hall_id == ExamHall.id)
+        .join(Exam, Exam.id == ExamHall.exam_id)
         .filter(
             SeatMixerAssignment.student_id.in_(student_ids),
             ExamHall.exam_id == exam_id,
-            ExamHall.academic_year_id == current_year.id,
+            Exam.academic_year_id == current_year.id,
         )
         .all()
     )
@@ -1049,6 +1121,9 @@ def api_version_data(version_id):
     """Load the active saved revision (or a requested history preview)."""
     version = db.session.get(ExamHallVersion, version_id) or abort(404)
     hall = version.hall
+    scope_error = seat_mixer_scope_error(hall)
+    if scope_error:
+        return jsonify({"error": scope_error}), 409
     hall_exam = hall.exam
     hall_exam_type = hall.exam_type
     hall_scope_year_id = seat_mixer_hall_year_id(hall)
@@ -1082,6 +1157,10 @@ def api_version_data(version_id):
     if snapshot:
         saved_layout = snapshot_payload(snapshot)
         if saved_layout:
+            if saved_layout.get("academic_year_id") and int(saved_layout["academic_year_id"]) != hall_scope_year_id:
+                return jsonify({"error": "This saved seating revision belongs to a different academic year."}), 409
+            if saved_layout.get("exam_id") and int(saved_layout["exam_id"]) != hall.exam_id:
+                return jsonify({"error": "This saved seating revision belongs to a different exam type."}), 409
             config = saved_layout["config"]
             assignment_rows = saved_layout["assignments"]
             selected_students = saved_layout["selected_students"]
@@ -1106,6 +1185,15 @@ def api_version_data(version_id):
             "table": assignment.table_number,
             "seat": assignment.seat_number,
         } for assignment in assignments]
+
+    try:
+        validate_seat_mixer_students(
+            [item["student_id"] for item in assignment_rows]
+            + [student_id for student_ids in selected_students.values() for student_id in student_ids],
+            academic_year_id,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 422
 
     config["classColors"] = version_class_colors(version_id)
 
@@ -1218,6 +1306,22 @@ def api_save():
         return jsonify({"error": "Select a valid academic year before saving the arrangement."}), 400
     if not requested_exam_id or hall.exam_id != requested_exam_id:
         return jsonify({"error": "Select the exam type assigned to this hall before saving the arrangement."}), 400
+    scope_error = seat_mixer_scope_error(
+        hall,
+        academic_year_id=academic_year_id,
+        exam_id=requested_exam_id,
+        require_active_exam=True,
+    )
+    if scope_error:
+        return jsonify({"error": scope_error}), 400
+    try:
+        validate_seat_mixer_students(
+            [item["student_id"] for item in normalized_rows]
+            + [student_id for student_ids in selected_students.values() for student_id in student_ids],
+            academic_year_id,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 422
 
     try:
         replace_active_assignments(version_id, normalized_rows, normalized_config)
@@ -1272,7 +1376,10 @@ def api_save():
 @seat_mixer_bp.route("/api/version/<int:version_id>/history")
 def api_version_history(version_id):
     """List the rolling save history for one layout version."""
-    db.session.get(ExamHallVersion, version_id) or abort(404)
+    version = db.session.get(ExamHallVersion, version_id) or abort(404)
+    scope_error = seat_mixer_scope_error(version.hall)
+    if scope_error:
+        return jsonify({"error": scope_error}), 409
     history, current_id = history_metadata(version_id)
     return jsonify({"history": history, "current_snapshot_id": current_id})
 
@@ -1281,6 +1388,9 @@ def api_version_history(version_id):
 def api_history_snapshot(version_id, snapshot_id):
     """Return one historical layout in the same shape as the active builder data."""
     version = db.session.get(ExamHallVersion, version_id) or abort(404)
+    scope_error = seat_mixer_scope_error(version.hall)
+    if scope_error:
+        return jsonify({"error": scope_error}), 409
     snapshot = SeatMixerSaveSnapshot.query.filter_by(
         id=snapshot_id,
         version_id=version_id,
@@ -1288,6 +1398,18 @@ def api_history_snapshot(version_id, snapshot_id):
     layout = snapshot_payload(snapshot)
     if not layout:
         return jsonify({"error": "This saved layout is no longer valid"}), 422
+    if layout.get("academic_year_id") and int(layout["academic_year_id"]) != seat_mixer_hall_year_id(version.hall):
+        return jsonify({"error": "This saved seating revision belongs to a different academic year."}), 409
+    if layout.get("exam_id") and int(layout["exam_id"]) != version.hall.exam_id:
+        return jsonify({"error": "This saved seating revision belongs to a different exam type."}), 409
+    try:
+        validate_seat_mixer_students(
+            [item["student_id"] for item in layout["assignments"]]
+            + [student_id for student_ids in layout["selected_students"].values() for student_id in student_ids],
+            seat_mixer_hall_year_id(version.hall),
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 422
     config = dict(layout["config"])
     config["classColors"] = version_class_colors(version_id)
     return jsonify({
@@ -1309,6 +1431,9 @@ def api_history_snapshot(version_id, snapshot_id):
 def api_restore_history_snapshot(version_id, snapshot_id):
     """Make one saved revision the active layout without discarding history."""
     version = db.session.get(ExamHallVersion, version_id) or abort(404)
+    scope_error = seat_mixer_scope_error(version.hall, require_active_exam=True)
+    if scope_error:
+        return jsonify({"error": scope_error}), 409
     if is_expired(version.hall):
         return jsonify({"error": "Cannot restore an expired hall layout"}), 400
     snapshot = SeatMixerSaveSnapshot.query.filter_by(
@@ -1318,8 +1443,17 @@ def api_restore_history_snapshot(version_id, snapshot_id):
     layout = snapshot_payload(snapshot)
     if not layout:
         return jsonify({"error": "This saved layout is no longer valid"}), 422
+    if layout.get("academic_year_id") and int(layout["academic_year_id"]) != seat_mixer_hall_year_id(version.hall):
+        return jsonify({"error": "This saved seating revision belongs to a different academic year."}), 409
+    if layout.get("exam_id") and int(layout["exam_id"]) != version.hall.exam_id:
+        return jsonify({"error": "This saved seating revision belongs to a different exam type."}), 409
     try:
         restorable_rows = normalized_assignments(layout["assignments"], layout["config"])
+        validate_seat_mixer_students(
+            [item["student_id"] for item in restorable_rows]
+            + [student_id for student_ids in layout["selected_students"].values() for student_id in student_ids],
+            seat_mixer_hall_year_id(version.hall),
+        )
         replace_active_assignments(version_id, restorable_rows, layout["config"])
         set_current_snapshot_id(version_id, snapshot.id)
         db.session.commit()
@@ -1338,6 +1472,9 @@ def api_restore_history_snapshot(version_id, snapshot_id):
 def api_delete_history_snapshot(version_id, snapshot_id):
     """Permanently remove one unneeded layout revision without touching others."""
     version = db.session.get(ExamHallVersion, version_id) or abort(404)
+    scope_error = seat_mixer_scope_error(version.hall)
+    if scope_error:
+        return jsonify({"error": scope_error}), 409
     if not (request.get_json(silent=True) or {}).get("confirm"):
         return jsonify({"error": "Deletion must be explicitly confirmed"}), 400
     snapshot = SeatMixerSaveSnapshot.query.filter_by(
@@ -1401,12 +1538,20 @@ def api_class_students():
     if not current_year:
         return jsonify({"error": "No current academic year found"}), 400
 
+    version = db.session.get(ExamHallVersion, version_id) if version_id else None
+    hall = version.hall if version else (db.session.get(ExamHall, hall_id) if hall_id else None)
+    if version and hall_id and version.exam_hall_id != hall_id:
+        return jsonify({"error": "The selected version does not belong to this exam hall."}), 409
+    scope_error = seat_mixer_scope_error(hall, academic_year_id=current_year.id) if hall else None
+    if scope_error:
+        return jsonify({"error": scope_error}), 409
+
     # Single query for students in this class
     students = students_for_current_classes(current_year, [class_id])
 
     # Single query for existing seat positions in this version
     seat_positions = {}
-    if version_id:
+    if version:
         existing = (
             SeatMixerAssignment.query
             .filter_by(version_id=version_id)
@@ -1457,7 +1602,16 @@ def print_arrangement():
         return redirect(url_for("seat_mixer.index"))
 
     version = db.session.get(ExamHallVersion, version_id) or abort(404)
+    scope_error = seat_mixer_scope_error(version.hall)
+    if scope_error:
+        return jsonify({"error": scope_error}), 409
     hall = version.hall
+    if not hall.exam_id:
+        flash("Hall-kan ma laha Exam Type rasmi ah. Ku xiro Exam Type ka hor intaadan daabicin seating plan.", "warning")
+        return redirect(url_for(
+            "seat_mixer.index",
+            academic_year_id=seat_mixer_hall_year_id(hall),
+        ))
 
     # Load saved assignments with eager-loaded student data
     assignments = (
@@ -1524,7 +1678,7 @@ def print_arrangement():
         issue_year_id = resolve_id_card_year_id(student, academic_year_id)
         # The shared helper repairs missing dates, expires stale Active rows,
         # and creates a fresh issue when the previous card has expired.
-        issue = get_or_create_issue(student, academic_year_id=issue_year_id)
+        issue = get_or_create_issue(student, academic_year_id=issue_year_id, exam_id=hall.exam_id)
         issues_created = True
         student_qr[str(student.id)] = id_card_qr_payload(issue, exam_id=hall.exam_id)
     if issues_created:

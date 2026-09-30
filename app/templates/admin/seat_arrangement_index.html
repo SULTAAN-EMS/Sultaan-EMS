@@ -162,10 +162,10 @@
         <h2><span class="ico">🏛</span>2. Dooro Exam Hall/Room</h2>
         <div class="select-grid" id="hallList">
           {% for hall in halls %}
-          <div class="opt-card locked" data-hall-id="{{ hall.id }}" data-hall-name="{{ hall.name }}">
+          <div class="opt-card locked" data-hall-id="{{ hall.id }}" data-hall-name="{{ hall.name }}" data-exam-id="{{ hall.exam_id or '' }}">
             <div>
               <div class="oname">{{ hall.name }}</div>
-              <div class="osub">Capacity: {{ hall.capacity }} students</div>
+              <div class="osub">{{ hall.exam.name if hall.exam else 'No official exam type' }} · Capacity: {{ hall.capacity }} students</div>
             </div>
             <div class="check"></div>
           </div>
@@ -191,7 +191,14 @@ document.querySelectorAll('#examTypeList .opt-card').forEach(card => {
         card.classList.add('active');
         selectedExamId = card.dataset.examId;
         
-        document.querySelectorAll('#hallList .opt-card').forEach(h => h.classList.remove('locked'));
+        document.querySelectorAll('#hallList .opt-card').forEach(h => {
+            const matchesExam = String(h.dataset.examId || '') === String(selectedExamId);
+            h.classList.toggle('locked', !matchesExam);
+            if (!matchesExam) h.classList.remove('active');
+        });
+        if (selectedHallId && !Array.from(document.querySelectorAll('#hallList .opt-card')).some(h => h.dataset.hallId === selectedHallId && !h.classList.contains('locked'))) {
+            selectedHallId = null;
+        }
         updateOpenButton();
     });
 });

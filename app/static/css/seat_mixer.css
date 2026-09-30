@@ -395,7 +395,8 @@
 }
 .sm-year-scope select:focus { border-color: var(--sm-blue2); box-shadow: 0 0 0 3px rgba(96,165,250,.2); }
 .sm-year-scope-note { color: var(--sm-muted); font-size: 11px; }
-.sm-year-scope-front { margin: 0 0 18px; }
+.sm-year-scope-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.sm-year-scope-front { margin: 0; }
 .sm-level-chip {
   display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--sm-text-dim);
   background: rgba(255,255,255,.06); border: 1.5px solid var(--sm-border); border-radius: 999px;
@@ -606,6 +607,7 @@
   .sm-config-title small{display:none}
   .sm-manage-fields.two{grid-template-columns:1fr}
   .sm-year-scope {grid-template-columns:1fr; gap:6px}
+  .sm-year-scope-row {grid-template-columns:1fr; gap:10px; margin-bottom:14px}
 }
 
 /* Mission V2: visual controls for a live, document-like seating workspace. */

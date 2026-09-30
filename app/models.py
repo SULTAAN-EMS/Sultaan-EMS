@@ -1927,6 +1927,10 @@ class IdCardIssue(TimestampMixin, db.Model):
     token = db.Column(db.String(120), unique=True, nullable=False, index=True)
     student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     academic_year_id = db.Column(db.Integer, db.ForeignKey("academic_years.id"), nullable=False, index=True)
+    # An exam-scoped card keeps the QR verification and seating plan on the
+    # same canonical exam. Nullable preserves older general cards until they
+    # are regenerated with an explicit exam selection.
+    exam_id = db.Column(db.Integer, db.ForeignKey("exams.id", ondelete="SET NULL"), nullable=True, index=True)
     issue_date = db.Column(db.Date, nullable=False)
     expiry_date = db.Column(db.Date)
     status = db.Column(
@@ -1939,6 +1943,11 @@ class IdCardIssue(TimestampMixin, db.Model):
 
     student = db.relationship("Student")
     academic_year = db.relationship("AcademicYear")
+    exam = db.relationship("Exam")
+
+    __table_args__ = (
+        UniqueConstraint("student_id", "academic_year_id", "exam_id", name="uq_id_card_student_year_exam"),
+    )
 
 
 class AuditLog(db.Model):

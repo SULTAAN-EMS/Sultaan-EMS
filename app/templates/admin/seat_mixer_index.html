@@ -30,15 +30,15 @@
     <!-- ============ SCREEN 1: Exam Halls list + Create ============ -->
     <div class="sm-screen active" id="smHallsScreen">
       <div class="sm-card">
+        <div class="sm-year-scope-row">
         <div class="sm-year-scope sm-year-scope-front">
-          <label for="smAcademicYear"><i class="fa-solid fa-calendar-days"></i> Academic Year</label>
+          <label for="smAcademicYear"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i> Academic Year</label>
           <select id="smAcademicYear" aria-label="Select academic year for exam halls"></select>
-          <span class="sm-year-scope-note">Exam halls, versions, levels, classes and seating are isolated to the selected year and exam.</span>
         </div>
         <div class="sm-year-scope sm-year-scope-front">
-          <label for="smAcademicExam"><i class="fa-solid fa-file-circle-check"></i> Exam Type</label>
+          <label for="smAcademicExam"><i class="fa-solid fa-file-circle-check" aria-hidden="true"></i> Exam Type</label>
           <select id="smAcademicExam" aria-label="Select exam type for exam halls"></select>
-          <span class="sm-year-scope-note">Each exam keeps its own halls, students and saved arrangements.</span>
+        </div>
         </div>
         <h2><span class="ico"><i class="fa-solid fa-building-columns"></i></span>Exam Halls</h2>
         <div class="sm-hall-list" id="smHallList"></div>
