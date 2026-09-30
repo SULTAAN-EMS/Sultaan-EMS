@@ -17,6 +17,8 @@ def ensure_schema_compatibility():
     add_column_if_missing("students", "gender", column_sql(dialect, "gender", "VARCHAR(10)"))
     add_column_if_missing("students", "level", column_sql(dialect, "level", "VARCHAR(80)"))
     add_column_if_missing("students", "section", column_sql(dialect, "section", "VARCHAR(80)"))
+    add_column_if_missing("students", "lock_admin_message", column_sql(dialect, "lock_admin_message", "TEXT"))
+    add_column_if_missing("students", "lock_admin_message_at", column_sql(dialect, "lock_admin_message_at", "DATETIME"))
     add_column_if_missing("results", "grade_override", column_sql(dialect, "grade_override", "VARCHAR(10)"))
     add_column_if_missing("results", "comment", column_sql(dialect, "comment", "VARCHAR(255)"))
     add_column_if_missing("incident_reports", "signature_data", column_sql(dialect, "signature_data", "TEXT"))

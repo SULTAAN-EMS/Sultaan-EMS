@@ -343,13 +343,19 @@
               <a class="icon-btn small" href="{{ url_for('admin_advanced_results.student_form', student_id=student.id, year_id=selected_year.id if selected_year else '', return_to=request.full_path) }}" title="Edit">
                 <i class="fa-solid fa-pen"></i>
               </a>
-              <form method="post" action="{{ url_for('admin_advanced_results.toggle_student_lock', student_id=student.id) }}" class="inline">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="return_to" value="{{ request.full_path }}">
-                <button class="icon-btn small" title="Lock or unlock">
-                  <i class="fa-solid {{ 'fa-unlock' if student.is_result_locked else 'fa-lock' }}"></i>
+              {% if student.is_result_locked %}
+                <form method="post" action="{{ url_for('admin_advanced_results.toggle_student_lock', student_id=student.id) }}" class="inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="return_to" value="{{ request.full_path }}">
+                  <button class="icon-btn small" title="Unlock result" aria-label="Unlock result">
+                    <i class="fa-solid fa-unlock"></i>
+                  </button>
+                </form>
+              {% else %}
+                <button type="button" class="icon-btn small" title="Lock result and enter reason" aria-label="Lock result and enter reason" data-open-lock-modal data-student-id="{{ student.id }}" data-student-name="{{ student.full_name|e }}" data-student-code="{{ student.student_code|e }}" data-lock-reason="{{ (student.lock_reason or '')|e }}">
+                  <i class="fa-solid fa-lock"></i>
                 </button>
-              </form>
+              {% endif %}
               <button type="button" class="icon-btn small danger" title="Delete" onclick="openDeleteStudentModal('{{ student.id }}', '{{ student.full_name|e }}', '{{ student.student_code|e }}')">
                 <i class="fa-solid fa-trash"></i>
               </button>
@@ -492,6 +498,33 @@
   </div>
 </div>
 
+<!-- Quick Result Lock Reason Modal -->
+<div class="sm-lock-modal" id="studentLockModal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="studentLockModalTitle">
+  <div class="sm-lock-modal__card" role="document">
+    <div class="sm-lock-modal__topbar"></div>
+    <div class="sm-lock-modal__body">
+      <button type="button" class="sm-lock-modal__close" id="studentLockModalClose" aria-label="Ka laabo">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+      <div class="sm-lock-modal__icon" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none"><path class="sm-lock-shackle" d="M20 28v-8a12 12 0 0 1 24 0v8" stroke="#fff" stroke-width="6" stroke-linecap="round"/><g class="sm-lock-body"><rect x="12" y="28" width="40" height="28" rx="8" fill="#fff"/><circle cx="32" cy="41" r="4.5" fill="#dc2626"/><rect x="30" y="43" width="4" height="8" rx="2" fill="#dc2626"/></g></svg></div>
+      <h3 id="studentLockModalTitle">Fariinta Xafiiska Dugsiga ee Ardeygan</h3>
+      <p class="sm-lock-modal__student"><strong id="studentLockModalName"></strong><span id="studentLockModalCode"></span></p>
+      <form id="studentLockForm" method="post" action="">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="return_to" value="{{ request.full_path }}">
+        <div class="sm-lock-modal__field">
+          <label for="studentLockReason">Sababta Natiijada Looga Xidhayo!?</label>
+          <textarea id="studentLockReason" name="lock_reason" rows="4" placeholder="Halakan ku qor sababta natiijada looga xidhayo......"></textarea>
+        </div>
+        <div class="sm-lock-modal__actions">
+          <button type="button" class="sm-lock-modal__cancel" id="studentLockModalCancel">Ka laabo</button>
+          <button type="submit" class="sm-lock-modal__submit"><i class="fa-solid fa-lock"></i> Xidh Natiijada</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 {% set deleted_student_notice = session.pop('student_deleted_notice', None) %}
 {% if deleted_student_notice %}
 <div class="student-delete-success" id="studentDeleteSuccess" role="status" aria-live="polite">
@@ -508,6 +541,92 @@
 {% endif %}
 
 <script>
+var _studentLockBaseUrl = "{{ url_for('admin_advanced_results.students_management') }}".replace(/\/students-management.*/, '');
+var _studentLockModal = document.getElementById('studentLockModal');
+var _studentLockForm = document.getElementById('studentLockForm');
+var _studentLockLastFocus = null;
+var _studentLockPlaceholderTimer = null;
+var _studentLockPlaceholderRestartTimer = null;
+var _studentLockPlaceholderText = 'Halakan ku qor sababta natiijada looga xidhayo......';
+
+function _stopStudentLockPlaceholderTypewriter() {
+  if (_studentLockPlaceholderTimer) window.clearInterval(_studentLockPlaceholderTimer);
+  if (_studentLockPlaceholderRestartTimer) window.clearTimeout(_studentLockPlaceholderRestartTimer);
+  _studentLockPlaceholderTimer = null;
+  _studentLockPlaceholderRestartTimer = null;
+  var field = document.getElementById('studentLockReason');
+  if (field) field.placeholder = _studentLockPlaceholderText;
+}
+
+function _startStudentLockPlaceholderTypewriter() {
+  _stopStudentLockPlaceholderTypewriter();
+  var field = document.getElementById('studentLockReason');
+  if (!field || field.value) return;
+  var index = 0;
+  field.placeholder = '';
+  _studentLockPlaceholderTimer = window.setInterval(function () {
+    if (field.value) {
+      _stopStudentLockPlaceholderTypewriter();
+      return;
+    }
+    index += 1;
+    field.placeholder = _studentLockPlaceholderText.slice(0, index);
+    if (index >= _studentLockPlaceholderText.length) {
+      window.clearInterval(_studentLockPlaceholderTimer);
+      _studentLockPlaceholderTimer = null;
+      _studentLockPlaceholderRestartTimer = window.setTimeout(function () {
+        _studentLockPlaceholderRestartTimer = null;
+        if (!field.value && _studentLockModal.classList.contains('is-open')) _startStudentLockPlaceholderTypewriter();
+      }, 2000);
+    }
+  }, 55);
+}
+
+function _makeStudentLockUrl(id) {
+  return _studentLockBaseUrl + '/students/' + encodeURIComponent(id) + '/toggle-lock';
+}
+
+function openStudentLockModal(button) {
+  if (!_studentLockModal || !_studentLockForm) return;
+  _studentLockLastFocus = document.activeElement;
+  _studentLockForm.action = _makeStudentLockUrl(button.dataset.studentId);
+  document.getElementById('studentLockModalName').textContent = button.dataset.studentName || '';
+  document.getElementById('studentLockModalCode').textContent = button.dataset.studentCode || '';
+  document.getElementById('studentLockReason').value = button.dataset.lockReason || '';
+  _startStudentLockPlaceholderTypewriter();
+  _studentLockModal.classList.add('is-open');
+  _studentLockModal.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('sm-lock-modal-open');
+  window.setTimeout(function () { document.getElementById('studentLockReason').focus(); }, 40);
+}
+
+function closeStudentLockModal() {
+  if (!_studentLockModal) return;
+  _stopStudentLockPlaceholderTypewriter();
+  _studentLockModal.classList.remove('is-open');
+  _studentLockModal.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('sm-lock-modal-open');
+  if (_studentLockLastFocus && typeof _studentLockLastFocus.focus === 'function') _studentLockLastFocus.focus();
+}
+
+document.getElementById('studentLockReason').addEventListener('input', _stopStudentLockPlaceholderTypewriter);
+
+document.addEventListener('click', function (event) {
+  var lockButton = event.target.closest('[data-open-lock-modal]');
+  if (lockButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    openStudentLockModal(lockButton);
+    return;
+  }
+  if (event.target.closest('#studentLockModalClose, #studentLockModalCancel')) closeStudentLockModal();
+  if (event.target === _studentLockModal) closeStudentLockModal();
+}, true);
+
+document.addEventListener('keydown', function (event) {
+  if (event.key === 'Escape' && _studentLockModal && _studentLockModal.classList.contains('is-open')) closeStudentLockModal();
+});
+
 {# Build the delete URL base by using a real student id of 0 — Flask resolves 0 as a valid int,
    then we replace the trailing /0/delete with the real id at click time #}
 var _deleteStudentBaseUrl = "{{ url_for('admin_advanced_results.students_management') }}".replace(/\/students-management.*/, '');
@@ -1494,6 +1613,40 @@ document.addEventListener('DOMContentLoaded', function() {
   color: #fff;
   filter: drop-shadow(0 1px 2px rgba(127, 29, 29, .28));
 }
+
+/* Quick result-lock message dialog. */
+.sm-lock-modal { position:fixed; inset:0; z-index:10020; display:none; align-items:center; justify-content:center; padding:18px; background:rgba(15,23,42,.58); backdrop-filter:blur(7px); }
+.sm-lock-modal.is-open { display:flex; animation:smLockModalIn .18s ease both; }
+.sm-lock-modal__card { width:min(100%,520px); max-height:min(720px,calc(100vh - 36px)); overflow:auto; border:1px solid #dbe5f5; border-radius:22px; background:#fff; box-shadow:0 24px 70px rgba(15,23,42,.28); transform:translateY(10px) scale(.97); animation:smLockCardIn .25s cubic-bezier(.22,.61,.36,1) both; }
+.sm-lock-modal__topbar { height:6px; background:linear-gradient(90deg,#1e3a8a,#3b82f6,#22c08a); }
+.sm-lock-modal__body { position:relative; padding:28px; }
+.sm-lock-modal__close { position:absolute; top:18px; right:18px; width:34px; height:34px; display:grid; place-items:center; border:1px solid #dbe5f5; border-radius:10px; color:#64748b; background:#f8fafc; cursor:pointer; font-size:15px; }
+.sm-lock-modal__icon { width:64px; height:64px; display:grid; place-items:center; margin:0 auto 16px; border-radius:18px; color:#fff; background:linear-gradient(135deg,#b91c1c,#ef4444); box-shadow:0 10px 22px rgba(220,38,38,.28); animation:smLockIconPulse 2.2s ease-in-out infinite; }
+.sm-lock-modal__icon svg { width:38px; height:38px; overflow:visible; }
+.sm-lock-modal__icon .sm-lock-shackle { transform-origin:32px 27px; animation:smLockShackle 3.2s .25s ease-in-out infinite; }
+.sm-lock-modal__icon .sm-lock-body { animation:smLockBody 3.2s .25s ease-out infinite; transform-origin:32px 42px; }
+.sm-lock-modal__body h3 { margin:4px 42px 4px 0; color:#0f172a; font-size:clamp(1rem,2.4vw,1.15rem); font-weight:800; text-transform:uppercase; line-height:1.2; }
+.sm-lock-modal__student { display:flex; align-items:center; justify-content:center; gap:9px; margin:0 0 22px; color:#64748b; font-size:.86rem; text-align:center; }
+.sm-lock-modal__student strong { color:#1e293b; }
+.sm-lock-modal__student span { padding-left:9px; border-left:1px solid #cbd5e1; font-family:var(--font-sans,Inter,sans-serif); font-size:.76rem; font-weight:800; }
+.sm-lock-modal__field { margin-top:14px; }
+.sm-lock-modal__field label { display:block; margin-bottom:6px; color:#334155; font-size:.82rem; font-weight:800; }
+.sm-lock-modal__field input, .sm-lock-modal__field textarea { display:block; width:100%; box-sizing:border-box; border:1px solid #cbd5e1; border-radius:11px; padding:11px 12px; color:#1e293b; background:#fff; font:inherit; font-size:.9rem; resize:vertical; }
+.sm-lock-modal__field textarea { min-height:100px; line-height:1.5; }
+.sm-lock-modal__field input::placeholder, .sm-lock-modal__field textarea::placeholder { color:#94a3b8; }
+.sm-lock-modal__actions { display:flex; gap:10px; margin-top:22px; }
+.sm-lock-modal__actions button { min-height:44px; flex:1; border-radius:11px; padding:0 16px; font:inherit; font-size:.88rem; font-weight:800; cursor:pointer; }
+.sm-lock-modal__cancel { color:#475569; border:1px solid #cbd5e1; background:#f8fafc; }
+.sm-lock-modal__submit { color:#fff; border:1px solid #1d4ed8; background:linear-gradient(135deg,#1e3a8a,#2563eb); }
+.sm-lock-modal__submit i { margin-right:6px; }
+body.sm-lock-modal-open { overflow:hidden; }
+@keyframes smLockModalIn { from { opacity:0; } to { opacity:1; } }
+@keyframes smLockCardIn { from { opacity:0; transform:translateY(14px) scale(.96); } to { opacity:1; transform:translateY(0) scale(1); } }
+@keyframes smLockIconPulse { 0%,100% { box-shadow:0 10px 22px rgba(220,38,38,.28),0 0 0 0 rgba(239,68,68,.28); } 50% { box-shadow:0 12px 26px rgba(220,38,38,.34),0 0 0 10px rgba(239,68,68,0); } }
+@keyframes smLockShackle { 0%,8% { transform:none; } 28%,50% { transform:translateY(-10px) rotate(-16deg); } 62%,100% { transform:none; } }
+@keyframes smLockBody { 0%,58% { transform:none; } 63% { transform:translateY(2.5px); } 70%,100% { transform:none; } }
+@media (max-width:520px) { .sm-lock-modal { padding:12px; align-items:flex-end; } .sm-lock-modal__card { max-height:calc(100vh - 24px); border-radius:20px 20px 14px 14px; } .sm-lock-modal__body { padding:24px 18px 18px; } .sm-lock-modal__actions { flex-direction:column-reverse; } }
+@media (prefers-reduced-motion: reduce) { .sm-lock-modal__icon, .sm-lock-modal__icon .sm-lock-shackle, .sm-lock-modal__icon .sm-lock-body { animation:none; } }
 
 /* Delete confirmation is deliberately attention-grabbing but never abrupt. */
 #deleteStudentModal { opacity: 0; transition: opacity .18s ease; }

@@ -2,6 +2,7 @@ import secrets
 from datetime import date, datetime
 from io import BytesIO
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -153,6 +154,99 @@ def set_language(lang):
     return language_redirect(lang)
 
 
+def _locked_exam_for_student(student, requested_exam_id=None):
+    """Resolve the most relevant exam context for a locked student view."""
+    query = (
+        Exam.query.join(Result, Result.exam_id == Exam.id)
+        .filter(Result.student_id == student.id)
+    )
+    if requested_exam_id:
+        selected = query.filter(Exam.id == requested_exam_id).order_by(Exam.id.desc()).first()
+        if selected:
+            return selected
+    selected = query.order_by(Exam.academic_year_id.desc(), Exam.id.desc()).first()
+    if selected:
+        return selected
+    year_id = student.academic_year_id
+    if not year_id:
+        enrollment = (
+            StudentEnrollment.query.filter_by(student_id=student.id)
+            .order_by(StudentEnrollment.academic_year_id.desc(), StudentEnrollment.id.desc())
+            .first()
+        )
+        year_id = enrollment.academic_year_id if enrollment else None
+    if not year_id:
+        return None
+    return Exam.query.filter_by(academic_year_id=year_id).order_by(Exam.id.desc()).first()
+
+
+def _locked_contact_links(settings):
+    """Return icon-only contact links for the locked-result screen."""
+    def clean_phone(value):
+        raw = str(value or "").strip()
+        if raw.lower().startswith("tel:"):
+            raw = raw[4:]
+        return re.sub(r"[^0-9+]", "", raw)
+
+    def phone_link(value):
+        value = clean_phone(value)
+        return f"tel:{value}" if len(re.sub(r"[^0-9]", "", value)) >= 5 else ""
+
+    def whatsapp_link(value):
+        digits = re.sub(r"[^0-9]", "", str(value or ""))
+        return f"https://wa.me/{digits}" if len(digits) >= 5 else ""
+
+    def telegram_link(value):
+        raw = str(value or "").strip()
+        raw = re.sub(r"^https?://t\.me/", "", raw, flags=re.IGNORECASE)
+        raw = raw.lstrip("@").split("?", 1)[0].strip("/")
+        return f"https://t.me/{raw}" if raw else ""
+
+    return [
+        {"key": "whatsapp", "label": "WhatsApp", "class_name": "wa", "href": whatsapp_link(settings.get("whatsapp_url")), "icon": "whatsapp"},
+        {"key": "mobile", "label": "Taleefan gacan", "class_name": "mb", "href": phone_link(settings.get("school_phone")), "icon": "mobile"},
+        {"key": "landline", "label": "Land-line", "class_name": "ll", "href": phone_link(settings.get("call_url")), "icon": "landline"},
+        {"key": "telegram", "label": "Telegram", "class_name": "tg", "href": telegram_link(settings.get("telegram_url")), "icon": "telegram"},
+    ]
+
+
+def locked_result_context(student, settings, requested_exam_id=None):
+    """Build only real, optional data consumed by the locked-result design."""
+    exam = _locked_exam_for_student(student, requested_exam_id)
+    year_id = exam.academic_year_id if exam else student.academic_year_id
+    placement = enrollment_placement_for_student(student, year_id) if year_id else None
+    level_name = (
+        placement.get("level_name") if placement else None
+    ) or (student.academic_level.name if student.academic_level else None) or student.level or "-"
+    class_name = (
+        placement.get("class_name") if placement else None
+    ) or (student.academic_class.name if student.academic_class else None) or (student.school_class.name if student.school_class else None) or "-"
+    admin_reason = (student.lock_reason or "").strip()
+    if admin_reason in {"", "Locked from advanced results.", "Outstanding clearance required."}:
+        admin_reason = "Fadlan la xidhiidh xafiiska dugsiga ama maamulka si natiijadaada loo furo."
+    guidance = "Fadlan la xidhiidh xafiiska dugsiga ama maamulka si natiijadaada loo furo."
+    message_date = student.updated_at or datetime.utcnow()
+    weekdays = ("Isniin", "Talaado", "Arbaca", "Khamiis", "Jimce", "Sabti", "Axad")
+    admin_message = {
+        "text": admin_reason,
+        "from": settings.get("school_name") or "Maamulka Dugsiga",
+        "date": f"{weekdays[message_date.weekday()]}, {message_date.strftime('%B %d, %Y - %I:%M %p')}",
+    }
+
+    return {
+        "name": student.full_name or "-",
+        "id": student.student_code or "-",
+        "level": level_name,
+        "klass": class_name,
+        "photo": _public_asset_url(student.photo_path),
+        "reason": guidance,
+        "adminMessage": admin_message,
+        "schoolName": settings.get("school_name") or "SULTAAN EMS",
+        "schoolLogo": _public_asset_url(settings.get("logo_path")),
+        "contacts": _locked_contact_links(settings),
+    }
+
+
 # =========================
 # RESULT SUBMIT (MAIN FIX)
 # =========================
@@ -200,7 +294,8 @@ def result():
         return render_template(
             "locked_result.html",
             settings=get_settings(),
-            student=student
+            student=student,
+            locked_result=locked_result_context(student, settings, selected_exam_id),
         )
 
     available_exams = (
@@ -284,7 +379,12 @@ def result_view(student_code, exam_id):
         abort(404)
     settings = get_settings()
     if student.is_result_locked:
-        return render_template("locked_result.html", settings=settings, student=student), 403
+        return render_template(
+            "locked_result.html",
+            settings=settings,
+            student=student,
+            locked_result=locked_result_context(student, settings, exam_id),
+        ), 403
 
     exam = _published_exam_for_student(student, exam_id) or abort(404)
     payload = result_payload(student, exam=exam, public_only=True)
@@ -532,6 +632,7 @@ def attendance_reading_view(student_code, exam_id, config_id, session_id):
 def print_report(student_code):
     student_code = student_code.strip()
     settings = get_settings()
+    requested_exam_id = request.args.get("exam_id", type=int)
 
     student = find_student_by_code(student_code)
     if not student:
@@ -541,10 +642,10 @@ def print_report(student_code):
         return render_template(
             "locked_result.html",
             settings=settings,
-            student=student
+            student=student,
+            locked_result=locked_result_context(student, settings, requested_exam_id),
         ), 403
 
-    requested_exam_id = request.args.get("exam_id", type=int)
     exam = _published_exam_for_student(student, requested_exam_id) or abort(404)
 
     payload = result_payload(student, exam=exam, public_only=True)
@@ -663,13 +764,18 @@ def download_report(student_code):
     """Render the canonical report and let the browser download it as PDF."""
     student_code = student_code.strip()
     settings = get_settings()
+    requested_exam_id = request.args.get("exam_id", type=int)
     student = find_student_by_code(student_code)
     if not student:
         abort(404)
     if student.is_result_locked:
-        return render_template("locked_result.html", settings=settings, student=student), 403
+        return render_template(
+            "locked_result.html",
+            settings=settings,
+            student=student,
+            locked_result=locked_result_context(student, settings, requested_exam_id),
+        ), 403
 
-    requested_exam_id = request.args.get("exam_id", type=int)
     exam = _published_exam_for_student(student, requested_exam_id) or abort(404)
     payload = result_payload(student, exam=exam, public_only=True)
     result_scope = public_result_scope(student, exam)

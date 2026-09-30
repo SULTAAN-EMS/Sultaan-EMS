@@ -1319,6 +1319,8 @@ class Student(TimestampMixin, db.Model):
 
     is_result_locked = db.Column(db.Boolean, default=False, nullable=False)
     lock_reason = db.Column(db.String(255))
+    lock_admin_message = db.Column(db.Text, nullable=True)
+    lock_admin_message_at = db.Column(db.DateTime, nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
     school_class = db.relationship("SchoolClass")

@@ -173,9 +173,6 @@ RESULTS_LABEL_SEEDS = [
     ("grades.comment", "so", "Comment", "Grade Management"),
     ("grades.preview", "so", "Preview", "Grade Management"),
     ("grades.save", "so", "Save Grade Scales", "Grade Management"),
-    ("settings.eyebrow", "so", "Full Customization", "Settings"),
-    ("settings.title", "so", "Results Settings", "Settings"),
-    ("settings.subtitle", "so", "Halkan waxaad ka bedeli kartaa habka module-ka Results u shaqeeyo — gudaha Results-ka, ma aha Settings-ka guud.", "Settings"),
     ("settings.labels_title", "so", "Label & Language Customization", "Settings"),
     ("settings.labels_desc", "so", "Halkan waxaad ka bedeli kartaa ereyga/label kasta oo systemka ka muuqda.", "Settings"),
     ("settings.default_language", "so", "Luuqadda Default-ka ah", "Settings"),
@@ -3663,7 +3660,7 @@ def _decimal_form_value(field_name, default=0):
 
 @advanced_results_bp.route("/settings")
 def results_settings():
-    """Results Settings page with label and language customization"""
+    """Settings page with label and language customization"""
     settings = get_settings()
     
     # Get all unique label keys
@@ -4822,7 +4819,7 @@ def save_label_translations():
                         label_key=label_key,
                         language_code=language_code,
                         text_value=text_value,
-                        context='Results Settings'
+                        context='Settings'
                     ))
     
     db.session.commit()
