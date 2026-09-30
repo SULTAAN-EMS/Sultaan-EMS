@@ -993,15 +993,11 @@ def _feedback_item(entry):
     }
 
 
-@public_bp.route("/api/falcelin/subjects")
-def feedback_subjects():
-    student, exam, error = _feedback_context_from_request()
-    if error:
-        return error
+def _feedback_subject_names(student, exam):
+    """Return only subjects valid for this student's published exam scope."""
     placement = resolve_student_academic_context(student, exam.academic_year_id)
     if not placement:
-        return jsonify(ok=True, subjects=[])
-    enrollment = placement.get("enrollment")
+        return []
     mapped_ids = []
     year_items = []
     if placement.get("academic_year_level_id"):
@@ -1030,7 +1026,7 @@ def feedback_subjects():
         behavior_items = []
     level_id = placement.get("academic_level_id")
     if not level_id:
-        return jsonify(ok=True, subjects=[])
+        return []
     subject_query = (
         Subject.query.join(Result, Result.subject_id == Subject.id)
         .filter(
@@ -1048,7 +1044,7 @@ def feedback_subjects():
     elif level_id:
         subject_query = subject_query.filter(Subject.academic_level_id == level_id)
     else:
-        return jsonify(ok=True, subjects=[])
+        return []
     subjects = subject_query.order_by(Subject.sort_order, Subject.name).distinct().all()
     if year_items and mapped_ids:
         scoped_by_id = {
@@ -1075,7 +1071,15 @@ def feedback_subjects():
         if normalized_name and name_key not in seen_names:
             names.append(normalized_name)
             seen_names.add(name_key)
-    return jsonify(ok=True, subjects=names)
+    return names
+
+
+@public_bp.route("/api/falcelin/subjects")
+def feedback_subjects():
+    student, exam, error = _feedback_context_from_request()
+    if error:
+        return error
+    return jsonify(ok=True, subjects=_feedback_subject_names(student, exam))
 
 
 @public_bp.route("/api/falcelin/result-summary")
@@ -1262,6 +1266,15 @@ def submit_complaint():
         return jsonify(ok=False, message=signature_error), 400
     if complaint_type == "maaddo" and not subject_name:
         return jsonify(ok=False, message="Fadlan dooro maaddada cabashada."), 400
+    if complaint_type == "maaddo":
+        allowed_subjects = _feedback_subject_names(student, exam)
+        canonical_subject = next(
+            (name for name in allowed_subjects if name.casefold() == subject_name.casefold()),
+            None,
+        )
+        if not canonical_subject:
+            return jsonify(ok=False, message="Maaddadani kama jirto natiijadaada imtixaankan."), 400
+        subject_name = canonical_subject
     if len(details) > 5000 or len(signature) > 2_500_000:
         return jsonify(ok=False, message="Cabashada ama saxeexu aad bay u weyn yihiin."), 400
     entry = StudentComplaint(

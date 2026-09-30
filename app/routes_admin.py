@@ -1726,15 +1726,47 @@ def feedback_complaints():
     complaint_ordering = StudentComplaint.created_at.asc() if sort_order == "oldest" else StudentComplaint.created_at.desc()
     feedback_rows = feedback_query.order_by(ordering).all()
     complaint_rows = complaint_query.order_by(complaint_ordering).all()
-    if class_id:
-        def matches_selected_class(entry):
-            # Feedback/complaint rows with an exam carry their historical year.
-            # Resolve that year's enrollment instead of using the student's
-            # mutable current placement. Nullable exam rows retain legacy fallback.
-            year_id = entry.exam.academic_year_id if entry.exam else entry.student.academic_year_id
-            placement = enrollment_placement_for_student(entry.student, year_id) if year_id else None
-            return (placement or {}).get("academic_class_id") == class_id
+    # Resolve every entry through the year-aware enrollment hierarchy before
+    # filtering or building the dropdown.  The legacy AcademicClass table is
+    # intentionally not used here: it contains historical rows from other
+    # academic years and can therefore expose classes that are not part of the
+    # current setup.
+    all_entries = [*feedback_rows, *complaint_rows]
+    entry_placements = {}
+    class_options_by_id = {}
+    for entry in all_entries:
+        year_id = entry.exam.academic_year_id if entry.exam else entry.student.academic_year_id
+        placement = enrollment_placement_for_student(entry.student, year_id) if year_id else None
+        entry._display_placement = placement or {}
+        entry_placements[(type(entry), entry.id)] = entry._display_placement
+        year_class_id = (placement or {}).get("academic_year_class_id")
+        if not year_class_id:
+            continue
+        year_class = db.session.get(AcademicYearClass, year_class_id)
+        year_level = year_class.academic_year_level if year_class else None
+        year = year_level.academic_year if year_level else None
+        if (
+            not year_class
+            or not year_class.is_active
+            or not year_level
+            or not year_level.is_active
+            or not year
+        ):
+            continue
+        class_options_by_id[year_class.id] = {
+            "id": year_class.id,
+            "name": year_class.name,
+            "level_name": year_level.name,
+            "year_name": year.name,
+            "sort_order": year_class.sort_order or 0,
+            "level_sort_order": year_level.sort_order or 0,
+            "year_id": year.id,
+        }
 
+    def matches_selected_class(entry):
+        return (entry_placements.get((type(entry), entry.id)) or {}).get("academic_year_class_id") == class_id
+
+    if class_id:
         feedback_rows = [entry for entry in feedback_rows if matches_selected_class(entry)]
         complaint_rows = [entry for entry in complaint_rows if matches_selected_class(entry)]
     if status == "pending":
@@ -1743,10 +1775,6 @@ def feedback_complaints():
     elif status == "answered":
         complaint_rows = [item for item in complaint_rows if item.replies]
         feedback_rows = [item for item in feedback_rows if item.replies]
-
-    for entry in [*feedback_rows, *complaint_rows]:
-        year_id = entry.exam.academic_year_id if entry.exam else entry.student.academic_year_id
-        entry._display_placement = enrollment_placement_for_student(entry.student, year_id) if year_id else {}
 
     # Loading the authorized office inbox is the delivery event.  It does not
     # mark anything read; that is recorded only by the explicit view endpoint.
@@ -1759,7 +1787,16 @@ def feedback_complaints():
     if delivered_changed:
         db.session.commit()
 
-    classes = AcademicClass.query.order_by(AcademicClass.sort_order, AcademicClass.name).all()
+    classes = sorted(
+        class_options_by_id.values(),
+        key=lambda item: (
+            item["year_id"],
+            item["level_sort_order"],
+            item["sort_order"],
+            item["name"].casefold(),
+            item["id"],
+        ),
+    )
     return render_template(
         "admin/feedback_complaints.html",
         feedback_rows=feedback_rows,
