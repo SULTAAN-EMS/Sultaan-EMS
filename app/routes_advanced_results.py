@@ -2060,15 +2060,35 @@ def autosave_result_entry():
     if not in_scope:
         return jsonify({"ok": False, "message": "Student is outside the selected scope."}), 400
 
+    year_level, _year_class = _year_scope_ids_from_legacy(selected_year.id, level_id, class_id)
+    result = Result.query.filter_by(student_id=student.id, exam_id=selected_exam.id, subject_id=subject.id).first()
+
+    # Clearing a score is an explicit delete. Keeping the old row here would
+    # make the subject reappear in the portal, totals, reports, and exports.
     if not raw_score:
-        return jsonify({"ok": True, "status": "empty", "message": "No score entered."})
+        if result:
+            db.session.delete(result)
+            audit("Result Entry", f"Deleted {student.student_code} - {subject.name} result")
+            db.session.commit()
+            return jsonify({
+                "ok": True,
+                "status": "deleted",
+                "student_id": student.id,
+                "subject_id": subject.id,
+            })
+        return jsonify({
+            "ok": True,
+            "status": "empty",
+            "message": "No score entered.",
+            "student_id": student.id,
+            "subject_id": subject.id,
+        })
 
     try:
         score = float(raw_score)
     except ValueError:
         return jsonify({"ok": False, "message": "Invalid score."}), 400
 
-    year_level, _year_class = _year_scope_ids_from_legacy(selected_year.id, level_id, class_id)
     max_score = float(resolve_subject_max_score(
         subject,
         exam=selected_exam,
@@ -2078,7 +2098,6 @@ def autosave_result_entry():
     if score < 0 or score > max_score:
         return jsonify({"ok": False, "message": f"Score must be between 0 and {max_score:g}."}), 400
 
-    result = Result.query.filter_by(student_id=student.id, exam_id=selected_exam.id, subject_id=subject.id).first()
     if not result:
         result = Result(student=student, exam=selected_exam, subject=subject)
         db.session.add(result)
@@ -2135,6 +2154,7 @@ def save_result_entry():
     
     # Process form data
     saved_count = 0
+    deleted_count = 0
     validation_errors = []
     
     for student in students:
@@ -2145,8 +2165,11 @@ def save_result_entry():
             raw_score = request.form.get(score_key, "").strip()
             grade_override = request.form.get(override_key, "").strip()
             
-            # Skip if no score entered
             if not raw_score:
+                result = results_dict.get((student.id, subject.id))
+                if result:
+                    db.session.delete(result)
+                    deleted_count += 1
                 continue
             
             # Validate score against max_score
@@ -2178,13 +2201,13 @@ def save_result_entry():
             saved_count += 1
     
     if validation_errors:
-        flash(f"Saved {saved_count} results with {len(validation_errors)} validation errors.", "warning")
+        flash(f"Saved {saved_count} results and deleted {deleted_count} results with {len(validation_errors)} validation errors.", "warning")
         for error in validation_errors[:5]:  # Show first 5 errors
             flash(error, "warning")
     else:
-        flash(f"Successfully saved {saved_count} results.", "success")
+        flash(f"Successfully saved {saved_count} results and deleted {deleted_count} results.", "success")
     
-    audit("Result Entry", f"Bulk saved {saved_count} results for exam {selected_exam.name}")
+    audit("Result Entry", f"Bulk saved {saved_count} and deleted {deleted_count} results for exam {selected_exam.name}")
     db.session.commit()
     
     # Redirect back to entry grid with same scope

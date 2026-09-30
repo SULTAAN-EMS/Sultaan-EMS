@@ -479,6 +479,9 @@ def save_results():
     for subject in subjects:
         raw = request.form.get(f"subject_{subject.id}", "").strip()
         if raw == "":
+            result = Result.query.filter_by(student_id=student.id, exam_id=exam.id, subject_id=subject.id).first()
+            if result:
+                db.session.delete(result)
             continue
         max_score = resolve_subject_max_score(
             subject,
@@ -528,6 +531,8 @@ def edit_result_set(student_id, exam_id):
             raw = request.form.get(f"score_{subject.id}", "").strip()
             result = existing.get(subject.id)
             if raw == "":
+                if result:
+                    db.session.delete(result)
                 continue
             max_score = resolve_subject_max_score(
                 subject,

@@ -202,12 +202,6 @@ function validateScore(input) {
 
 async function autosaveScore(input) {
   if (!validateScore(input)) return;
-  if (!input.value.trim()) {
-    pendingInputs.delete(input.name);
-    input.dataset.saveState = 'idle';
-    setSaveStatus('idle', 'Saved');
-    return;
-  }
 
   const formData = new FormData();
   formData.append('csrf_token', document.getElementById('csrfToken').value);
@@ -243,8 +237,9 @@ async function autosaveScore(input) {
       throw new Error(payload.message || payload.error || payload.details || 'Kaydintu way fashilantay.');
     }
     pendingInputs.delete(input.name);
-    input.dataset.saveState = 'saved';
-    setSaveStatus('saved', pendingInputs.size ? 'Saving...' : 'Saved');
+    const wasDeleted = payload.status === 'deleted';
+    input.dataset.saveState = wasDeleted ? 'deleted' : 'saved';
+    setSaveStatus('saved', wasDeleted ? 'Deleted' : (pendingInputs.size ? 'Saving...' : 'Saved'));
   } catch (error) {
     input.dataset.saveState = 'error';
     setSaveStatus('error', navigator.onLine ? error.message : 'Offline');

@@ -521,11 +521,6 @@ function validateScore(input) {
 
 async function autosaveScore(input) {
   if (!validateScore(input)) return;
-  if (!input.value.trim()) {
-    pendingInputs.delete(input.name);
-    setSaveStatus(pendingInputs.size ? 'saving' : 'idle', pendingInputs.size ? 'Saving...' : 'Ready');
-    return;
-  }
 
   syncResultContextFields();
   const formData = new FormData();
@@ -565,8 +560,9 @@ async function autosaveScore(input) {
     }
 
     pendingInputs.delete(input.name);
-    input.dataset.saveState = 'saved';
-    setSaveStatus('saved', pendingInputs.size ? 'Saving...' : 'Saved ✓');
+    const wasDeleted = payload.status === 'deleted';
+    input.dataset.saveState = wasDeleted ? 'deleted' : 'saved';
+    setSaveStatus('saved', wasDeleted ? 'Deleted' : (pendingInputs.size ? 'Saving...' : 'Saved ✓'));
   } catch (error) {
     input.dataset.saveState = 'error';
     setSaveStatus('error', navigator.onLine ? error.message : 'Offline. Changes not saved.');
