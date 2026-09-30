@@ -2253,10 +2253,24 @@ def analytics():
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
     exams = Exam.query.filter_by(academic_year_id=selected_year.id).order_by(Exam.id.desc()).all() if selected_year else []
     levels = year_levels(selected_year.id)
+    # Results Hub links historically carried legacy level/class IDs, while
+    # Analytics selectors use the year-aware IDs. Resolve a stale/legacy value
+    # against the selected academic year before the strict scope query runs.
     selected_year_level = db.session.get(AcademicYearLevel, level_id) if level_id else None
-    if selected_year_level and selected_year_level.academic_year_id != selected_year.id:
-        selected_year_level = None
+    if level_id and (
+        not selected_year_level
+        or selected_year_level.academic_year_id != selected_year.id
+    ):
+        selected_year_level = AcademicYearLevel.query.filter_by(
+            academic_year_id=selected_year.id,
+            legacy_level_id=level_id,
+            is_active=True,
+        ).first()
+    if selected_year_level:
+        level_id = selected_year_level.id
+    else:
         level_id = None
+
     selected_year_class = db.session.get(AcademicYearClass, class_id) if class_id else None
     if selected_year_class and (
         not selected_year_class.academic_year_level
@@ -2264,6 +2278,25 @@ def analytics():
         or (selected_year_level and selected_year_class.academic_year_level_id != selected_year_level.id)
     ):
         selected_year_class = None
+    if not selected_year_class and class_id:
+        class_query = (
+            AcademicYearClass.query
+            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+            .filter(
+                AcademicYearLevel.academic_year_id == selected_year.id,
+                AcademicYearClass.legacy_class_id == class_id,
+                AcademicYearClass.is_active.is_(True),
+            )
+        )
+        if selected_year_level:
+            class_query = class_query.filter(
+                AcademicYearClass.academic_year_level_id == selected_year_level.id
+            )
+        class_matches = class_query.all()
+        selected_year_class = class_matches[0] if len(class_matches) == 1 else None
+    if selected_year_class:
+        class_id = selected_year_class.id
+    else:
         class_id = None
     effective_year_level_id = (
         selected_year_level.id

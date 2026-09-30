@@ -1081,12 +1081,26 @@ def process_result_import(
     legacy_subject_keys = {}
 
     def add_subject_key(mapping, label, binding):
+        year_subject = binding.get("year_subject")
+        subject = binding["subject"]
+        binding_key = (
+            ("year", year_subject.id)
+            if year_subject is not None
+            else ("legacy", subject.id)
+        )
         for candidate in {label, normalize_header_key(label)}:
             key = _import_label_key(candidate)
             if not key:
                 continue
             entries = mapping.setdefault(key, [])
-            if not any(item["year_subject"].id == binding["year_subject"].id for item in entries):
+            if not any(
+                (
+                    ("year", item["year_subject"].id)
+                    if item.get("year_subject") is not None
+                    else ("legacy", item["subject"].id)
+                ) == binding_key
+                for item in entries
+            ):
                 entries.append(binding)
 
     for binding in bindings:
@@ -1306,6 +1320,34 @@ def process_result_import(
         except Exception as exc:
             failed_count += 1
             failed_errors.append(f"Row {row_idx}: Unhandled error parsing row ({str(exc)})")
+
+    # A workbook row represents one student's complete result set for one
+    # exam. Reject duplicate student/exam rows before writing anything so two
+    # rows cannot race for the same (student, exam, subject) unique key or
+    # silently overwrite one another.
+    row_groups = {}
+    for entry in valid_row_entries:
+        row_key = (
+            entry["student"].id,
+            entry["year"].id,
+            entry["exam"].id if entry["exam"] else _import_label_key(entry["exam_name"]),
+        )
+        row_groups.setdefault(row_key, []).append(entry)
+
+    duplicate_entries = set()
+    for entries in row_groups.values():
+        if len(entries) < 2:
+            continue
+        for entry in entries:
+            duplicate_entries.add(id(entry))
+            failed_count += 1
+            failed_errors.append(
+                f"Row {entry['row_idx']}: student_id '{entry['student'].student_code}' appears more than once for the same exam."
+            )
+    if duplicate_entries:
+        valid_row_entries = [
+            entry for entry in valid_row_entries if id(entry) not in duplicate_entries
+        ]
 
     if valid_row_entries:
         for entry in valid_row_entries:
