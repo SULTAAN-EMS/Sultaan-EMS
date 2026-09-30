@@ -219,6 +219,58 @@ class TestPhase2FHistoricalCutover(unittest.TestCase):
         self.assertNotIn(b"Selected level is not configured for this academic year", response.data)
         self.assertNotIn(b"Form Four B", response.data)
 
+    def test_bulk_result_entry_publishes_saved_scores_for_portal(self):
+        admin = User(username="phase2f-entry-admin", full_name="Phase 2F Entry Admin", role="super_admin")
+        admin.set_password("test-password")
+        exam = Exam(
+            name="Portal Entry Exam",
+            academic_year=self.year_a,
+            academic_level_id=self.level_a.id,
+            academic_class_id=self.class_a.id,
+            is_published=True,
+            is_active=True,
+        )
+        student = Student(
+            student_code="PHASE2F-ENTRY",
+            full_name="Portal Entry Student",
+            academic_year_id=self.year_a.id,
+            academic_level_id=self.level_a.id,
+            academic_class_id=self.class_a.id,
+        )
+        db.session.add_all([admin, exam, student])
+        db.session.flush()
+        create_enrollment(student.id, self.year_a.id, self.year_level_a.id, self.year_class_a.id)
+        db.session.commit()
+
+        client = self.app.test_client()
+        login = client.post(
+            "/admin/login",
+            data={"username": "phase2f-entry-admin", "password": "test-password"},
+        )
+        self.assertIn(login.status_code, (302, 303))
+
+        response = client.post(
+            "/admin/advanced-results/result-entry/save",
+            data={
+                "year_id": self.year_a.id,
+                "exam_id": exam.id,
+                "level_id": self.level_a.id,
+                "class_id": self.class_a.id,
+                "section_id": "",
+                f"score_{student.id}_{self.subject_a.id}": "81",
+            },
+        )
+        self.assertIn(response.status_code, (302, 303))
+
+        saved = Result.query.filter_by(
+            student_id=student.id,
+            exam_id=exam.id,
+            subject_id=self.subject_a.id,
+        ).one()
+        self.assertTrue(saved.is_published)
+        payload = result_payload(student, exam=exam, public_only=True)
+        self.assertEqual([row["subject_id"] for row in payload["subjects"]], [self.subject_a.id])
+
     def test_results_dashboard_handles_an_exam_with_a_cross_year_level(self):
         admin = User(username="phase2f-dashboard-admin", full_name="Phase 2F Dashboard Admin", role="super_admin")
         admin.set_password("test-password")

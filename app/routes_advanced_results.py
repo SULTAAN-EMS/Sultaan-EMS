@@ -2141,11 +2141,9 @@ def save_result_entry():
         for subject in subjects:
             score_key = f"score_{student.id}_{subject.id}"
             override_key = f"override_{student.id}_{subject.id}"
-            published_key = f"published_{student.id}_{subject.id}"
             
             raw_score = request.form.get(score_key, "").strip()
             grade_override = request.form.get(override_key, "").strip()
-            is_published = request.form.get(published_key) == "on"
             
             # Skip if no score entered
             if not raw_score:
@@ -2170,7 +2168,13 @@ def save_result_entry():
             
             result.score = score
             result.grade_override = grade_override if grade_override else None
-            result.is_published = is_published
+            # Result Entry is the portal-facing entry workflow.  The current
+            # grid has no per-cell publication control, so treating a saved
+            # score as unpublished makes it visible in Result Entry but
+            # silently removes it from the student portal.  Keep this aligned
+            # with the autosave route; explicit unpublishing remains available
+            # through the publishing controls.
+            result.is_published = True
             saved_count += 1
     
     if validation_errors:
