@@ -547,10 +547,22 @@ async function autosaveScore(input) {
     const response = await fetch('{{ url_for("admin_advanced_results.autosave_result_entry") }}', {
       method: 'POST',
       body: formData,
-      credentials: 'same-origin'
+      credentials: 'same-origin',
+      headers: {
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
     });
-    const payload = await response.json();
-    if (!response.ok || !payload.ok) throw new Error(payload.message || 'Save failed.');
+    const responseText = await response.text();
+    let payload = {};
+    try {
+      payload = responseText ? JSON.parse(responseText) : {};
+    } catch (parseError) {
+      throw new Error('Server-ku wuxuu soo celiyey jawaab aan la fahmi karin. Fadlan mar kale isku day.');
+    }
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.message || payload.error || payload.details || 'Kaydintu way fashilantay.');
+    }
 
     pendingInputs.delete(input.name);
     input.dataset.saveState = 'saved';

@@ -2622,6 +2622,21 @@ def _get_or_create_legacy_subject(name, academic_level_id, max_score, sort_order
     return legacy_subject
 
 
+def _legacy_subject_bridge_needs_repair(year_subject, new_name, academic_level_id):
+    """Return whether a renamed subject needs a separate Result identity."""
+    legacy_subject = (
+        db.session.get(Subject, year_subject.legacy_subject_id)
+        if year_subject.legacy_subject_id
+        else None
+    )
+    return (
+        legacy_subject is None
+        or legacy_subject.academic_level_id != academic_level_id
+        or " ".join(str(legacy_subject.name or "").strip().casefold().split())
+        != " ".join(str(new_name or "").strip().casefold().split())
+    )
+
+
 def _cascade_delete_config_item(item_type, item_id):
     """Recursively delete dependent records for force delete override"""
     if item_type == 'academic-years':
@@ -4341,12 +4356,11 @@ def config_update_subject(subject_id):
         if subject_kind == 'behavior':
             subject.legacy_subject_id = None
         elif year_level.legacy_level_id:
-            legacy_subject = (
-                db.session.get(Subject, subject.legacy_subject_id)
-                if subject.legacy_subject_id
-                else None
-            )
-            if not legacy_subject or legacy_subject.academic_level_id != year_level.legacy_level_id:
+            if _legacy_subject_bridge_needs_repair(
+                subject,
+                name,
+                year_level.legacy_level_id,
+            ):
                 legacy_subject = _get_or_create_legacy_subject(
                     name,
                     year_level.legacy_level_id,
