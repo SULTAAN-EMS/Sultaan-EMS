@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TIS - Foomka Hubinta Xogta Ardeyga - Fasalka Ardeyda</title>
+<title>{{ verification_filename[:-4] if verification_filename is defined else 'Foomka Hubinta Xogta Ardeyga' }}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -672,7 +672,7 @@
     .page-foot{ margin-top:1.4mm; padding-top:.8mm; font-size:7px; }
     .photo-box--preview::after{ display:none; }
     .photo-preview-modal{ display:none !important; }
-    .page:last-of-type{ page-break-after:auto; }
+  .page:last-of-type{ page-break-after:auto; }
     @page{ size:A4; margin:0; }
   }
   @media screen{
@@ -683,6 +683,9 @@
     .selector-actions{grid-column:1 / -1;}
     .page{width:100%;min-height:auto;margin-top:14px;overflow-x:auto;}
   }
+  body.verification-pdf-export .page{margin:0;box-shadow:none;}
+  body.verification-pdf-export .school-row .corr-hd{background:#fff7df !important;opacity:1 !important;}
+  body.verification-pdf-export .school-row .corr-hd__inner{background:#2563c7 !important;color:#fff !important;opacity:1 !important;}
 </style>
 </head>
 <body>
@@ -783,7 +786,7 @@
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 10 18H2L12 3Z"/><path d="M12 9v5M12 18h.01"/></svg>
 {%- endmacro %}
 
-<div class="verification-pages">
+<div class="verification-pages" data-download-filename="{{ verification_filename }}">
 {% for page_rows in pages %}
 {% set page_loop = loop %}
 <div class="page">
@@ -865,17 +868,27 @@
     const downloadButton = document.getElementById('verification-download');
     const printButton = document.querySelector('.verification-print-fab');
     const source = document.querySelector('.verification-pages');
-    const filename = 'TIS - Foomka Hubinta Xogta Ardeyga - Fasalka Ardeyda.pdf';
+    const filename = {{ (verification_filename|default('TIS - Foomka Hubinta Xogta Ardeyga.pdf', true))|tojson }};
 
-    function loadHtml2Pdf() {
-      if (typeof window.html2pdf === 'function') return Promise.resolve();
+    function loadScript(src, ready) {
+      if (ready()) return Promise.resolve();
       return new Promise((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+        script.src = src;
         script.onload = resolve;
-        script.onerror = () => reject(new Error('PDF download library failed to load'));
+        script.onerror = () => reject(new Error(`PDF dependency failed to load: ${src}`));
         document.head.appendChild(script);
       });
+    }
+
+    function loadPdfDependencies() {
+      return loadScript(
+        'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+        () => typeof window.html2canvas === 'function',
+      ).then(() => loadScript(
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+        () => Boolean(window.jspdf?.jsPDF || window.jsPDF),
+      ));
     }
 
     function waitForImages(container) {
@@ -891,22 +904,45 @@
     async function downloadPdf() {
       if (!downloadButton || downloadButton.disabled || !source) return;
       downloadButton.disabled = true;
+      document.body.classList.add('verification-pdf-export');
       try {
-        await loadHtml2Pdf();
+        await loadPdfDependencies();
+        const JsPDF = window.jspdf?.jsPDF || window.jsPDF;
+        if (!JsPDF) throw new Error('jsPDF is not available');
+        document.title = filename.replace(/\.pdf$/i, '');
         if (document.fonts && document.fonts.ready) await document.fonts.ready;
         await waitForImages(source);
-        await window.html2pdf().set({
-          margin: 0,
-          filename,
-          image: {type:'jpeg', quality:.98},
-          html2canvas: {scale:2, useCORS:true, backgroundColor:'#FBF8F1'},
-          jsPDF: {unit:'mm', format:'a4', orientation:'portrait'},
-          pagebreak: {mode:['css','legacy']}
-        }).from(source).save();
+        const pages = [...source.querySelectorAll('.page')];
+        if (!pages.length) throw new Error('No verification pages are available');
+        const pdf = new JsPDF({unit:'mm', format:'a4', orientation:'portrait', compress:true});
+        for (let index = 0; index < pages.length; index += 1) {
+          const page = pages[index];
+          const rect = page.getBoundingClientRect();
+          const canvas = await window.html2canvas(page, {
+            scale: 2,
+            useCORS: true,
+            allowTaint: false,
+            backgroundColor: '#FBF8F1',
+            logging: false,
+            width: Math.ceil(rect.width),
+            height: Math.ceil(rect.height),
+            windowWidth: Math.ceil(rect.width),
+            windowHeight: Math.ceil(rect.height),
+          });
+          const imageData = canvas.toDataURL('image/png');
+          const imageProperties = pdf.getImageProperties(imageData);
+          const fit = Math.min(210 / imageProperties.width, 297 / imageProperties.height);
+          const width = imageProperties.width * fit;
+          const height = imageProperties.height * fit;
+          if (index > 0) pdf.addPage();
+          pdf.addImage(imageData, 'PNG', (210 - width) / 2, (297 - height) / 2, width, height, undefined, 'FAST');
+        }
+        pdf.save(filename);
       } catch (error) {
         console.error('Student verification download failed:', error);
-        window.print();
+        downloadButton.title = 'Soo degistu way fashilantay. Fadlan mar kale isku day.';
       } finally {
+        document.body.classList.remove('verification-pdf-export');
         downloadButton.disabled = false;
       }
     }

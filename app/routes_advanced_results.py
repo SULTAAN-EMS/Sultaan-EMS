@@ -4405,6 +4405,10 @@ def student_verification():
     settings = get_settings()
     school_name = settings.get("school_name") or settings.get("dashboard_title") or "Taysir International School"
     school_logo_url = stored_asset_url(settings.get("logo_path"))
+    verification_filename = f"{_school_initials_for_download()} - Foomka Hubinta Xogta Ardeyga"
+    if selected_class:
+        verification_filename += f" - {_safe_download_name_part(selected_class.name, 'Fasal')}"
+    verification_filename += ".pdf"
 
     return render_template(
         "admin/student_verification.html",
@@ -4420,6 +4424,7 @@ def student_verification():
         selection_complete=selection_complete,
         generate_requested=generate_requested,
         student_count=len(student_rows),
+        verification_filename=verification_filename,
         pages=pages,
         total_pages=len(pages),
         school_name=school_name,
