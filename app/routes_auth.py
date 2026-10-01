@@ -25,6 +25,7 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        remember = request.form.get("remember") == "on"
         user = User.query.filter_by(username=username, is_active=True).first()
         if user and user.check_password(password):
             if _is_linked_teacher_user(user):
@@ -32,7 +33,7 @@ def login():
                 db.session.commit()
                 flash("Teachers must use the dedicated Teacher Portal login.", "warning")
                 return redirect(url_for("teacher_portal.login"))
-            login_user(user)
+            login_user(user, remember=remember)
             session_timeout = get_settings().get("admin_session_timeout_minutes", "60")
             try:
                 session_timeout = max(5, min(1440, int(session_timeout)))

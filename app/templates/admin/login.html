@@ -1,76 +1,138 @@
 {% extends "base.html" %}
-{% block body_class %}login-body{% endblock %}
+{% set school_en = ui_settings.school_name or 'Taysiir International Schools' %}
+{% set school_ar = ui_settings.school_name_ar or 'مدارس تيسير العالمية' %}
+{% set school_so = ui_settings.school_name_so or 'Dugsiyada Caalamiga ah ee Taysiir' %}
+{% set owner_name = ui_settings.owner_name or 'SULTAAN EMS' %}
+{% set owner_logo_src = asset_url(ui_settings.owner_logo_path) if ui_settings.owner_logo_path else url_for('static', filename='images/sultaan-ems-owner-logo-sample.jpg', v='owner-logo-20261001') %}
+{% set login_background_src = asset_url(ui_settings.login_background_path) if ui_settings.login_background_path else url_for('static', filename='images/sultaan-mahad-login-bg.jpeg', v='login-background-20261001') %}
+{% block title %}Soo gal | {{ school_en }}{% endblock %}
+{% block body_class %}login-body sultan-login-body {{ 'theme-dark' if ui_settings.dashboard_theme == 'dark' else 'theme-light' }}{% endblock %}
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Cairo:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin-login.css') }}">
+{% endblock %}
 {% block content %}
-<main class="login-page">
-  <form method="post" class="login-card glass-card">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="login-mark">{% if ui_settings.logo_path %}<img src="{{ asset_url(ui_settings.logo_path) }}" alt="{{ ui_settings.school_name }} logo">{% else %}<i class="fa-solid fa-shield-halved"></i>{% endif %}</div>
-    <span class="eyebrow"><i class="fa-solid fa-lock"></i> Secure Admin Access</span>
-    <h1>{{ ui_settings.school_name }}</h1>
-    <p>{{ ui_settings.school_name }} administration workspace.</p>
-    <label><i class="fa-solid fa-user"></i> Username<input name="username" required autofocus></label>
-    <label><i class="fa-solid fa-key"></i> Password</label>
-    <div class="password-wrapper">
-      <input name="password" id="passwordInput" type="password" required>
-      <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility()" aria-label="Toggle Password Visibility">
-        <i class="fa-solid fa-eye" id="eyeIcon"></i>
-      </button>
+<main class="sultan-login-shell" aria-label="Bogga gelitaanka maamulka">
+  <section class="sultan-login-art" aria-label="Astaamaha SULTAAN EMS">
+    <img class="sultan-login-scene" src="{{ login_background_src }}" alt="" aria-hidden="true">
+    <div class="sultan-login-art-inner">
+      <div class="sultan-login-brand">
+        <div class="sultan-login-logo" aria-label="Logo-ga mulkiilaha">
+          <img src="{{ owner_logo_src }}" alt="Logo-ga {{ owner_name }}">
+        </div>
+        <div><div class="sultan-login-owner-name">{{ owner_name }}</div>{% if ui_settings.owner_tagline %}<div class="sultan-login-owner-tag">{{ ui_settings.owner_tagline }}</div>{% endif %}</div>
+      </div>
+      <div class="sultan-login-hero"><h1>NIDAAMKA MAAREYNTA IMTIXAANNADA</h1><p>Maamul xogta ardayda, kuraasta imtixaanka iyo natiijooyinka si degdeg ah oo ammaan ah.</p></div>
+      <div class="sultan-login-marquee" role="region" aria-label="Awoodaha nidaamka"><div class="sultan-login-cols"><div class="sultan-login-col sultan-login-col-a"><div class="sultan-login-track" id="loginTrackA"></div></div><div class="sultan-login-col sultan-login-col-b"><div class="sultan-login-track" id="loginTrackB"></div></div></div></div>
+      <div class="sultan-login-contact-bar"><nav class="sultan-login-social" aria-label="Xiriirka mulkiilaha">
+        <a data-login-contact="owner_phone" href="#" aria-label="Telefoonka mulkiilaha" title="Telefoonka mulkiilaha"><i class="fa-solid fa-phone" aria-hidden="true"></i></a>
+        <a data-login-contact="owner_whatsapp_url" href="#" aria-label="WhatsApp-ka mulkiilaha" title="WhatsApp-ka mulkiilaha"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i></a>
+        <a data-login-contact="owner_facebook_url" href="#" aria-label="Facebook-ka mulkiilaha" title="Facebook-ka mulkiilaha"><i class="fa-brands fa-facebook" aria-hidden="true"></i></a>
+        <a data-login-contact="owner_tiktok_url" href="#" aria-label="TikTok-ga mulkiilaha" title="TikTok-ga mulkiilaha"><i class="fa-brands fa-tiktok" aria-hidden="true"></i></a>
+      </nav></div>
     </div>
-    <button type="submit" class="premium"><i class="fa-solid fa-right-to-bracket"></i> Login</button>
-    <p style="margin:0;text-align:center;color:var(--muted);font-size:.9rem;">Teachers: use the <a href="{{ url_for('teacher_portal.login') }}">Teacher Portal login</a>.</p>
-  </form>
+  </section>
+
+  <section class="sultan-login-panel">
+    <div class="sultan-login-school-head">
+      <div class="sultan-login-school-en" lang="en">{{ school_en }}</div>
+      <div class="sultan-login-school-logo" aria-label="Logo-ga dugsiga">
+        {% if ui_settings.logo_path %}<img src="{{ asset_url(ui_settings.logo_path) }}" alt="Logo-ga {{ school_en }}">{% else %}<span class="sultan-login-school-logo-fallback">{{ school_en[:1]|upper }}</span>{% endif %}
+      </div>
+      <div class="sultan-login-school-ar" lang="ar" dir="rtl">{{ school_ar }}</div>
+      <div class="sultan-login-school-so" lang="so">{{ school_so }}</div>
+    </div>
+
+    <div class="sultan-login-card">
+      <h1 class="sultan-login-title" id="loginGreeting" aria-label="Soo dhawaaw, Mudane/Marwo"><span id="loginTyped" aria-hidden="true"></span><span class="sultan-login-caret" aria-hidden="true"></span></h1>
+      <form method="post" id="adminLoginForm" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="sultan-login-field" id="loginUserField"><label for="loginUsername">Magaca isticmaalaha</label><div class="sultan-login-control"><i class="fa-solid fa-user" aria-hidden="true"></i><input id="loginUsername" name="username" type="text" autocomplete="username" placeholder="Tusaale: sultan.admin" autofocus required></div><div class="sultan-login-error">Geli magaca isticmaalaha.</div></div>
+        <div class="sultan-login-field" id="loginPasswordField"><label for="loginPassword">Erayga sirta ah</label><div class="sultan-login-control"><i class="fa-solid fa-key" aria-hidden="true"></i><input id="loginPassword" name="password" type="password" autocomplete="current-password" placeholder="Geli erayga sirta ah" required><button type="button" class="sultan-login-toggle" id="loginPasswordToggle" aria-label="Muuji erayga sirta ah" aria-pressed="false"><i class="fa-solid fa-eye is-visible" aria-hidden="true"></i><i class="fa-solid fa-eye-slash is-hidden" aria-hidden="true"></i></button></div><div class="sultan-login-error">Geli erayga sirta ah.</div></div>
+        <div class="sultan-login-row"><label class="sultan-login-check"><input type="checkbox" name="remember" id="loginRemember"> I xasuuso</label><a href="#" id="loginForgot">Ma illowday erayga sirta ah?</a></div>
+        <button type="submit" class="sultan-login-submit" id="loginSubmit"><span class="sultan-login-spinner" aria-hidden="true"></span><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i><span id="loginSubmitText">Soo gal</span></button>
+        <div class="sultan-login-notice" id="loginNotice" role="status" aria-live="polite"></div>
+      </form>
+    </div>
+
+    <nav class="sultan-login-panel-foot" aria-label="Xiriirka dugsiga"><div class="sultan-login-school-social">
+      <a data-login-contact="school_phone" href="#" aria-label="Telefoonka dugsiga"><i class="fa-solid fa-phone" aria-hidden="true"></i></a>
+      <a data-login-contact="whatsapp_url" href="#" aria-label="WhatsApp-ka dugsiga"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i></a>
+      <a data-login-contact="facebook_url" href="#" aria-label="Facebook-ga dugsiga"><i class="fa-brands fa-facebook" aria-hidden="true"></i></a>
+      <a data-login-contact="school_tiktok_url" href="#" aria-label="TikTok-ga dugsiga"><i class="fa-brands fa-tiktok" aria-hidden="true"></i></a>
+    </div></nav>
+    <div class="sultan-login-footnote">{{ school_en }} · Nidaam maamul oo ammaan ah</div>
+  </section>
 </main>
-
-<style>
-.password-wrapper {
-  position: relative;
-  width: 100%;
-  display: flex;
-  align-items: center;
-}
-.password-wrapper input {
-  padding-right: 44px !important;
-  width: 100%;
-}
-.password-toggle-btn {
-  position: absolute;
-  right: 12px;
-  background: none;
-  border: none;
-  padding: 8px;
-  color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s ease;
-  z-index: 10;
-}
-.password-toggle-btn:hover {
-  color: var(--primary, #3b82f6);
-}
-.password-toggle-btn i {
-  font-size: 1.1rem;
-  transition: transform 0.15s ease;
-}
-.password-toggle-btn:active i {
-  transform: scale(0.85);
-}
-</style>
-
 <script>
-function togglePasswordVisibility() {
-  const input = document.getElementById('passwordInput');
-  const icon = document.getElementById('eyeIcon');
-  if (input.type === 'password') {
-    input.type = 'text';
-    icon.classList.remove('fa-eye');
-    icon.classList.add('fa-eye-slash');
-  } else {
-    input.type = 'password';
-    icon.classList.remove('fa-eye-slash');
-    icon.classList.add('fa-eye');
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const contacts = {
+    school_phone: {{ (ui_settings.school_phone or '')|tojson }},
+    whatsapp_url: {{ (ui_settings.whatsapp_url or '')|tojson }},
+    facebook_url: {{ (ui_settings.facebook_url or '')|tojson }},
+    school_tiktok_url: {{ (ui_settings.school_tiktok_url or '')|tojson }},
+    owner_phone: {{ (ui_settings.owner_phone or '')|tojson }},
+    owner_whatsapp_url: {{ (ui_settings.owner_whatsapp_url or '')|tojson }},
+    owner_facebook_url: {{ (ui_settings.owner_facebook_url or '')|tojson }},
+    owner_tiktok_url: {{ (ui_settings.owner_tiktok_url or '')|tojson }}
+  };
+  function hrefFor(key, value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (key.includes('phone')) return 'tel:' + raw.replace(/[^+\d]/g, '');
+    if (key.includes('whatsapp')) return raw.startsWith('http') ? raw : 'https://wa.me/' + raw.replace(/\D/g, '');
+    return raw;
   }
-}
+  document.querySelectorAll('[data-login-contact]').forEach((link) => {
+    const key = link.dataset.loginContact;
+    const href = hrefFor(key, contacts[key]);
+    if (!href) { link.classList.add('is-empty'); link.setAttribute('aria-hidden', 'true'); return; }
+    link.href = href;
+    if (!key.includes('phone')) { link.target = '_blank'; link.rel = 'noopener noreferrer'; }
+  });
+  document.querySelectorAll('.sultan-login-contact-bar, .sultan-login-panel-foot').forEach((bar) => {
+    if (!bar.querySelector('[data-login-contact]:not(.is-empty)')) bar.hidden = true;
+  });
+
+  const features = [
+    { i:'students', t:'Maareynta Ardayda', b:['Diiwaangelinta ardayda cusub','Cusboonaysiinta, raadinta iyo maaraynta xogta ardayda'] },
+    { i:'layers', t:'Qaab-dhismeedka Waxbarashada', b:['Sannad-dugsiyeedyo','Heerarka dugsiga','Fasallo, qaybaha iyo maadooyin rasmi ah'] },
+    { i:'excel', t:'Natiijooyinka Imtixaanka', b:['Gelinta natiijooyinka','Soo-gelinta natiijooyinka Excel','Maamulka natiijooyinka ardayda'] },
+    { i:'pdf', t:'Warbixinnada Imtixaanka', b:['Warbixinnada PDF','Falanqaynta natiijooyinka','Warbixinnada heerar, fasallo iyo maadooyin'] },
+    { i:'portal', t:'Waaxda Adeegyada Ardayga', b:['Natiijooyinka imtixaannada','Warbixinnada anshaxa iyo xaadirka','Dokumentiyada muhiimka ah ee ardayga'] },
+    { i:'attend', t:'Xaadirinta Fasalada Imtixaanka', b:['La socodka xaadirinta inta lagu jiro imtixaanka','Xog ku xiran sannadka, imtixaanka, heerka iyo fasalka'] },
+    { i:'calendar', t:'Anshaxa iyo Xaadirka Maalinlaha ah', b:['Maamulka hab-dhaqanka ardayda','Warbixinnada dhacdooyinka','Xaadirinta maalinlaha ah'] },
+    { i:'award', t:'Xeerarka Gudbidda iyo Qiimeynta', b:['Dejinta shuruudaha gudbidda','Qiimeynta ardayda','Dallacsiinta iyo natiijada kama dambaysta ah'] },
+    { i:'shuffle', t:'Isku-dhafidda Fadhiga Ardayda', b:['Qorshaynta fadhiga imtixaanka','Kala-dhigidda ardayda fasallo iyo hoolal kala duwan'] },
+    { i:'idcard', t:'Kaadhadhka Aqoonsiga', b:['Abuurista kaadhadhka ardayda','QR Code','Xaqiijinta kaadhka iyo natiijada'] },
+    { i:'chat', t:'Cabashooyinka iyo Falcelinta', b:['Soo gudbinta cabashooyinka','Maamulka jawaab-celinta ardayda','Dhageysiga codka ardayda kadib shaacinta natiijooyinka'] },
+    { i:'verify', t:'Warqadaha Hubinta Xogta', b:['Hubinta iyo xaqiijinta xogta ardayga','Daabacaadda foomamka xaqiijinta'] },
+    { i:'eye', t:'Ilaaliyeyaasha Imtixaanka', b:['Maamulka ilaaliyeyaasha','Ku xidhidda ilaaliyaha imtixaan, fasal ama hool'] },
+    { i:'tag', t:'Dejinta Dhacdooyinka', b:['Dejinta qaybaha anshaxa','Qayb-hoosaadyada iyo falalka la xiriira dhacdooyinka'] },
+    { i:'sliders', t:'Maareynta Nidaamka', b:['Isticmaalayaal iyo doorar kala duwan','Dejinta sannadaha, imtixaannada, fasallada iyo maadooyinka','Logo-ga iyo xogta rasmiga ah ee dugsiga'] },
+    { i:'dashboard', t:'Dashboard-ka Guud', b:['Tirada ardayda','Heerarka iyo fasallada','Natiijooyinka iyo xogaha muhiimka ah ee nidaamka'] },
+    { i:'shield', t:'Audit Logs iyo Amniga', b:['Diiwaangelinta hawlgallada nidaamka','Ilaalinta xogta iyo raadraaca isbeddellada'] },
+    { i:'transfer', t:'Soo-gelin, Dhoofin iyo Daabacaad', b:['Soo-gelin iyo dhoofin Excel','Daabacaadda warbixinnada','Soo-dejinta faylasha iyo dukumentiyada muhiimka ah'] }
+  ];
+  const iconMap = { students:'fa-users', layers:'fa-layer-group', excel:'fa-file-excel', pdf:'fa-file-pdf', portal:'fa-user-graduate', attend:'fa-calendar-check', calendar:'fa-calendar-days', award:'fa-award', shuffle:'fa-shuffle', idcard:'fa-id-card', chat:'fa-comments', verify:'fa-file-circle-check', eye:'fa-eye', tag:'fa-tags', sliders:'fa-sliders', dashboard:'fa-table-cells-large', shield:'fa-shield-halved', transfer:'fa-file-export' };
+  function featureCard(item) { return '<article class="sultan-login-feature"><span class="sultan-login-feature-icon"><i class="fa-solid '+iconMap[item.i]+'" aria-hidden="true"></i></span><div><div class="sultan-login-feature-title">'+item.t+'</div><ul class="sultan-login-feature-list">'+item.b.map((x) => '<li>'+x+'</li>').join('')+'</ul></div></article>'; }
+  function fillTrack(id, list) { const html = list.map(featureCard).join(''); $(id).innerHTML = '<div>'+html+'</div><div class="duplicate" aria-hidden="true">'+html+'</div>'; }
+  fillTrack('loginTrackA', features.filter((_, index) => index % 2 === 0));
+  fillTrack('loginTrackB', features.filter((_, index) => index % 2 === 1));
+
+  const typed = $('loginTyped');
+  if (reduced) typed.textContent = 'Soo dhawaaw, Mudane/Marwo';
+  else { const full = 'Soo dhawaaw, Mudane/Marwo'; let index = 0, direction = 1; const tick = () => { index += direction; typed.textContent = full.slice(0, index); let delay = direction > 0 ? 85 + Math.random() * 40 : 38; if (index === full.length) { direction = -1; delay = 2200; } else if (index === 0) { direction = 1; delay = 650; } window.setTimeout(tick, delay); }; tick(); }
+
+  const password = $('loginPassword');
+  $('loginPasswordToggle').addEventListener('click', function () { const show = password.type === 'password'; password.type = show ? 'text' : 'password'; this.setAttribute('aria-pressed', String(show)); this.setAttribute('aria-label', show ? 'Qari erayga sirta ah' : 'Muuji erayga sirta ah'); password.focus(); });
+  [['loginUserField', $('loginUsername')], ['loginPasswordField', password]].forEach(([field, input]) => input.addEventListener('input', () => $(field).classList.remove('is-invalid')));
+  $('loginForgot').addEventListener('click', (event) => { event.preventDefault(); const notice = $('loginNotice'); notice.textContent = 'La xiriir maamulaha nidaamka si erayga sirta ah loo cusboonaysiiyo.'; notice.classList.add('is-visible'); });
+  $('adminLoginForm').addEventListener('submit', (event) => { const user = $('loginUsername'); const userOk = user.value.trim().length > 0; const passOk = password.value.length > 0; $('loginUserField').classList.toggle('is-invalid', !userOk); $('loginPasswordField').classList.toggle('is-invalid', !passOk); if (!userOk || !passOk) { event.preventDefault(); (userOk ? password : user).focus(); return; } $('loginSubmit').disabled = true; $('loginSubmit').classList.add('is-loading'); $('loginSubmitText').textContent = 'Waa la xaqiijinayaa…'; });
+})();
 </script>
 {% endblock %}

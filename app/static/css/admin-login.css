@@ -1,0 +1,412 @@
+/* SULTAAN EMS administrator login. Scoped so the login refresh does not alter other pages. */
+.sultan-login-body {
+  --sl-bg: #f2f5f7;
+  --sl-card: #fff;
+  --sl-ink: #0f1e2e;
+  --sl-muted: #586979;
+  --sl-line: #d5dde5;
+  --sl-field: #f8fafb;
+  --sl-brand: #145c63;
+  --sl-brand-hover: #0f4a50;
+  --sl-gold: #e3b04b;
+  --sl-danger: #b3261e;
+  --sl-ring: rgba(20, 92, 99, .28);
+  margin: 0;
+  min-height: 100vh;
+  background: var(--sl-bg);
+  color: var(--sl-ink);
+  font-family: "DM Sans", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.sultan-login-body *, .sultan-login-body *::before, .sultan-login-body *::after { box-sizing: border-box; }
+.sultan-login-body .sultan-login-shell {
+  display: grid;
+  grid-template-columns: 1.35fr .85fr;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100vh;
+  min-height: 620px;
+  overflow: hidden;
+}
+.sultan-login-body .sultan-login-art {
+  position: relative;
+  overflow: hidden;
+  min-height: 100%;
+  color: #fff;
+  background: #0b2239;
+}
+.sultan-login-body .sultan-login-scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 22%; filter: saturate(.82) contrast(1.04); }
+.sultan-login-body .sultan-login-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(8,24,40,.62), rgba(8,24,40,.45) 55%, rgba(8,24,40,.12));
+}
+.sultan-login-body .sultan-login-art-inner {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, 2.4vh, 24px);
+  height: 100%;
+  padding: clamp(20px, 4vh, 52px) clamp(28px, 4.5vw, 56px);
+}
+.sultan-login-body .sultan-login-brand { display: flex; align-items: center; gap: 12px; }
+.sultan-login-body .sultan-login-logo {
+  display: grid;
+  flex: none;
+  width: 60px;
+  height: 60px;
+  padding: 6px;
+  place-items: center;
+  overflow: hidden;
+  border: 0;
+  border-radius: 16px;
+  background: #fff;
+  color: #0b2239;
+  box-shadow: 0 6px 20px rgba(0,0,0,.25);
+}
+.sultan-login-body .sultan-login-logo img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+.sultan-login-body .sultan-login-logo.is-empty { background: var(--sl-gold); outline: 2px dashed rgba(11,34,57,.55); outline-offset: -5px; }
+.sultan-login-body .sultan-login-logo-fallback { font-size: 22px; font-weight: 800; }
+.sultan-login-body .sultan-login-owner-name {
+  max-width: 26ch;
+  font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+.sultan-login-body .sultan-login-owner-tag { margin-top: 2px; font-size: 13px; opacity: .8; }
+.sultan-login-body .sultan-login-hero h1 {
+  max-width: none;
+  margin: 0 0 10px;
+  font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  font-size: clamp(22px, min(2.7vw, 4.6vh), 38px);
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.sultan-login-body .sultan-login-hero p { max-width: 46ch; margin: 0; font-size: 16px; opacity: .88; }
+.sultan-login-body .sultan-login-marquee {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 12%, #000 88%, transparent);
+}
+.sultan-login-body .sultan-login-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; height: 100%; }
+.sultan-login-body .sultan-login-col { min-height: 0; overflow: hidden; }
+.sultan-login-body .sultan-login-track { display: flex; flex-direction: column; will-change: transform; }
+.sultan-login-body .sultan-login-col-a .sultan-login-track { animation: sultan-login-mq-up 70s linear infinite; }
+.sultan-login-body .sultan-login-col-b .sultan-login-track { animation: sultan-login-mq-down 66s linear infinite; }
+.sultan-login-body .sultan-login-marquee:hover .sultan-login-track { animation-play-state: paused; }
+@keyframes sultan-login-mq-up { to { transform: translateY(-50%); } }
+@keyframes sultan-login-mq-down { from { transform: translateY(-50%); } to { transform: translateY(0); } }
+.sultan-login-body .sultan-login-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 13px 14px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 16px;
+  background: rgba(255,255,255,.08);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.sultan-login-body .sultan-login-feature-icon {
+  display: grid;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--sl-gold);
+  background: rgba(227,176,75,.16);
+}
+.sultan-login-body .sultan-login-feature:nth-child(even) .sultan-login-feature-icon { color: #5fd3c8; background: rgba(95,211,200,.15); }
+.sultan-login-body .sultan-login-feature-icon i { font-size: 19px; }
+.sultan-login-body .sultan-login-feature-title { margin-bottom: 5px; font-size: 14.5px; font-weight: 600; line-height: 1.2; }
+.sultan-login-body .sultan-login-feature-list { margin: 0; padding: 0; list-style: none; }
+.sultan-login-body .sultan-login-feature-list li { position: relative; margin-top: 2px; padding-left: 12px; font-size: 12px; line-height: 1.35; opacity: .78; }
+.sultan-login-body .sultan-login-feature-list li::before { content: ""; position: absolute; top: .55em; left: 0; width: 4px; height: 4px; border-radius: 50%; background: var(--sl-gold); }
+.sultan-login-body .sultan-login-col-b .sultan-login-feature-list li::before { background: #5fd3c8; }
+.sultan-login-body .sultan-login-contact-bar { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px 14px; }
+.sultan-login-body .sultan-login-contact-title { font-size: 13px; opacity: .8; }
+.sultan-login-body .sultan-login-social { display: flex; flex-wrap: wrap; gap: 8px; }
+.sultan-login-body .sultan-login-social a {
+  display: inline-flex;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  background: rgba(255,255,255,.1);
+  transition: background .15s, color .15s, border-color .15s, transform .15s;
+}
+.sultan-login-body .sultan-login-social a:hover { border-color: var(--sl-gold); color: #0b2239; background: var(--sl-gold); transform: translateY(-2px); text-decoration: none; }
+.sultan-login-body .sultan-login-social a i { width: 18px; text-align: center; font-size: 17px; }
+.sultan-login-body .sultan-login-panel {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto;
+  padding: clamp(12px, 2.4vh, 28px) clamp(20px, 5vw, 64px) clamp(10px, 2vh, 22px);
+  background: var(--sl-bg);
+}
+.sultan-login-body .sultan-login-school-head {
+  display: grid;
+  width: 100%;
+  max-width: 500px;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 10px;
+  margin: 0 auto 6px;
+}
+.sultan-login-body .sultan-login-school-logo {
+  display: grid;
+  grid-column: 2;
+  grid-row: 1;
+  width: clamp(72px, 12vh, 104px);
+  height: clamp(72px, 12vh, 104px);
+  padding: 4px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--sl-line);
+  border-radius: 22px;
+  background: var(--sl-card);
+  box-shadow: 0 6px 20px rgba(15,30,46,.12);
+}
+.sultan-login-body .sultan-login-school-logo img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+.sultan-login-body .sultan-login-school-logo-fallback { color: var(--sl-brand); font-size: 27px; font-weight: 800; }
+.sultan-login-body .sultan-login-school-en {
+  grid-column: 1;
+  grid-row: 1;
+  font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  font-size: clamp(11px, 3.1vw, 14px);
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: .05em;
+  overflow-wrap: anywhere;
+}
+.sultan-login-body .sultan-login-school-ar {
+  grid-column: 3;
+  grid-row: 1;
+  text-align: right;
+  font-family: "Cairo", "Segoe UI", Tahoma, sans-serif;
+  font-size: clamp(15px, 4.4vw, 19px);
+  font-weight: 800;
+  line-height: 1.5;
+}
+.sultan-login-body .sultan-login-school-so {
+  display: flex;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--sl-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-align: center;
+}
+.sultan-login-body .sultan-login-school-so::before, .sultan-login-body .sultan-login-school-so::after { content: ""; flex: 1; height: 1px; background: var(--sl-line); }
+.sultan-login-body .sultan-login-card { width: 100%; max-width: 420px; margin: clamp(24px, 6vh, 48px) auto 0; }
+.sultan-login-body .sultan-login-title {
+  min-height: 1.25em;
+  margin: 0 0 clamp(16px, 3.6vh, 30px);
+  font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  font-size: clamp(19px, min(5.6vw, 4.2vh), 30px);
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.sultan-login-body .sultan-login-caret { display: inline-block; width: 2px; height: .95em; margin-left: 3px; vertical-align: -.1em; background: var(--sl-brand); animation: sultan-login-blink 1s steps(1) infinite; }
+@keyframes sultan-login-blink { 50% { opacity: 0; } }
+.sultan-login-body .sultan-login-field { margin-bottom: clamp(10px, 2.4vh, 20px); }
+.sultan-login-body .sultan-login-field label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+.sultan-login-body .sultan-login-control {
+  position: relative;
+  isolation: isolate;
+}
+.sultan-login-body .sultan-login-control::before {
+  position: absolute;
+  inset: -1px;
+  z-index: 2;
+  border-radius: 13px;
+  background: conic-gradient(
+    from var(--sultan-login-angle),
+    transparent 0deg,
+    transparent 250deg,
+    rgba(20, 92, 99, .18) 278deg,
+    var(--sl-brand) 315deg,
+    var(--sl-gold) 342deg,
+    transparent 360deg
+  );
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  padding: 1.5px;
+  transition: opacity .22s ease;
+}
+@property --sultan-login-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+.sultan-login-body .sultan-login-control > i {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  z-index: 1;
+  color: var(--sl-muted);
+  pointer-events: none;
+  transition: color .2s ease, transform .2s ease;
+  transform: translateY(-50%);
+}
+.sultan-login-body .sultan-login-control input {
+  width: 100%;
+  height: clamp(44px, 6.4vh, 52px);
+  padding: 0 46px 0 44px;
+  border: 1.5px solid var(--sl-line);
+  border-radius: 12px;
+  outline: none;
+  color: var(--sl-ink);
+  background: var(--sl-field);
+  font: inherit;
+  transition: border-color .2s ease, background .2s ease, transform .2s ease;
+}
+.sultan-login-body .sultan-login-control:hover input { border-color: var(--sl-muted); }
+.sultan-login-body .sultan-login-control:hover::before { opacity: .42; }
+.sultan-login-body .sultan-login-control:focus-within { animation: sultan-login-field-focus .32s ease both; }
+.sultan-login-body .sultan-login-control:focus-within::before {
+  opacity: 1;
+  animation: sultan-login-border-flow 2.8s linear infinite;
+}
+.sultan-login-body .sultan-login-control:focus-within > i { color: var(--sl-brand); transform: translateY(-50%) scale(1.08); }
+.sultan-login-body .sultan-login-control input:focus { border-color: var(--sl-brand); background: var(--sl-card); }
+@keyframes sultan-login-field-focus {
+  0% { transform: translateY(0); }
+  55% { transform: translateY(-3px); }
+  100% { transform: translateY(-1px); }
+}
+@keyframes sultan-login-border-flow {
+  to { --sultan-login-angle: 360deg; }
+}
+.sultan-login-body .sultan-login-field.is-invalid input { border-color: var(--sl-danger); }
+.sultan-login-body .sultan-login-error { display: none; margin-top: 6px; color: var(--sl-danger); font-size: 13px; }
+.sultan-login-body .sultan-login-field.is-invalid .sultan-login-error { display: block; }
+.sultan-login-body .sultan-login-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  color: var(--sl-muted);
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.sultan-login-body .sultan-login-toggle:hover,
+.sultan-login-body .sultan-login-toggle:active,
+.sultan-login-body .sultan-login-toggle:focus { color: var(--sl-ink); background: transparent; box-shadow: none; transform: translateY(-50%); }
+.sultan-login-body .sultan-login-toggle[aria-pressed="true"] { color: var(--sl-brand); }
+.sultan-login-body .sultan-login-toggle .is-hidden { display: none; }
+.sultan-login-body .sultan-login-toggle[aria-pressed="true"] .is-visible { display: none; }
+.sultan-login-body .sultan-login-toggle[aria-pressed="true"] .is-hidden { display: inline-block; }
+.sultan-login-body .sultan-login-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 2px 0 clamp(14px, 3vh, 26px); font-size: 14px; }
+.sultan-login-body .sultan-login-check { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+.sultan-login-body .sultan-login-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--sl-brand); }
+.sultan-login-body .sultan-login-card a { color: var(--sl-brand); font-weight: 600; text-decoration: none; }
+.sultan-login-body .sultan-login-card a:hover { text-decoration: underline; }
+.sultan-login-body .sultan-login-submit {
+  display: inline-flex;
+  width: 100%;
+  height: clamp(46px, 6.6vh, 54px);
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 12px;
+  color: #fff;
+  background: var(--sl-brand);
+  cursor: pointer;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  transition: background .15s, transform .1s;
+}
+.sultan-login-body .sultan-login-submit:hover { background: var(--sl-brand-hover); }
+.sultan-login-body .sultan-login-submit:active { transform: scale(.985); }
+.sultan-login-body .sultan-login-submit[disabled] { opacity: .85; cursor: progress; }
+.sultan-login-body .sultan-login-spinner { display: none; width: 18px; height: 18px; border: 2.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: sultan-login-spin .7s linear infinite; }
+.sultan-login-body .sultan-login-submit.is-loading .sultan-login-spinner { display: inline-block; }
+@keyframes sultan-login-spin { to { transform: rotate(360deg); } }
+.sultan-login-body .sultan-login-notice { display: none; margin-top: 18px; padding: 12px 14px; border: 1px solid var(--sl-line); border-radius: 12px; background: var(--sl-field); font-size: 14px; }
+.sultan-login-body .sultan-login-notice.is-visible { display: block; }
+.sultan-login-body .sultan-login-teacher-link { margin: 14px 0 0; color: var(--sl-muted); font-size: .9rem; text-align: center; }
+.sultan-login-body .sultan-login-panel-foot { display: flex; width: 100%; max-width: 500px; align-items: center; gap: 14px; margin-top: auto; }
+.sultan-login-body .sultan-login-panel-foot::before, .sultan-login-body .sultan-login-panel-foot::after { content: ""; flex: 1; height: 1px; background: var(--sl-line); }
+.sultan-login-body .sultan-login-school-social { display: flex; gap: 10px; }
+.sultan-login-body .sultan-login-school-social a {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid var(--sl-line);
+  border-radius: 50%;
+  color: var(--sl-brand);
+  background: var(--sl-card);
+  text-decoration: none;
+  transition: background .15s, color .15s, border-color .15s, transform .15s;
+}
+.sultan-login-body .sultan-login-school-social a:hover { border-color: var(--sl-brand); color: #fff; background: var(--sl-brand); transform: translateY(-2px); }
+.sultan-login-body .sultan-login-school-social a.is-empty { display: none; }
+.sultan-login-body .sultan-login-footnote { margin-top: clamp(10px, 2vh, 18px); color: var(--sl-muted); font-size: 13px; text-align: center; }
+.sultan-login-body .sultan-login-reduced-motion .sultan-login-track { animation: none !important; }
+@media (prefers-color-scheme: dark) {
+  .sultan-login-body:not([data-theme="light"]) { --sl-bg: #0b141e; --sl-card: #111e2c; --sl-ink: #eaf0f5; --sl-muted: #9dadbc; --sl-line: #25374a; --sl-field: #0d1925; --sl-brand: #2aa39b; --sl-brand-hover: #3bb8af; }
+}
+.sultan-login-body.theme-dark { --sl-bg: #0b141e; --sl-card: #111e2c; --sl-ink: #eaf0f5; --sl-muted: #9dadbc; --sl-line: #25374a; --sl-field: #0d1925; --sl-brand: #2aa39b; --sl-brand-hover: #3bb8af; }
+.sultan-login-body.theme-light { --sl-bg: #f2f5f7; --sl-card: #fff; --sl-ink: #0f1e2e; --sl-muted: #586979; --sl-line: #d5dde5; --sl-field: #f8fafb; --sl-brand: #145c63; --sl-brand-hover: #0f4a50; }
+@media (max-height: 780px) and (min-width: 861px) { .sultan-login-body .sultan-login-hero p { display: none; } }
+@media (max-width: 860px) {
+  .sultan-login-body .sultan-login-shell { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); min-height: 100vh; }
+  .sultan-login-body .sultan-login-art { min-height: 0; }
+  .sultan-login-body .sultan-login-art-inner { padding: 14px 20px; }
+  .sultan-login-body .sultan-login-hero, .sultan-login-body .sultan-login-marquee, .sultan-login-body .sultan-login-contact-bar { display: none; }
+  .sultan-login-body .sultan-login-logo { width: 52px; height: 52px; }
+  .sultan-login-body .sultan-login-owner-name { font-size: 19px; }
+  .sultan-login-body .sultan-login-panel { padding: 16px 20px 18px; }
+}
+@media (max-width: 420px) {
+  .sultan-login-body .sultan-login-school-head { column-gap: 12px; }
+  .sultan-login-body .sultan-login-school-logo { width: 64px; height: 64px; }
+  .sultan-login-body .sultan-login-school-en { font-size: 10.5px; }
+  .sultan-login-body .sultan-login-school-so { gap: 8px; font-size: 11px; letter-spacing: .06em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sultan-login-body *, .sultan-login-body *::before, .sultan-login-body *::after { animation: none !important; transition: none !important; }
+  .sultan-login-body .sultan-login-track.duplicate { display: none; }
+}

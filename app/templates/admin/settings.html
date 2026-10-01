@@ -5,16 +5,30 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <section class="panel form-grid premium-form">
     <div class="section-heading wide"><span><i class="fa-solid fa-school"></i></span><div><h2>School Branding</h2><p>These values update the public portal, admin area, and printable reports.</p></div></div>
-    <label><i class="fa-solid fa-signature"></i> School Name<input name="school_name" value="{{ settings.school_name }}"></label>
+    <label><i class="fa-solid fa-signature"></i> School Name (English)<input name="school_name" value="{{ settings.school_name }}"></label>
     <label><i class="fa-solid fa-quote-left"></i> Motto<input name="school_motto" value="{{ settings.school_motto }}"></label>
     <label><i class="fa-solid fa-location-dot"></i> Address<input name="school_address" value="{{ settings.school_address }}"></label>
-    <label><i class="fa-solid fa-phone"></i> Phone<input name="school_phone" value="{{ settings.school_phone }}"></label>
     <label><i class="fa-solid fa-envelope"></i> Email<input name="school_email" value="{{ settings.school_email }}"></label>
     <label><i class="fa-solid fa-globe"></i> Website<input name="school_website" value="{{ settings.school_website }}"></label>
     <label><i class="fa-solid fa-user-tie"></i> Principal Name<input name="principal_name" value="{{ settings.principal_name }}"></label>
     <label><i class="fa-solid fa-phone-volume"></i> Enable Phone Verification<select name="enable_phone_verification"><option value="off" {% if settings.enable_phone_verification != 'on' %}selected{% endif %}>OFF</option><option value="on" {% if settings.enable_phone_verification == 'on' %}selected{% endif %}>ON</option></select></label>
     <label><i class="fa-solid fa-image"></i> School Logo<input name="logo" type="file" accept="image/*"></label>
     <label class="wide"><i class="fa-solid fa-shoe-prints"></i> Footer Text<input name="school_footer" value="{{ settings.school_footer }}"></label>
+
+    <div class="section-heading wide"><span><i class="fa-solid fa-language"></i></span><div><h2>Login Page: School Identity</h2><p>These three names and the school logo appear on the administrator login page.</p></div></div>
+    <label><i class="fa-solid fa-align-right"></i> School Name (Arabic)<input name="school_name_ar" dir="rtl" lang="ar" value="{{ settings.school_name_ar }}" placeholder="مدارس تيسير العالمية"></label>
+    <label class="wide"><i class="fa-solid fa-signature"></i> School Name (Somali)<input name="school_name_so" value="{{ settings.school_name_so }}" placeholder="Dugsiyada Caalamiga ah ee Taysiir"></label>
+
+    <div class="section-heading wide"><span><i class="fa-solid fa-user-tie"></i></span><div><h2>Login Page: Owner Contacts</h2><p>Owner branding and contacts are kept separate from the school information.</p></div></div>
+    <label><i class="fa-solid fa-user-tie"></i> Owner Name<input name="owner_name" value="{{ settings.owner_name }}" placeholder="Magaca mulkiilaha"></label>
+    <label><i class="fa-solid fa-quote-left"></i> Owner Tagline<input name="owner_tagline" value="{{ settings.owner_tagline }}" placeholder="Horumariyaha nidaamka"></label>
+    <label><i class="fa-solid fa-phone"></i> Owner Phone<input name="owner_phone" value="{{ settings.owner_phone }}" placeholder="+252..."></label>
+    <label><i class="fa-brands fa-whatsapp"></i> Owner WhatsApp<input name="owner_whatsapp_url" value="{{ settings.owner_whatsapp_url }}" placeholder="Number or wa.me link"></label>
+    <label><i class="fa-brands fa-facebook"></i> Owner Facebook<input name="owner_facebook_url" value="{{ settings.owner_facebook_url }}" placeholder="https://facebook.com/..."></label>
+    <label><i class="fa-brands fa-tiktok"></i> Owner TikTok<input name="owner_tiktok_url" value="{{ settings.owner_tiktok_url }}" placeholder="https://tiktok.com/@..."></label>
+    <label class="wide"><i class="fa-solid fa-image"></i> Owner Logo<input name="owner_logo" type="file" accept="image/*"></label>
+    <label class="wide"><i class="fa-solid fa-panorama"></i> Background Image<input name="login_background_image" type="file" accept="image/*"></label>
+
     <div class="section-heading wide"><span><i class="fa-solid fa-user-graduate"></i></span><div><h2>Global Student Photo Style</h2><p>These controls apply to verification, reports, profiles, admission cards, and printable pages.</p></div></div>
     <label><i class="fa-solid fa-circle"></i> Photo Shape<select name="student_photo_shape"><option value="circle" {% if settings.student_photo_shape == 'circle' %}selected{% endif %}>Circle</option><option value="rounded" {% if settings.student_photo_shape == 'rounded' %}selected{% endif %}>Rounded Rectangle</option></select></label>
     <label><i class="fa-solid fa-up-right-and-down-left-from-center"></i> Photo Size<select name="student_photo_size"><option value="small" {% if settings.student_photo_size == 'small' %}selected{% endif %}>Small</option><option value="medium" {% if settings.student_photo_size == 'medium' %}selected{% endif %}>Medium</option><option value="large" {% if settings.student_photo_size == 'large' %}selected{% endif %}>Large</option></select></label>
@@ -89,9 +103,11 @@
   </section>
 
   <section class="panel form-grid premium-form">
-    <div class="section-heading wide"><span><i class="fa-solid fa-share-nodes"></i></span><div><h2>Social & Contact Links</h2><p>Clickable public footer links for families and students.</p></div></div>
+    <div class="section-heading wide"><span><i class="fa-solid fa-building-columns"></i></span><div><h2>School Contacts</h2><p>These public school contacts are used on the login page and other public surfaces.</p></div></div>
+    <label><i class="fa-solid fa-phone"></i> School Phone<input name="school_phone" value="{{ settings.school_phone }}"></label>
     <label><i class="fa-brands fa-whatsapp"></i> WhatsApp<input name="whatsapp_url" value="{{ settings.whatsapp_url }}"></label>
     <label><i class="fa-brands fa-facebook-f"></i> Facebook<input name="facebook_url" value="{{ settings.facebook_url }}"></label>
+    <label><i class="fa-brands fa-tiktok"></i> TikTok<input name="school_tiktok_url" value="{{ settings.school_tiktok_url }}"></label>
     <label><i class="fa-brands fa-instagram"></i> Instagram<input name="instagram_url" value="{{ settings.instagram_url }}"></label>
     <label><i class="fa-brands fa-telegram"></i> Telegram<input name="telegram_url" value="{{ settings.telegram_url }}"></label>
     <label><i class="fa-brands fa-x-twitter"></i> X Twitter<input name="twitter_url" value="{{ settings.twitter_url }}"></label>
