@@ -683,7 +683,6 @@
     .selector-actions{grid-column:1 / -1;}
     .page{width:100%;min-height:auto;margin-top:14px;overflow-x:auto;}
   }
-  body.verification-pdf-export .page{margin:0;box-shadow:none;}
   body.verification-pdf-export .school-row .corr-hd{background:#fff7df !important;opacity:1 !important;}
   body.verification-pdf-export .school-row .corr-hd__inner{background:#2563c7 !important;color:#fff !important;opacity:1 !important;}
 </style>
@@ -868,7 +867,7 @@
     const downloadButton = document.getElementById('verification-download');
     const printButton = document.querySelector('.verification-print-fab');
     const source = document.querySelector('.verification-pages');
-    const filename = {{ (verification_filename|default('TIS - Foomka Hubinta Xogta Ardeyga.pdf', true))|tojson }};
+    const filename = source?.dataset.downloadFilename || {{ (verification_filename|default('TIS - Foomka Hubinta Xogta Ardeyga.pdf', true))|tojson }};
 
     function loadScript(src, ready) {
       if (ready()) return Promise.resolve();

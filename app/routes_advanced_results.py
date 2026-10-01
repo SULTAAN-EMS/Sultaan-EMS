@@ -5089,20 +5089,40 @@ def build_class_cards(exam, level_filter=None):
             if mapped_level and item.legacy_class and item.legacy_class.is_active
         ] if mapped_level else AcademicClass.query.filter_by(academic_level_id=exam.academic_level_id, is_active=True).all()
         for cls in classes:
-            cards.append(build_single_class_card(exam, academic_class=cls))
+            cards.append(build_single_class_card(
+                exam,
+                academic_level=mapped_level.legacy_level if mapped_level else None,
+                academic_class=cls,
+            ))
     else:
         # No scope - show level cards
-        year_level_options_by_id = {
-            option.id: option
-            for option in year_level_options(exam.academic_year_id)
-        } if exam.academic_year_id else {}
-        levels = [
-            year_level_options_by_id.get(item.legacy_level_id)
-            for item in year_scope_by_level.values()
-            if year_level_options_by_id.get(item.legacy_level_id)
-        ] if exam.academic_year_id else AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
-        for level in levels:
-            cards.append(build_single_class_card(exam, academic_level=level))
+        if level_filter:
+            # Once a level is selected, the second step must show only the
+            # active classes mapped to that exact academic year-level.
+            mapped_level = year_scope_by_level.get(level_filter.id)
+            classes = [
+                item.legacy_class
+                for item in year_classes(mapped_level.id)
+                if mapped_level and item.legacy_class and item.legacy_class.is_active
+            ] if mapped_level else []
+            for cls in classes:
+                cards.append(build_single_class_card(
+                    exam,
+                    academic_level=level_filter.legacy_level,
+                    academic_class=cls,
+                ))
+        else:
+            year_level_options_by_id = {
+                option.id: option
+                for option in year_level_options(exam.academic_year_id)
+            } if exam.academic_year_id else {}
+            levels = [
+                year_level_options_by_id.get(item.legacy_level_id)
+                for item in year_scope_by_level.values()
+                if year_level_options_by_id.get(item.legacy_level_id)
+            ] if exam.academic_year_id else AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
+            for level in levels:
+                cards.append(build_single_class_card(exam, academic_level=level))
     
     # Apply level filter if provided
     if level_filter:
