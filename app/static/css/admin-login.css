@@ -35,7 +35,7 @@
   background: #0b2239;
 }
 .sultan-login-body .sultan-login-scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 22%; filter: saturate(.82) contrast(1.04); }
-.sultan-login-body .sultan-login-scene.is-custom { inset: 2%; width: 96%; height: 96%; object-fit: contain; object-position: center; background: #0b2239; transform: none; }
+.sultan-login-body .sultan-login-scene.is-custom { inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: center; background: #0b2239; transform: none; }
 .sultan-login-body .sultan-login-art::after {
   content: "";
   position: absolute;
