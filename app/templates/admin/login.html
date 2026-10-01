@@ -16,7 +16,7 @@
 {% block content %}
 <main class="sultan-login-shell" aria-label="Bogga gelitaanka maamulka">
   <section class="sultan-login-art" aria-label="Astaamaha SULTAAN EMS">
-    <img class="sultan-login-scene" src="{{ login_background_src }}" alt="" aria-hidden="true">
+    <img class="sultan-login-scene{{ ' is-custom' if ui_settings.login_background_path else '' }}" src="{{ login_background_src }}" alt="" aria-hidden="true">
     <div class="sultan-login-art-inner">
       <div class="sultan-login-brand">
         <div class="sultan-login-logo" aria-label="Logo-ga mulkiilaha">
