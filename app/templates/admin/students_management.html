@@ -20,60 +20,45 @@
           <div class="sm-card-value" data-target="{{ stats.total_students }}">0</div>
           <div class="sm-card-label">Wadarta Ardayda</div>
         </div>
-        <div class="sm-card-trend">
-          <i class="fa-solid fa-chart-line"></i>
-        </div>
       </div>
 
       <div class="sm-card sm-card-magenta">
         <div class="sm-card-icon">
-          <i class="fa-solid fa-school"></i>
+          <i class="fa-solid fa-award"></i>
         </div>
         <div class="sm-card-content">
           <div class="sm-card-value" data-target="{{ stats.secondary }}">0</div>
           <div class="sm-card-label">Dugsi Sare</div>
         </div>
-        <div class="sm-card-trend">
-          <i class="fa-solid fa-award"></i>
-        </div>
       </div>
 
       <div class="sm-card sm-card-teal">
         <div class="sm-card-icon">
-          <i class="fa-solid fa-book-open"></i>
+          <i class="fa-solid fa-arrow-trend-up"></i>
         </div>
         <div class="sm-card-content">
           <div class="sm-card-value" data-target="{{ stats.upper_primary }}">0</div>
           <div class="sm-card-label">Dugsi Dhexe</div>
         </div>
-        <div class="sm-card-trend">
-          <i class="fa-solid fa-arrow-trend-up"></i>
-        </div>
       </div>
 
       <div class="sm-card sm-card-lime">
         <div class="sm-card-icon">
-          <i class="fa-solid fa-book"></i>
+          <i class="fa-solid fa-seedling"></i>
         </div>
         <div class="sm-card-content">
           <div class="sm-card-value" data-target="{{ stats.lower_primary }}">0</div>
           <div class="sm-card-label">Dugsi Hoose</div>
         </div>
-        <div class="sm-card-trend">
-          <i class="fa-solid fa-seedling"></i>
-        </div>
       </div>
 
       <div class="sm-card sm-card-violet">
         <div class="sm-card-icon">
-          <i class="fa-solid fa-child"></i>
+          <i class="fa-solid fa-shapes"></i>
         </div>
         <div class="sm-card-content">
           <div class="sm-card-value" data-target="{{ stats.kindergarten }}">0</div>
           <div class="sm-card-label">Xannaano</div>
-        </div>
-        <div class="sm-card-trend">
-          <i class="fa-solid fa-shapes"></i>
         </div>
       </div>
 
@@ -84,9 +69,6 @@
         <div class="sm-card-content">
           <div class="sm-card-value" data-target="{{ stats.active_students }}">0</div>
           <div class="sm-card-label">Ardayda Firfircoon</div>
-        </div>
-        <div class="sm-card-trend">
-          <i class="fa-solid fa-circle-check"></i>
         </div>
       </div>
     </div>
@@ -141,7 +123,7 @@
         <select id="status-filter" class="sm-filter">
           <option value="">{{ rh_label("students.status_all", default="Dhammaan") }}</option>
           <option value="active" {% if status_filter == 'active' %}selected{% endif %}>{{ rh_label("students.status_active", default="Active") }}</option>
-          <option value="locked" {% if status_filter == 'locked' %}selected{% endif %}>{{ rh_label("students.status_locked", default="Locked") }}</option>
+          <option value="locked" {% if status_filter == 'locked' %}selected{% endif %}>{{ rh_label("students.status_locked", default="Xidhan") }}</option>
         </select>
       </div>
       <div class="sm-filter-item">
@@ -333,30 +315,30 @@
               {% endif %}
               <span class="status-pill {{ 'locked' if student.is_result_locked else 'active' }}">
                 <i class="fa-solid {{ 'fa-lock' if student.is_result_locked else 'fa-unlock' }}"></i>
-                {{ "Locked" if student.is_result_locked else "Active" }}
+                {{ "Xidhan" if student.is_result_locked else "Active" }}
               </span>
             </div>
             <div class="sm-actions">
               <a class="icon-btn small" href="{{ url_for('admin_advanced_results.student_transition', student_id=student.id, return_to=request.full_path) }}" title="Transfer or promote">
                 <i class="fa-solid fa-right-left"></i>
               </a>
-              <a class="icon-btn small" href="{{ url_for('admin_advanced_results.student_form', student_id=student.id, year_id=selected_year.id if selected_year else '', return_to=request.full_path) }}" title="Edit">
+              <a class="icon-btn small" href="{{ url_for('admin_advanced_results.student_form', student_id=student.id, year_id=selected_year.id if selected_year else '', return_to=request.full_path) }}" title="Dib-u-qor" aria-label="Dib-u-qor">
                 <i class="fa-solid fa-pen"></i>
               </a>
               {% if student.is_result_locked %}
                 <form method="post" action="{{ url_for('admin_advanced_results.toggle_student_lock', student_id=student.id) }}" class="inline">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="return_to" value="{{ request.full_path }}">
-                  <button class="icon-btn small" title="Unlock result" aria-label="Unlock result">
+                  <button class="icon-btn small" title="Fur Natiijada" aria-label="Fur Natiijada">
                     <i class="fa-solid fa-unlock"></i>
                   </button>
                 </form>
               {% else %}
-                <button type="button" class="icon-btn small" title="Lock result and enter reason" aria-label="Lock result and enter reason" data-open-lock-modal data-student-id="{{ student.id }}" data-student-name="{{ student.full_name|e }}" data-student-code="{{ student.student_code|e }}" data-lock-reason="{{ (student.lock_reason or '')|e }}">
+                <button type="button" class="icon-btn small" title="Xidh Natiijada oo bixi Sabab" aria-label="Xidh Natiijada oo bixi Sabab" data-open-lock-modal data-student-id="{{ student.id }}" data-student-name="{{ student.full_name|e }}" data-student-code="{{ student.student_code|e }}" data-lock-reason="{{ (student.lock_reason or '')|e }}">
                   <i class="fa-solid fa-lock"></i>
                 </button>
               {% endif %}
-              <button type="button" class="icon-btn small danger" title="Delete" onclick="openDeleteStudentModal('{{ student.id }}', '{{ student.full_name|e }}', '{{ student.student_code|e }}')">
+              <button type="button" class="icon-btn small danger" title="Tirtir" aria-label="Tirtir" onclick="openDeleteStudentModal('{{ student.id }}', '{{ student.full_name|e }}', '{{ student.student_code|e }}')">
                 <i class="fa-solid fa-trash"></i>
               </button>
             </div>

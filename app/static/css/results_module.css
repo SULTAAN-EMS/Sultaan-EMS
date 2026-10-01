@@ -1003,7 +1003,8 @@
     display: flex;
     align-items: center;
     gap: 18px;
-    min-width: 0;
+    min-width: max-content;
+    flex: 1 1 auto;
 }
 
 .rh-brand-mark {
@@ -1035,14 +1036,22 @@
 
 .rh-school {
     font-family: var(--font-serif);
-    font-size: clamp(1.25rem, 2.1vw, 1.85rem);
+    font-size: clamp(0.8rem, 1vw, 1rem);
     font-weight: 700;
     line-height: 1.05;
     letter-spacing: .01em;
-    max-width: min(560px, 48vw);
-    overflow: hidden;
-    text-overflow: ellipsis;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
     white-space: nowrap;
+}
+
+.rh-brand-text {
+    min-width: max-content;
+}
+
+.rh-topbar > div:last-child {
+    flex: 0 0 auto;
 }
 
 .rh-sub {
