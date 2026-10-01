@@ -4,7 +4,7 @@
 {% set school_so = ui_settings.school_name_so or 'Dugsiyada Caalamiga ah ee Taysiir' %}
 {% set owner_name = ui_settings.owner_name or 'SULTAAN EMS' %}
 {% set owner_logo_src = asset_url(ui_settings.owner_logo_path) if ui_settings.owner_logo_path else url_for('static', filename='images/sultaan-ems-owner-logo-sample.jpg', v='owner-logo-20261001') %}
-{% set login_background_src = asset_url(ui_settings.login_background_path) if ui_settings.login_background_path else url_for('static', filename='images/sultaan-mahad-login-bg.jpeg', v='login-background-20261001') %}
+{% set login_background_src = asset_url(ui_settings.login_background_path) if ui_settings.login_background_path else url_for('static', filename='images/admin-login-sample-bg.svg', v='login-background-clipart-20261001') %}
 {% block title %}Soo gal | {{ school_en }}{% endblock %}
 {% block body_class %}login-body sultan-login-body {{ 'theme-dark' if ui_settings.dashboard_theme == 'dark' else 'theme-light' }}{% endblock %}
 {% block extra_head %}
