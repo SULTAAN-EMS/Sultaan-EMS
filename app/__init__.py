@@ -51,16 +51,17 @@ def create_app(config_class=Config):
 
     @app.template_filter("behavior_points")
     def behavior_points_filter(value):
-        """Render Behavior points with the feature's fixed two-decimal contract."""
+        """Render Behavior points without hiding thousandth-level attendance values."""
         if value in (None, ""):
             return "-"
         if isinstance(value, str) and (" / " in value or value == "INCOMPLETE"):
             return value
         try:
-            number = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            number = Decimal(str(value)).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
         except (InvalidOperation, TypeError, ValueError):
             return "-"
-        return f"{number:.2f}"
+        rendered = f"{number:.3f}".rstrip("0").rstrip(".")
+        return rendered or "0"
 
     @app.template_filter("behavior_levels")
     def behavior_levels_filter(configuration):

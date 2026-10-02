@@ -140,7 +140,8 @@ table.abs tr.totals-row td{background:#eef4fb;border-top:2px solid #0d3b66;borde
 (() => {
   const format = (value) => {
     const number = Number(value);
-    return Number.isFinite(number) ? number.toFixed(2) : (value || '-');
+    if (!Number.isFinite(number)) return value || '-';
+    return number.toFixed(3).replace(/\.?(0+)$/, '');
   };
   const pages = document.querySelectorAll('.page');
   const dataNodes = document.querySelectorAll('.attendance-summary-data');

@@ -12,6 +12,7 @@ from app.behavior_attendance import (
     attendance_days,
     attendance_score_adjustments,
     attendance_statuses,
+    attendance_status_points,
     ensure_attendance_defaults,
     update_attendance_active_days,
     generate_daily_roster,
@@ -40,7 +41,9 @@ from app.models import (
     BehaviorConfiguration,
     BehaviorAttendanceRecord,
     BehaviorAttendanceDeletion,
+    BehaviorAttendanceStatusLevel,
     BehaviorEvent,
+    BehaviorConfigurationLevel,
     BehaviorSession,
     ExamType,
     Student,
@@ -179,7 +182,11 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertEqual(late.polarity, "neutral")
         refreshed = client.get(
             "/admin/behavior/attendance",
-            query_string={"config_id": self.config.id, "session_id": self.session.id},
+            query_string={
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+                "class_id": self.enrollment.academic_year_class_id,
+            },
         )
         self.assertEqual(refreshed.status_code, 200)
         self.assertIn('name="polarity"><option value="neutral" selected', refreshed.get_data(as_text=True))
@@ -222,6 +229,86 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
             ).count(),
             5,
         )
+
+    def test_status_points_are_level_scoped_and_preserve_thousandths(self):
+        """Six-day and five-day levels must not share Attendance point values."""
+        ensure_attendance_defaults(self.config)
+        other_level = AcademicYearLevel(name="Form Two", academic_year=self.config.academic_year)
+        other_class = AcademicYearClass(name="2A", academic_year_level=other_level)
+        other_student = Student(student_code="BHV-P1-002", full_name="Second Level Student", is_active=True)
+        other_enrollment = StudentEnrollment(
+            student=other_student,
+            academic_year=self.config.academic_year,
+            academic_year_level=other_level,
+            academic_year_class=other_class,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source="manual",
+        )
+        db.session.add_all([other_level, other_class, other_student, other_enrollment])
+        db.session.flush()
+        db.session.add_all([
+            BehaviorConfigurationLevel(
+                behavior_configuration_id=self.config.id,
+                academic_year_level_id=self.config.academic_year_level_id,
+            ),
+            BehaviorConfigurationLevel(
+                behavior_configuration_id=self.config.id,
+                academic_year_level_id=other_level.id,
+            ),
+        ])
+        db.session.commit()
+
+        ensure_attendance_defaults(self.config)
+        update_attendance_active_days(self.config, {0, 1, 2, 3, 5, 6}, self.config.academic_year_level_id)
+        update_attendance_active_days(self.config, {0, 1, 2, 5, 6}, other_level.id)
+        self.assertEqual(len(attendance_days(self.config, academic_year_level_id=self.config.academic_year_level_id)), 6)
+        self.assertEqual(len(attendance_days(self.config, academic_year_level_id=other_level.id)), 5)
+        statuses = {item.key: item for item in attendance_statuses(self.config)}
+        present = statuses["present"]
+        first_override = BehaviorAttendanceStatusLevel.query.filter_by(
+            behavior_attendance_status_id=present.id,
+            academic_year_level_id=self.config.academic_year_level_id,
+        ).first()
+        second_override = BehaviorAttendanceStatusLevel.query.filter_by(
+            behavior_attendance_status_id=present.id,
+            academic_year_level_id=other_level.id,
+        ).first()
+        first_override.points = Decimal("0.125")
+        second_override.points = Decimal("0.150")
+        db.session.commit()
+
+        self.assertEqual(
+            attendance_status_points(present, self.config.academic_year_level_id),
+            Decimal("0.125"),
+        )
+        self.assertEqual(attendance_status_points(present, other_level.id), Decimal("0.150"))
+        self.assertEqual(self.app.jinja_env.filters["behavior_points"]("0.125"), "0.125")
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        page = client.get(
+            "/admin/behavior/attendance",
+            query_string={
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+                "level_id": self.config.academic_year_level_id,
+                "class_id": self.enrollment.academic_year_class_id,
+            },
+        )
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('value="0.125"', page.get_data(as_text=True))
+
+        first_record = mark_attendance(
+            self.config, self.session, self.enrollment, present.id, date(2026, 8, 29)
+        )
+        second_record = mark_attendance(
+            self.config, self.session, other_enrollment, present.id, date(2026, 8, 29)
+        )
+        self.assertEqual(first_record.points_applied, Decimal("0.125"))
+        self.assertEqual(second_record.points_applied, Decimal("0.150"))
 
     def test_active_days_isolate_two_year_levels_and_reject_invalid_weekdays(self):
         ensure_attendance_defaults(self.config)
@@ -402,7 +489,11 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
             session["_fresh"] = True
         attendance_response = client.get(
             "/admin/behavior/attendance",
-            query_string={"config_id": self.config.id, "session_id": self.session.id},
+            query_string={
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+                "class_id": self.enrollment.academic_year_class_id,
+            },
         )
         subcategory_response = client.get(
             "/admin/behavior/subcategories",
@@ -506,6 +597,7 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
                 "config_id": self.config.id,
                 "session_id": self.session.id,
                 "attendance_view": "records",
+                "class_id": self.enrollment.academic_year_class_id,
             },
         )
         self.assertEqual(records_page.status_code, 200)
@@ -598,6 +690,7 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
                 "config_id": self.config.id,
                 "session_id": self.session.id,
                 "attendance_view": "records",
+                "class_id": self.enrollment.academic_year_class_id,
             },
         )
         self.assertEqual(records_page.status_code, 200)
@@ -746,7 +839,11 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
             session["_fresh"] = True
         self.assertEqual(client.get(
             "/admin/behavior/attendance",
-            query_string={"config_id": self.config.id, "session_id": self.session.id},
+            query_string={
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+                "class_id": self.enrollment.academic_year_class_id,
+            },
         ).status_code, 200)
         db.session.expire(self.config, ["attendance_statuses"])
         present = next(item for item in self.config.attendance_statuses if item.key == "present")

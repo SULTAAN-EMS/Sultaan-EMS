@@ -64,6 +64,7 @@ from .behavior_attendance import (
     attendance_weekday_label,
     auto_attendance_note,
     attendance_status_label,
+    ensure_status_level_points,
     attendance_statuses,
     enrollments_for_class,
     ensure_attendance_defaults,
@@ -86,6 +87,7 @@ from .models import (
     BehaviorAttendanceRecord,
     BehaviorAttendanceDeletion,
     BehaviorAttendanceStatus,
+    BehaviorAttendanceStatusLevel,
     BehaviorGradeScale,
     BehaviorSession,
     BehaviorSubCategory,
@@ -2622,6 +2624,10 @@ def attendance():
         request.args.get("class_id") or request.form.get("class_id"),
         request.args.get("session_id") or request.form.get("session_id"),
     )
+    # A blank class means "all classes" within the selected academic level.
+    # The level remains mandatory for the roster and its points/day settings,
+    # so this never combines students or marks from different levels.
+    scope_invalid = context["scope_invalid"]
     config = context["config"]
     selected_session = context["selected_session"]
     attendance_view = request.args.get("attendance_view", "")
@@ -2664,7 +2670,7 @@ def attendance():
 
     if request.method == "POST":
         try:
-            if not config or context["scope_invalid"]:
+            if not config or scope_invalid:
                 raise BehaviorValidationError("Select a valid year-aware Behavior scope first")
             if not selected_session:
                 raise BehaviorValidationError("Select an Exam Type session first")
@@ -2795,6 +2801,7 @@ def attendance():
                 )
                 db.session.add(status)
                 db.session.flush()
+                ensure_status_level_points(config)
                 audit("Behavior Attendance", f"Added attendance status {status.key} to configuration {config.id}")
                 db.session.commit()
                 flash("Attendance status saved.", "success")
@@ -2834,7 +2841,14 @@ def attendance():
 
     status_by_key = {
         (item.key or "").strip().lower(): item
-        for item in (attendance_statuses(config) if config else [])
+        for item in (
+            attendance_statuses(
+                config,
+                academic_year_level_id=context["selected_level"].id,
+            )
+            if config and context["selected_level"]
+            else []
+        )
         if (item.key or "").strip().lower() in CANONICAL_ATTENDANCE_STATUS_KEYS
     }
     statuses = [status_by_key[key] for key in ("present", "late", "absent", "excused", "official_leave") if key in status_by_key]
@@ -2854,7 +2868,7 @@ def attendance():
             context["selected_class"].id if context["selected_class"] else None,
             context["selected_level"].id,
         )
-        if config and selected_session and not context["scope_invalid"] else []
+        if config and selected_session and not scope_invalid else []
     )
     records = {}
     if config and selected_session and enrollments:
@@ -3058,6 +3072,11 @@ def attendance():
         "impact_points": str(current_points["signed_total"]),
         "repeat_alerts": repeat_alerts,
     }
+    # The legacy template reads ``status.points``. By this point all database
+    # work for the request is complete, so this render-only assignment cannot
+    # leak a level value back into the configuration-wide legacy column.
+    for status in all_statuses:
+        status.points = status.effective_points
     return render_template(
         "admin/behavior/attendance.html",
         **context,
@@ -3340,8 +3359,10 @@ def attendance_report(enrollment_id):
     def format_points(value, signed=False):
         if value is None:
             return "-"
-        value = Decimal(str(value)).quantize(Decimal("0.01"))
-        text = f"{abs(value):.2f}" if signed else f"{value:.2f}"
+        value = Decimal(str(value)).quantize(Decimal("0.001"))
+        text = (
+            f"{abs(value):.3f}" if signed else f"{value:.3f}"
+        ).rstrip("0").rstrip(".") or "0"
         if signed and value > 0:
             return f"+{text}"
         if signed and value < 0:
@@ -3561,7 +3582,24 @@ def update_attendance_status(status_id):
         ensure_configuration_editable(config)
         item.label = (request.form.get("label") or "").strip()
         item.polarity = (request.form.get("polarity") or "neutral").strip().lower()
-        item.points = decimal_value(request.form.get("points"), "Attendance points", minimum="0")
+        # Older clients did not submit level_id; preserve their behavior by
+        # using the configuration's canonical anchor level.
+        level_id = _int(request.form.get("level_id"), config.academic_year_level_id)
+        if level_id not in configuration_level_ids(config):
+            raise BehaviorValidationError("Attendance status level is outside the selected configuration")
+        ensure_status_level_points(config, level_id)
+        level_points = BehaviorAttendanceStatusLevel.query.filter_by(
+            behavior_attendance_status_id=item.id,
+            behavior_configuration_id=config.id,
+            academic_year_level_id=level_id,
+        ).first()
+        if not level_points:
+            raise BehaviorValidationError("Attendance status level points are not configured")
+        level_points.points = decimal_value(request.form.get("points"), "Attendance points", minimum="0")
+        if level_id == config.academic_year_level_id:
+            # Keep the legacy configuration-wide fallback aligned with its
+            # anchor level without overwriting any other level's override.
+            item.points = level_points.points
         # Status availability is automatic.  Keep the legacy column true for
         # old clients and existing databases, but do not accept a user-facing
         # Active checkbox anymore.
@@ -3577,7 +3615,7 @@ def update_attendance_status(status_id):
                     "key": item.key,
                     "label": item.label,
                     "polarity": item.polarity,
-                    "points": f"{item.points:.3f}",
+                    "points": f"{level_points.points:.3f}",
                     "is_active": item.is_active,
                 },
             )

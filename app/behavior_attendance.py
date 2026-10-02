@@ -25,6 +25,7 @@ from .models import (
     BehaviorAttendanceDay,
     BehaviorAttendanceRecord,
     BehaviorAttendanceStatus,
+    BehaviorAttendanceStatusLevel,
     BehaviorConfiguration,
     BehaviorSession,
     StudentEnrollment,
@@ -276,6 +277,11 @@ def ensure_attendance_defaults(configuration, academic_year_level_id=None):
     ).first()
     if emergency:
         emergency.is_active = False
+    # Keep a separate editable point value for every configured Academic Year
+    # Level. The legacy status.points column remains the safe fallback for old
+    # installations and historical sessions.
+    db.session.flush()
+    ensure_status_level_points(configuration, academic_year_level_id=None)
     existing_days = {
         item.weekday
         for item in BehaviorAttendanceDay.query.filter_by(
@@ -299,14 +305,66 @@ def ensure_attendance_defaults(configuration, academic_year_level_id=None):
     return configuration
 
 
-def attendance_statuses(configuration, active_only=True):
+def ensure_status_level_points(configuration, academic_year_level_id=None):
+    """Create missing per-level status point overrides without rewriting edits."""
     configuration = validate_behavior_configuration(configuration)
+    level_ids = configuration_level_ids(configuration)
+    if academic_year_level_id is not None:
+        level_ids = {_attendance_level_id(configuration, academic_year_level_id)}
+    statuses = BehaviorAttendanceStatus.query.filter_by(
+        behavior_configuration_id=configuration.id
+    ).all()
+    existing = {
+        (item.behavior_attendance_status_id, item.academic_year_level_id): item
+        for item in BehaviorAttendanceStatusLevel.query.filter(
+            BehaviorAttendanceStatusLevel.behavior_configuration_id == configuration.id,
+            BehaviorAttendanceStatusLevel.academic_year_level_id.in_(level_ids or {-1}),
+        ).all()
+    }
+    for status in statuses:
+        for level_id in level_ids:
+            if (status.id, level_id) in existing:
+                continue
+            db.session.add(
+                BehaviorAttendanceStatusLevel(
+                    behavior_attendance_status_id=status.id,
+                    behavior_configuration_id=configuration.id,
+                    academic_year_level_id=level_id,
+                    points=decimal_value(status.points or 0, "Attendance points", minimum="0"),
+                )
+            )
+    db.session.flush()
+    return statuses
+
+
+def attendance_status_points(status, academic_year_level_id=None):
+    """Return the effective status points for one Academic Year Level."""
+    if not status:
+        return Decimal("0.000")
+    if academic_year_level_id is not None:
+        override = BehaviorAttendanceStatusLevel.query.filter_by(
+            behavior_attendance_status_id=status.id,
+            academic_year_level_id=int(academic_year_level_id),
+        ).first()
+        if override is not None:
+            return decimal_value(override.points or 0, "Attendance points", minimum="0")
+    return decimal_value(status.points or 0, "Attendance points", minimum="0")
+
+
+def attendance_statuses(configuration, active_only=True, academic_year_level_id=None):
+    configuration = validate_behavior_configuration(configuration)
+    if academic_year_level_id is not None:
+        level_id = _attendance_level_id(configuration, academic_year_level_id)
+        ensure_status_level_points(configuration, level_id)
     query = BehaviorAttendanceStatus.query.filter_by(
         behavior_configuration_id=configuration.id
     ).order_by(BehaviorAttendanceStatus.sort_order, BehaviorAttendanceStatus.id)
     if active_only:
         query = query.filter_by(is_active=True)
-    return query.all()
+    statuses = query.all()
+    for status in statuses:
+        status.effective_points = attendance_status_points(status, academic_year_level_id)
+    return statuses
 
 
 def attendance_days(configuration, active_only=True, academic_year_level_id=None):
@@ -398,7 +456,17 @@ def generate_daily_roster(
         item.weekday for item in attendance_days(configuration, academic_year_level_id=academic_year_level_id)
     }:
         raise BehaviorValidationError("Taariikhda la xushay looma dejin in ay noqoto maalin xaadirin dugsi.")
-    present = next((item for item in attendance_statuses(configuration) if item.key == "present"), None)
+    present = next(
+        (
+            item
+            for item in attendance_statuses(
+                configuration,
+                academic_year_level_id=academic_year_level_id,
+            )
+            if item.key == "present"
+        ),
+        None,
+    )
     if not present:
         raise BehaviorValidationError("A Present Attendance status is required")
     created = 0
@@ -416,7 +484,7 @@ def generate_daily_roster(
             continue
         validate_attendance_ledger_capacity(
             configuration, session, enrollment, present.polarity,
-            present.points if present.contributes_to_behavior else 0,
+            present.effective_points if present.contributes_to_behavior else 0,
         )
         db.session.add(
             BehaviorAttendanceRecord(
@@ -433,7 +501,7 @@ def generate_daily_roster(
                 status_key_snapshot=present.key,
                 status_label_snapshot=attendance_status_label(present.key, present.label),
                 polarity=present.polarity,
-                points_applied=present.points if present.contributes_to_behavior else 0,
+                points_applied=present.effective_points if present.contributes_to_behavior else 0,
             )
         )
         created += 1
@@ -485,7 +553,11 @@ def mark_attendance(
     # configured polarity: the admin choice must survive refreshes and be
     # captured in each saved record snapshot.
     new_polarity = (status.polarity or "neutral").strip().lower()
-    new_points = status.points if status.contributes_to_behavior else Decimal("0")
+    new_points = (
+        attendance_status_points(status, enrollment.academic_year_level_id)
+        if status.contributes_to_behavior
+        else Decimal("0")
+    )
     validate_attendance_ledger_capacity(
         configuration,
         session,

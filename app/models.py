@@ -842,6 +842,12 @@ class BehaviorAttendanceStatus(TimestampMixin, db.Model):
 
     configuration = db.relationship("BehaviorConfiguration", back_populates="attendance_statuses")
     records = db.relationship("BehaviorAttendanceRecord", back_populates="attendance_status")
+    level_points = db.relationship(
+        "BehaviorAttendanceStatusLevel",
+        back_populates="status",
+        cascade="all, delete-orphan",
+        order_by="BehaviorAttendanceStatusLevel.academic_year_level_id",
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -856,6 +862,61 @@ class BehaviorAttendanceStatus(TimestampMixin, db.Model):
         db.CheckConstraint(
             "points >= 0",
             name="ck_behavior_attendance_status_points_nonnegative",
+        ),
+    )
+
+
+class BehaviorAttendanceStatusLevel(TimestampMixin, db.Model):
+    """Per-level Attendance point override for one configured status.
+
+    The parent status keeps the legacy configuration-wide default. New and
+    edited marks use this level-scoped value, so a six-day level can use
+    0.125 while a five-day level uses 0.15 without either setting leaking into
+    the other level.
+    """
+
+    __tablename__ = "behavior_attendance_status_levels"
+
+    id = db.Column(db.Integer, primary_key=True)
+    behavior_attendance_status_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_attendance_statuses.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    behavior_configuration_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_configurations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_levels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    points = db.Column(db.Numeric(8, 3), nullable=False, default=0)
+
+    status = db.relationship("BehaviorAttendanceStatus", back_populates="level_points")
+    configuration = db.relationship("BehaviorConfiguration")
+    academic_year_level = db.relationship("AcademicYearLevel")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "behavior_attendance_status_id",
+            "academic_year_level_id",
+            name="uq_behavior_attendance_status_level",
+        ),
+        UniqueConstraint(
+            "behavior_configuration_id",
+            "academic_year_level_id",
+            "behavior_attendance_status_id",
+            name="uq_behavior_attendance_status_level_configuration",
+        ),
+        db.CheckConstraint(
+            "points >= 0",
+            name="ck_behavior_attendance_status_level_points_nonnegative",
         ),
     )
 

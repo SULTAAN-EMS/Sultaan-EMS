@@ -199,7 +199,7 @@
       <div class="att-filter"><label for="attYear">Sanad-dugsiyeedka</label><div class="att-filter-box"><span class="att-badge att-badge--year"><svg><use href="#att-cal"/></svg></span><select id="attYear" name="year_id"><option value="">Dooro sannad dugsiyeedka</option>{% for year in years %}<option value="{{ year.id }}" {% if selected_year and year.id == selected_year.id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}</select></div></div>
       <div class="att-filter"><label for="attConfig">Habaynta Anshaxa</label><div class="att-filter-box"><span class="att-badge att-badge--config"><svg><use href="#att-sliders"/></svg></span><select id="attConfig" name="config_id"><option value="">Dooro habaynta</option>{% for item in configurations %}<option value="{{ item.id }}" data-level-ids="{% if item.academic_year_levels %}{% for membership in item.academic_year_levels %}{{ membership.academic_year_level_id }}{% if not loop.last %},{% endif %}{% endfor %}{% else %}{{ item.academic_year_level_id }}{% endif %}" {% if config and item.id == config.id %}selected{% endif %}>{{ item|behavior_levels }} · {{ item.behavior_subject.name }}</option>{% endfor %}</select></div></div>
       <div class="att-filter"><label for="attLevel">Heerka</label><div class="att-filter-box"><span class="att-badge att-badge--level"><svg><use href="#att-cap"/></svg></span><select id="attLevel" name="level_id"><option value="">Dooro heerka</option>{% for item in levels %}<option value="{{ item.id }}" {% if selected_level and item.id == selected_level.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></div></div>
-      <div class="att-filter"><label for="attClass">Fasalka</label><div class="att-filter-box"><span class="att-badge att-badge--class"><svg><use href="#att-users"/></svg></span><select id="attClass" name="class_id"><option value="">Dhammaan fasallada</option>{% for item in classes %}<option value="{{ item.id }}" {% if selected_class and item.id == selected_class.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></div></div>
+       <div class="att-filter"><label for="attClass">Fasalka</label><div class="att-filter-box"><span class="att-badge att-badge--class"><svg><use href="#att-users"/></svg></span><select id="attClass" name="class_id"><option value="">Dhammaan fasallada</option>{% for item in classes %}<option value="{{ item.id }}" {% if selected_class and item.id == selected_class.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></div></div>
       <div class="att-filter"><label for="attSession">Fadhiga / Nooca imtixaanka</label><div class="att-filter-box"><span class="att-badge att-badge--session"><svg><use href="#att-check"/></svg></span><select id="attSession" name="session_id"><option value="">Dooro fadhiga</option>{% for item in sessions %}<option value="{{ item.id }}" {% if selected_session and item.id == selected_session.id %}selected{% endif %}>{{ item.session_label }} · {{ item.maximum_score|behavior_points }}</option>{% endfor %}</select></div></div>
       <div class="att-filter att-filter--date"><label for="attDate">Taariikhda iyo waqtiga</label><div class="att-date-pair"><div class="att-filter-box"><span class="att-badge att-badge--date"><svg><use href="#att-cal"/></svg></span><input id="attDate" type="date" name="attendance_date" value="{{ attendance_date.isoformat() }}"></div><div class="att-filter-box"><span class="att-badge att-badge--year"><svg><use href="#att-clock"/></svg></span><input id="attTime" type="time" name="attendance_time" value="{{ attendance_time.strftime('%H:%M') }}"></div></div></div>
     </form>
@@ -219,7 +219,7 @@
       <nav class="att-bottom-bar__nav" aria-label="Qalabka xaadirka">
         <button class="att-bar-icon" type="button" data-open-records title="Diiwaanka Xaadirka" aria-label="Fur Diiwaanka Xaadirka"><svg><use href="#att-history"/></svg></button>
         <button class="att-bar-icon" type="button" data-open-overview title="Guudmarka Fasalka" aria-label="Fur Guudmarka Fasalka"><svg><use href="#att-chart"/></svg></button>
-        <button class="att-bar-icon" type="button" data-open-attendance-drawer title="Fur Dejinta Xaadirka" aria-label="Fur Dejinta Xaadirka"><svg><use href="#att-tool"/></svg></button>
+         <button class="att-bar-icon" type="button" data-open-attendance-drawer title="Fur Dejinta Xaadirka" aria-label="Fur Dejinta Xaadirka"><svg><use href="#att-tool"/></svg></button>
       </nav>
       <button class="att-btn att-btn--save" type="button" id="attSaveButton" disabled><svg><use href="#att-save"/></svg>Keydi</button>
     </div><div class="att-toast" id="attToast" role="status" aria-live="polite" aria-atomic="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span></span></div>
@@ -229,7 +229,7 @@
     <div class="behavior-field"><label for="attendanceYear">Academic Year</label><select id="attendanceYear" name="year_id"><option value="">Select year</option>{% for year in years %}<option value="{{ year.id }}" {% if selected_year and year.id == selected_year.id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}</select></div>
     <div class="behavior-field"><label for="attendanceConfig">Behavior Configuration</label><select id="attendanceConfig" name="config_id"><option value="">Select configuration</option>{% for item in configurations %}<option value="{{ item.id }}" data-level-ids="{% if item.academic_year_levels %}{% for membership in item.academic_year_levels %}{{ membership.academic_year_level_id }}{% if not loop.last %},{% endif %}{% endfor %}{% else %}{{ item.academic_year_level_id }}{% endif %}" {% if config and item.id == config.id %}selected{% endif %}>{{ item|behavior_levels }} &bull; {{ item.behavior_subject.name }}</option>{% endfor %}</select></div>
     <div class="behavior-field"><label for="attendanceLevel">Academic Level</label><select id="attendanceLevel" name="level_id"><option value="">Select level</option>{% for item in levels %}<option value="{{ item.id }}" {% if selected_level and item.id == selected_level.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></div>
-    <div class="behavior-field"><label for="attendanceClass">Academic Class</label><select id="attendanceClass" name="class_id"><option value="">All classes</option>{% for item in classes %}<option value="{{ item.id }}" {% if selected_class and item.id == selected_class.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></div>
+     <div class="behavior-field"><label for="attendanceClass">Academic Class</label><select id="attendanceClass" name="class_id"><option value="">All classes</option>{% for item in classes %}<option value="{{ item.id }}" {% if selected_class and item.id == selected_class.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></div>
     <div class="behavior-field"><label for="attendanceSession">Session / Exam Type</label><select id="attendanceSession" name="session_id"><option value="">Select session</option>{% for item in sessions %}<option value="{{ item.id }}" {% if selected_session and item.id == selected_session.id %}selected{% endif %}>{{ item.session_label }} &bull; {{ item.maximum_score|behavior_points }}</option>{% endfor %}</select></div>
     <div class="behavior-field attendance-date-field"><label for="attendanceDate">Attendance Date + Time</label><div class="attendance-date-time"><input id="attendanceDate" type="date" name="attendance_date" value="{{ attendance_date.isoformat() }}"><input id="attendanceTime" type="time" name="attendance_time" value="{{ attendance_time.strftime('%H:%M') }}" aria-label="Attendance time"></div><span class="attendance-date-readout" id="attendanceDateReadout"></span></div>
   </form>
@@ -923,18 +923,15 @@
       pointsInput.parentNode.insertBefore(stepper, pointsInput);
       stepper.append(decrease, pointsInput, increase);
       const changePoints = (direction) => {
-        const step = Number(pointsInput.step) || 0.001;
+        const step = Number(pointsInput.dataset.step) || 0.5;
         const min = Number(pointsInput.min);
         const hasMax = pointsInput.max !== '';
         const max = Number(pointsInput.max);
         const current = Number(pointsInput.value) || 0;
         const lowerBound = Math.max(Number.isFinite(min) ? min : 0, current + direction * step);
         const next = Math.min(hasMax && Number.isFinite(max) ? max : lowerBound, lowerBound);
-        const precision = Math.max(0, (String(pointsInput.step).split('.')[1] || '').length);
-        const rawValue = next.toFixed(precision);
-        pointsInput.value = Math.abs(next * 100 - Math.round(next * 100)) < 1e-9
-          ? next.toFixed(2)
-          : rawValue;
+        const rawValue = next.toFixed(3).replace(/\.?(0+)$/, '');
+        pointsInput.value = rawValue || '0';
         pointsInput.dispatchEvent(new Event('input', { bubbles: true }));
       };
       decrease.addEventListener('click', () => changePoints(-1));
