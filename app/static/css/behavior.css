@@ -1241,12 +1241,13 @@ body:has(.att-daily) .behavior-hero { display:none !important; }
 .att-daily .att-avatar { display:grid; flex:0 0 46px; width:46px; height:46px; place-items:center; overflow:hidden; border-radius:14px; color:#fff; background:#14503a; font-weight:800; }
 .att-daily .att-avatar img { width:100%; height:100%; object-fit:cover; }
 .att-daily .att-class-badge { justify-self:start; padding:5px 12px; border-radius:99px; color:#fff; background:#14503a; font-size:13px; font-weight:700; overflow-wrap:anywhere; }
-.att-daily [data-class-color="1"] { background:#0ea5e9; }
-.att-daily [data-class-color="2"] { background:#14503a; }
-.att-daily [data-class-color="3"] { background:#b45309; }
-.att-daily [data-class-color="4"] { background:#7c3aed; }
-.att-daily [data-class-color="5"] { background:#be185d; }
-.att-daily [data-class-color="6"] { background:#2563eb; }
+.att-daily [data-class-color] { color:#fff; }
+.att-daily [data-class-color="1"] { background:#2563eb; }
+.att-daily [data-class-color="2"] { background:#16a34a; }
+.att-daily [data-class-color="3"] { background:#ea580c; }
+.att-daily [data-class-color="4"] { background:#dc2626; }
+.att-daily [data-class-color="5"] { background:#d97706; }
+.att-daily [data-class-color="6"] { background:#db2777; }
 .att-daily .att-status-buttons { display:flex; flex-wrap:wrap; gap:6px; min-width:0; }
 .att-daily .att-status { display:inline-flex; align-items:center; gap:6px; height:38px; max-width:42px; padding:0 10px; overflow:hidden; border:1.5px solid var(--att-line); border-radius:12px; color:var(--status-color); background:var(--att-surface); cursor:pointer; font:700 13px Figtree,system-ui,sans-serif; transition:background .18s,color .18s,transform .12s,max-width .25s ease; }
 .att-daily .att-status:hover { background:var(--att-soft); }

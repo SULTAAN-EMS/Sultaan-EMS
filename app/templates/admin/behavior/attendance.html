@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='active-days-typewriter-controls-order-20260924-1') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='attendance-class-colors-20261002-1') }}">
 <style>
   .att-action-body > #attActionContent { display:flex; flex:0 0 auto; flex-direction:column; gap:18px; width:100%; min-width:0; min-height:0; }
   .att-action-dialog .att-action-back,
@@ -1014,6 +1014,25 @@
   openButton?.addEventListener('click', openDrawer);
   document.querySelectorAll('[data-close-attendance-drawer]').forEach((element) => element.addEventListener('click', closeDrawer));
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { closeDrawer(); if (activeDialog) closeDialog(activeDialog); else closeAllDialogs(); } });
+})();
+</script>
+<script>
+(() => {
+  const root = document.querySelector('.att-daily');
+  if (!root) return;
+
+  // Keep class colors deterministic while supporting any number of classes.
+  const classColors = [
+    '#2563eb', '#16a34a', '#ea580c', '#dc2626', '#d97706', '#db2777',
+    '#0891b2', '#65a30d', '#c2410c', '#9333ea', '#047857', '#7c3aed',
+  ];
+  root.querySelectorAll('[data-class-color]').forEach((element) => {
+    const classId = Number(element.dataset.classColor);
+    if (!Number.isInteger(classId) || classId < 1) return;
+    const color = classColors[(classId - 1) % classColors.length];
+    element.style.backgroundColor = color;
+    element.style.color = '#fff';
+  });
 })();
 </script>
 {% include 'admin/behavior/_attendance_records_redesign.html' %}
