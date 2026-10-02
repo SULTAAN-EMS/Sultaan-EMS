@@ -1144,7 +1144,11 @@ body:has(.att-daily) .behavior-hero { display:none !important; }
   --day-tint:rgba(194,59,59,.09);
 }
 .att-daily .att-heading h1 { color:var(--att-ink); font-size:clamp(25px,3vw,36px); font-weight:800; letter-spacing:0; line-height:1.05; }
-.att-daily .att-heading p { margin-top:6px; color:var(--att-muted); font-weight:600; }
+.att-daily .att-heading p { display:flex; align-items:center; flex-wrap:wrap; margin-top:6px; color:var(--att-muted); font-weight:600; }
+.att-daily .att-heading__date-text { color:var(--day-fg); }
+.att-daily .att-heading__clock { display:inline-flex; align-items:center; gap:7px; margin-left:9px; padding:5px 10px 5px 6px; border:1px solid rgba(37,99,235,.24); border-radius:999px; color:#1d4ed8; background:#eff6ff; font:700 13px/1 var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.att-daily .att-heading__clock-icon { display:grid; width:24px; height:24px; place-items:center; border-radius:50%; color:#fff; background:#2563eb; }
+.att-daily .att-heading__clock-icon svg { width:14px; height:14px; }
 .att-daily .att-day-banner {
   position:relative; display:inline-flex; align-items:center; gap:10px; min-width:0; max-width:100%;
   padding:10px 18px 10px 12px; overflow:hidden; isolation:isolate;
@@ -1207,6 +1211,55 @@ body:has(.att-daily) .behavior-hero { display:none !important; }
 .att-daily .att-badge--date { background:linear-gradient(135deg,#14b8a6,#0d9488); }
 .att-daily .att-filter--date { grid-column:span 2; }
 .att-daily .att-date-pair { display:grid; grid-template-columns:1.4fr 1fr; gap:10px; }
+.att-daily .att-date-picker { position:relative; z-index:30; }
+.att-daily .att-date-picker,
+.att-daily .att-date-picker:hover,
+.att-daily .att-date-picker:focus-within { box-shadow:none; background:#fff; }
+.att-daily .att-date-picker > .att-date-trigger,
+.att-daily .att-date-picker > .att-date-trigger:hover,
+.att-daily .att-date-picker > .att-date-trigger:focus,
+.att-daily .att-date-picker > .att-date-trigger:focus-visible,
+.att-daily .att-date-picker > .att-date-trigger > span,
+.att-daily .att-date-picker > #attDate,
+.att-daily .att-date-picker > .att-date-trigger::before,
+.att-daily .att-date-picker > .att-date-trigger::after { background:#fff !important; background-color:#fff !important; background-image:none !important; box-shadow:none !important; }
+.att-daily .att-date-trigger { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; min-width:0; padding:0; border:0; outline:0; color:var(--att-ink); background:transparent; font:600 14px Figtree,system-ui,sans-serif; text-align:left; cursor:pointer; }
+.att-daily .att-date-trigger > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.att-daily .att-date-trigger > svg { width:16px; height:16px; color:var(--att-muted); transition:transform .18s ease; }
+.att-daily .att-date-picker:has(.att-date-popover:not([hidden])) .att-date-trigger > svg { transform:rotate(180deg); }
+.att-daily .att-date-input { position:absolute; width:1px !important; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; border:0; }
+.att-daily .att-date-popover { position:absolute; top:calc(100% + 10px); left:0; width:min(340px,calc(100vw - 32px)); padding:16px; border:1px solid #d8e3dc; border-radius:18px; background:var(--att-surface); box-shadow:0 18px 42px rgba(19,39,29,.18); }
+.att-daily .att-date-popover[hidden] { display:none; }
+.att-daily .att-date-popover__header { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; color:var(--att-ink); }
+.att-daily .att-date-heading { display:flex; align-items:center; justify-content:center; gap:7px; min-width:0; }
+.att-daily .att-date-popover__header strong { font-size:15px; font-weight:800; letter-spacing:.01em; }
+.att-daily .att-date-year { min-width:0; }
+.att-daily .att-date-heading select { max-width:86px; padding:4px 20px 4px 6px; border:1px solid var(--att-line); border-radius:8px; color:var(--att-ink); background:var(--att-soft); font:800 12px Figtree,system-ui,sans-serif; cursor:pointer; }
+.att-daily .att-date-nav { display:grid; width:32px; height:32px; place-items:center; padding:0; border:1px solid var(--att-line); border-radius:10px; color:var(--att-ink); background:var(--att-soft); cursor:pointer; transition:color .15s,background .15s,border-color .15s; }
+.att-daily .att-date-nav:hover { border-color:var(--att-green); color:var(--att-green); background:#eaf6ef; }
+.att-daily .att-date-nav svg { width:16px; height:16px; }
+.att-daily .att-date-weekdays, .att-daily .att-date-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; }
+.att-daily .att-date-weekdays { margin-bottom:6px; color:var(--att-muted); font-size:10px; font-weight:800; text-align:center; }
+.att-daily .att-date-weekdays span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.att-daily .att-date-legend { display:flex; flex-wrap:wrap; align-items:center; gap:9px 14px; margin-bottom:9px; color:var(--att-muted); font-size:10px; font-weight:700; }
+.att-daily .att-date-legend span { display:inline-flex; align-items:center; gap:5px; }
+.att-daily .att-date-legend i { width:8px; height:8px; border-radius:50%; background:#cbd5e1; }
+.att-daily .att-date-legend i.is-active-day { background:#16a34a; box-shadow:0 0 0 3px #dcfce7; }
+.att-daily .att-date-legend i.is-inactive-day { background:#dc2626; box-shadow:0 0 0 3px #fee2e2; }
+.att-daily .att-date-day { display:grid; min-width:0; aspect-ratio:1; place-items:center; padding:0; border:1px solid transparent; border-radius:10px; color:var(--att-ink); background:transparent; font:700 12px Figtree,system-ui,sans-serif; cursor:pointer; transition:color .15s,background .15s,border-color .15s,transform .12s; }
+.att-daily .att-date-day:hover { border-color:#8bc9a5; background:#edf9f1; color:var(--att-green); }
+.att-daily .att-date-day.is-muted { color:#a6b2aa; font-weight:600; }
+.att-daily .att-date-day.is-active-day { color:#15803d; background:#f0fdf4; }
+.att-daily .att-date-day.is-inactive-day { color:#b91c1c; background:#fff5f5; }
+.att-daily .att-date-day.is-muted.is-active-day { color:#86b99a; background:#f7fdf8; }
+.att-daily .att-date-day.is-muted.is-inactive-day { color:#e28b8b; background:#fffafa; }
+.att-daily .att-date-day.is-today { border-color:#60a5fa; color:#1d4ed8; }
+.att-daily .att-date-day.is-selected { border-color:var(--att-green); color:#fff; background:var(--att-green); box-shadow:0 5px 12px -8px rgba(20,80,58,.8); }
+.att-daily .att-date-day.is-selected.is-today { border-color:#2563eb; background:#2563eb; }
+.att-daily .att-date-popover__footer { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--att-line); }
+.att-daily .att-date-popover__footer button { padding:5px 7px; border:0; color:var(--att-green); background:transparent; font:800 12px Figtree,system-ui,sans-serif; cursor:pointer; }
+.att-daily .att-date-popover__footer button:hover { color:#0f766e; text-decoration:underline; }
+.att-daily .att-time-picker { position:relative; z-index:1; }
 .att-daily .att-summary { display:grid; gap:14px; padding:18px; }
 .att-daily .att-summary-row { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:10px; color:var(--att-muted); }
 .att-daily .att-summary-row strong { margin:0 4px; color:var(--att-ink); font-size:24px; font-weight:800; }

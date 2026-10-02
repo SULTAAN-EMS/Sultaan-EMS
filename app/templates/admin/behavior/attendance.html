@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='attendance-class-colors-20261002-1') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='attendance-date-white-20261002-1') }}">
 <style>
   .att-action-body > #attActionContent { display:flex; flex:0 0 auto; flex-direction:column; gap:18px; width:100%; min-width:0; min-height:0; }
   .att-action-dialog .att-action-back,
@@ -180,6 +180,9 @@
       <symbol id="att-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></symbol>
       <symbol id="att-pen" viewBox="0 0 24 24"><path d="m4 20 4.2-1 10.9-10.9a2.1 2.1 0 0 0-3-3L5.2 16zM14.5 6.5l3 3"/></symbol>
       <symbol id="att-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="att-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="att-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+      <symbol id="att-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
       <symbol id="att-back" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
       <symbol id="att-alert" viewBox="0 0 24 24"><path d="M12 3 2 21h20z"/><path d="M12 9v5M12 18h.01"/></symbol>
       <symbol id="att-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
@@ -194,14 +197,14 @@
       <symbol id="att-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></symbol>
       <symbol id="att-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.7 2.7-2.3-.7-.7-2.3z"/></symbol>
     </defs></svg>
-    <div class="att-heading{% if not school_day %} is-off{% endif %}"><div><h1>Xaadirka Maalinlaha ah</h1><p id="attLongDate">{{ attendance_date.strftime('%A, %d %B %Y') }}</p></div><div class="att-day-banner{% if not school_day %} is-off{% endif %}" data-active-day-banner data-state="{{ 'working' if school_day else 'off' }}" role="status" aria-live="polite"><span class="att-day-ring-wrap" aria-hidden="true"><span class="att-day-core"><svg data-active-day-icon><use href="{{ '#att-check' if school_day else '#att-x' }}"></use></svg></span></span><span data-active-day-label>{{ weekday_label }} {% if school_day %}waa maalin dugsi oo shaqeysa{% else %}ma aha maalin dugsi oo shaqeysa{% endif %}</span></div></div>
+    <div class="att-heading{% if not school_day %} is-off{% endif %}"><div><h1>Xaadirka Maalinlaha ah</h1><p id="attLongDate"><span class="att-heading__date-text">{{ attendance_date.strftime('%A, %d %B %Y') }}</span><span class="att-heading__clock" aria-label="Waqtiga hadda" title="Waqtiga hadda"><span class="att-heading__clock-icon" aria-hidden="true"><svg><use href="#att-clock"></use></svg></span><time id="attLiveClock" aria-live="off">--:--:-- --</time></span></p></div><div class="att-day-banner{% if not school_day %} is-off{% endif %}" data-active-day-banner data-state="{{ 'working' if school_day else 'off' }}" role="status" aria-live="polite"><span class="att-day-ring-wrap" aria-hidden="true"><span class="att-day-core"><svg data-active-day-icon><use href="{{ '#att-check' if school_day else '#att-x' }}"></use></svg></span></span><span data-active-day-label>{{ weekday_label }} {% if school_day %}waa maalin dugsi oo shaqeysa{% else %}ma aha maalin dugsi oo shaqeysa{% endif %}</span></div></div>
     <form class="att-card att-filters" id="attFilters" method="get">
       <div class="att-filter"><label for="attYear">Sanad-dugsiyeedka</label><div class="att-filter-box"><span class="att-badge att-badge--year"><svg><use href="#att-cal"/></svg></span><select id="attYear" name="year_id"><option value="">Dooro sannad dugsiyeedka</option>{% for year in years %}<option value="{{ year.id }}" {% if selected_year and year.id == selected_year.id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}</select></div></div>
       <div class="att-filter"><label for="attConfig">Habaynta Anshaxa</label><div class="att-filter-box"><span class="att-badge att-badge--config"><svg><use href="#att-sliders"/></svg></span><select id="attConfig" name="config_id"><option value="">Dooro habaynta</option>{% for item in configurations %}<option value="{{ item.id }}" data-level-ids="{% if item.academic_year_levels %}{% for membership in item.academic_year_levels %}{{ membership.academic_year_level_id }}{% if not loop.last %},{% endif %}{% endfor %}{% else %}{{ item.academic_year_level_id }}{% endif %}" {% if config and item.id == config.id %}selected{% endif %}>{{ item|behavior_levels }} · {{ item.behavior_subject.name }}</option>{% endfor %}</select></div></div>
       <div class="att-filter"><label for="attLevel">Heerka</label><div class="att-filter-box"><span class="att-badge att-badge--level"><svg><use href="#att-cap"/></svg></span><select id="attLevel" name="level_id"><option value="">Dooro heerka</option>{% for item in levels %}<option value="{{ item.id }}" {% if selected_level and item.id == selected_level.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></div></div>
        <div class="att-filter"><label for="attClass">Fasalka</label><div class="att-filter-box"><span class="att-badge att-badge--class"><svg><use href="#att-users"/></svg></span><select id="attClass" name="class_id"><option value="">Dhammaan fasallada</option>{% for item in classes %}<option value="{{ item.id }}" {% if selected_class and item.id == selected_class.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></div></div>
       <div class="att-filter"><label for="attSession">Fadhiga / Nooca imtixaanka</label><div class="att-filter-box"><span class="att-badge att-badge--session"><svg><use href="#att-check"/></svg></span><select id="attSession" name="session_id"><option value="">Dooro fadhiga</option>{% for item in sessions %}<option value="{{ item.id }}" {% if selected_session and item.id == selected_session.id %}selected{% endif %}>{{ item.session_label }} · {{ item.maximum_score|behavior_points }}</option>{% endfor %}</select></div></div>
-      <div class="att-filter att-filter--date"><label for="attDate">Taariikhda iyo waqtiga</label><div class="att-date-pair"><div class="att-filter-box"><span class="att-badge att-badge--date"><svg><use href="#att-cal"/></svg></span><input id="attDate" type="date" name="attendance_date" value="{{ attendance_date.isoformat() }}"></div><div class="att-filter-box"><span class="att-badge att-badge--year"><svg><use href="#att-clock"/></svg></span><input id="attTime" type="time" name="attendance_time" value="{{ attendance_time.strftime('%H:%M') }}"></div></div></div>
+      <div class="att-filter att-filter--date"><label for="attDateTrigger">Taariikhda iyo waqtiga</label><div class="att-date-pair"><div class="att-filter-box att-date-picker" data-date-picker><span class="att-badge att-badge--date"><svg><use href="#att-cal"/></svg></span><button class="att-date-trigger" type="button" id="attDateTrigger" aria-haspopup="dialog" aria-expanded="false"><span id="attDateLabel">{{ attendance_date.strftime('%B %d, %Y') }}</span><svg aria-hidden="true"><use href="#att-chevron-down"/></svg></button><input id="attDate" class="att-date-input" type="date" name="attendance_date" value="{{ attendance_date.isoformat() }}" tabindex="-1" aria-hidden="true"><div class="att-date-popover" id="attDatePopover" role="dialog" aria-label="Dooro taariikh" hidden><div class="att-date-popover__header"><button type="button" class="att-date-nav" data-date-prev aria-label="Bisha hore"><svg><use href="#att-chevron-left"/></svg></button><div class="att-date-heading"><strong data-date-month></strong><select data-date-year aria-label="Dooro sannadka"></select></div><button type="button" class="att-date-nav" data-date-next aria-label="Bisha xigta"><svg><use href="#att-chevron-right"/></svg></button></div><div class="att-date-weekdays" aria-hidden="true"><span>Sabti</span><span>Axad</span><span>Isniin</span><span>Talaada</span><span>Arbaca</span><span>Khamiis</span><span>Jumca</span></div><div class="att-date-legend" aria-label="Sharaxaadda midabbada"><span><i class="is-active-day"></i>Maalin dugsi</span><span><i class="is-inactive-day"></i>Ma aha maalin dugsi</span></div><div class="att-date-grid" data-date-grid role="grid" aria-label="Maalmaha bisha"></div><div class="att-date-popover__footer"><button type="button" data-date-clear>Nadiifi</button><button type="button" data-date-today>Maanta</button></div></div></div><div class="att-filter-box att-time-picker"><span class="att-badge att-badge--year"><svg><use href="#att-clock"/></svg></span><input id="attTime" type="time" name="attendance_time" value="{{ attendance_time.strftime('%H:%M') }}"></div></div></div>
     </form>
     <section class="att-card att-summary" aria-label="Xaadirka guud"><div class="att-summary-row"><div>Xaadirka guud: <strong id="attPct">0%</strong> <span id="attCount"></span></div><span id="attScope" class="att-muted">{% if selected_class %}{{ selected_class.name }} · {% endif %}{{ selected_level.name if selected_level else '' }}</span></div><div class="att-distribution" id="attDistribution" role="img" aria-label="Qaybinta xaadirka"></div><div class="att-chips" id="attChips"></div></section>
     {% set att_present = statuses|selectattr('key', 'equalto', 'present')|list|first %}
@@ -563,6 +566,149 @@
   const activeDayTypePause = 1200;
   const somaliWeekdays = ['Isniin', 'Talaado', 'Arbaca', 'Khamiis', 'Jumca', 'Sabti', 'Axad'];
   const selectedWeekday = Number(dailyRoot?.dataset.selectedWeekday);
+  const displayDateInput = document.getElementById('attDate');
+  const longDate = document.getElementById('attLongDate');
+  const liveClock = document.getElementById('attLiveClock');
+  const somaliCalendarWeekdays = ['Axad', 'Isniin', 'Talaada', 'Arbaca', 'Khamiis', 'Jumca', 'Sabti'];
+  const formatSomaliAttendanceDate = (value) => {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return '';
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    const monthName = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(date);
+    return `${somaliCalendarWeekdays[date.getDay()]}, ${monthName} ${String(day).padStart(2, '0')}, ${year}`;
+  };
+  const syncLiveDate = () => {
+    if (!longDate || !displayDateInput?.value) return;
+    const clock = longDate.querySelector('.att-heading__clock');
+    const formattedDate = formatSomaliAttendanceDate(displayDateInput.value);
+    const dateText = longDate.querySelector('.att-heading__date-text');
+    if (formattedDate && clock && dateText) {
+      dateText.textContent = formattedDate;
+    }
+  };
+  const syncLiveClock = () => {
+    if (!liveClock) return;
+    liveClock.textContent = new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
+    }).format(new Date());
+  };
+  syncLiveDate();
+  syncLiveClock();
+  window.setInterval(syncLiveClock, 1000);
+  displayDateInput?.addEventListener('change', syncLiveDate);
+  const datePicker = document.querySelector('[data-date-picker]');
+  const dateTrigger = datePicker?.querySelector('#attDateTrigger');
+  const datePopover = datePicker?.querySelector('#attDatePopover');
+  const dateGrid = datePicker?.querySelector('[data-date-grid]');
+  const dateMonth = datePicker?.querySelector('[data-date-month]');
+  const dateYear = datePicker?.querySelector('[data-date-year]');
+  const dateLabel = datePicker?.querySelector('#attDateLabel');
+  const dateWeekdays = ['Sabti', 'Axad', 'Isniin', 'Talaada', 'Arbaca', 'Khamiis', 'Jumca'];
+  const activeCalendarWeekdays = new Set((dailyRoot?.dataset.activeWeekdays || '').split(',').filter(value => value.trim() !== '').map(Number));
+  let calendarCursor = (() => {
+    const value = displayDateInput?.value;
+    const date = value ? new Date(`${value}T00:00:00`) : new Date();
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  })();
+  const toDateValue = date => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  const formatDateLabel = value => {
+    if (!value) return 'Dooro taariikh';
+    const date = new Date(`${value}T00:00:00`);
+    return new Intl.DateTimeFormat('en-US', { month: 'long', day: '2-digit', year: 'numeric' }).format(date);
+  };
+  const closeDatePicker = () => {
+    if (!datePopover || !dateTrigger) return;
+    datePopover.hidden = true;
+    dateTrigger.setAttribute('aria-expanded', 'false');
+  };
+  const selectDate = value => {
+    if (!displayDateInput) return;
+    displayDateInput.value = value;
+    if (!value) {
+      if (dateLabel) dateLabel.textContent = formatDateLabel(value);
+      closeDatePicker();
+      displayDateInput.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
+    if (dateLabel) dateLabel.textContent = formatDateLabel(value);
+    const chosen = new Date(`${value}T00:00:00`);
+    calendarCursor = new Date(chosen.getFullYear(), chosen.getMonth(), 1);
+    renderDatePicker();
+    closeDatePicker();
+    displayDateInput.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const renderDatePicker = () => {
+    if (!dateGrid || !dateMonth) return;
+    const year = calendarCursor.getFullYear();
+    const month = calendarCursor.getMonth();
+    dateMonth.textContent = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(calendarCursor);
+    if (dateYear) {
+      dateYear.replaceChildren();
+      for (let optionYear = year - 15; optionYear <= year + 15; optionYear += 1) {
+        const option = new Option(String(optionYear), String(optionYear), false, optionYear === year);
+        dateYear.append(option);
+      }
+    }
+    dateGrid.replaceChildren();
+    const firstDay = new Date(year, month, 1).getDay();
+    const leadingDays = (firstDay + 1) % 7;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cellCount = Math.ceil((leadingDays + daysInMonth) / 7) * 7;
+    const selectedValue = displayDateInput?.value || '';
+    const todayValue = toDateValue(new Date());
+    for (let index = 0; index < cellCount; index += 1) {
+      const date = new Date(year, month, index - leadingDays + 1);
+      const value = toDateValue(date);
+      const day = document.createElement('button');
+      day.type = 'button';
+      day.className = 'att-date-day';
+      day.textContent = String(date.getDate());
+      day.setAttribute('role', 'gridcell');
+      day.setAttribute('aria-label', `${dateWeekdays[(date.getDay() + 1) % 7]}, ${formatDateLabel(value)}`);
+      day.setAttribute('aria-pressed', String(value === selectedValue));
+      const pythonWeekday = (date.getDay() + 6) % 7;
+      day.classList.add(activeCalendarWeekdays.has(pythonWeekday) ? 'is-active-day' : 'is-inactive-day');
+      day.dataset.schoolDay = activeCalendarWeekdays.has(pythonWeekday) ? '1' : '0';
+      if (date.getMonth() !== month) day.classList.add('is-muted');
+      if (value === todayValue) day.classList.add('is-today');
+      if (value === selectedValue) day.classList.add('is-selected');
+      day.addEventListener('click', () => selectDate(value));
+      dateGrid.append(day);
+    }
+  };
+  dateTrigger?.addEventListener('click', () => {
+    if (!datePopover) return;
+    const willOpen = datePopover.hidden;
+    if (willOpen) renderDatePicker();
+    datePopover.hidden = !willOpen;
+    dateTrigger.setAttribute('aria-expanded', String(willOpen));
+  });
+  datePicker?.querySelector('[data-date-prev]')?.addEventListener('click', () => {
+    calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() - 1, 1);
+    renderDatePicker();
+  });
+  datePicker?.querySelector('[data-date-next]')?.addEventListener('click', () => {
+    calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() + 1, 1);
+    renderDatePicker();
+  });
+  dateYear?.addEventListener('change', event => {
+    calendarCursor = new Date(Number(event.target.value), calendarCursor.getMonth(), 1);
+    renderDatePicker();
+  });
+  datePicker?.querySelector('[data-date-today]')?.addEventListener('click', () => selectDate(toDateValue(new Date())));
+  datePicker?.querySelector('[data-date-clear]')?.addEventListener('click', () => selectDate(''));
+  document.addEventListener('click', event => {
+    if (datePicker && !datePicker.contains(event.target)) closeDatePicker();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeDatePicker();
+  });
+  if (dateLabel && displayDateInput?.value) dateLabel.textContent = formatDateLabel(displayDateInput.value);
   const activeDayCheckboxes = () => [...document.querySelectorAll('[data-attendance-days-form] input[name="school_days"]')];
   let activeDayTypeToken = 0;
   const typeActiveDayLabel = (text) => {
