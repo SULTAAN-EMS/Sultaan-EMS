@@ -242,7 +242,7 @@
     <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-clipboard-check"></i> Daily workspace</span><h2>{{ selected_session.session_label }}</h2></div><span class="behavior-scope-pill">{{ config.academic_year.name }} &bull; {{ config|behavior_levels }}{% if selected_class %} &bull; {{ selected_class.name }}{% endif %}</span></div>
     {% if school_day %}<div class="attendance-day-state is-open"><span><i class="fa-solid fa-circle-check"></i>{{ attendance_date.strftime('%A') }} is an active school day.</span><span>{{ attendance_date.strftime('%B %d, %Y') }}</span></div>{% else %}<div class="attendance-day-state"><span><i class="fa-solid fa-triangle-exclamation"></i>This date is not enabled as a school attendance day.</span><span>{{ attendance_date.strftime('%B %d, %Y') }}</span></div>{% endif %}
     <form method="post" id="attendanceSaveForm"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save_all"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="level_id" value="{{ selected_level.id }}"><input type="hidden" name="session_id" value="{{ selected_session.id }}"><input type="hidden" name="class_id" value="{{ selected_class.id if selected_class else '' }}"><input type="hidden" name="attendance_date" value="{{ attendance_date.isoformat() }}"><input type="hidden" name="attendance_time" value="{{ attendance_time.strftime('%H:%M') }}">
-      <div class="attendance-table-wrap behavior-table-wrap"><table class="behavior-table attendance-table"><thead><tr><th>S.N.</th><th>Photo</th><th>Student</th><th>Class</th><th>Status</th><th>Note</th><th>Actions</th></tr></thead><tbody>{% for row in rows %}<tr class="{% if row.record and row.record.status == 'voided' %}attendance-row--voided{% endif %}"><td>{{ loop.index }}</td><td><div class="attendance-avatar">{% if row.enrollment.student.photo_path %}<img src="{{ asset_url(row.enrollment.student.photo_path) }}" alt="{{ row.enrollment.student.full_name }} photo">{% else %}{{ row.enrollment.student.full_name[:2]|upper }}{% endif %}</div></td><td><span class="attendance-student-name">{{ row.enrollment.student.full_name }}</span><span class="attendance-student-meta">Hooyo: {{ row.enrollment.student.mother_name or '-' }} &bull; {{ row.enrollment.student.student_code }}</span></td><td>{{ row.enrollment.academic_year_class.name }}</td><td><select class="attendance-select" name="status_{{ row.enrollment.id }}" aria-label="Attendance status for {{ row.enrollment.student.full_name }}" {% if row.record and row.record.status == 'voided' %}disabled{% endif %}>{% for status in statuses %}<option value="{{ status.id }}" data-status-key="{{ status.key }}" {% if row.record and row.record.status_id == status.id or not row.record and status.key == 'present' %}selected{% endif %}>{{ official_status_labels.get(status.key, status.label) }}</option>{% endfor %}</select>{% if row.record and row.record.status == 'voided' %}<span class="attendance-row-voided-note"><i class="fa-solid fa-ban"></i> VOIDED{% if row.record.void_reason %}: {{ row.record.void_reason }}{% endif %}</span>{% elif row.record and row.record.status_key_snapshot == 'present' and row.record.attendance_time %}<span class="attendance-time-note">Soo xaadiray: {{ row.record.attendance_time.strftime('%I:%M %p').lstrip('0') }}</span>{% endif %}<span class="attendance-arrival-wrap{% if row.record and row.record.status_key_snapshot == 'late' %} is-visible{% endif %}"><label class="attendance-arrival-label">Arrival Time *</label><input class="attendance-arrival"{% if row.record and row.record.status_key_snapshot == 'late' %} is-visible{% endif %} name="arrival_time_{{ row.enrollment.id }}" type="time" value="{{ row.record.arrival_time.strftime('%H:%M') if row.record and row.record.arrival_time else '' }}" aria-label="Arrival time for {{ row.enrollment.student.full_name }}" {% if row.record and row.record.status == 'voided' %}disabled{% endif %}><span class="attendance-time-note">{% if row.record and row.record.late_by_minutes is not none %}Late by {{ row.record.late_by_minutes }} minutes{% endif %}</span></span></td><td><input class="attendance-note" name="note_{{ row.enrollment.id }}" value="{{ row.record.note if row.record else '' }}" placeholder="Optional note" aria-label="Attendance note for {{ row.enrollment.student.full_name }}" {% if row.record and row.record.status == 'voided' %}disabled{% endif %}></td><td><div class="attendance-row-actions"><button class="behavior-btn behavior-btn--outline behavior-btn--small" type="button" data-open-profile data-profile-id="{{ row.enrollment.id }}" data-photo="{{ asset_url(row.enrollment.student.photo_path) if row.enrollment.student.photo_path else '' }}" title="View attendance profile"><i class="fa-solid fa-eye"></i> View</button><a class="behavior-btn behavior-btn--outline behavior-btn--small" href="{{ url_for('behavior.attendance_report', enrollment_id=row.enrollment.id, year_id=config.academic_year_id, level_id=selected_level.id, config_id=config.id, session_id=selected_session.id, attendance_date=attendance_date.isoformat(), print=1) }}" target="_blank" rel="noopener" title="Open attendance report"><i class="fa-solid fa-file-pdf"></i> Report PDF</a></div></td></tr>{% else %}<tr><td colspan="7"><div class="attendance-empty"><i class="fa-solid fa-users-slash"></i><p>No active enrollments exist in this scope.</p></div></td></tr>{% endfor %}</tbody></table></div>
+      {% if false %}<div class="attendance-table-wrap behavior-table-wrap"><table class="behavior-table attendance-table"><thead><tr><th>S.N.</th><th>Photo</th><th>Student</th><th>Class</th><th>Status</th><th>Note</th><th>Actions</th></tr></thead><tbody>{% for row in rows %}<tr class="{% if row.record and row.record.status == 'voided' %}attendance-row--voided{% endif %}"><td>{{ loop.index }}</td><td><div class="attendance-avatar">{% if row.enrollment.student.photo_path %}<img src="{{ asset_url(row.enrollment.student.photo_path) }}" alt="{{ row.enrollment.student.full_name }} photo">{% else %}{{ row.enrollment.student.full_name[:2]|upper }}{% endif %}</div></td><td><span class="attendance-student-name">{{ row.enrollment.student.full_name }}</span><span class="attendance-student-meta">Hooyo: {{ row.enrollment.student.mother_name or '-' }} &bull; {{ row.enrollment.student.student_code }}</span></td><td>{{ row.enrollment.academic_year_class.name }}</td><td><select class="attendance-select" name="status_{{ row.enrollment.id }}" aria-label="Attendance status for {{ row.enrollment.student.full_name }}" {% if row.record and row.record.status == 'voided' %}disabled{% endif %}>{% for status in statuses %}<option value="{{ status.id }}" data-status-key="{{ status.key }}" {% if row.record and row.record.status_id == status.id or not row.record and status.key == 'present' %}selected{% endif %}>{{ official_status_labels.get(status.key, status.label) }}</option>{% endfor %}</select>{% if row.record and row.record.status == 'voided' %}<span class="attendance-row-voided-note"><i class="fa-solid fa-ban"></i> VOIDED{% if row.record.void_reason %}: {{ row.record.void_reason }}{% endif %}</span>{% elif row.record and row.record.status_key_snapshot == 'present' and row.record.attendance_time %}<span class="attendance-time-note">Soo xaadiray: {{ row.record.attendance_time.strftime('%I:%M %p').lstrip('0') }}</span>{% endif %}<span class="attendance-arrival-wrap{% if row.record and row.record.status_key_snapshot == 'late' %} is-visible{% endif %}"><label class="attendance-arrival-label">Arrival Time *</label><input class="attendance-arrival"{% if row.record and row.record.status_key_snapshot == 'late' %} is-visible{% endif %} name="arrival_time_{{ row.enrollment.id }}" type="time" value="{{ row.record.arrival_time.strftime('%H:%M') if row.record and row.record.arrival_time else '' }}" aria-label="Arrival time for {{ row.enrollment.student.full_name }}" {% if row.record and row.record.status == 'voided' %}disabled{% endif %}><span class="attendance-time-note">{% if row.record and row.record.late_by_minutes is not none %}Late by {{ row.record.late_by_minutes }} minutes{% endif %}</span></span></td><td><input class="attendance-note" name="note_{{ row.enrollment.id }}" value="{{ row.record.note if row.record else '' }}" placeholder="Optional note" aria-label="Attendance note for {{ row.enrollment.student.full_name }}" {% if row.record and row.record.status == 'voided' %}disabled{% endif %}></td><td><div class="attendance-row-actions"><button class="behavior-btn behavior-btn--outline behavior-btn--small" type="button" data-open-profile data-profile-id="{{ row.enrollment.id }}" data-photo="{{ asset_url(row.enrollment.student.photo_path) if row.enrollment.student.photo_path else '' }}" title="View attendance profile"><i class="fa-solid fa-eye"></i> View</button><a class="behavior-btn behavior-btn--outline behavior-btn--small" href="{{ url_for('behavior.attendance_report', enrollment_id=row.enrollment.id, year_id=config.academic_year_id, level_id=selected_level.id, config_id=config.id, session_id=selected_session.id, attendance_date=attendance_date.isoformat(), print=1) }}" target="_blank" rel="noopener" title="Open attendance report"><i class="fa-solid fa-file-pdf"></i> Report PDF</a></div></td></tr>{% else %}<tr><td colspan="7"><div class="attendance-empty"><i class="fa-solid fa-users-slash"></i><p>No active enrollments exist in this scope.</p></div></td></tr>{% endfor %}</tbody></table></div>{% endif %}
     </form>
   </section>
   </div>
@@ -847,23 +847,59 @@
   document.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => closeDialog(document.getElementById(button.dataset.closeDialog))));
   document.querySelectorAll('dialog').forEach((dialog) => dialog.addEventListener('click', (event) => { if (event.target === dialog) closeDialog(dialog); }));
 
-  const profiles = {{ profiles|tojson }};
+  const profileCache = new Map();
+  const profileUrlBase = {{ url_for('behavior.attendance_profile_api', enrollment_id=0)|tojson }};
   const profileDialog = document.getElementById('attendanceProfileDialog');
   const profileFacts = document.getElementById('profileFacts');
   const profileHistory = document.getElementById('profileHistory');
-  document.querySelectorAll('[data-open-profile]').forEach((button) => button.addEventListener('click', () => {
-    const item = profiles[String(button.dataset.profileId)] || profiles[button.dataset.profileId];
+  const escapeProfileText = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+  const renderProfile = (button, item) => {
     if (!item || !profileDialog) return;
     const photo = document.getElementById('profilePhoto');
-    photo.innerHTML = button.dataset.photo ? `<img src="${button.dataset.photo}" alt="${item.name} photo">` : item.name.slice(0, 2).toUpperCase();
+    photo.replaceChildren();
+    if (button.dataset.photo) {
+      const image = document.createElement('img');
+      image.src = button.dataset.photo;
+      image.alt = `${item.name} photo`;
+      photo.append(image);
+    } else {
+      photo.textContent = item.name.slice(0, 2).toUpperCase();
+    }
     document.getElementById('profileName').textContent = item.name;
     document.getElementById('profileMeta').textContent = `Hooyo: ${item.mother} | ${item.student_code} | ${item.class_name}`;
     profileFacts.innerHTML = [['Joogid', item.present], ['Daahid', item.late], ['Maqnaansho', item.absent], ['Cudurdaar', item.excused], ['Fasaxid Rasmi ah', item.official_leave], ['Attendance Earned', item.attendance_score], ['Attendance Maximum', item.attendance_allocation], ['Scoring Status', item.attendance_scoring_status]].map(([label, value]) => `<div class="attendance-fact"><span>${label}</span><strong>${value}</strong></div>`).join('');
-    profileHistory.innerHTML = item.history.length ? item.history.map((row) => `<tr><td>${row.date_display || row.date}</td><td>${row.status}${row.record_status === 'voided' ? '<br><span class="attendance-record-status is-voided">VOIDED</span>' : ''}</td><td>${row.arrival_time || '-'}</td><td>${row.note}${row.void_reason ? `<br><small class="attendance-record-meta">${row.void_reason}</small>` : ''}</td></tr>`).join('') : '<tr><td colspan="4">No saved attendance history.</td></tr>';
+    profileHistory.innerHTML = item.history.length ? item.history.map((row) => `<tr><td>${escapeProfileText(row.date_display || row.date)}</td><td>${escapeProfileText(row.status)}${row.record_status === 'voided' ? '<br><span class="attendance-record-status is-voided">VOIDED</span>' : ''}</td><td>${escapeProfileText(row.arrival_time || '-')}</td><td>${escapeProfileText(row.note)}${row.void_reason ? `<br><small class="attendance-record-meta">${escapeProfileText(row.void_reason)}</small>` : ''}</td></tr>`).join('') : '<tr><td colspan="4">No saved attendance history.</td></tr>';
     openDialog(profileDialog);
+  };
+  document.querySelectorAll('[data-open-profile]').forEach(button => button.addEventListener('click', async () => {
+    const enrollmentId = button.dataset.profileId;
+    try {
+      let item = profileCache.get(enrollmentId);
+      if (!item) {
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        const profileUrl = new URL(profileUrlBase, window.location.origin);
+        profileUrl.pathname = profileUrl.pathname.replace('/0/profile', `/${encodeURIComponent(enrollmentId)}/profile`);
+        const scope = new URLSearchParams(window.location.search);
+        ['year_id', 'level_id', 'class_id', 'config_id', 'session_id'].forEach(key => {
+          if (scope.has(key)) profileUrl.searchParams.set(key, scope.get(key));
+        });
+        const response = await fetch(profileUrl, {credentials:'same-origin',headers:{Accept:'application/json','X-Requested-With':'XMLHttpRequest'}});
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) throw new Error(payload.message || 'Xogta ardayga lama soo heli karin.');
+        item = payload.profile;
+        profileCache.set(enrollmentId, item);
+      }
+      renderProfile(button, item);
+    } catch (error) {
+      toast(error.message || 'Xogta ardayga lama soo heli karin.', true);
+    } finally {
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+    }
   }));
 
-  const recordRows = {{ record_rows|tojson }};
+  const recordRows = [];
   // The Records sheet and its action sheet are owned by
   // _attendance_records_redesign.html. Keep the legacy overview data below,
   // but do not execute the retired records/actions controller.

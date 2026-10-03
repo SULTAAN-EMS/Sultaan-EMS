@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -2698,26 +2699,25 @@ def attendance():
                     context["selected_class"].id if context["selected_class"] else None,
                     context["selected_level"].id,
                 )
-                existing_voided_ids = {
-                    item.student_enrollment_id
+                enrollment_ids = [item.id for item in enrollments]
+                existing_records = {
+                    item.student_enrollment_id: item
                     for item in BehaviorAttendanceRecord.query.filter(
                         BehaviorAttendanceRecord.behavior_configuration_id == config.id,
                         BehaviorAttendanceRecord.behavior_session_id == selected_session.id,
                         BehaviorAttendanceRecord.attendance_date == attendance_date,
-                        BehaviorAttendanceRecord.status == "voided",
-                        BehaviorAttendanceRecord.student_enrollment_id.in_([item.id for item in enrollments]),
+                        BehaviorAttendanceRecord.student_enrollment_id.in_(enrollment_ids),
                     ).all()
+                } if enrollment_ids else {}
+                existing_voided_ids = {
+                    enrollment_id for enrollment_id, item in existing_records.items()
+                    if (item.status or "active") == "voided"
                 }
                 existing_deleted_ids = {
-                    item.student_enrollment_id
-                    for item in BehaviorAttendanceRecord.query.filter(
-                        BehaviorAttendanceRecord.behavior_configuration_id == config.id,
-                        BehaviorAttendanceRecord.behavior_session_id == selected_session.id,
-                        BehaviorAttendanceRecord.attendance_date == attendance_date,
-                        BehaviorAttendanceRecord.deleted_at.isnot(None),
-                        BehaviorAttendanceRecord.student_enrollment_id.in_([item.id for item in enrollments]),
-                    ).all()
+                    enrollment_id for enrollment_id, item in existing_records.items()
+                    if item.deleted_at
                 }
+                capture_attendance_session_policy(config, selected_session)
                 saved_count = 0
                 cleared_count = 0
                 unmarked_count = 0
@@ -2760,6 +2760,10 @@ def attendance():
                         attendance_time=attendance_time,
                         arrival_time=arrival_time,
                         late_by_minutes=_late_by_minutes(arrival_time, school_start_time),
+                        existing_record=existing_records.get(enrollment.id),
+                        find_existing_record=False,
+                        capture_policy=False,
+                        flush=False,
                     )
                     saved_count += 1
                 audit("Behavior Attendance", f"Saved attendance for {saved_count} enrollment(s) in configuration {config.id}")
@@ -2894,164 +2898,38 @@ def attendance():
             if record and record.note_is_auto_generated
             else record.note if record else ""
         )
-    # The roster, contextual profile, records drawer, and class overview all
-    # read this same scoped record set. No parallel attendance data is created.
-    history_records = []
-    profiles = {}
-    record_rows = []
+    # Keep the page request focused on today's roster. Historical profiles and
+    # records are fetched only when the administrator opens those views.
     overview_counts = defaultdict(int)
-    history_by_enrollment = defaultdict(list)
+    for item in records.values():
+        if item.deleted_at or (item.status or "active") != "active":
+            continue
+        overview_counts[(item.status_key_snapshot or "").strip().lower() or "unknown"] += 1
+
+    repeat_counts = defaultdict(lambda: defaultdict(int))
     if config and selected_session and enrollments:
         enrollment_ids = [item.id for item in enrollments]
-        history_records = BehaviorAttendanceRecord.query.filter(
+        grouped_repeat_counts = db.session.query(
+            BehaviorAttendanceRecord.student_enrollment_id,
+            BehaviorAttendanceRecord.status_key_snapshot,
+            func.count(BehaviorAttendanceRecord.id),
+        ).filter(
             BehaviorAttendanceRecord.behavior_configuration_id == config.id,
             BehaviorAttendanceRecord.behavior_session_id == selected_session.id,
             BehaviorAttendanceRecord.student_enrollment_id.in_(enrollment_ids),
-        ).order_by(BehaviorAttendanceRecord.attendance_date.desc(), BehaviorAttendanceRecord.id.desc()).all()
-        for item in history_records:
-            key = (item.status_key_snapshot or "").strip().lower() or "unknown"
-            record_note = (
-                auto_attendance_note(item.student.full_name, key, item.student.gender)
-                if item.note_is_auto_generated
-                else item.note or ""
-            )
-            if not item.deleted_at:
-                history_by_enrollment[item.student_enrollment_id].append(item)
-            record_rows.append({
-                "date": item.attendance_date.isoformat(),
-                "date_display": item.attendance_date.strftime("%B %d, %Y"),
-                "student": item.student.full_name,
-                "mother": item.student.mother_name or "-",
-                "student_code": item.student.student_code,
-                "class_name": item.academic_year_class.name if item.academic_year_class else "-",
-                "photo_path": item.student.photo_path or "",
-                "photo_url": (
-                    item.student.photo_path
-                    if (item.student.photo_path or "").startswith(("http://", "https://", "data:"))
-                    else url_for("static", filename=item.student.photo_path)
-                    if item.student.photo_path
-                    else ""
-                ),
-                "status": attendance_status_label(key, item.status_label_snapshot),
-                "status_key": key,
-                "record_id": item.id,
-                "record_status": "deleted" if item.deleted_at else (item.status or "active"),
-                "void_reason": item.void_reason or "",
-                "voided_by": item.voider.username if item.voider else "",
-                "voided_at": item.voided_at.isoformat() if item.voided_at else "",
-                "deletion_reason": item.deletion_reason or "",
-                "deleted_by": item.deleter.username if item.deleter else "",
-                "deleted_at": item.deleted_at.isoformat() if item.deleted_at else "",
-                "edit_url": url_for("behavior.edit_attendance", record_id=item.id),
-                "status_id": item.status_id,
-                "void_url": url_for("behavior.void_attendance", record_id=item.id),
-                "restore_url": url_for("behavior.restore_attendance", record_id=item.id),
-                "delete_url": url_for("behavior.delete_attendance", record_id=item.id),
-                "arrival_time": item.arrival_time.strftime("%I:%M %p").lstrip("0") if item.arrival_time else "",
-                "attendance_time": item.attendance_time.strftime("%I:%M %p").lstrip("0") if item.attendance_time else "",
-                "late_by_minutes": item.late_by_minutes,
-                "points": str(item.points_applied or 0),
-                "polarity": item.polarity,
-                "note": record_note,
-            })
-        deleted_records = BehaviorAttendanceDeletion.query.filter(
-            BehaviorAttendanceDeletion.behavior_configuration_id == config.id,
-            BehaviorAttendanceDeletion.behavior_session_id == selected_session.id,
-            BehaviorAttendanceDeletion.student_enrollment_id.in_(enrollment_ids),
-        ).order_by(
-            BehaviorAttendanceDeletion.attendance_date.desc(),
-            BehaviorAttendanceDeletion.deleted_at.desc(),
+            BehaviorAttendanceRecord.status == "active",
+            BehaviorAttendanceRecord.deleted_at.is_(None),
+            BehaviorAttendanceRecord.status_key_snapshot.in_(("absent", "late")),
+        ).group_by(
+            BehaviorAttendanceRecord.student_enrollment_id,
+            BehaviorAttendanceRecord.status_key_snapshot,
         ).all()
-        for item in deleted_records:
-            record_rows.append({
-                "date": item.attendance_date.isoformat(),
-                "date_display": item.attendance_date.strftime("%B %d, %Y"),
-                "student": item.student_name,
-                "mother": item.mother_name or "-",
-                "student_code": item.student_code,
-                "class_name": item.class_name or "-",
-                "photo_path": "",
-                "photo_url": "",
-                "status": item.status_label,
-                "status_key": item.status_key,
-                "record_id": item.original_record_id,
-                "record_status": "deleted",
-                "void_reason": item.void_reason or "",
-                "deletion_reason": item.deletion_reason,
-                "deleted_by": item.deleted_by_username,
-                "deleted_at": item.deleted_at.isoformat() if item.deleted_at else "",
-                "arrival_time": item.arrival_time.strftime("%I:%M %p").lstrip("0") if item.arrival_time else "",
-                "attendance_time": item.attendance_time.strftime("%I:%M %p").lstrip("0") if item.attendance_time else "",
-                "late_by_minutes": item.late_by_minutes,
-                "points": str(item.points_applied or 0),
-                "polarity": item.polarity,
-                "note": item.note or "",
-            })
-        for item in records.values():
-            if item.deleted_at or (item.status or "active") != "active":
-                continue
-            key = (item.status_key_snapshot or "").strip().lower() or "unknown"
-            overview_counts[key] += 1
-        for enrollment in enrollments:
-            scoped_records = history_by_enrollment.get(enrollment.id, [])
-            active_scoped_records = [
-                item for item in scoped_records if not item.deleted_at and (item.status or "active") == "active"
-            ]
-            counts = defaultdict(int)
-            for item in active_scoped_records:
-                key = (item.status_key_snapshot or "").strip().lower() or "unknown"
-                counts[key] += 1
-            total = len(active_scoped_records)
-            attended = counts["present"] + counts["late"]
-            profile_points = attendance_points_projection(scoped_records)
-            canonical_score = calculate_session_score(config, selected_session, enrollment)
-            profiles[enrollment.id] = {
-                "name": enrollment.student.full_name,
-                "mother": enrollment.student.mother_name or "-",
-                "student_code": enrollment.student.student_code,
-                "class_name": enrollment.academic_year_class.name,
-                "year_name": config.academic_year.name,
-                "level_name": config.academic_year_level.name,
-                "present": counts["present"],
-                "late": counts["late"],
-                "absent": counts["absent"],
-                "excused": counts["excused"],
-                "official_leave": counts["official_leave"],
-                "total": total,
-                "percentage": round((attended / total) * 100, 1) if total else 0,
-                "points": str(profile_points["signed_total"]),
-                # The profile keeps the raw status counts for operational
-                # review, but final score fields come from the central
-                # Attendance scoring service.
-                "attendance_score": str(canonical_score.get("attendance_score") or "") if canonical_score.get("attendance_score") is not None else "-",
-                "attendance_allocation": str(canonical_score.get("attendance_allocation") or "") if canonical_score.get("attendance_allocation") is not None else "-",
-                "attendance_scoring_status": canonical_score.get("attendance_status", "-"),
-                "attendance_scoring_reason": canonical_score.get("attendance_reason") or "",
-                "history": [
-                    {
-                        "date": item.attendance_date.isoformat(),
-                        "date_display": item.attendance_date.strftime("%B %d, %Y"),
-                        "status": attendance_status_label(
-                            (item.status_key_snapshot or "").strip().lower(),
-                            item.status_label_snapshot,
-                        ),
-                        "record_status": "deleted" if item.deleted_at else (item.status or "active"),
-                        "void_reason": item.void_reason or "",
-                        "arrival_time": item.arrival_time.strftime("%I:%M %p").lstrip("0") if item.arrival_time else "",
-                        "late_by_minutes": item.late_by_minutes,
-                        "note": item.note or "-",
-                    }
-                    for item in scoped_records[:12]
-                ],
-            }
+        for enrollment_id, status_key, count in grouped_repeat_counts:
+            repeat_counts[enrollment_id][status_key] = count
     repeat_alerts = []
     for enrollment in enrollments:
-        scoped_records = [
-            item for item in history_by_enrollment.get(enrollment.id, [])
-            if not item.deleted_at and (item.status or "active") == "active"
-        ]
-        absent_count = sum(1 for item in scoped_records if (item.status_key_snapshot or "").lower() == "absent")
-        late_count = sum(1 for item in scoped_records if (item.status_key_snapshot or "").lower() == "late")
+        absent_count = repeat_counts[enrollment.id]["absent"]
+        late_count = repeat_counts[enrollment.id]["late"]
         if absent_count >= 2 or late_count >= 2:
             repeat_alerts.append({
                 "name": enrollment.student.full_name,
@@ -3089,13 +2967,104 @@ def attendance():
         active_weekdays=active_weekdays,
         weekday_label=attendance_weekday_label(attendance_date.weekday()),
         rows=rows,
-        profiles=profiles,
-        record_rows=record_rows,
+        record_rows=[],
         overview=overview,
         official_status_labels={item.key: item.label for item in statuses},
         attendance_view=attendance_view,
         attendance_view_target=attendance_view or "records",
     )
+
+
+@behavior_bp.route("/attendance/students/<int:enrollment_id>/profile", methods=["GET"])
+def attendance_profile_api(enrollment_id):
+    """Load one student's Attendance profile only when its dialog is opened."""
+    context = _behavior_context(
+        request.args.get("year_id"),
+        request.args.get("level_id"),
+        request.args.get("config_id"),
+        request.args.get("class_id"),
+        request.args.get("session_id"),
+    )
+    if context["scope_invalid"] or not context["config"] or not context["selected_session"] or not context["selected_level"]:
+        return jsonify({"ok": False, "message": "Dooro scope sax ah"}), 400
+    try:
+        enrollment = validate_enrollment_scope(context["config"], enrollment_id)
+    except BehaviorValidationError:
+        return jsonify({"ok": False, "message": "Ardaygan kuma jiro xogta la doortay"}), 404
+    if enrollment.academic_year_level_id != context["selected_level"].id or (
+        context["selected_class"] and enrollment.academic_year_class_id != context["selected_class"].id
+    ):
+        return jsonify({"ok": False, "message": "Ardaygan kuma jiro fasalka la doortay"}), 404
+
+    session = context["selected_session"]
+    records = BehaviorAttendanceRecord.query.filter_by(
+        behavior_configuration_id=context["config"].id,
+        behavior_session_id=session.id,
+        student_enrollment_id=enrollment.id,
+    ).order_by(BehaviorAttendanceRecord.attendance_date.desc(), BehaviorAttendanceRecord.id.desc()).all()
+    events = BehaviorEvent.query.filter_by(
+        behavior_configuration_id=context["config"].id,
+        behavior_session_id=session.id,
+        student_enrollment_id=enrollment.id,
+        status="active",
+    ).all()
+    score = calculate_session_score(
+        context["config"],
+        session,
+        enrollment,
+        behavior_events=events,
+        attendance_records=records,
+    )
+    active_records = [
+        item for item in records
+        if not item.deleted_at and (item.status or "active") == "active"
+    ]
+    counts = defaultdict(int)
+    for item in active_records:
+        key = (item.status_key_snapshot or "").strip().lower() or "unknown"
+        counts[key] += 1
+    attended = counts["present"] + counts["late"]
+    history = [
+        {
+            "date": item.attendance_date.isoformat(),
+            "date_display": item.attendance_date.strftime("%B %d, %Y"),
+            "status": attendance_status_label(
+                (item.status_key_snapshot or "").strip().lower(),
+                item.status_label_snapshot,
+            ),
+            "record_status": "deleted" if item.deleted_at else (item.status or "active"),
+            "void_reason": item.void_reason or "",
+            "arrival_time": item.arrival_time.strftime("%I:%M %p").lstrip("0") if item.arrival_time else "",
+            "late_by_minutes": item.late_by_minutes,
+            "note": item.note or "-",
+        }
+        for item in records if not item.deleted_at
+    ][:12]
+    points = attendance_points_projection(records)
+    return jsonify({
+        "ok": True,
+        "profile": {
+            "name": enrollment.student.full_name,
+            "mother": enrollment.student.mother_name or "-",
+            "student_code": enrollment.student.student_code,
+            "class_name": enrollment.academic_year_class.name,
+            "year_name": context["config"].academic_year.name,
+            "level_name": enrollment.academic_year_level.name,
+            "present": counts["present"],
+            "late": counts["late"],
+            "absent": counts["absent"],
+            "excused": counts["excused"],
+            "official_leave": counts["official_leave"],
+            "total": len(active_records),
+            "percentage": round((attended / len(active_records)) * 100, 1) if active_records else 0,
+            "points": str(points["signed_total"]),
+            "attendance_score": str(score.get("attendance_score") or "") if score.get("attendance_score") is not None else "-",
+            "attendance_allocation": str(score.get("attendance_allocation") or "") if score.get("attendance_allocation") is not None else "-",
+            "attendance_scoring_status": score.get("attendance_status", "-"),
+            "attendance_scoring_reason": score.get("attendance_reason") or "",
+            "history": history,
+        },
+    })
 
 
 @behavior_bp.route("/attendance/records/<int:record_id>/void", methods=["POST"])

@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from werkzeug.datastructures import MultiDict
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import event
 
 from app import create_app, db
 from app.behavior_attendance import (
@@ -510,6 +511,61 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertIn(b"Sub-categories", subcategory_response.data)
         self.assertIn(b"Structure overview", taxonomy_response.data)
 
+    def test_attendance_page_defers_history_and_loads_profile_on_demand(self):
+        ensure_attendance_defaults(self.config)
+        db.session.commit()
+        present = next(item for item in attendance_statuses(self.config) if item.key == "present")
+        mark_attendance(
+            self.config,
+            self.session,
+            self.enrollment,
+            present.id,
+            date(2026, 8, 28),
+            note="historical attendance",
+        )
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        query = {
+            "config_id": self.config.id,
+            "level_id": self.config.academic_year_level_id,
+            "session_id": self.session.id,
+            "class_id": self.enrollment.academic_year_class_id,
+            "attendance_date": "2026-08-29",
+        }
+        attendance_queries = []
+
+        def count_attendance_queries(conn, cursor, statement, parameters, context, executemany):
+            normalized = " ".join(statement.lower().split())
+            if "from behavior_attendance_records" in normalized:
+                attendance_queries.append(normalized)
+
+        event.listen(db.engine, "before_cursor_execute", count_attendance_queries)
+        try:
+            page = client.get("/admin/behavior/attendance", query_string=query)
+        finally:
+            event.remove(db.engine, "before_cursor_execute", count_attendance_queries)
+
+        self.assertEqual(page.status_code, 200)
+        self.assertLessEqual(len(attendance_queries), 2)
+        self.assertIn(b"const profileCache = new Map()", page.data)
+        self.assertEqual(page.data.count(f'data-profile-id="{self.enrollment.id}"'.encode()), 1)
+        self.assertNotIn(b"historical attendance", page.data)
+
+        profile = client.get(
+            f"/admin/behavior/attendance/students/{self.enrollment.id}/profile",
+            query_string=query,
+        )
+        self.assertEqual(profile.status_code, 200, profile.data)
+        payload = profile.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["profile"]["name"], "Phase One Student")
+        self.assertEqual(payload["profile"]["present"], 1)
+        self.assertEqual(payload["profile"]["history"][0]["note"], "historical attendance")
+
     def test_void_is_auditable_excluded_from_scoring_and_duplicate_safe(self):
         ensure_attendance_defaults(self.config)
         db.session.commit()
@@ -779,8 +835,21 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertEqual(records_page.status_code, 200)
         body = records_page.get_data(as_text=True)
         self.assertIn('La Tirtiray', body)
-        self.assertIn('"record_status": "deleted"', body)
-        self.assertIn("read-only", body)
+        self.assertNotIn('"record_status": "deleted"', body)
+        deleted_records = client.get(
+            "/admin/behavior/attendance/records",
+            query_string={
+                "config_id": self.config.id,
+                "level_id": self.config.academic_year_level_id,
+                "session_id": self.session.id,
+                "state": "deleted",
+            },
+        )
+        self.assertEqual(deleted_records.status_code, 200)
+        deleted_payload = deleted_records.get_json()
+        self.assertTrue(deleted_payload["ok"])
+        self.assertEqual(deleted_payload["rows"][0]["record_status"], "deleted")
+        self.assertEqual(deleted_payload["rows"][0]["deletion_reason"], "Duplicate daily mark")
 
         score = calculate_session_score(self.config, self.session, self.enrollment)
         self.assertEqual(score["attendance_record_count"], 0)

@@ -8,6 +8,8 @@ the examination-hall AttendanceRecord table, whose lifecycle is different.
 from datetime import date, datetime, time
 from decimal import Decimal
 
+from sqlalchemy.orm import joinedload
+
 from . import db
 from .behavior_service import (
     CANONICAL_ATTENDANCE_STATUS_KEYS,
@@ -421,6 +423,11 @@ def enrollments_for_class(configuration, academic_year_class_id=None, academic_y
         StudentEnrollment.academic_year_id == configuration.academic_year_id,
         StudentEnrollment.academic_year_level_id.in_(configuration_level_ids(configuration)),
         StudentEnrollment.status.in_(("active", "completed")),
+    ).options(
+        joinedload(StudentEnrollment.student),
+        joinedload(StudentEnrollment.academic_year_level),
+        joinedload(StudentEnrollment.academic_year_class),
+        joinedload(StudentEnrollment.academic_section),
     )
     if academic_year_level_id is not None:
         query = query.filter(
@@ -521,6 +528,10 @@ def mark_attendance(
     arrival_time=None,
     late_by_minutes=None,
     note_is_auto_generated=False,
+    existing_record=None,
+    find_existing_record=True,
+    capture_policy=True,
+    flush=True,
 ):
     """Upsert exactly one daily mark while preserving the selected scope."""
     configuration, session, enrollment = validate_attendance_context(configuration, session, enrollment)
@@ -532,12 +543,15 @@ def mark_attendance(
     status_key = (status.key or "").strip().lower()
     if status_key not in CANONICAL_ATTENDANCE_STATUS_KEYS:
         raise BehaviorValidationError("Only the five official Attendance statuses can be recorded")
-    _snapshot_status_points_for_new_session(configuration, session)
-    item = BehaviorAttendanceRecord.query.filter_by(
-        student_enrollment_id=enrollment.id,
-        behavior_session_id=session.id,
-        attendance_date=attendance_date,
-    ).first()
+    if capture_policy:
+        _snapshot_status_points_for_new_session(configuration, session)
+    item = existing_record
+    if find_existing_record:
+        item = BehaviorAttendanceRecord.query.filter_by(
+            student_enrollment_id=enrollment.id,
+            behavior_session_id=session.id,
+            attendance_date=attendance_date,
+        ).first()
     if item and getattr(item, "deleted_at", None):
         raise BehaviorValidationError(
             "This Attendance record is deleted and read-only."
@@ -602,7 +616,8 @@ def mark_attendance(
     item.attendance_time = _coerce_time(attendance_time) or datetime.now().time().replace(microsecond=0)
     item.arrival_time = normalized_arrival_time
     item.late_by_minutes = int(late_by_minutes) if status_key == "late" and late_by_minutes not in (None, "") else None
-    db.session.flush()
+    if flush:
+        db.session.flush()
     return item
 
 
