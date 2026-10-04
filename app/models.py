@@ -126,6 +126,8 @@ class AcademicYearClass(TimestampMixin, db.Model):
         index=True,
     )
     name = db.Column(db.String(100), nullable=False)
+    # NULL preserves legacy/unclassified classes until an administrator assigns a shift.
+    school_shift = db.Column(db.String(20), nullable=True)
     sort_order = db.Column(db.Integer, default=0, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
@@ -434,6 +436,8 @@ class BehaviorSession(TimestampMixin, db.Model):
         index=True,
     )
     session_label = db.Column(db.String(120), nullable=False)
+    # Legacy sessions remain applicable to every class unless explicitly scoped.
+    applicable_shift = db.Column(db.String(20), nullable=False, default="all", server_default="all")
     maximum_score = db.Column(db.Numeric(8, 3), nullable=False)
     # New sessions persist their two scoring allocations and the attendance
     # policy snapshot used to calculate them. Nullable keeps legacy sessions

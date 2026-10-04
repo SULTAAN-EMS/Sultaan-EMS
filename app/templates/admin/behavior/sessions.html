@@ -35,9 +35,9 @@
         <h2>{{ config.behavior_subject.name }} · {{ config|behavior_levels }}</h2>
         <p class="behavior-muted">{{ config.academic_year.name }} · session allocation is configuration-owned</p>
       </div>
-      <span class="behavior-scope-pill pill neutral">{{ allocation|behavior_points }} / 100</span>
+      <div class="behavior-scope-pill pill neutral">Gelin hore {{ allocations_by_shift.morning|behavior_points }} / 100 · Gelin dambe {{ allocations_by_shift.afternoon|behavior_points }} / 100</div>
     </div>
-    {% if allocation != 100 %}<div class="behavior-alert"><i class="fa-solid fa-circle-info"></i> Configured sessions currently total {{ allocation }}. Add or edit sessions until the allocation is exactly 100 before recording events.</div>{% endif %}
+    {% if not allocation_ready %}<div class="behavior-alert"><i class="fa-solid fa-circle-info"></i> Behavior iyo xaadirinta waad gelin kartaa inta qoondadu ka yar tahay 100. Natiijada sanadluhu ma dhammaystirna ilaa gelin kastaa gaadho 100; wadartuna kama badnaan karto 100.</div>{% endif %}
     <form class="behavior-form behavior-form--wide" method="post" action="{{ url_for('behavior.sessions', config_id=config.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="config_id" value="{{ config.id }}">
@@ -48,6 +48,7 @@
         </select>
       </div>
       <div class="behavior-field"><label for="newSessionLabel">Session Label</label><input id="newSessionLabel" name="session_label" placeholder="e.g. Term 1 Behavior" required></div>
+      <div class="behavior-field"><label for="newSessionShift">Fasallada uu khuseeyo</label><select id="newSessionShift" name="applicable_shift"><option value="all">Dhammaan gelinnada (sidii hore)</option><option value="morning">Gelin hore</option><option value="afternoon">Gelin dambe</option></select></div>
       <div class="behavior-field"><label for="newSessionMaximum">Maximum Score</label><input id="newSessionMaximum" name="maximum_score" type="number" min="0.001" step="0.001" placeholder="25" required></div>
       <div class="behavior-field"><label for="newBehaviorAllocation">Behavior Allocation</label><input id="newBehaviorAllocation" name="behavior_allocation" type="number" min="0" step="0.001" placeholder="12.5"></div>
       <div class="behavior-field"><label for="newAttendanceAllocation">Attendance Allocation</label><input id="newAttendanceAllocation" name="attendance_allocation" type="number" min="0" step="0.001" placeholder="12.5"></div>
@@ -66,12 +67,13 @@
       {% for item in config.sessions %}
       <details class="behavior-list__item">
         <summary style="display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none">
-          <span><strong>{{ item.session_label }}</strong><small>{{ item.exam.name if item.exam else item.exam_type.name if item.exam_type else 'Exam Type unavailable' }} · maximum {{ item.maximum_score|behavior_points }} · Behavior {{ item.behavior_allocation|behavior_points if item.behavior_allocation is not none else 'legacy' }} · Attendance {{ item.attendance_allocation|behavior_points if item.attendance_allocation is not none else 'legacy' }} · order {{ item.sort_order }}</small></span>
+          <span><strong>{{ item.session_label }}</strong><small>{{ item.exam.name if item.exam else item.exam_type.name if item.exam_type else 'Exam Type unavailable' }} · {{ {'all': 'Dhammaan gelinnada', 'morning': 'Gelin hore', 'afternoon': 'Gelin dambe'}.get(item.applicable_shift or 'all', 'Dhammaan gelinnada') }} · maximum {{ item.maximum_score|behavior_points }} · Behavior {{ item.behavior_allocation|behavior_points if item.behavior_allocation is not none else 'legacy' }} · Attendance {{ item.attendance_allocation|behavior_points if item.attendance_allocation is not none else 'legacy' }} · order {{ item.sort_order }}</small></span>
         </summary>
         <form class="behavior-form behavior-form--wide" method="post" style="margin-top:14px">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><input type="hidden" name="session_id" value="{{ item.id }}">
           <div class="behavior-field"><label>Exam Type</label><select name="exam_ref" required>{% for exam in exams %}<option value="{{ exam.value }}" {% if exam.value == (('exam:' ~ item.exam_id) if item.exam_id else ('legacy:' ~ item.exam_type_id)) %}selected{% endif %}>{{ exam.name }}</option>{% endfor %}</select></div>
           <div class="behavior-field"><label>Session Label</label><input name="session_label" value="{{ item.session_label }}" required></div>
+          <div class="behavior-field"><label>Fasallada uu khuseeyo</label><select name="applicable_shift"><option value="all" {% if (item.applicable_shift or 'all') == 'all' %}selected{% endif %}>Dhammaan gelinnada (sidii hore)</option><option value="morning" {% if item.applicable_shift == 'morning' %}selected{% endif %}>Gelin hore</option><option value="afternoon" {% if item.applicable_shift == 'afternoon' %}selected{% endif %}>Gelin dambe</option></select></div>
           <div class="behavior-field"><label>Maximum Score</label><input name="maximum_score" type="number" min="0.001" step="0.001" value="{{ item.maximum_score|behavior_points }}" required></div>
           {% if item.behavior_allocation is none and item.attendance_allocation is none %}
           <input type="hidden" name="preserve_legacy" value="1">
@@ -86,7 +88,7 @@
             <button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save changes</button>
           </div>
         </form>
-        <form method="post" action="{{ url_for('behavior.delete_session', session_id=item.id) }}" onsubmit="return confirm('Delete this Behavior session?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><button class="behavior-btn behavior-btn--danger behavior-btn--small" type="submit" title="Delete session" aria-label="Delete session"><i class="fa-solid fa-trash-can"></i> Delete</button></form>
+        <form method="post" action="{{ url_for('behavior.delete_session', session_id=item.id) }}" onsubmit="return confirm('Delete this Behavior session and permanently remove its events, attendance records, and grade scales? Categories, sub-categories, actions, and attendance settings will remain.');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="config_id" value="{{ config.id }}"><button class="behavior-btn behavior-btn--danger behavior-btn--small" type="submit" title="Delete session" aria-label="Delete session"><i class="fa-solid fa-trash-can"></i> Delete</button></form>
       </details>
       {% else %}<div class="behavior-empty"><i class="fa-solid fa-calendar-xmark"></i><p>No sessions configured.</p></div>{% endfor %}
     </div>

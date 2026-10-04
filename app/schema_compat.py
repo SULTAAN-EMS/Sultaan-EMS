@@ -129,6 +129,7 @@ def ensure_schema_compatibility():
     add_column_if_missing("students", "academic_class_id", column_sql(dialect, "academic_class_id", "INTEGER"))
     add_column_if_missing("students", "academic_section_id", column_sql(dialect, "academic_section_id", "INTEGER"))
     add_column_if_missing("academic_year_levels", "school_stage", column_sql(dialect, "school_stage", "VARCHAR(30)"))
+    add_column_if_missing("academic_year_classes", "school_shift", column_sql(dialect, "school_shift", "VARCHAR(20)"))
     add_index_if_missing("academic_year_levels", "idx_academic_year_levels_school_stage", ["school_stage"])
     backfill_academic_year_level_stages()
     add_column_if_missing("subjects", "academic_level_id", column_sql(dialect, "academic_level_id", "INTEGER"))
@@ -187,6 +188,11 @@ def ensure_schema_compatibility():
     # Behavior sessions now use the canonical Results Hub Exam registry while
     # preserving legacy ExamType links for older records.
     ensure_behavior_exam_scope()
+    add_column_if_missing(
+        "behavior_sessions",
+        "applicable_shift",
+        column_sql(dialect, "applicable_shift", "VARCHAR(20) NOT NULL DEFAULT 'all'"),
+    )
     # Attendance scoring allocations and policy snapshots are additive. Legacy
     # sessions keep NULL here and remain on the legacy compatibility path.
     ensure_behavior_attendance_scoring()

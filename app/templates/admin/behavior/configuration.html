@@ -61,7 +61,7 @@
       <span class="behavior-scope-pill">{{ 'Complete' if setup_complete else 'Needs setup' }}</span>
     </div>
     <div class="behavior-score-grid">
-      <div class="behavior-score-card"><span>Qoondada</span><strong>{{ allocation|behavior_points }} / 100</strong><small>{% if allocation == 100 %}Wadarta sannadlaha ah{% else %}{{ allocation_remaining|behavior_points }} Hadhaa{% endif %}</small></div>
+      <div class="behavior-score-card"><span>Qoondada</span><strong>{{ allocation|behavior_points }} / 100</strong><small>{% if selected_config and (selected_config.sessions|selectattr('applicable_shift', 'ne', 'all')|list) %}Gelin hore {{ allocations_by_shift.morning|behavior_points }} · Gelin dambe {{ allocations_by_shift.afternoon|behavior_points }}{% elif allocation == 100 %}Wadarta sannadlaha ah{% else %}{{ allocation_remaining|behavior_points }} Hadhaa{% endif %}</small></div>
       <div class="behavior-score-card"><span>Xilliyada Shaqeynaya</span><strong>{{ active_session_count }}</strong></div>
       <div class="behavior-score-card"><span>Qodobada</span><strong>{{ active_category_count }}</strong></div>
       <div class="behavior-score-card"><span>Falalka</span><strong>{{ active_action_count }}</strong></div>

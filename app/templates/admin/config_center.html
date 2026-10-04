@@ -193,13 +193,13 @@
               <td>{{ action_menu("levels", item.id, item.is_active, true, true) }}</td>
             </tr>
             {% for cls in level_classes %}
-            <tr data-id="{{ cls.id }}" data-item-type="classes" data-status="{{ 'active' if cls.is_active else 'archived' }}" data-name="{{ cls.name }}" data-academic-year-id="{{ item.academic_year_id }}" data-academic-year-level-id="{{ cls.academic_year_level_id }}" data-legacy-class-id="{{ cls.legacy_class_id or '' }}" data-sort-order="{{ cls.sort_order }}">
+            <tr data-id="{{ cls.id }}" data-item-type="classes" data-status="{{ 'active' if cls.is_active else 'archived' }}" data-name="{{ cls.name }}" data-academic-year-id="{{ item.academic_year_id }}" data-academic-year-level-id="{{ cls.academic_year_level_id }}" data-school-shift="{{ cls.school_shift or '' }}" data-legacy-class-id="{{ cls.legacy_class_id or '' }}" data-sort-order="{{ cls.sort_order }}">
               <td>
                 <div class="config-class-row-name">
                   <i class="fas fa-level-up-alt"></i>
                   <div>
                     <strong>{{ cls.name }}</strong>
-                    <span>Class under {{ item.name }}</span>
+                    <span>Class under {{ item.name }}{% if cls.school_shift == 'morning' %} · Gelinka hore{% elif cls.school_shift == 'afternoon' %} · Gelinka dambe{% else %} · Gelin lama cayimin{% endif %}</span>
                   </div>
                 </div>
               </td>
@@ -334,6 +334,15 @@
             <option value="{{ level.id }}">{{ level.name }}</option>
             {% endfor %}
           </select>
+        </div>
+        <div class="config-form-group js-shift-group">
+          <label class="config-form-label" for="itemSchoolShift">Gelinka Fasalka</label>
+          <select class="config-form-select" id="itemSchoolShift">
+            <option value="">Weli lama cayimin (legacy)</option>
+            <option value="morning">Gelin hore</option>
+            <option value="afternoon">Gelin dambe</option>
+          </select>
+          <small class="config-form-help">Doorashadani waxay kala saartaa sessions-ka Behavior; dhibcaha Attendance-ku weli level-ka ayay ku xiran yihiin.</small>
         </div>
         <div class="config-form-group js-subject-kind-group">
           <label class="config-form-label" for="itemSubjectKind">Subject Kind</label>
@@ -484,6 +493,7 @@ function configureForm() {
   setGroup('.js-year-group', ['exam-types', 'levels', 'classes', 'subjects'].includes(apiType));
   setGroup('.js-stage-group', apiType === 'levels');
   setGroup('.js-level-group', apiType === 'subjects' || apiType === 'classes');
+  setGroup('.js-shift-group', apiType === 'classes');
   setGroup('.js-subject-kind-group', apiType === 'subjects');
   setGroup('.js-code-group', apiType === 'exam-types');
   setGroup('.js-weight-group', apiType === 'exam-types');
@@ -543,6 +553,7 @@ function editItem(itemType, itemId) {
   const yearLevelId = row.dataset.academicYearLevelId || '';
   document.getElementById('itemAcademicYearId').value = yearId;
   document.getElementById('itemSchoolStage').value = row.dataset.schoolStage || '';
+  document.getElementById('itemSchoolShift').value = row.dataset.schoolShift || '';
   document.getElementById('itemSortOrder').value = row.dataset.sortOrder || '';
   configureForm();
   loadYearLevels(yearId, yearLevelId);
@@ -790,6 +801,7 @@ function payloadFor(apiType) {
     payload.academic_year_id = document.getElementById('itemAcademicYearId').value;
     payload.academic_year_level_id = document.getElementById('itemAcademicLevelId').value;
     payload.sort_order = document.getElementById('itemSortOrder').value;
+    payload.school_shift = document.getElementById('itemSchoolShift').value;
   }
   if (apiType === 'levels') {
     payload.academic_year_id = document.getElementById('itemAcademicYearId').value;

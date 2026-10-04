@@ -18,6 +18,8 @@ from .behavior_service import (
     configuration_level_ids,
     decimal_value,
     capture_attendance_session_policy,
+    session_applies_to_enrollment,
+    validate_enrollment_session_allocations,
     validate_behavior_configuration,
     validate_enrollment_scope,
     validate_session_scope,
@@ -389,6 +391,9 @@ def validate_attendance_context(configuration, session, enrollment):
         exam_type_id=session.exam_type_id,
         exam_id=session.exam_id,
     )
+    if not session_applies_to_enrollment(session, enrollment):
+        raise BehaviorValidationError("Session-kan kuma khuseeyo gelinka fasalkan.")
+    validate_enrollment_session_allocations(configuration, enrollment, session)
     if enrollment.academic_year_class_id is None:
         raise BehaviorValidationError("Student enrollment has no Academic Year Class")
     return configuration, session, enrollment
@@ -482,6 +487,9 @@ def generate_daily_roster(
         academic_year_class_id,
         academic_year_level_id,
     ):
+        if not session_applies_to_enrollment(session, enrollment):
+            continue
+        validate_enrollment_session_allocations(configuration, enrollment, session)
         existing = BehaviorAttendanceRecord.query.filter_by(
             student_enrollment_id=enrollment.id,
             behavior_session_id=session.id,

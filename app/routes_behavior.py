@@ -23,6 +23,8 @@ from .behavior_service import (
     BehaviorValidationError,
     CANONICAL_ATTENDANCE_STATUS_KEYS,
     allocation_total,
+    allocation_by_shift,
+    configuration_allocation_is_complete,
     attendance_points_projection,
     behavior_summary,
     calculate_session_score,
@@ -39,8 +41,10 @@ from .behavior_service import (
     record_event,
     restore_event,
     scoring_ledger_projection,
+    session_applies_to_enrollment,
     session_allocation_projection,
     storage_response_type,
+    validate_session_allocation_limit,
     validate_configuration_levels,
     validate_behavior_configuration,
     validate_enrollment_scope,
@@ -449,10 +453,13 @@ def _behavior_context(
     selected_class = _valid_class(selected_level.id, _int(class_id)) if selected_level and has_class_selection else None
     if has_class_selection and selected_class is None:
         invalid_scope = True
-    sessions = (
-        selected_config.sessions
-        if selected_config else []
-    )
+    sessions = list(selected_config.sessions) if selected_config else []
+    if selected_class:
+        sessions = [
+            item for item in sessions
+            if (getattr(item, "applicable_shift", "all") or "all") == "all"
+            or getattr(item, "applicable_shift", "all") == selected_class.school_shift
+        ]
     selected_session = (
         next((item for item in sessions if item.id == _int(session_id)), None)
         if has_session_selection else None
@@ -476,7 +483,7 @@ def _behavior_context(
     }
 
 
-def _behavior_enrollments(config, class_id=None, academic_year_level_id=None):
+def _behavior_enrollments(config, class_id=None, academic_year_level_id=None, session=None):
     if not config:
         return []
     level_ids = configuration_level_ids(config)
@@ -503,13 +510,16 @@ def _behavior_enrollments(config, class_id=None, academic_year_level_id=None):
     )
     if class_id:
         query = query.filter(StudentEnrollment.academic_year_class_id == _int(class_id))
-    return query.order_by(Student.full_name, Student.student_code, StudentEnrollment.id).all()
+    enrollments = query.order_by(Student.full_name, Student.student_code, StudentEnrollment.id).all()
+    if session:
+        enrollments = [item for item in enrollments if session_applies_to_enrollment(session, item)]
+    return enrollments
 
 
 def _student_board_rows(config, selected_session, class_id=None, academic_year_level_id=None):
     if not config or not selected_session:
         return []
-    enrollments = _behavior_enrollments(config, class_id, academic_year_level_id)
+    enrollments = _behavior_enrollments(config, class_id, academic_year_level_id, selected_session)
     enrollment_ids = [item.id for item in enrollments]
     events_by_enrollment = defaultdict(list)
     attendance_by_enrollment = defaultdict(list)
@@ -624,6 +634,7 @@ def _event_page_data(args):
             context["config"],
             context["selected_class"].id if context["selected_class"] else None,
             context["selected_level"].id if context["selected_level"] else None,
+            context["selected_session"],
         )
         if not context["scope_invalid"] else []
     )
@@ -980,12 +991,13 @@ def configuration():
         selected_exam=selected_exam,
         selected_exam_ref=selected_exam_ref,
         visible_exam_types=visible_exam_types,
+        allocations_by_shift=allocation_by_shift(selected_config) if selected_config else {"morning": Decimal("0"), "afternoon": Decimal("0")},
         configured_sessions=configured_sessions,
         selected_level_ids=selected_level_ids,
         academic_level_mode=("all" if selected_year and selected_level_ids == {item.id for item in levels} else "selected"),
         setup_complete=(
             active_session_count > 0
-            and allocation == Decimal("100.000")
+            and configuration_allocation_is_complete(selected_config)
             and active_category_count > 0
             and active_action_count > 0
         ),
@@ -1264,7 +1276,56 @@ def sessions():
             item = db.session.get(BehaviorSession, session_id) if session_id else None
             if item and item.behavior_configuration_id != config.id:
                 raise BehaviorValidationError("Behavior session is outside the selected configuration")
-            ensure_session_editable(config, item)
+            has_history = bool(item and (
+                BehaviorEvent.query.filter_by(behavior_session_id=item.id).first()
+                or BehaviorAttendanceRecord.query.filter_by(behavior_session_id=item.id).first()
+            ))
+            applicable_shift = str(request.form.get("applicable_shift") or "all").strip().lower()
+            if applicable_shift not in {"all", "morning", "afternoon"}:
+                raise BehaviorValidationError("Dooro dhammaan gelinnada, Gelin hore, ama Gelin dambe.")
+            if applicable_shift != "all":
+                configured_level_ids = configuration_level_ids(config)
+                matching_class = AcademicYearClass.query.join(
+                    AcademicYearLevel,
+                    AcademicYearLevel.id == AcademicYearClass.academic_year_level_id,
+                ).filter(
+                    AcademicYearLevel.academic_year_id == config.academic_year_id,
+                    AcademicYearClass.academic_year_level_id.in_(configured_level_ids),
+                    AcademicYearClass.is_active.is_(True),
+                    AcademicYearClass.school_shift == applicable_shift,
+                ).first()
+                if not matching_class:
+                    raise BehaviorValidationError(
+                        "Marka hore fasallada sannad-dugsiyeedka ku qoondee gelinkan gudaha Qaab-dhismeedka Waxbarashada."
+                    )
+            if item and (item.applicable_shift or "all") != applicable_shift:
+                historical_enrollment_ids = {
+                    row[0]
+                    for row in db.session.query(BehaviorEvent.student_enrollment_id)
+                    .filter(BehaviorEvent.behavior_session_id == item.id)
+                    .distinct()
+                } | {
+                    row[0]
+                    for row in db.session.query(BehaviorAttendanceRecord.student_enrollment_id)
+                    .filter(BehaviorAttendanceRecord.behavior_session_id == item.id)
+                    .distinct()
+                }
+                if historical_enrollment_ids:
+                    historical_classes = StudentEnrollment.query.filter(
+                        StudentEnrollment.id.in_(historical_enrollment_ids)
+                    ).all()
+                    if any(
+                        not enrollment.academic_year_class
+                        or enrollment.academic_year_class.school_shift != applicable_shift
+                        for enrollment in historical_classes
+                    ):
+                        raise BehaviorValidationError(
+                            "Session-kan xog hore ayuu leeyahay oo ku jirta fasallo gelin kale ah. "
+                            "Si aan taariikhda iyo dhibcaha loo qarin, session-kan sidii uu yahay u daa; "
+                            "sessions cusub u samee gelinnada cusub."
+                        )
+            if has_history and (item.applicable_shift or "all") == applicable_shift:
+                ensure_session_editable(config, item)
             legacy_session = bool(
                 item
                 and item.behavior_allocation is None
@@ -1290,10 +1351,8 @@ def sessions():
                     behavior_configuration_id=config.id,
                 )
                 db.session.add(item)
-            item.exam_id = exam_type.id if exam_source == "exam" else None
-            item.exam_type_id = exam_type.id if exam_source == "legacy" else None
-            item.session_label = (request.form.get("session_label") or exam_type.name).strip()
-            if not item.session_label:
+            session_label = (request.form.get("session_label") or exam_type.name).strip()
+            if not session_label:
                 raise BehaviorValidationError("Session label is required")
             maximum_score = decimal_value(
                 request.form.get("maximum_score"),
@@ -1318,6 +1377,55 @@ def sessions():
                     raise BehaviorValidationError(
                         "Behavior and Attendance allocations must equal the session maximum"
                     )
+            validate_session_allocation_limit(
+                config,
+                session=item,
+                maximum_score=maximum_score,
+                applicable_shift=applicable_shift,
+            )
+            if has_history:
+                history_ids = {
+                    row[0]
+                    for row in db.session.query(BehaviorEvent.student_enrollment_id)
+                    .filter(BehaviorEvent.behavior_session_id == item.id)
+                    .distinct()
+                } | {
+                    row[0]
+                    for row in db.session.query(BehaviorAttendanceRecord.student_enrollment_id)
+                    .filter(BehaviorAttendanceRecord.behavior_session_id == item.id)
+                    .distinct()
+                }
+                scope_only_change = (
+                    (item.applicable_shift or "all") != applicable_shift
+                    and applicable_shift in {"morning", "afternoon"}
+                    and _session_exam_value(item) == submitted_exam_ref
+                    and item.session_label == session_label
+                    and decimal_value(item.maximum_score, "Session maximum", minimum="0.001") == maximum_score
+                    and item.behavior_allocation == behavior_allocation
+                    and item.attendance_allocation == attendance_allocation
+                    and item.sort_order == _int(request.form.get("sort_order"), 0)
+                )
+                if not scope_only_change:
+                    raise BehaviorValidationError(
+                        "Session-kan taariikh ayuu leeyahay. Gelinka oo keliya ayaa la beddeli karaa; "
+                        "exam-ka, dhibcaha iyo qoondada taariikhiga ah lama beddeli karo."
+                    )
+                historical_classes = StudentEnrollment.query.filter(
+                    StudentEnrollment.id.in_(history_ids or {-1})
+                ).all()
+                if any(
+                    not enrollment.academic_year_class
+                    or enrollment.academic_year_class.school_shift != applicable_shift
+                    for enrollment in historical_classes
+                ):
+                    raise BehaviorValidationError(
+                        "Session-kan taariikhdiisu waxay taabanaysaa fasallo gelin kale ah; "
+                        "si aan xogta loo qarin, session-ka sidii hore u daa."
+                    )
+            item.exam_id = exam_type.id if exam_source == "exam" else None
+            item.exam_type_id = exam_type.id if exam_source == "legacy" else None
+            item.session_label = session_label
+            item.applicable_shift = applicable_shift
             item.maximum_score = maximum_score
             item.behavior_allocation = behavior_allocation
             item.attendance_allocation = attendance_allocation
@@ -1333,7 +1441,7 @@ def sessions():
             )
             db.session.commit()
             flash(
-                "Behavior session allocation saved. Complete the annual total of 100 before recording events.",
+                "Behavior session waa la kaydiyey. Xogta waad geli kartaa; natiijada sanadluhu ma rasmi noqonayso ilaa wadartu 100 gaadho.",
                 "success",
             )
             return redirect(url_for("behavior.sessions", config_id=config.id))
@@ -1375,6 +1483,8 @@ def sessions():
         available_exams=available_exams,
         selected_exam_ref=selected_exam_ref,
         allocation=allocation_total(config) if config else Decimal("0.000"),
+        allocations_by_shift=allocation_by_shift(config) if config else {"morning": Decimal("0"), "afternoon": Decimal("0")},
+        allocation_ready=configuration_allocation_is_complete(config) if config else False,
     )
 
 
@@ -1404,6 +1514,7 @@ def session_allocation():
         config,
         context["selected_class"].id if context["selected_class"] else None,
         context["selected_level"].id if context["selected_level"] else None,
+        context["selected_session"],
     ) if config else []
     requested_enrollment_id = _int(request.args.get("enrollment_id"))
     selected_enrollment = next(
@@ -1457,18 +1568,31 @@ def delete_session(session_id):
             raise BehaviorValidationError("Behavior session was not found")
         config = item.configuration
         ensure_configuration_editable(config)
-        if BehaviorEvent.query.filter_by(behavior_session_id=item.id).first():
-            raise BehaviorValidationError(
-                "This Behavior session cannot be deleted because it has historical events."
-            )
-        audit("Behavior Sessions", f"Deleted Behavior session {item.id}")
-        remaining_allocation = allocation_total(config) - decimal_value(
-            item.maximum_score,
-            "Session maximum",
-            minimum="0.001",
+        session_id = item.id
+        session_label = item.session_label
+        event_count = BehaviorEvent.query.filter_by(behavior_session_id=session_id).delete(
+            synchronize_session=False
         )
+        attendance_count = BehaviorAttendanceRecord.query.filter_by(
+            behavior_session_id=session_id
+        ).delete(synchronize_session=False)
+        grade_count = BehaviorGradeScale.query.filter_by(
+            behavior_session_id=session_id
+        ).delete(synchronize_session=False)
+        # These are bulk-deleted above; expire the collections so ORM cascades
+        # do not operate on stale in-memory rows when the parent is removed.
+        db.session.expire(item, ["events", "grade_scales"])
         db.session.delete(item)
-        config.annual_allocation = max(Decimal("0.000"), remaining_allocation).quantize(Decimal("0.001"))
+        db.session.flush()
+        db.session.expire(config, ["sessions"])
+        config.annual_allocation = allocation_total(config)
+        audit(
+            "Behavior Sessions",
+            f"Deleted Behavior session {session_id} ({session_label}); "
+            f"removed {event_count} event(s), {attendance_count} attendance record(s), "
+            f"and {grade_count} grade scale(s). Configuration categories, sub-categories, "
+            "actions, and attendance settings were retained.",
+        )
         db.session.commit()
         flash("Behavior session deleted.", "success")
     except (BehaviorValidationError, IntegrityError) as exc:
@@ -2053,6 +2177,7 @@ def students():
             config,
             context["selected_class"].id if context["selected_class"] else None,
             context["selected_level"].id if context["selected_level"] else None,
+            context["selected_session"],
         )
         if not context["scope_invalid"] else []
     )
@@ -2583,6 +2708,10 @@ def attendance_records_api():
         context["selected_class"].id if context["selected_class"] else None,
         context["selected_level"].id if context["selected_level"] else None,
     )
+    enrollments = [
+        item for item in enrollments
+        if session_applies_to_enrollment(context["selected_session"], item)
+    ]
     rows = _attendance_record_rows(context["config"], context["selected_session"], enrollments)
     state = (request.args.get("state") or "active").strip().lower()
     if state not in {"active", "voided", "all", "deleted"}:
@@ -2699,6 +2828,10 @@ def attendance():
                     context["selected_class"].id if context["selected_class"] else None,
                     context["selected_level"].id,
                 )
+                enrollments = [
+                    item for item in enrollments
+                    if session_applies_to_enrollment(selected_session, item)
+                ]
                 enrollment_ids = [item.id for item in enrollments]
                 existing_records = {
                     item.student_enrollment_id: item
@@ -2874,6 +3007,10 @@ def attendance():
         )
         if config and selected_session and not scope_invalid else []
     )
+    enrollments = [
+        item for item in enrollments
+        if session_applies_to_enrollment(selected_session, item)
+    ]
     records = {}
     if config and selected_session and enrollments:
         records = {
@@ -2997,6 +3134,8 @@ def attendance_profile_api(enrollment_id):
         return jsonify({"ok": False, "message": "Ardaygan kuma jiro fasalka la doortay"}), 404
 
     session = context["selected_session"]
+    if not session_applies_to_enrollment(session, enrollment):
+        return jsonify({"ok": False, "message": "Ardaygani kuma jiro gelinka session-kan."}), 404
     records = BehaviorAttendanceRecord.query.filter_by(
         behavior_configuration_id=context["config"].id,
         behavior_session_id=session.id,

@@ -14,7 +14,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, AuditLog, Exam, ExamHall, ExamSession, ExamSessionSubject, ExamType, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, PromotionEvaluation, PromotionOutcomeApplication, PromotionRule, PromotionRuleCriticalSubject, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentEnrollment, StudentEnrollmentMovement, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue
+from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, AuditLog, Exam, ExamHall, ExamSession, ExamSessionSubject, ExamType, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, PromotionEvaluation, PromotionOutcomeApplication, PromotionRule, PromotionRuleCriticalSubject, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentEnrollment, StudentEnrollmentMovement, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue, BehaviorAttendanceRecord, BehaviorEvent, BehaviorSession
 from .academic_hierarchy import validate_year_level, year_classes, year_classes_for_year, year_levels, year_subjects
 from .permissions import PERMISSIONS, can, enforce_endpoint_permission, permission_required
 from .security import ALLOWED_AUDIO, ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
@@ -4318,9 +4318,12 @@ def config_create_class():
     academic_year_id = _parse_int(data.get('academic_year_id'))
     year_level_id = _parse_int(data.get('academic_year_level_id'))
     sort_order = _parse_int(data.get('sort_order'))
+    school_shift = str(data.get('school_shift') or '').strip().lower() or None
 
     if not name:
         return jsonify({'success': False, 'message': 'Class name is required'})
+    if school_shift not in {None, 'morning', 'afternoon'}:
+        return jsonify({'success': False, 'message': 'Choose gelin hore, gelin dambe, or leave the class unassigned.'})
     year_level = validate_year_level(academic_year_id, year_level_id)
     if not year_level:
         return jsonify({'success': False, 'message': 'Academic year and matching academic level are required'})
@@ -4338,6 +4341,7 @@ def config_create_class():
         academic_class = AcademicYearClass(
             name=name,
             academic_year_level_id=year_level.id,
+            school_shift=school_shift,
             legacy_class_id=legacy_class.id if legacy_class else None,
             sort_order=sort_order if sort_order is not None else max_sort + 1,
             is_active=True,
@@ -4369,9 +4373,38 @@ def config_update_class(class_id):
     if _duplicate_exists(AcademicYearClass, {'name': name, 'academic_year_level_id': year_level.id}, exclude_id=academic_class.id):
         return jsonify({'success': False, 'message': 'Class already exists in this academic year level'})
 
-    old_value = {'name': academic_class.name, 'academic_year_level_id': academic_class.academic_year_level_id, 'sort_order': academic_class.sort_order, 'is_active': academic_class.is_active}
+    school_shift = str(data.get('school_shift', academic_class.school_shift) or '').strip().lower() or None
+    if school_shift not in {None, 'morning', 'afternoon'}:
+        return jsonify({'success': False, 'message': 'Choose gelin hore, gelin dambe, or leave the class unassigned.'})
+    if school_shift != academic_class.school_shift:
+        enrollment_ids = db.session.query(StudentEnrollment.id).filter_by(
+            academic_year_class_id=academic_class.id
+        )
+        scoped_history = (
+            db.session.query(BehaviorEvent.id)
+            .join(BehaviorSession, BehaviorSession.id == BehaviorEvent.behavior_session_id)
+            .filter(
+                BehaviorEvent.student_enrollment_id.in_(enrollment_ids),
+                BehaviorSession.applicable_shift != 'all',
+            )
+            .first()
+            or db.session.query(BehaviorAttendanceRecord.id)
+            .join(BehaviorSession, BehaviorSession.id == BehaviorAttendanceRecord.behavior_session_id)
+            .filter(
+                BehaviorAttendanceRecord.student_enrollment_id.in_(enrollment_ids),
+                BehaviorSession.applicable_shift != 'all',
+            )
+            .first()
+        )
+        if scoped_history:
+            return jsonify({
+                'success': False,
+                'message': 'Fasalkan gelinkiisa lama beddeli karo; wuxuu leeyahay xog Behavior/Attendance oo session gelin gaar ah ku xiran.',
+            }), 409
+    old_value = {'name': academic_class.name, 'academic_year_level_id': academic_class.academic_year_level_id, 'school_shift': academic_class.school_shift, 'sort_order': academic_class.sort_order, 'is_active': academic_class.is_active}
     academic_class.name = name
     academic_class.academic_year_level_id = year_level.id
+    academic_class.school_shift = school_shift
     if academic_class.legacy_class_id:
         legacy_class = db.session.get(AcademicClass, academic_class.legacy_class_id)
         if legacy_class and legacy_class.name == academic_class.name:
@@ -4382,7 +4415,7 @@ def config_update_class(class_id):
 
     try:
         db.session.commit()
-        _audit_config_change("Configuration Center Updated", "classes", academic_class, old_value=old_value, new_value={'name': academic_class.name, 'academic_year_level_id': academic_class.academic_year_level_id, 'sort_order': academic_class.sort_order, 'is_active': academic_class.is_active})
+        _audit_config_change("Configuration Center Updated", "classes", academic_class, old_value=old_value, new_value={'name': academic_class.name, 'academic_year_level_id': academic_class.academic_year_level_id, 'school_shift': academic_class.school_shift, 'sort_order': academic_class.sort_order, 'is_active': academic_class.is_active})
         return jsonify({'success': True, 'message': 'Class updated successfully'})
     except Exception as e:
         db.session.rollback()

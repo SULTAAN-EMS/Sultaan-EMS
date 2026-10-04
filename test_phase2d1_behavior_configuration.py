@@ -10,13 +10,22 @@ from app.behavior_service import (
     validate_configuration_ready,
 )
 from app.models import (
+    AcademicYearClass,
     AcademicYearSubject,
+    AuditLog,
     BehaviorAction,
+    BehaviorAttendanceRecord,
+    BehaviorAttendanceStatus,
     BehaviorCategory,
     BehaviorConfiguration,
+    BehaviorEvent,
+    BehaviorGradeScale,
     BehaviorSession,
+    BehaviorSubCategory,
     Exam,
     ExamType,
+    Student,
+    StudentEnrollment,
 )
 from test_phase2d_behavior_ux import TestPhase2DBehaviorUX
 
@@ -83,6 +92,71 @@ class TestPhase2D1BehaviorConfiguration(TestPhase2DBehaviorUX):
         )
         db.session.add_all([category, action])
         db.session.flush()
+
+    def test_deleting_session_removes_session_data_and_preserves_configuration_taxonomy(self):
+        from datetime import date
+
+        from app.behavior_attendance import ensure_attendance_defaults, mark_attendance
+        from app.behavior_service import record_event
+
+        session_id = self.session_a.id
+        config_id = self.config_one.id
+        category_id = self.positive.id
+        subcategory_id = self.positive_subcategory.id
+        action_id = self.positive_action.id
+
+        record_event(
+            self.config_one,
+            self.enrollment_one,
+            self.session_a,
+            self.positive,
+            self.positive_action,
+        )
+        ensure_attendance_defaults(self.config_one)
+        present = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=config_id,
+            key="present",
+        ).one()
+        mark_attendance(
+            self.config_one,
+            self.session_a,
+            self.enrollment_one,
+            present.id,
+            date(2026, 10, 1),
+        )
+        db.session.add(BehaviorGradeScale(
+            behavior_configuration_id=config_id,
+            behavior_session_id=session_id,
+            grade="A",
+            min_score=0,
+            max_score=self.session_a.maximum_score,
+            grade_point=4,
+            sort_order=1,
+            is_active=True,
+            is_pass=True,
+        ))
+        db.session.commit()
+
+        response = self._client_as_admin().post(
+            f"/admin/behavior/sessions/{session_id}/delete",
+            data={"csrf_token": "", "config_id": config_id},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(db.session.get(BehaviorSession, session_id))
+        self.assertEqual(BehaviorEvent.query.filter_by(behavior_session_id=session_id).count(), 0)
+        self.assertEqual(BehaviorAttendanceRecord.query.filter_by(behavior_session_id=session_id).count(), 0)
+        self.assertEqual(BehaviorGradeScale.query.filter_by(behavior_session_id=session_id).count(), 0)
+        self.assertIsNotNone(db.session.get(BehaviorSession, self.session_b.id))
+        self.assertIsNotNone(db.session.get(BehaviorCategory, category_id))
+        self.assertIsNotNone(db.session.get(BehaviorSubCategory, subcategory_id))
+        self.assertIsNotNone(db.session.get(BehaviorAction, action_id))
+        db.session.refresh(self.config_one)
+        self.assertEqual(self.config_one.annual_allocation, Decimal("15.000"))
+        audit_entry = AuditLog.query.filter_by(action="Behavior Sessions").order_by(AuditLog.id.desc()).first()
+        self.assertIsNotNone(audit_entry)
+        self.assertIn("removed 1 event(s), 1 attendance record(s), and 1 grade scale(s)", audit_entry.details)
 
     def test_configuration_page_has_a_dedicated_behavior_subject_creator(self):
         client = self._client_as_admin()
@@ -533,6 +607,178 @@ class TestPhase2D1BehaviorConfiguration(TestPhase2DBehaviorUX):
         self.assertIn("recorded events", response.get_data(as_text=True))
         db.session.refresh(historical_session)
         self.assertEqual(historical_session.maximum_score, Decimal("100.000"))
+
+    def test_session_can_be_scoped_to_a_configured_class_shift(self):
+        config = self._new_configuration("Shift Scope")
+        session = self._add_sessions(config, [100], "Shift Scope")[0]
+        self.class_one.school_shift = "morning"
+        db.session.commit()
+
+        response = self._client_as_admin().post(
+            "/admin/behavior/sessions",
+            data={
+                "csrf_token": "",
+                "config_id": config.id,
+                "session_id": session.id,
+                "exam_type_id": session.exam_type_id,
+                "session_label": session.session_label,
+                "maximum_score": "100",
+                "behavior_allocation": "50",
+                "attendance_allocation": "50",
+                "applicable_shift": "morning",
+                "sort_order": 1,
+            },
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(session)
+        self.assertEqual(session.applicable_shift, "morning")
+
+    def test_session_setup_allows_partial_total_but_rejects_over_100(self):
+        config = self._new_configuration("Partial Allocation")
+        session = self._add_sessions(config, [85], "Partial Allocation")[0]
+        self.class_one.school_shift = "morning"
+        db.session.commit()
+        client = self._client_as_admin()
+
+        response = client.post(
+            "/admin/behavior/sessions",
+            data={
+                "csrf_token": "",
+                "config_id": config.id,
+                "session_id": session.id,
+                "exam_type_id": session.exam_type_id,
+                "session_label": session.session_label,
+                "maximum_score": "85",
+                "sort_order": session.sort_order,
+                "applicable_shift": "morning",
+                "preserve_legacy": "1",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(session)
+        self.assertEqual(session.applicable_shift, "morning")
+
+        extra_exam = ExamType(
+            academic_year_id=self.year_one.id,
+            name="Over-allocation Exam",
+            sort_order=9,
+            is_active=True,
+        )
+        db.session.add(extra_exam)
+        db.session.commit()
+        response = client.post(
+            "/admin/behavior/sessions",
+            data={
+                "csrf_token": "",
+                "config_id": config.id,
+                "exam_type_id": extra_exam.id,
+                "session_label": extra_exam.name,
+                "maximum_score": "16",
+                "behavior_allocation": "8",
+                "attendance_allocation": "8",
+                "sort_order": "9",
+                "applicable_shift": "morning",
+            },
+            follow_redirects=True,
+        )
+        self.assertIn("kama badnaan karaan 100", response.get_data(as_text=True))
+        self.assertEqual(BehaviorSession.query.filter_by(behavior_configuration_id=config.id).count(), 1)
+
+    def test_historical_session_scope_change_preserves_matching_shift_records(self):
+        from app.behavior_service import record_event
+
+        self.class_one.school_shift = "morning"
+        db.session.commit()
+        record_event(
+            self.config_one,
+            self.enrollment_one,
+            self.session_a,
+            self.positive,
+            self.positive_action,
+        )
+        db.session.commit()
+
+        response = self._client_as_admin().post(
+            "/admin/behavior/sessions",
+            data={
+                "csrf_token": "",
+                "config_id": self.config_one.id,
+                "session_id": self.session_a.id,
+                "exam_type_id": self.session_a.exam_type_id,
+                "session_label": self.session_a.session_label,
+                "maximum_score": str(self.session_a.maximum_score),
+                "sort_order": self.session_a.sort_order,
+                "applicable_shift": "morning",
+            },
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(self.session_a)
+        self.assertEqual(self.session_a.applicable_shift, "morning")
+        self.assertEqual(BehaviorEvent.query.filter_by(behavior_session_id=self.session_a.id).count(), 1)
+
+    def test_historical_session_scope_change_rejects_mixed_shift_records(self):
+        from app.behavior_service import record_event
+
+        self.class_one.school_shift = "morning"
+        afternoon_class = AcademicYearClass(
+            name="1B",
+            academic_year_level_id=self.level_one.id,
+            school_shift="afternoon",
+        )
+        db.session.add(afternoon_class)
+        db.session.flush()
+        afternoon_student = Student(
+            student_code="BHV-D1-MIXED",
+            full_name="Afternoon Shift Student",
+            is_active=True,
+        )
+        db.session.add(afternoon_student)
+        db.session.flush()
+        afternoon_enrollment = StudentEnrollment(
+            student_id=afternoon_student.id,
+            academic_year_id=self.year_one.id,
+            academic_year_level_id=self.level_one.id,
+            academic_year_class_id=afternoon_class.id,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source="manual",
+        )
+        db.session.add(afternoon_enrollment)
+        db.session.commit()
+        record_event(
+            self.config_one,
+            afternoon_enrollment,
+            self.session_a,
+            self.positive,
+            self.positive_action,
+        )
+        db.session.commit()
+
+        response = self._client_as_admin().post(
+            "/admin/behavior/sessions",
+            data={
+                "csrf_token": "",
+                "config_id": self.config_one.id,
+                "session_id": self.session_a.id,
+                "exam_type_id": self.session_a.exam_type_id,
+                "session_label": self.session_a.session_label,
+                "maximum_score": str(self.session_a.maximum_score),
+                "sort_order": self.session_a.sort_order,
+                "applicable_shift": "morning",
+            },
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("fasallo gelin kale", response.get_data(as_text=True))
+        db.session.refresh(self.session_a)
+        self.assertEqual(self.session_a.applicable_shift, "all")
+        self.assertEqual(BehaviorEvent.query.filter_by(behavior_session_id=self.session_a.id).count(), 1)
 
     def test_base_score_is_half_of_each_session_maximum_without_events(self):
         config = self._new_configuration("Formula")

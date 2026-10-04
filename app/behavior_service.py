@@ -12,6 +12,7 @@ from decimal import Decimal, InvalidOperation
 from . import db
 from .models import (
     AcademicYear,
+    AcademicYearClass,
     AcademicYearLevel,
     AcademicYearSubject,
     AcademicYearLevelAttendanceDay,
@@ -301,11 +302,143 @@ def _int_or_none(value):
 
 def allocation_total(configuration):
     configuration = validate_behavior_configuration(configuration)
-    total = sum(
-        (decimal_value(item.maximum_score, "Session maximum", minimum="0.001") for item in configuration.sessions),
-        Decimal("0.000"),
-    )
+    sessions = [item for item in configuration.sessions if item.is_active]
+    if any((getattr(item, "applicable_shift", None) or "all") != "all" for item in sessions):
+        totals = [
+            sum(
+                (
+                    decimal_value(item.maximum_score, "Session maximum", minimum="0.001")
+                    for item in sessions
+                    if (getattr(item, "applicable_shift", None) or "all") in {"all", shift}
+                ),
+                Decimal("0.000"),
+            )
+            for shift in ("morning", "afternoon")
+        ]
+        return max(totals, default=Decimal("0.000")).quantize(Decimal("0.001"))
+    total = sum((decimal_value(item.maximum_score, "Session maximum", minimum="0.001") for item in sessions), Decimal("0.000"))
     return total.quantize(Decimal("0.001"))
+
+
+def allocation_by_shift(configuration):
+    configuration = validate_behavior_configuration(configuration)
+    sessions = [item for item in configuration.sessions if item.is_active]
+    return {
+        shift: sum(
+            (
+                decimal_value(item.maximum_score, "Session maximum", minimum="0.001")
+                for item in sessions
+                if (getattr(item, "applicable_shift", None) or "all") in {"all", shift}
+            ),
+            Decimal("0.000"),
+        ).quantize(Decimal("0.001"))
+        for shift in ("morning", "afternoon")
+    }
+
+
+def prospective_allocation_by_shift(
+    configuration,
+    *,
+    session=None,
+    maximum_score=None,
+    applicable_shift="all",
+):
+    """Calculate both shift totals after a proposed session save."""
+    sessions = [
+        item for item in configuration.sessions
+        if item.is_active and (session is None or item.id != session.id)
+    ]
+    rows = [
+        (
+            decimal_value(item.maximum_score, "Session maximum", minimum="0.001"),
+            (getattr(item, "applicable_shift", None) or "all").strip().lower(),
+        )
+        for item in sessions
+    ]
+    if maximum_score is not None:
+        rows.append((decimal_value(maximum_score, "Session maximum", minimum="0.001"), applicable_shift))
+    return {
+        shift: sum(
+            (maximum for maximum, scope in rows if scope in {"all", shift}),
+            Decimal("0.000"),
+        ).quantize(Decimal("0.001"))
+        for shift in ("morning", "afternoon")
+    }
+
+
+def validate_session_allocation_limit(
+    configuration,
+    *,
+    session=None,
+    maximum_score=None,
+    applicable_shift="all",
+):
+    """Reject a session change only when it would exceed 100 in a shift."""
+    totals = prospective_allocation_by_shift(
+        configuration,
+        session=session,
+        maximum_score=maximum_score,
+        applicable_shift=applicable_shift,
+    )
+    for shift, total in totals.items():
+        if total > Decimal("100.000"):
+            label = "Gelin hore" if shift == "morning" else "Gelin dambe"
+            raise BehaviorValidationError(
+                f"{label} sessions-ku kama badnaan karaan 100 dhibcood (wadartu waxay noqonaysaa {total.normalize():g})."
+            )
+    return totals
+
+
+def configuration_allocation_is_complete(configuration):
+    sessions = [item for item in configuration.sessions if item.is_active]
+    if not any((getattr(item, "applicable_shift", None) or "all") != "all" for item in sessions):
+        return allocation_total(configuration) == Decimal("100.000")
+    level_ids = configuration_level_ids(configuration)
+    classes = AcademicYearClass.query.join(AcademicYearLevel).filter(
+        AcademicYearLevel.academic_year_id == configuration.academic_year_id,
+        AcademicYearClass.academic_year_level_id.in_(level_ids or {-1}),
+        AcademicYearClass.is_active.is_(True),
+    ).all()
+    shifts = {item.school_shift for item in classes}
+    if not classes or None in shifts:
+        return False
+    totals = allocation_by_shift(configuration)
+    return all(totals[shift] == Decimal("100.000") for shift in shifts)
+
+
+def session_applies_to_enrollment(session, enrollment):
+    """Match explicitly scoped sessions to a class shift; old sessions stay global."""
+    shift = (getattr(session, "applicable_shift", None) or "all").strip().lower()
+    if shift not in {"all", "morning", "afternoon"}:
+        raise BehaviorValidationError("Behavior session has an invalid school shift")
+    if shift == "all":
+        return True
+    class_shift = getattr(getattr(enrollment, "academic_year_class", None), "school_shift", None)
+    return class_shift == shift
+
+
+def validate_enrollment_session_allocations(configuration, enrollment, session=None):
+    """Allow partial plans while preventing a class shift from exceeding 100."""
+    sessions = [item for item in configuration.sessions if item.is_active]
+    scoped = any((getattr(item, "applicable_shift", None) or "all") != "all" for item in sessions)
+    class_shift = getattr(getattr(enrollment, "academic_year_class", None), "school_shift", None)
+    if scoped and class_shift not in {"morning", "afternoon"}:
+        raise BehaviorValidationError(
+            "Fasalkan u qoondee Gelin hore ama Gelin dambe ka hor inta aan session-ka loo kala xaddidin."
+        )
+    applicable = sessions if not scoped else [
+        item for item in sessions
+        if (getattr(item, "applicable_shift", None) or "all") in {"all", class_shift}
+    ]
+    total = sum(
+        (decimal_value(item.maximum_score, "Session maximum", minimum="0.001") for item in applicable),
+        Decimal("0.000"),
+    ).quantize(Decimal("0.001"))
+    if total > Decimal("100.000"):
+        raise BehaviorValidationError(
+            f"Behavior sessions-ka {class_shift or 'fasalka'} kama badnaan karaan 100 dhibcood (hadda {total.normalize():g})."
+        )
+    return applicable
 
 
 def refresh_allocation_total(configuration):
@@ -323,9 +456,9 @@ def validate_configuration_ready(configuration):
             exam_id=session.exam_id,
         )
     total = refresh_allocation_total(configuration)
-    if total != Decimal("100.000"):
+    if not configuration_allocation_is_complete(configuration):
         raise BehaviorValidationError(
-            f"Behavior sessions must total exactly 100 before events can be recorded (currently {total:g})"
+            f"Behavior sessions must total exactly 100 before the configuration is marked ready (currently {total:g})"
         )
     if not configuration.sessions:
         raise BehaviorValidationError("At least one Behavior session is required before recording events")
@@ -1053,7 +1186,10 @@ def calculate_annual_behavior_score(
         configuration, enrollment.id if hasattr(enrollment, "id") else enrollment
     )
     sessions = sorted(
-        [item for item in configuration.sessions if item.is_active],
+        [
+            item for item in configuration.sessions
+            if item.is_active and session_applies_to_enrollment(item, enrollment)
+        ],
         key=lambda item: (item.sort_order, item.id),
     )
     if not sessions:
@@ -1104,6 +1240,22 @@ def calculate_annual_behavior_score(
             "session_results": session_results,
         }
     total_score = max(Decimal("0.000"), min(total_maximum, total_score))
+    has_shift_scoped_sessions = any(
+        (getattr(item, "applicable_shift", None) or "all") != "all"
+        for item in sessions
+    )
+    if has_shift_scoped_sessions and total_maximum != Decimal("100.000"):
+        return {
+            "status": "INCOMPLETE",
+            "reason": (
+                f"Behavior session allocation is {total_maximum.normalize():g}/100 for this shift. "
+                "The official annual result is pending until the allocation reaches 100."
+            ),
+            "total_score": total_score,
+            "total_maximum": total_maximum,
+            "percentage": None,
+            "session_results": session_results,
+        }
     return {
         "status": "COMPLETE",
         "reason": None,
@@ -1237,6 +1389,9 @@ def record_event(
         exam_type_id=session.exam_type_id,
         exam_id=session.exam_id,
     )
+    if not session_applies_to_enrollment(session, enrollment):
+        raise BehaviorValidationError("Session-kan kuma khuseeyo gelinka fasalkan.")
+    validate_enrollment_session_allocations(configuration, enrollment, session)
     if category.behavior_configuration_id != configuration.id:
         raise BehaviorValidationError("Behavior category does not belong to the selected configuration")
     if action.behavior_category_id != category.id:
@@ -1361,6 +1516,9 @@ def edit_event(
         exam_type_id=session.exam_type_id,
         exam_id=session.exam_id,
     )
+    if not session_applies_to_enrollment(session, enrollment):
+        raise BehaviorValidationError("Session-kan kuma khuseeyo gelinka fasalkan.")
+    validate_enrollment_session_allocations(configuration, enrollment, session)
     if category.behavior_configuration_id != configuration.id:
         raise BehaviorValidationError("Behavior category does not belong to the selected configuration")
     if action.behavior_category_id != category.id:

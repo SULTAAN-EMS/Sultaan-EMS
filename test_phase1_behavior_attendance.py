@@ -23,8 +23,12 @@ from app.behavior_service import (
     BehaviorValidationError,
     attendance_points_projection,
     attendance_score_projection,
+    allocation_total,
+    calculate_annual_behavior_score,
     calculate_session_score,
     record_event,
+    session_applies_to_enrollment,
+    validate_enrollment_session_allocations,
     restore_attendance_record,
     void_attendance_record,
 )
@@ -51,6 +55,7 @@ from app.models import (
     StudentEnrollment,
     User,
 )
+from app.routes_behavior import _behavior_context
 from migrations.phase_1d_behavior_level_attendance_days import _backfill
 
 
@@ -156,6 +161,164 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         ensure_attendance_defaults(self.config)
         self.assertTrue(self.config.behavior_attendance_scoring_enabled)
         self.assertTrue(all(item.is_active for item in attendance_statuses(self.config)))
+
+    def test_morning_and_afternoon_session_plans_are_independent_and_class_scoped(self):
+        self.assertEqual(self.session.applicable_shift, "all")
+        self.enrollment.academic_year_class.school_shift = "morning"
+        afternoon_class = AcademicYearClass(
+            name="1B",
+            academic_year_level=self.enrollment.academic_year_level,
+            school_shift="afternoon",
+        )
+        afternoon_student = Student(
+            student_code="BHV-P1-002",
+            full_name="Afternoon Student",
+            is_active=True,
+        )
+        db.session.add_all([afternoon_class, afternoon_student])
+        db.session.flush()
+        afternoon_enrollment = StudentEnrollment(
+            student_id=afternoon_student.id,
+            academic_year_id=self.config.academic_year_id,
+            academic_year_level_id=self.enrollment.academic_year_level_id,
+            academic_year_class_id=afternoon_class.id,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source="manual",
+        )
+        db.session.add(afternoon_enrollment)
+        self.session.applicable_shift = "morning"
+        morning_sessions = [self.session]
+        afternoon_sessions = []
+        for index in range(8):
+            exam = ExamType(
+                name=f"Shift Exam {index + 1}",
+                academic_year=self.config.academic_year,
+                is_active=True,
+            )
+            db.session.add(exam)
+            db.session.flush()
+            shift = "morning" if index < 4 else "afternoon"
+            item = BehaviorSession(
+                configuration=self.config,
+                exam_type=exam,
+                session_label=f"{shift} {index + 1}",
+                applicable_shift=shift,
+                maximum_score=20 if shift == "morning" else 25,
+                sort_order=index + 2,
+                is_active=True,
+            )
+            db.session.add(item)
+            (morning_sessions if shift == "morning" else afternoon_sessions).append(item)
+        db.session.commit()
+
+        self.assertEqual(allocation_total(self.config), Decimal("100.000"))
+        self.assertEqual(
+            {item.id for item in validate_enrollment_session_allocations(self.config, self.enrollment)},
+            {item.id for item in morning_sessions},
+        )
+        self.assertEqual(
+            {item.id for item in validate_enrollment_session_allocations(self.config, afternoon_enrollment)},
+            {item.id for item in afternoon_sessions},
+        )
+        self.assertTrue(session_applies_to_enrollment(morning_sessions[0], self.enrollment))
+        self.assertFalse(session_applies_to_enrollment(morning_sessions[0], afternoon_enrollment))
+        morning_context = _behavior_context(
+            self.config.academic_year_id,
+            self.enrollment.academic_year_level_id,
+            self.config.id,
+            self.enrollment.academic_year_class_id,
+        )
+        afternoon_context = _behavior_context(
+            self.config.academic_year_id,
+            afternoon_enrollment.academic_year_level_id,
+            self.config.id,
+            afternoon_enrollment.academic_year_class_id,
+        )
+        self.assertEqual(
+            {item.applicable_shift for item in morning_context["sessions"]},
+            {"morning"},
+        )
+        self.assertEqual(
+            {item.applicable_shift for item in afternoon_context["sessions"]},
+            {"afternoon"},
+        )
+
+        ensure_attendance_defaults(self.config)
+        present = next(item for item in attendance_statuses(self.config, academic_year_level_id=self.enrollment.academic_year_level_id) if item.key == "present")
+        with self.assertRaises(BehaviorValidationError):
+            mark_attendance(
+                self.config,
+                morning_sessions[0],
+                afternoon_enrollment,
+                present.id,
+                date(2026, 8, 29),
+            )
+
+    def test_partial_shift_allocation_allows_marks_but_keeps_annual_result_incomplete(self):
+        self.enrollment.academic_year_class.school_shift = "morning"
+        self.session.applicable_shift = "morning"
+        self.session.maximum_score = Decimal("85")
+        db.session.commit()
+
+        event_row = record_event(
+            self.config,
+            self.enrollment,
+            self.session,
+            self.positive,
+            self.action,
+        )
+        ensure_attendance_defaults(self.config)
+        present = next(item for item in attendance_statuses(self.config) if item.key == "present")
+        attendance_row = mark_attendance(
+            self.config,
+            self.session,
+            self.enrollment,
+            present.id,
+            date(2026, 8, 29),
+        )
+        db.session.commit()
+
+        self.assertIsNotNone(event_row.id)
+        self.assertIsNotNone(attendance_row.id)
+        self.assertEqual(
+            validate_enrollment_session_allocations(self.config, self.enrollment),
+            [self.session],
+        )
+        annual = calculate_annual_behavior_score(self.config, self.enrollment)
+        self.assertEqual(annual["status"], "INCOMPLETE")
+        self.assertEqual(annual["total_maximum"], Decimal("85.000"))
+        self.assertIsNone(annual["percentage"])
+        self.assertIn("85/100", annual["reason"])
+
+    def test_class_shift_can_be_saved_through_configuration_api(self):
+        client = self.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["_user_id"] = str(self.admin.id)
+            browser_session["_fresh"] = True
+            browser_session["config_center_authenticated"] = True
+        response = client.post(
+            "/admin/config-center/api/classes",
+            json={
+                "name": "API Shift Class",
+                "academic_year_id": self.config.academic_year_id,
+                "academic_year_level_id": self.enrollment.academic_year_level_id,
+                "school_shift": "morning",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["success"])
+        item = AcademicYearClass.query.filter_by(name="API Shift Class").one()
+        self.assertEqual(item.school_shift, "morning")
+
+        response = client.put(
+            f"/admin/config-center/api/classes/{item.id}",
+            json={"school_shift": "afternoon"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["success"])
+        db.session.refresh(item)
+        self.assertEqual(item.school_shift, "afternoon")
 
     def test_status_polarity_update_survives_refresh_and_controls_new_records(self):
         ensure_attendance_defaults(self.config)
