@@ -2690,14 +2690,13 @@ def attendance_records_api():
         request.args.get("class_id"),
         request.args.get("session_id"),
     )
-    # A scope select can make the previously selected config/session invalid
-    # (for example, changing Primary to Secondary). Re-resolve the dependent
-    # choices inside the new year/level instead of returning a blank sheet.
+    # A stale session may no longer apply after changing the class/shift.
+    # Re-resolve only that dependent choice; never silently switch config.
     if context["scope_invalid"]:
         context = _behavior_context(
             request.args.get("year_id"),
             request.args.get("level_id"),
-            None,
+            request.args.get("config_id"),
             request.args.get("class_id"),
             None,
         )

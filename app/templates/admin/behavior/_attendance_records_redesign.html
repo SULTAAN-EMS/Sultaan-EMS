@@ -159,7 +159,11 @@
   const updateRow = (row, key) => { const selected = statusOptions.find((item) => item.key === key); row.status_key = key; row.status = selected?.label || row.status; row.status_id = selected?.id || row.status_id; };
   get('recordsBody').addEventListener('click', (event) => { const rowEl = event.target.closest('[data-record-row]'); if (!rowEl) return; const row = rows.find((item) => String(item.record_id) === rowEl.dataset.recordRow); const button = event.target.closest('[data-att-action]'); if (button) { event.stopPropagation(); openAction(row, button.dataset.attAction); return; } openAction(row, row.record_status === 'deleted' ? 'view' : 'choose'); });
   get('attRecordStates').addEventListener('click', (event) => { const button = event.target.closest('[data-state]'); if (!button) return; state.value = button.dataset.state; get('recordsStatus').value = state.value; get('attRecordStates').querySelectorAll('button').forEach((item) => item.setAttribute('aria-pressed', item === button)); loadRows(); });
-  [get('recordsFrom'), get('recordsTo'), get('attRecordsClass'), get('attRecordsSession')].forEach((input) => input?.addEventListener('change', loadRows));
+  [get('recordsFrom'), get('recordsTo'), get('attRecordsSession')].forEach((input) => input?.addEventListener('change', loadRows));
+  get('attRecordsClass')?.addEventListener('change', () => {
+    if (get('attRecordsSession')) get('attRecordsSession').value = '';
+    loadRows();
+  });
   [get('attRecordsYear'), get('attRecordsLevel'), get('attRecordsConfig')].forEach((input) => input?.addEventListener('change', () => {
     if (get('attRecordsClass')) get('attRecordsClass').value = '';
     if (get('attRecordsSession')) get('attRecordsSession').value = '';
