@@ -1,6 +1,7 @@
 """Dedicated Phase 2B Behavior administration routes."""
 
 import json
+import re
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime
@@ -71,6 +72,8 @@ from .behavior_attendance import (
     attendance_status_label,
     ensure_status_level_points,
     attendance_statuses,
+    attendance_status_points,
+    validate_attendance_ledger_capacity,
     enrollments_for_class,
     ensure_attendance_defaults,
     generate_daily_roster,
@@ -91,6 +94,7 @@ from .models import (
     BehaviorEvent,
     BehaviorAttendanceRecord,
     BehaviorAttendanceDeletion,
+    BehaviorAttendanceClosure,
     BehaviorAttendanceStatus,
     BehaviorAttendanceStatusLevel,
     BehaviorGradeScale,
@@ -107,6 +111,75 @@ from .services import get_settings
 
 behavior_bp = Blueprint("behavior", __name__)
 SCHOOL_TIMEZONE = ZoneInfo("Africa/Mogadishu")
+SCHOOL_CLOSURE_STATUS_KEY = "school_closure"
+SCHOOL_CLOSURE_STATUS_LABEL = "Maalin Dugsi Xiran"
+
+
+def _closure_target_enrollments(configuration, session, scope_type, *, school_shift=None, level_id=None, class_id=None):
+    """Resolve a closure scope strictly inside its year/config/session."""
+    allowed_levels = configuration_level_ids(configuration)
+    if scope_type not in {"all", "shift", "level", "class"}:
+        raise BehaviorValidationError("Dooro baaxadda fasaxa saxda ah.")
+    if scope_type == "shift":
+        if school_shift not in {"morning", "afternoon"}:
+            raise BehaviorValidationError("Dooro gelinka fasaxu khuseeyo.")
+        session_shift = (session.applicable_shift or "all").strip().lower()
+        if session_shift not in {"all", school_shift}:
+            raise BehaviorValidationError("Gelinka fasaxu doortay kuma jiro fadhigan Behavior-ka.")
+    if scope_type == "level" and (not level_id or int(level_id) not in allowed_levels):
+        raise BehaviorValidationError("Heerka la doortay kuma jiro Behavior configuration-kan.")
+    if scope_type == "class":
+        cls = db.session.get(AcademicYearClass, _int(class_id)) if class_id else None
+        if not cls or cls.academic_year_level_id not in allowed_levels:
+            raise BehaviorValidationError("Fasalka la doortay kuma jiro Behavior configuration-kan.")
+        if cls.academic_year_level.academic_year_id != configuration.academic_year_id:
+            raise BehaviorValidationError("Fasalku kuma jiro sannad-dugsiyeedka la doortay.")
+        level_id = cls.academic_year_level_id
+
+    enrollments = enrollments_for_class(
+        configuration,
+        _int(class_id) if scope_type == "class" else None,
+        _int(level_id) if scope_type == "level" else None,
+    )
+    result = []
+    for enrollment in enrollments:
+        if not session_applies_to_enrollment(session, enrollment):
+            continue
+        if scope_type == "shift" and enrollment.academic_year_class.school_shift != school_shift:
+            continue
+        result.append(enrollment)
+    return result
+
+
+def _closure_redirect(closure, *, config=None, session=None, level_id=None, class_id=None):
+    return redirect(url_for(
+        "behavior.attendance",
+        year_id=closure.academic_year_id if closure else (config.academic_year_id if config else None),
+        config_id=closure.behavior_configuration_id if closure else (config.id if config else None),
+        session_id=closure.behavior_session_id if closure else (session.id if session else None),
+        level_id=level_id or (closure.academic_year_level_id if closure else None),
+        class_id=class_id or (closure.academic_year_class_id if closure else None),
+        attendance_date=closure.attendance_date.isoformat() if closure else None,
+        attendance_view="closures",
+    ))
+
+
+def _academic_year_bounds(name):
+    """Return the represented start/end years for common school-year labels."""
+    label = str(name or "")
+    four_digit_years = [int(value) for value in re.findall(r"(?<!\d)(?:19|20)\d{2}(?!\d)", label)]
+    if len(four_digit_years) >= 2:
+        return min(four_digit_years), max(four_digit_years)
+    if four_digit_years:
+        start = four_digit_years[0]
+        suffix = re.search(r"(?:19|20)\d{2}\s*[-/]\s*(\d{2})(?!\d)", label)
+        if suffix:
+            end = (start // 100) * 100 + int(suffix.group(1))
+            if end < start:
+                end += 100
+            return start, end
+        return start, start
+    return None
 
 
 @behavior_bp.before_request
@@ -2518,7 +2591,7 @@ def void(event_id):
         void_event(event, current_user.id, request.form.get("reason"))
         audit("Behavior Events", f"Voided Behavior event {event.id}")
         db.session.commit()
-        flash("Behavior event voided and retained in history.", "success")
+        flash("Dhacdada waa laga noqday; diiwaankeedii taariikheedna waa la hayaa.", "success")
     except BehaviorValidationError as exc:
         db.session.rollback()
         if _wants_json_response():
@@ -2607,6 +2680,8 @@ def _attendance_record_rows(config, selected_session, enrollments):
             "status": attendance_status_label(key, item.status_label_snapshot),
             "status_key": key,
             "record_id": item.id,
+            "closure_id": item.behavior_attendance_closure_id,
+            "is_school_closure": bool(item.behavior_attendance_closure_id),
             "record_status": "deleted" if item.deleted_at else (item.status or "active"),
             "void_reason": item.void_reason or "",
             "voided_by": item.voider.username if item.voider else "",
@@ -2646,6 +2721,8 @@ def _attendance_record_rows(config, selected_session, enrollments):
             "photo_url": "",
             "status": item.status_label,
             "status_key": item.status_key,
+            "closure_id": None,
+            "is_school_closure": item.status_key == SCHOOL_CLOSURE_STATUS_KEY,
             "record_id": item.original_record_id,
             "record_status": "deleted",
             "void_reason": item.void_reason or "",
@@ -2804,7 +2881,211 @@ def attendance():
             if not selected_session:
                 raise BehaviorValidationError("Select an Exam Type session first")
             action = request.form.get("action")
-            if action == "generate":
+            if action == "closure_create":
+                closure_date = date.fromisoformat(request.form.get("closure_date") or "")
+                scope_type = (request.form.get("scope_type") or "").strip().lower()
+                school_shift = (request.form.get("school_shift") or "").strip().lower() or None
+                level_id = _int(request.form.get("closure_level_id"))
+                class_id = _int(request.form.get("closure_class_id"))
+                closure_kind = (request.form.get("closure_kind") or "").strip().lower()
+                reason = (request.form.get("closure_reason") or "").strip()
+                year_bounds = _academic_year_bounds(config.academic_year.name)
+                if year_bounds and not year_bounds[0] <= closure_date.year <= year_bounds[1]:
+                    raise BehaviorValidationError("Taariikhda fasaxu waa inay ku jirtaa sannad-dugsiyeedka la doortay.")
+                if closure_kind not in {"holiday", "emergency", "special", "other"}:
+                    raise BehaviorValidationError("Dooro nooca fasaxa.")
+                if not reason or len(reason) > 255:
+                    raise BehaviorValidationError("Sababta fasaxa waa waajib, ugu badnaanna waa 255 xaraf.")
+                targets = _closure_target_enrollments(
+                    config, selected_session, scope_type,
+                    school_shift=school_shift, level_id=level_id, class_id=class_id,
+                )
+                eligible = []
+                for enrollment in targets:
+                    ensure_attendance_defaults(config, enrollment.academic_year_level_id)
+                    if any(
+                        day.weekday == closure_date.weekday() and day.is_active
+                        for day in attendance_days(config, academic_year_level_id=enrollment.academic_year_level_id)
+                    ):
+                        eligible.append(enrollment)
+                if not eligible:
+                    raise BehaviorValidationError("Ma jiro arday ku jira fasal/level shaqaynaya maalintan iyo session-kan.")
+                enrollment_ids = [item.id for item in eligible]
+                conflicts = BehaviorAttendanceRecord.query.filter(
+                    BehaviorAttendanceRecord.behavior_configuration_id == config.id,
+                    BehaviorAttendanceRecord.behavior_session_id == selected_session.id,
+                    BehaviorAttendanceRecord.attendance_date == closure_date,
+                    BehaviorAttendanceRecord.student_enrollment_id.in_(enrollment_ids),
+                ).count()
+                if conflicts:
+                    raise BehaviorValidationError(
+                        f"Fasaxa lama diiwaangelin: {conflicts} arday waxay taariikhdan hore ugu leeyihiin xaadirin. "
+                        "Xogtii hore lama beddelin; sax/ka saar calaamadahaas marka hore."
+                    )
+                present_by_level = {}
+                for enrollment in eligible:
+                    level_id_for_student = enrollment.academic_year_level_id
+                    if level_id_for_student not in present_by_level:
+                        present = BehaviorAttendanceStatus.query.filter_by(
+                            behavior_configuration_id=config.id, key="present", is_active=True,
+                        ).first()
+                        ensure_status_level_points(config, level_id_for_student)
+                        points = attendance_status_points(present, level_id_for_student)
+                        if not present or not present.contributes_to_behavior or present.polarity != "positive":
+                            raise BehaviorValidationError(
+                                "Dhibcaha Joogid waa inay active yihiin oo positive noqdaan si fasaxu u helo dhibcaha saxda ah."
+                            )
+                        present_by_level[level_id_for_student] = (present, points)
+                capture_attendance_session_policy(config, selected_session)
+                closure = BehaviorAttendanceClosure(
+                    academic_year_id=config.academic_year_id,
+                    behavior_configuration_id=config.id,
+                    behavior_session_id=selected_session.id,
+                    attendance_date=closure_date,
+                    scope_type=scope_type,
+                    school_shift=school_shift if scope_type == "shift" else None,
+                    academic_year_level_id=level_id if scope_type == "level" else (
+                        eligible[0].academic_year_level_id if scope_type == "class" else None
+                    ),
+                    academic_year_class_id=class_id if scope_type == "class" else None,
+                    closure_kind=closure_kind,
+                    reason=reason,
+                    created_by_id=current_user.id,
+                    updated_by_id=current_user.id,
+                )
+                db.session.add(closure)
+                db.session.flush()
+                for enrollment in eligible:
+                    present, points = present_by_level[enrollment.academic_year_level_id]
+                    validate_attendance_ledger_capacity(config, selected_session, enrollment, "positive", points)
+                    db.session.add(BehaviorAttendanceRecord(
+                        student_id=enrollment.student_id,
+                        student_enrollment_id=enrollment.id,
+                        behavior_configuration_id=config.id,
+                        behavior_session_id=selected_session.id,
+                        academic_year_id=config.academic_year_id,
+                        academic_year_level_id=enrollment.academic_year_level_id,
+                        academic_year_class_id=enrollment.academic_year_class_id,
+                        attendance_date=closure_date,
+                        attendance_time=school_now.time().replace(microsecond=0),
+                        status_id=present.id,
+                        behavior_attendance_closure_id=closure.id,
+                        status_key_snapshot=SCHOOL_CLOSURE_STATUS_KEY,
+                        status_label_snapshot=SCHOOL_CLOSURE_STATUS_LABEL,
+                        polarity="positive",
+                        points_applied=points,
+                        note=reason,
+                        marked_by_id=current_user.id,
+                    ))
+                audit("Behavior Attendance Closure", f"Created closure {closure.id}; {closure_date}; scope={scope_type}; affected={len(eligible)}")
+                db.session.commit()
+                flash(f"Fasaxa waa la keydiyey; {len(eligible)} arday ayaa helay dhibcaha Joogidda. Fasallada aan maanta shaqayn laguma darin.", "success")
+                return _closure_redirect(closure, level_id=context["selected_level"].id if context["selected_level"] else None, class_id=context["selected_class"].id if context["selected_class"] else None)
+            elif action in {"closure_edit", "closure_void", "closure_restore", "closure_delete"}:
+                closure = db.session.get(BehaviorAttendanceClosure, _int(request.form.get("closure_id")))
+                if not closure or closure.behavior_configuration_id != config.id or closure.behavior_session_id != selected_session.id:
+                    raise BehaviorValidationError("Fasaxa lama helin scope-ka sannad/configuration/session-ka la doortay.")
+                closure_redirect_date = closure.attendance_date
+                related_rows = BehaviorAttendanceRecord.query.filter_by(
+                    behavior_attendance_closure_id=closure.id
+                ).all()
+                if action == "closure_edit":
+                    reason = (request.form.get("closure_reason") or "").strip()
+                    closure_kind = (request.form.get("closure_kind") or "").strip().lower()
+                    if not reason or len(reason) > 255 or closure_kind not in {"holiday", "emergency", "special", "other"}:
+                        raise BehaviorValidationError("Sababta iyo nooca fasaxa sax u buuxi.")
+                    closure.reason = reason
+                    closure.closure_kind = closure_kind
+                    closure.updated_by_id = current_user.id
+                    for record in related_rows:
+                        record.note = reason
+                    audit("Behavior Attendance Closure", f"Edited closure {closure.id}; reason={reason!r}")
+                    flash("Faahfaahinta fasaxa waa la cusboonaysiiyey.", "success")
+                elif action == "closure_void":
+                    reason = (request.form.get("void_reason") or "").strip()
+                    if not reason:
+                        raise BehaviorValidationError("Sababta kala-noqoshadu waa waajib.")
+                    if closure.status != "active":
+                        raise BehaviorValidationError("Fasaxan hore ayaa looga noqday.")
+                    closure.status = "voided"
+                    closure.voided_by_id = current_user.id
+                    closure.voided_at = datetime.utcnow()
+                    closure.void_reason = reason
+                    for record in related_rows:
+                        if not record.deleted_at and record.status == "active":
+                            record.status = "voided"
+                            record.voided_by = current_user.id
+                            record.voided_at = datetime.utcnow()
+                            record.void_reason = reason
+                    audit("Behavior Attendance Closure", f"Voided closure {closure.id}; reason={reason!r}")
+                    flash("Fasaxa waa laga noqday; dhibcihiisiina waa laga saaray warbixinta.", "success")
+                elif action == "closure_restore":
+                    if closure.status != "voided":
+                        raise BehaviorValidationError("Kaliya fasax hore looga noqday ayaa dib loo soo celin karaa.")
+                    closure.status = "active"
+                    closure.voided_by_id = None
+                    closure.voided_at = None
+                    closure.void_reason = None
+                    for record in related_rows:
+                        if record.status == "voided" and not record.deleted_at:
+                            record.status = "active"
+                            record.voided_by = None
+                            record.voided_at = None
+                            record.void_reason = None
+                    audit("Behavior Attendance Closure", f"Restored closure {closure.id}")
+                    flash("Fasaxa iyo dhibcihii la xiriiray waa la soo celiyey.", "success")
+                else:
+                    if request.form.get("confirmation") != "DELETE SCHOOL CLOSURE":
+                        raise BehaviorValidationError("Ku qor DELETE SCHOOL CLOSURE si aad u xaqiijiso tirtiridda.")
+                    for record in related_rows:
+                        enrollment = record.student_enrollment
+                        db.session.add(BehaviorAttendanceDeletion(
+                            original_record_id=record.id,
+                            student_id=record.student_id,
+                            student_enrollment_id=record.student_enrollment_id,
+                            behavior_configuration_id=record.behavior_configuration_id,
+                            behavior_session_id=record.behavior_session_id,
+                            academic_year_id=record.academic_year_id,
+                            academic_year_level_id=record.academic_year_level_id,
+                            academic_year_class_id=record.academic_year_class_id,
+                            student_name=record.student.full_name,
+                            student_code=record.student.student_code,
+                            mother_name=record.student.mother_name,
+                            class_name=record.academic_year_class.name if record.academic_year_class else None,
+                            session_label=selected_session.session_label,
+                            attendance_date=record.attendance_date,
+                            attendance_time=record.attendance_time,
+                            arrival_time=record.arrival_time,
+                            late_by_minutes=record.late_by_minutes,
+                            status_key=record.status_key_snapshot,
+                            status_label=record.status_label_snapshot,
+                            original_status=record.status,
+                            polarity=record.polarity,
+                            points_applied=record.points_applied,
+                            note=record.note,
+                            void_reason=record.void_reason,
+                            deletion_reason=f"School closure {closure.id} permanently deleted",
+                            deleted_by_username=current_user.username,
+                        ))
+                        db.session.delete(record)
+                    db.session.flush()
+                    db.session.delete(closure)
+                    audit("Behavior Attendance Closure Deleted", f"Permanently deleted closure {closure.id}; marks={len(related_rows)}; user={current_user.username}")
+                    flash(f"Fasaxa waa la tirtiray; {len(related_rows)} calaamadood waxaa loo wareejiyey taariikhda La Tirtiray.", "success")
+                db.session.commit()
+                if action == "closure_delete":
+                    return redirect(url_for(
+                        "behavior.attendance",
+                        year_id=config.academic_year_id,
+                        config_id=config.id,
+                        session_id=selected_session.id,
+                        level_id=context["selected_level"].id if context["selected_level"] else None,
+                        class_id=context["selected_class"].id if context["selected_class"] else None,
+                        attendance_date=closure_redirect_date.isoformat(),
+                        attendance_view="closures",
+                    ))
+                return _closure_redirect(closure, config=config, session=selected_session, level_id=context["selected_level"].id if context["selected_level"] else None, class_id=context["selected_class"].id if context["selected_class"] else None)
+            elif action == "generate":
                 created = generate_daily_roster(
                     config,
                     selected_session,
@@ -2849,14 +3130,18 @@ def attendance():
                     enrollment_id for enrollment_id, item in existing_records.items()
                     if item.deleted_at
                 }
+                existing_closure_ids = {
+                    enrollment_id for enrollment_id, item in existing_records.items()
+                    if item.behavior_attendance_closure_id
+                }
                 capture_attendance_session_policy(config, selected_session)
                 saved_count = 0
                 cleared_count = 0
                 unmarked_count = 0
                 for enrollment in enrollments:
-                    # A VOIDED row is an immutable audit record.  Do not let a
+                    # A withdrawn row is an immutable audit record. Do not let a
                     # roster-wide save silently reactivate or edit it.
-                    if enrollment.id in existing_voided_ids or enrollment.id in existing_deleted_ids:
+                    if enrollment.id in existing_voided_ids or enrollment.id in existing_deleted_ids or enrollment.id in existing_closure_ids:
                         continue
                     status_id = _int(request.form.get(f"status_{enrollment.id}"))
                     existing_record = BehaviorAttendanceRecord.query.filter_by(
@@ -2865,6 +3150,10 @@ def attendance():
                         student_enrollment_id=enrollment.id,
                         attendance_date=attendance_date,
                     ).first()
+                    if existing_record and existing_record.behavior_attendance_closure_id:
+                        raise BehaviorValidationError(
+                            "Maalintan waxaa maamula fasax dugsi oo rasmi ah; ka beddel ama kala noqo diiwaanka fasaxa, hana ku tirtirin xaadirinta ardayga."
+                        )
                     if not status_id:
                         unmarked_count += 1
                         # The new UI allows an explicit unmarked state.  Remove
@@ -2910,7 +3199,7 @@ def attendance():
                 if existing_voided_ids:
                     flash(
                         f"Attendance saved for {saved_count} student(s). "
-                        f"{len(existing_voided_ids)} voided record(s) remained unchanged.",
+                        f"{len(existing_voided_ids)} diiwaan oo hore looga noqday isma beddelin.",
                         "success",
                     )
                 else:
@@ -3073,7 +3362,7 @@ def attendance():
                 "late": late_count,
             })
     current_total = sum(overview_counts.values())
-    current_attended = overview_counts["present"] + overview_counts["late"]
+    current_attended = overview_counts["present"] + overview_counts["late"] + overview_counts[SCHOOL_CLOSURE_STATUS_KEY]
     current_points = attendance_points_projection(list(records.values()))
     overview = {
         "total": len(enrollments),
@@ -3082,6 +3371,7 @@ def attendance():
         "absent": overview_counts["absent"],
         "excused": overview_counts["excused"],
         "official_leave": overview_counts["official_leave"],
+        "school_closure": overview_counts[SCHOOL_CLOSURE_STATUS_KEY],
         "percentage": round((current_attended / current_total) * 100, 1) if current_total else 0,
         "impact_points": str(current_points["signed_total"]),
         "repeat_alerts": repeat_alerts,
@@ -3091,6 +3381,34 @@ def attendance():
     # leak a level value back into the configuration-wide legacy column.
     for status in all_statuses:
         status.points = status.effective_points
+    closure_levels = []
+    closure_classes = []
+    closures = []
+    if config and selected_session and not scope_invalid:
+        config_level_ids_value = sorted(configuration_level_ids(config))
+        closure_levels = AcademicYearLevel.query.filter(
+            AcademicYearLevel.id.in_(config_level_ids_value or {-1}),
+            AcademicYearLevel.academic_year_id == config.academic_year_id,
+        ).order_by(AcademicYearLevel.id).all()
+        closure_classes = AcademicYearClass.query.filter(
+            AcademicYearClass.academic_year_level_id.in_(config_level_ids_value or {-1}),
+        ).order_by(AcademicYearClass.name, AcademicYearClass.id).all()
+        closure_rows = db.session.query(
+            BehaviorAttendanceClosure,
+            func.count(BehaviorAttendanceRecord.id),
+        ).outerjoin(
+            BehaviorAttendanceRecord,
+            BehaviorAttendanceRecord.behavior_attendance_closure_id == BehaviorAttendanceClosure.id,
+        ).filter(
+            BehaviorAttendanceClosure.behavior_configuration_id == config.id,
+            BehaviorAttendanceClosure.behavior_session_id == selected_session.id,
+        ).group_by(
+            BehaviorAttendanceClosure.id,
+        ).order_by(
+            BehaviorAttendanceClosure.attendance_date.desc(),
+            BehaviorAttendanceClosure.id.desc(),
+        ).limit(50).all()
+        closures = [{"item": item, "mark_count": mark_count} for item, mark_count in closure_rows]
     return render_template(
         "admin/behavior/attendance.html",
         **context,
@@ -3108,6 +3426,9 @@ def attendance():
         official_status_labels={item.key: item.label for item in statuses},
         attendance_view=attendance_view,
         attendance_view_target=attendance_view or "records",
+        closures=closures,
+        closure_levels=closure_levels,
+        closure_classes=closure_classes,
     )
 
 
@@ -3161,7 +3482,7 @@ def attendance_profile_api(enrollment_id):
     for item in active_records:
         key = (item.status_key_snapshot or "").strip().lower() or "unknown"
         counts[key] += 1
-    attended = counts["present"] + counts["late"]
+    attended = counts["present"] + counts["late"] + counts[SCHOOL_CLOSURE_STATUS_KEY]
     history = [
         {
             "date": item.attendance_date.isoformat(),
@@ -3193,6 +3514,7 @@ def attendance_profile_api(enrollment_id):
             "absent": counts["absent"],
             "excused": counts["excused"],
             "official_leave": counts["official_leave"],
+            "school_closure": counts[SCHOOL_CLOSURE_STATUS_KEY],
             "total": len(active_records),
             "percentage": round((attended / len(active_records)) * 100, 1) if active_records else 0,
             "points": str(points["signed_total"]),
@@ -3212,6 +3534,8 @@ def void_attendance(record_id):
     try:
         if not record:
             raise BehaviorValidationError("Attendance record was not found")
+        if record.behavior_attendance_closure_id:
+            raise BehaviorValidationError("Diiwaankan waxaa maamula fasaxa dugsiga; isticmaal ficillada fasaxa.")
         void_attendance_record(record, current_user.id, request.form.get("reason"))
         audit(
             "Behavior Attendance",
@@ -3220,7 +3544,7 @@ def void_attendance(record_id):
         db.session.commit()
         if _wants_json_response():
             return jsonify({"ok": True, "message": "Diiwaanka waa la baabi'iyay"})
-        flash("Attendance record voided and retained in history.", "success")
+        flash("Diiwaanka xaadirka waa laga noqday, taariikhdiisiina waa la hayaa.", "success")
     except BehaviorValidationError as exc:
         db.session.rollback()
         if _wants_json_response():
@@ -3229,8 +3553,8 @@ def void_attendance(record_id):
     except IntegrityError:
         db.session.rollback()
         if _wants_json_response():
-            return jsonify({"ok": False, "message": "Attendance record could not be voided."}), 400
-        flash("The Attendance record could not be voided because of a data conflict.", "danger")
+            return jsonify({"ok": False, "message": "Diiwaanka xaadirka lagama noqon karin."}), 400
+        flash("Diiwaanka xaadirka lagama noqon karin sabab la xiriirta xog is-khilaafsan.", "danger")
     return redirect(url_for(
         "behavior.attendance",
         year_id=record.academic_year_id if record else request.form.get("year_id"),
@@ -3250,6 +3574,8 @@ def edit_attendance(record_id):
     try:
         if not record:
             raise BehaviorValidationError("Attendance record was not found")
+        if record.behavior_attendance_closure_id:
+            raise BehaviorValidationError("Diiwaankan waxaa maamula fasaxa dugsiga; isticmaal ficillada fasaxa.")
         if record.deleted_at:
             raise BehaviorValidationError("Deleted Attendance records are read-only")
         status_id = _int(request.form.get("status_id"))
@@ -3295,6 +3621,8 @@ def restore_attendance(record_id):
     try:
         if not record:
             raise BehaviorValidationError("Attendance record was not found")
+        if record.behavior_attendance_closure_id:
+            raise BehaviorValidationError("Diiwaankan waxaa maamula fasaxa dugsiga; isticmaal ficillada fasaxa.")
         restore_attendance_record(record)
         audit(
             "Behavior Attendance",
@@ -3342,6 +3670,8 @@ def delete_attendance(record_id):
     try:
         if not record:
             raise BehaviorValidationError("Attendance record was not found")
+        if record.behavior_attendance_closure_id:
+            raise BehaviorValidationError("Diiwaankan waxaa maamula fasaxa dugsiga; tirtir ama kala noqo fasaxa laftiisa.")
         if request.form.get("acknowledged") != "1":
             raise BehaviorValidationError("Confirm that this record will become read-only")
         deletion = delete_attendance_record(record, current_user, request.form.get("reason") or "Deleted from Attendance Records")
@@ -3436,7 +3766,7 @@ def attendance_report(enrollment_id):
         )
         if item.is_active
     }
-    status_keys = {"present", "late", "absent", "excused", "official_leave"}
+    status_keys = {"present", "late", "absent", "excused", "official_leave", SCHOOL_CLOSURE_STATUS_KEY}
     status_polarities = {
         item.key: item.polarity
         for item in attendance_statuses(config, active_only=False)
@@ -3450,6 +3780,8 @@ def attendance_report(enrollment_id):
         "cudurdaar": "excused",
         "fasaxid_rasmi_ah": "official_leave",
         "officialleave": "official_leave",
+        "fasax_dugsi": SCHOOL_CLOSURE_STATUS_KEY,
+        "maalin_dugsi_xiran": SCHOOL_CLOSURE_STATUS_KEY,
     }
 
     def report_status_key(value, label=None):
@@ -3506,7 +3838,7 @@ def attendance_report(enrollment_id):
             1 for day_number in range(1, month_end.day + 1)
             if month_start.replace(day=day_number).weekday() in active_weekdays
         )
-        attended_days = counts["present"] + counts["late"]
+        attended_days = counts["present"] + counts["late"] + counts[SCHOOL_CLOSURE_STATUS_KEY]
         attendance_percentage = round((attended_days / total_school_days) * 100, 1) if total_school_days else 0.0
         overall_label = "EXCELLENT" if attendance_percentage >= 90 else "GOOD" if attendance_percentage >= 75 else "NEEDS SUPPORT"
         donut_denominator = total_school_days or 1
@@ -3516,6 +3848,7 @@ def attendance_report(enrollment_id):
             "donut_absent_angle": counts["absent"] / donut_denominator * 360,
             "donut_excused_angle": counts["excused"] / donut_denominator * 360,
             "donut_official_leave_angle": counts["official_leave"] / donut_denominator * 360,
+            "donut_school_closure_angle": counts[SCHOOL_CLOSURE_STATUS_KEY] / donut_denominator * 360,
         }
 
         def calendar_cell(day_value):
@@ -3527,7 +3860,7 @@ def attendance_report(enrollment_id):
             if key not in status_keys and record:
                 key = "excused" if record.polarity == "neutral" else ("absent" if record.polarity == "negative" else "present")
             non_school_day = current.weekday() not in active_weekdays
-            return {"pad": False, "day": day_value, "holiday": non_school_day, "active": not non_school_day, "key": key, "marker": "N" if non_school_day else ("x" if key == "absent" else "." if key == "late" else "-" if key == "excused" else "check" if key == "present" else "")}
+            return {"pad": False, "day": day_value, "holiday": non_school_day, "active": not non_school_day, "key": key, "marker": "N" if non_school_day else ("H" if key == SCHOOL_CLOSURE_STATUS_KEY else "x" if key == "absent" else "." if key == "late" else "-" if key == "excused" else "check" if key == "present" else "")}
 
         calendar_weeks, week = [], []
         order = [5, 6, 0, 1, 2, 3, 4]
@@ -3547,7 +3880,7 @@ def attendance_report(enrollment_id):
         monthly_points = attendance_points_projection(records)
         for record in records:
             key = report_status_key(record.status_key_snapshot, record.status_label_snapshot)
-            if key not in {"late", "absent", "excused", "official_leave"}:
+            if key not in {"late", "absent", "excused", "official_leave", SCHOOL_CLOSURE_STATUS_KEY}:
                 key = "present" if record.polarity == "positive" else ("excused" if record.polarity == "neutral" else "absent")
             label = attendance_status_label(key, record.status_label_snapshot)
             # The report's time column is the time the attendance status was
@@ -3584,7 +3917,7 @@ def attendance_report(enrollment_id):
                         key = "excused" if record.polarity == "neutral" else ("absent" if record.polarity == "negative" else "present")
                     values[key] += 1
             total = sum(values.values())
-            trend.append({"total": total, "present": values["present"], "late": values["late"], "absent": values["absent"], "excused": values["excused"], "official_leave": values["official_leave"], "label": f"Usbuuca {week_number + 1}aad", "range": f"{start_day}-{end_day} {report_date.strftime('%b')}"})
+            trend.append({"total": total, "present": values["present"], "late": values["late"], "absent": values["absent"], "excused": values["excused"], "official_leave": values["official_leave"], "school_closure": values[SCHOOL_CLOSURE_STATUS_KEY], "label": f"Usbuuca {week_number + 1}aad", "range": f"{start_day}-{end_day} {report_date.strftime('%b')}"})
 
         return {
             "report_date": report_date,
@@ -3645,6 +3978,7 @@ def attendance_report(enrollment_id):
         enrollment=enrollment,
         student=enrollment.student,
         report_date=report_date,
+        report=monthly_reports[0],
         monthly_reports=monthly_reports,
         # Compatibility inputs for the existing chart enhancement script; the
         # server-rendered chart itself is generated separately for every page.

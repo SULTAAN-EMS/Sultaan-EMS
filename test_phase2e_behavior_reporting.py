@@ -14,6 +14,7 @@ from sqlalchemy.exc import OperationalError
 from app.behavior_attendance import (
     auto_attendance_note,
     ensure_attendance_defaults,
+    ensure_status_level_points,
     mark_attendance,
 )
 from app.behavior_reporting import build_behavior_report_categories, get_behavior_report_data
@@ -31,7 +32,9 @@ from app.models import (
     AcademicYearClass,
     AcademicYearLevel,
     AcademicYearSubject,
+    BehaviorAttendanceClosure,
     BehaviorAttendanceRecord,
+    BehaviorAttendanceStatusLevel,
     BehaviorConfiguration,
     BehaviorAttendanceStatus,
     BehaviorAction,
@@ -1571,6 +1574,68 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         self.assertEqual(projection["negative_points"], Decimal("1.500"))
         self.assertEqual(projection["signed_total"], Decimal("-1.500"))
         self.assertEqual(projection["record_count"], 4)
+
+    def test_school_closure_appears_in_student_portal_attendance_and_pdf(self):
+        self.admin.set_permissions(["behavior.view", "behavior.record", "behavior.configure"])
+        ensure_attendance_defaults(self.configuration)
+        present = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.configuration.id,
+            key="present",
+        ).one()
+        ensure_status_level_points(self.configuration, self.year_level_one.id)
+        present_points = BehaviorAttendanceStatusLevel.query.filter_by(
+            behavior_configuration_id=self.configuration.id,
+            behavior_attendance_status_id=present.id,
+            academic_year_level_id=self.year_level_one.id,
+        ).one()
+        present_points.points = Decimal("0.125")
+        db.session.commit()
+
+        closure_date = date(2026, 9, 21)
+        admin_client = self._client_as_admin()
+        create_response = admin_client.post(
+            "/admin/behavior/attendance",
+            data={
+                "action": "closure_create",
+                "year_id": self.year_one.id,
+                "level_id": self.year_level_one.id,
+                "class_id": self.year_class_one.id,
+                "config_id": self.configuration.id,
+                "session_id": self.session_one.id,
+                "closure_date": closure_date.isoformat(),
+                "scope_type": "class",
+                "closure_class_id": self.year_class_one.id,
+                "closure_kind": "emergency",
+                "closure_reason": "Roob xooggan",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create_response.status_code, 302, create_response.data[-5000:])
+        closure = BehaviorAttendanceClosure.query.one()
+        record = BehaviorAttendanceRecord.query.one()
+        self.assertEqual(record.behavior_attendance_closure_id, closure.id)
+        self.assertEqual(record.status_key_snapshot, "school_closure")
+        self.assertEqual(record.points_applied, Decimal("0.125"))
+
+        base_url = (
+            f"/behavior/{self.student.student_code}/{self.exam_one.id}/"
+            f"{self.configuration.id}/{self.session_one.id}/attendance/read"
+        )
+        portal_report = self.app.test_client().get(
+            base_url, query_string={"attendance_date": closure_date.isoformat()}
+        )
+        self.assertEqual(portal_report.status_code, 200, portal_report.data[-5000:])
+        body = portal_report.get_data(as_text=True)
+        for expected in ("Maalin Dugsi Xiran", "Roob xooggan", "+0.125"):
+            self.assertIn(expected, body)
+
+        portal_pdf = self.app.test_client().get(
+            base_url,
+            query_string={"download": "1", "attendance_date": closure_date.isoformat()},
+        )
+        self.assertEqual(portal_pdf.status_code, 200, portal_pdf.data[-5000:])
+        self.assertEqual(portal_pdf.mimetype, "application/pdf")
+        self.assertTrue(portal_pdf.data.startswith(b"%PDF"))
 
     def test_attendance_report_uses_recorded_time_for_every_status(self):
         ensure_attendance_defaults(self.configuration)

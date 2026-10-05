@@ -109,6 +109,7 @@ _ATTENDANCE_STATUS_LABELS = {
     "absent": "Maqnaansho",
     "excused": "Cudurdaar",
     "official_leave": "Fasaxid Rasmi ah",
+    "school_closure": "Maalin Dugsi Xiran",
 }
 
 
@@ -119,6 +120,7 @@ def _attendance_record_payload(record):
         "id": record.id,
         "attendance_date": record.attendance_date.isoformat() if record.attendance_date else None,
         "status_key": status_key,
+        "school_closure_id": getattr(record, "behavior_attendance_closure_id", None),
         "status_label": record.status_label_snapshot or _ATTENDANCE_STATUS_LABELS.get(status_key, status_key),
         "arrival_time": record.arrival_time.isoformat() if record.arrival_time else None,
         "attendance_time": record.attendance_time.isoformat() if record.attendance_time else None,
@@ -513,6 +515,7 @@ def get_behavior_report_data(student, exam):
             "absent": sum(row.status_key_snapshot == "absent" for row in attendance_rows),
             "excused": sum(row.status_key_snapshot == "excused" for row in attendance_rows),
             "official_leave": sum(row.status_key_snapshot == "official_leave" for row in attendance_rows),
+            "school_closure": sum(row.status_key_snapshot == "school_closure" for row in attendance_rows),
             "points": _number(attendance_points["signed_total"]),
             "positive_points": _number(attendance_points["positive_points"]),
             "negative_points": _number(attendance_points["negative_points"]),

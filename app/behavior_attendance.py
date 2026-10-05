@@ -50,6 +50,7 @@ OFFICIAL_ATTENDANCE_LABELS = {
     "absent": "Maqnaansho",
     "excused": "Cudurdaar",
     "official_leave": "Fasaxid Rasmi ah",
+    "school_closure": "Maalin Dugsi Xiran",
 }
 
 AUTO_ATTENDANCE_NOTE_TEMPLATES = {

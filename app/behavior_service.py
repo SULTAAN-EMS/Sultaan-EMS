@@ -37,6 +37,7 @@ ATTENDANCE_SCORING_POLICY_VERSION = "attendance-normalization-v1"
 CANONICAL_ATTENDANCE_STATUS_KEYS = frozenset(
     {"present", "late", "absent", "excused", "official_leave"}
 )
+SCOREABLE_ATTENDANCE_STATUS_KEYS = CANONICAL_ATTENDANCE_STATUS_KEYS | {"school_closure"}
 DEFAULT_ATTENDANCE_WEIGHTS = {
     "present": Decimal("1.000"),
     "late": Decimal("-0.500"),
@@ -826,7 +827,7 @@ def attendance_points_projection(records):
             continue
         seen.add(identity)
         status_key = (getattr(row, "status_key_snapshot", None) or "").strip().lower()
-        if status_key not in CANONICAL_ATTENDANCE_STATUS_KEYS:
+        if status_key not in SCOREABLE_ATTENDANCE_STATUS_KEYS:
             continue
         record_count += 1
         points = abs(decimal_value(getattr(row, "points_applied", 0) or 0, "Attendance points"))
@@ -903,7 +904,7 @@ def attendance_score_projection(
         row for row in rows
         if (getattr(row, "status", "active") or "active").strip().lower() not in {"voided", "deleted"}
         and not getattr(row, "deleted_at", None)
-        and (row.status_key_snapshot or "").strip().lower() in CANONICAL_ATTENDANCE_STATUS_KEYS
+        and (row.status_key_snapshot or "").strip().lower() in SCOREABLE_ATTENDANCE_STATUS_KEYS
     ]
     point_projection = attendance_points_projection(canonical_rows)
     policy = attendance_policy_for_session(session)
@@ -939,7 +940,7 @@ def attendance_score_projection(
     counted_rows = [
         row for row in canonical_rows
         if (row.status_key_snapshot or "").strip().lower()
-        in {"present", "late", "absent"}
+        in {"present", "late", "absent", "school_closure"}
     ]
     positive_evidence = point_projection["positive_points"]
     negative_evidence = point_projection["negative_points"]
@@ -1616,10 +1617,10 @@ def edit_event(
 
 def void_event(event, voided_by, reason):
     if not event or event.status != "active":
-        raise BehaviorValidationError("Only an active Behavior event can be voided")
+        raise BehaviorValidationError("Kaliya dhacdo firfircoon ayaa laga noqon karaa.")
     reason = (reason or "").strip()
     if not reason:
-        raise BehaviorValidationError("A reason is required when voiding a Behavior event")
+        raise BehaviorValidationError("Sababta kala-noqoshadu waa waajib.")
     event.status = "voided"
     event.voided_by = voided_by
     event.voided_at = datetime.utcnow()
@@ -1630,7 +1631,7 @@ def void_event(event, voided_by, reason):
 def restore_event(event):
     """Restore a voided event without changing its historical snapshots."""
     if not event or event.status != "voided":
-        raise BehaviorValidationError("Only a voided Behavior event can be restored")
+        raise BehaviorValidationError("Kaliya dhacdo hore looga noqday ayaa dib loo soo celin karaa.")
     event.status = "active"
     event.voided_by = None
     event.voided_at = None
@@ -1643,7 +1644,7 @@ def void_attendance_record(record, voided_by, reason):
     if not record or getattr(record, "deleted_at", None):
         raise BehaviorValidationError("Deleted Attendance records are read-only")
     if record.status != "active":
-        raise BehaviorValidationError("Only an active Attendance record can be voided")
+        raise BehaviorValidationError("Kaliya diiwaan xaadirin firfircoon ayaa laga noqon karaa.")
     reason = (reason or "").strip() or None
     record.status = "voided"
     record.voided_by = voided_by
@@ -1657,7 +1658,7 @@ def restore_attendance_record(record):
     if record and getattr(record, "deleted_at", None):
         raise BehaviorValidationError("Deleted Attendance records are read-only")
     if not record or record.status != "voided":
-        raise BehaviorValidationError("Only a voided Attendance record can be restored")
+        raise BehaviorValidationError("Kaliya diiwaan xaadirin hore looga noqday ayaa dib loo soo celin karaa.")
     record.status = "active"
     record.voided_by = None
     record.voided_at = None

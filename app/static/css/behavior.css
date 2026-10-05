@@ -1747,11 +1747,19 @@ body:has(.att-daily) .behavior-hero { display:none !important; }
 @media (prefers-reduced-motion: reduce) {
   .att-bottom-bar .status .dot-wrap.pulse::after, .att-bottom-bar .status .spinner { animation:none; }
 }
-.att-bottom-bar__nav { display:flex; grid-area:nav; align-items:center; justify-content:flex-start; gap:8px; min-width:0; }
+.att-bottom-bar__nav { display:flex; grid-area:nav; align-items:center; justify-content:flex-start; gap:8px; min-width:0; flex-wrap:wrap; }
 .att-daily .att-bar-icon { display:grid; width:42px; height:42px; place-items:center; padding:0; border:1px solid var(--att-line); border-radius:12px; color:var(--att-ink); background:var(--att-surface); cursor:pointer; transition:border-color .15s,background .15s,color .15s,transform .12s; }
 .att-daily .att-bar-icon:hover { border-color:var(--att-green); color:var(--att-green); background:var(--att-soft); }
 .att-daily .att-bar-icon:active { transform:scale(.96); }
 .att-daily .att-bar-icon:focus-visible { outline:3px solid var(--att-gold); outline-offset:2px; }
+.att-daily .att-bar-action { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:42px; padding:0 12px; border:1px solid #b8dfd1; border-radius:12px; color:#126447; background:#f0faf5; font-size:12px; font-weight:800; white-space:nowrap; cursor:pointer; transition:border-color .15s,background .15s,color .15s,transform .12s; }
+.att-daily .att-bar-action--closure { flex:0 0 auto; min-width:0; padding-inline:10px; }
+.att-daily .att-bar-action__count { display:inline-flex; min-width:22px; height:22px; align-items:center; justify-content:center; border-radius:999px; padding:0 6px; color:#126447; background:#d8f1e6; font-size:11px; font-weight:900; }
+.att-daily .att-bar-action:hover { border-color:#147d64; color:#fff; background:#147d64; }
+.att-daily .att-bar-action:hover .att-bar-action__count { color:#126447; background:#fff; }
+.att-daily .att-bar-action:active { transform:scale(.97); }
+.att-daily .att-bar-action:focus-visible { outline:3px solid var(--att-gold); outline-offset:2px; }
+.att-daily .att-bar-action i { font-size:14px; }
 .att-daily .att-btn--save { grid-area:save; justify-self:end; min-width:112px; min-height:42px; padding:10px 16px; }
 .att-daily .att-btn--save:disabled { cursor:not-allowed; opacity:.5; box-shadow:none; }
 .att-daily .att-btn--save:not(:disabled) { box-shadow:0 8px 20px -8px rgba(169,122,28,.7); }
@@ -1772,6 +1780,7 @@ body:has(.att-daily) .behavior-hero { display:none !important; }
 @media (max-width:420px) {
   .att-daily .att-bottom-bar { padding-right:10px; padding-left:10px; }
   .att-daily .att-bar-icon { width:38px; height:38px; }
+  .att-daily .att-bar-action { gap:5px; min-height:38px; padding-inline:8px; font-size:11px; }
   .att-daily .att-btn--save { min-width:96px; padding-inline:12px; }
 }
 

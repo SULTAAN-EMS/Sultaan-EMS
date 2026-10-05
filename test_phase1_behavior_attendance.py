@@ -15,6 +15,7 @@ from app.behavior_attendance import (
     attendance_statuses,
     attendance_status_points,
     ensure_attendance_defaults,
+    ensure_status_level_points,
     update_attendance_active_days,
     generate_daily_roster,
     mark_attendance,
@@ -45,6 +46,7 @@ from app.models import (
     BehaviorCategory,
     BehaviorConfiguration,
     BehaviorAttendanceRecord,
+    BehaviorAttendanceClosure,
     BehaviorAttendanceDeletion,
     BehaviorAttendanceStatusLevel,
     BehaviorEvent,
@@ -55,7 +57,7 @@ from app.models import (
     StudentEnrollment,
     User,
 )
-from app.routes_behavior import _behavior_context
+from app.routes_behavior import _academic_year_bounds, _behavior_context
 from migrations.phase_1d_behavior_level_attendance_days import _backfill
 
 
@@ -715,6 +717,20 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertLessEqual(len(attendance_queries), 2)
         self.assertIn(b"const profileCache = new Map()", page.data)
+        self.assertIn(b'id="attRows"', page.data)
+        self.assertIn(f'data-id="{self.enrollment.id}"'.encode(), page.data)
+        self.assertIn(b"Phase One Student", page.data)
+        self.assertIn(b'class="att-bar-action att-bar-action--closure" type="button" data-open-closure-dialog', page.data)
+        self.assertIn(b"document.querySelectorAll('[data-open-closure-dialog]')", page.data)
+        self.assertIn(b'id="attendanceClosuresDialog"', page.data)
+        self.assertIn(b"closureActions.prepend(historyButton)", page.data)
+        self.assertIn(b"openDialog(closureHistoryDialog, { keepOpen: [closureDialog] })", page.data)
+        self.assertEqual(page.data.count(b'<button class="att-bar-action'), 1)
+        self.assertNotIn(b'data-open-closure-history aria-label=', page.data)
+        self.assertNotIn(b'<details class="att-closure-history">', page.data)
+        self.assertIn(b'Weli fasax lama diiwaangelin.', page.data)
+        self.assertNotIn(b'id="closureTitle"', page.data)
+        self.assertNotIn(b"Fasax rasmi ah diiwaangeli; dhibcaha Joogidda", page.data)
         self.assertEqual(page.data.count(f'data-profile-id="{self.enrollment.id}"'.encode()), 1)
         self.assertNotIn(b"historical attendance", page.data)
 
@@ -1142,6 +1158,180 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertNotIn(b"Label | Points | Description", page.data)
         self.assertNotIn(b"Drop-down", page.data)
         self.assertNotIn(b"Linear scale", page.data)
+
+    def test_school_closure_creates_positive_level_scoped_attendance_and_renders(self):
+        ensure_attendance_defaults(self.config)
+        present = next(item for item in attendance_statuses(self.config) if item.key == "present")
+        ensure_status_level_points(self.config, self.enrollment.academic_year_level_id)
+        level_points = BehaviorAttendanceStatusLevel.query.filter_by(
+            behavior_configuration_id=self.config.id,
+            behavior_attendance_status_id=present.id,
+            academic_year_level_id=self.enrollment.academic_year_level_id,
+        ).one()
+        level_points.points = Decimal("0.125")
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["_user_id"] = str(self.admin.id)
+            browser_session["_fresh"] = True
+        response = client.get(
+            "/admin/behavior/attendance",
+            query_string={
+                "year_id": self.config.academic_year_id,
+                "level_id": self.enrollment.academic_year_level_id,
+                "config_id": self.config.id,
+                "class_id": self.enrollment.academic_year_class_id,
+                "session_id": self.session.id,
+                "attendance_date": "2026-08-29",
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.data[-5000:])
+        self.assertIn(b"Maalin dugsi xiran", response.data)
+        self.assertIn(b"document.querySelectorAll('[data-closure-scope]')", response.data)
+        self.assertIn(b'id="attendanceClosuresDialog"', response.data)
+        self.assertIn(b'Weli fasax lama diiwaangelin.', response.data)
+
+        response = client.post(
+            "/admin/behavior/attendance",
+            data={
+                "action": "closure_create",
+                "year_id": self.config.academic_year_id,
+                "level_id": self.enrollment.academic_year_level_id,
+                "config_id": self.config.id,
+                "class_id": self.enrollment.academic_year_class_id,
+                "session_id": self.session.id,
+                "closure_date": "2026-08-29",
+                "scope_type": "all",
+                "closure_kind": "emergency",
+                "closure_reason": "Roob xooggan",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302, response.data[-5000:])
+        closure = BehaviorAttendanceClosure.query.one()
+        record = BehaviorAttendanceRecord.query.one()
+        self.assertEqual(record.behavior_attendance_closure_id, closure.id)
+        self.assertEqual(record.status_key_snapshot, "school_closure")
+        self.assertEqual(record.polarity, "positive")
+        self.assertEqual(record.points_applied, Decimal("0.125"))
+        projection = attendance_points_projection([record])
+        self.assertEqual(projection["positive_points"], Decimal("0.125"))
+        self.assertEqual(projection["negative_points"], Decimal("0.000"))
+
+        history = client.get(
+            "/admin/behavior/attendance",
+            query_string={
+                "year_id": self.config.academic_year_id,
+                "level_id": self.enrollment.academic_year_level_id,
+                "config_id": self.config.id,
+                "class_id": self.enrollment.academic_year_class_id,
+                "session_id": self.session.id,
+                "attendance_date": "2026-08-29",
+            },
+        )
+        self.assertEqual(history.status_code, 200, history.data[-5000:])
+        self.assertIn(b'class="att-closure-item"', history.data)
+        self.assertIn(b'Fasaxyadii la diiwaangeliyey', history.data)
+        self.assertNotIn(b'<details class="att-closure-history">', history.data)
+
+        report = client.get(
+            f"/admin/behavior/attendance/students/{self.enrollment.id}/report",
+            query_string={
+                "year_id": self.config.academic_year_id,
+                "level_id": self.enrollment.academic_year_level_id,
+                "config_id": self.config.id,
+                "class_id": self.enrollment.academic_year_class_id,
+                "session_id": self.session.id,
+                "attendance_date": "2026-08-29",
+            },
+        )
+        self.assertEqual(report.status_code, 200, report.data[-5000:])
+        self.assertIn(b"Maalin Dugsi Xiran", report.data)
+        self.assertIn(b"Roob xooggan", report.data)
+
+        response = client.post(
+            "/admin/behavior/attendance",
+            data={
+                "action": "closure_void",
+                "closure_id": closure.id,
+                "void_reason": "Dugsigu wuu furmay",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302, response.data[-5000:])
+        db.session.refresh(closure)
+        db.session.refresh(record)
+        self.assertEqual(closure.status, "voided")
+        self.assertEqual(record.status, "voided")
+        self.assertEqual(attendance_points_projection([record])["positive_points"], Decimal("0.000"))
+
+        response = client.post(
+            "/admin/behavior/attendance",
+            data={
+                "action": "closure_restore",
+                "closure_id": closure.id,
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302, response.data[-5000:])
+        db.session.refresh(record)
+        self.assertEqual(record.status, "active")
+        self.assertEqual(attendance_points_projection([record])["positive_points"], Decimal("0.125"))
+
+        response = client.post(
+            "/admin/behavior/attendance",
+            data={
+                "action": "closure_delete",
+                "closure_id": closure.id,
+                "confirmation": "DELETE SCHOOL CLOSURE",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302, response.data[-5000:])
+        self.assertEqual(BehaviorAttendanceClosure.query.count(), 0)
+        self.assertEqual(BehaviorAttendanceRecord.query.count(), 0)
+        self.assertEqual(BehaviorAttendanceDeletion.query.count(), 1)
+
+    def test_school_closure_refuses_to_replace_existing_attendance(self):
+        ensure_attendance_defaults(self.config)
+        present = next(item for item in attendance_statuses(self.config) if item.key == "present")
+        mark_attendance(
+            self.config,
+            self.session,
+            self.enrollment,
+            present.id,
+            date(2026, 8, 29),
+        )
+        db.session.commit()
+        client = self.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["_user_id"] = str(self.admin.id)
+            browser_session["_fresh"] = True
+        response = client.post(
+            "/admin/behavior/attendance",
+            data={
+                "action": "closure_create",
+                "year_id": self.config.academic_year_id,
+                "level_id": self.enrollment.academic_year_level_id,
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+                "closure_date": "2026-08-29",
+                "scope_type": "all",
+                "closure_kind": "holiday",
+                "closure_reason": "Ciid",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("xogtii hore lama beddelin".encode(), response.data.lower())
+        self.assertEqual(BehaviorAttendanceClosure.query.count(), 0)
+        self.assertEqual(BehaviorAttendanceRecord.query.count(), 1)
+
+    def test_school_year_bounds_accepts_four_digit_and_short_end_year_forms(self):
+        self.assertEqual(_academic_year_bounds("2026-2027"), (2026, 2027))
+        self.assertEqual(_academic_year_bounds("2026/27"), (2026, 2027))
+        self.assertEqual(_academic_year_bounds("2026"), (2026, 2026))
 
 
 if __name__ == "__main__":

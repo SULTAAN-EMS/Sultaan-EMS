@@ -956,6 +956,45 @@ class BehaviorAttendanceDay(TimestampMixin, db.Model):
     )
 
 
+class BehaviorAttendanceClosure(TimestampMixin, db.Model):
+    """An official no-attendance day for a Behavior session and school scope."""
+
+    __tablename__ = "behavior_attendance_closures"
+
+    id = db.Column(db.Integer, primary_key=True)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey("academic_years.id", ondelete="RESTRICT"), nullable=False, index=True)
+    behavior_configuration_id = db.Column(db.Integer, db.ForeignKey("behavior_configurations.id", ondelete="RESTRICT"), nullable=False, index=True)
+    behavior_session_id = db.Column(db.Integer, db.ForeignKey("behavior_sessions.id", ondelete="RESTRICT"), nullable=False, index=True)
+    attendance_date = db.Column(db.Date, nullable=False, index=True)
+    scope_type = db.Column(db.String(12), nullable=False)
+    school_shift = db.Column(db.String(20), nullable=True)
+    academic_year_level_id = db.Column(db.Integer, db.ForeignKey("academic_year_levels.id", ondelete="RESTRICT"), nullable=True, index=True)
+    academic_year_class_id = db.Column(db.Integer, db.ForeignKey("academic_year_classes.id", ondelete="RESTRICT"), nullable=True, index=True)
+    closure_kind = db.Column(db.String(24), nullable=False)
+    reason = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(10), nullable=False, default="active", server_default="active", index=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    voided_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    voided_at = db.Column(db.DateTime, nullable=True)
+    void_reason = db.Column(db.String(255), nullable=True)
+
+    academic_year = db.relationship("AcademicYear")
+    configuration = db.relationship("BehaviorConfiguration")
+    session = db.relationship("BehaviorSession")
+    level = db.relationship("AcademicYearLevel")
+    school_class = db.relationship("AcademicYearClass")
+    creator = db.relationship("User", foreign_keys=[created_by_id])
+    updater = db.relationship("User", foreign_keys=[updated_by_id])
+    voider = db.relationship("User", foreign_keys=[voided_by_id])
+
+    __table_args__ = (
+        db.CheckConstraint("scope_type IN ('all', 'shift', 'level', 'class')", name="ck_behavior_attendance_closure_scope"),
+        db.CheckConstraint("status IN ('active', 'voided')", name="ck_behavior_attendance_closure_status"),
+        db.CheckConstraint("closure_kind IN ('holiday', 'emergency', 'special', 'other')", name="ck_behavior_attendance_closure_kind"),
+    )
+
+
 class BehaviorAttendanceRecord(TimestampMixin, db.Model):
     """One daily Attendance mark for one enrollment and Behavior session."""
 
@@ -1016,6 +1055,12 @@ class BehaviorAttendanceRecord(TimestampMixin, db.Model):
         nullable=False,
         index=True,
     )
+    behavior_attendance_closure_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_attendance_closures.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     status_key_snapshot = db.Column(db.String(40), nullable=False)
     status_label_snapshot = db.Column(db.String(120), nullable=False)
     polarity = db.Column(db.String(10), nullable=False, default="neutral")
@@ -1044,6 +1089,7 @@ class BehaviorAttendanceRecord(TimestampMixin, db.Model):
     academic_year_level = db.relationship("AcademicYearLevel")
     academic_year_class = db.relationship("AcademicYearClass")
     attendance_status = db.relationship("BehaviorAttendanceStatus", back_populates="records")
+    closure = db.relationship("BehaviorAttendanceClosure")
     marked_by = db.relationship("User", foreign_keys=[marked_by_id])
     voider = db.relationship("User", foreign_keys=[voided_by])
     deleter = db.relationship("User", foreign_keys=[deleted_by])
