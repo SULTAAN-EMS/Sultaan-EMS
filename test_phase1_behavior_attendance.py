@@ -715,6 +715,8 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
             event.remove(db.engine, "before_cursor_execute", count_attendance_queries)
 
         self.assertEqual(page.status_code, 200)
+        self.assertIn(b'data-attendance-saved="0"', page.data)
+        self.assertIn(b">Diyaar</span>", page.data)
         self.assertLessEqual(len(attendance_queries), 2)
         self.assertIn(b"const profileCache = new Map()", page.data)
         self.assertIn(b'id="attRows"', page.data)
@@ -729,6 +731,14 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertNotIn(b'data-open-closure-history aria-label=', page.data)
         self.assertNotIn(b'<details class="att-closure-history">', page.data)
         self.assertIn(b'Weli fasax lama diiwaangelin.', page.data)
+
+        saved_page = client.get(
+            "/admin/behavior/attendance",
+            query_string={**query, "attendance_date": "2026-08-28"},
+        )
+        self.assertEqual(saved_page.status_code, 200)
+        self.assertIn(b'data-attendance-saved="1"', saved_page.data)
+        self.assertIn(b"Maalinta tan waa la keydiyey", saved_page.data)
         self.assertNotIn(b'id="closureTitle"', page.data)
         self.assertNotIn(b"Fasax rasmi ah diiwaangeli; dhibcaha Joogidda", page.data)
         self.assertEqual(page.data.count(f'data-profile-id="{self.enrollment.id}"'.encode()), 1)

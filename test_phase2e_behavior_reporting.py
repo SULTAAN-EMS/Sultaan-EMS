@@ -1784,6 +1784,51 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         self.assertIn(f'<img src="{logo_url}"', body)
         self.assertIn("if (!node.querySelector('img')) node.innerHTML = icons.cap", body)
 
+    def test_attendance_report_shows_combined_level_class_and_school_shift(self):
+        self.year_class_one.school_shift = "morning"
+        db.session.commit()
+        response = self._client_as_admin().get(
+            "/admin/behavior/attendance/students/%s/report"
+            "?year_id=%s&level_id=%s&config_id=%s&session_id=%s&attendance_date=2026-09-01"
+            % (
+                self.enrollment.id,
+                self.year_one.id,
+                self.year_level_one.id,
+                self.configuration.id,
+                self.session_one.id,
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("TIRA-TAXANAHA", body)
+        self.assertIn("SANAD DUGSIYEEDKA", body)
+        self.assertIn("HEERKA DUGSIGA IYO FASALKA", body)
+        self.assertIn("Secondary · Form Four", body)
+        self.assertIn("GELINKA", body)
+        self.assertIn("Gelinka hore", body)
+        self.assertIn('class="info-icon" data-icon="sunrise" style="background:#d97706;"', body)
+        self.assertIn("sunrise: icon('<path d=\"M3 18h18M5 18a7 7 0 0 1 14 0", body)
+
+        self.year_class_one.school_shift = None
+        self.session_one.applicable_shift = "afternoon"
+        db.session.commit()
+        fallback_response = self._client_as_admin().get(
+            "/admin/behavior/attendance/students/%s/report"
+            "?year_id=%s&level_id=%s&config_id=%s&session_id=%s&attendance_date=2026-09-01"
+            % (
+                self.enrollment.id,
+                self.year_one.id,
+                self.year_level_one.id,
+                self.configuration.id,
+                self.session_one.id,
+            )
+        )
+        self.assertEqual(fallback_response.status_code, 200)
+        fallback_body = fallback_response.get_data(as_text=True)
+        self.assertIn("Gelinka dambe", fallback_body)
+        self.assertIn('class="info-icon" data-icon="sunset" style="background:#d97706;"', fallback_body)
+        self.assertIn("sunset: icon('<path d=\"M3 18h18M5 18a7 7 0 0 1 14 0", fallback_body)
+
 
 if __name__ == "__main__":
     unittest.main()

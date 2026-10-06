@@ -225,7 +225,7 @@
 <div class="behavior-page view">
   <header class="behavior-hero" hidden><span class="behavior-hero__mark"><i class="fa-solid fa-user-check"></i></span><div class="behavior-hero__copy"><span class="behavior-eyebrow"><i class="fa-solid fa-calendar-check"></i> Behavior Attendance</span><h1>Daily Attendance</h1><p>Record attendance inside the selected year-aware Behavior configuration and session.</p></div></header>
   {% include "admin/behavior/_nav.html" %}
-  <div class="att-daily" data-school-day="{{ '1' if school_day else '0' }}" data-selected-weekday="{{ attendance_date.weekday() }}" data-active-weekdays="{{ active_weekdays|join(',') }}">
+  <div class="att-daily" data-school-day="{{ '1' if school_day else '0' }}" data-attendance-saved="{{ '1' if attendance_saved else '0' }}" data-selected-weekday="{{ attendance_date.weekday() }}" data-active-weekdays="{{ active_weekdays|join(',') }}">
     <svg class="att-sprite" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;overflow:hidden">
       <defs>
       <symbol id="att-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
@@ -324,11 +324,11 @@
       </div>
     </form></section>
     <div class="att-bottom-bar" role="toolbar" aria-label="Xakamaynta xaadirka">
-      <div class="status" id="status" role="status" aria-live="polite" style="--status-bg:rgba(31,157,85,.12);--status-fg:#1f9d55;">
+      <div class="status" id="status" data-state="{{ 'saved' if attendance_saved else 'ready' }}" role="status" aria-live="polite" style="--status-bg:rgba(31,157,85,.12);--status-fg:#1f9d55;">
         <span class="dot-wrap pulse" id="dotWrap">
           <svg id="dotIcon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         </span>
-        <span class="label" id="statusLabel">La keydiyey</span>
+        <span class="label" id="statusLabel">{{ 'Maalinta tan waa la keydiyey' if attendance_saved else 'Diyaar' }}</span>
       </div>
       <nav class="att-bottom-bar__nav" aria-label="Qalabka xaadirka">
         <button class="att-bar-icon" type="button" data-open-records title="Diiwaanka Xaadirka" aria-label="Fur Diiwaanka Xaadirka"><svg><use href="#att-history"/></svg></button>
@@ -561,15 +561,15 @@
   };
   const render = () => { rows.forEach(renderRow); renderSummary(); renderDirty(); };
   let saveInFlight = false;
-  let saveState = 'saved';
-  let successTimer = null;
+  let hasSavedAttendance = root.dataset.attendanceSaved === '1';
+  let saveState = hasSavedAttendance ? 'saved' : 'ready';
   let lastSaveUndoSnapshots = null;
-  const SAVE_SUCCESS_VISIBLE_MS = 1500;
   const statusStates = {
-    saved:   { bg:'rgba(31,157,85,.12)',  fg:'#1f9d55', label:'La keydiyey',                 icon:'check', pulse:true  },
+    ready:   { bg:'rgba(31,157,85,.12)',  fg:'#1f9d55', label:'Diyaar',                       icon:'check', pulse:true  },
+    saved:   { bg:'rgba(31,157,85,.12)',  fg:'#1f9d55', label:'Maalinta tan waa la keydiyey', icon:'check', pulse:true  },
     unsaved: { bg:'rgba(221,143,22,.14)', fg:'#dd8f16', label:'Isbeddel lama keydin',         icon:'dot',   pulse:true  },
     saving:  { bg:'rgba(30,73,118,.14)',  fg:'#1e4976', label:'La keydinayo…',                icon:'spin',  pulse:false },
-    success: { bg:'rgba(31,157,85,.14)',  fg:'#1f9d55', label:'Si guul leh ayaa loo keydiyey', icon:'check', pulse:false },
+    success: { bg:'rgba(31,157,85,.12)',  fg:'#1f9d55', label:'La keydiyey',                  icon:'check', pulse:true  },
   };
   const statusIcons = {
     check: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
@@ -594,11 +594,7 @@
     if (saveButton) saveButton.disabled = key !== 'unsaved';
   };
   const showSuccessThenSaved = () => {
-    window.clearTimeout(successTimer);
     setSaveStatus('success');
-    successTimer = window.setTimeout(() => {
-      setSaveStatus(dirtyCount() ? 'unsaved' : 'saved');
-    }, SAVE_SUCCESS_VISIBLE_MS);
   };
   const dirtyCount = () => rows.filter(row => JSON.stringify(currentSnapshot(row)) !== JSON.stringify(savedSnapshot(row))).length;
   const applySnapshot = (row, snapshot) => {
@@ -614,7 +610,7 @@
     const dirty = dirtyCount();
     if (!saveInFlight) {
       if (dirty) setSaveStatus('unsaved');
-      else if (saveState !== 'success') setSaveStatus('saved');
+      else if (saveState !== 'success') setSaveStatus(hasSavedAttendance ? 'saved' : 'ready');
     }
     return dirty;
   };
@@ -643,6 +639,7 @@
       const contentType = response.headers.get('content-type') || '';
       const payload = contentType.includes('application/json') ? await response.json() : { ok: response.ok, unmarked: rows.filter(row => !currentStatus(row)).length };
       if (!response.ok || !payload.ok) throw new Error(payload.message || payload.error || `Xaadirka lama keydin (${response.status}).`);
+      hasSavedAttendance = true;
       lastSaveUndoSnapshots = undoSnapshots;
       snapshots.forEach(([key, note, late, auto], row) => { row.dataset.savedStatus = key; row.dataset.savedNote = note; row.dataset.savedLate = late; row.dataset.savedNoteAutoGenerated = auto; });
       render();

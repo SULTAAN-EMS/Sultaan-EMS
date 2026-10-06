@@ -3319,6 +3319,10 @@ def attendance():
             ).all()
         }
     rows = [{"enrollment": enrollment, "record": records.get(enrollment.id)} for enrollment in enrollments]
+    attendance_saved = any(
+        (record.status or "active") == "active"
+        for record in records.values()
+    )
     for row in rows:
         record = row["record"]
         row["display_note"] = (
@@ -3428,6 +3432,7 @@ def attendance():
         active_weekdays=active_weekdays,
         weekday_label=attendance_weekday_label(attendance_date.weekday()),
         rows=rows,
+        attendance_saved=attendance_saved,
         record_rows=[],
         overview=overview,
         official_status_labels={item.key: item.label for item in statuses},
@@ -3735,6 +3740,18 @@ def attendance_report(enrollment_id):
         flash(str(exc), "danger")
         return redirect(url_for("behavior.attendance", config_id=config.id, session_id=selected_session.id))
 
+    class_shift = (
+        enrollment.academic_year_class.school_shift
+        if enrollment.academic_year_class else None
+    )
+    if class_shift not in {"morning", "afternoon"}:
+        class_shift = selected_session.applicable_shift
+    school_shift_label = {
+        "morning": "Gelinka hore",
+        "afternoon": "Gelinka dambe",
+    }.get(class_shift, "Lama cayimin")
+    school_shift_key = class_shift if class_shift in {"morning", "afternoon"} else None
+
     raw_date = request.args.get("attendance_date")
     try:
         report_date = date.fromisoformat(raw_date) if raw_date else date.today()
@@ -3984,6 +4001,8 @@ def attendance_report(enrollment_id):
         session=selected_session,
         enrollment=enrollment,
         student=enrollment.student,
+        school_shift_label=school_shift_label,
+        school_shift_key=school_shift_key,
         report_date=report_date,
         report=monthly_reports[0],
         monthly_reports=monthly_reports,
