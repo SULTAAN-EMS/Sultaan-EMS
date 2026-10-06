@@ -423,6 +423,15 @@
     select.addEventListener('change', syncClosureFields);
     syncClosureFields();
   });
+  const closureCreateForm = document.querySelector('.att-closure-dialog__form');
+  closureCreateForm?.addEventListener('submit', () => {
+    if (!closureCreateForm.reportValidity()) return;
+    const submit = closureCreateForm.querySelector('button[type="submit"]');
+    if (!submit || submit.disabled) return;
+    submit.disabled = true;
+    submit.setAttribute('aria-busy', 'true');
+    submit.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Waa la keydinayaa...';
+  });
   // Empty nullable notes must render as empty fields, never as the Jinja string "None".
   rows.forEach(row => {
     const note = row.querySelector('.att-note');

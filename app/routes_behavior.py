@@ -76,6 +76,7 @@ from .behavior_attendance import (
     validate_attendance_ledger_capacity,
     enrollments_for_class,
     ensure_attendance_defaults,
+    ensure_level_attendance_days,
     generate_daily_roster,
     mark_attendance,
     update_attendance_active_days as apply_attendance_active_days,
@@ -2900,14 +2901,20 @@ def attendance():
                     config, selected_session, scope_type,
                     school_shift=school_shift, level_id=level_id, class_id=class_id,
                 )
-                eligible = []
-                for enrollment in targets:
-                    ensure_attendance_defaults(config, enrollment.academic_year_level_id)
-                    if any(
-                        day.weekday == closure_date.weekday() and day.is_active
-                        for day in attendance_days(config, academic_year_level_id=enrollment.academic_year_level_id)
-                    ):
-                        eligible.append(enrollment)
+                ensure_attendance_defaults(config)
+                active_weekdays_by_level = {}
+                target_level_ids = {item.academic_year_level_id for item in targets}
+                for target_level_id in target_level_ids:
+                    ensure_level_attendance_days(config, target_level_id)
+                    active_weekdays_by_level[target_level_id] = {
+                        day.weekday
+                        for day in attendance_days(config, academic_year_level_id=target_level_id)
+                        if day.is_active
+                    }
+                eligible = [
+                    enrollment for enrollment in targets
+                    if closure_date.weekday() in active_weekdays_by_level[enrollment.academic_year_level_id]
+                ]
                 if not eligible:
                     raise BehaviorValidationError("Ma jiro arday ku jira fasal/level shaqaynaya maalintan iyo session-kan.")
                 enrollment_ids = [item.id for item in eligible]
@@ -2923,12 +2930,12 @@ def attendance():
                         "Xogtii hore lama beddelin; sax/ka saar calaamadahaas marka hore."
                     )
                 present_by_level = {}
+                present = BehaviorAttendanceStatus.query.filter_by(
+                    behavior_configuration_id=config.id, key="present", is_active=True,
+                ).first()
                 for enrollment in eligible:
                     level_id_for_student = enrollment.academic_year_level_id
                     if level_id_for_student not in present_by_level:
-                        present = BehaviorAttendanceStatus.query.filter_by(
-                            behavior_configuration_id=config.id, key="present", is_active=True,
-                        ).first()
                         ensure_status_level_points(config, level_id_for_student)
                         points = attendance_status_points(present, level_id_for_student)
                         if not present or not present.contributes_to_behavior or present.polarity != "positive":
