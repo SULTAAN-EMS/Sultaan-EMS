@@ -3,7 +3,7 @@
 {% set behavior_config_id = request.args.get('config_id') or (config.id if config is defined and config else none) %}
 {% set behavior_class_id = request.args.get('class_id') or (selected_class.id if selected_class is defined and selected_class else none) %}
 {% set behavior_session_id = request.args.get('session_id') or (selected_session.id if selected_session is defined and selected_session else none) %}
-{% set behavior_logo_path = ui_settings.logo_path or ui_settings.admin_logo_path or 'uploads/logo_WhatsApp_Image_2026-06-21_at_2.54.16_PM_1.jpeg' %}
+{% set behavior_logo_path = ui_settings.admin_logo_path or ui_settings.logo_path %}
 {% macro behavior_url(endpoint) -%}
 {{ url_for(endpoint, year_id=behavior_year_id or none, level_id=behavior_level_id or none, config_id=behavior_config_id or none, class_id=behavior_class_id or none, session_id=behavior_session_id or none) }}
 {%- endmacro %}

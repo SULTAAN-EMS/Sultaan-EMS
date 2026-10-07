@@ -165,6 +165,23 @@ class TestPhase2CStudentManagement(unittest.TestCase):
         )
         self.assertIn(other_year_page.status_code, (302, 303))
 
+    def test_student_management_lock_filters_use_student_status(self):
+        student = self._create_student("TIS-LOCK")
+        student.is_result_locked = True
+        db.session.commit()
+
+        locked_page = self.client.get(
+            f"/admin/advanced-results/students-management?year_id={self.year_a.id}&status_filter=locked"
+        )
+        active_page = self.client.get(
+            f"/admin/advanced-results/students-management?year_id={self.year_a.id}&status_filter=active"
+        )
+
+        self.assertEqual(locked_page.status_code, 200)
+        self.assertIn(b"TIS-LOCK", locked_page.data)
+        self.assertEqual(active_page.status_code, 200)
+        self.assertNotIn(b"TIS-LOCK", active_page.data)
+
     def test_identity_edit_does_not_overwrite_historical_placement(self):
         student = self._create_student()
         response = self.client.post(
