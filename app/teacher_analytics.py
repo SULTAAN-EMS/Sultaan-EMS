@@ -217,7 +217,13 @@ def filter_options(teacher, filters):
     """Get filter options for teacher portal using new academic hierarchy with legacy fallback"""
     _, academic_classes, sections, subjects, _, class_ids, _, subject_ids = teacher_assignments(teacher)
     students = scoped_students(teacher, {})
-    year_ids = sorted({student.academic_year_id for student in students})
+    year_ids = sorted(
+        {
+            student.academic_year_id
+            for student in students
+            if student.academic_year_id is not None
+        }
+    )
     years = AcademicYear.query.filter(AcademicYear.id.in_(year_ids)).order_by(AcademicYear.name.desc()).all() if year_ids else []
     exam_query = Exam.query
     if year_ids:

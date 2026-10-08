@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timedelta
 
-from flask import Flask, flash, redirect, request, session, url_for
+from flask import Flask, Request, current_app, flash, redirect, request, session, url_for
 from flask_login import LoginManager, current_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect
@@ -15,8 +15,19 @@ login_manager.login_view = "auth.login"
 login_manager.login_message_category = "warning"
 
 
+class BooksUploadRequest(Request):
+    @property
+    def max_content_length(self):
+        if self.endpoint in {"books.admin_create", "books.admin_update"}:
+            pdf_limit = int(current_app.config.get("BOOKS_MAX_UPLOAD_BYTES", 50 * 1024 * 1024))
+            cover_limit = int(current_app.config.get("BOOKS_MAX_COVER_BYTES", 5 * 1024 * 1024))
+            return pdf_limit + cover_limit + 2 * 1024 * 1024
+        return super().max_content_length
+
+
 def create_app(config_class=Config):
     app = Flask(__name__)
+    app.request_class = BooksUploadRequest
     app.config.from_object(config_class)
 
     # Local development should reflect template and static-file edits on the
@@ -171,9 +182,19 @@ def create_app(config_class=Config):
         def asset_url(path):
             if not path:
                 return ""
-            value = str(path)
+            value = str(path).strip().replace("\\", "/")
             if value.startswith(("http://", "https://", "data:")):
                 return value
+            if value.startswith("//"):
+                return f"https:{value}"
+            if value.startswith("/static/"):
+                return value
+            if value.startswith("/uploads/"):
+                return url_for("static", filename=value.lstrip("/"))
+            if value.startswith("/"):
+                return value
+            if value.startswith("static/"):
+                value = value[len("static/"):]
             return url_for("static", filename=value)
 
         return {
@@ -200,6 +221,7 @@ def create_app(config_class=Config):
     from .routes_invigilator import invigilator_bp
     from .routes_seat_arrangement import seat_arrangement_bp
     from .routes_seat_mixer import seat_mixer_bp
+    from .routes_books import books_bp
 
     app.register_blueprint(public_bp)
     app.register_blueprint(auth_bp)
@@ -214,6 +236,7 @@ def create_app(config_class=Config):
     app.register_blueprint(invigilator_bp, url_prefix="/invigilator")
     app.register_blueprint(seat_arrangement_bp, url_prefix="/admin/seat-arrangement")
     app.register_blueprint(seat_mixer_bp, url_prefix="/admin/seat-mixer")
+    app.register_blueprint(books_bp)
 
     try:
         import os

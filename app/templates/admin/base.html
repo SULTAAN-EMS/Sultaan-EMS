@@ -354,6 +354,7 @@
     <div class="nav-group">
       <div class="nav-group-header">Hawlgelinta</div>
       {% if can('seat_arrangement') %}<a href="{{ url_for('seat_mixer.index') }}"><i class="fa-solid fa-chair" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Habaynta Fadhiga Ardeyda</span></a>{% endif %}
+      {% if current_user.role in ['admin', 'super_admin'] %}<a href="{{ url_for('books.admin_page') }}" class="{% if request.endpoint and request.endpoint.startswith('books.admin_') %}is-active{% endif %}"><i class="fa-solid fa-book-open" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Buugaagta</span></a>{% endif %}
       {% if can('attendance') %}<a href="{{ url_for('admin_attendance.dashboard') }}"><i class="fa-solid fa-user-check" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Xaadirka Fasal imtixaan</span></a>{% endif %}
       <a href="{{ url_for('admin.invigilators') }}"><i class="fa-solid fa-user-shield" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Ilaaliyaasha Imtixaanka</span></a>
       <a href="{{ url_for('admin.incidents') }}"><i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;width:20px;text-align:center;"></i><span class="nav-label">Warbixinnada Dhacdooyinka</span></a>

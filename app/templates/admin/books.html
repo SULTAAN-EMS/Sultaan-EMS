@@ -1,0 +1,49 @@
+{% extends "admin/base.html" %}
+{% block title %}Buugaagta{% endblock %}
+{% block page_title %}Buugaagta{% endblock %}
+{% block extra_head %}
+{{ super() }}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="{{ url_for('static', filename='js/books_cover_library.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/books_admin.js') }}" defer></script>
+{% endblock %}
+{% block admin_content %}
+<div id="booksAdminMount">
+  <div class="main" id="booksAdminApp">
+    <div class="bar">
+      <div class="crumb">Maamul / <b>Buugaagta</b></div>
+      <div class="me"><i>{{ (current_user.username or 'AD')[:2]|upper }}</i>{{ current_user.full_name }}</div>
+    </div>
+    <div class="content" id="adminContent">
+      <div class="head">
+        <div><h2>Buugaagta</h2><p>Maaree buugaagta dugsiga: ku dar, wax ka beddel, qari ama tirtir.</p></div>
+        <div class="headR">
+          <button class="linkpill" data-act="copy" title="Koobi link-ga dadweynaha"><svg class="ic"><use href="#i-link"/></svg>Link-ga dadweynaha: /books<svg class="ic"><use href="#i-copy"/></svg></button>
+          <button class="btn pri" data-act="new"><svg class="ic"><use href="#i-plus"/></svg>Buug cusub</button>
+        </div>
+      </div>
+      <div class="stats" id="stats" aria-live="polite"></div>
+      <div class="panel">
+        <div class="tools">
+          <label class="field grow"><svg class="ic"><use href="#i-search"/></svg><input id="aq" placeholder="Raadi cinwaan ama maaddo" aria-label="Raadi"></label>
+          <label class="field"><select id="al" aria-label="Heer"></select></label>
+          <label class="field"><select id="as" aria-label="Maaddo"></select></label>
+          <label class="field"><select id="ast" aria-label="Xaalad"><option value="all">Dhammaan xaaladaha</option><option value="on">Muuqda</option><option value="off">Qarsan</option></select></label>
+          <div class="seg" role="group" aria-label="Qaabka liiska">
+            <button id="vTable" aria-pressed="false" aria-label="Jaantus" title="Jaantus"><svg class="ic"><use href="#i-list"/></svg></button>
+            <button id="vGrid" aria-pressed="true" aria-label="Kaararka" title="Kaararka"><svg class="ic"><use href="#i-grid"/></svg></button>
+          </div>
+        </div>
+        <div id="aList" aria-live="polite"></div>
+      </div>
+    </div>
+    <div class="ov" id="ov"><div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="booksModalTitle"></div></div>
+    <div class="toast" id="toastA" role="status" aria-live="polite"></div>
+  </div>
+</div>
+<script id="booksBootstrap" type="application/json">{{ books|tojson }}</script>
+<script id="booksConfig" type="application/json">{{ {'levels': levels, 'subjects': subjects, 'publicUrl': url_for('books.public_page'), 'csrf': csrf_value, 'logoUrl': asset_url(ui_settings.logo_path) if ui_settings.logo_path else ''}|tojson }}</script>
+<template id="booksIcons">{% include "books/_icons.html" %}</template>
+{% endblock %}

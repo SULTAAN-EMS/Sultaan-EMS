@@ -1394,6 +1394,34 @@ class Exam(TimestampMixin, db.Model):
     )
 
 
+class BookLibraryItem(TimestampMixin, db.Model):
+    """A school book with private file storage and explicit public visibility."""
+
+    __tablename__ = "book_library_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False, index=True)
+    level = db.Column(db.String(20), nullable=False, index=True)
+    class_name = db.Column(db.String(40), nullable=False, default="Dhammaan")
+    subject = db.Column(db.String(120), nullable=False, default="Dhammaan", index=True)
+    scope = db.Column(db.String(20), nullable=False)
+    description = db.Column(db.Text, nullable=False, default="")
+    cover_storage_name = db.Column(db.String(255), nullable=True)
+    pdf_storage_name = db.Column(db.String(255), nullable=False, unique=True)
+    original_filename = db.Column(db.String(255), nullable=False)
+    size_bytes = db.Column(db.BigInteger, nullable=False, default=0)
+    page_count = db.Column(db.Integer, nullable=False, default=0)
+    is_visible = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    read_count = db.Column(db.Integer, nullable=False, default=0)
+    download_count = db.Column(db.Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        db.CheckConstraint("scope IN ('level', 'class', 'subject')", name="ck_book_library_scope"),
+        db.CheckConstraint("page_count >= 0", name="ck_book_library_pages_nonnegative"),
+        db.CheckConstraint("size_bytes >= 0", name="ck_book_library_size_nonnegative"),
+    )
+
+
 class Student(TimestampMixin, db.Model):
     __tablename__ = "students"
 

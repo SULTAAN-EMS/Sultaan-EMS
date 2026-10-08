@@ -183,6 +183,9 @@ class Config:
     UPLOAD_FOLDER = str(
         BASE_DIR / os.getenv("UPLOAD_FOLDER", "app/static/uploads")
     )
+    BOOKS_STORAGE_FOLDER = os.getenv("BOOKS_STORAGE_FOLDER")
+    BOOKS_MAX_UPLOAD_BYTES = int(os.getenv("BOOKS_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
+    BOOKS_MAX_COVER_BYTES = int(os.getenv("BOOKS_MAX_COVER_BYTES", str(5 * 1024 * 1024)))
 
     MAX_CONTENT_LENGTH = int(
         os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024))

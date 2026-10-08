@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="so">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0A5F4F">
+  <title>Maktabadda Buugaagta · {{ ui_settings.school_name or 'Taysiir International Schools' }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="{{ url_for('static', filename='js/books_cover_library.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/books_public.js') }}" defer></script>
+</head>
+<body>
+  <div id="booksPublicMount"></div>
+  <script id="booksPublicBootstrap" type="application/json">{{ books|tojson }}</script>
+  <script id="booksPublicConfig" type="application/json">{{ {'levels': levels, 'subjects': subjects, 'schoolName': ui_settings.school_name or 'Taysiir International Schools', 'logoUrl': asset_url(ui_settings.logo_path) if ui_settings.logo_path else ''}|tojson }}</script>
+  <template id="booksIcons">{% include "books/_icons.html" %}</template>
+  <template id="booksPublicTemplate">
+    <main class="public-shell">
+      <div class="screen" id="screen">
+        <div class="pscroll" id="pscroll">
+          <header class="hero">
+            <div class="pill-url"><svg class="ic"><use href="#i-lock"/></svg>…/books</div>
+            <div class="lockup">{% if ui_settings.logo_path %}<img class="school-logo" src="{{ asset_url(ui_settings.logo_path) }}" alt="">{% else %}<svg aria-hidden="true"><use href="#crest"/></svg>{% endif %}<div><span id="schoolName"></span><strong>Maktabadda Buugaagta</strong></div></div>
+            <h2>Akhri ama soo degso buugaagta dugsiga</h2>
+            <p>Dooro heerka, fasalka iyo maaddada si aad si degdeg ah u hesho buugga aad rabto.</p>
+          </header>
+          <label class="sbox"><svg class="ic"><use href="#i-search"/></svg><input id="pq" placeholder="Raadi buug ama maaddo" aria-label="Raadi buug"></label>
+          <div class="pf">
+            <div class="pseg" id="pLevel" role="group" aria-label="Heerka dugsiga"></div>
+            <label class="pfield"><svg class="ic"><use href="#i-class"/></svg><select id="pClass" aria-label="Fasal"></select></label>
+          </div>
+          <div class="chips" id="pSubj" role="group" aria-label="Maaddo"></div>
+          <div class="cnt"><div class="l"><span id="pCount"></span><button id="pClear" type="button">Nadiifi</button></div>
+            <div class="vt" role="group" aria-label="Qaabka bandhigga"><button id="pvGrid" aria-pressed="true" aria-label="Kaararka" title="Kaararka"><svg class="ic"><use href="#i-grid"/></svg></button><button id="pvList" aria-pressed="false" aria-label="Liis" title="Liis"><svg class="ic"><use href="#i-list"/></svg></button></div></div>
+          <div class="plist grid" id="pList" aria-live="polite"></div>
+          <footer class="pfoot" id="publicFooter"></footer>
+        </div>
+
+        <section class="reader" id="reader" data-theme="light" aria-label="Akhristaha PDF">
+          <div class="rbody" id="rbody"><div class="pdfpages" id="rpages"></div></div>
+          <div class="rhead" id="rhead">
+            <div class="rtop">
+              <button class="rb" id="rBack" aria-label="Dib u laabo"><svg class="ic"><use href="#i-left"/></svg></button>
+              <div class="rt"><b id="rTitle"></b><span id="rSub"></span></div>
+              <button class="rb" id="rSearchBtn" aria-label="Raadi qoraalka"><svg class="ic"><use href="#i-search"/></svg></button>
+              <button class="rb" id="rMark" aria-label="Calaamadee bogga"><svg class="ic"><use href="#i-bookmark"/></svg></button>
+              <div class="rprog"><i id="rProg"></i></div>
+            </div>
+            <div class="rsearch" id="rsearch"><label><svg class="ic"><use href="#i-search"/></svg><input id="rsIn" placeholder="Raadi erey…" aria-label="Raadi qoraalka"></label><span class="cnt2" id="rsCnt"></span><button class="rb" id="rsPrev" aria-label="Natiijada hore"><svg class="ic"><use href="#i-up"/></svg></button><button class="rb" id="rsNext" aria-label="Natiijada xigta"><svg class="ic"><use href="#i-down"/></svg></button><button class="rb" id="rsClose" aria-label="Xir raadinta"><svg class="ic"><use href="#i-x"/></svg></button></div>
+          </div>
+          <div class="rbot" id="rbot"><div class="scrub"><button id="rPrev" aria-label="Bogga hore"><svg class="ic"><use href="#i-left"/></svg></button><input type="range" id="rRange" min="1" max="1" value="1" aria-label="Bogga"><button id="rNext" aria-label="Bogga xiga"><svg class="ic"><use href="#i-right"/></svg></button></div><div class="pinfo"><b id="rNum"></b><span id="rLeft"></span></div><div class="racts"><button data-ra="toc"><svg class="ic"><use href="#i-contents"/></svg>Tusmo</button><button data-ra="go"><svg class="ic"><use href="#i-hash"/></svg>U gudub</button><button data-ra="view"><svg class="ic"><use href="#i-type"/></svg>Muuqaal</button><button data-ra="share"><svg class="ic"><use href="#i-share"/></svg>Wadaag</button><button data-ra="dl"><svg class="ic"><use href="#i-download"/></svg>Soo degso</button></div></div>
+          <div class="rsh-bg" id="rshBg" aria-hidden="true" inert></div><div class="rsheet" id="rsheet" role="dialog" aria-modal="true" aria-hidden="true" inert></div>
+        </section>
+
+        <div class="dbg" id="dBg"></div>
+        <section class="dsheet" id="dSheet" role="dialog" aria-modal="true" aria-label="Soo dejinta">
+          <div class="hbar"></div><div class="d-head"><div id="dCover" style="flex:none"></div><div><b id="dTitle"></b><span id="dFile"></span></div><button class="ib" id="dX" aria-label="Xir"><svg class="ic"><use href="#i-x"/></svg></button></div>
+          <div class="dring"><div class="glow"></div><svg class="r" viewBox="0 0 176 176" width="176" height="176"><defs><linearGradient id="dgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F5B400"/><stop offset="1" stop-color="#14A38B"/></linearGradient></defs><circle class="trk" cx="88" cy="88" r="76" fill="none" stroke-width="12"/><circle class="prg" id="dPrg" cx="88" cy="88" r="76" fill="none" stroke-width="12" stroke-dasharray="477.5" stroke-dashoffset="477.5"/></svg><div class="dctr"><span class="arr"><svg class="ic"><use href="#i-download"/></svg></span><b id="dPct">0<small>%</small></b></div><div class="dchk"><span class="rip"></span><span class="rip r2"></span><div class="badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path pathLength="1" d="M5 12.8l4.8 4.8L19 7.2"/></svg></div><i class="sp tr" style="--c:#F5B400;--x:-78px;--y:-62px;--r:40deg"></i><i class="sp" style="--c:#2BD46A;--x:74px;--y:-66px;--r:-30deg"></i><i class="sp sq" style="--c:#14A38B;--x:-88px;--y:10px;--r:60deg"></i><i class="sp" style="--c:#FF7A59;--x:86px;--y:14px;--r:-50deg"></i><i class="sp" style="--c:#F5B400;--x:-52px;--y:74px;--r:20deg"></i><i class="sp sq" style="--c:#7C5CFF;--x:56px;--y:78px;--r:-40deg"></i></div></div>
+          <div class="dstat" id="dStat"></div><div class="dsub" id="dSub"></div><div class="dbar"><i id="dBar"></i></div><div class="dnums"><div><b id="dMb">0 MB</b><span>La soo dejiyey</span></div><div><b id="dSp">—</b><span>Xawaaraha</span></div><div><b id="dEta">—</b><span>Waqtiga harsan</span></div></div><div class="dact" id="dAct"></div>
+        </section>
+        <div class="toast" id="toastP" role="status" aria-live="polite"></div>
+      </div>
+    </main>
+  </template>
+</body>
+</html>
