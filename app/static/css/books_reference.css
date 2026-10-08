@@ -339,6 +339,8 @@ textarea.fi{resize:none;height:84px}
 .dsheet.done .arr,.dsheet.done .dctr b{display:none}
 .dsheet.done .dchk{display:grid}
 .dstat{text-align:center;font-weight:700;font-size:16px;margin-top:4px}
+.dstat.is-typing::after{content:"";display:inline-block;width:2px;height:1em;margin-left:3px;vertical-align:-.15em;background:currentColor;animation:books-type-caret .8s steps(1,end) infinite}
+@keyframes books-type-caret{50%{opacity:0}}
 .dsub{text-align:center;color:var(--muted);font-size:13px;margin-top:2px;min-height:19px}
 .dbar{height:8px;border-radius:99px;background:var(--surface2);border:1px solid var(--border);overflow:hidden;margin:16px 0 10px}
 .dbar i{display:block;position:relative;overflow:hidden;height:100%;width:0;background:linear-gradient(90deg,var(--brand),#2FD3B0);border-radius:99px}

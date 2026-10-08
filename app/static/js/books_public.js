@@ -37,7 +37,7 @@
   const ALL = library.ALL;
   const LEVELS = library.LEVELS;
   const SUBJECTS = library.SUBJECTS;
-  const state = {level:ALL,cls:ALL,subject:ALL,query:'',view:'grid',readerBook:null,pdf:null,page:1,mode:'scroll',zoom:1,theme:'light',marks:{},downloadBook:null,downloadController:null,objectUrl:null,searchHits:[],searchIndex:0,pageObserver:null,searchRun:0};
+  const state = {level:ALL,cls:ALL,subject:ALL,query:'',view:'grid',readerBook:null,pdf:null,page:1,mode:'scroll',zoom:1,theme:'light',marks:{},downloadBook:null,downloadController:null,downloadStatusTimer:null,objectUrl:null,searchHits:[],searchIndex:0,pageObserver:null,searchRun:0};
   const sym = name => `<svg class="ic" aria-hidden="true"><use href="#i-${name}"/></svg>`;
   const crest = () => config.logoUrl ? `<img class="crest crest-img" src="${esc(config.logoUrl)}" alt="">` : '<svg class="crest" viewBox="0 0 24 26" aria-hidden="true"><use href="#crest"/></svg>';
   const subjectSym = name => `<span class="subject-icon" style="--subject-icon:url('/static/icons/books-fa-free/${esc(name.replace(/^fa-/,''))}.svg')" aria-hidden="true"></span>`;
@@ -108,13 +108,27 @@
     }
   }
 
+  function setDownloadStatus(text, typewriter=false) {
+    if (state.downloadStatusTimer) clearInterval(state.downloadStatusTimer);
+    state.downloadStatusTimer=null;
+    const status=$('#dStat');
+    status.classList.remove('is-typing');
+    status.setAttribute('aria-label',text);
+    if (!typewriter) { status.textContent=text; return; }
+    status.textContent=''; status.classList.add('is-typing');
+    let position=0;
+    state.downloadStatusTimer=setInterval(()=>{
+      status.textContent=text.slice(0,++position);
+      if(position>=text.length){clearInterval(state.downloadStatusTimer);state.downloadStatusTimer=null;status.classList.remove('is-typing');}
+    },38);
+  }
   function downloadUi(book, phase='downloading') {
     state.downloadBook=book;
     $('#dTitle').textContent=book.title; $('#dFile').textContent=book.filename || `${book.title}.pdf`;
     $('#dCover').innerHTML=coverHtml(book,'xs');
     $('#dSheet').classList.add('show'); $('#dBg').classList.add('show');
     $('#dSheet').classList.toggle('done',phase==='done');
-    $('#dStat').textContent=phase==='done'?'Soo dejintu way dhammaatay':phase==='error'?'Soo dejintu way istaagtay':'Xiriirka waa la furay';
+    setDownloadStatus(phase==='done'?'Soo dejintu way dhammaatay':phase==='error'?'Soo dejintu way istaagtay':'La degista wey socotaa..........',phase==='downloading');
     $('#dSub').textContent=phase==='done'?'Faylka PDF-ga waxaa lagu kaydiyey qalabkaaga.':'Faylka PDF-ga ayaa la soo dejinayaa.';
     $('#dPct').innerHTML=phase==='done'?'✓':'0<small>%</small>';
     $('#dAct').innerHTML=phase==='done'?`<button type="button" class="btn pri" data-download-read="${book.id}">${sym('bookopen')} Fur buugga</button><button type="button" class="btn sec" data-download-close>Dhammaystir</button>`:`<button type="button" class="btn sec" data-download-cancel>Jooji</button>`;
@@ -131,12 +145,12 @@
       while(true){const {done,value}=await reader.read();if(done)break;chunks.push(value);received+=value.byteLength;const elapsed=Math.max(.001,(performance.now()-start)/1000),rate=received/elapsed,percent=total?Math.min(99,received/total*100):0,eta=total&&rate?(total-received)/rate:null;
         $('#dPct').innerHTML=total?`${Math.floor(percent)}<small>%</small>`:'…';$('#dPrg').style.strokeDashoffset=String(477.5*(1-percent/100));$('#dBar').style.width=`${percent}%`;$('#dMb').textContent=`${(received/1048576).toFixed(1)} MB`;$('#dSp').textContent=`${(rate/1048576).toFixed(2)} MB/s`;$('#dEta').textContent=eta===null?'—':`${Math.ceil(eta)}s`;$('#dSub').textContent=total?`${(received/1048576).toFixed(1)} / ${(total/1048576).toFixed(1)} MB`:`${(received/1048576).toFixed(1)} MB la helay`;
       }
-      $('#dStat').textContent='PDF-ga waa la hubinayaa';$('#dSub').textContent='Waxaan xaqiijinaynaa dhammaadka faylka.';
+      setDownloadStatus('PDF-ga waa la hubinayaa');$('#dSub').textContent='Waxaan xaqiijinaynaa dhammaadka faylka.';
       const blob=new Blob(chunks,{type:'application/pdf'}),head=new Uint8Array(await blob.slice(0,8).arrayBuffer()),tail=new TextDecoder().decode(await blob.slice(Math.max(0,blob.size-4096)).arrayBuffer());
       if(new TextDecoder().decode(head).indexOf('%PDF-')!==0||!tail.includes('%%EOF'))throw new Error('PDF-ga la soo dejiyey ma dhammaystirna.');
       state.objectUrl=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=state.objectUrl;anchor.download=book.filename||`${book.title}.pdf`;anchor.click();setTimeout(()=>{if(state.objectUrl)URL.revokeObjectURL(state.objectUrl);state.objectUrl=null},60000);
       const counted=await fetch(`/books/api/${book.id}/download-complete`,{method:'POST'});if(!counted.ok)throw new Error('Faylka waa la helay, balse tirada download-ka lama cusboonaysiin.');$('#dPrg').style.strokeDashoffset='0';$('#dBar').style.width='100%';$('#dMb').textContent=`${(received/1048576).toFixed(1)} MB`;$('#dSp').textContent='La dhammeeyey';$('#dEta').textContent='0s';downloadUi(book,'done');
-    } catch(error) { if(error.name==='AbortError'){ $('#dStat').textContent='Soo dejinta waa la joojiyey';$('#dSub').textContent='Wax fayl ah lama dhammeystirin.';$('#dPct').innerHTML='—';$('#dAct').innerHTML=`<button type="button" class="btn sec" data-download-close>Haye</button>`; } else { $('#dStat').textContent='Soo dejintu way fashilantay';$('#dSub').textContent=error.message;$('#dAct').innerHTML=`<button type="button" class="btn sec" data-download-close>Xir</button>`; } }
+    } catch(error) { if(error.name==='AbortError'){ setDownloadStatus('Soo dejinta waa la joojiyey');$('#dSub').textContent='Wax fayl ah lama dhammeystirin.';$('#dPct').innerHTML='—';$('#dAct').innerHTML=`<button type="button" class="btn sec" data-download-close>Haye</button>`; } else { setDownloadStatus('Soo dejintu way fashilantay');$('#dSub').textContent=error.message;$('#dAct').innerHTML=`<button type="button" class="btn sec" data-download-close>Xir</button>`; } }
     finally { state.downloadController=null; }
   }
   function closeDownload(){state.downloadController?.abort();$('#dSheet').classList.remove('show');$('#dBg').classList.remove('show');}
