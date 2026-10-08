@@ -84,6 +84,8 @@
 /* The collapsed rail reuses the existing profile slot for the official logo.
    It stays out of the expanded sidebar and therefore does not add a new row. */
 .admin-collapsed-logo { display: none; }
+.admin-logo-fallback { color: #0b3b8f; font-size: 18px; }
+.brand-logo img[hidden], .admin-collapsed-logo img[hidden] { display: none !important; }
 
 /* Nav labels fade and contract; icons, active state, and link hit targets stay
    present in the compact rail. */
@@ -311,7 +313,8 @@
       <a class="admin-brand" href="{{ url_for('admin.dashboard') }}">
         <span class="brand-logo" style="flex-shrink:0; width:36px; height:36px; border-radius:10px; display:grid; place-items:center; background:rgba(255,255,255,0.15); overflow:hidden;">
           {% if ui_settings.admin_logo_path or ui_settings.logo_path %}
-            <img src="{{ asset_url(ui_settings.admin_logo_path or ui_settings.logo_path) }}" alt="Admin logo" style="width:100%;height:100%;object-fit:cover;">
+          <img src="{{ asset_url(ui_settings.admin_logo_path or ui_settings.logo_path) }}" alt="Admin logo" data-fallback-src="{{ asset_url(ui_settings.logo_path) if ui_settings.logo_path else '' }}" onerror="if(this.dataset.fallbackSrc&&!this.dataset.fallbackTried){this.dataset.fallbackTried='1';this.src=this.dataset.fallbackSrc;}else{this.hidden=true;this.nextElementSibling.hidden=false;}" style="width:100%;height:100%;object-fit:contain;">
+            <i class="fa-solid fa-school admin-logo-fallback" aria-hidden="true" hidden></i>
           {% else %}
             <i class="fa-solid fa-graduation-cap" style="font-size:1rem;"></i>
           {% endif %}
@@ -325,7 +328,8 @@
     <div class="admin-profile">
       {% if ui_settings.admin_logo_path or ui_settings.logo_path %}
         <span class="admin-collapsed-logo" role="img" aria-label="{{ ui_settings.school_name or 'Official school logo' }}">
-          <img src="{{ asset_url(ui_settings.admin_logo_path or ui_settings.logo_path) }}" alt="{{ ui_settings.school_name or 'Official school' }} logo">
+          <img src="{{ asset_url(ui_settings.admin_logo_path or ui_settings.logo_path) }}" alt="{{ ui_settings.school_name or 'Official school' }} logo" data-fallback-src="{{ asset_url(ui_settings.logo_path) if ui_settings.logo_path else '' }}" onerror="if(this.dataset.fallbackSrc&&!this.dataset.fallbackTried){this.dataset.fallbackTried='1';this.src=this.dataset.fallbackSrc;}else{this.hidden=true;this.nextElementSibling.hidden=false;}">
+          <i class="fa-solid fa-school admin-logo-fallback" aria-hidden="true" hidden></i>
         </span>
       {% endif %}
       <span class="admin-avatar" style="flex-shrink:0;">

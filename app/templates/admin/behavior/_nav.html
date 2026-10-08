@@ -12,7 +12,8 @@
     <a class="behavior-brand" href="{{ behavior_url('behavior.dashboard') }}">
       <span class="behavior-brand__logo">
         {% if behavior_logo_path %}
-          <img src="{{ asset_url(behavior_logo_path) }}" alt="{{ ui_settings.school_name }} logo">
+          <img src="{{ asset_url(behavior_logo_path) }}" alt="{{ ui_settings.school_name }} logo" data-fallback-src="{{ asset_url(ui_settings.logo_path) if ui_settings.logo_path else '' }}" onerror="if(this.dataset.fallbackSrc&&!this.dataset.fallbackTried){this.dataset.fallbackTried='1';this.src=this.dataset.fallbackSrc;}else{this.hidden=true;this.nextElementSibling.hidden=false;}">
+          <span class="behavior-brand__seal behavior-brand__logo-fallback" hidden><i class="fa-solid fa-school" aria-hidden="true"></i></span>
         {% else %}
           <span class="behavior-brand__seal"><i class="fa-solid fa-shield-halved"></i></span>
         {% endif %}
