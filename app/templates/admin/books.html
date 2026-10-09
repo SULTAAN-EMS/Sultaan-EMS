@@ -44,6 +44,6 @@
   </div>
 </div>
 <script id="booksBootstrap" type="application/json">{{ books|tojson }}</script>
-<script id="booksConfig" type="application/json">{{ {'levels': levels, 'subjects': subjects, 'publicUrl': url_for('books.public_page'), 'csrf': csrf_value, 'logoUrl': asset_url(ui_settings.logo_path) if ui_settings.logo_path else ''}|tojson }}</script>
+<script id="booksConfig" type="application/json">{{ {'levels': levels, 'subjects': subjects, 'publicUrl': url_for('books.public_page'), 'csrf': csrf_value, 'maxUploadBytes': config.get('BOOKS_MAX_UPLOAD_BYTES', 1024 * 1024 * 1024), 'storageBackend': config.get('BOOKS_STORAGE_BACKEND', 'local'), 'logoUrl': asset_url(ui_settings.logo_path) if ui_settings.logo_path else ''}|tojson }}</script>
 <template id="booksIcons">{% include "books/_icons.html" %}</template>
 {% endblock %}

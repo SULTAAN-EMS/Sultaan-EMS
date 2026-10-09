@@ -19,7 +19,10 @@ class BooksUploadRequest(Request):
     @property
     def max_content_length(self):
         if self.endpoint in {"books.admin_create", "books.admin_update"}:
-            pdf_limit = int(current_app.config.get("BOOKS_MAX_UPLOAD_BYTES", 50 * 1024 * 1024))
+            if current_app.config.get("BOOKS_STORAGE_BACKEND", "local") == "r2":
+                cover_limit = int(current_app.config.get("BOOKS_MAX_COVER_BYTES", 5 * 1024 * 1024))
+                return cover_limit + 2 * 1024 * 1024
+            pdf_limit = int(current_app.config.get("BOOKS_MAX_UPLOAD_BYTES", 1024 * 1024 * 1024))
             cover_limit = int(current_app.config.get("BOOKS_MAX_COVER_BYTES", 5 * 1024 * 1024))
             return pdf_limit + cover_limit + 2 * 1024 * 1024
         return super().max_content_length
@@ -29,6 +32,14 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.request_class = BooksUploadRequest
     app.config.from_object(config_class)
+    books_backend = str(app.config.get("BOOKS_STORAGE_BACKEND", "local")).strip().lower()
+    if books_backend not in {"local", "r2"}:
+        raise RuntimeError("BOOKS_STORAGE_BACKEND must be either 'local' or 'r2'")
+    if books_backend == "r2" and not all(app.config.get(key) for key in (
+        "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME"
+    )):
+        raise RuntimeError("R2 storage is enabled but its credentials or bucket configuration are incomplete")
+    app.config["BOOKS_STORAGE_BACKEND"] = books_backend
 
     # Local development should reflect template and static-file edits on the
     # next browser refresh instead of serving an old browser-cached asset.

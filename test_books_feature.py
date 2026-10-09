@@ -1,10 +1,12 @@
 import io
+import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from app import create_app, db
-from app.models import User
+from app.models import BookLibraryItem, User
 from config import Config
 
 
@@ -62,6 +64,8 @@ class BooksFeatureTests(unittest.TestCase):
             SQLALCHEMY_DATABASE_URI = f"sqlite:///{root / 'books.sqlite'}"
             SQLALCHEMY_ENGINE_OPTIONS = {}
             BOOKS_STORAGE_FOLDER = str(root / "private-books")
+            BOOKS_STORAGE_BACKEND = "local"
+            BOOKS_MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 
         self.app = create_app(TestConfig)
         with self.app.app_context():
@@ -147,3 +151,76 @@ class BooksFeatureTests(unittest.TestCase):
         with self.client.session_transaction() as session:
             session.clear()
         self.assertIn(self.client.get("/admin/books/api").status_code, {302, 401})
+
+    def test_books_pdf_upload_limit_is_one_gibibyte(self):
+        self.assertEqual(self.app.config["BOOKS_MAX_UPLOAD_BYTES"], 1024 * 1024 * 1024)
+
+    def test_r2_direct_multipart_upload_stays_private_and_uses_signed_reads(self):
+        pdf = _pdf_bytes()
+
+        class FakeR2:
+            def __init__(self):
+                self.objects = {}
+
+            def create_multipart_upload(self, **kwargs):
+                self.key = kwargs["Key"]
+                return {"UploadId": "upload-test"}
+
+            def generate_presigned_url(self, operation, Params, ExpiresIn):
+                if operation == "upload_part":
+                    return "https://r2.test/upload-part"
+                return f"https://r2.test/{operation}/{Params['Key']}?expires={ExpiresIn}"
+
+            def complete_multipart_upload(self, Bucket, Key, UploadId, MultipartUpload):
+                self.objects[Key] = pdf
+
+            def put_object(self, Bucket, Key, Body, ContentType):
+                self.objects[Key] = Body
+
+            def head_object(self, Bucket, Key):
+                return {"ContentLength": len(self.objects[Key])}
+
+            def get_object(self, Bucket, Key, Range):
+                start, end = (int(value) for value in Range.removeprefix("bytes=").split("-"))
+                return {"Body": io.BytesIO(self.objects[Key][start:end + 1])}
+
+            def delete_object(self, Bucket, Key):
+                self.objects.pop(Key, None)
+
+        fake_r2 = FakeR2()
+        self.app.config.update(
+            BOOKS_STORAGE_BACKEND="r2",
+            R2_BUCKET_NAME="sultaan-media-prod",
+            R2_ACCOUNT_ID="test-account",
+            R2_ACCESS_KEY_ID="test-access",
+            R2_SECRET_ACCESS_KEY="test-secret",
+        )
+        with patch("app.routes_books.r2_client", return_value=fake_r2), patch("app.books_storage.r2_client", return_value=fake_r2):
+            initiated = self.client.post("/admin/books/uploads/init", json={"filename":"math.pdf","size":len(pdf)})
+            self.assertEqual(initiated.status_code, 200, initiated.get_data(as_text=True))
+            token = initiated.json["token"]
+            signed_part = self.client.post("/admin/books/uploads/part-url", json={"token":token,"partNumber":1})
+            self.assertEqual(signed_part.json["url"], "https://r2.test/upload-part")
+
+            created = self.client.post("/admin/books/api", data={
+                "title":"R2 Math", "level":"Sare", "scope":"subject", "class":"Form 2",
+                "subject":"Math", "description":"R2 test", "visible":"true",
+                "pdf_upload":json.dumps({"token":token,"parts":[{"PartNumber":1,"ETag":"etag-test"}]}),
+                "cover_file":(io.BytesIO(b"\x89PNG\r\n\x1a\ncover"),"cover.png"),
+            })
+            self.assertEqual(created.status_code, 201, created.get_data(as_text=True))
+            book = created.json["book"]
+            self.assertTrue(book["filename"].endswith(".pdf"))
+            self.assertTrue(book["visible"])
+            with self.app.app_context():
+                item = db.session.get(BookLibraryItem, book["id"])
+                self.assertTrue(item.pdf_storage_name.startswith("r2:books/pdfs/"))
+            read = self.client.get(book["pdfUrl"])
+            self.assertEqual(read.status_code, 302)
+            self.assertIn("https://r2.test/get_object/", read.location)
+            cover = self.client.get(book["coverUrl"])
+            self.assertEqual(cover.status_code, 302)
+            self.assertIn("https://r2.test/get_object/", cover.location)
+            deleted = self.client.delete(f"/admin/books/api/{book['id']}")
+            self.assertEqual(deleted.status_code, 200)
+            self.assertEqual(fake_r2.objects, {})

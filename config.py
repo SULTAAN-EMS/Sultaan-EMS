@@ -184,8 +184,14 @@ class Config:
         BASE_DIR / os.getenv("UPLOAD_FOLDER", "app/static/uploads")
     )
     BOOKS_STORAGE_FOLDER = os.getenv("BOOKS_STORAGE_FOLDER")
-    BOOKS_MAX_UPLOAD_BYTES = int(os.getenv("BOOKS_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
+    BOOKS_STORAGE_BACKEND = os.getenv("BOOKS_STORAGE_BACKEND", "local").strip().lower()
+    BOOKS_MAX_UPLOAD_BYTES = int(os.getenv("BOOKS_MAX_UPLOAD_BYTES", str(1024 * 1024 * 1024)))
     BOOKS_MAX_COVER_BYTES = int(os.getenv("BOOKS_MAX_COVER_BYTES", str(5 * 1024 * 1024)))
+    R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID")
+    R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
+    R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
+    R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "sultaan-media-prod")
+    R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL")
 
     MAX_CONTENT_LENGTH = int(
         os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024))

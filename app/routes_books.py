@@ -1,12 +1,15 @@
+import json
 import re
 import uuid
 from pathlib import Path
 
-from flask import Blueprint, abort, current_app, jsonify, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 from werkzeug.utils import secure_filename
 
 from . import csrf, db
+from .books_storage import delete_asset, is_r2_asset, r2_bucket, r2_client, r2_enabled, r2_key, save_r2_small_upload
 from .models import BookLibraryItem
 from .security import role_required
 
@@ -24,6 +27,8 @@ SUBJECTS = [
     "English Films", "Tarbiyadda Islaamka", "Business",
 ]
 ALL = "Dhammaan"
+R2_PART_BYTES = 16 * 1024 * 1024
+R2_UPLOAD_TOKEN_SALT = "books-r2-multipart-v1"
 ALLOWED_COVERS = {
     ".jpg": (b"\xff\xd8\xff",),
     ".jpeg": (b"\xff\xd8\xff",),
@@ -136,11 +141,27 @@ def _pdf_metadata(path):
         tail = stream.read()
     if b"%PDF-" not in header or b"%%EOF" not in tail:
         raise ValueError("PDF-ga ma dhammaystirna ama si sax ah looma aqoonsan.")
-    content = path.read_bytes()
-    pages = len(re.findall(rb"/Type\s*/Page\b", content))
+    page_pattern = re.compile(rb"/Type\s*/Page\b")
+    pages_pattern = re.compile(rb"/Type\s*/Pages\b.{0,512}?/Count\s+(\d+)", re.S)
+    pages = 0
+    page_tree_counts = []
+    overlap = 64 * 1024
+    offset = 0
+    carry = b""
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            content = carry + chunk
+            content_start = offset - len(carry)
+            for match in page_pattern.finditer(content):
+                if content_start + match.end() > offset:
+                    pages += 1
+            for match in pages_pattern.finditer(content):
+                if content_start + match.end() > offset:
+                    page_tree_counts.append(int(match.group(1)))
+            offset += len(chunk)
+            carry = content[-overlap:]
     if pages == 0:
-        counts = [int(value) for value in re.findall(rb"/Type\s*/Pages\b.{0,512}?/Count\s+(\d+)", content, re.S)]
-        pages = max(counts, default=0)
+        pages = max(page_tree_counts, default=0)
     return size, pages
 
 
@@ -148,9 +169,100 @@ def _remove_private(name):
     if not name:
         return
     try:
-        (_storage_dir() / Path(name).name).unlink(missing_ok=True)
-    except OSError:
+        delete_asset(name)
+    except Exception:
         current_app.logger.exception("Unable to remove a private book asset")
+
+
+def _upload_serializer():
+    return URLSafeTimedSerializer(current_app.secret_key, salt=R2_UPLOAD_TOKEN_SALT)
+
+
+def _load_upload_token(token):
+    try:
+        value = _upload_serializer().loads(token, max_age=4 * 60 * 60)
+    except BadSignature as error:
+        raise ValueError("Xogta upload-ku way dhacday. Fadlan mar kale isku day.") from error
+    if str(value.get("user_id")) != str(current_user.get_id()):
+        raise ValueError("Upload-kan user kale ayaa bilaabay.")
+    return value
+
+
+def _complete_r2_upload(payload):
+    token = payload.get("token")
+    parts = payload.get("parts")
+    if not token or not isinstance(parts, list) or not parts:
+        raise ValueError("Xogta qaybaha PDF-ga ma dhammaystirna.")
+    upload = _load_upload_token(token)
+    total_size = int(upload["size"])
+    max_parts = (total_size + R2_PART_BYTES - 1) // R2_PART_BYTES
+    normalized = []
+    for part in parts:
+        if not isinstance(part, dict):
+            raise ValueError("Qayb PDF ah lama aqoonsan.")
+        number = int(part.get("PartNumber", 0))
+        etag = str(part.get("ETag", "")).strip().strip('"')
+        if number < 1 or number > max_parts or not etag:
+            raise ValueError("Qayb PDF ah lama aqoonsan.")
+        normalized.append({"PartNumber": number, "ETag": f'"{etag}"'})
+    normalized.sort(key=lambda part: part["PartNumber"])
+    if [part["PartNumber"] for part in normalized] != list(range(1, max_parts + 1)):
+        raise ValueError("Qaar ka mid ah qaybaha PDF-ga ma soo gelin.")
+
+    client = r2_client()
+    bucket = r2_bucket()
+    key = upload["key"]
+    try:
+        client.complete_multipart_upload(
+            Bucket=bucket,
+            Key=key,
+            UploadId=upload["upload_id"],
+            MultipartUpload={"Parts": normalized},
+        )
+    except Exception:
+        try:
+            client.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload["upload_id"])
+        except Exception:
+            current_app.logger.exception("Unable to abort failed R2 multipart upload")
+        raise
+    try:
+        info = client.head_object(Bucket=bucket, Key=key)
+        if int(info.get("ContentLength", -1)) != total_size or total_size > int(current_app.config.get("BOOKS_MAX_UPLOAD_BYTES", 1024 * 1024 * 1024)):
+            raise ValueError("Cabbirka PDF-ga la soo geliyey ma waafaqsana.")
+        head = client.get_object(Bucket=bucket, Key=key, Range="bytes=0-1023")["Body"].read(1024)
+        tail_start = max(0, total_size - 4096)
+        tail = client.get_object(Bucket=bucket, Key=key, Range=f"bytes={tail_start}-{total_size - 1}")["Body"].read(4096)
+        if b"%PDF-" not in head or b"%%EOF" not in tail:
+            raise ValueError("PDF-ga ma dhammaystirna ama si sax ah looma aqoonsan.")
+    except Exception:
+        try:
+            client.delete_object(Bucket=bucket, Key=key)
+        except Exception:
+            current_app.logger.exception("Unable to remove invalid completed R2 upload")
+        raise
+    return f"r2:{key}", total_size, secure_filename(upload.get("filename", ""))[:255] or "buug.pdf", 0
+
+
+def _r2_upload_field():
+    raw = request.form.get("pdf_upload")
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise ValueError("Xogta PDF upload-ku sax ma aha.") from error
+
+
+def _cover_upload(upload):
+    if r2_enabled():
+        return save_r2_small_upload(
+            upload,
+            ALLOWED_COVERS,
+            "cover",
+            int(current_app.config.get("BOOKS_MAX_COVER_BYTES", 5 * 1024 * 1024)),
+        )
+    name, _ = _save_upload(upload, ALLOWED_COVERS, "cover")
+    return name
 
 
 def _visible_book_or_404(book_id):
@@ -187,27 +299,118 @@ def admin_list():
     })
 
 
+@books_bp.post("/admin/books/uploads/init")
+@_admin_required
+def admin_upload_init():
+    if not r2_enabled():
+        return jsonify({"success": False, "message": "R2 weli lama hawlgelin server-ka."}), 503
+    payload = request.get_json(silent=True) or {}
+    filename = secure_filename(payload.get("filename", ""))
+    try:
+        size = int(payload.get("size", 0))
+        maximum = int(current_app.config.get("BOOKS_MAX_UPLOAD_BYTES", 1024 * 1024 * 1024))
+        if Path(filename).suffix.lower() != ".pdf":
+            raise ValueError("Soo geli fayl PDF ah.")
+        if size < 8 or size > maximum:
+            raise ValueError("PDF-gu waa inuu ka weynaadaa 0, kana yaraan ama la mid noqdaa 1 GB.")
+        key = f"books/pdfs/{uuid.uuid4().hex}.pdf"
+        response = r2_client().create_multipart_upload(
+            Bucket=r2_bucket(),
+            Key=key,
+            ContentType="application/pdf",
+        )
+        token = _upload_serializer().dumps({
+            "key": key,
+            "upload_id": response["UploadId"],
+            "size": size,
+            "filename": filename,
+            "user_id": str(current_user.get_id()),
+        })
+        return jsonify({"success": True, "token": token, "partBytes": R2_PART_BYTES})
+    except ValueError as error:
+        return jsonify({"success": False, "message": str(error)}), 400
+    except Exception:
+        error_id = uuid.uuid4().hex[:10]
+        current_app.logger.exception("Unable to start R2 book upload (reference %s)", error_id)
+        return jsonify({
+            "success": False,
+            "message": "R2 upload lama bilaabi karin. Hubi dejinta R2.",
+            "reference": error_id,
+        }), 503
+
+
+@books_bp.post("/admin/books/uploads/part-url")
+@_admin_required
+def admin_upload_part_url():
+    if not r2_enabled():
+        abort(503)
+    payload = request.get_json(silent=True) or {}
+    try:
+        upload = _load_upload_token(payload.get("token", ""))
+        part_number = int(payload.get("partNumber", 0))
+        total_parts = (int(upload["size"]) + R2_PART_BYTES - 1) // R2_PART_BYTES
+        if not 1 <= part_number <= total_parts:
+            raise ValueError("Lambarka qaybta upload-ku sax ma aha.")
+        url = r2_client().generate_presigned_url(
+            "upload_part",
+            Params={
+                "Bucket": r2_bucket(),
+                "Key": upload["key"],
+                "UploadId": upload["upload_id"],
+                "PartNumber": part_number,
+            },
+            ExpiresIn=3600,
+        )
+        return jsonify({"success": True, "url": url})
+    except ValueError as error:
+        return jsonify({"success": False, "message": str(error)}), 400
+    except Exception:
+        current_app.logger.exception("Unable to sign R2 upload part")
+        return jsonify({"success": False, "message": "URL-ka qaybta PDF-ga lama diyaarin."}), 503
+
+
+@books_bp.post("/admin/books/uploads/abort")
+@_admin_required
+def admin_upload_abort():
+    if not r2_enabled():
+        return jsonify({"success": True})
+    payload = request.get_json(silent=True) or {}
+    try:
+        upload = _load_upload_token(payload.get("token", ""))
+        r2_client().abort_multipart_upload(Bucket=r2_bucket(), Key=upload["key"], UploadId=upload["upload_id"])
+    except Exception:
+        current_app.logger.info("R2 multipart upload abort was skipped")
+    return jsonify({"success": True})
+
+
 @books_bp.post("/admin/books/api")
 @_admin_required
 def admin_create():
     pdf_name = cover_name = None
     try:
         values = _validate_scope(request.form)
+        upload_data = _r2_upload_field()
         pdf = request.files.get("pdf_file")
-        if not pdf or not pdf.filename:
-            raise ValueError("Soo geli faylka PDF-ka buugga.")
-        pdf_name, pdf_path = _save_upload(pdf, {".pdf"}, "book")
-        size, pages = _pdf_metadata(pdf_path)
-        max_size = int(current_app.config.get("BOOKS_MAX_UPLOAD_BYTES", 50 * 1024 * 1024))
+        if upload_data:
+            pdf_name, size, original_filename, pages = _complete_r2_upload(upload_data)
+        else:
+            if r2_enabled():
+                raise ValueError("PDF-ga R2 si toos ah looma soo gelin. Cusboonaysii bogga oo mar kale isku day.")
+            if not pdf or not pdf.filename:
+                raise ValueError("Soo geli faylka PDF-ka buugga.")
+            pdf_name, pdf_path = _save_upload(pdf, {".pdf"}, "book")
+            size, pages = _pdf_metadata(pdf_path)
+            original_filename = secure_filename(pdf.filename)[:255] or "buug.pdf"
+        max_size = int(current_app.config.get("BOOKS_MAX_UPLOAD_BYTES", 1024 * 1024 * 1024))
         if size > max_size:
-            raise ValueError("PDF-gu wuu ka weyn yahay xadka 50 MB.")
+            raise ValueError("PDF-gu wuu ka weyn yahay xadka 1 GB.")
         cover = request.files.get("cover_file")
         if cover and cover.filename:
-            cover_name, _ = _save_upload(cover, ALLOWED_COVERS, "cover")
+            cover_name = _cover_upload(cover)
         item = BookLibraryItem(
             **values,
             pdf_storage_name=pdf_name,
-            original_filename=secure_filename(pdf.filename)[:255] or "buug.pdf",
+            original_filename=original_filename,
             size_bytes=size,
             page_count=pages,
             cover_storage_name=cover_name,
@@ -239,19 +442,28 @@ def admin_update(book_id):
     new_pdf = new_cover = None
     try:
         values = _validate_scope(request.form)
+        upload_data = _r2_upload_field()
         pdf = request.files.get("pdf_file")
         cover = request.files.get("cover_file")
-        if pdf and pdf.filename:
+        if upload_data:
+            new_pdf, size, original_filename, pages = _complete_r2_upload(upload_data)
+            item.pdf_storage_name = new_pdf
+            item.original_filename = original_filename
+            item.size_bytes = size
+            item.page_count = pages
+        elif pdf and pdf.filename:
+            if r2_enabled():
+                raise ValueError("PDF-ga R2 si toos ah looma soo gelin. Cusboonaysii bogga oo mar kale isku day.")
             new_pdf, pdf_path = _save_upload(pdf, {".pdf"}, "book")
             size, pages = _pdf_metadata(pdf_path)
-            if size > int(current_app.config.get("BOOKS_MAX_UPLOAD_BYTES", 50 * 1024 * 1024)):
-                raise ValueError("PDF-gu wuu ka weyn yahay xadka 50 MB.")
+            if size > int(current_app.config.get("BOOKS_MAX_UPLOAD_BYTES", 1024 * 1024 * 1024)):
+                raise ValueError("PDF-gu wuu ka weyn yahay xadka 1 GB.")
             item.pdf_storage_name = new_pdf
             item.original_filename = secure_filename(pdf.filename)[:255] or "buug.pdf"
             item.size_bytes = size
             item.page_count = pages
         if cover and cover.filename:
-            new_cover, _ = _save_upload(cover, ALLOWED_COVERS, "cover")
+            new_cover = _cover_upload(cover)
             item.cover_storage_name = new_cover
         elif request.form.get("remove_cover") == "true":
             item.cover_storage_name = None
@@ -317,6 +529,15 @@ def cover(book_id):
             abort(404)
     if not item.cover_storage_name:
         abort(404)
+    if is_r2_asset(item.cover_storage_name):
+        url = r2_client().generate_presigned_url(
+            "get_object",
+            Params={"Bucket": r2_bucket(), "Key": r2_key(item.cover_storage_name)},
+            ExpiresIn=600,
+        )
+        response = redirect(url)
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
     path = _storage_dir() / Path(item.cover_storage_name).name
     if not path.is_file():
         abort(404)
@@ -326,6 +547,21 @@ def cover(book_id):
 @books_bp.get("/books/<int:book_id>/read")
 def read_pdf(book_id):
     item = _visible_book_or_404(book_id)
+    if is_r2_asset(item.pdf_storage_name):
+        filename = secure_filename(item.original_filename) or "buug.pdf"
+        url = r2_client().generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": r2_bucket(),
+                "Key": r2_key(item.pdf_storage_name),
+                "ResponseContentType": "application/pdf",
+                "ResponseContentDisposition": f'inline; filename="{filename}"',
+            },
+            ExpiresIn=3600,
+        )
+        response = redirect(url)
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
     path = _storage_dir() / Path(item.pdf_storage_name).name
     if not path.is_file():
         abort(404)
@@ -335,6 +571,21 @@ def read_pdf(book_id):
 @books_bp.get("/books/<int:book_id>/download")
 def download_pdf(book_id):
     item = _visible_book_or_404(book_id)
+    if is_r2_asset(item.pdf_storage_name):
+        filename = secure_filename(item.original_filename) or "buug.pdf"
+        url = r2_client().generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": r2_bucket(),
+                "Key": r2_key(item.pdf_storage_name),
+                "ResponseContentType": "application/pdf",
+                "ResponseContentDisposition": f'attachment; filename="{filename}"',
+            },
+            ExpiresIn=3600,
+        )
+        response = redirect(url)
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
     path = _storage_dir() / Path(item.pdf_storage_name).name
     if not path.is_file():
         abort(404)

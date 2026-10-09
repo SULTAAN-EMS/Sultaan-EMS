@@ -32,6 +32,9 @@
   let editing = null;
   let draft = null;
   let xhr = null;
+  let r2Token = null;
+  let cancelledR2 = false;
+  const activeR2Xhrs = new Set();
   let coverObjectUrl = null;
   const scopeLabel = scope => ({level:'Heer dhan', class:'Fasal gaar ah', subject:'Maaddo gaar ah'})[scope] || 'Heer dhan';
   const clsLabel = value => value === ALL ? 'Dhammaan fasallada' : library.classLabel(value);
@@ -129,7 +132,7 @@
     const form = new FormData();
     for (const key of ['title','level','class','subject','scope','description']) form.append(key, draft[key] || '');
     form.append('visible', String(Boolean(draft.visible)));
-    if (draft.fileChanged && draft.pdfFile) form.append('pdf_file', draft.pdfFile);
+    if (draft.fileChanged && draft.pdfFile && booksConfig.storageBackend !== 'r2') form.append('pdf_file', draft.pdfFile);
     if (draft.coverFile) form.append('cover_file', draft.coverFile);
     if (draft.removeCover) form.append('remove_cover','true');
     return form;
@@ -158,6 +161,7 @@
     if (!editing && !draft.pdfFile) { toast('Soo geli faylka PDF-ka buugga.',true); return; }
     const body = formData();
     const upload = !editing || draft.fileChanged;
+    if (upload && booksConfig.storageBackend === 'r2') { uploadR2Save(); return; }
     if (upload) showProgress();
     else { $('#modal').classList.add('books-saving'); }
     xhr = new XMLHttpRequest();
@@ -180,6 +184,93 @@
     };
     xhr.send(body);
   }
+  function uploadPart(url, filePart, onProgress) {
+    return new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      activeR2Xhrs.add(request);
+      request.open('PUT',url);
+      request.upload.onprogress = event => { if (event.lengthComputable) onProgress(event.loaded); };
+      request.onload = () => {
+        activeR2Xhrs.delete(request);
+        if (request.status < 200 || request.status >= 300) return reject(new Error(`R2 wuxuu diiday qaybta faylka (${request.status}).`));
+        const etag = request.getResponseHeader('ETag');
+        if (!etag) return reject(new Error('R2 ma soo celin ETag-ga qaybta. Hubi CORS-ka bucket-ka.'));
+        resolve(etag.replace(/^"|"$/g,''));
+      };
+      request.onerror = () => { activeR2Xhrs.delete(request); reject(new Error('Shabakadda R2 ayaa go’day.')); };
+      request.onabort = () => { activeR2Xhrs.delete(request); reject(new Error('Upload-ka waa la joojiyey.')); };
+      request.send(filePart);
+    });
+  }
+  async function uploadR2Save() {
+    showProgress();
+    cancelledR2 = false;
+    r2Token = null;
+    xhr = {abort:() => {
+      cancelledR2 = true;
+      activeR2Xhrs.forEach(request => request.abort());
+      if (r2Token) requestJson('/admin/books/uploads/abort',{method:'POST',body:JSON.stringify({token:r2Token}),headers:{'Content-Type':'application/json'}}).catch(()=>{});
+      r2Token = null;
+      xhr = null;
+      $('#ov').classList.remove('show');
+      toast('Soo gelinta waa la joojiyey.',true);
+    }};
+    try {
+      const file = draft.pdfFile;
+      const init = await requestJson('/admin/books/uploads/init',{method:'POST',body:JSON.stringify({filename:file.name,size:file.size}),headers:{'Content-Type':'application/json'}});
+      r2Token = init.token;
+      const partCount = Math.ceil(file.size / init.partBytes);
+      const uploaded = new Map();
+      const parts = new Array(partCount);
+      let nextPart = 1;
+      const uploadWorker = async () => {
+        while (nextPart <= partCount) {
+          if (cancelledR2) throw new Error('Upload-ka waa la joojiyey.');
+          const partNumber = nextPart++;
+          const start = (partNumber - 1) * init.partBytes;
+          const chunk = file.slice(start,Math.min(file.size,start + init.partBytes));
+          let lastError;
+          for (let attempt=0; attempt<3; attempt++) {
+            try {
+              const signed = await requestJson('/admin/books/uploads/part-url',{method:'POST',body:JSON.stringify({token:r2Token,partNumber}),headers:{'Content-Type':'application/json'}});
+              if (cancelledR2) throw new Error('Upload-ka waa la joojiyey.');
+              const etag = await uploadPart(signed.url,chunk,loaded => {
+                uploaded.set(partNumber,loaded);
+                const total = [...uploaded.values()].reduce((sum,value)=>sum+value,0);
+                setProgress(total / file.size * 72,'PDF-ga si toos ah ayaa R2 loogu dirayaa');
+              });
+              uploaded.set(partNumber,chunk.size);
+              parts[partNumber - 1] = {PartNumber:partNumber,ETag:etag};
+              break;
+            } catch (error) {
+              lastError = error;
+              uploaded.set(partNumber,0);
+              if (cancelledR2) throw error;
+              if (attempt === 2) throw lastError;
+            }
+          }
+        }
+      };
+      await Promise.all(Array.from({length:Math.min(3,partCount)},uploadWorker));
+      if (cancelledR2) return;
+      setProgress(74,'PDF-ga waa la xaqiijinayaa');
+      const body = formData();
+      body.append('pdf_upload',JSON.stringify({token:r2Token,parts}));
+      const result = await requestJson(editing?`/admin/books/api/${editing}`:'/admin/books/api',{method:editing?'PUT':'POST',body});
+      r2Token = null;
+      setProgress(100,'Buugga waa la kaydiyey.');
+      const index = books.findIndex(book => book.id === result.book.id);
+      if (index >= 0) books[index] = result.book; else books.unshift(result.book);
+      xhr = null;
+      setTimeout(() => { $('#ov').classList.remove('show'); render(); toast(editing?'Isbeddelka waa la kaydiyey.':'Buugga waa la soo geliyey.'); },550);
+    } catch (error) {
+      if (r2Token) requestJson('/admin/books/uploads/abort',{method:'POST',body:JSON.stringify({token:r2Token}),headers:{'Content-Type':'application/json'}}).catch(()=>{});
+      r2Token = null;
+      if (cancelledR2) return;
+      xhr = null;
+      uploadFailure(error.message || 'PDF-ga R2 looma soo gelin karin.');
+    }
+  }
   function uploadFailure(message) {
     xhr = null;
     const error = $('#upError');
@@ -196,7 +287,7 @@
   async function requestJson(url, options = {}) {
     const response = await fetch(url,{...options,headers:{'X-CSRFToken':booksConfig.csrf,...(options.headers || {})}});
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload.success === false) throw new Error(payload.message || 'Codsiga lama fulin.');
+    if (!response.ok || payload.success === false) throw new Error(`${payload.message || 'Codsiga lama fulin.'}${payload.reference ? ` (Tixraac: ${payload.reference})` : ''}`);
     return payload;
   }
 
@@ -268,7 +359,15 @@
     if (event.target.id === 'ast') { A.status=event.target.value; render(); }
     if (event.target.id === 'f-level') { readForm(); draft.class=LEVELS[draft.level].classes[0]; drawEditor(); }
     if (event.target.id === 'f-class' || event.target.id === 'f-subj') refreshPreview();
-    if (event.target.id === 'f-file' && event.target.files[0]) { readForm(); draft.pdfFile=event.target.files[0]; draft.fileName=draft.pdfFile.name; draft.fileChanged=true; drawEditor(); }
+    if (event.target.id === 'f-file' && event.target.files[0]) {
+      const file = event.target.files[0];
+      if (file.size > Number(booksConfig.maxUploadBytes || 1024 * 1024 * 1024)) {
+        event.target.value = '';
+        toast('PDF-gu waa inuu ka yaraan ama la mid noqdaa 1 GB.', true);
+        return;
+      }
+      readForm(); draft.pdfFile=file; draft.fileName=file.name; draft.fileChanged=true; drawEditor();
+    }
     if (event.target.id === 'f-img' && event.target.files[0]) { readForm(); draft.coverFile=event.target.files[0]; if (coverObjectUrl) URL.revokeObjectURL(coverObjectUrl); coverObjectUrl=URL.createObjectURL(draft.coverFile); draft.previewUrl=coverObjectUrl; drawEditor(); }
   });
   shadow.addEventListener('keydown', event => { if (event.key==='Escape' && !xhr) $('#ov').classList.remove('show'); });
