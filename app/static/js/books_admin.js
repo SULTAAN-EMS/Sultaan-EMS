@@ -57,10 +57,35 @@
   let r2Token = null;
   let cancelledR2 = false;
   const activeR2Xhrs = new Set();
+  let activePdfCountTask = null;
+  let booksPdfjsPromise = null;
   let coverObjectUrl = null;
   const scopeLabel = scope => ({level:'Heer dhan', class:'Fasal gaar ah', subject:'Maaddo gaar ah'})[scope] || 'Heer dhan';
   const clsLabel = value => value === ALL ? 'Dhammaan fasallada' : library.classLabel(value);
   const formatSize = bytes => `${(Number(bytes || 0) / 1048576).toFixed(1)} MB`;
+  async function countPdfPages(file) {
+    if (!booksPdfjsPromise) booksPdfjsPromise = import('/static/vendor/pdfjs/pdf.min.mjs').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/static/vendor/pdfjs/pdf.worker.min.mjs';
+      return pdfjs;
+    });
+    const pdfjs = await booksPdfjsPromise;
+    const range = new pdfjs.PDFDataRangeTransport(file.size, new Uint8Array());
+    range.requestDataRange = (begin, end) => {
+      file.slice(begin, end).arrayBuffer()
+        .then(buffer => range.onDataRange(begin, new Uint8Array(buffer)))
+        .catch(() => activePdfCountTask?.destroy().catch(() => {}));
+    };
+    range.transportReady();
+    const task = pdfjs.getDocument({range, rangeChunkSize:65536, disableStream:true, disableAutoFetch:true});
+    activePdfCountTask = task;
+    try {
+      const pdf = await task.promise;
+      return Number(pdf.numPages) || 0;
+    } finally {
+      if (activePdfCountTask === task) activePdfCountTask = null;
+      await task.destroy().catch(() => {});
+    }
+  }
   const coverSubject = book => book.scope === 'subject' ? book.subject : ALL;
   const crest = () => booksConfig.logoUrl ? `<img class="crest crest-img" src="${esc(booksConfig.logoUrl)}" alt="">` : '<svg class="crest" viewBox="0 0 24 26" aria-hidden="true"><use href="#crest"/></svg>';
   const previewBook = () => ({title:draft.title || 'Cinwaanka buugga', subj:coverSubject(draft), previewUrl:draft.previewUrl || '', coverUrl:draft.coverUrl || '', hasCover:Boolean(draft.hasCover), level:draft.level, cls:draft.scope === 'level' ? ALL : draft.class});
@@ -247,6 +272,7 @@
     xhr = {abort:() => {
       cancelledR2 = true;
       activeR2Xhrs.forEach(request => request.abort());
+      activePdfCountTask?.destroy().catch(() => {});
       if (r2Token) requestJson('/admin/books/uploads/abort',{method:'POST',body:JSON.stringify({token:r2Token}),headers:{'Content-Type':'application/json'}}).catch(()=>{});
       r2Token = null;
       xhr = null;
@@ -255,6 +281,7 @@
     }};
     try {
       const file = draft.pdfFile;
+      const pageCountPromise = countPdfPages(file).catch(() => 0);
       const init = await requestJson('/admin/books/uploads/init',{method:'POST',body:JSON.stringify({filename:file.name,size:file.size}),headers:{'Content-Type':'application/json'}});
       r2Token = init.token;
       const partCount = Math.ceil(file.size / init.partBytes);
@@ -292,8 +319,10 @@
       await Promise.all(Array.from({length:Math.min(3,partCount)},uploadWorker));
       if (cancelledR2) return;
       setProgress(74,'PDF-ga waa la xaqiijinayaa');
+      const pages = await pageCountPromise;
+      if (cancelledR2) return;
       const body = formData();
-      body.append('pdf_upload',JSON.stringify({token:r2Token,parts}));
+      body.append('pdf_upload',JSON.stringify({token:r2Token,parts,pages}));
       const result = await requestJson(editing?`/admin/books/api/${editing}`:'/admin/books/api',{method:editing?'PUT':'POST',body});
       r2Token = null;
       setProgress(100,'Buugga waa la kaydiyey.');

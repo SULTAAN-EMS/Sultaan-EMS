@@ -677,12 +677,13 @@ class BooksFeatureTests(unittest.TestCase):
             created = self.client.post("/admin/books/api", data={
                 "title":"R2 Math", "level":"Sare", "scope":"subject", "class":"Form 2",
                 "subject":"Math", "description":"R2 test", "visible":"true",
-                "pdf_upload":json.dumps({"token":token,"parts":[{"PartNumber":1,"ETag":"etag-test"}]}),
+                "pdf_upload":json.dumps({"token":token,"parts":[{"PartNumber":1,"ETag":"etag-test"}],"pages":2}),
                 "cover_file":(io.BytesIO(b"\x89PNG\r\n\x1a\ncover"),"cover.png"),
             })
             self.assertEqual(created.status_code, 201, created.get_data(as_text=True))
             book = created.json["book"]
             self.assertTrue(book["filename"].endswith(".pdf"))
+            self.assertEqual(book["pages"], 2)
             self.assertTrue(book["visible"])
             with self.app.app_context():
                 item = db.session.get(BookLibraryItem, book["id"])

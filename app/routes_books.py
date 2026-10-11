@@ -380,7 +380,13 @@ def _complete_r2_upload(payload):
         except Exception:
             current_app.logger.exception("Unable to remove invalid completed R2 upload")
         raise
-    return f"r2:{key}", total_size, secure_filename(upload.get("filename", ""))[:255] or "buug.pdf", 0
+    try:
+        pages = int(payload.get("pages", 0))
+    except (TypeError, ValueError):
+        pages = 0
+    if isinstance(payload.get("pages"), bool) or not 0 <= pages <= 100000:
+        pages = 0
+    return f"r2:{key}", total_size, secure_filename(upload.get("filename", ""))[:255] or "buug.pdf", pages
 
 
 def _r2_upload_field():

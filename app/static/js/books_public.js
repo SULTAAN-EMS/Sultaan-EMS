@@ -37,6 +37,33 @@
     .pc-emblem{position:relative}.pc-emblem .pc-logo{width:100%;height:100%;padding:4px;border-radius:inherit;background:#fff;object-fit:contain}.pc-verified{position:absolute;right:-5px;bottom:-5px;display:grid;place-items:center;width:20px;height:20px;border:2px solid #fff;border-radius:50%;background:#19b96a;color:#fff;box-shadow:0 2px 6px rgba(10,43,39,.25)}.pc-verified .pc-icon{width:11px;height:11px;stroke-width:3}
     @media(max-width:380px){.catalog-switch{gap:6px}.catalog-switch button{padding:9px 7px;gap:6px}.catalog-switch button b{font-size:12px}.catalog-switch small{font-size:10px}}
     @media(max-width:380px){.pseg{gap:2px;padding:3px}.pseg button{font-size:9px;gap:1px}.pseg button .ic{width:11px;height:11px}.bk{gap:9px;padding:9px}.bk-a button{font-size:12px}}
+    .pc-book-contact{display:flex!important;align-items:center;justify-content:center;gap:8px;width:100%;min-height:38px;padding:8px 10px;border:1px solid #b8e3d5;border-radius:11px;background:linear-gradient(105deg,#effaf6,#f7fcfa);color:#087a63;font-weight:750;font-size:13px;cursor:pointer;transition:background .16s ease,border-color .16s ease,transform .16s ease}.pc-book-contact:hover{background:#e4f6ef;border-color:#6fc6a9;transform:translateY(-1px)}.pc-book-contact:focus-visible,.pc-dialog-close:focus-visible,.pc-contact-link:focus-visible{outline:3px solid #45ae91;outline-offset:2px}.pc-book-contact .ic{width:16px;height:16px;flex:none}
+    .pc-contact-printer{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+    .bk-a{flex-wrap:wrap}.bk-a .pc-book-contact{flex:1 0 100%}
+    .plist.list .bk-a{flex-wrap:nowrap;gap:6px}.plist.list .bk-a button{min-width:0;flex:1 1 0;padding-inline:6px;white-space:nowrap}.plist.list .bk-a .rd{flex:.8 1 0}.plist.list .bk-a .dl{flex:.9 1 0}.plist.list .bk-a .pc-book-contact{width:auto;flex:2 1 0;gap:5px;padding:8px 6px;font-size:13.5px;white-space:nowrap}
+    .plist.grid .gk-a{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.plist.grid .gk-a button{min-width:0;white-space:nowrap}.plist.grid .gk-a .pc-book-contact{grid-column:1/-1}
+    .plist.grid .gk .s{display:flex;align-items:center;gap:7px;min-width:0;color:var(--muted);font-size:13px;line-height:1.3}.plist.grid .gk .s .subject-icon{width:15px;height:15px;flex:0 0 15px}.plist.grid .gk .s .gk-subject-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.book-page-count{display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:auto;color:var(--muted);font-size:11px;line-height:1.2;white-space:nowrap}.book-page-count .ic{width:14px;height:14px;flex:none}.plist.grid .gk .book-page-count{gap:3px;margin-left:auto;font-size:10px}.plist.grid .gk .book-page-count .ic{width:12px;height:12px}.plist.list .bk-b .s .bk-subject-name{min-width:0;overflow-wrap:anywhere}
+    .pc-contact-short{display:none}
+    @media(max-width:480px){.plist.list .bk-a button{flex:1 1 0;gap:3px;padding-inline:3px;font-size:10px}.plist.list .bk-a .rd,.plist.list .bk-a .dl,.plist.list .bk-a .pc-book-contact{flex:1 1 0}.plist.list .bk-a .pc-book-contact{gap:3px;font-size:10px}.plist.list .bk-a .pc-book-contact .ic{width:14px;height:14px}.pc-contact-full{display:none}.pc-contact-short{display:inline}}
+    @media(max-width:360px){.plist.list .bk-a button{gap:0;padding-inline:0;font-size:0}.plist.list .bk-a .pc-book-contact .ic{width:17px;height:17px}.pc-book-contact .pc-contact-printer{width:17px;height:17px}.pc-contact-short{display:none}}
+    .pc-dialog{position:fixed;inset:0;margin:auto;width:min(460px,calc(100vw - 32px));max-width:none;max-height:min(84dvh,720px);padding:0;overflow:hidden;border:1px solid var(--border);border-radius:20px;background:var(--surface);color:var(--text);box-shadow:0 24px 80px rgba(8,35,30,.28)}.pc-dialog::backdrop{background:rgba(9,27,24,.48);backdrop-filter:blur(4px)}
+    .pc-dialog-head{display:flex;align-items:center;gap:12px;padding:18px 18px 15px;border-bottom:1px solid var(--border);background:linear-gradient(120deg,var(--surface),color-mix(in srgb,#0E7C66 8%,var(--surface)))}.pc-dialog-icon{display:grid;place-items:center;flex:none;width:42px;height:42px;border-radius:13px;background:#e6f5ef;color:#087a63}.pc-dialog-icon .ic{width:21px;height:21px}.pc-dialog-head>div{min-width:0;flex:1}.pc-dialog-head small{display:block;margin-bottom:3px;color:#16856d;font-size:9px;font-weight:850;letter-spacing:.12em}.pc-dialog-head h2{margin:0;color:var(--text);font-family:var(--display);font-size:18px;line-height:1.2}.pc-dialog-close{display:grid;place-items:center;flex:none;width:36px;height:36px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--muted);cursor:pointer}.pc-dialog-close .ic{width:17px;height:17px}.pc-dialog-body{display:grid;gap:12px;max-height:calc(min(84dvh,720px) - 78px);overflow:auto;padding:16px;overscroll-behavior:contain}.pc-contact-card{display:grid;gap:12px;padding:15px;border:1px solid var(--border);border-radius:14px;background:var(--surface);box-shadow:0 3px 12px rgba(10,43,39,.05)}.pc-contact-card h3{margin:0;color:var(--text);font-family:var(--display);font-size:16px;font-weight:800;overflow-wrap:anywhere}.pc-contact-address{display:flex;align-items:flex-start;gap:8px;margin:0;color:var(--muted);font-size:13px;line-height:1.45}.pc-contact-address .pc-contact-icon-svg{width:17px;height:17px;flex:none;color:#b87022}.pc-contact-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.pc-contact-link{display:flex;align-items:center;gap:9px;min-width:0;min-height:48px;padding:8px 10px;border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text);text-decoration:none;transition:border-color .16s ease,background .16s ease}.pc-contact-link:hover{background:var(--surface2);border-color:#9ccfbd}.pc-contact-link>span:first-child{display:grid;place-items:center;flex:none;width:31px;height:31px;border-radius:9px;background:#e7f6f1;color:#087a63}.pc-contact-link.whatsapp>span:first-child{background:#e9f8ee;color:#1d9b59}.pc-contact-link.map>span:first-child{background:#fff2dc;color:#a9680c}.pc-contact-icon-svg{display:block;width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.pc-contact-link.whatsapp .pc-contact-icon-svg{width:18px;height:18px;fill:currentColor;stroke:none}.pc-contact-link>span:last-child{display:grid;gap:2px;min-width:0}.pc-contact-link small{color:var(--muted);font-size:9px;font-weight:850;letter-spacing:.07em}.pc-contact-link strong{overflow-wrap:anywhere;font-size:12px;line-height:1.25}
+    .pc-dialog-close{border-color:#c62828;background:#dc2626;color:#fff;box-shadow:0 3px 9px rgba(185,28,28,.24);transition:transform .16s ease,border-color .16s ease,background .16s ease,box-shadow .16s ease}.pc-dialog-close .ic{color:#fff;stroke:#fff}.pc-dialog-close:hover{transform:translateY(-1px);border-color:#991b1b;background:#b91c1c;box-shadow:0 4px 12px rgba(185,28,28,.32)}.pc-dialog-close:active{transform:scale(.95);background:#991b1b}.pc-dialog-close:focus-visible{outline-color:#ef4444}
+    :host([data-theme="dark"]) .pc-dialog-close{border-color:#ef4444;background:#dc2626;color:#fff}:host([data-theme="dark"]) .pc-dialog-close:hover{border-color:#f87171;background:#b91c1c}
+    @media(prefers-color-scheme:dark){:host:not([data-theme="light"]) .pc-dialog-close{border-color:#ef4444;background:#dc2626;color:#fff}:host:not([data-theme="light"]) .pc-dialog-close:hover{border-color:#f87171;background:#b91c1c}}
+    .pc-confirm-dialog{position:fixed;inset:0;margin:auto;width:min(360px,calc(100vw - 32px));max-width:none;padding:18px;border:1px solid var(--border);border-radius:17px;background:var(--surface);color:var(--text);box-shadow:0 20px 64px rgba(8,35,30,.28)}.pc-confirm-dialog::backdrop{background:rgba(9,27,24,.5);backdrop-filter:blur(3px)}.pc-confirm-head{display:flex;align-items:center;gap:11px}.pc-confirm-head h2{margin:0;font-family:var(--display);font-size:17px;line-height:1.25}.pc-confirm-icon{display:grid;place-items:center;flex:none;width:40px;height:40px;border-radius:12px;background:#e6f5ef;color:#087a63}.pc-confirm-icon .pc-icon,.pc-confirm-icon .pc-contact-icon-svg{width:20px;height:20px}.pc-confirm-message{margin:14px 0 18px;color:var(--muted);font-size:14px;line-height:1.5;overflow-wrap:anywhere}.pc-confirm-message strong{color:var(--text)}.pc-confirm-actions{display:grid;grid-template-columns:1fr 1.2fr;gap:8px}.pc-confirm-actions button{min-height:42px;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font:inherit;font-size:13px;font-weight:750;cursor:pointer}.pc-confirm-cancel{background:var(--surface);color:var(--muted)}.pc-confirm-continue{border-color:#087a63!important;background:#087a63;color:#fff}.pc-confirm-actions button:focus-visible{outline:3px solid #45ae91;outline-offset:2px}
+    .pc-confirm-message{color:#285447}.pc-confirm-message strong{color:#08664f}:host([data-theme="dark"]) .pc-confirm-message{color:#d1dfd9}:host([data-theme="dark"]) .pc-confirm-message strong{color:#72d6b5}@media(prefers-color-scheme:dark){:host:not([data-theme="light"]) .pc-confirm-message{color:#d1dfd9}:host:not([data-theme="light"]) .pc-confirm-message strong{color:#72d6b5}}
+    .pc-disclaimer-boundary{display:grid;grid-template-columns:30px minmax(0,1fr);align-items:start;gap:9px;margin-top:12px;padding:10px;border:1px solid color-mix(in srgb,#b9851c 28%,var(--border));border-left:3px solid #b9851c;border-radius:11px;background:color-mix(in srgb,#f3c75b 9%,var(--surface));color:var(--text);font-weight:600;line-height:1.45}.pc-disclaimer-icon{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:#fff2cf;color:#93640a}.pc-disclaimer-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}:host([data-theme="dark"]) .pc-disclaimer-boundary{border-color:#66552d;border-left-color:#efc568;background:#302a1c;color:#e8dfc8}:host([data-theme="dark"]) .pc-disclaimer-icon{background:#453819;color:#f0c665}@media(prefers-color-scheme:dark){:host:not([data-theme="light"]) .pc-disclaimer-boundary{border-color:#66552d;border-left-color:#efc568;background:#302a1c;color:#e8dfc8}:host:not([data-theme="light"]) .pc-disclaimer-icon{background:#453819;color:#f0c665}}
+    .pc-confirm-dialog[open]{animation:pc-confirm-enter .18s ease-out both}.pc-confirm-dialog[open]::backdrop{animation:pc-confirm-backdrop .18s ease-out both}@keyframes pc-confirm-enter{from{opacity:.96;transform:translateY(5px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}@keyframes pc-confirm-backdrop{from{opacity:0}to{opacity:1}}
+    .pc-choice-note{display:grid;grid-template-columns:34px minmax(0,1fr);align-items:start;gap:10px;margin-top:2px;padding:12px;border:1px solid #efd4d2;border-left:3px solid #b94b4b;border-radius:13px;background:#fff7f6;color:#3e3333}.pc-choice-note-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#fde9e7;color:#ad3434}.pc-choice-note-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.pc-choice-note-copy{min-width:0}.pc-choice-note h3{margin:0 0 4px;color:#a83232;font-family:var(--display);font-size:13px;font-weight:800;line-height:1.25}.pc-choice-note p{margin:0;color:#514344;font-size:12px;line-height:1.5;overflow-wrap:anywhere}:host([data-theme="dark"]) .pc-choice-note{border-color:#633b3a;border-left-color:#df7771;background:#2b2020;color:#f0dfde}:host([data-theme="dark"]) .pc-choice-note-icon{background:#482b2a;color:#ff9d96}:host([data-theme="dark"]) .pc-choice-note h3{color:#ffaaa4}:host([data-theme="dark"]) .pc-choice-note p{color:#e2cecd}@media(prefers-color-scheme:dark){:host:not([data-theme="light"]) .pc-choice-note{border-color:#633b3a;border-left-color:#df7771;background:#2b2020;color:#f0dfde}:host:not([data-theme="light"]) .pc-choice-note-icon{background:#482b2a;color:#ff9d96}:host:not([data-theme="light"]) .pc-choice-note h3{color:#ffaaa4}:host:not([data-theme="light"]) .pc-choice-note p{color:#e2cecd}}
+    .pc-choice-note p{color:#b42318;font-weight:500}:host([data-theme="dark"]) .pc-choice-note p{color:#ff9d96}@media(prefers-color-scheme:dark){:host:not([data-theme="light"]) .pc-choice-note p{color:#ff9d96}}
+    @media(prefers-reduced-motion:reduce){.pc-book-contact,.pc-contact-link,.pc-dialog-close{transition:none}.pc-confirm-dialog[open],.pc-confirm-dialog[open]::backdrop{animation:none}}
+    @media(max-width:520px){.pc-dialog{inset:auto 0 0;width:min(100vw,520px);max-height:82dvh;margin:0 auto;border-radius:22px 22px 0 0;border-bottom:0}.pc-dialog-body{max-height:calc(82dvh - 78px);padding-bottom:calc(18px + env(safe-area-inset-bottom))}.pc-dialog-head h2{font-size:14px;white-space:nowrap}}
+    @media(max-width:360px){.pc-dialog-head{gap:8px;padding-left:12px;padding-right:12px}.pc-dialog-icon{width:36px;height:36px}.pc-dialog-close{width:34px;height:34px}.pc-dialog-head h2{font-size:13px}}
+    .pc-dialog-body{padding:20px 16px 36px}@media(max-width:520px){.pc-dialog-body{padding:18px 16px calc(30px + env(safe-area-inset-bottom))}}
+    .bk-a .dl,.gk-a .dl{border:1px solid #2563eb;background:#2563eb;color:#fff}.bk-a .dl:hover,.gk-a .dl:hover{border-color:#1d4ed8;background:#1d4ed8}.bk-a .pc-book-contact,.gk-a .pc-book-contact{border-color:#a96508;background:linear-gradient(105deg,#9b5706,#bd760b);color:#fff}.bk-a .pc-book-contact:hover,.gk-a .pc-book-contact:hover{border-color:#874b05;background:linear-gradient(105deg,#874b05,#a96508)}
+    .pc-dialog{inset:50% auto auto 50%;height:auto;max-height:94dvh;transform:translate(-50%,-50%);display:block}.pc-dialog:not([open]){display:none}.pc-dialog[open]{display:block}.pc-dialog-body{max-height:calc(94dvh - 78px);align-content:normal}
+    @media(max-width:520px){.pc-dialog{inset:auto 0 0;height:auto;max-height:94dvh;margin:0 auto;transform:none}.pc-dialog-body{max-height:calc(94dvh - 78px)}}
   </style>${icons}${template.content.firstElementChild.outerHTML}`;
   const pageStylesheet = shadow.querySelector('link[rel="stylesheet"]');
   const revealBooks = () => {
@@ -57,12 +84,98 @@
   const LEVELS = library.LEVELS;
   const SUBJECT_CATALOG = config.subjectCatalog || {};
   const LEVEL_ICONS = {[ALL]:'layers',Xanaano:'star',Hoose:'bookopen',Dhexe:'class',Sare:'landmark'};
-  const state = {level:ALL,cls:ALL,subject:ALL,query:'',catalogType:'',branchId:'',view:'list',readerBook:null,pdf:null,page:1,mode:'scroll',zoom:1,theme:'light',marks:{},downloadBook:null,downloadController:null,downloadStatusTimer:null,objectUrl:null,searchHits:[],searchIndex:0,pageObserver:null,searchRun:0};
+  const state = {level:ALL,cls:ALL,subject:ALL,query:'',catalogType:'',branchId:'',view:'grid',readerBook:null,pdf:null,page:1,mode:'scroll',zoom:1,theme:'light',marks:{},downloadBook:null,downloadController:null,downloadStatusTimer:null,objectUrl:null,searchHits:[],searchIndex:0,pageObserver:null,pageCountObserver:null,pageCountJobs:new Map(),pageCountFailures:new Set(),pendingContact:null,searchRun:0};
+  const filterQueryKeys = ['branch_id','catalog','level','class','subject','q','view'];
+  function restoreFilterState() {
+    const params = new URL(location.href).searchParams;
+    const branchId = params.get('branch_id') || '';
+    state.branchId = (config.branches || []).some(branch => String(branch.id) === branchId) ? branchId : '';
+    state.catalogType = ['national','local'].includes(params.get('catalog')) ? params.get('catalog') : '';
+    state.level = params.get('level') || ALL;
+    state.cls = params.get('class') || ALL;
+    state.subject = params.get('subject') || ALL;
+    state.query = (params.get('q') || '').slice(0, 120);
+    state.view = params.get('view') === 'list' ? 'list' : 'grid';
+    $('#pq').value = state.query;
+  }
+  function syncFilterStateToUrl() {
+    const url = new URL(location.href);
+    const values = {
+      branch_id: state.branchId,
+      catalog: state.catalogType,
+      level: state.level === ALL ? '' : state.level,
+      class: state.cls === ALL ? '' : state.cls,
+      subject: state.subject === ALL ? '' : state.subject,
+      q: state.query.trim(),
+      view: state.view === 'list' ? '' : state.view
+    };
+    filterQueryKeys.forEach(key => {
+      if (values[key]) url.searchParams.set(key, values[key]);
+      else url.searchParams.delete(key);
+    });
+    history.replaceState(history.state, '', url);
+  }
+  restoreFilterState();
   const sym = name => `<svg class="ic" aria-hidden="true"><use href="#i-${name}"/></svg>`;
   const crest = () => config.logoUrl ? `<img class="crest crest-img" src="${esc(config.logoUrl)}" alt="">` : '<svg class="crest" viewBox="0 0 24 26" aria-hidden="true"><use href="#crest"/></svg>';
   const subjectSym = name => `<span class="subject-icon" style="--subject-icon:url('/static/icons/books-fa-free/${esc(name.replace(/^fa-/,''))}.svg')" aria-hidden="true"></span>`;
   const classText = book => book.class === ALL ? 'Heer dhan' : library.classLabel(book.class);
   const subjectText = book => book.bookKind==='general' ? GENERAL : book.subject===ALL ? 'Dhammaan maaddooyinka' : book.subject;
+  const pageCountMarkup = book => `${sym('pages')}<span>${Number(book.pages)>0?`${Number(book.pages)} bog`:state.pageCountFailures.has(String(book.id))?'Lama xaqiijin':'Hubinaya…'}</span>`;
+  function loadPdfjs() {
+    if (!window.pdfjsLibPromise) window.pdfjsLibPromise = import('/static/vendor/pdfjs/pdf.min.mjs').then(module => {
+      module.GlobalWorkerOptions.workerSrc = '/static/vendor/pdfjs/pdf.worker.min.mjs';
+      return module;
+    });
+    return window.pdfjsLibPromise;
+  }
+  function applyPageCount(book, pages) {
+    const count = Number(pages);
+    if (!Number.isInteger(count) || count < 1 || count > 100000) return;
+    book.pages = count;
+    state.pageCountFailures.delete(String(book.id));
+    try { localStorage.setItem(`books-page-count:${book.id}`, JSON.stringify({updatedAt:book.updatedAt,pages:count})); } catch (_) {}
+    $$('[data-page-count]').filter(node => node.dataset.pageCount === String(book.id)).forEach(node => { node.innerHTML = pageCountMarkup(book); });
+  }
+  async function loadMissingPageCount(book) {
+    const id = String(book.id);
+    if (Number(book.pages)>0 || state.pageCountFailures.has(id) || state.pageCountJobs.has(id)) return;
+    const job = (async () => {
+      let task;
+      try {
+        const pdfjs = await loadPdfjs();
+        task = pdfjs.getDocument({url:book.pdfUrl,rangeChunkSize:65536,disableStream:true,disableAutoFetch:true});
+        const pdf = await task.promise;
+        applyPageCount(book,pdf.numPages);
+        if (!(Number(book.pages)>0)) throw new Error('PDF page count unavailable');
+      } catch (_) {
+        state.pageCountFailures.add(id);
+        $$('[data-page-count]').filter(node => node.dataset.pageCount === id).forEach(node => { node.innerHTML = `${sym('pages')}<span>Lama xaqiijin</span>`; });
+      } finally {
+        await task?.destroy().catch(() => {});
+        state.pageCountJobs.delete(id);
+      }
+    })();
+    state.pageCountJobs.set(id,job);
+    return job;
+  }
+  function observeMissingPageCounts() {
+    state.pageCountObserver?.disconnect();
+    state.pageCountObserver = null;
+    const targets = $$('[data-page-count]').filter(node => {
+      const book = books.find(item => String(item.id) === node.dataset.pageCount);
+      return book && !(Number(book.pages)>0) && !state.pageCountFailures.has(node.dataset.pageCount);
+    });
+    if (!targets.length || !('IntersectionObserver' in window)) return;
+    state.pageCountObserver = new IntersectionObserver(entries => {
+      for (const entry of entries) if (entry.isIntersecting) {
+        state.pageCountObserver.unobserve(entry.target);
+        const book = books.find(item => String(item.id) === entry.target.dataset.pageCount);
+        if (book) loadMissingPageCount(book);
+      }
+    },{root:$('#pscroll'),rootMargin:'120px'});
+    targets.forEach(node => state.pageCountObserver.observe(node));
+  }
   const coverHtml = (book, size='md') => {
     if (book.coverUrl && book.hasCover) return `<div class="cover ${size} custom" style="background-image:url('${esc(book.coverUrl)}')" role="img" aria-label="Cover-ka ${esc(book.title)}"></div>`;
     const subject = library.SUBJ[book.scope === 'subject' ? book.subject : ALL] || library.SUBJ[ALL];
@@ -70,7 +183,15 @@
     return `<div class="cover ${size}" style="--a:${subject.a};--b:${subject.b}"><svg class="art" viewBox="0 0 100 133" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${subject.art()}</svg><span class="spine"></span><div class="cv"><div class="cv-top">${crest()}<span>TAYSIIR<em>INTERNATIONAL SCHOOLS</em></span></div><i class="cv-gold"></i><div class="cv-mid"><div class="emb">${subjectSym(subject.i)}</div></div><div class="cv-bot"><small>${esc(subject.n)}</small><b>${esc(book.title)}</b><span class="tag">${esc(tag)}</span></div></div></div>`;
   };
   // Cover presence is deliberately separate from the private filename.
-  books.forEach(book => { book.hasCover = Boolean(book.hasCover); });
+  books.forEach(book => {
+    book.hasCover = Boolean(book.hasCover);
+    if (!(Number(book.pages)>0)) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(`books-page-count:${book.id}`) || 'null');
+        if (cached?.updatedAt === book.updatedAt && Number(cached.pages)>0) book.pages = Number(cached.pages);
+      } catch (_) {}
+    }
+  });
   $('#schoolName').textContent = config.schoolName || 'Taysiir International Schools';
   $('#publicFooter').textContent = `${config.schoolName || 'Taysiir International Schools'} · Maktabadda Buugaagta`;
   function branchBooks() {
@@ -149,20 +270,42 @@
   }
   function renderBooks() {
     const list = filteredBooks();
+    const branch=(config.branches||[]).find(item=>String(item.id)===String(state.branchId));
+    const contactButton=state.catalogType==='local'&&(branch?.printCenters||[]).length
+      ? `<button class="pc-book-contact" type="button" data-printer-contact aria-label="La xidhiidh Madbacad" title="La xidhiidh Madbacad"><svg class="ic pc-contact-printer" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6zM18 12h.01"/></svg><span class="pc-contact-full">La xidhiidh Madbacad</span><span class="pc-contact-short" aria-hidden="true">Xidhiidh</span></button>`
+      : '';
     $('#pCount').innerHTML = `<b>${list.length}</b> ${list.length===1?'buug':'buug'}`;
     $('#pvGrid').setAttribute('aria-pressed',String(state.view==='grid'));
     $('#pvList').setAttribute('aria-pressed',String(state.view==='list'));
     $('#pList').className = `plist ${state.view}`;
     $('#pList').innerHTML = list.length ? list.map(book => state.view==='grid'
-      ? `<article class="gk"><button type="button" data-read="${book.id}" aria-label="Akhri ${esc(book.title)}">${coverHtml(book,'md')}</button><div class="m"><span class="lv" style="--c:${LEVELS[book.level]?.c}"><i></i>${esc(book.level)}</span><span class="cls">${esc(classText(book))}</span></div><h3>${esc(book.title)}</h3><div class="s">${subjectSym((library.SUBJ[book.subject]||library.SUBJ[ALL]).i)}${esc(subjectText(book))}</div><div class="gk-a"><button class="rd" type="button" data-read="${book.id}">${sym('bookopen')} Akhri</button><button class="dl" type="button" data-download="${book.id}">${sym('download')} Soo Degso</button></div></article>`
-      : `<article class="bk"><button type="button" data-read="${book.id}" aria-label="Akhri ${esc(book.title)}" style="display:block;flex:none;align-self:flex-start">${coverHtml(book,'md')}</button><div class="bk-b"><div class="m"><span class="lv" style="--c:${LEVELS[book.level]?.c}"><i></i>${esc(book.level)}</span><span class="cls">${esc(classText(book))}</span></div><h3>${esc(book.title)}</h3><div class="s">${subjectSym((library.SUBJ[book.subject]||library.SUBJ[ALL]).i)}${esc(subjectText(book))} · ${book.pages || '—'} bog</div><p>${esc(book.description)}</p><div class="bk-a"><button class="rd" type="button" data-read="${book.id}">${sym('eye')} Akhri</button><button class="dl" type="button" data-download="${book.id}">${sym('download')} Soo Degso</button></div></div></article>`).join('')
-      : `<div class="empty"><div class="big">${sym('bookopen')}</div><b>${!state.branchId?'Marka hore dooro xarunta dugsiga':!branchBooks().length?'Xaruntan buug laguma darin':!state.catalogType?'Dooro nooca buugga':'Buug lama helin'}</b><p>${!state.branchId?'Dooro xarunta si loo soo saaro noocyada buugga, heerarka iyo fasallada ku habboon.':!branchBooks().length?'Ma jiro buug dadweyne ah oo xaruntan loo xulay.':'Isku day erey kale ama nadiifi shaandhaynta.'}</p><button class="btn pri" type="button" data-clear>Nadiifi shaandhaynta</button></div>`;
+      ? `<article class="gk"><button type="button" data-read="${book.id}" aria-label="Akhri ${esc(book.title)}">${coverHtml(book,'md')}</button><div class="m"><span class="lv" style="--c:${LEVELS[book.level]?.c}"><i></i>${esc(book.level)}</span><span class="cls">${esc(classText(book))}</span></div><h3>${esc(book.title)}</h3><div class="s">${subjectSym((library.SUBJ[book.subject]||library.SUBJ[ALL]).i)}<span class="gk-subject-name" title="${esc(subjectText(book))}">${esc(subjectText(book))}</span><span class="book-page-count" data-page-count="${book.id}">${pageCountMarkup(book)}</span></div><div class="gk-a"><button class="rd" type="button" data-read="${book.id}">${sym('bookopen')} Akhri</button><button class="dl" type="button" data-download="${book.id}">${sym('download')} La Dag</button></div></article>`
+      : `<article class="bk"><button type="button" data-read="${book.id}" aria-label="Akhri ${esc(book.title)}" style="display:block;flex:none;align-self:flex-start">${coverHtml(book,'md')}</button><div class="bk-b"><div class="m"><span class="lv" style="--c:${LEVELS[book.level]?.c}"><i></i>${esc(book.level)}</span><span class="cls">${esc(classText(book))}</span></div><h3>${esc(book.title)}</h3><div class="s">${subjectSym((library.SUBJ[book.subject]||library.SUBJ[ALL]).i)}<span class="bk-subject-name">${esc(subjectText(book))}</span><span class="book-page-count" data-page-count="${book.id}">${pageCountMarkup(book)}</span></div><p>${esc(book.description)}</p><div class="bk-a"><button class="rd" type="button" data-read="${book.id}">${sym('eye')} Akhri</button><button class="dl" type="button" data-download="${book.id}">${sym('download')} La Dag</button></div></div></article>`).join('')
+      : `<div class="empty"><div class="big">${sym('bookopen')}</div><b>${!state.branchId?'Marka hore dooro xarunta dugsiga':!branchBooks().length?'Xaruntan buug laguma darin':!state.catalogType?'Dooro nooca buugga':'Buug lama helin'}</b><p>${!state.branchId?'Dooro xarunta si loo soo saaro noocyada buugga, heerarka iyo fasallada ku habboon.':!branchBooks().length?'Ma jiro buug dadweyne ah oo xaruntan loo xulay.':'Isku day erey kale ama beddel shaandhaynta.'}</p></div>`;
+    if(contactButton) $$('#pList .gk-a, #pList .bk-a').forEach(actions=>actions.insertAdjacentHTML('beforeend',contactButton));
+    observeMissingPageCounts();
   }
-  function renderPrintCenters() {
-    const wrap=$('#pCenters');
+  function renderPrinterContactsSimple() {
     const branch=(config.branches||[]).find(item=>String(item.id)===String(state.branchId));
-    if(state.catalogType!=='local'||!branch){wrap.hidden=true;wrap.innerHTML='';return}
-    wrap.hidden=false;
+    const centers=state.catalogType==='local'?(branch?.printCenters||[]):[];
+    if(!centers.length){toast('Madbacad xiriir leh lama helin.');return}
+    const icon=(path,viewBox)=>'<svg class="pc-contact-icon-svg" viewBox="'+(viewBox||'0 0 24 24')+'" aria-hidden="true">'+path+'</svg>';
+    const phoneIcon=icon('<path d="M21 16.5v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 10.2 18a19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 1.8 3.2 2 2 0 0 1 3.8 1h3a2 2 0 0 1 2 1.7l.5 2.8a2 2 0 0 1-.6 1.7L7 8.9a16 16 0 0 0 6 6l1.7-1.7a2 2 0 0 1 1.7-.6l2.8.5a2 2 0 0 1 1.8 1.4Z"/>');
+    const pinIcon=icon('<path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>');
+    const mapIcon=icon('<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/>');
+    const whatsappIcon=icon('<path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-32.6-16.3-54-29.1-75.5-66-5.7-9.8 5.7-9.1 16.3-30.3 1.8-3.7.9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 35.2 15.2 49 16.5 66.6 13.9 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/>','0 0 448 512');
+    $('#pcDialogBody').innerHTML=centers.map(center=>{
+      const digits=String(center.whatsapp||'').replace(/\D/g,'');
+      const phone=String(center.phone||'').trim();
+      const links=(phone?'<a class="pc-contact-link call" href="tel:'+esc(phone)+'"><span>'+phoneIcon+'</span><span><small>WAC</small><strong>'+esc(phone)+'</strong></span></a>':'')+(digits?'<a class="pc-contact-link whatsapp" target="_blank" rel="noopener noreferrer" href="https://wa.me/'+esc(digits)+'"><span>'+whatsappIcon+'</span><span><small>WHATSAPP</small><strong>'+esc(center.whatsapp)+'</strong></span></a>':'')+(center.mapUrl?'<a class="pc-contact-link map" target="_blank" rel="noopener noreferrer" href="'+esc(center.mapUrl)+'"><span>'+mapIcon+'</span><span><small>GOOBTA KHARIIDADDA</small><strong>Ka eeg khariidadda</strong></span></a>':'');
+      return '<article class="pc-contact-card"><h3>'+esc(center.name)+'</h3>'+(center.address?'<p class="pc-contact-address">'+pinIcon+'<span>'+esc(center.address)+'</span></p>':'')+'<div class="pc-contact-actions">'+links+'</div></article>';
+    }).join('');
+    $('#printerContactDialog').showModal();
+  }
+  function openPrinterContacts() {
+    const wrap=$('#pcDialogBody');
+    const branch=(config.branches||[]).find(item=>String(item.id)===String(state.branchId));
+    if(state.catalogType!=='local'||!branch){wrap.innerHTML='';return}
     const centers=branch.printCenters||[];
     const icon = (name, extraClass = '') => {
       const paths = {
@@ -185,10 +328,22 @@
       const emblem=logoUrl?`<img class="pc-logo" src="${esc(logoUrl)}" alt="" loading="lazy">`:icon('printer');
       return `<article class="print-center"><header class="pc-head"><span class="pc-emblem">${emblem}<span class="pc-verified" aria-hidden="true">${icon('check')}</span></span><div class="pc-heading"><small>XARUNTA DAABACAADDA</small><h3>${esc(center.name)}</h3></div><span class="pc-active"><i></i>Firfircoon</span></header><div class="pc-location"><span class="pc-location-icon">${icon('pin')}</span><span class="pc-location-copy"><small>GOOBTA MADBACADDA</small><strong>${esc(center.address)}</strong></span></div><div class="pc-actions"><a class="pc-action call" href="tel:${esc(center.phone)}" aria-label="Wac ${esc(center.phone)}"><span class="pc-action-icon">${icon('phone')}</span><span class="pc-action-copy"><small>WAC</small><strong>${esc(center.phone)}</strong></span></a>${waDigits?`<a class="pc-action whatsapp" target="_blank" rel="noopener noreferrer" href="https://wa.me/${esc(waDigits)}" aria-label="WhatsApp ${esc(center.whatsapp)}"><span class="pc-action-icon">${icon('whatsapp','whatsapp')}</span><span class="pc-action-copy"><small>WHATSAPP</small><strong>${esc(center.whatsapp)}</strong></span></a>`:''}${center.mapUrl?`<a class="pc-action map" target="_blank" rel="noopener noreferrer" href="${esc(center.mapUrl)}" aria-label="Ka eeg khariidadda"><span class="pc-action-icon">${icon('map')}</span><span class="pc-action-copy"><small>GOOBTA KHARIIDADDA</small><strong>Ka eeg khariidadda</strong></span>${icon('external','pc-external')}</a>`:''}</div></article>`;
     }).join(''):'<div class="empty-reader">Weli madbacad firfircoon laguma xidhin xaruntan.</div>';
+    if(centers.length) wrap.insertAdjacentHTML('beforeend','<aside class="pc-choice-note" role="note" aria-label="Adeeg ikhtiyaari ah"><span class="pc-choice-note-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span><div class="pc-choice-note-copy"><h3>Adeeg ikhtiyaari ah</h3><p>Dugsigu wuxuu xogta madbacaddan kuugu soo bandhigayaa si ay kuugu fududaato oo keliya. La xidhiidhkeeda ama ka dalbashada adeeggeeda khasab kuguma aha; waxaad xor u tahay inaad madbacad kale doorato.</p></div></aside>');
     wrap.querySelectorAll('.pc-logo').forEach(image=>image.addEventListener('error',()=>{image.outerHTML=icon('printer')},{once:true}));
+    $('#printerContactDialog').showModal();
   }
+  function confirmPrinterContact(link) {
+    const kind=link.classList.contains('whatsapp')?'whatsapp':'call';
+    state.pendingContact={href:link.href,kind};
+    $('#pcActionTitle').textContent=kind==='whatsapp'?'Xaqiiji WhatsApp':'Xaqiiji wicitaanka';
+    $('#pcActionMessage').innerHTML='<strong>Fadlan Ogsoonow:</strong> Madbacaddani waa adeeg madax-bannaan. Dalab iyo lacag-bixin kasta waxaad si toos ah ula heshiinaysaa madbacadda.<span class="pc-disclaimer-boundary"><span class="pc-disclaimer-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span><span>Dugsigu wax lacag ah ma qaado, mana maamulo fulinta dalabka ama waqtiga adeegga ee aad madbacadda ku ballantaan.</span></span>';
+    $('#pcActionContinue').textContent='Waan fahmay, sii wad';
+    $('#pcActionIcon').innerHTML=link.querySelector('.pc-action-icon, span:first-child')?.innerHTML||'';
+    $('#pcActionConfirm').showModal();
+  }
+  $('#pcActionConfirm').addEventListener('cancel',()=>{state.pendingContact=null});
   function toast(message) { const item=$('#toastP'); item.textContent=message; item.classList.add('show'); clearTimeout(item._t); item._t=setTimeout(()=>item.classList.remove('show'),2600); }
-  function render() { renderFilters(); renderBooks(); renderPrintCenters(); }
+  function render() { renderFilters(); renderBooks(); syncFilterStateToUrl(); }
   render();
   async function shareReaderBook() {
     const url = new URL('/books', location.origin);
@@ -300,9 +455,8 @@
     state.page=Number(pageOverride||previous.page||1);state.marks[book.id]=previous.marks||[];
     $('#rMark').classList.toggle('on',state.marks[book.id].includes(state.page));
     if(previous.page&&!pageOverride)toast(`Waxaad ku joogtay bogga ${previous.page}`);
-    if(!window.pdfjsLibPromise)window.pdfjsLibPromise=import('/static/vendor/pdfjs/pdf.min.mjs').then(module=>{module.GlobalWorkerOptions.workerSrc='/static/vendor/pdfjs/pdf.worker.min.mjs';return module});
     try {
-      const pdfjs=await window.pdfjsLibPromise;window.pdfjsModule=pdfjs;const pdf=await pdfjs.getDocument({url:book.pdfUrl,rangeChunkSize:65536}).promise;state.pdf=pdf;
+      const pdfjs=await loadPdfjs();window.pdfjsModule=pdfjs;const pdf=await pdfjs.getDocument({url:book.pdfUrl,rangeChunkSize:65536}).promise;state.pdf=pdf;applyPageCount(book,pdf.numPages);
       $('#rRange').max=String(pdf.numPages);$('#rRange').value=String(Math.min(state.page,pdf.numPages));$('#rpages').innerHTML='';
       const firstPage=await pdf.getPage(1),firstViewport=firstPage.getViewport({scale:1}),ratio=`${firstViewport.width}/${firstViewport.height}`;
       for(let number=1;number<=pdf.numPages;number++){const node=document.createElement('article');node.className='pdfpage';node.dataset.page=number;node.style.aspectRatio=ratio;node.innerHTML='<canvas></canvas><div class="pdftext"></div>';$('#rpages').append(node);}
@@ -362,13 +516,20 @@
   function closeReader(){saveReaderPosition();state.pageObserver?.disconnect();state.pageObserver=null;state.searchRun++;$('#reader').classList.remove('show');closeReaderSheet();state.pdf?.destroy();state.pdf=null;const url=new URL(location.href);url.searchParams.delete('buug');history.replaceState({},'',url)}
   shadow.addEventListener('click',event=>{
     const button=event.target.closest('button');
+    const contactLink=event.target.closest('a.pc-action.call,a.pc-action.whatsapp,a.pc-contact-link.call,a.pc-contact-link.whatsapp');
+    if(contactLink){event.preventDefault();confirmPrinterContact(contactLink);return}
+    if(event.target.closest('[data-contact-cancel]')){$('#pcActionConfirm').close();state.pendingContact=null;return}
+    if(event.target.closest('[data-contact-continue]')){const pending=state.pendingContact;state.pendingContact=null;$('#pcActionConfirm').close();if(pending?.kind==='whatsapp')window.open(pending.href,'_blank','noopener,noreferrer');else if(pending?.kind==='call')window.location.href=pending.href;return}
+    if(event.target.id==='pcActionConfirm'){$('#pcActionConfirm').close();state.pendingContact=null;return}
+    if(event.target.closest('[data-printer-contact]')){openPrinterContacts();return}
+    if(event.target.closest('[data-printer-contact-close]')){$('#printerContactDialog').close();return}
+    if(event.target.id==='printerContactDialog'){$('#printerContactDialog').close();return}
     const catalog=event.target.closest('[data-catalog]');if(catalog&&!catalog.disabled){state.catalogType=catalog.dataset.catalog;state.level=ALL;state.cls=ALL;state.subject=ALL;state.query='';$('#pq').value='';render();return}
     const level=event.target.closest('[data-level]');if(level){state.level=level.dataset.level;state.cls=ALL;render();return}
     const subject=event.target.closest('[data-subject]');if(subject){state.subject=subject.dataset.subject;render();return}
     const read=event.target.closest('[data-read]');if(read){const book=books.find(item=>item.id===Number(read.dataset.read));if(book)openReader(book);return}
     const download=event.target.closest('[data-download]');if(download){const book=books.find(item=>item.id===Number(download.dataset.download));if(book)startDownload(book);return}
-    if(event.target.closest('[data-clear]')||event.target.id==='pClear'){state.level=ALL;state.cls=ALL;state.subject=ALL;state.catalogType='';state.branchId='';state.query='';$('#pq').value='';render();return}
-    if(button?.id==='pvGrid'||button?.id==='pvList'){state.view=button.id==='pvGrid'?'grid':'list';renderBooks();return}
+    if(button?.id==='pvGrid'||button?.id==='pvList'){state.view=button.id==='pvGrid'?'grid':'list';renderBooks();syncFilterStateToUrl();return}
     if(button?.id==='dX'||event.target.closest('[data-download-close]')){closeDownload();return}
     if(event.target.closest('[data-download-cancel]')){state.downloadController?.abort();return}
     const downloadRead=event.target.closest('[data-download-read]');if(downloadRead){const book=books.find(item=>item.id===Number(downloadRead.dataset.downloadRead));closeDownload();if(book)openReader(book);return}
@@ -390,7 +551,7 @@
     const dest=event.target.closest('[data-dest]');if(dest){try{const target=state.pdf.getDestination(JSON.parse(dest.dataset.dest));Promise.resolve(target).then(([ref])=>state.pdf.getPageIndex(ref).then(index=>{$(`.pdfpage[data-page="${index+1}"]`)?.scrollIntoView({behavior:'smooth'});closeReaderSheet()}))}catch(_){}return}
     const tab=event.target.closest('[data-tab]');if(tab){$$('[data-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button===tab)));if(tab.dataset.tab==='outline')loadOutline();else if(tab.dataset.tab==='thumbs')loadThumbs();else{const target=$('#sheetContent');const marks=state.marks[state.readerBook.id]||[];target.innerHTML=marks.length?marks.map(page=>`<button type="button" data-goto="${page}">Bogga ${page}</button>`).join(''):'<div class="empty-reader">Weli calaamad lama kaydin.</div>'}return}
   });
-  shadow.addEventListener('input',event=>{if(event.target.id==='pq'){state.query=event.target.value;renderBooks()}if(event.target.id==='rsIn'){const input=event.target,query=input.value;clearTimeout(input._timer);input._timer=setTimeout(()=>searchPdf(query).catch(()=>{if($('#rsIn').value===query){$('#rsCnt').textContent='!';toast('Raadintu way fashilantay. Mar kale isku day.')}}),260)}if(event.target.id==='rRange'){scrollToPage(event.target.value)}if(event.target.id==='zoom'){state.zoom=Number(event.target.value)/100;$('#zoomValue').textContent=`${event.target.value}%`;$$('.pdfpage').forEach(node=>node.style.width=`min(calc(100% - 18px),${500*state.zoom}px)`)}});
+  shadow.addEventListener('input',event=>{if(event.target.id==='pq'){state.query=event.target.value;renderBooks();syncFilterStateToUrl()}if(event.target.id==='rsIn'){const input=event.target,query=input.value;clearTimeout(input._timer);input._timer=setTimeout(()=>searchPdf(query).catch(()=>{if($('#rsIn').value===query){$('#rsCnt').textContent='!';toast('Raadintu way fashilantay. Mar kale isku day.')}}),260)}if(event.target.id==='rRange'){scrollToPage(event.target.value)}if(event.target.id==='zoom'){state.zoom=Number(event.target.value)/100;$('#zoomValue').textContent=`${event.target.value}%`;$$('.pdfpage').forEach(node=>node.style.width=`min(calc(100% - 18px),${500*state.zoom}px)`)}});
   shadow.addEventListener('change',event=>{if(event.target.id==='pClass'){state.cls=event.target.value;render()}if(event.target.id==='pBranch'){state.branchId=event.target.value;state.catalogType='';state.level=ALL;state.cls=ALL;state.subject=ALL;state.query='';$('#pq').value='';render()}if(event.target.id==='rRange'){scrollToPage(event.target.value)}if(event.target.id==='layout'){state.mode=event.target.value;$('#reader').dataset.mode=state.mode}if(event.target.id==='goForm'){event.preventDefault();const page=Math.max(1,Math.min(state.pdf.numPages,Number($('#goPage').value)||1));scrollToPage(page);closeReaderSheet()}});
   shadow.addEventListener('submit',event=>{if(event.target.id==='goForm'){event.preventDefault();const page=Math.max(1,Math.min(state.pdf.numPages,Number($('#goPage').value)||1));scrollToPage(page);closeReaderSheet()}});
   shadow.addEventListener('keydown',event=>{if(event.key==='Escape'){if($('#rsheet').classList.contains('show'))closeReaderSheet();else if($('#reader').classList.contains('show'))closeReader();else closeDownload()}});
