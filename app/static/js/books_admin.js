@@ -5,6 +5,7 @@
   if (!mount || !window.BookCoverLibrary) return;
   const library = window.BookCoverLibrary;
   const ALL = library.ALL;
+  const GENERAL = 'Buug guud';
   const LEVELS = library.LEVELS;
   const SUBJECTS = library.SUBJECTS;
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -20,15 +21,16 @@
     .stat{width:100%;text-align:left;color:var(--text);font:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s}
     .stat:hover{border-color:var(--brand);transform:translateY(-1px)}.stat:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
     .stat.active{border-color:var(--brand);box-shadow:0 0 0 2px var(--brandSoft)}.stat .stat-info{display:flex;flex-direction:column;gap:3px}.stat .stat-info>b{color:var(--text)}
-    .books-saving{opacity:.68;pointer-events:none}.fchip .ic{flex:none}
-    @media(max-width:900px){.head{flex-direction:column}.headR{width:100%;flex-wrap:wrap}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.gridv{grid-template-columns:repeat(2,minmax(0,1fr))}.mb{grid-template-columns:minmax(0,1fr)}.rside{display:grid;grid-template-columns:140px 1fr}.rside .cover{grid-row:span 2}.three{grid-template-columns:1fr}.modal{width:min(780px,calc(100vw - 28px));max-height:calc(100vh - 28px)}}
+    .books-saving{opacity:.68;pointer-events:none}.fchip .ic{flex:none}.scope-two{grid-template-columns:repeat(2,minmax(0,1fr))}.book-fields-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.general-book-hint{display:flex;align-items:center;gap:8px;margin:-3px 0 15px;color:var(--muted);font-size:13px}.general-book-hint .ic{flex:none;color:var(--brandText)}
+    .catalog-field{display:grid;gap:7px}.catalog-field select{max-width:100%}.branch-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.branch-check{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);font-size:13px}.branch-check input{accent-color:var(--brand)}
+    @media(max-width:900px){.head{flex-direction:column}.headR{width:100%;flex-wrap:wrap}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.gridv{grid-template-columns:repeat(2,minmax(0,1fr))}.mb{grid-template-columns:minmax(0,1fr)}.rside{display:grid;grid-template-columns:140px 1fr}.rside .cover{grid-row:span 2}.three,.book-fields-two{grid-template-columns:1fr}.modal{width:min(780px,calc(100vw - 28px));max-height:calc(100vh - 28px)}}
     @media(max-width:560px){.content{padding:16px 12px 22px}.headR{align-items:stretch}.linkpill{justify-content:center;flex:1}.stats{gap:8px}.stat{padding:10px;gap:8px}.stat .tile{width:38px;height:38px}.stat b{font-size:22px}.tools{padding:10px}.field{max-width:100%}.field select{max-width:130px}.gridv{grid-template-columns:1fr 1fr;gap:8px;padding:9px}.gcard{padding:9px 8px}.modal{width:calc(100vw - 18px);max-height:calc(100vh - 18px)}.mb{padding:14px}.mf{padding:12px;flex-wrap:wrap}.up{grid-template-columns:1fr}.scanbox{width:110px}.uptot b{font-size:34px}}
   </style>${icons}${mount.innerHTML}`;
   const $ = selector => shadow.querySelector(selector);
   const $$ = selector => [...shadow.querySelectorAll(selector)];
   const icon = (name, extra = '') => `<svg class="ic ${extra}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
   const subjectIcon = name => `<span class="subject-icon" style="--subject-icon:url('/static/icons/books-fa-free/${esc(name.replace(/^fa-/,''))}.svg')" aria-hidden="true"></span>`;
-  const A = {q:'', level:ALL, subject:ALL, status:'all', view:'grid', sortDownloads:false};
+  const A = {q:'', level:ALL, subject:ALL, catalog:'all', status:'all', view:'grid', sortDownloads:false};
   let editing = null;
   let draft = null;
   let xhr = null;
@@ -49,7 +51,7 @@
     return `<div class="cover ${size}" style="--a:${subject.a};--b:${subject.b}"><svg class="art" viewBox="0 0 100 133" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${subject.art()}</svg><span class="spine"></span><div class="cv"><div class="cv-top">${crest()}<span>TAYSIIR<em>INTERNATIONAL SCHOOLS</em></span></div><i class="cv-gold"></i><div class="cv-mid"><div class="emb">${subjectIcon(subject.i)}</div></div><div class="cv-bot"><small>${esc(subject.n)}</small><b>${esc(book.title || 'Cinwaanka buugga')}</b><span class="tag">${esc(tag)}</span></div></div></div>`;
   }
   const levelBadge = level => `<span class="lv" style="--c:${LEVELS[level]?.c || '#0E7C66'}"><i></i>${esc(level)}</span>`;
-  const subjectChip = subject => `<span class="sj">${subjectIcon((library.SUBJ[subject] || library.SUBJ[ALL]).i)}${subject === ALL ? 'Dhammaan maaddooyinka' : esc(subject)}</span>`;
+  const subjectChip = (subject, bookKind='textbook') => `<span class="sj">${subjectIcon((library.SUBJ[subject] || library.SUBJ[ALL]).i)}${bookKind==='general' ? GENERAL : subject === ALL ? 'Dhammaan maaddooyinka' : esc(subject)}</span>`;
   function toast(message, error = false) {
     const node = $('#toastA');
     node.innerHTML = `${icon(error ? 'x' : 'check')}${esc(message)}`;
@@ -60,7 +62,7 @@
   }
   function fillFilters() {
     $('#al').innerHTML = `<option value="${ALL}">Dhammaan heerarka</option>${Object.keys(LEVELS).map(level => `<option>${level}</option>`).join('')}`;
-    $('#as').innerHTML = `<option value="${ALL}">Dhammaan maaddooyinka</option>${SUBJECTS.map(subject => `<option>${esc(subject)}</option>`).join('')}`;
+    $('#as').innerHTML = `<option value="${ALL}">Dhammaan maaddooyinka</option><option>${GENERAL}</option>${SUBJECTS.map(subject => `<option>${esc(subject)}</option>`).join('')}`;
   }
   function render() {
     const total = books.length;
@@ -73,7 +75,7 @@
       ['download','Wadarta soo dejinta',downloads.toLocaleString('en-US'),'#E39A00','downloads',A.sortDownloads],
     ].map(([sym,label,count,color,filter,active]) => `<button type="button" class="stat ${active?'active':''}" data-stat="${filter}" aria-pressed="${active}" aria-label="${label}: ${count}"><span class="tile" style="--c:${color}">${icon(sym)}</span><span class="stat-info"><b>${count}</b><span>${label}</span></span></button>`).join('');
     const query = A.q.trim().toLocaleLowerCase();
-    const filtered = books.filter(book => (A.level === ALL || book.level === A.level) && (A.subject === ALL || book.subject === A.subject) && (A.status === 'all' || (A.status === 'on') === book.visible) && (!query || `${book.title} ${book.subject} ${book.class} ${clsLabel(book.class)} ${book.description}`.toLocaleLowerCase().includes(query)));
+    const filtered = books.filter(book => (A.level === ALL || book.level === A.level) && (A.subject === ALL || (A.subject === GENERAL ? book.bookKind==='general' : book.bookKind!=='general' && (book.subject === A.subject || book.subject === ALL))) && (A.catalog === 'all' || book.catalogType === A.catalog) && (A.status === 'all' || (A.status === 'on') === book.visible) && (!query || `${book.title} ${book.subject} ${book.class} ${clsLabel(book.class)} ${book.description}`.toLocaleLowerCase().includes(query)));
     if (A.sortDownloads) filtered.sort((a,b) => Number(b.downloadCount || 0) - Number(a.downloadCount || 0));
     if (!filtered.length) {
       $('#aList').innerHTML = `<div class="empty">${icon('book')}<b>Buug lama helin</b>Beddel shaandhaynta, ama ku dar buug cusub.</div>`;
@@ -82,22 +84,23 @@
     const toggle = book => `<button type="button" class="sw ${book.visible?'on':''}" role="switch" aria-checked="${book.visible}" aria-label="${book.visible?'Qari':'Muuji'} ${esc(book.title)}" data-act="toggle" data-id="${book.id}"><i></i></button><em class="st ${book.visible?'on':'off'}">${book.visible?'Muuqda':'Qarsan'}</em>`;
     const actions = book => `<div class="acts"><button type="button" class="ib" data-act="edit" data-id="${book.id}" title="Wax ka beddel" aria-label="Wax ka beddel ${esc(book.title)}">${icon('pencil')}</button><button type="button" class="ib del" data-act="del" data-id="${book.id}" title="Tirtir" aria-label="Tirtir ${esc(book.title)}">${icon('trash')}</button></div>`;
     if (A.view === 'table') {
-      $('#aList').innerHTML = `<div style="overflow:auto"><table><thead><tr><th style="width:34%">Buugga</th><th>Heer</th><th>Fasal</th><th>Maaddo</th><th>Xaalad</th><th></th></tr></thead><tbody>${filtered.map(book => `<tr class="${book.visible?'':'hid'}"><td><div class="bcell">${cover(book,'sm')}<div><b>${esc(book.title)}</b><span>${scopeLabel(book.scope)} · ${book.pages || '—'} bog · ${formatSize(book.sizeBytes)}</span></div></div></td><td>${levelBadge(book.level)}</td><td>${clsLabel(book.class)}</td><td>${subjectChip(book.subject)}</td><td><span style="white-space:nowrap">${toggle(book)}</span></td><td>${actions(book)}</td></tr>`).join('')}</tbody></table></div>`;
+      $('#aList').innerHTML = `<div style="overflow:auto"><table><thead><tr><th style="width:34%">Buugga</th><th>Nooca</th><th>Heer</th><th>Fasal</th><th>Maaddo</th><th>Xaalad</th><th></th></tr></thead><tbody>${filtered.map(book => `<tr class="${book.visible?'':'hid'}"><td><div class="bcell">${cover(book,'sm')}<div><b>${esc(book.title)}</b><span>${book.bookKind==='general'?'Buug guud · ':''}${scopeLabel(book.scope)} · ${book.pages || '—'} bog · ${formatSize(book.sizeBytes)}</span></div></div></td><td>${catalogLabel(book.catalogType)}${book.branchNames?.length?`<small style="display:block;color:var(--muted)">${esc(book.branchNames.join(', '))}</small>`:''}</td><td>${levelBadge(book.level)}</td><td>${clsLabel(book.class)}</td><td>${subjectChip(book.subject,book.bookKind)}</td><td><span style="white-space:nowrap">${toggle(book)}</span></td><td>${actions(book)}</td></tr>`).join('')}</tbody></table></div>`;
     } else {
-      $('#aList').innerHTML = `<div class="gridv">${filtered.map(book => `<article class="gcard ${book.visible?'':'hid'}">${cover(book,'lg')}<div><h4>${esc(book.title)}</h4><span style="color:var(--muted);font-size:12.5px">${clsLabel(book.class)} · ${book.subject === ALL ? 'Dhammaan' : esc(book.subject)}</span></div><div>${levelBadge(book.level)}</div><div class="row"><span>${toggle(book)}</span>${actions(book)}</div></article>`).join('')}</div>`;
+      $('#aList').innerHTML = `<div class="gridv">${filtered.map(book => `<article class="gcard ${book.visible?'':'hid'}">${cover(book,'lg')}<div><h4>${esc(book.title)}</h4><span style="color:var(--muted);font-size:12.5px">${catalogLabel(book.catalogType)}${book.branchNames?.length?` · ${esc(book.branchNames.join(', '))}`:''}</span><span style="display:block;color:var(--muted);font-size:12.5px">${clsLabel(book.class)} · ${book.bookKind==='general'?GENERAL:book.subject===ALL?'Dhammaan':esc(book.subject)}</span></div><div>${levelBadge(book.level)}</div><div class="row"><span>${toggle(book)}</span>${actions(book)}</div></article>`).join('')}</div>`;
     }
   }
   function classOptions(level, selected) {
     return (LEVELS[level]?.classes || []).map(name => `<option value="${esc(name)}" ${name===selected?'selected':''}>${esc(library.classLabel(name))}</option>`).join('');
   }
-  function selectedScope(scope) {
-    const options = [['level','layers','Heer dhan'],['class','class','Fasal gaar ah'],['subject','book','Maaddo gaar ah']];
+  function selectedScope(scope, bookKind) {
+    const options = [['level','layers','Heer dhan'],['class','class','Fasal gaar ah'],...(bookKind==='general'?[]:[['subject','book','Maaddo gaar ah']])];
     return options.map(([value, sym, title]) => `<button type="button" data-scope="${value}" aria-pressed="${scope===value}">${icon(sym)}<b>${title}</b></button>`).join('');
   }
+  const catalogLabel = type => ({national:'Manhajka dalka',local:'Buug maxalli ah',unassigned:'Sugaya kala-saarid'})[type] || 'Sugaya kala-saarid';
   function openEditor(id = null) {
     editing = id;
     const existing = books.find(book => book.id === id);
-    draft = existing ? {...existing, previewUrl:'', fileName:existing.filename, fileChanged:false, pdfFile:null, coverFile:null} : {title:'',level:'Sare',class:'Form 2',subject:'Math',scope:'subject',description:'',visible:true,coverUrl:'',filename:'',fileChanged:false,pdfFile:null,coverFile:null};
+    draft = existing ? {...existing, previewUrl:'', fileName:existing.filename, bookKind:existing.bookKind||'textbook', catalogType:existing.catalogType||'unassigned', branchIds:existing.branchIds||[], fileChanged:false, pdfFile:null, coverFile:null} : {title:'',level:'Sare',class:'Form 2',subject:'Math',scope:'subject',bookKind:'textbook',catalogType:'national',branchIds:[],description:'',visible:true,coverUrl:'',filename:'',fileChanged:false,pdfFile:null,coverFile:null};
     $('#modal').className = 'modal';
     drawEditor();
     $('#ov').classList.add('show');
@@ -108,8 +111,12 @@
     $('#modal').innerHTML = `<div class="mh"><h3 id="booksModalTitle">${editing?'Wax ka beddel buugga':'Buug cusub'}</h3><button class="ib" data-m="close" aria-label="Xir">${icon('x')}</button></div>
       <div class="mb"><div>
         <div class="fg"><label class="fl" for="f-title">Cinwaanka buugga</label><input class="fi" id="f-title" maxlength="200" value="${esc(book.title)}" placeholder="tusaale: Math Form 2 — Made Easy"><div class="errt" id="e-title">Geli cinwaanka buugga.</div></div>
-        <div class="fg"><span class="fl">Buuggan yaa loogu talagalay?</span><div class="scope">${selectedScope(book.scope)}</div></div>
-        <div class="fg three"><div><label class="fl" for="f-level">Heer dugsi</label><select class="fi" id="f-level">${Object.keys(LEVELS).map(level => `<option ${level===book.level?'selected':''}>${level}</option>`).join('')}</select></div><div><label class="fl" for="f-class">Fasal</label><select class="fi" id="f-class" ${book.scope==='level'?'disabled':''}>${classOptions(book.level,book.class)}</select></div><div><label class="fl" for="f-subj">Maaddo</label><select class="fi" id="f-subj" ${book.scope!=='subject'?'disabled':''}>${SUBJECTS.map(subject => `<option ${subject===book.subject?'selected':''}>${esc(subject)}</option>`).join('')}</select></div></div>
+        <div class="fg catalog-field"><label class="fl" for="f-catalog">Qaybta buugga</label><select class="fi" id="f-catalog"><option value="national" ${book.catalogType==='national'?'selected':''}>Buugaagta Manhajka Dalka</option><option value="local" ${book.catalogType==='local'?'selected':''}>Buugaagta Maxalliga ah ee Dugsiga</option>${editing&&book.catalogType==='unassigned'?'<option value="unassigned" selected>Sugaya kala-saarid</option>':''}</select></div>
+        <div class="fg catalog-field"><label class="fl" for="f-kind">Habka buugga</label><select class="fi" id="f-kind"><option value="textbook" ${book.bookKind==='textbook'?'selected':''}>Buug maaddo leh</option><option value="general" ${book.bookKind==='general'?'selected':''}>Buug guud (maaddo la'aan)</option></select></div>
+        ${['national','local'].includes(book.catalogType)?`<fieldset class="fg"><legend class="fl">Xarumaha buuggan laga heli karo</legend><div class="branch-checks">${(booksConfig.branches||[]).map(branch=>`<label class="branch-check"><input type="checkbox" name="branch_ids" value="${branch.id}" ${book.branchIds?.includes(branch.id)?'checked':''}>${esc(branch.name)}</label>`).join('')||'<span class="errt" style="display:block">Marka hore diiwaangeli xarun dugsi.</span>'}</div><small style="display:block;color:var(--muted);margin-top:7px">${book.catalogType==='local'?'Buugga maxalliga ah ugu yaraan hal xarun u dooro.':'Manhajka aan xarun loo xulin waxaa laga heli karaa dhammaan xarumaha.'}</small><a href="/admin/books/centers" target="_blank" rel="noopener">Maaree xarumaha</a></fieldset>`:''}
+        <div class="fg"><span class="fl">Buuggan yaa loogu talagalay?</span><div class="scope ${book.bookKind==='general'?'scope-two':''}">${selectedScope(book.scope,book.bookKind)}</div></div>
+        <div class="fg ${book.bookKind==='general'?'book-fields-two':'three'}"><div><label class="fl" for="f-level">Heer dugsi</label><select class="fi" id="f-level">${Object.keys(LEVELS).map(level => `<option ${level===book.level?'selected':''}>${level}</option>`).join('')}</select></div><div><label class="fl" for="f-class">Fasal</label><select class="fi" id="f-class" ${book.scope==='level'?'disabled':''}>${classOptions(book.level,book.class)}</select></div>${book.bookKind==='general'?'':`<div><label class="fl" for="f-subj">Maaddo</label><select class="fi" id="f-subj" ${book.scope!=='subject'?'disabled':''}>${SUBJECTS.map(subject => `<option ${subject===book.subject?'selected':''}>${esc(subject)}</option>`).join('')}</select></div>`}</div>
+        ${book.bookKind==='general'?`<p class="general-book-hint">${icon('bookopen')} Buuggan heer ama fasal ayuu la xiriiraa, balse ma laha maaddo gaar ah.</p>`:''}
         <div class="fg"><label class="fl" for="f-desc">Sharaxaad</label><textarea class="fi" id="f-desc" maxlength="3000" placeholder="Muxuu Buuggu ka kooban yahay, yuunu u wanaagsan yahay!?">${esc(book.description)}</textarea></div>
       </div><div class="rside"><div id="prevCover" style="align-self:center">${cover(previewBook(),'xl')}</div><div class="autoc">${icon('sparkle')}${book.coverUrl?'Cover-kaaga ayaa la isticmaalayaa':'Cover default ah (auto)'}</div><input type="file" id="f-img" accept="image/jpeg,image/png,image/webp" hidden><button type="button" class="drop" data-m="img">${icon('image')}${book.coverUrl?'Beddel cover-ka':'Soo geli cover u gaar ah (ikhtiyaari)'}</button>${book.coverUrl?`<button type="button" class="ib remove-cover-btn" data-m="remove-cover" aria-label="Ka saar cover-ka">${icon('trash')}<span>Ka saar cover-ka</span></button>`:''}<input type="file" id="f-file" accept="application/pdf,.pdf" hidden><button type="button" class="drop" data-m="file">${icon('upload')}${book.fileName?`<b>${esc(book.fileName)}</b>`:'Soo geli faylka PDF-ka'}</button><div class="visrow"><div><b>Muuji dadweynaha</b><span>${book.visible?'Waa muuqdaa':'Waa qarsan yahay'}</span></div><button type="button" class="sw ${book.visible?'on':''}" role="switch" aria-checked="${book.visible}" aria-label="Muuji dadweynaha" data-m="vis"><i></i></button></div></div></div>
       <div class="mf"><button class="btn sec" data-m="close">Jooji</button><button class="btn pri" data-m="save">${icon('upload')}${editing?'Kaydi isbeddelka':'Soo geli buugga'}</button></div>`;
@@ -120,7 +127,10 @@
     draft.title = title.value;
     draft.level = $('#f-level').value;
     draft.class = $('#f-class').value;
-    draft.subject = $('#f-subj').value;
+    draft.subject = $('#f-subj')?.value || ALL;
+    draft.bookKind = $('#f-kind').value;
+    draft.catalogType = $('#f-catalog').value;
+    draft.branchIds = $$('#modal [name="branch_ids"]:checked').map(input=>Number(input.value));
     draft.description = $('#f-desc').value;
   }
   function refreshPreview() {
@@ -130,7 +140,9 @@
   function formData() {
     readForm();
     const form = new FormData();
-    for (const key of ['title','level','class','subject','scope','description']) form.append(key, draft[key] || '');
+    for (const key of ['title','level','class','subject','scope','catalogType','description']) form.append(key==='catalogType'?'catalog_type':key, key==='catalogType'?draft.catalogType:(draft[key]||''));
+    form.append('book_kind',draft.bookKind);
+    draft.branchIds.forEach(id=>form.append('branch_ids',String(id)));
     form.append('visible', String(Boolean(draft.visible)));
     if (draft.fileChanged && draft.pdfFile && booksConfig.storageBackend !== 'r2') form.append('pdf_file', draft.pdfFile);
     if (draft.coverFile) form.append('cover_file', draft.coverFile);
@@ -356,7 +368,10 @@
   shadow.addEventListener('change', event => {
     if (event.target.id === 'al') { A.level=event.target.value; render(); }
     if (event.target.id === 'as') { A.subject=event.target.value; render(); }
+    if (event.target.id === 'ac') { A.catalog=event.target.value; render(); }
     if (event.target.id === 'ast') { A.status=event.target.value; render(); }
+    if (event.target.id === 'f-catalog') { readForm(); draft.catalogType=event.target.value; if(draft.catalogType==='unassigned')draft.branchIds=[]; drawEditor(); }
+    if (event.target.id === 'f-kind') { readForm(); if(draft.bookKind==='general'){if(draft.scope==='subject')draft.scope='class';draft.subject=ALL;} drawEditor(); }
     if (event.target.id === 'f-level') { readForm(); draft.class=LEVELS[draft.level].classes[0]; drawEditor(); }
     if (event.target.id === 'f-class' || event.target.id === 'f-subj') refreshPreview();
     if (event.target.id === 'f-file' && event.target.files[0]) {

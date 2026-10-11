@@ -1,0 +1,83 @@
+{% extends "admin/base.html" %}
+{% block title %}Buugaagta · Xarumaha iyo Madbacadaha{% endblock %}
+{% block page_title %}Xarumaha & Madbacadaha{% endblock %}
+{% block admin_content %}
+<style>
+  .books-admin-wrap{max-width:1240px;margin:auto;padding:22px;color:#18332d}
+  .books-admin-head{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:18px}
+  .books-admin-head h2{margin:0;font-size:22px}.books-admin-head p{color:#64756f;margin:5px 0 0}
+  .books-admin-links{display:flex;gap:8px;flex-wrap:wrap}.books-admin-links a{padding:9px 12px;border:1px solid #d7e2de;border-radius:8px;color:#166b5a;text-decoration:none;font-weight:700}
+  .books-admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+  .books-panel{background:#fff;border:1px solid #dce6e2;border-radius:8px;padding:18px;min-width:0}
+  .books-panel h3{margin:0 0 12px;font-size:17px}.books-form{display:grid;gap:10px}
+  .books-form label{display:grid;gap:5px;font-size:13px;font-weight:700}
+  .books-form input,.books-form select{min-width:0;width:100%;padding:10px 11px;border:1px solid #cbd8d3;border-radius:7px;background:#fff;color:#18332d}
+  .books-form button{justify-self:start;background:#0e7c66;color:#fff;border:0;border-radius:7px;padding:9px 12px;font-weight:700;cursor:pointer;text-decoration:none}
+  .books-form button.secondary{background:#fff;color:#166b5a;border:1px solid #cbd8d3}
+  .books-choice{display:grid;gap:6px;max-height:135px;overflow:auto;padding:8px;border:1px solid #dce6e2;border-radius:7px}
+  .books-choice label{display:flex;align-items:center;gap:7px;font-weight:500}.books-choice input{width:auto}
+  .books-record{padding:14px 0;border-top:1px solid #e6eeeb;display:grid;gap:12px}.books-record:first-of-type{border-top:0}
+  .books-record-title{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}.books-record-title strong{font-size:15px}
+  .books-active{color:#15803d;font-weight:700}.books-inactive{color:#b42318;font-weight:700}
+  .books-muted{color:#62766f}
+  .books-flash{padding:10px 12px;background:#edf8f4;border-radius:7px;margin:0 0 14px}.books-flash.error{background:#fff1f0;color:#b42318}
+  @media(max-width:760px){.books-admin-grid{grid-template-columns:1fr}.books-admin-wrap{padding:14px}.books-admin-head{align-items:flex-start;flex-direction:column}}
+</style>
+<main class="books-admin-wrap">
+  <header class="books-admin-head">
+    <div><h2>Xarumaha dugsiga & madbacadaha</h2><p>Maamul xarumaha, buugaagta maxalliga ah iyo xiriirka madbacadaha.</p></div>
+    <nav class="books-admin-links" aria-label="Buugaagta">
+      <a href="{{ url_for('books.admin_page') }}">Buugaagta</a>
+    </nav>
+  </header>
+  {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<p class="books-flash {{ category }}">{{ message }}</p>{% endfor %}{% endwith %}
+  <div class="books-admin-grid">
+    <section class="books-panel">
+      <h3>Diiwaangeli xarun dugsi</h3>
+      <form class="books-form" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create-branch">
+        <label>Magaca xarunta<input name="name" maxlength="140" required placeholder="Tusaale: Faraca Hodan"></label>
+        <label>Magaalo / gobol<input name="region" maxlength="120" placeholder="Tusaale: Muqdisho · Hodan"></label>
+        <label>Cinwaan faahfaahsan<input name="address" maxlength="300"></label>
+        <label>Telefoonka xarunta<input name="phone" maxlength="40" autocomplete="tel"></label>
+        <button type="submit">Diiwaangeli xarunta</button>
+      </form>
+      <h3 style="margin-top:22px">Xarumaha dugsiga</h3>
+      {% for branch in branches %}
+        <article class="books-record">
+          <div class="books-record-title"><strong>{{ branch.name }}</strong><span class="{{ 'books-active' if branch.is_active else 'books-inactive' }}">{{ 'Firfircoon' if branch.is_active else 'Xiran' }}</span></div>
+          <form class="books-form" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="update-branch"><input type="hidden" name="item_id" value="{{ branch.id }}">
+            <label>Magaca<input name="name" maxlength="140" value="{{ branch.name }}" required></label><label>Magaalo / gobol<input name="region" maxlength="120" value="{{ branch.region or '' }}"></label><label>Cinwaan<input name="address" maxlength="300" value="{{ branch.address or '' }}"></label><label>Telefoon<input name="phone" maxlength="40" value="{{ branch.phone or '' }}"></label>
+            <button type="submit" class="secondary">Cusboonaysii xogta</button>
+          </form>
+          <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="toggle-branch"><input type="hidden" name="item_id" value="{{ branch.id }}"><button type="submit" class="secondary">{{ 'Xir xarunta' if branch.is_active else 'Dib u fur' }}</button></form>
+        </article>
+      {% else %}<p class="books-muted">Weli xarun dugsi lama diiwaangelin.</p>{% endfor %}
+    </section>
+
+    <section class="books-panel">
+      <h3>Diiwaangeli madbacad</h3>
+      <form class="books-form" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create-center">
+        <label>Magaca madbacadda<input name="name" maxlength="160" required></label><label>Telefoon<input name="phone" maxlength="40" required></label><label>WhatsApp (ikhtiyaari)<input name="whatsapp" maxlength="40"></label><label>Cinwaanka goobta<input name="address" maxlength="300" required></label><label>Link-ga khariidadda (ikhtiyaari)<input name="map_url" maxlength="500" placeholder="https://maps.google.com/..."></label>
+        <label>Xarumaha ay u adeegto</label><div class="books-choice">{% for branch in branches if branch.is_active %}<label><input type="checkbox" name="branch_ids" value="{{ branch.id }}">{{ branch.name }}</label>{% else %}<small>Marka hore diiwaangeli xarun dugsi.</small>{% endfor %}</div>
+        <button type="submit">Kaydi madbacadda</button>
+      </form>
+      <h3 style="margin-top:22px">Madbacadaha</h3>
+      {% for center in centers %}
+        <article class="books-record">
+          <div class="books-record-title"><strong>{{ center.name }}</strong><span class="{{ 'books-active' if center.is_active else 'books-inactive' }}">{{ 'Firfircoon' if center.is_active else 'Xiran' }}</span></div>
+          <form class="books-form" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="update-center"><input type="hidden" name="item_id" value="{{ center.id }}">
+            <label>Magaca madbacadda<input name="name" maxlength="160" value="{{ center.name }}" required></label><label>Telefoon<input name="phone" maxlength="40" value="{{ center.phone }}" required></label><label>WhatsApp<input name="whatsapp" maxlength="40" value="{{ center.whatsapp or '' }}"></label><label>Cinwaanka goobta<input name="address" maxlength="300" value="{{ center.address }}" required></label><label>Link khariidad<input name="map_url" maxlength="500" value="{{ center.map_url or '' }}"></label>
+            <label>Xarumaha ay u adeegto</label><div class="books-choice">{% for branch in branches if branch.is_active %}<label><input type="checkbox" name="branch_ids" value="{{ branch.id }}" {{ 'checked' if branch in center.branches else '' }}>{{ branch.name }}</label>{% endfor %}</div><button type="submit" class="secondary">Cusboonaysii madbacadda</button>
+          </form>
+
+          <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="toggle-center"><input type="hidden" name="item_id" value="{{ center.id }}"><button type="submit" class="secondary">{{ 'Xir madbacadda' if center.is_active else 'Dib u fur' }}</button></form>
+        </article>
+      {% else %}<p class="books-muted">Weli madbacad lama diiwaangelin.</p>{% endfor %}
+    </section>
+  </div>
+</main>
+{% endblock %}

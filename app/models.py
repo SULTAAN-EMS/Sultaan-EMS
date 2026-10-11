@@ -1394,6 +1394,18 @@ class Exam(TimestampMixin, db.Model):
     )
 
 
+book_item_branches = db.Table(
+    "book_item_branches",
+    db.Column("book_id", db.Integer, db.ForeignKey("book_library_items.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("branch_id", db.Integer, db.ForeignKey("book_branches.id", ondelete="CASCADE"), primary_key=True),
+)
+
+book_branch_print_centers = db.Table(
+    "book_branch_print_centers",
+    db.Column("branch_id", db.Integer, db.ForeignKey("book_branches.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("print_center_id", db.Integer, db.ForeignKey("book_print_centers.id", ondelete="CASCADE"), primary_key=True),
+)
+
 class BookLibraryItem(TimestampMixin, db.Model):
     """A school book with private file storage and explicit public visibility."""
 
@@ -1405,6 +1417,8 @@ class BookLibraryItem(TimestampMixin, db.Model):
     class_name = db.Column(db.String(40), nullable=False, default="Dhammaan")
     subject = db.Column(db.String(120), nullable=False, default="Dhammaan", index=True)
     scope = db.Column(db.String(20), nullable=False)
+    book_kind = db.Column(db.String(20), nullable=False, default="textbook", server_default="textbook")
+    catalog_type = db.Column(db.String(20), nullable=False, default="unassigned", server_default="unassigned", index=True)
     description = db.Column(db.Text, nullable=False, default="")
     cover_storage_name = db.Column(db.String(255), nullable=True)
     pdf_storage_name = db.Column(db.String(255), nullable=False, unique=True)
@@ -1415,13 +1429,47 @@ class BookLibraryItem(TimestampMixin, db.Model):
     read_count = db.Column(db.Integer, nullable=False, default=0)
     download_count = db.Column(db.Integer, nullable=False, default=0)
 
+    branches = db.relationship("BookBranch", secondary=book_item_branches, back_populates="books", order_by="BookBranch.name")
+
     __table_args__ = (
         db.CheckConstraint("scope IN ('level', 'class', 'subject')", name="ck_book_library_scope"),
+        db.CheckConstraint("catalog_type IN ('national', 'local', 'unassigned')", name="ck_book_library_catalog_type"),
         db.CheckConstraint("page_count >= 0", name="ck_book_library_pages_nonnegative"),
         db.CheckConstraint("size_bytes >= 0", name="ck_book_library_size_nonnegative"),
     )
 
 
+class BookBranch(TimestampMixin, db.Model):
+    """A school branch that owns a local book catalog."""
+
+    __tablename__ = "book_branches"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(140), nullable=False, unique=True, index=True)
+    slug = db.Column(db.String(160), nullable=False, unique=True)
+    region = db.Column(db.String(120), nullable=True)
+    address = db.Column(db.String(300), nullable=True)
+    phone = db.Column(db.String(40), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+
+    books = db.relationship("BookLibraryItem", secondary=book_item_branches, back_populates="branches")
+    print_centers = db.relationship("BookPrintCenter", secondary=book_branch_print_centers, back_populates="branches", order_by="BookPrintCenter.name")
+
+
+class BookPrintCenter(TimestampMixin, db.Model):
+    """A print shop serving one or more school branches."""
+
+    __tablename__ = "book_print_centers"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(160), nullable=False, index=True)
+    phone = db.Column(db.String(40), nullable=False)
+    whatsapp = db.Column(db.String(40), nullable=True)
+    address = db.Column(db.String(300), nullable=False)
+    map_url = db.Column(db.String(500), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+
+    branches = db.relationship("BookBranch", secondary=book_branch_print_centers, back_populates="print_centers")
 class Student(TimestampMixin, db.Model):
     __tablename__ = "students"
 

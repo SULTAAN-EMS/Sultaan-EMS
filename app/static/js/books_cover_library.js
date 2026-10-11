@@ -1,12 +1,14 @@
 window.BookCoverLibrary = (() => {
 const ALL = 'Dhammaan';
 const LEVELS = {
+  Xanaano: {c:'#EC4899', classes:['KG1','KG2']},
   Hoose: {c:'#F59E0B', classes:['Fasal 1','Fasal 2','Fasal 3','Fasal 4']},
   Dhexe: {c:'#3B82F6', classes:['Fasal 5','Fasal 6','Fasal 7','Fasal 8']},
   Sare:  {c:'#8B5CF6', classes:['Form 1','Form 2','Form 3','Form 4']}
 };
 const allClasses = Object.values(LEVELS).flatMap(l => l.classes);
 const CLASS_LABELS = {
+  KG1:'KG1', KG2:'KG2',
   'Fasal 1':'1aad','Fasal 2':'2aad','Fasal 3':'3aad','Fasal 4':'4aad',
   'Fasal 5':'5aad','Fasal 6':'6aad','Fasal 7':'7aad','Fasal 8':'8aad',
   'Form 1':'Form One (9aad)','Form 2':'Form Two (10aad)',

@@ -4,9 +4,10 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 from app import create_app, db
-from app.models import BookLibraryItem, User
+from app.models import BookBranch, BookLibraryItem, BookPrintCenter, User
 from config import Config
 
 
@@ -38,17 +39,20 @@ def _pdf_bytes():
     return bytes(output)
 
 
-def _upload(client, visibility="true"):
+def _upload(client, visibility="true", catalog_type="national", branch_ids=(), book_kind="textbook", level="Sare", scope="subject", class_name="Form 2", subject="Math"):
     payload = {
         "title": "Math Form 2 Algebra",
-        "level": "Sare",
-        "scope": "subject",
-        "class": "Form 2",
-        "subject": "Math",
+        "level": level,
+        "scope": scope,
+        "class": class_name,
+        "subject": subject,
+        "book_kind": book_kind,
         "description": "A searchable algebra book.",
         "visible": visibility,
+        "catalog_type": catalog_type,
         "pdf_file": (io.BytesIO(_pdf_bytes()), "math-form-2.pdf"),
     }
+    payload["branch_ids"] = [str(branch_id) for branch_id in branch_ids]
     return client.post("/admin/books/api", data=payload, content_type="multipart/form-data")
 
 
@@ -141,6 +145,30 @@ class BooksFeatureTests(unittest.TestCase):
         self.assertEqual(deleted.status_code, 200)
         self.assertEqual(self.client.get(book["pdfUrl"]).status_code, 404)
 
+    def test_national_book_can_be_scoped_to_selected_branches(self):
+        with self.app.app_context():
+            branch = BookBranch(name="National Catalog Branch", slug="national-catalog-branch")
+            db.session.add(branch)
+            db.session.commit()
+            branch_id = branch.id
+
+        created = _upload(self.client, catalog_type="national", branch_ids=[branch_id])
+        self.assertEqual(created.status_code, 201, created.get_data(as_text=True))
+        self.assertEqual(created.json["book"]["catalogType"], "national")
+        self.assertEqual(created.json["book"]["branchIds"], [branch_id])
+
+    def test_general_nursery_book_has_no_subject(self):
+        created = _upload(
+            self.client, book_kind="general", level="Xanaano", scope="class",
+            class_name="KG1", subject="Dhammaan",
+        )
+        self.assertEqual(created.status_code, 201, created.get_data(as_text=True))
+        book = created.json["book"]
+        self.assertEqual(book["bookKind"], "general")
+        self.assertEqual(book["level"], "Xanaano")
+        self.assertEqual(book["class"], "KG1")
+        self.assertEqual(book["subject"], "Dhammaan")
+
     def test_scope_validation_and_admin_authentication(self):
         invalid = self.client.post("/admin/books/api", data={
             "title": "Wrong level class", "level": "Hoose", "scope": "class",
@@ -151,6 +179,235 @@ class BooksFeatureTests(unittest.TestCase):
         with self.client.session_transaction() as session:
             session.clear()
         self.assertIn(self.client.get("/admin/books/api").status_code, {302, 401})
+
+    @unittest.skip("The Books order and printer portal workflow has been removed.")
+    def test_guest_print_order_quote_acceptance_and_printer_scope(self):
+        with self.app.app_context():
+            branch = BookBranch(name="Branch Test", slug="branch-test", region="Hodan", address="Main road")
+            other_branch = BookBranch(name="Other Branch", slug="other-branch", region="Wadajir")
+            printer = User(username="printer-test", full_name="Printer Test", role="staff")
+            printer.set_password("temporary-printer-password")
+            printer.set_permissions({"books_printer"})
+            unrelated = User(username="printer-other", full_name="Other Printer", role="staff")
+            unrelated.set_password("temporary-printer-password")
+            center = BookPrintCenter(name="Nearby Print", phone="252611234567", whatsapp="252611234567", address="Hodan", branches=[branch])
+            db.session.add_all([branch, other_branch, printer, unrelated, center])
+            db.session.flush()
+            center.users.append(printer)
+            branch_id, other_branch_id = branch.id, other_branch.id
+            printer_id, unrelated_id, center_id = printer.id, unrelated.id, center.id
+            db.session.commit()
+
+        created = _upload(self.client, catalog_type="local", branch_ids=[branch_id])
+        self.assertEqual(created.status_code, 201, created.get_data(as_text=True))
+        book = created.json["book"]
+        self.assertEqual(book["catalogType"], "local")
+        self.assertEqual(book["branchIds"], [branch_id])
+
+        public = self.client.get("/books")
+        self.assertIn("Buugaagta Maxalliga ah", public.get_data(as_text=True))
+        self.assertIn("Nearby Print", public.get_data(as_text=True))
+
+        rejected = self.client.post("/books/order", data={
+            "book_id": book["id"], "branch_id": other_branch_id, "print_center_id": center_id,
+            "requester_name": "Parent", "requester_phone": "252612345678", "quantity": "2",
+            "fulfillment": "pickup",
+        })
+        self.assertEqual(rejected.status_code, 302)
+        with self.app.app_context():
+            self.assertEqual(BookOrder.query.count(), 0)
+
+        response = self.client.post("/books/order", data={
+            "book_id": book["id"], "branch_id": branch_id, "print_center_id": center_id,
+            "requester_name": "Parent Example", "requester_phone": "+252 61 234 5678", "quantity": "2",
+            "fulfillment": "pickup", "customer_note": "Please call before printing.",
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/books/orders/SB-", response.location)
+        self.assertIn("key=", response.location)
+        status_path = response.location
+        status_page = self.client.get(status_path)
+        self.assertEqual(status_page.status_code, 200)
+        self.assertEqual(status_page.headers.get("Cache-Control"), "private, no-store, max-age=0")
+        self.assertIn(b"Parent Example", status_page.data)
+        self.assertIn("Kaydi xogta raadraaca".encode(), status_page.data)
+        tracking_key = parse_qs(urlsplit(status_path).query)["key"][0]
+        order_code = status_path.split("/books/orders/", 1)[1].split("?", 1)[0]
+        lookup = self.client.post("/books/orders", data={
+            "order_code": order_code.lower(), "tracking_secret": tracking_key.replace("-", ""),
+        })
+        self.assertEqual(lookup.status_code, 302)
+        self.assertEqual(lookup.location, status_path)
+        rejected_lookup = self.client.post("/books/orders", data={
+            "order_code": order_code, "tracking_secret": "ABCDE-FGHJK-LMNPQ",
+        })
+        self.assertEqual(rejected_lookup.status_code, 200)
+        self.assertIn("sax ma aha".encode(), rejected_lookup.data)
+        self.assertEqual(self.client.get("/admin/books/centers").status_code, 200)
+        self.assertEqual(self.client.get("/admin/books/orders").status_code, 200)
+        center_update = self.client.post("/admin/books/centers", data={
+            "action":"update-center", "item_id":str(center_id), "name":"Nearby Print Updated",
+            "phone":"252611234567", "whatsapp":"252611234567", "address":"Updated Hodan",
+            "branch_ids":[str(branch_id)],
+        })
+        self.assertEqual(center_update.status_code, 302)
+
+        with self.app.app_context():
+            order = BookOrder.query.one()
+            self.assertEqual(order.status, "requested")
+            self.assertEqual(len(order.token_hash), 64)
+            self.assertEqual(len(order.lookup_secret_hash), 64)
+            self.assertNotIn(tracking_key, order.lookup_secret_hash)
+            order_id = order.id
+
+        printer_client = self.app.test_client()
+        printer_login = printer_client.post("/printer/login", data={
+            "username":"printer-test", "password":"temporary-printer-password",
+        })
+        self.assertEqual(printer_login.status_code, 302)
+        self.assertEqual(printer_login.location, "/printer/orders")
+        self.assertIn(b"SB-", printer_client.get("/printer/orders").data)
+        quote = printer_client.post(f"/printer/orders/{order_id}", data={"status":"quoted", "quoted_price":"12.50"})
+        self.assertEqual(quote.status_code, 302)
+        self.assertIn(b"12.50 USD", self.client.get(status_path).data)
+        accepted = self.client.post(status_path, data={"action":"accept", "payment_preference":"mobile_money"})
+        self.assertEqual(accepted.status_code, 302)
+        self.assertIn(b"waa la aqbalay", self.client.get(status_path).data)
+        self.client.post(status_path, data={"action":"cancel"})
+        self.assertIn(b"Qiimaha waa la aqbalay", self.client.get(status_path).data)
+        printing = printer_client.post(f"/printer/orders/{order_id}", data={"status":"printing"})
+        self.assertEqual(printing.status_code, 302)
+        payment = {"action":"payment", "order_id":str(order_id), "payment_method":"mobile_money", "payment_reference":"TEST-RECEIPT-1"}
+        self.assertEqual(self.client.post("/admin/books/orders", data=payment).status_code, 302)
+        self.client.post("/admin/books/orders", data=payment)
+
+        unrelated_client = self.app.test_client()
+        with unrelated_client.session_transaction() as session:
+            session["_user_id"] = str(unrelated_id)
+            session["_fresh"] = True
+        self.assertEqual(unrelated_client.get("/printer/orders").status_code, 403)
+
+        self.client.post("/admin/books/centers", data={
+            "action":"remove-staff", "center_id":str(center_id), "staff_user_id":str(printer_id),
+        })
+        self.assertEqual(printer_client.get("/printer/orders").status_code, 403)
+        self.client.post("/admin/books/centers", data={
+            "action":"assign-staff", "center_id":str(center_id), "staff_user_id":str(printer_id),
+        })
+        self.assertEqual(printer_client.get("/printer/orders").status_code, 200)
+
+        with self.app.app_context():
+            order = db.session.get(BookOrder, order_id)
+            self.assertEqual(order.status, "printing")
+            self.assertEqual(order.payment_preference, "mobile_money")
+            self.assertEqual(order.payment_status, "verified")
+            self.assertEqual([event.new_value for event in order.events if event.event_type == "status"], ["quoted", "accepted", "printing"])
+            self.assertEqual(sum(event.event_type == "payment" for event in order.events), 1)
+
+    @unittest.skip("The Books printer-account portal has been removed.")
+    def test_admin_can_create_manage_and_reset_printer_accounts(self):
+        branch_response = self.client.post("/admin/books/centers", data={
+            "action":"create-branch", "name":"Printer Account Branch",
+        })
+        self.assertEqual(branch_response.status_code, 302)
+        with self.app.app_context():
+            branch_id = BookBranch.query.filter_by(name="Printer Account Branch").one().id
+        center_response = self.client.post("/admin/books/centers", data={
+            "action":"create-center", "name":"Managed Print House", "phone":"252611234567",
+            "address":"Hodan Main Road", "branch_ids":[str(branch_id)],
+        })
+        self.assertEqual(center_response.status_code, 302)
+        with self.app.app_context():
+            center_id = BookPrintCenter.query.filter_by(name="Managed Print House").one().id
+
+        created = self.client.post("/admin/books/centers", data={
+            "action":"create-printer-user", "center_id":str(center_id), "full_name":"Printer Operator",
+            "username":"print.operator", "password":"PrinterSecure123", "password_confirm":"PrinterSecure123",
+        })
+        self.assertEqual(created.status_code, 302)
+        self.assertIn(b"print.operator", self.client.get("/admin/books/centers").data)
+        with self.app.app_context():
+            user = User.query.filter_by(username="print.operator").one()
+            user_id = user.id
+            self.assertEqual(user.role, "staff")
+            self.assertTrue(user.has_permission("books_printer"))
+            self.assertNotEqual(user.password_hash, "PrinterSecure123")
+            self.assertTrue(user.check_password("PrinterSecure123"))
+            self.assertEqual([center.id for center in user.book_print_centers], [center_id])
+
+        printer_client = self.app.test_client()
+        self.assertEqual(printer_client.get("/printer/login").status_code, 200)
+        wrong_password = printer_client.post("/printer/login", data={
+            "username":"print.operator", "password":"wrong-password",
+        })
+        self.assertEqual(wrong_password.status_code, 200)
+        self.assertIn("sax ma aha".encode(), wrong_password.data)
+        self.assertEqual(printer_client.get("/printer/orders").status_code, 302)
+        login = printer_client.post("/printer/login", data={
+            "username":"print.operator", "password":"PrinterSecure123",
+        })
+        self.assertEqual(login.status_code, 302)
+        self.assertEqual(printer_client.get("/printer/orders").status_code, 200)
+        self.assertEqual(printer_client.get("/admin/books").status_code, 403)
+        self.assertEqual(printer_client.post("/printer/logout").status_code, 302)
+        self.assertEqual(printer_client.get("/printer/orders").status_code, 302)
+
+        admin_login_client = self.app.test_client()
+        redirected = admin_login_client.post("/admin/login", data={
+            "username":"print.operator", "password":"PrinterSecure123",
+        })
+        self.assertEqual(redirected.status_code, 302)
+        self.assertEqual(redirected.location, "/printer/login")
+        with admin_login_client.session_transaction() as session:
+            self.assertNotIn("_user_id", session)
+
+        reset = self.client.post("/admin/books/centers", data={
+            "action":"reset-printer-password", "center_id":str(center_id),
+            "staff_user_id":str(user_id), "password":"NewPrinterSafe456", "password_confirm":"NewPrinterSafe456",
+        })
+        self.assertEqual(reset.status_code, 302)
+        with self.app.app_context():
+            user = db.session.get(User, user_id)
+            self.assertTrue(user.check_password("NewPrinterSafe456"))
+
+        disabled = self.client.post("/admin/books/centers", data={
+            "action":"toggle-printer-user", "center_id":str(center_id), "staff_user_id":str(user_id),
+        })
+        self.assertEqual(disabled.status_code, 302)
+        printer_client = self.app.test_client()
+        denied = printer_client.post("/printer/login", data={
+            "username":"print.operator", "password":"NewPrinterSafe456",
+        })
+        self.assertEqual(denied.status_code, 200)
+        with self.app.app_context():
+            self.assertFalse(db.session.get(User, user_id).is_active)
+
+        enabled = self.client.post("/admin/books/centers", data={
+            "action":"toggle-printer-user", "center_id":str(center_id), "staff_user_id":str(user_id),
+        })
+        self.assertEqual(enabled.status_code, 302)
+        with self.app.app_context():
+            self.assertTrue(db.session.get(User, user_id).is_active)
+
+    @unittest.skip("The Books printer-account portal has been removed.")
+    def test_unmanaged_staff_account_cannot_use_printer_login(self):
+        with self.app.app_context():
+            branch = BookBranch(name="Legacy Printer Branch", slug="legacy-printer-branch")
+            user = User(username="legacy-printer", full_name="Legacy Printer", role="staff")
+            user.set_password("LegacyPrinter123")
+            center = BookPrintCenter(name="Legacy Print House", phone="252611234567", address="Hodan", branches=[branch])
+            db.session.add_all([branch, center, user])
+            db.session.flush()
+            center.users.append(user)
+            db.session.commit()
+        client = self.app.test_client()
+        response = client.post("/printer/login", data={
+            "username":"legacy-printer", "password":"LegacyPrinter123",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("sax ma aha".encode(), response.data)
+        with client.session_transaction() as session:
+            self.assertNotIn("_user_id", session)
 
     def test_books_pdf_upload_limit_is_one_gibibyte(self):
         self.assertEqual(self.app.config["BOOKS_MAX_UPLOAD_BYTES"], 1024 * 1024 * 1024)

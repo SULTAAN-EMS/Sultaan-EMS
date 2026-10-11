@@ -1,22 +1,25 @@
 import json
 import re
+import secrets
 import uuid
 from pathlib import Path
 
-from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 from werkzeug.utils import secure_filename
+from sqlalchemy.orm import selectinload
 
 from . import csrf, db
 from .books_storage import delete_asset, is_r2_asset, r2_bucket, r2_client, r2_enabled, r2_key, save_r2_small_upload
-from .models import BookLibraryItem
+from .models import BookBranch, BookLibraryItem, BookPrintCenter
 from .security import role_required
 
 
 books_bp = Blueprint("books", __name__)
 
 LEVELS = {
+    "Xanaano": {"classes": ["KG1", "KG2"], "color": "#EC4899"},
     "Hoose": {"classes": [f"Fasal {n}" for n in range(1, 5)], "color": "#F59E0B"},
     "Dhexe": {"classes": [f"Fasal {n}" for n in range(5, 9)], "color": "#3B82F6"},
     "Sare": {"classes": [f"Form {n}" for n in range(1, 5)], "color": "#8B5CF6"},
@@ -52,6 +55,10 @@ def _book_dict(book):
         "class": book.class_name,
         "subject": book.subject,
         "scope": book.scope,
+        "bookKind": book.book_kind,
+        "catalogType": book.catalog_type,
+        "branchIds": [branch.id for branch in book.branches],
+        "branchNames": [branch.name for branch in book.branches],
         "description": book.description or "",
         "coverUrl": url_for("books.cover", book_id=book.id),
         "hasCover": bool(book.cover_storage_name),
@@ -73,25 +80,48 @@ def _admin_required(view):
     return login_required(role_required("admin", "super_admin")(view))
 
 
-def _validate_scope(form):
+def _validate_scope(form, *, existing=False):
     title = (form.get("title") or "").strip()
     level = (form.get("level") or "").strip()
     scope = (form.get("scope") or "").strip()
     class_name = (form.get("class") or "").strip()
     subject = (form.get("subject") or "").strip()
     description = (form.get("description") or "").strip()
+    book_kind = (form.get("book_kind") or "textbook").strip()
+    catalog_type = (form.get("catalog_type") or "national").strip()
+    if book_kind not in {"textbook", "general"}:
+        raise ValueError("Dooro nooca saxda ah ee buugga.")
+    if catalog_type not in {"national", "local", "unassigned"} or (catalog_type == "unassigned" and not existing):
+        raise ValueError("Dooro nooca saxda ah ee buugga.")
+    branch_ids = []
+    for raw_id in form.getlist("branch_ids"):
+        try:
+            branch_id = int(raw_id)
+        except (TypeError, ValueError):
+            raise ValueError("Xarun dugsi oo sax ah dooro.")
+        if branch_id not in branch_ids:
+            branch_ids.append(branch_id)
+    branches = BookBranch.query.filter(BookBranch.id.in_(branch_ids), BookBranch.is_active.is_(True)).all() if branch_ids else []
+    if len(branches) != len(branch_ids):
+        raise ValueError("Mid ka mid ah xarumaha la doortay ma jiro ama wuu xiran yahay.")
+    if catalog_type == "local" and not branches:
+        raise ValueError("Buugga maxalliga ah ugu yaraan hal xarun ku xidh.")
+    if catalog_type == "unassigned" and branches:
+        raise ValueError("Buug sugaya kala-saarid xarun laguma xiri karo.")
     if not title or len(title) > 200:
         raise ValueError("Geli cinwaan buug oo aan ka badnayn 200 xaraf.")
     if level not in LEVELS:
         raise ValueError("Dooro heer dugsi oo sax ah.")
     if scope not in {"level", "class", "subject"}:
         raise ValueError("Dooro baaxadda buugga.")
+    if book_kind == "general" and scope == "subject":
+        raise ValueError("Buug guud ma laha maaddo gaar ah; dooro heer dhan ama fasal gaar ah.")
     if scope == "level":
         class_name, subject = ALL, ALL
     else:
         if class_name not in LEVELS[level]["classes"]:
             raise ValueError("Fasalka la doortay kama tirsana heerkan.")
-        if scope == "class":
+        if scope == "class" or book_kind == "general":
             subject = ALL
         elif subject not in SUBJECTS:
             raise ValueError("Dooro maaddo sax ah.")
@@ -103,9 +133,11 @@ def _validate_scope(form):
         "class_name": class_name,
         "subject": subject,
         "scope": scope,
+        "book_kind": book_kind,
+        "catalog_type": catalog_type,
         "description": description,
-        "is_visible": request.form.get("visible") == "true",
-    }
+        "is_visible": request.form.get("visible") == "true" and catalog_type != "unassigned",
+    }, branches
 
 
 def _save_upload(upload, extension, prefix):
@@ -265,9 +297,132 @@ def _cover_upload(upload):
     return name
 
 
+def _branch_public_dict(branch):
+    return {
+        "id": branch.id,
+        "name": branch.name,
+        "region": (branch.region or "").strip(),
+        "printCenters": [
+            {"id": center.id, "name": center.name, "phone": center.phone, "whatsapp": center.whatsapp or "", "address": center.address, "mapUrl": center.map_url or ""}
+            for center in branch.print_centers if center.is_active
+        ],
+    }
+
+
+@books_bp.route("/admin/books/centers", methods=["GET", "POST"])
+@_admin_required
+def admin_centers():
+    if request.method == "POST":
+        action = request.form.get("action")
+        try:
+            if action == "create-branch":
+                name = (request.form.get("name") or "").strip()
+                if not name or len(name) > 140:
+                    raise ValueError("Geli magaca xarunta dugsiga.")
+                slug_base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:130] or "branch"
+                branch = BookBranch(
+                    name=name,
+                    slug=f"{slug_base}-{secrets.token_hex(3)}",
+                    region=(request.form.get("region") or "").strip()[:120] or None,
+                    address=(request.form.get("address") or "").strip()[:300] or None,
+                    phone=(request.form.get("phone") or "").strip()[:40] or None,
+                )
+                db.session.add(branch)
+                db.session.commit()
+                flash("Xarunta dugsiga waa la diiwaangeliyey.", "success")
+            elif action == "create-center":
+                name = (request.form.get("name") or "").strip()
+                phone = re.sub(r"[\s()-]", "", request.form.get("phone") or "")
+                address = (request.form.get("address") or "").strip()
+                if not name or len(name) > 160 or not address or len(address) > 300:
+                    raise ValueError("Geli magaca iyo cinwaanka madbacadda.")
+                if len(re.sub(r"\D", "", phone)) < 7 or len(phone) > 40:
+                    raise ValueError("Geli telefoon sax ah oo madbacadda lagala xidhiidhi karo.")
+                map_url = (request.form.get("map_url") or "").strip()
+                if map_url and not re.match(r"^https?://", map_url, re.I):
+                    raise ValueError("Link-ga khariidaddu waa inuu ku bilaabmaa https:// ama http://.")
+                ids = []
+                for raw in request.form.getlist("branch_ids"):
+                    try:
+                        ids.append(int(raw))
+                    except ValueError:
+                        raise ValueError("Xarunta dugsiga ee la doortay sax ma aha.")
+                branches = BookBranch.query.filter(BookBranch.id.in_(set(ids)), BookBranch.is_active.is_(True)).all() if ids else []
+                if len(branches) != len(set(ids)) or not branches:
+                    raise ValueError("Madbacadda ugu yaraan hal xarun oo dugsi ku xidh.")
+                center = BookPrintCenter(
+                    name=name,
+                    phone=phone,
+                    whatsapp=(request.form.get("whatsapp") or "").strip()[:40] or None,
+                    address=address,
+                    map_url=map_url[:500] or None,
+                    branches=branches,
+                )
+                db.session.add(center)
+                db.session.commit()
+                flash("Madbacadda iyo xarumaha ay u adeegto waa la kaydiyey.", "success")
+            elif action == "update-branch":
+                branch = db.session.get(BookBranch, request.form.get("item_id", type=int))
+                name = (request.form.get("name") or "").strip()
+                if not branch or not name or len(name) > 140:
+                    raise ValueError("Xarunta dugsiga ama magaceeda lama aqoonsan.")
+                branch.name = name
+                branch.region = (request.form.get("region") or "").strip()[:120] or None
+                branch.address = (request.form.get("address") or "").strip()[:300] or None
+                branch.phone = (request.form.get("phone") or "").strip()[:40] or None
+                db.session.commit()
+                flash("Xogta xarunta dugsiga waa la cusboonaysiiyey.", "success")
+            elif action == "update-center":
+                center = db.session.get(BookPrintCenter, request.form.get("item_id", type=int))
+                name = (request.form.get("name") or "").strip()
+                phone = re.sub(r"[\s()-]", "", request.form.get("phone") or "")
+                address = (request.form.get("address") or "").strip()
+                map_url = (request.form.get("map_url") or "").strip()
+                ids = {int(value) for value in request.form.getlist("branch_ids") if value.isdigit()}
+                branches = BookBranch.query.filter(BookBranch.id.in_(ids), BookBranch.is_active.is_(True)).all() if ids else []
+                if not center or not name or len(name) > 160 or not address or len(address) > 300:
+                    raise ValueError("Geli magaca iyo cinwaanka madbacadda.")
+                if len(re.sub(r"\D", "", phone)) < 7 or len(phone) > 40:
+                    raise ValueError("Geli telefoon sax ah oo madbacadda lagala xidhiidhi karo.")
+                if map_url and not re.match(r"^https?://", map_url, re.I):
+                    raise ValueError("Link-ga khariidaddu waa inuu ku bilaabmaa https:// ama http://.")
+                if not ids or len(branches) != len(ids):
+                    raise ValueError("Madbacadda ugu yaraan hal xarun oo firfircoon ku xidh.")
+                center.name = name
+                center.phone = phone
+                center.whatsapp = (request.form.get("whatsapp") or "").strip()[:40] or None
+                center.address = address
+                center.map_url = map_url[:500] or None
+                center.branches = branches
+                db.session.commit()
+                flash("Xogta iyo xarumaha ay madbacaddu u adeegto waa la cusboonaysiiyey.", "success")
+            elif action in {"toggle-branch", "toggle-center"}:
+                model = BookBranch if action == "toggle-branch" else BookPrintCenter
+                item = db.session.get(model, request.form.get("item_id", type=int))
+                if not item:
+                    raise ValueError("Xogta la doortay lama helin.")
+                item.is_active = not item.is_active
+                db.session.commit()
+                flash("Xaaladda waa la cusboonaysiiyey.", "success")
+            else:
+                raise ValueError("Ficilka lama aqoonsan.")
+        except ValueError as error:
+            db.session.rollback()
+            flash(str(error), "error")
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Books branch/print-center update failed")
+            flash("Xogta lama kaydin. Hubi in magaca xaruntu aanu hore u jirin.", "error")
+        return redirect(url_for("books.admin_centers"))
+
+    branches = BookBranch.query.order_by(BookBranch.name).all()
+    centers = BookPrintCenter.query.options(selectinload(BookPrintCenter.branches)).order_by(BookPrintCenter.name).all()
+    return render_template("admin/books_centers.html", branches=branches, centers=centers)
+
+
 def _visible_book_or_404(book_id):
     book = db.session.get(BookLibraryItem, book_id)
-    if not book or not book.is_visible:
+    if not book or not book.is_visible or book.catalog_type == "unassigned":
         abort(404)
     return book
 
@@ -275,11 +430,14 @@ def _visible_book_or_404(book_id):
 @books_bp.get("/admin/books")
 @_admin_required
 def admin_page():
+    branches = BookBranch.query.order_by(BookBranch.name).all()
     return render_template(
         "admin/books.html",
         books=[_book_dict(item) for item in BookLibraryItem.query.order_by(BookLibraryItem.updated_at.desc(), BookLibraryItem.id.desc()).all()],
         levels=LEVELS,
         subjects=SUBJECTS,
+        branches=branches,
+        branch_options=[{"id": branch.id, "name": branch.name} for branch in branches if branch.is_active],
         csrf_value=__import__("flask_wtf.csrf", fromlist=["generate_csrf"]).generate_csrf(),
     )
 
@@ -294,6 +452,7 @@ def admin_list():
             "total": len(books),
             "visible": sum(book.is_visible for book in books),
             "hidden": sum(not book.is_visible for book in books),
+            "unassigned": sum(book.catalog_type == "unassigned" for book in books),
             "downloads": sum(book.download_count for book in books),
         },
     })
@@ -388,7 +547,7 @@ def admin_upload_abort():
 def admin_create():
     pdf_name = cover_name = None
     try:
-        values = _validate_scope(request.form)
+        values, branches = _validate_scope(request.form)
         upload_data = _r2_upload_field()
         pdf = request.files.get("pdf_file")
         if upload_data:
@@ -409,6 +568,7 @@ def admin_create():
             cover_name = _cover_upload(cover)
         item = BookLibraryItem(
             **values,
+            branches=branches,
             pdf_storage_name=pdf_name,
             original_filename=original_filename,
             size_bytes=size,
@@ -441,7 +601,7 @@ def admin_update(book_id):
     old_cover = item.cover_storage_name
     new_pdf = new_cover = None
     try:
-        values = _validate_scope(request.form)
+        values, branches = _validate_scope(request.form, existing=True)
         upload_data = _r2_upload_field()
         pdf = request.files.get("pdf_file")
         cover = request.files.get("cover_file")
@@ -469,6 +629,7 @@ def admin_update(book_id):
             item.cover_storage_name = None
         for key, value in values.items():
             setattr(item, key, value)
+        item.branches = branches
         db.session.commit()
         if new_pdf:
             _remove_private(old_pdf)
@@ -494,6 +655,8 @@ def admin_visibility(book_id):
     item = db.session.get(BookLibraryItem, book_id)
     if not item:
         abort(404)
+    if item.catalog_type == "unassigned":
+        return jsonify({"success": False, "message": "Marka hore u kala saar buuggan: manhaj qaran ama xarun maxalli ah."}), 400
     item.is_visible = not item.is_visible
     db.session.commit()
     return jsonify({"success": True, "visible": item.is_visible})
@@ -515,8 +678,20 @@ def admin_delete(book_id):
 
 @books_bp.get("/books")
 def public_page():
-    books = BookLibraryItem.query.filter_by(is_visible=True).order_by(BookLibraryItem.title).all()
-    return render_template("books/public.html", books=[_book_dict(item) for item in books], levels=LEVELS, subjects=SUBJECTS)
+    books = BookLibraryItem.query.filter(
+        BookLibraryItem.is_visible.is_(True), BookLibraryItem.catalog_type.in_(("national", "local"))
+    ).options(selectinload(BookLibraryItem.branches)).order_by(BookLibraryItem.title).all()
+    branches = BookBranch.query.filter_by(is_active=True).options(selectinload(BookBranch.print_centers)).order_by(BookBranch.name).all()
+    from .services import get_settings
+    ui_settings = get_settings()
+    return render_template(
+        "books/public.html",
+        books=[_book_dict(item) for item in books],
+        levels=LEVELS,
+        subjects=SUBJECTS,
+        branches=[_branch_public_dict(branch) for branch in branches],
+        ui_settings=ui_settings,
+    )
 
 
 @books_bp.get("/books/<int:book_id>/cover")
@@ -524,7 +699,7 @@ def cover(book_id):
     item = db.session.get(BookLibraryItem, book_id)
     if not item:
         abort(404)
-    if not item.is_visible:
+    if not item.is_visible or item.catalog_type == "unassigned":
         if not current_user.is_authenticated or current_user.role not in {"admin", "super_admin"}:
             abort(404)
     if not item.cover_storage_name:

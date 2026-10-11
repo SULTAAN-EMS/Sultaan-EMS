@@ -1,0 +1,61 @@
+"""Add a general-book classification while preserving existing book records."""
+
+import os
+import sys
+
+from sqlalchemy import inspect, text
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from app import create_app, db
+
+
+VERSION = "phase_17_books_general_kind_v1"
+
+
+def upgrade():
+    app = create_app()
+    with app.app_context():
+        with db.engine.begin() as connection:
+            inspector = inspect(connection)
+            if not inspector.has_table("book_library_items"):
+                raise RuntimeError("Run phase_14_books_library.py before phase_17_books_general_kind.py")
+
+            columns = {column["name"] for column in inspector.get_columns("book_library_items")}
+            if "book_kind" not in columns:
+                connection.execute(text(
+                    "ALTER TABLE book_library_items ADD COLUMN book_kind "
+                    "VARCHAR(20) NOT NULL DEFAULT 'textbook'"
+                ))
+            else:
+                connection.execute(text(
+                    "UPDATE book_library_items SET book_kind = 'textbook' "
+                    "WHERE book_kind IS NULL OR book_kind NOT IN ('textbook', 'general')"
+                ))
+
+            connection.execute(text(
+                "CREATE TABLE IF NOT EXISTS schema_migrations "
+                "(version VARCHAR(120) PRIMARY KEY, applied_at TIMESTAMP NOT NULL)"
+            ))
+            dialect = connection.dialect.name
+            if dialect == "postgresql":
+                connection.execute(text(
+                    "INSERT INTO schema_migrations (version, applied_at) "
+                    "VALUES (:version, CURRENT_TIMESTAMP) ON CONFLICT (version) DO NOTHING"
+                ), {"version": VERSION})
+            elif dialect == "sqlite":
+                connection.execute(text(
+                    "INSERT OR IGNORE INTO schema_migrations (version, applied_at) "
+                    "VALUES (:version, CURRENT_TIMESTAMP)"
+                ), {"version": VERSION})
+            else:
+                connection.execute(text(
+                    "INSERT IGNORE INTO schema_migrations (version, applied_at) "
+                    "VALUES (:version, CURRENT_TIMESTAMP)"
+                ), {"version": VERSION})
+
+        return {"status": "applied", "columns": ["book_kind"]}
+
+
+if __name__ == "__main__":
+    print(upgrade())

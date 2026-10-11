@@ -8,13 +8,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="{{ url_for('static', filename='js/books_cover_library.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/books_public.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/books_cover_library.js', v='books-kind-20261010') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/books_public.js', v='books-level-icons-20261011') }}" defer></script>
 </head>
 <body>
   <div id="booksPublicMount"></div>
   <script id="booksPublicBootstrap" type="application/json">{{ books|tojson }}</script>
-  <script id="booksPublicConfig" type="application/json">{{ {'levels': levels, 'subjects': subjects, 'schoolName': ui_settings.school_name or 'Taysiir International Schools', 'logoUrl': asset_url(ui_settings.logo_path) if ui_settings.logo_path else ''}|tojson }}</script>
+  <script id="booksPublicConfig" type="application/json">{{ {'levels': levels, 'subjects': subjects, 'branches': branches, 'schoolName': ui_settings.school_name or 'Taysiir International Schools', 'logoUrl': asset_url(ui_settings.logo_path) if ui_settings.logo_path else ''}|tojson }}</script>
   <template id="booksIcons">{% include "books/_icons.html" %}</template>
   <template id="booksPublicTemplate">
     <main class="public-shell">
@@ -24,14 +24,35 @@
             <div class="pill-url"><svg class="ic"><use href="#i-lock"/></svg>…/books</div>
             <div class="lockup">{% if ui_settings.logo_path %}<img class="school-logo" src="{{ asset_url(ui_settings.logo_path) }}" alt="">{% else %}<svg aria-hidden="true"><use href="#crest"/></svg>{% endif %}<div><span id="schoolName"></span><strong>Maktabadda Buugaagta</strong></div></div>
             <h2>Akhri ama soo degso buugaagta dugsiga</h2>
-            <p>Dooro heerka, fasalka iyo maaddada si aad si degdeg ah u hesho buugga aad rabto.</p>
+            <p>Dooro xarunta dugsiga iyo nooca buugga, dabadeed shaandhee heerka, fasalka iyo maaddada.</p>
           </header>
-          <label class="sbox"><svg class="ic"><use href="#i-search"/></svg><input id="pq" placeholder="Raadi buug ama maaddo" aria-label="Raadi buug"></label>
-          <div class="pf">
-            <div class="pseg" id="pLevel" role="group" aria-label="Heerka dugsiga"></div>
-            <label class="pfield"><svg class="ic"><use href="#i-class"/></svg><select id="pClass" aria-label="Fasal"></select></label>
+          <div class="filter-stack">
+            <section class="filter-block">
+              <label class="filter-label" for="pBranch">Xarunta dugsiga</label>
+              <label class="pfield branch-filter"><svg class="ic"><use href="#i-class"/></svg><select id="pBranch" aria-label="Xarunta dugsiga"></select></label>
+            </section>
+            <section class="filter-block">
+              <span class="filter-label">Nooca buugga</span>
+              <small class="filter-hint" id="pCatalogHint">Dooro xarunta dugsiga marka hore.</small>
+              <div class="catalog-switch" id="pCatalog" role="group" aria-label="Qaybta buugaagta">
+                <button type="button" data-catalog="national" aria-pressed="false" disabled><svg class="ic"><use href="#i-layers"/></svg><span><b>Buugaagta Manhajka Dalka</b><small data-catalog-hint="national">Buugaagta manhajka guud</small></span></button>
+                <button type="button" data-catalog="local" aria-pressed="false" disabled><svg class="ic"><use href="#i-class"/></svg><span><b>Buugaagta Maxalliga ah</b><small data-catalog-hint="local">Buugaagta xarumaha dugsiga</small></span></button>
+              </div>
+            </section>
+            <section class="filter-block" id="pAcademicFilters" hidden>
+              <span class="filter-label">Heerka iyo fasalka</span>
+              <div class="pf">
+                <div class="pseg" id="pLevel" role="group" aria-label="Heerka dugsiga"></div>
+                <label class="pfield"><svg class="ic"><use href="#i-class"/></svg><select id="pClass" aria-label="Fasal"></select></label>
+              </div>
+            </section>
+            <section class="filter-block filter-subjects" id="pSubjectFilters" hidden>
+              <span class="filter-label">Maaddada</span>
+              <div class="chips" id="pSubj" role="group" aria-label="Maaddo"></div>
+            </section>
           </div>
-          <div class="chips" id="pSubj" role="group" aria-label="Maaddo"></div>
+          <label class="sbox" id="pSearch" hidden><svg class="ic"><use href="#i-search"/></svg><input id="pq" placeholder="Raadi buug ama maaddo" aria-label="Raadi buug"></label>
+          <div class="print-centers" id="pCenters" hidden></div>
           <div class="cnt"><div class="l"><span id="pCount"></span><button id="pClear" type="button">Nadiifi</button></div>
             <div class="vt" role="group" aria-label="Qaabka bandhigga"><button id="pvGrid" aria-pressed="true" aria-label="Kaararka" title="Kaararka"><svg class="ic"><use href="#i-grid"/></svg></button><button id="pvList" aria-pressed="false" aria-label="Liis" title="Liis"><svg class="ic"><use href="#i-list"/></svg></button></div></div>
           <div class="plist grid" id="pList" aria-live="polite"></div>
