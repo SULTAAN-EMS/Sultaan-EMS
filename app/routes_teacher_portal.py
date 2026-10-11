@@ -1,5 +1,7 @@
 import io
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
+from zoneinfo import ZoneInfo
 
 from flask import Blueprint, abort, flash, jsonify, make_response, redirect, render_template, request, url_for
 from flask_login import current_user, login_user, logout_user
@@ -11,6 +13,11 @@ from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from . import db
+from .models import (
+    AcademicClass, AcademicYear, AcademicYearClass, AcademicYearLevel, Exam, Result,
+    Student, Subject, TeacherResultAssignment,
+    TeacherResultMark, TeacherResultSubmission,
+)
 from .teacher_analytics import (
     classes_cards,
     comparison_data,
@@ -56,6 +63,8 @@ from .teacher_services import (
     teacher_activity_summary,
     validate_teacher_password,
 )
+from .services import resolve_subject_max_score
+from .routes_advanced_results import students_for_scope_query, _year_scope_ids_from_legacy
 
 teacher_portal_bp = Blueprint("teacher_portal", __name__)
 
@@ -148,7 +157,7 @@ def change_password():
                 log_teacher_activity(teacher, "Password Change", "Updated account password")
                 db.session.commit()
                 flash("Password changed successfully.", "success")
-                return redirect(url_for("teacher_portal.dashboard"))
+                return redirect(safe_teacher_next_url(None))
     return render_template(
         "teacher/change_password.html",
         forced=teacher_requires_password_change(),
@@ -158,7 +167,6 @@ def change_password():
 
 @teacher_portal_bp.route("/")
 @teacher_login_required
-@teacher_permission_required("view_dashboard")
 def dashboard():
     teacher = get_current_teacher()
     filters = validate_filter_ids(teacher, parse_teacher_filters(request.args))
@@ -167,6 +175,179 @@ def dashboard():
     ctx["summary"] = dashboard_summary(teacher, filters)
     db.session.commit()
     return render_template("teacher/dashboard.html", **ctx)
+
+
+@teacher_portal_bp.route("/result-entry")
+@teacher_login_required
+def result_entry():
+    teacher = get_current_teacher()
+    assignments = (
+        TeacherResultAssignment.query
+        .filter_by(teacher_id=teacher.id, is_active=True)
+        .order_by(TeacherResultAssignment.deadline_at.is_(None), TeacherResultAssignment.deadline_at, TeacherResultAssignment.id)
+        .all()
+    )
+    selected_id = request.args.get("assignment_id", type=int)
+    assignment = next((item for item in assignments if item.id == selected_id), None)
+    if assignment is None and assignments:
+        assignment = assignments[0]
+    deadline_labels = {
+        item.id: item.deadline_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Africa/Mogadishu"))
+        for item in assignments if item.deadline_at
+    }
+
+    rows = []
+    submission = None
+    max_score = None
+    locked = False
+    if assignment:
+        year_level, year_class = _year_scope_ids_from_legacy(
+            assignment.academic_year_id,
+            assignment.school_class.academic_level_id,
+            assignment.class_id,
+        )
+        students = []
+        if year_level and year_class and assignment.exam.academic_year_id == assignment.academic_year_id:
+            students = students_for_scope_query(
+                assignment.academic_year_id,
+                level_id=assignment.school_class.academic_level_id,
+                class_id=assignment.class_id,
+                exam=assignment.exam,
+            ).order_by(Student.full_name).all()
+        submission = TeacherResultSubmission.query.filter_by(assignment_id=assignment.id).first()
+        saved_marks = {mark.student_id: mark for mark in submission.marks} if submission else {}
+        official_marks = {
+            result.student_id: result
+            for result in Result.query.filter_by(exam_id=assignment.exam_id, subject_id=assignment.subject_id)
+            .filter(Result.student_id.in_([student.id for student in students])).all()
+        } if students else {}
+        for student in students:
+            draft = saved_marks.get(student.id)
+            existing = official_marks.get(student.id)
+            rows.append({
+                "student": student,
+                "score": draft.score if draft and draft.score is not None else (existing.score if existing else None),
+                "is_existing": bool(existing),
+            })
+        max_score = resolve_subject_max_score(
+            assignment.subject,
+            exam=assignment.exam,
+            academic_year_level_id=year_level.id if year_level else None,
+            academic_level_id=assignment.school_class.academic_level_id,
+        )
+        deadline_passed = bool(assignment.deadline_at and datetime.utcnow() > assignment.deadline_at)
+        reopened = bool(submission and submission.status == "reopened")
+        locked = (deadline_passed and not reopened) or bool(submission and submission.status in {"submitted", "approved"})
+
+    return render_template(
+        "teacher/result_entry.html",
+        teacher=teacher,
+        page_title="Result Entry",
+        active_endpoint="teacher_portal.result_entry",
+        nav_items=teacher_nav_items(),
+        teacher_can=teacher_can,
+        teacher_theme=teacher_theme(),
+        teacher_settings=get_teacher_settings(),
+        assignments=assignments,
+        deadline_labels=deadline_labels,
+        assignment=assignment,
+        submission=submission,
+        rows=rows,
+        max_score=max_score,
+        locked=locked,
+        now=datetime.utcnow(),
+    )
+
+
+@teacher_portal_bp.route("/result-entry/save", methods=["POST"])
+@teacher_login_required
+def result_entry_save():
+    teacher = get_current_teacher()
+    assignment = TeacherResultAssignment.query.filter_by(
+        id=request.form.get("assignment_id", type=int), teacher_id=teacher.id, is_active=True
+    ).first_or_404()
+    now = datetime.utcnow()
+    submission = TeacherResultSubmission.query.filter_by(assignment_id=assignment.id).first()
+    if submission and submission.status in {"submitted", "approved"}:
+        flash("Natiijadan waa la gudbiyey oo waa xiran tahay. Maamulka ayaa dib u furi kara.", "warning")
+        return redirect(url_for("teacher_portal.result_entry", assignment_id=assignment.id))
+    if assignment.deadline_at and now > assignment.deadline_at and not (submission and submission.status == "reopened"):
+        flash("Waqtigii gudbinta natiijadan wuu dhammaaday.", "danger")
+        return redirect(url_for("teacher_portal.result_entry", assignment_id=assignment.id))
+    if submission and submission.submission_count >= assignment.max_submissions:
+        flash("Tirada gudbinta ee laguu oggolaaday way dhammaatay. La xiriir maamulka.", "danger")
+        return redirect(url_for("teacher_portal.result_entry", assignment_id=assignment.id))
+
+    year_level, year_class = _year_scope_ids_from_legacy(
+        assignment.academic_year_id,
+        assignment.school_class.academic_level_id,
+        assignment.class_id,
+    )
+    if not year_level or not year_class or assignment.exam.academic_year_id != assignment.academic_year_id:
+        abort(409, "The academic assignment is no longer valid.")
+    students = students_for_scope_query(
+        assignment.academic_year_id,
+        level_id=assignment.school_class.academic_level_id,
+        class_id=assignment.class_id,
+        exam=assignment.exam,
+    ).order_by(Student.full_name).all()
+    score_by_student = {}
+    max_score = Decimal(str(resolve_subject_max_score(
+        assignment.subject,
+        exam=assignment.exam,
+        academic_year_level_id=year_level.id,
+        academic_level_id=assignment.school_class.academic_level_id,
+    )))
+    errors = []
+    submit_now = request.form.get("action") == "submit"
+    for student in students:
+        raw = (request.form.get(f"score_{student.id}") or "").strip()
+        if not raw:
+            if submit_now:
+                errors.append(student.full_name)
+            score_by_student[student.id] = None
+            continue
+        try:
+            score = Decimal(raw)
+        except InvalidOperation:
+            errors.append(student.full_name)
+            continue
+        if not score.is_finite() or score < 0 or score > max_score:
+            errors.append(student.full_name)
+            continue
+        score_by_student[student.id] = score
+    if errors:
+        flash("Dhibcaha qaar waa maqan yihiin ama kama dhex jiraan 0 iyo %s: %s" % (max_score, ", ".join(errors[:6])), "danger")
+        return redirect(url_for("teacher_portal.result_entry", assignment_id=assignment.id))
+
+    if not submission:
+        submission = TeacherResultSubmission(assignment=assignment)
+        db.session.add(submission)
+        db.session.flush()
+    mark_by_student = {mark.student_id: mark for mark in submission.marks}
+    for student in students:
+        mark = mark_by_student.get(student.id)
+        if not mark:
+            mark = TeacherResultMark(submission=submission, student_id=student.id)
+            db.session.add(mark)
+        mark.score = score_by_student.get(student.id)
+    if submit_now:
+        if submission.submission_count >= assignment.max_submissions:
+            db.session.rollback()
+            flash("Tirada gudbinta ee laguu oggolaaday way dhammaatay.", "danger")
+            return redirect(url_for("teacher_portal.result_entry", assignment_id=assignment.id))
+        submission.status = "submitted"
+        submission.submission_count += 1
+        submission.submitted_at = now
+        flash("Natiijada si guul leh ayaa loogu gudbiyey maamulka si dib loogu eego.", "success")
+    else:
+        if submission.status != "reopened":
+            submission.status = "draft"
+        flash("Qabyada natiijada waa la kaydiyey.", "success")
+    db.session.commit()
+    return redirect(url_for("teacher_portal.result_entry", assignment_id=assignment.id))
+
+
 
 
 @teacher_portal_bp.route("/subjects")

@@ -1,5 +1,7 @@
+import html
 import io
 import json
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -169,6 +171,37 @@ class BooksFeatureTests(unittest.TestCase):
         self.assertEqual(book["class"], "KG1")
         self.assertEqual(book["subject"], "Dhammaan")
 
+    def test_books_admin_manages_subjects_by_level_and_class(self):
+        page = self.client.get("/admin/books/subjects")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("MAADDOOYINKA BUUGAAGTA".encode(), page.data)
+
+        saved = self.client.post("/admin/books/subjects/api", json={
+            "level": "Hoose", "name": "Barashada Deegaanka",
+            "classNames": ["Fasal 1"], "appliesToAllClasses": False,
+        })
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        self.assertIn("Barashada Deegaanka", saved.json["subjectCatalog"]["Hoose"]["Fasal 1"])
+        self.assertNotIn("Barashada Deegaanka", saved.json["subjectCatalog"]["Hoose"]["Fasal 2"])
+
+        valid_book = _upload(
+            self.client, level="Hoose", class_name="Fasal 1",
+            scope="subject", subject="Barashada Deegaanka",
+        )
+        self.assertEqual(valid_book.status_code, 201, valid_book.get_data(as_text=True))
+        invalid_class = _upload(
+            self.client, level="Hoose", class_name="Fasal 2",
+            scope="subject", subject="Barashada Deegaanka",
+        )
+        self.assertEqual(invalid_class.status_code, 400)
+
+        saved_all = self.client.post("/admin/books/subjects/api", json={
+            "level": "Hoose", "name": "Barashada Deegaanka",
+            "classNames": [], "appliesToAllClasses": True,
+        })
+        self.assertEqual(saved_all.status_code, 200, saved_all.get_data(as_text=True))
+        self.assertIn("Barashada Deegaanka", saved_all.json["subjectCatalog"]["Hoose"]["Fasal 2"])
+
     def test_scope_validation_and_admin_authentication(self):
         invalid = self.client.post("/admin/books/api", data={
             "title": "Wrong level class", "level": "Hoose", "scope": "class",
@@ -220,9 +253,80 @@ class BooksFeatureTests(unittest.TestCase):
             self.assertIsNone(db.session.get(BookPrintCenter, center_id))
             self.assertIsNotNone(db.session.get(BookLibraryItem, book_id))
         admin_page = self.client.get("/admin/books/centers")
-        self.assertNotIn(b"Delete Test Branch", admin_page.data)
-        self.assertNotIn(b"Delete Test Printer", admin_page.data)
+        self.assertNotIn(b"<h3>Delete Test Branch</h3>", admin_page.data)
+        self.assertNotIn(b"<h3>Delete Test Printer</h3>", admin_page.data)
         self.assertNotIn("Maamul xarumaha, buugaagta maxalliga ah iyo xiriirka madbacadaha.".encode(), admin_page.data)
+
+    def test_center_create_edit_toggle_and_delete_use_reference_popup(self):
+        def popup(response):
+            match = re.search(rb'data-center-notify="([^"]+)"', response.data)
+            self.assertIsNotNone(match, response.get_data(as_text=True))
+            return json.loads(html.unescape(match.group(1).decode()))
+
+        created = self.client.post("/admin/books/centers", data={
+            "action": "create-branch", "name": "Popup Test Branch",
+        }, follow_redirects=True)
+        self.assertEqual(popup(created), {"type": "add", "kind": "c", "name": "Popup Test Branch"})
+        self.assertNotIn(b'class="toast center-popup"', created.data)
+
+        with self.app.app_context():
+            branch_id = BookBranch.query.filter_by(name="Popup Test Branch").one().id
+
+        updated = self.client.post("/admin/books/centers", data={
+            "action": "update-branch", "item_id": str(branch_id), "name": "Updated Popup Branch",
+        }, follow_redirects=True)
+        self.assertEqual(popup(updated), {"type": "edit", "kind": "c", "name": "Updated Popup Branch"})
+
+        closed = self.client.post("/admin/books/centers", data={
+            "action": "toggle-branch", "item_id": str(branch_id),
+        }, follow_redirects=True)
+        self.assertEqual(popup(closed), {"type": "off", "kind": "c", "name": "Updated Popup Branch"})
+
+        reopened = self.client.post("/admin/books/centers", data={
+            "action": "toggle-branch", "item_id": str(branch_id),
+        }, follow_redirects=True)
+        self.assertEqual(popup(reopened), {"type": "on", "kind": "c", "name": "Updated Popup Branch"})
+
+        deleted = self.client.post("/admin/books/centers", data={
+            "action": "delete-branch", "item_id": str(branch_id),
+        }, follow_redirects=True)
+        self.assertEqual(popup(deleted), {"type": "del", "kind": "c", "name": "Updated Popup Branch"})
+
+        branch_page = self.client.post("/admin/books/centers", data={
+            "action": "create-branch", "name": "Printer Popup Branch",
+        }, follow_redirects=True)
+        self.assertEqual(popup(branch_page), {"type": "add", "kind": "c", "name": "Printer Popup Branch"})
+        with self.app.app_context():
+            print_branch_id = BookBranch.query.filter_by(name="Printer Popup Branch").one().id
+
+        printer_added = self.client.post("/admin/books/centers", data={
+            "action": "create-center", "name": "Popup Test Printer", "phone": "252611234567",
+            "address": "Hodan", "branch_ids": [str(print_branch_id)],
+        }, follow_redirects=True)
+        self.assertEqual(popup(printer_added), {"type": "add", "kind": "p", "name": "Popup Test Printer"})
+        with self.app.app_context():
+            printer_id = BookPrintCenter.query.filter_by(name="Popup Test Printer").one().id
+
+        printer_edited = self.client.post("/admin/books/centers", data={
+            "action": "update-center", "item_id": str(printer_id), "name": "Updated Popup Printer",
+            "phone": "252611234567", "address": "Hodan", "branch_ids": [str(print_branch_id)],
+        }, follow_redirects=True)
+        self.assertEqual(popup(printer_edited), {"type": "edit", "kind": "p", "name": "Updated Popup Printer"})
+
+        printer_closed = self.client.post("/admin/books/centers", data={
+            "action": "toggle-center", "item_id": str(printer_id),
+        }, follow_redirects=True)
+        self.assertEqual(popup(printer_closed), {"type": "off", "kind": "p", "name": "Updated Popup Printer"})
+
+        printer_opened = self.client.post("/admin/books/centers", data={
+            "action": "toggle-center", "item_id": str(printer_id),
+        }, follow_redirects=True)
+        self.assertEqual(popup(printer_opened), {"type": "on", "kind": "p", "name": "Updated Popup Printer"})
+
+        printer_deleted = self.client.post("/admin/books/centers", data={
+            "action": "delete-center", "item_id": str(printer_id),
+        }, follow_redirects=True)
+        self.assertEqual(popup(printer_deleted), {"type": "del", "kind": "p", "name": "Updated Popup Printer"})
 
     @unittest.skip("The Books order and printer portal workflow has been removed.")
     def test_guest_print_order_quote_acceptance_and_printer_scope(self):

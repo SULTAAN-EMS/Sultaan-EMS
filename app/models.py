@@ -1439,6 +1439,20 @@ class BookLibraryItem(TimestampMixin, db.Model):
     )
 
 
+class BookSubjectCatalog(TimestampMixin, db.Model):
+    """Book-only subject availability, optionally limited to selected classes."""
+
+    __tablename__ = "book_subject_catalog"
+
+    id = db.Column(db.Integer, primary_key=True)
+    level = db.Column(db.String(20), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    class_names = db.Column(db.JSON, nullable=False, default=list)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+
+    __table_args__ = (UniqueConstraint("level", "name", name="uq_book_subject_level_name"),)
+
+
 class BookBranch(TimestampMixin, db.Model):
     """A school branch that owns a local book catalog."""
 
@@ -2215,6 +2229,79 @@ class Teacher(TimestampMixin, db.Model):
     classes = db.relationship("AcademicClass", secondary=teacher_classes, backref=db.backref("assigned_teachers", lazy="dynamic"))
     sections = db.relationship("AcademicSection", secondary=teacher_sections, backref=db.backref("assigned_teachers", lazy="dynamic"))
     academic_levels = db.relationship("AcademicLevel", secondary=teacher_academic_levels, backref=db.backref("assigned_teachers", lazy="dynamic"))
+
+
+class TeacherResultAssignment(TimestampMixin, db.Model):
+    """Administrator-defined scope and submission policy for teacher marks."""
+
+    __tablename__ = "teacher_result_assignments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False, index=True)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey("academic_years.id", ondelete="CASCADE"), nullable=False, index=True)
+    exam_id = db.Column(db.Integer, db.ForeignKey("exams.id", ondelete="CASCADE"), nullable=False, index=True)
+    class_id = db.Column(db.Integer, db.ForeignKey("academic_classes.id", ondelete="CASCADE"), nullable=False, index=True)
+    subject_id = db.Column(db.Integer, db.ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False, index=True)
+    deadline_at = db.Column(db.DateTime, nullable=True, index=True)
+    max_submissions = db.Column(db.Integer, nullable=False, default=1)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+
+    teacher = db.relationship("Teacher")
+    academic_year = db.relationship("AcademicYear")
+    exam = db.relationship("Exam")
+    school_class = db.relationship("AcademicClass")
+    subject = db.relationship("Subject")
+    submissions = db.relationship("TeacherResultSubmission", back_populates="assignment", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("teacher_id", "academic_year_id", "exam_id", "class_id", "subject_id", name="uq_teacher_result_assignment_scope"),
+        db.CheckConstraint("max_submissions >= 1", name="ck_teacher_result_assignment_max_submissions"),
+    )
+
+
+class TeacherResultSubmission(TimestampMixin, db.Model):
+    """One teacher's reviewable mark sheet for an assignment."""
+
+    __tablename__ = "teacher_result_submissions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey("teacher_result_assignments.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = db.Column(db.String(20), nullable=False, default="draft", index=True)
+    submission_count = db.Column(db.Integer, nullable=False, default=0)
+    submitted_at = db.Column(db.DateTime, nullable=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    reviewed_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewer_note = db.Column(db.String(500), nullable=True)
+
+    assignment = db.relationship("TeacherResultAssignment", back_populates="submissions")
+    reviewed_by = db.relationship("User")
+    marks = db.relationship("TeacherResultMark", back_populates="submission", cascade="all, delete-orphan", order_by="TeacherResultMark.student_id")
+
+    __table_args__ = (
+        UniqueConstraint("assignment_id", name="uq_teacher_result_submission_assignment"),
+        db.CheckConstraint("status IN ('draft', 'submitted', 'approved', 'reopened')", name="ck_teacher_result_submission_status"),
+        db.CheckConstraint("submission_count >= 0", name="ck_teacher_result_submission_count"),
+    )
+
+
+class TeacherResultMark(TimestampMixin, db.Model):
+    """Draft score that is not visible in official result reports until approval."""
+
+    __tablename__ = "teacher_result_marks"
+
+    id = db.Column(db.Integer, primary_key=True)
+    submission_id = db.Column(db.Integer, db.ForeignKey("teacher_result_submissions.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    score = db.Column(db.Numeric(8, 3), nullable=True)
+    comment = db.Column(db.String(255), nullable=True)
+
+    submission = db.relationship("TeacherResultSubmission", back_populates="marks")
+    student = db.relationship("Student")
+
+    __table_args__ = (
+        UniqueConstraint("submission_id", "student_id", name="uq_teacher_result_mark_student"),
+        db.CheckConstraint("score IS NULL OR score >= 0", name="ck_teacher_result_mark_nonnegative"),
+    )
 
 
 class TeacherPermission(db.Model):

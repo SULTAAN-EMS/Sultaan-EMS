@@ -8,13 +8,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="{{ url_for('static', filename='js/books_cover_library.js', v='books-kind-20261010') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/books_public.js', v='books-list-default-20261011') }}" defer></script>
+  <style>#booksPublicMount:not([data-books-ready="true"]){visibility:hidden}</style>
+  <script src="{{ url_for('static', filename='js/books_cover_library.js', v='book-subject-catalog-20261011') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/books_public.js', v='books-css-ready-20261011') }}" defer></script>
 </head>
 <body>
-  <div id="booksPublicMount"></div>
+  <div id="booksPublicMount" aria-busy="true"></div>
   <script id="booksPublicBootstrap" type="application/json">{{ books|tojson }}</script>
-  <script id="booksPublicConfig" type="application/json">{{ {'levels': levels, 'subjects': subjects, 'branches': branches, 'schoolName': ui_settings.school_name or 'Taysiir International Schools', 'logoUrl': asset_url(ui_settings.logo_path) if ui_settings.logo_path else ''}|tojson }}</script>
+  <script id="booksPublicConfig" type="application/json">{{ {'levels': levels, 'subjects': subjects, 'subjectCatalog': subject_catalog, 'branches': branches, 'schoolName': ui_settings.school_name or 'Taysiir International Schools', 'logoUrl': asset_url(ui_settings.logo_path) if ui_settings.logo_path else ''}|tojson }}</script>
   <template id="booksIcons">{% include "books/_icons.html" %}</template>
   <template id="booksPublicTemplate">
     <main class="public-shell">

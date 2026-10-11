@@ -1,0 +1,78 @@
+{% extends "teacher/base.html" %}
+{% block teacher_title %}Result Entry{% endblock %}
+{% block teacher_filters %}{% endblock %}
+{% block teacher_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css') }}">
+<section class="result-entry-page">
+  <div class="entry-intro">
+    <div><span class="entry-kicker"><i class="fa-solid fa-shield-check"></i> SECURE MARKS WORKSPACE</span><h2>Result Entry</h2><p>Enter, review, and submit marks for your assigned classes.</p></div>
+    <div class="entry-status"><span class="entry-status-dot"></span><span>{{ 'Submission locked' if locked else 'Ready for entry' }}</span></div>
+  </div>
+
+  {% if assignments %}
+    <form method="get" class="assignment-select glass-card">
+      <label for="entry-assignment"><i class="fa-solid fa-layer-group"></i> Assigned exam</label>
+      <select id="entry-assignment" name="assignment_id" onchange="this.form.submit()">
+        {% for item in assignments %}
+          <option value="{{ item.id }}" {% if assignment and assignment.id == item.id %}selected{% endif %}>
+            {{ item.exam.name }} · {{ item.school_class.name }} · {{ item.subject.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </form>
+
+    {% if assignment %}
+      <div class="entry-context-grid">
+        <article class="context-tile"><span><i class="fa-regular fa-calendar"></i> Academic year</span><strong>{{ assignment.academic_year.name }}</strong></article>
+        <article class="context-tile"><span><i class="fa-solid fa-file-circle-check"></i> Exam</span><strong>{{ assignment.exam.name }}</strong></article>
+        <article class="context-tile"><span><i class="fa-solid fa-people-group"></i> Class</span><strong>{{ assignment.school_class.name }}</strong></article>
+        <article class="context-tile"><span><i class="fa-solid fa-book-open"></i> Subject</span><strong>{{ assignment.subject.name }}</strong></article>
+      </div>
+
+      <div class="entry-progress glass-card">
+        <div><strong>{{ rows|length }} students</strong><span>Maximum score: {{ max_score|academic_number(ui_settings) if max_score is not none else '—' }}</span></div>
+        <div class="submission-meta">
+          {% if assignment.deadline_at %}<span><i class="fa-regular fa-clock"></i> Due {{ deadline_labels[assignment.id].strftime('%b %d, %Y %I:%M %p') }} EAT</span>{% else %}<span><i class="fa-regular fa-clock"></i> No deadline</span>{% endif %}
+          <span class="submission-pill {{ submission.status if submission else 'draft' }}">{{ (submission.status if submission else 'draft')|title }}</span>
+        </div>
+      </div>
+
+      <form method="post" action="{{ url_for('teacher_portal.result_entry_save') }}" id="teacherResultForm" class="glass-card entry-sheet">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="assignment_id" value="{{ assignment.id }}">
+        <div class="sheet-heading"><div><h3>Class mark sheet</h3><p>Scores are saved as a private draft until you submit them for review.</p></div><span id="entry-completion">0 / {{ rows|length }} entered</span></div>
+        <div class="entry-table-wrap"><table class="entry-table"><thead><tr><th>#</th><th>Student</th><th>Student ID</th><th>Score <small>/ {{ max_score|academic_number(ui_settings) if max_score is not none else '—' }}</small></th><th>Record</th></tr></thead><tbody>
+          {% for row in rows %}
+            <tr><td>{{ loop.index }}</td><td><div class="entry-student">{% if row.student.photo_path %}<img src="{{ asset_url(row.student.photo_path) }}" alt="" class="entry-student-avatar">{% else %}<span class="entry-student-avatar placeholder"><i class="fa-solid fa-user"></i></span>{% endif %}<span><strong>{{ row.student.full_name }}</strong><small>{{ row.student.mother_name or '—' }}</small></span></div></td><td>{{ row.student.student_code }}</td><td><input class="score-input" type="number" inputmode="decimal" min="0" max="{{ max_score }}" step="0.001" name="score_{{ row.student.id }}" value="{{ row.score if row.score is not none else '' }}" aria-label="Score for {{ row.student.full_name }}" {% if locked %}disabled{% endif %}></td><td>{% if row.is_existing %}<span class="record-badge existing">Existing result</span>{% else %}<span class="record-badge">New entry</span>{% endif %}</td></tr>
+          {% else %}<tr><td colspan="5" class="empty-roster"><i class="fa-solid fa-user-group"></i><strong>No students in this assigned class</strong><span>Check the academic-year enrollment list or contact administration.</span></td></tr>{% endfor %}
+        </tbody></table></div>
+        {% if rows %}<div class="sheet-footer"><span class="entry-hint"><i class="fa-solid fa-circle-info"></i> Blank marks are allowed in drafts; every student needs a score before submission.</span><div class="sheet-actions">
+          {% if not locked %}<button class="entry-button secondary" type="submit" name="action" value="draft"><i class="fa-regular fa-floppy-disk"></i> Save draft</button><button class="entry-button primary" type="submit" name="action" value="submit" onclick="return confirm('Submit these marks for administration review? You will not be able to edit them unless an administrator reopens the submission.')"><i class="fa-solid fa-paper-plane"></i> Submit for review</button>{% endif %}
+        </div></div>{% endif %}
+      </form>
+    {% endif %}
+  {% else %}
+    <section class="no-assignments glass-card"><span><i class="fa-solid fa-clipboard-check"></i></span><h2>No result-entry assignments yet</h2><p>Your administrator will assign the academic year, exam, class, subject, and submission deadline here.</p></section>
+  {% endif %}
+  <footer class="result-entry-footer">© SULTAAN EMS | 2026 <span>Secure academic records</span></footer>
+</section>
+<script>
+(() => {
+  const form = document.getElementById('teacherResultForm');
+  if (!form) return;
+  const inputs = [...form.querySelectorAll('.score-input')];
+  const counter = document.getElementById('entry-completion');
+  const update = () => {
+    const count = inputs.filter(input => input.value.trim() !== '').length;
+    counter.textContent = `${count} / ${inputs.length} entered`;
+  };
+  inputs.forEach((input, index) => {
+    input.addEventListener('input', update);
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter') { event.preventDefault(); inputs[index + 1]?.focus(); }
+    });
+  });
+  update();
+})();
+</script>
+{% endblock %}

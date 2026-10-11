@@ -57,5 +57,10 @@ const SUBJ = {
 };
 const SUBJECTS = Object.keys(SUBJ).filter(s => s !== ALL);
 for (const k of Object.keys(SUBJ)) SUBJ[k].art = ART[k];
+SUBJ['Xisaab'] = {...SUBJ.Math, n:'Xisaab'};
+SUBJ['Saynis'] = {...SUBJ.Biology, n:'Saynis'};
+SUBJ['Cilmi Bulsho'] = {...SUBJ.Juqraafi, n:'Cilmi Bulsho'};
+SUBJ['Teknooloji'] = {...SUBJ.Technology, n:'Teknooloji'};
+SUBJ['Tarbiyada Islaamka'] = {...SUBJ['Tarbiyadda Islaamka'], n:'Tarbiyada Islaamka'};
 return {ALL, LEVELS, allClasses, CLASS_LABELS, classLabel, ART, SUBJ, SUBJECTS};
 })();

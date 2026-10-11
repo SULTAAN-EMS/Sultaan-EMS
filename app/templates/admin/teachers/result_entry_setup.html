@@ -1,0 +1,140 @@
+{% extends "admin/base.html" %}
+{% block title %}Result Entry Control{% endblock %}
+{% block page_title %}Result Entry Control{% endblock %}
+{% block admin_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-admin.css') }}">
+<main class="teacher-result-admin">
+  <header class="tra-header">
+    <div>
+      <span class="tra-kicker"><i class="fa-solid fa-clipboard-check"></i> TEACHER WORKSPACE</span>
+      <h1>Result Entry Control</h1>
+      <p>Manage real teacher assignments and review marks before they are published.</p>
+    </div>
+    <a class="tra-back" href="{{ url_for('admin_teachers.teacher_list') }}"><i class="fa-solid fa-chalkboard-user"></i> Teacher accounts</a>
+  </header>
+
+  <section class="tra-summary" aria-label="Assignment overview">
+    <a href="{{ url_for('admin_teachers.result_entry_setup') }}" class="tra-metric"><span>All assignments</span><strong>{{ summary.total }}</strong><i class="fa-solid fa-layer-group"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='review') }}" class="tra-metric review"><span>Awaiting review</span><strong>{{ summary.review }}</strong><i class="fa-solid fa-inbox"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='draft') }}" class="tra-metric draft"><span>Draft / correction</span><strong>{{ summary.draft }}</strong><i class="fa-solid fa-pen-to-square"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='approved') }}" class="tra-metric approved"><span>Approved</span><strong>{{ summary.approved }}</strong><i class="fa-solid fa-circle-check"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='paused') }}" class="tra-metric paused"><span>Paused</span><strong>{{ summary.paused }}</strong><i class="fa-solid fa-pause"></i></a>
+  </section>
+
+  <section class="tra-panel tra-setup">
+    <div class="tra-panel-heading">
+      <span class="tra-icon"><i class="fa-solid fa-user-plus"></i></span>
+      <div><h2>Assign a result sheet</h2><p>Assignments use the active academic-year, level, class, subject and exam records.</p></div>
+    </div>
+    <form method="post" class="tra-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="create">
+      <label>Teacher<select id="tra-setup-teacher" name="teacher_id" required><option value="">Select active teacher</option>{% for item in teachers %}<option value="{{ item.id }}">{{ item.full_name }} · {{ item.teacher_code }}</option>{% endfor %}</select></label>
+      <label>Academic year<select id="tra-setup-year" name="academic_year_id" required><option value="">Select year</option>{% for item in years %}<option value="{{ item.id }}" {{ 'selected' if item.id == selected_year_id else '' }}>{{ item.name }}{% if item.is_current %} · Current{% endif %}</option>{% endfor %}</select></label>
+      <label>Level<select id="tra-setup-level" name="academic_year_level_id" required><option value="">Select level</option>{% for item in year_levels %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-legacy-level-id="{{ item.legacy_level_id }}" {{ 'selected' if item.id == selected_year_level_id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
+      <label>Class<select id="tra-setup-class" name="academic_year_class_id" required><option value="">Select class</option>{% for item in year_classes %}<option value="{{ item.id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-id="{{ item.legacy_class_id }}">{{ item.academic_year_level.name }} · {{ item.name }}</option>{% endfor %}</select></label>
+      <label>Subject<select id="tra-setup-subject" name="academic_year_subject_id" required><option value="">Select subject</option>{% for item in year_subjects %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-level-id="{{ item.academic_year_level.legacy_level_id }}" data-legacy-id="{{ item.legacy_subject_id }}">{{ item.name }}</option>{% endfor %}</select></label>
+      <label>Exam type<select id="tra-setup-exam" name="exam_id" required><option value="">Select exam</option>{% for item in exams %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_level_id or '' }}" data-class-id="{{ item.academic_class_id or '' }}">{{ item.name }} · {{ item.academic_year.name }}</option>{% endfor %}</select></label>
+      <label>Deadline <span class="tra-optional">Optional</span><input type="datetime-local" name="deadline_at"><small>Local school time (EAT). Leave blank for no deadline.</small></label>
+      <label>Allowed submissions<input type="number" name="max_submissions" min="1" max="10" value="1" required><small>Reopening for correction grants an additional attempt.</small></label>
+      <div class="tra-form-action"><button type="submit"><i class="fa-solid fa-plus"></i> Save assignment</button></div>
+    </form>
+  </section>
+
+  <section class="tra-panel">
+    <div class="tra-panel-heading tra-list-heading">
+      <span class="tra-icon review"><i class="fa-solid fa-list-check"></i></span>
+      <div><h2>Assignments &amp; submissions</h2><p>Showing {{ assignments|length }} of {{ summary.total }} saved assignment{{ '' if summary.total == 1 else 's' }}.</p></div>
+      <form method="get" class="tra-filters">
+        <label class="sr-only" for="tra-status">Submission status</label>
+        <select id="tra-status" name="status">
+          <option value="all" {{ 'selected' if status_filter == 'all' else '' }}>All statuses</option>
+          <option value="review" {{ 'selected' if status_filter == 'review' else '' }}>Awaiting review</option>
+          <option value="draft" {{ 'selected' if status_filter == 'draft' else '' }}>Draft / correction</option>
+          <option value="approved" {{ 'selected' if status_filter == 'approved' else '' }}>Approved</option>
+          <option value="paused" {{ 'selected' if status_filter == 'paused' else '' }}>Paused</option>
+        </select>
+        <label class="sr-only" for="tra-teacher">Teacher</label>
+        <select id="tra-teacher" name="teacher_id"><option value="">All teachers</option>{% for item in teachers %}<option value="{{ item.id }}" {{ 'selected' if teacher_filter == item.id else '' }}>{{ item.full_name }}</option>{% endfor %}</select>
+        <button type="submit" class="tra-filter-button"><i class="fa-solid fa-filter"></i> Filter</button>
+        {% if status_filter != 'all' or teacher_filter %}<a class="tra-reset" href="{{ url_for('admin_teachers.result_entry_setup') }}" title="Clear filters"><i class="fa-solid fa-xmark"></i></a>{% endif %}
+      </form>
+    </div>
+
+    <div class="tra-list">
+      {% for assignment in assignments %}{% set submission = assignment.submissions|first %}
+        <article class="tra-assignment">
+          <div class="tra-assignment-main">
+            <div class="tra-assignment-identity">
+              <span class="tra-scope-label"><i class="fa-regular fa-calendar"></i> {{ assignment.academic_year.name }} <span>·</span> {{ assignment.exam.name }}</span>
+              {% set scope = assignment_scope_details[assignment.id] %}<h3>{{ scope.level_name }} {{ scope.class_name }} <span>/</span> {{ scope.subject_name }}</h3>
+              <p><i class="fa-solid fa-user-tie"></i> {{ assignment.teacher.full_name }} <span>·</span> <i class="fa-regular fa-clock"></i> {{ deadline_labels[assignment.id].strftime('%b %d, %Y · %I:%M %p') ~ ' EAT' if assignment.deadline_at else 'No deadline' }} <span>·</span> Max {{ assignment.max_submissions }} attempt{{ '' if assignment.max_submissions == 1 else 's' }}</p>
+            </div>
+            <div class="tra-badges"><span class="tra-status {{ 'active' if assignment.is_active else 'inactive' }}">{{ 'Active' if assignment.is_active else 'Paused' }}</span><span class="tra-status {{ submission.status if submission else 'not-started' }}">{{ submission.status|replace('_', ' ')|title if submission else 'Not started' }}</span></div>
+          </div>
+
+          {% if submission and submission.status == 'submitted' %}
+            {% set rows = review_rows.get(assignment.id, []) %}{% set has_existing = assignment.id in assignments_with_existing_results %}
+            <details class="tra-review"><summary><i class="fa-solid fa-eye"></i> Review {{ submission.marks|length }} submitted student marks</summary>
+              <div class="tra-marks-table"><table><thead><tr><th>Student</th><th>Student ID</th><th>Submitted</th><th>Current official</th></tr></thead><tbody>{% for item in rows %}{% set mark = item.mark %}<tr><td>{{ mark.student.full_name }}</td><td>{{ mark.student.student_code }}</td><td>{{ mark.score|academic_number(ui_settings) if mark.score is not none else '—' }}</td><td>{{ item.official_score|academic_number(ui_settings) if item.official_score is not none else 'No result' }}</td></tr>{% endfor %}</tbody></table></div>
+              <form method="post" class="tra-review-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><label>Review note <input name="reviewer_note" maxlength="500" placeholder="Optional audit note"></label>{% if has_existing %}<label class="tra-confirm"><input type="checkbox" name="confirm_replace" value="yes" required> I reviewed the existing official marks and approve replacing them.</label>{% endif %}<button name="action" value="approve" class="approve"><i class="fa-solid fa-check"></i> Approve &amp; publish</button><button name="action" value="reopen" class="reopen"><i class="fa-solid fa-rotate-left"></i> Return for correction</button></form>
+            </details>
+          {% elif submission and submission.status == 'approved' %}
+            <p class="tra-approved-note"><i class="fa-solid fa-circle-check"></i> Approved by {{ submission.reviewed_by.username if submission.reviewed_by else 'admin' }}{% if submission.reviewed_at %} · {{ submission.reviewed_at.strftime('%b %d, %Y · %I:%M %p') }}{% endif %}</p>
+            <form method="post" class="tra-reopen-approved"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><label class="sr-only" for="reopen-note-{{ assignment.id }}">Reason for reopening</label><input id="reopen-note-{{ assignment.id }}" name="reviewer_note" maxlength="500" required placeholder="Reason for reopening this approved result sheet"><button name="action" value="reopen" class="reopen"><i class="fa-solid fa-rotate-left"></i> Reopen for correction</button></form>
+          {% endif %}
+          <div class="tra-assignment-actions"><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><button name="action" value="toggle" class="quiet"><i class="fa-solid fa-{{ 'pause' if assignment.is_active else 'play' }}"></i> {{ 'Pause assignment' if assignment.is_active else 'Activate assignment' }}</button></form></div>
+        </article>
+      {% else %}<div class="tra-empty"><span class="tra-empty-icon"><i class="fa-solid fa-inbox"></i></span><strong>{{ 'No assignments match these filters' if summary.total else 'No assignments yet' }}</strong><span>{% if summary.total %}Clear the filters to see the saved assignments.{% else %}Create an assignment above using the school's real teacher, year, exam, class and subject records.{% endif %}</span></div>{% endfor %}
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const teacher = document.getElementById('tra-setup-teacher');
+  const year = document.getElementById('tra-setup-year');
+  const level = document.getElementById('tra-setup-level');
+  const schoolClass = document.getElementById('tra-setup-class');
+  const subject = document.getElementById('tra-setup-subject');
+  const exam = document.getElementById('tra-setup-exam');
+  if (!teacher || !year || !level || !schoolClass || !subject || !exam) return;
+
+  const filterOptions = (select, predicate, selectFirst = false) => {
+    const visible = [];
+    Array.from(select.options).forEach((option, index) => {
+      if (!index) return;
+      const keep = predicate(option);
+      option.hidden = !keep;
+      option.disabled = !keep;
+      if (keep) visible.push(option);
+    });
+    if (!select.selectedOptions[0]?.value || select.selectedOptions[0].hidden) {
+      select.value = selectFirst && visible.length ? visible[0].value : '';
+    }
+  };
+
+  const refresh = () => {
+    const yearId = year.value;
+    filterOptions(level, option => option.dataset.yearId === yearId, true);
+    const levelId = level.value;
+    const legacyLevelId = level.selectedOptions[0]?.dataset.legacyLevelId || '';
+
+    filterOptions(schoolClass, option => option.dataset.levelId === levelId);
+    const classId = schoolClass.selectedOptions[0]?.dataset.legacyId || '';
+
+    filterOptions(subject, option =>
+      option.dataset.yearId === yearId &&
+      option.dataset.levelId === levelId &&
+      (!option.dataset.legacyLevelId || option.dataset.legacyLevelId === legacyLevelId));
+
+    filterOptions(exam, option =>
+      option.dataset.yearId === yearId &&
+      (!option.dataset.levelId || option.dataset.levelId === legacyLevelId) &&
+      (!option.dataset.classId || option.dataset.classId === classId));
+  };
+
+  [teacher, year, level, schoolClass].forEach(select => select.addEventListener('change', refresh));
+  refresh();
+})();
+</script>
+{% endblock %}

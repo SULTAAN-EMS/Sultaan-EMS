@@ -37,13 +37,24 @@
     @media(max-width:380px){.catalog-switch{gap:6px}.catalog-switch button{padding:9px 7px;gap:6px}.catalog-switch button b{font-size:12px}.catalog-switch small{font-size:10px}}
     @media(max-width:380px){.pseg{gap:2px;padding:3px}.pseg button{font-size:9px;gap:1px}.pseg button .ic{width:11px;height:11px}.bk{gap:9px;padding:9px}.bk-a button{font-size:12px}}
   </style>${icons}${template.content.firstElementChild.outerHTML}`;
+  const pageStylesheet = shadow.querySelector('link[rel="stylesheet"]');
+  const revealBooks = () => {
+    mount.dataset.booksReady = 'true';
+    mount.setAttribute('aria-busy', 'false');
+  };
+  if (pageStylesheet) {
+    pageStylesheet.addEventListener('load', revealBooks, {once:true});
+    pageStylesheet.addEventListener('error', revealBooks, {once:true});
+  } else {
+    revealBooks();
+  }
   const $ = selector => shadow.querySelector(selector);
   const $$ = selector => [...shadow.querySelectorAll(selector)];
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const ALL = library.ALL;
   const GENERAL = 'Buug guud';
   const LEVELS = library.LEVELS;
-  const SUBJECTS = library.SUBJECTS;
+  const SUBJECT_CATALOG = config.subjectCatalog || {};
   const LEVEL_ICONS = {[ALL]:'layers',Xanaano:'star',Hoose:'bookopen',Dhexe:'class',Sare:'landmark'};
   const state = {level:ALL,cls:ALL,subject:ALL,query:'',catalogType:'',branchId:'',view:'list',readerBook:null,pdf:null,page:1,mode:'scroll',zoom:1,theme:'light',marks:{},downloadBook:null,downloadController:null,downloadStatusTimer:null,objectUrl:null,searchHits:[],searchIndex:0,pageObserver:null,searchRun:0};
   const sym = name => `<svg class="ic" aria-hidden="true"><use href="#i-${name}"/></svg>`;
@@ -121,11 +132,15 @@
     const availableSubjects = new Set();
     subjectBooks.forEach(book => {
       if (book.bookKind==='general') availableSubjects.add(GENERAL);
-      else if (book.subject===ALL) SUBJECTS.forEach(subject=>availableSubjects.add(subject));
-      else availableSubjects.add(book.subject);
+      else if (book.subject===ALL) {
+        const classNames = state.cls===ALL
+          ? (book.class===ALL ? (LEVELS[book.level]?.classes || []) : [book.class])
+          : [state.cls];
+        classNames.forEach(className => (SUBJECT_CATALOG[book.level]?.[className] || []).forEach(subject=>availableSubjects.add(subject)));
+      } else availableSubjects.add(book.subject);
     });
     if (state.subject!==ALL && !availableSubjects.has(state.subject)) state.subject=ALL;
-    $('#pSubj').innerHTML = [ALL,...SUBJECTS.filter(subject=>availableSubjects.has(subject)),...(availableSubjects.has(GENERAL)?[GENERAL]:[])].map(subject=>`<button type="button" class="chip" data-subject="${esc(subject)}" aria-pressed="${state.subject===subject}">${subjectSym((library.SUBJ[subject]||library.SUBJ[ALL]).i)}${subject===ALL?'Dhammaan maaddooyinka':esc(subject)}</button>`).join('');
+    $('#pSubj').innerHTML = [ALL,...[...availableSubjects].filter(subject=>subject!==GENERAL).sort((a,b)=>a.localeCompare(b)),...(availableSubjects.has(GENERAL)?[GENERAL]:[])].map(subject=>`<button type="button" class="chip" data-subject="${esc(subject)}" aria-pressed="${state.subject===subject}">${subjectSym((library.SUBJ[subject]||library.SUBJ[ALL]).i)}${subject===ALL?'Dhammaan maaddooyinka':esc(subject)}</button>`).join('');
   }
   function filteredBooks() {
     const query = state.query.trim().toLocaleLowerCase();

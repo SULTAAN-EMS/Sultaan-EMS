@@ -1,175 +1,272 @@
 {% extends "admin/base.html" %}
-{% block title %}Buugaagta · Xarumaha iyo Madbacadaha{% endblock %}
+{% block title %}Xarumaha dugsiga & madbacadaha{% endblock %}
 {% block page_title %}Xarumaha & Madbacadaha{% endblock %}
-{% block admin_content %}
+{% block extra_head %}
+{{ super() }}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  .books-admin-wrap{max-width:1240px;margin:auto;padding:22px;color:#18332d}
-  .books-admin-head{display:flex;justify-content:space-between;align-items:stretch;gap:14px;margin-bottom:18px}
-  .books-heading-card{position:relative;display:flex;align-items:center;gap:15px;flex:1;min-width:0;padding:14px 17px;border:1px solid #d8e8e1;border-left:4px solid #0e7c66;border-radius:10px;background:linear-gradient(110deg,#f1faf6 0%,#fff 66%,#fffaf0 100%);box-shadow:0 8px 20px rgba(24,51,45,.06);animation:booksHeaderEnter .42s cubic-bezier(.2,.75,.25,1) both}
-  .books-heading-icon{position:relative;display:grid;place-items:center;flex:none;width:54px;height:54px;border:1px solid #a8d8c9;border-radius:12px;background:#dff3ec;color:#08775f;font-size:23px;box-shadow:inset 0 1px 0 #fff,0 5px 12px rgba(14,124,102,.13);animation:booksIconEnter .5s .08s cubic-bezier(.2,.75,.25,1) both}
-  .books-heading-icon .books-printer-badge{position:absolute;right:-7px;bottom:-5px;display:grid;place-items:center;width:23px;height:23px;border:2px solid #fff;border-radius:7px;background:#f6e5bd;color:#8b5c0b;font-size:11px}
-  .books-heading-copy{min-width:0}
-  .books-heading-kicker{display:flex;align-items:center;gap:7px;margin-bottom:3px;color:#71817b;font-size:10px;font-weight:800;text-transform:uppercase}
-  .books-heading-kicker::before{width:7px;height:7px;border-radius:50%;background:#19a477;content:"";box-shadow:0 0 0 3px rgba(25,164,119,.12)}
-  .books-heading-card h2{margin:0;color:#18332d;font-size:21px;font-weight:800;line-height:1.25;overflow-wrap:anywhere}
-  .books-heading-card h2 span{color:#a97418}
-  .books-admin-links{display:flex;align-items:center;flex:none}
-  .books-back-link{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:44px;padding:0 15px;border:1px solid #cbded6;border-radius:9px;background:#fff;color:#176b57;text-decoration:none;font-size:13px;font-weight:800;box-shadow:0 4px 12px rgba(24,51,45,.05);transition:transform .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease}
-  .books-back-link i{transition:transform .18s ease}
-  .books-back-link:hover{transform:translateY(-2px);border-color:#80bba7;background:#f4fbf8;box-shadow:0 8px 16px rgba(14,124,102,.12)}
-  .books-back-link:hover i{transform:translateX(-3px)}
-  @keyframes booksHeaderEnter{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
-  @keyframes booksIconEnter{from{opacity:0;transform:scale(.88) rotate(-5deg)}to{opacity:1;transform:scale(1) rotate(0)}}
-  .books-admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-  .books-panel{background:#fff;border:1px solid #dce6e2;border-radius:8px;padding:18px;min-width:0}
-  .books-panel h3{margin:0 0 12px;font-size:17px}.books-form{display:grid;gap:10px}
-  .books-form label{display:grid;gap:5px;font-size:13px;font-weight:700}
-  .books-form input,.books-form select{min-width:0;width:100%;padding:10px 11px;border:1px solid #cbd8d3;border-radius:7px;background:#fff;color:#18332d}
-  .books-form button{justify-self:start;background:#0e7c66;color:#fff;border:0;border-radius:7px;padding:9px 12px;font-weight:700;cursor:pointer;text-decoration:none}
-  .books-form button.secondary{background:#fff;color:#166b5a;border:1px solid #cbd8d3}
-  .books-record-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .books-record-actions button.secondary{background:#fff;color:#166b5a;border:1px solid #cbd8d3;border-radius:7px;padding:9px 12px;font-weight:700;cursor:pointer}
-  .books-record-actions button.danger{color:#b42318;border-color:#f1c7c4}
-  .books-record-actions button.danger:hover{background:#fff4f2;border-color:#d92d20}
-  .books-delete-dialog{width:min(460px,calc(100vw - 32px));max-width:none;padding:0;border:0;border-radius:16px;background:transparent;color:#18332d;overflow:visible}
-  .books-delete-dialog::backdrop{background:rgba(15,30,27,.48);backdrop-filter:blur(4px)}
-  .books-delete-card{background:#fff;border:1px solid #e2e9e6;border-radius:16px;padding:26px;box-shadow:0 24px 70px rgba(15,30,27,.24);animation:booksDialogIn .18s ease-out}
-  .books-delete-icon{display:grid;place-items:center;width:52px;height:52px;margin-bottom:18px;border-radius:14px;background:#fff1f0;color:#c43228;font-size:21px}
-  .books-delete-eyebrow{display:inline-flex;align-items:center;gap:7px;color:#b42318;font-size:11px;font-weight:800;text-transform:uppercase}
-  .books-delete-card h3{margin:8px 0 7px;font-size:20px;line-height:1.3}
-  .books-delete-copy{margin:0;color:#5e706a;font-size:14px;line-height:1.55}
-  .books-delete-note{display:flex;align-items:flex-start;gap:10px;margin-top:17px;padding:12px;border:1px solid #e3ebe7;border-radius:9px;background:#f7faf9;color:#52655e;font-size:12px;line-height:1.5}
-  .books-delete-note i{margin-top:2px;color:#0e7c66}
-  .books-delete-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:23px}
-  .books-delete-actions button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:9px 13px;border:1px solid #d5dfdb;border-radius:8px;background:#fff;color:#3d514a;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
-  .books-delete-actions .confirm-delete{border-color:#b42318;background:#b42318;color:#fff}
-  .books-delete-actions .confirm-delete:hover{background:#912018}
-  @keyframes booksDialogIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
-  @media(max-width:480px){.books-delete-card{padding:21px}.books-delete-actions{flex-direction:column-reverse}.books-delete-actions button{width:100%}}
-  @media(prefers-reduced-motion:reduce){.books-delete-card,.books-heading-card,.books-heading-icon{animation:none}.books-back-link,.books-back-link i{transition:none}}
-  .books-choice{display:grid;gap:6px;max-height:135px;overflow:auto;padding:8px;border:1px solid #dce6e2;border-radius:7px}
-  .books-choice label{display:flex;align-items:center;gap:7px;font-weight:500}.books-choice input{width:auto}
-  .books-record{padding:14px 0;border-top:1px solid #e6eeeb;display:grid;gap:12px}.books-record:first-of-type{border-top:0}
-  .books-record-title{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}.books-record-title strong{font-size:15px}
-  .books-active{color:#15803d;font-weight:700}.books-inactive{color:#b42318;font-weight:700}
-  .books-muted{color:#62766f}
-  .books-flash{padding:10px 12px;background:#edf8f4;border-radius:7px;margin:0 0 14px}.books-flash.error{background:#fff1f0;color:#b42318}
-  @media(max-width:760px){.books-admin-grid{grid-template-columns:1fr}.books-admin-wrap{padding:14px}.books-admin-head{align-items:stretch;flex-direction:column}.books-admin-links{align-self:flex-start}}
-  @media(max-width:420px){.books-heading-card{gap:12px;padding:12px}.books-heading-icon{width:47px;height:47px;font-size:20px}.books-heading-card h2{font-size:18px}.books-back-link{min-height:41px}}
+.books-centers-page{--bc-bg:#edf2f0;--bc-surface:#fff;--bc-soft:#f5f8f7;--bc-ink:#0f2420;--bc-muted:#5a6f69;--bc-line:#dae4e1;--bc-brand:#0e7c66;--bc-brand-dark:#0a5f4f;--bc-brand-tint:#e2f3ee;--bc-gold:#f5b400;--bc-danger:#d64545;--bc-danger-tint:#fce9e9;--bc-shadow:0 1px 2px rgba(10,43,39,.06),0 10px 28px rgba(10,43,39,.08);max-width:1180px;margin:0 auto;padding:18px 14px 48px;color:var(--bc-ink);font:15px/1.45 'Figtree','Segoe UI',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+.books-centers-page{background:var(--bc-bg)}
+.bc-fields[disabled]{display:none}
+.theme-dark .books-centers-page{--bc-bg:#08110f;--bc-surface:#10201d;--bc-soft:#162a26;--bc-ink:#e7f2ef;--bc-muted:#94aaa4;--bc-line:#223833;--bc-brand:#4fd1b5;--bc-brand-dark:#31ad92;--bc-brand-tint:rgba(20,163,139,.16);--bc-danger-tint:rgba(214,69,69,.16);--bc-shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px rgba(0,0,0,.35)}
+.books-centers-page *{box-sizing:border-box}
+.books-centers-page button,.books-centers-page input{font:inherit;color:inherit}
+.books-centers-page button{cursor:pointer}
+.books-centers-page :focus-visible{outline:2px solid var(--bc-gold);outline-offset:2px}
+.bc-header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px;border:1px solid var(--bc-line);border-left:5px solid var(--bc-brand);border-radius:20px;background:linear-gradient(100deg,var(--bc-surface) 0%,var(--bc-brand-tint) 100%);box-shadow:var(--bc-shadow);animation:bc-enter .38s ease both}
+.bc-brand-icon{position:relative;display:grid;flex:none;width:54px;height:54px;place-items:center;border-radius:16px;background:linear-gradient(135deg,var(--bc-brand-dark),#1fb090);color:#fff}
+.bc-brand-icon>i{font-size:25px}.bc-brand-icon .bc-icon-badge{position:absolute;right:-6px;bottom:-6px;display:grid;width:24px;height:24px;place-items:center;border:2px solid var(--bc-surface);border-radius:8px;background:var(--bc-gold);color:#0a2b27;font-size:12px}
+.bc-header-copy{flex:1;min-width:200px}.bc-eyebrow{display:flex;align-items:center;gap:7px;color:var(--bc-brand);font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}.bc-eyebrow:before{width:7px;height:7px;border-radius:50%;background:#22c55e;content:""}
+.bc-header h1{margin:3px 0 0;font:800 30px/1.1 'Bricolage Grotesque','Segoe UI',system-ui,sans-serif}.bc-header h1 em{color:#b8860b;font-style:normal}
+.bc-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:9px 14px;border:1px solid var(--bc-line);border-radius:12px;background:var(--bc-surface);font-size:14px;font-weight:700;text-decoration:none;transition:transform .12s,background .15s,border-color .15s}.bc-button:active{transform:scale(.97)}
+.bc-button--primary{border-color:var(--bc-brand);background:var(--bc-brand);color:#fff!important;box-shadow:0 6px 16px rgba(14,124,102,.22)}.bc-button--primary:hover{background:var(--bc-brand-dark)}.bc-button--quiet:hover{background:var(--bc-soft)}
+.bc-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}
+.bc-stat{display:flex;min-width:0;align-items:center;gap:12px;padding:13px;border:1px solid var(--bc-line);border-radius:16px;background:var(--bc-surface);box-shadow:var(--bc-shadow)}
+.bc-stat-icon{display:grid;flex:0 0 46px;width:46px;height:46px;place-items:center;border-radius:14px;background:linear-gradient(135deg,var(--a),var(--b));color:#fff;font-size:21px}
+.bc-stat-copy{min-width:0}.bc-stat-copy strong{display:block;font:800 26px/1 'Bricolage Grotesque','Segoe UI',system-ui,sans-serif}.bc-stat-copy span{display:block;margin-top:3px;color:var(--bc-muted);font-size:12.5px;line-height:1.25}
+.bc-flash{display:flex;align-items:flex-start;gap:9px;margin:0 0 14px;padding:11px 13px;border:1px solid #b7e4d0;border-radius:11px;background:#edf8f4;color:#176b4d}.bc-flash.error{border-color:#f0c5c2;background:#fff1f0;color:#a52620}.theme-dark .bc-flash{border-color:#265c48;background:#153427;color:#a7ebc4}.theme-dark .bc-flash.error{border-color:#6d3434;background:#3a2020;color:#ffb9b2}
+.bc-segment{display:none;gap:4px;margin-bottom:14px;padding:4px;border:1px solid var(--bc-line);border-radius:14px;background:var(--bc-surface)}.bc-segment button{display:flex;flex:1;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px;border:0;border-radius:10px;background:transparent;color:var(--bc-muted);font-weight:700}.bc-segment button[aria-pressed="true"]{background:var(--bc-brand);color:#fff}
+.bc-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:18px}
+.bc-panel{min-width:0;padding:16px;border:1px solid var(--bc-line);border-radius:16px;background:var(--bc-surface)}
+.bc-panel-head{display:flex;align-items:center;gap:11px;margin-bottom:12px}.bc-panel-icon{display:grid;flex:none;width:42px;height:42px;place-items:center;border-radius:13px;background:linear-gradient(135deg,var(--a),var(--b));color:#fff;font-size:19px}.bc-panel-copy{min-width:0}.bc-panel-copy h2{margin:0;font:800 19px/1.15 'Bricolage Grotesque','Segoe UI',system-ui,sans-serif}.bc-panel-copy p{margin:2px 0 0;color:var(--bc-muted);font-size:13px}.bc-panel-head .bc-button{flex:none;margin-left:auto;padding:8px 11px}
+.bc-tools{display:flex;align-items:center;gap:8px;margin-bottom:12px}.bc-search{display:flex;flex:1;min-width:0;align-items:center;gap:8px;height:42px;padding:0 12px;border:1px solid var(--bc-line);border-radius:12px;background:var(--bc-surface);color:var(--bc-muted)}.bc-search:focus-within{border-color:var(--bc-brand);box-shadow:0 0 0 3px var(--bc-brand-tint)}.bc-search i{flex:none}.bc-search input{width:100%;min-width:0;height:100%;border:0;outline:0;background:transparent;color:var(--bc-ink);font-size:13px}.bc-search input::placeholder{color:var(--bc-muted)}
+.bc-filters{display:flex;flex:none;gap:6px}.bc-filter{height:42px;padding:0 11px;border:1px solid var(--bc-line);border-radius:12px;background:var(--bc-surface);color:var(--bc-muted);font-size:13px;font-weight:600;white-space:nowrap}.bc-filter[aria-pressed="true"]{border-color:var(--bc-brand);background:var(--bc-brand-tint);color:var(--bc-brand)}
+.bc-list{display:grid;gap:14px}.bc-card{overflow:hidden;border:1px solid var(--bc-line);border-radius:20px;background:var(--bc-surface);box-shadow:var(--bc-shadow);animation:bc-enter .28s ease both;transition:transform .15s}.bc-card:hover{transform:translateY(-2px)}.bc-card.is-closed{opacity:.78}.bc-card.is-closed .bc-avatar{filter:grayscale(1)}.bc-card-topline{height:6px;background:linear-gradient(90deg,var(--a),var(--b))}.bc-card-main{padding:15px}
+.bc-card-head{display:flex;min-width:0;align-items:center;gap:12px}.bc-avatar{display:grid;flex:none;width:52px;height:52px;place-items:center;border-radius:16px;background:linear-gradient(135deg,var(--a),var(--b));box-shadow:0 8px 18px color-mix(in srgb,var(--a) 30%,transparent);color:#fff;font-size:23px}.bc-card-title{flex:1;min-width:0}.bc-card-title h3{margin:0;font:800 16px/1.2 'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;overflow-wrap:anywhere}.bc-card-title small{display:flex;min-width:0;align-items:center;gap:5px;margin-top:4px;color:var(--bc-muted);font-size:12.5px}.bc-card-title small i{flex:none}.bc-card-title small span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bc-status{display:inline-flex;flex:none;align-items:center;gap:6px;margin-left:auto;padding:4px 10px;border-radius:99px;background:#dcfce7;color:#15803d;font-size:12px;font-weight:700;white-space:nowrap}.bc-status:before{width:7px;height:7px;border-radius:50%;background:currentColor;content:""}.bc-status.is-closed{background:var(--bc-soft);color:var(--bc-muted)}.theme-dark .bc-status:not(.is-closed){background:rgba(34,197,94,.16);color:#6ee7a0}
+.bc-info{display:grid;gap:8px;margin:14px 0 4px}.bc-info-row{display:flex;min-width:0;align-items:center;gap:10px;padding:8px 9px;border-radius:12px;background:var(--bc-soft)}.bc-info-icon{display:grid;flex:none;width:32px;height:32px;place-items:center;border-radius:10px;background:color-mix(in srgb,var(--c) 16%,transparent);color:var(--c)}.bc-info-icon i{font-size:15px}.bc-info-copy{flex:1;min-width:0}.bc-info-copy span{display:block;color:var(--bc-muted);font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.bc-info-copy strong{display:block;overflow:hidden;font-size:14px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}.bc-info-copy a{color:inherit;text-decoration:none}.bc-info-copy a:hover{text-decoration:underline}.bc-row-action{display:grid;flex:none;width:32px;height:32px;place-items:center;border:1px solid var(--bc-line);border-radius:10px;background:var(--bc-surface);color:var(--c);text-decoration:none}
+.bc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.bc-chips-label{width:100%;color:var(--bc-muted);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.bc-chip{display:inline-flex;max-width:100%;align-items:center;gap:6px;padding:4px 9px 4px 8px;border-radius:99px;background:color-mix(in srgb,var(--c) 14%,transparent);font-size:12px;font-weight:600;overflow-wrap:anywhere}.bc-chip:before{flex:none;width:8px;height:8px;border-radius:50%;background:var(--c);content:""}.bc-chip--none{background:var(--bc-soft);color:var(--bc-muted)}.bc-chip--none:before{background:var(--bc-muted)}
+.bc-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:13px}.bc-metric{min-width:0;padding:8px 4px;border:1px solid var(--bc-line);border-radius:12px;text-align:center}.bc-metric strong{display:block;font:800 18px/1.1 'Bricolage Grotesque','Segoe UI',system-ui,sans-serif}.bc-metric span{display:block;margin-top:3px;color:var(--bc-muted);font-size:11px;line-height:1.2}.bc-metric[data-unknown]{cursor:help}
+.bc-actions{display:flex;flex-wrap:wrap;gap:7px;padding:11px 14px;border-top:1px solid var(--bc-line);background:var(--bc-soft)}.bc-actions form{margin:0}.bc-action{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:7px 10px;border:1px solid var(--bc-line);border-radius:10px;background:var(--bc-surface);font-size:12.5px;font-weight:700}.bc-action:hover{border-color:var(--bc-brand);color:var(--bc-brand)}.bc-action--delete{margin-left:auto;color:var(--bc-danger)}.bc-action--delete:hover{border-color:var(--bc-danger);background:var(--bc-danger-tint);color:var(--bc-danger)}.bc-action i{font-size:13px}
+.bc-empty{padding:31px 15px;border:1px dashed var(--bc-line);border-radius:18px;background:var(--bc-surface);color:var(--bc-muted);text-align:center}.bc-empty>i{display:block;margin-bottom:8px;color:var(--bc-brand);font-size:30px}.bc-empty strong{display:block;color:var(--bc-ink);font:800 16px 'Bricolage Grotesque','Segoe UI',system-ui,sans-serif}.bc-empty span{display:block;margin-top:3px;font-size:13px}
+.bc-form-dialog,.books-delete-dialog{--bc-surface:#fff;--bc-soft:#f5f8f7;--bc-ink:#0f2420;--bc-muted:#5a6f69;--bc-line:#dae4e1;--bc-brand:#0e7c66;--bc-brand-dark:#0a5f4f;--bc-brand-tint:#e2f3ee;--bc-gold:#f5b400;--bc-danger:#d64545;--bc-danger-tint:#fce9e9;--bc-shadow:0 1px 2px rgba(10,43,39,.06),0 10px 28px rgba(10,43,39,.08)}
+.theme-dark .bc-form-dialog,.theme-dark .books-delete-dialog{--bc-surface:#10201d;--bc-soft:#162a26;--bc-ink:#e7f2ef;--bc-muted:#94aaa4;--bc-line:#223833;--bc-brand:#4fd1b5;--bc-brand-dark:#31ad92;--bc-brand-tint:rgba(20,163,139,.16);--bc-danger-tint:rgba(214,69,69,.16);--bc-shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px rgba(0,0,0,.35)}
+.bc-form-dialog button,.books-delete-dialog button{font:inherit;color:var(--bc-ink);box-shadow:none}
+.bc-form-dialog .bc-modal-close{color:var(--bc-muted)}
+.bc-form-dialog .bc-button--primary{color:#fff!important;box-shadow:0 6px 16px rgba(14,124,102,.22)}
+.books-delete-dialog .bc-delete-confirm{color:#fff!important}
+.bc-form-dialog,.books-delete-dialog{width:min(560px,calc(100vw - 32px));max-width:none;max-height:calc(100dvh - 32px);margin:auto;padding:0;overflow:hidden;border:1px solid var(--bc-line);border-radius:22px;background:var(--bc-surface);color:var(--bc-ink);box-shadow:0 30px 80px rgba(0,0,0,.35)}.bc-form-dialog::backdrop,.books-delete-dialog::backdrop{background:rgba(6,20,18,.58);backdrop-filter:blur(3px)}
+.bc-modal-form{display:flex;max-height:calc(100dvh - 34px);flex-direction:column}.bc-modal-head{display:flex;flex:none;align-items:center;gap:11px;padding:15px 17px;border-bottom:1px solid var(--bc-line)}.bc-modal-icon{display:grid;flex:none;width:40px;height:40px;place-items:center;border-radius:12px;background:linear-gradient(135deg,var(--a),var(--b));color:#fff;font-size:18px}.bc-modal-head h2{margin:0;font:800 18px/1.2 'Bricolage Grotesque','Segoe UI',system-ui,sans-serif}.bc-modal-close{display:grid;flex:none;width:36px;height:36px;place-items:center;margin-left:auto;border:1px solid var(--bc-line);border-radius:10px;background:var(--bc-surface);color:var(--bc-muted)}.bc-modal-body{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;overflow:auto;padding:16px 18px}.bc-fields{display:grid;grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0;margin:0;padding:0;border:0}.bc-field{display:grid;min-width:0;gap:5px;font-size:13px;font-weight:700}.bc-field--wide{grid-column:1/-1}.bc-field input{width:100%;min-width:0;height:42px;padding:9px 11px;border:1px solid var(--bc-line);border-radius:11px;outline:0;background:var(--bc-soft);color:var(--bc-ink);font-size:14px}.bc-field input:focus{border-color:var(--bc-brand);box-shadow:0 0 0 3px var(--bc-brand-tint)}.bc-field input::placeholder{color:var(--bc-muted)}.bc-field small{color:var(--bc-muted);font-size:12px;font-weight:500}.bc-branch-picks{display:grid;gap:7px;max-height:190px;overflow:auto;padding:8px;border:1px solid var(--bc-line);border-radius:12px;background:var(--bc-soft)}.bc-branch-picks label{display:flex;min-width:0;align-items:center;gap:9px;padding:7px 8px;border-radius:8px;background:var(--bc-surface);font-weight:600;overflow-wrap:anywhere}.bc-branch-picks input{flex:none;width:16px;height:16px;accent-color:var(--bc-brand)}.bc-no-branches{margin:0;padding:9px;color:var(--bc-muted);font-size:13px}.bc-modal-foot{display:flex;flex:none;justify-content:flex-end;gap:9px;padding:13px 17px;border-top:1px solid var(--bc-line);background:var(--bc-soft)}.bc-modal-foot button{min-height:40px}
+.books-delete-dialog{width:min(460px,calc(100vw - 32px));border-radius:18px}.bc-delete-card{padding:23px}.bc-delete-icon{display:grid;width:52px;height:52px;place-items:center;margin-bottom:14px;border-radius:15px;background:var(--bc-danger-tint);color:var(--bc-danger);font-size:21px}.bc-delete-eyebrow{color:var(--bc-danger);font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}.bc-delete-card h2{margin:7px 0;font:800 20px/1.25 'Bricolage Grotesque','Segoe UI',system-ui,sans-serif}.bc-delete-copy{margin:0;color:var(--bc-muted);font-size:14px;line-height:1.5}.bc-delete-note{display:flex;gap:9px;margin-top:14px;padding:11px;border:1px solid var(--bc-line);border-radius:10px;background:var(--bc-soft);color:var(--bc-muted);font-size:12px;line-height:1.45}.bc-delete-note i{flex:none;margin-top:2px;color:var(--bc-brand)}.bc-delete-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.bc-delete-actions button{min-height:40px}.bc-delete-confirm{border-color:var(--bc-danger);background:var(--bc-danger);color:#fff!important}.bc-delete-confirm:hover{background:#b72e2e}
+@keyframes bc-enter{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:999px){.bc-segment{display:flex}.bc-columns{grid-template-columns:minmax(0,1fr)}.books-centers-page[data-sec="c"] .bc-printers-panel,.books-centers-page[data-sec="p"] .bc-branches-panel{display:none}}
+@media(max-width:760px){.bc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.books-centers-page{padding:14px 12px 36px}}
+@media(max-width:600px){.bc-header{gap:12px;padding:13px;border-radius:17px}.bc-header-copy{min-width:calc(100% - 70px)}.bc-header h1{font-size:22px}.bc-header>.bc-button{width:100%}.bc-tools{align-items:stretch;flex-direction:column}.bc-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.bc-filter{padding:0 6px}.bc-modal-body{grid-template-columns:minmax(0,1fr)}.bc-fields{grid-template-columns:minmax(0,1fr)}.bc-field--wide{grid-column:auto}.bc-form-dialog{width:100%;max-width:none;max-height:94dvh;margin:auto 0 0;border-radius:24px 24px 0 0;border-bottom:0}.bc-modal-form{max-height:94dvh}.books-delete-dialog{margin:auto 0 0;border-radius:22px 22px 0 0}.bc-delete-card{padding:20px}.bc-delete-actions{flex-direction:column-reverse}.bc-delete-actions button{width:100%}}
+@media(max-width:380px){.bc-panel{padding:12px}.bc-panel-head{gap:8px}.bc-panel-icon{width:38px;height:38px}.bc-panel-copy h2{font-size:17px}.bc-panel-head .bc-button{gap:6px;padding:7px 8px;font-size:12px}.bc-card-main{padding:12px}.bc-card-head{gap:9px}.bc-avatar{width:46px;height:46px}.bc-status{padding:4px 7px;font-size:11px}.bc-actions{gap:6px;padding:10px}.bc-action{padding:7px 8px;font-size:11.5px}}
+.bc-eyebrow,.bc-info-copy span,.bc-chips-label,.bc-delete-eyebrow{letter-spacing:0}
+@media(prefers-reduced-motion:reduce){.books-centers-page *{animation:none!important;scroll-behavior:auto!important;transition:none!important}}
 </style>
-<main class="books-admin-wrap">
-  <header class="books-admin-head">
-    <div class="books-heading-card">
-      <div class="books-heading-icon" aria-hidden="true"><i class="fa-solid fa-school"></i><span class="books-printer-badge"><i class="fa-solid fa-print"></i></span></div>
-      <div class="books-heading-copy"><span class="books-heading-kicker">Maamulka Buugaagta</span><h2>Xarumaha dugsiga <span>&amp;</span> madbacadaha</h2></div>
-    </div>
-    <nav class="books-admin-links" aria-label="Buugaagta">
-      <a class="books-back-link" href="{{ url_for('books.admin_page') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>Dib-u-noqo</span></a>
-    </nav>
+{% endblock %}
+{% block admin_content %}
+{% set palette = [['#0e7c66','#1fb090'],['#2a45c9','#6b8bff'],['#7c3aed','#a78bfa'],['#b8400a','#f59a4a'],['#a3154f','#f472b6']] %}
+<main class="books-centers-page" data-sec="c">
+  <header class="bc-header">
+    <div class="bc-brand-icon" aria-hidden="true"><i class="fa-solid fa-building"></i><span class="bc-icon-badge"><i class="fa-solid fa-print"></i></span></div>
+    <div class="bc-header-copy"><div class="bc-eyebrow">MAAMULKA BUUGAAGTA</div><h1>Xarumaha dugsiga <em>&amp;</em> madbacadaha</h1></div>
+    <a class="bc-button bc-button--quiet" href="{{ url_for('books.admin_page') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Dib-u-noqo</a>
   </header>
-  {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<p class="books-flash {{ category }}">{{ message }}</p>{% endfor %}{% endwith %}
-  <div class="books-admin-grid">
-    <section class="books-panel">
-      <h3>Diiwaangeli xarun dugsi</h3>
-      <form class="books-form" method="post">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create-branch">
-        <label>Magaca xarunta<input name="name" maxlength="140" required placeholder="Tusaale: Faraca Hodan"></label>
-        <label>Magaalo / gobol<input name="region" maxlength="120" placeholder="Tusaale: Muqdisho · Hodan"></label>
-        <label>Cinwaan faahfaahsan<input name="address" maxlength="300"></label>
-        <label>Telefoonka xarunta<input name="phone" maxlength="40" autocomplete="tel"></label>
-        <button type="submit">Diiwaangeli xarunta</button>
-      </form>
-      <h3 style="margin-top:22px">Xarumaha dugsiga</h3>
-      {% for branch in branches %}
-        <article class="books-record">
-          <div class="books-record-title"><strong>{{ branch.name }}</strong><span class="{{ 'books-active' if branch.is_active else 'books-inactive' }}">{{ 'Firfircoon' if branch.is_active else 'Xiran' }}</span></div>
-          <form class="books-form" method="post">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="update-branch"><input type="hidden" name="item_id" value="{{ branch.id }}">
-            <label>Magaca<input name="name" maxlength="140" value="{{ branch.name }}" required></label><label>Magaalo / gobol<input name="region" maxlength="120" value="{{ branch.region or '' }}"></label><label>Cinwaan<input name="address" maxlength="300" value="{{ branch.address or '' }}"></label><label>Telefoon<input name="phone" maxlength="40" value="{{ branch.phone or '' }}"></label>
-            <button type="submit" class="secondary">Cusboonaysii xogta</button>
-          </form>
-          <div class="books-record-actions">
-            <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="toggle-branch"><input type="hidden" name="item_id" value="{{ branch.id }}"><button type="submit" class="secondary">{{ 'Xir xarunta' if branch.is_active else 'Dib u fur' }}</button></form>
-            <form method="post" data-delete-confirm data-confirm-title="Tirtir xarunta dugsiga?" data-confirm-copy="Xaruntan si joogto ah ayaa looga saarayaa liiska xarumaha iyo shaandhooyinka buugaagta." data-confirm-note="Buugaagta iyo PDF-yadooda waa la ilaalinayaa; xiriirka xaruntan oo keliya ayaa laga jarayaa." data-confirm-action="Haa, tirtir xarunta"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="delete-branch"><input type="hidden" name="item_id" value="{{ branch.id }}"><button type="submit" class="secondary danger"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Tirtir xarunta</button></form>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages if category != 'center-popup' %}
+  <div class="bc-flash {{ 'error' if category == 'error' else '' }}" role="status"><i class="fa-solid {{ 'fa-circle-exclamation' if category == 'error' else 'fa-circle-check' }}" aria-hidden="true"></i><span>{{ message }}</span></div>
+  {% endfor %}{% endwith %}
+
+  <section class="bc-stats" aria-label="Tirakoobka xarumaha iyo madbacadaha">
+    <div class="bc-stat"><div class="bc-stat-icon" style="--a:#0e7c66;--b:#1fb090"><i class="fa-solid fa-building" aria-hidden="true"></i></div><div class="bc-stat-copy"><strong>{{ branches|length }}</strong><span>Xarumaha dugsiga</span></div></div>
+    <div class="bc-stat"><div class="bc-stat-icon" style="--a:#2a45c9;--b:#6b8bff"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></div><div class="bc-stat-copy"><strong>{{ branches|selectattr('is_active')|list|length }}</strong><span>Xarumo firfircoon</span></div></div>
+    <div class="bc-stat"><div class="bc-stat-icon" style="--a:#b8400a;--b:#f59a4a"><i class="fa-solid fa-print" aria-hidden="true"></i></div><div class="bc-stat-copy"><strong>{{ centers|length }}</strong><span>Madbacadaha</span></div></div>
+    <div class="bc-stat"><div class="bc-stat-icon" style="--a:#7c3aed;--b:#a78bfa"><i class="fa-solid fa-book-open" aria-hidden="true"></i></div><div class="bc-stat-copy"><strong>{{ local_book_count }}</strong><span>Buugaag maxalli ah</span></div></div>
+  </section>
+
+  <div class="bc-segment" role="group" aria-label="Qaybta la muujinayo">
+    <button type="button" data-section="c" aria-pressed="true"><i class="fa-solid fa-building" aria-hidden="true"></i> Xarumaha</button>
+    <button type="button" data-section="p" aria-pressed="false"><i class="fa-solid fa-print" aria-hidden="true"></i> Madbacadaha</button>
+  </div>
+
+  <div class="bc-columns">
+    <section class="bc-panel bc-branches-panel" aria-label="Xarumaha dugsiga">
+      <div class="bc-panel-head"><div class="bc-panel-icon" style="--a:#0e7c66;--b:#1fb090"><i class="fa-solid fa-building" aria-hidden="true"></i></div><div class="bc-panel-copy"><h2>Xarumaha dugsiga</h2><p>{{ branches|length }} xarun la diiwaangeliyey</p></div><button class="bc-button bc-button--primary" type="button" data-open-kind="branch"><i class="fa-solid fa-plus" aria-hidden="true"></i> Xarun cusub</button></div>
+      <div class="bc-tools"><label class="bc-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input type="search" data-search-input="branch" placeholder="Raadi xarun, magaalo, cinwaan" aria-label="Raadi xarun"></label><div class="bc-filters" role="group" aria-label="Shaandhee xarumaha">{% for value, label in [('all','Dhammaan'),('on','Firfircoon'),('off','Xiran')] %}<button class="bc-filter" type="button" data-status="branch:{{ value }}" aria-pressed="{{ 'true' if value == 'all' else 'false' }}">{{ label }}</button>{% endfor %}</div></div>
+      <div class="bc-list" data-card-list="branch">
+        {% for branch in branches %}
+        {% set tone = palette[(branch.id - 1) % 5] %}
+        {% set local_books = branch.books|selectattr('catalog_type','equalto','local')|list|length %}
+        {% set linked_printers = namespace(count=0) %}{% for shop in centers %}{% for linked_branch in shop.branches %}{% if linked_branch.id == branch.id %}{% set linked_printers.count = linked_printers.count + 1 %}{% endif %}{% endfor %}{% endfor %}
+        <article class="bc-card {{ '' if branch.is_active else 'is-closed' }}" style="--a:{{ tone[0] }};--b:{{ tone[1] }};--c:{{ tone[0] }}" data-card data-status-value="{{ 'on' if branch.is_active else 'off' }}" data-search-value="{{ [branch.name, branch.region or '', branch.address or '', branch.phone or '']|join(' ')|lower }}">
+          <div class="bc-card-topline"></div><div class="bc-card-main">
+            <div class="bc-card-head"><div class="bc-avatar" aria-hidden="true"><i class="fa-solid fa-building"></i></div><div class="bc-card-title"><h3>{{ branch.name }}</h3><small><i class="fa-solid fa-location-dot" aria-hidden="true"></i><span>{{ branch.region or branch.address or '—' }}</span></small></div><span class="bc-status {{ 'is-closed' if not branch.is_active else '' }}">{{ 'Firfircoon' if branch.is_active else 'Xiran' }}</span></div>
+            <div class="bc-info">
+              <div class="bc-info-row"><div class="bc-info-icon" style="--c:#2a45c9"><i class="fa-solid fa-location-dot" aria-hidden="true"></i></div><div class="bc-info-copy"><span>Magaalo / gobol</span><strong>{{ branch.region or '—' }}</strong></div></div>
+              <div class="bc-info-row"><div class="bc-info-icon" style="--c:#7c3aed"><i class="fa-solid fa-house" aria-hidden="true"></i></div><div class="bc-info-copy"><span>Cinwaan</span><strong>{{ branch.address or '—' }}</strong></div></div>
+              <div class="bc-info-row"><div class="bc-info-icon" style="--c:#15803d"><i class="fa-solid fa-phone" aria-hidden="true"></i></div><div class="bc-info-copy"><span>Telefoon</span><strong>{% if branch.phone %}<a href="tel:{{ branch.phone }}">{{ branch.phone }}</a>{% else %}—{% endif %}</strong></div>{% if branch.phone %}<a class="bc-row-action" style="--c:#15803d" href="tel:{{ branch.phone }}" aria-label="Wac xarunta"><i class="fa-solid fa-phone" aria-hidden="true"></i></a>{% endif %}</div>
+            </div>
+            <div class="bc-metrics"><div class="bc-metric"><strong>{{ linked_printers.count }}</strong><span>Madbacad</span></div><div class="bc-metric"><strong>{{ local_books }}</strong><span>Buug maxalli</span></div><div class="bc-metric" data-unknown title="Tirakoobka dalabyada lama heli karo"><strong>—</strong><span>Dalab furan</span></div></div>
+          </div>
+          <div class="bc-actions">
+            <button class="bc-action" type="button" data-open-kind="branch" data-record='{{ {"id":branch.id,"name":branch.name,"region":branch.region or "","address":branch.address or "","phone":branch.phone or ""}|tojson }}'><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i> Cusboonaysii</button>
+            <form method="post" action="{{ url_for('books.admin_centers') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="toggle-branch"><input type="hidden" name="item_id" value="{{ branch.id }}"><button class="bc-action" type="submit"><i class="fa-solid fa-power-off" aria-hidden="true"></i> {{ 'Xir xarunta' if branch.is_active else 'Fur xarunta' }}</button></form>
+            <form class="bc-delete-form" method="post" action="{{ url_for('books.admin_centers') }}" data-delete-confirm data-confirm-title="Tirtir xarunta dugsiga?" data-confirm-copy="Xaruntan si joogto ah ayaa looga saarayaa liiska xarumaha iyo shaandhooyinka buugaagta." data-confirm-note="Buugaagta iyo PDF-yadooda waa la ilaalinayaa; xiriirka xaruntan oo keliya ayaa laga jarayaa." data-confirm-action="Haa, tirtir xarunta"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="delete-branch"><input type="hidden" name="item_id" value="{{ branch.id }}"><button class="bc-action bc-action--delete" type="submit"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Tirtir</button></form>
           </div>
         </article>
-      {% else %}<p class="books-muted">Weli xarun dugsi lama diiwaangelin.</p>{% endfor %}
+        {% endfor %}
+        <div class="bc-empty" data-filter-empty hidden><i class="fa-solid fa-building" aria-hidden="true"></i><strong>Xarun lama helin</strong><span>Beddel raadinta ama ku dar xarun cusub.</span></div>
+        {% if not branches %}<div class="bc-empty"><i class="fa-solid fa-building" aria-hidden="true"></i><strong>Xarun lama helin</strong><span>Beddel raadinta ama ku dar xarun cusub.</span></div>{% endif %}
+      </div>
     </section>
 
-    <section class="books-panel">
-      <h3>Diiwaangeli madbacad</h3>
-      <form class="books-form" method="post">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create-center">
-        <label>Magaca madbacadda<input name="name" maxlength="160" required></label><label>Telefoon<input name="phone" maxlength="40" required></label><label>WhatsApp (ikhtiyaari)<input name="whatsapp" maxlength="40"></label><label>Cinwaanka goobta<input name="address" maxlength="300" required></label><label>Link-ga khariidadda (ikhtiyaari)<input name="map_url" maxlength="500" placeholder="https://maps.google.com/..."></label>
-        <label>Xarumaha ay u adeegto</label><div class="books-choice">{% for branch in branches if branch.is_active %}<label><input type="checkbox" name="branch_ids" value="{{ branch.id }}">{{ branch.name }}</label>{% else %}<small>Marka hore diiwaangeli xarun dugsi.</small>{% endfor %}</div>
-        <button type="submit">Kaydi madbacadda</button>
-      </form>
-      <h3 style="margin-top:22px">Madbacadaha</h3>
-      {% for center in centers %}
-        <article class="books-record">
-          <div class="books-record-title"><strong>{{ center.name }}</strong><span class="{{ 'books-active' if center.is_active else 'books-inactive' }}">{{ 'Firfircoon' if center.is_active else 'Xiran' }}</span></div>
-          <form class="books-form" method="post">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="update-center"><input type="hidden" name="item_id" value="{{ center.id }}">
-            <label>Magaca madbacadda<input name="name" maxlength="160" value="{{ center.name }}" required></label><label>Telefoon<input name="phone" maxlength="40" value="{{ center.phone }}" required></label><label>WhatsApp<input name="whatsapp" maxlength="40" value="{{ center.whatsapp or '' }}"></label><label>Cinwaanka goobta<input name="address" maxlength="300" value="{{ center.address }}" required></label><label>Link khariidad<input name="map_url" maxlength="500" value="{{ center.map_url or '' }}"></label>
-            <label>Xarumaha ay u adeegto</label><div class="books-choice">{% for branch in branches if branch.is_active %}<label><input type="checkbox" name="branch_ids" value="{{ branch.id }}" {{ 'checked' if branch in center.branches else '' }}>{{ branch.name }}</label>{% endfor %}</div><button type="submit" class="secondary">Cusboonaysii madbacadda</button>
-          </form>
-
-          <div class="books-record-actions">
-            <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="toggle-center"><input type="hidden" name="item_id" value="{{ center.id }}"><button type="submit" class="secondary">{{ 'Xir madbacadda' if center.is_active else 'Dib u fur' }}</button></form>
-            <form method="post" data-delete-confirm data-confirm-title="Tirtir madbacadda?" data-confirm-copy="Madbacaddan si joogto ah ayaa looga saarayaa liiska madbacadaha iyo xarumaha ay u adeegto." data-confirm-note="Buugaagta, xarumaha dugsiga iyo faylashoodu way sii jiraan." data-confirm-action="Haa, tirtir madbacadda"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="delete-center"><input type="hidden" name="item_id" value="{{ center.id }}"><button type="submit" class="secondary danger"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Tirtir madbacadda</button></form>
+    <section class="bc-panel bc-printers-panel" aria-label="Madbacadaha">
+      <div class="bc-panel-head"><div class="bc-panel-icon" style="--a:#b8400a;--b:#f59a4a"><i class="fa-solid fa-print" aria-hidden="true"></i></div><div class="bc-panel-copy"><h2>Madbacadaha</h2><p>{{ centers|length }} madbacad la diiwaangeliyey</p></div><button class="bc-button bc-button--primary" type="button" data-open-kind="printer"><i class="fa-solid fa-plus" aria-hidden="true"></i> Madbacad cusub</button></div>
+      <div class="bc-tools"><label class="bc-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input type="search" data-search-input="printer" placeholder="Raadi madbacad, telefoon, goob" aria-label="Raadi madbacad"></label><div class="bc-filters" role="group" aria-label="Shaandhee madbacadaha">{% for value, label in [('all','Dhammaan'),('on','Firfircoon'),('off','Xiran')] %}<button class="bc-filter" type="button" data-status="printer:{{ value }}" aria-pressed="{{ 'true' if value == 'all' else 'false' }}">{{ label }}</button>{% endfor %}</div></div>
+      <div class="bc-list" data-card-list="printer">
+        {% for center in centers %}
+        {% set tone = palette[(center.id + 1) % 5] %}
+        {% set wa_digits = namespace(value='') %}{% for char in center.whatsapp or '' %}{% if char.isdigit() %}{% set wa_digits.value = wa_digits.value ~ char %}{% endif %}{% endfor %}
+        <article class="bc-card {{ '' if center.is_active else 'is-closed' }}" style="--a:{{ tone[0] }};--b:{{ tone[1] }};--c:{{ tone[0] }}" data-card data-status-value="{{ 'on' if center.is_active else 'off' }}" data-search-value="{{ [center.name, center.phone or '', center.whatsapp or '', center.address or '', center.map_url or '']|join(' ')|lower }}">
+          <div class="bc-card-topline"></div><div class="bc-card-main">
+            <div class="bc-card-head"><div class="bc-avatar" aria-hidden="true"><i class="fa-solid fa-print"></i></div><div class="bc-card-title"><h3>{{ center.name }}</h3><small><i class="fa-solid fa-location-dot" aria-hidden="true"></i><span>{{ center.address }}</span></small></div><span class="bc-status {{ 'is-closed' if not center.is_active else '' }}">{{ 'Firfircoon' if center.is_active else 'Xiran' }}</span></div>
+            <div class="bc-info">
+              <div class="bc-info-row"><div class="bc-info-icon" style="--c:#15803d"><i class="fa-solid fa-phone" aria-hidden="true"></i></div><div class="bc-info-copy"><span>Telefoon</span><strong><a href="tel:{{ center.phone }}">{{ center.phone }}</a></strong></div><a class="bc-row-action" style="--c:#15803d" href="tel:{{ center.phone }}" aria-label="Wac madbacadda"><i class="fa-solid fa-phone" aria-hidden="true"></i></a></div>
+              {% if center.whatsapp %}<div class="bc-info-row"><div class="bc-info-icon" style="--c:#16a34a"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i></div><div class="bc-info-copy"><span>WhatsApp</span><strong>{{ center.whatsapp }}</strong></div><a class="bc-row-action" style="--c:#16a34a" href="https://wa.me/{{ wa_digits.value }}" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp kala xidhiidh"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i></a></div>{% endif %}
+              <div class="bc-info-row"><div class="bc-info-icon" style="--c:#7c3aed"><i class="fa-solid fa-house" aria-hidden="true"></i></div><div class="bc-info-copy"><span>Cinwaanka goobta</span><strong>{{ center.address }}</strong></div></div>
+              {% if center.map_url %}<div class="bc-info-row"><div class="bc-info-icon" style="--c:#d97706"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i></div><div class="bc-info-copy"><span>Link khariidad</span><strong><a href="{{ center.map_url }}" target="_blank" rel="noopener noreferrer">{{ center.map_url|replace('https://','')|replace('http://','') }}</a></strong></div><a class="bc-row-action" style="--c:#d97706" href="{{ center.map_url }}" target="_blank" rel="noopener noreferrer" aria-label="Fur khariidadda"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a></div>{% endif %}
+            </div>
+            <div class="bc-chips"><span class="bc-chips-label">Xarumaha ay u adeegto</span>{% for branch in center.branches %}{% set branch_tone = palette[(branch.id - 1) % 5] %}<span class="bc-chip" style="--c:{{ branch_tone[0] }}">{{ branch.name }}</span>{% else %}<span class="bc-chip bc-chip--none">Xarun lama xidhin</span>{% endfor %}</div>
+            <div class="bc-metrics"><div class="bc-metric"><strong>{{ center.branches|length }}</strong><span>Xarumo</span></div><div class="bc-metric" data-unknown title="Tirakoobka dalabyada lama heli karo"><strong>—</strong><span>Dalab furan</span></div><div class="bc-metric"><strong>{{ 'Haa' if center.whatsapp else 'Maya' }}</strong><span>WhatsApp</span></div></div>
+          </div>
+          <div class="bc-actions">
+            <button class="bc-action" type="button" data-open-kind="printer" data-record='{{ {"id":center.id,"name":center.name,"phone":center.phone,"whatsapp":center.whatsapp or "","address":center.address,"map_url":center.map_url or "","branch_ids":center.branches|map(attribute="id")|list}|tojson }}'><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i> Cusboonaysii</button>
+            <form method="post" action="{{ url_for('books.admin_centers') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="toggle-center"><input type="hidden" name="item_id" value="{{ center.id }}"><button class="bc-action" type="submit"><i class="fa-solid fa-power-off" aria-hidden="true"></i> {{ 'Xir madbacadda' if center.is_active else 'Fur madbacadda' }}</button></form>
+            <form class="bc-delete-form" method="post" action="{{ url_for('books.admin_centers') }}" data-delete-confirm data-confirm-title="Tirtir madbacadda?" data-confirm-copy="Madbacaddan si joogto ah ayaa looga saarayaa liiska madbacadaha iyo xarumaha ay u adeegto." data-confirm-note="Buugaagta, xarumaha dugsiga iyo faylashoodu way sii jiraan." data-confirm-action="Haa, tirtir madbacadda"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="delete-center"><input type="hidden" name="item_id" value="{{ center.id }}"><button class="bc-action bc-action--delete" type="submit"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Tirtir</button></form>
           </div>
         </article>
-      {% else %}<p class="books-muted">Weli madbacad lama diiwaangelin.</p>{% endfor %}
+        {% endfor %}
+        <div class="bc-empty" data-filter-empty hidden><i class="fa-solid fa-print" aria-hidden="true"></i><strong>Madbacad lama helin</strong><span>Beddel raadinta ama ku dar madbacad cusub.</span></div>
+        {% if not centers %}<div class="bc-empty"><i class="fa-solid fa-print" aria-hidden="true"></i><strong>Madbacad lama helin</strong><span>Beddel raadinta ama ku dar madbacad cusub.</span></div>{% endif %}
+      </div>
     </section>
   </div>
 </main>
-<dialog class="books-delete-dialog" id="booksDeleteDialog" aria-labelledby="booksDeleteTitle" aria-describedby="booksDeleteCopy">
-  <div class="books-delete-card">
-    <div class="books-delete-icon" aria-hidden="true"><i class="fa-solid fa-trash-can"></i></div>
-    <span class="books-delete-eyebrow"><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Tirtirid joogto ah</span>
-    <h3 id="booksDeleteTitle">Ma hubtaa?</h3>
-    <p class="books-delete-copy" id="booksDeleteCopy"></p>
-    <div class="books-delete-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span id="booksDeleteNote"></span></div>
-    <div class="books-delete-actions">
-      <button type="button" id="booksDeleteCancel">Jooji</button>
-      <button type="button" class="confirm-delete" id="booksDeleteConfirm"><i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Haa, tirtir</span></button>
+
+<dialog class="bc-form-dialog" id="bcFormDialog" aria-labelledby="bcFormTitle">
+  <form class="bc-modal-form" id="bcRecordForm" method="post" action="{{ url_for('books.admin_centers') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" id="bcFormAction"><input type="hidden" name="item_id" id="bcFormItemId">
+    <header class="bc-modal-head"><div class="bc-modal-icon" id="bcModalIcon" style="--a:#0e7c66;--b:#1fb090"><i class="fa-solid fa-building" id="bcModalIconGlyph" aria-hidden="true"></i></div><h2 id="bcFormTitle">Diiwaangeli xarun dugsi</h2><button class="bc-modal-close" type="button" data-close-form aria-label="Xir"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
+    <div class="bc-modal-body">
+      <fieldset class="bc-fields" data-form-kind="branch">
+        <label class="bc-field bc-field--wide">Magaca xarunta<input name="name" maxlength="140" required placeholder="Tusaale: Faraca Hodan"></label>
+        <label class="bc-field">Magaalo / gobol<input name="region" maxlength="120" placeholder="Tusaale: Muqdisho · Hodan"></label>
+        <label class="bc-field">Telefoonka xarunta<input name="phone" type="tel" maxlength="40" autocomplete="tel" placeholder="+252…"></label>
+        <label class="bc-field bc-field--wide">Cinwaan faahfaahsan<input name="address" maxlength="300" placeholder="Degmo, waddo, meel lagu garto"></label>
+      </fieldset>
+      <fieldset class="bc-fields" data-form-kind="printer" disabled>
+        <label class="bc-field bc-field--wide">Magaca madbacadda<input name="name" maxlength="160" required placeholder="Magaca madbacadda"></label>
+        <label class="bc-field">Telefoon<input name="phone" type="tel" maxlength="40" autocomplete="tel" required placeholder="+252…"></label>
+        <label class="bc-field">WhatsApp <small>Ikhtiyaari</small><input name="whatsapp" type="tel" maxlength="40" placeholder="+252…"></label>
+        <label class="bc-field bc-field--wide">Cinwaanka goobta<input name="address" maxlength="300" required placeholder="Degmo, waddo, meel lagu garto"></label>
+        <label class="bc-field bc-field--wide">Link-ga khariidadda <small>Ikhtiyaari</small><input name="map_url" type="url" maxlength="500" placeholder="https://maps.google.com/…"></label>
+        <div class="bc-field bc-field--wide"><span>Xarumaha ay u adeegto <small>Dooro hal ama in ka badan</small></span><div class="bc-branch-picks">{% for branch in branches if branch.is_active %}<label><input type="checkbox" name="branch_ids" value="{{ branch.id }}">{{ branch.name }}</label>{% else %}<p class="bc-no-branches">Marka hore diiwaangeli xarun dugsi.</p>{% endfor %}</div></div>
+      </fieldset>
     </div>
-  </div>
+    <footer class="bc-modal-foot"><button class="bc-button bc-button--quiet" type="button" data-close-form>Jooji</button><button class="bc-button bc-button--primary" type="submit" id="bcSaveButton"><i class="fa-solid fa-check" aria-hidden="true"></i> Kaydi xarunta</button></footer>
+  </form>
 </dialog>
+
+<dialog class="books-delete-dialog" id="bcDeleteDialog" aria-labelledby="bcDeleteTitle" aria-describedby="bcDeleteCopy">
+  <div class="bc-delete-card"><div class="bc-delete-icon" aria-hidden="true"><i class="fa-solid fa-trash-can"></i></div><span class="bc-delete-eyebrow"><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Tirtirid joogto ah</span><h2 id="bcDeleteTitle">Ma hubtaa?</h2><p class="bc-delete-copy" id="bcDeleteCopy"></p><div class="bc-delete-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span id="bcDeleteNote"></span></div><div class="bc-delete-actions"><button class="bc-button bc-button--quiet" type="button" id="bcDeleteCancel">Jooji</button><button class="bc-button bc-delete-confirm" type="button" id="bcDeleteConfirm"><i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Haa, tirtir</span></button></div></div>
+</dialog>
+
 <script>
-  (() => {
-    const dialog = document.getElementById('booksDeleteDialog');
-    const title = document.getElementById('booksDeleteTitle');
-    const copy = document.getElementById('booksDeleteCopy');
-    const note = document.getElementById('booksDeleteNote');
-    const confirmButton = document.getElementById('booksDeleteConfirm');
-    let pendingForm = null;
-    let returnFocus = null;
+(() => {
+  const page = document.querySelector('.books-centers-page');
+  const formDialog = document.getElementById('bcFormDialog');
+  const recordForm = document.getElementById('bcRecordForm');
+  const deleteDialog = document.getElementById('bcDeleteDialog');
+  let pendingDelete = null;
+  let deleteReturnFocus = null;
+  const colors = {branch:['#0e7c66','#1fb090'],printer:['#b8400a','#f59a4a']};
 
-    document.querySelectorAll('form[data-delete-confirm]').forEach((form) => {
-      form.addEventListener('submit', (event) => {
-        if (form.dataset.confirmed === 'true') return;
-        event.preventDefault();
-        pendingForm = form;
-        returnFocus = event.submitter;
-        title.textContent = form.dataset.confirmTitle;
-        copy.textContent = form.dataset.confirmCopy;
-        note.textContent = form.dataset.confirmNote;
-        confirmButton.querySelector('span').textContent = form.dataset.confirmAction;
-        dialog.showModal();
-      });
+  function applyFilter(kind) {
+    const panel = page.querySelector(kind === 'branch' ? '.bc-branches-panel' : '.bc-printers-panel');
+    const query = panel.querySelector('[data-search-input]').value.trim().toLocaleLowerCase();
+    const filter = panel.querySelector('[data-status][aria-pressed="true"]')?.dataset.status.split(':')[1] || 'all';
+    const cards = [...panel.querySelectorAll('[data-card]')];
+    let visible = 0;
+    cards.forEach((card) => {
+      const matches = (!query || card.dataset.searchValue.includes(query)) && (filter === 'all' || card.dataset.statusValue === filter);
+      card.hidden = !matches;
+      if (matches) visible += 1;
     });
+    const empty = panel.querySelector('[data-filter-empty]');
+    if (empty) empty.hidden = visible !== 0;
+  }
 
-    document.getElementById('booksDeleteCancel').addEventListener('click', () => dialog.close());
-    confirmButton.addEventListener('click', () => {
-      if (!pendingForm) return;
-      pendingForm.dataset.confirmed = 'true';
-      HTMLFormElement.prototype.submit.call(pendingForm);
+  page.querySelectorAll('[data-section]').forEach((button) => button.addEventListener('click', () => {
+    page.dataset.sec = button.dataset.section;
+    page.querySelectorAll('[data-section]').forEach((tab) => tab.setAttribute('aria-pressed', String(tab === button)));
+  }));
+  page.querySelectorAll('[data-status]').forEach((button) => button.addEventListener('click', () => {
+    const [kind] = button.dataset.status.split(':');
+    page.querySelectorAll(`[data-status^="${kind}:"]`).forEach((chip) => chip.setAttribute('aria-pressed', String(chip === button)));
+    applyFilter(kind);
+  }));
+  page.querySelectorAll('[data-search-input]').forEach((input) => input.addEventListener('input', () => applyFilter(input.dataset.searchInput)));
+
+  function openForm(kind, record = {}) {
+    const printer = kind === 'printer';
+    const kindName = printer ? 'madbacad' : 'xarun dugsi';
+    recordForm.reset();
+    recordForm.querySelector('#bcFormAction').value = record.id ? (printer ? 'update-center' : 'update-branch') : (printer ? 'create-center' : 'create-branch');
+    recordForm.querySelector('#bcFormItemId').value = record.id || '';
+    recordForm.querySelectorAll('[data-form-kind]').forEach((fieldset) => { fieldset.disabled = (fieldset.dataset.formKind === 'printer') !== printer; });
+    const fields = recordForm.querySelector(`[data-form-kind="${kind}"]`);
+    Object.entries(record).forEach(([name, value]) => {
+      const input = fields.querySelector(`[name="${name}"]`);
+      if (input && input.type !== 'checkbox') input.value = value ?? '';
     });
-    dialog.addEventListener('close', () => {
-      pendingForm = null;
-      returnFocus?.focus();
-    });
-  })();
+    const branchIds = new Set((record.branch_ids || []).map(Number));
+    fields.querySelectorAll('input[name="branch_ids"]').forEach((input) => { input.checked = branchIds.has(Number(input.value)); });
+    document.getElementById('bcFormTitle').textContent = `${record.id ? 'Cusboonaysii' : 'Diiwaangeli'} ${kindName}`;
+    document.getElementById('bcSaveButton').innerHTML = `<i class="fa-solid fa-check" aria-hidden="true"></i> Kaydi ${kindName}`;
+    const [a,b] = colors[kind];
+    document.getElementById('bcModalIcon').style.setProperty('--a', a);
+    document.getElementById('bcModalIcon').style.setProperty('--b', b);
+    document.getElementById('bcModalIconGlyph').className = `fa-solid ${printer ? 'fa-print' : 'fa-building'}`;
+    formDialog.showModal();
+    requestAnimationFrame(() => fields.querySelector('input:not([type="checkbox"])')?.focus());
+  }
+
+  page.querySelectorAll('[data-open-kind]').forEach((button) => button.addEventListener('click', () => {
+    let record = {};
+    if (button.dataset.record) {
+      try { record = JSON.parse(button.dataset.record); } catch (_) { return; }
+    }
+    openForm(button.dataset.openKind, record);
+  }));
+  formDialog.querySelectorAll('[data-close-form]').forEach((button) => button.addEventListener('click', () => formDialog.close()));
+  formDialog.addEventListener('click', (event) => { if (event.target === formDialog) formDialog.close(); });
+
+  document.querySelectorAll('form[data-delete-confirm]').forEach((form) => form.addEventListener('submit', (event) => {
+    if (form.dataset.confirmed === 'true') return;
+    event.preventDefault();
+    pendingDelete = form;
+    deleteReturnFocus = event.submitter;
+    document.getElementById('bcDeleteTitle').textContent = form.dataset.confirmTitle;
+    document.getElementById('bcDeleteCopy').textContent = form.dataset.confirmCopy;
+    document.getElementById('bcDeleteNote').textContent = form.dataset.confirmNote;
+    document.querySelector('#bcDeleteConfirm span').textContent = form.dataset.confirmAction;
+    deleteDialog.showModal();
+  }));
+  document.getElementById('bcDeleteCancel').addEventListener('click', () => deleteDialog.close());
+  document.getElementById('bcDeleteConfirm').addEventListener('click', () => {
+    if (!pendingDelete) return;
+    pendingDelete.dataset.confirmed = 'true';
+    HTMLFormElement.prototype.submit.call(pendingDelete);
+  });
+  deleteDialog.addEventListener('close', () => { pendingDelete = null; deleteReturnFocus?.focus(); });
+  deleteDialog.addEventListener('click', (event) => { if (event.target === deleteDialog) deleteDialog.close(); });
+  applyFilter('branch');
+  applyFilter('printer');
+})();
 </script>
 {% endblock %}

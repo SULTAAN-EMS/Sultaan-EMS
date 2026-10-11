@@ -424,7 +424,8 @@ window.SYSTEM_LOADER_CONFIG = {{ {
   'design': ui_settings.admin_loader_design or '42',
   'rotationEnabled': ui_settings.admin_loader_rotation_enabled == 'on',
   'rotationPool': (ui_settings.admin_loader_rotation_pool or '[]'),
-  'deletedDesigns': (ui_settings.admin_loader_deleted_designs or '[]')
+  'deletedDesigns': (ui_settings.admin_loader_deleted_designs or '[]'),
+  'disablePageLoader': request.endpoint == 'books.admin_page'
 }|tojson }};
 window.SYSTEM_LOADER_DESIGN = window.SYSTEM_LOADER_CONFIG.design || null;
 document.addEventListener("DOMContentLoaded", function() {
@@ -704,5 +705,5 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 });
 </script>
-<script src="{{ url_for('static', filename='js/admin-loading-system.js') }}"></script>
+<script src="{{ url_for('static', filename='js/admin-loading-system.js', v='books-no-flash-20261011') }}"></script>
 {% endblock %}

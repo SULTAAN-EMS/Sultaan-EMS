@@ -12,11 +12,15 @@ from sqlalchemy.orm import selectinload
 
 from . import csrf, db
 from .books_storage import delete_asset, delete_assets, is_r2_asset, r2_bucket, r2_client, r2_enabled, r2_key, save_r2_small_upload
-from .models import BookBranch, BookLibraryItem, BookPrintCenter
+from .models import BookBranch, BookLibraryItem, BookPrintCenter, BookSubjectCatalog
 from .security import role_required
 
 
 books_bp = Blueprint("books", __name__)
+
+
+def _flash_center_popup(action, kind, name):
+    flash(json.dumps({"type": action, "kind": kind, "name": name}, ensure_ascii=False), "center-popup")
 
 LEVELS = {
     "Xanaano": {"classes": ["KG1", "KG2"], "color": "#EC4899"},
@@ -29,6 +33,12 @@ SUBJECTS = [
     "Technology", "Luuqadda Carabiga", "Af Soomaali", "English",
     "English Films", "Tarbiyadda Islaamka", "Business",
 ]
+BOOK_SUBJECTS_BY_LEVEL = {
+    "Xanaano": SUBJECTS,
+    "Hoose": ["Xisaab", "Af Soomaali", "Tarbiyada Islaamka", "Luuqadda Carabiga", "Saynis", "Cilmi Bulsho", "English"],
+    "Dhexe": ["Xisaab", "Af Soomaali", "Tarbiyada Islaamka", "Luuqadda Carabiga", "Saynis", "Cilmi Bulsho", "English", "English Films", "Teknooloji"],
+    "Sare": SUBJECTS,
+}
 ALL = "Dhammaan"
 R2_PART_BYTES = 16 * 1024 * 1024
 R2_UPLOAD_TOKEN_SALT = "books-r2-multipart-v1"
@@ -38,6 +48,51 @@ ALLOWED_COVERS = {
     ".png": (b"\x89PNG\r\n\x1a\n",),
     ".webp": (b"RIFF",),
 }
+
+
+def _subjects_for_class(level, class_name):
+    configured = BookSubjectCatalog.query.filter_by(level=level).all()
+    if not configured:
+        return list(BOOK_SUBJECTS_BY_LEVEL.get(level, SUBJECTS))
+    return sorted({
+        item.name for item in configured
+        if item.is_active and (not item.class_names or class_name in item.class_names)
+    }, key=str.casefold)
+
+
+def _subject_catalog_payload():
+    catalog = {}
+    configured = {}
+    all_items = BookSubjectCatalog.query.all()
+    levels_with_configuration = {item.level for item in all_items}
+    for item in all_items:
+        if item.is_active:
+            configured.setdefault(item.level, []).append(item)
+    for level, details in LEVELS.items():
+        catalog[level] = {}
+        for class_name in details["classes"]:
+            if level not in levels_with_configuration:
+                subjects = BOOK_SUBJECTS_BY_LEVEL.get(level, SUBJECTS)
+            else:
+                subjects = [item.name for item in configured.get(level, [])
+                            if not item.class_names or class_name in item.class_names]
+            catalog[level][class_name] = sorted(set(subjects), key=str.casefold)
+    return catalog
+
+
+def _subject_manager_payload():
+    return [
+        {
+            "id": item.id,
+            "level": item.level,
+            "name": item.name,
+            "classNames": list(item.class_names or []),
+            "appliesToAllClasses": not bool(item.class_names),
+        }
+        for item in BookSubjectCatalog.query.filter_by(is_active=True)
+        .order_by(BookSubjectCatalog.level, BookSubjectCatalog.name)
+        .all()
+    ]
 
 
 def _storage_dir():
@@ -80,7 +135,7 @@ def _admin_required(view):
     return login_required(role_required("admin", "super_admin")(view))
 
 
-def _validate_scope(form, *, existing=False):
+def _validate_scope(form, *, existing_book=None):
     title = (form.get("title") or "").strip()
     level = (form.get("level") or "").strip()
     scope = (form.get("scope") or "").strip()
@@ -91,7 +146,7 @@ def _validate_scope(form, *, existing=False):
     catalog_type = (form.get("catalog_type") or "national").strip()
     if book_kind not in {"textbook", "general"}:
         raise ValueError("Dooro nooca saxda ah ee buugga.")
-    if catalog_type not in {"national", "local", "unassigned"} or (catalog_type == "unassigned" and not existing):
+    if catalog_type not in {"national", "local", "unassigned"} or (catalog_type == "unassigned" and not existing_book):
         raise ValueError("Dooro nooca saxda ah ee buugga.")
     branch_ids = []
     for raw_id in form.getlist("branch_ids"):
@@ -123,8 +178,13 @@ def _validate_scope(form, *, existing=False):
             raise ValueError("Fasalka la doortay kama tirsana heerkan.")
         if scope == "class" or book_kind == "general":
             subject = ALL
-        elif subject not in SUBJECTS:
-            raise ValueError("Dooro maaddo sax ah.")
+        elif subject not in _subjects_for_class(level, class_name):
+            keep_existing = bool(
+                existing_book and existing_book.level == level
+                and existing_book.class_name == class_name and existing_book.subject == subject
+            )
+            if not keep_existing:
+                raise ValueError("Maaddadan kama diiwaangashana fasalka la doortay. Marka hore ka maamul Maaddooyinka Buugaagta.")
     if len(description) > 3000:
         raise ValueError("Sharaxaadda buuggu waa inay ka yar tahay 3,000 xaraf.")
     return {
@@ -329,7 +389,7 @@ def admin_centers():
                 )
                 db.session.add(branch)
                 db.session.commit()
-                flash("Xarunta dugsiga waa la diiwaangeliyey.", "success")
+                _flash_center_popup("add", "c", branch.name)
             elif action == "create-center":
                 name = (request.form.get("name") or "").strip()
                 phone = re.sub(r"[\s()-]", "", request.form.get("phone") or "")
@@ -360,7 +420,7 @@ def admin_centers():
                 )
                 db.session.add(center)
                 db.session.commit()
-                flash("Madbacadda iyo xarumaha ay u adeegto waa la kaydiyey.", "success")
+                _flash_center_popup("add", "p", center.name)
             elif action == "update-branch":
                 branch = db.session.get(BookBranch, request.form.get("item_id", type=int))
                 name = (request.form.get("name") or "").strip()
@@ -371,7 +431,7 @@ def admin_centers():
                 branch.address = (request.form.get("address") or "").strip()[:300] or None
                 branch.phone = (request.form.get("phone") or "").strip()[:40] or None
                 db.session.commit()
-                flash("Xogta xarunta dugsiga waa la cusboonaysiiyey.", "success")
+                _flash_center_popup("edit", "c", branch.name)
             elif action == "update-center":
                 center = db.session.get(BookPrintCenter, request.form.get("item_id", type=int))
                 name = (request.form.get("name") or "").strip()
@@ -395,26 +455,28 @@ def admin_centers():
                 center.map_url = map_url[:500] or None
                 center.branches = branches
                 db.session.commit()
-                flash("Xogta iyo xarumaha ay madbacaddu u adeegto waa la cusboonaysiiyey.", "success")
+                _flash_center_popup("edit", "p", center.name)
             elif action in {"toggle-branch", "toggle-center"}:
                 model = BookBranch if action == "toggle-branch" else BookPrintCenter
                 item = db.session.get(model, request.form.get("item_id", type=int))
                 if not item:
                     raise ValueError("Xogta la doortay lama helin.")
                 item.is_active = not item.is_active
+                kind = "c" if action == "toggle-branch" else "p"
+                name = item.name
+                popup_type = "on" if item.is_active else "off"
                 db.session.commit()
-                flash("Xaaladda waa la cusboonaysiiyey.", "success")
+                _flash_center_popup(popup_type, kind, name)
             elif action in {"delete-branch", "delete-center"}:
                 model = BookBranch if action == "delete-branch" else BookPrintCenter
                 item = db.session.get(model, request.form.get("item_id", type=int))
                 if not item:
                     raise ValueError("Xogta la doortay lama helin ama horay ayaa loo tirtiray.")
+                kind = "c" if action == "delete-branch" else "p"
+                name = item.name
                 db.session.delete(item)
                 db.session.commit()
-                if action == "delete-branch":
-                    flash("Xarunta dugsiga waa la tirtiray; buugaagteedii waa la ilaaliyey.", "success")
-                else:
-                    flash("Madbacadda waa la tirtiray.", "success")
+                _flash_center_popup("del", kind, name)
             else:
                 raise ValueError("Ficilka lama aqoonsan.")
         except ValueError as error:
@@ -428,7 +490,13 @@ def admin_centers():
 
     branches = BookBranch.query.order_by(BookBranch.name).all()
     centers = BookPrintCenter.query.options(selectinload(BookPrintCenter.branches)).order_by(BookPrintCenter.name).all()
-    return render_template("admin/books_centers.html", branches=branches, centers=centers)
+    local_book_count = BookLibraryItem.query.filter_by(catalog_type="local").count()
+    return render_template(
+        "admin/books_centers.html",
+        branches=branches,
+        centers=centers,
+        local_book_count=local_book_count,
+    )
 
 
 def _visible_book_or_404(book_id):
@@ -449,8 +517,89 @@ def admin_page():
         subjects=SUBJECTS,
         branches=branches,
         branch_options=[{"id": branch.id, "name": branch.name} for branch in branches if branch.is_active],
+        subject_catalog=_subject_catalog_payload(),
         csrf_value=__import__("flask_wtf.csrf", fromlist=["generate_csrf"]).generate_csrf(),
     )
+
+
+@books_bp.get("/admin/books/subjects")
+@_admin_required
+def admin_subjects():
+    from .services import get_settings
+
+    return render_template(
+        "admin/books_subjects.html",
+        levels=LEVELS,
+        subjects=_subject_manager_payload(),
+        csrf_value=__import__("flask_wtf.csrf", fromlist=["generate_csrf"]).generate_csrf(),
+        ui_settings=get_settings(),
+    )
+
+
+@books_bp.post("/admin/books/subjects/api")
+@_admin_required
+def admin_subject_save():
+    payload = request.get_json(silent=True) or {}
+    level = str(payload.get("level") or "").strip()
+    name = str(payload.get("name") or "").strip()
+    class_names = payload.get("classNames")
+    applies_to_all = payload.get("appliesToAllClasses") is True
+    if level not in LEVELS or not name or len(name) > 120:
+        return jsonify({"success": False, "message": "Dooro heer sax ah oo geli magac maaddo oo 1 ilaa 120 xaraf ah."}), 400
+    if applies_to_all:
+        class_names = []
+    elif not isinstance(class_names, list) or not class_names:
+        return jsonify({"success": False, "message": "Dooro ugu yaraan hal fasal, ama calaamadee heerka oo dhan."}), 400
+    else:
+        class_names = list(dict.fromkeys(str(value) for value in class_names))
+        if any(value not in LEVELS[level]["classes"] for value in class_names):
+            return jsonify({"success": False, "message": "Fasal aan ka tirsanayn heerkan ayaa la doortay."}), 400
+    item = BookSubjectCatalog.query.filter_by(level=level, name=name).first()
+    if item is None:
+        item = BookSubjectCatalog(level=level, name=name)
+        db.session.add(item)
+    item.class_names = class_names
+    item.is_active = True
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Unable to save book subject")
+        return jsonify({"success": False, "message": "Maaddada buugga lama kaydin."}), 500
+    return jsonify({"success": True, "subjects": _subject_manager_payload(), "subjectCatalog": _subject_catalog_payload()})
+
+
+@books_bp.post("/admin/books/subjects/api/remove")
+@_admin_required
+def admin_subject_remove():
+    payload = request.get_json(silent=True) or {}
+    level = str(payload.get("level") or "").strip()
+    name = str(payload.get("name") or "").strip()
+    class_name = str(payload.get("className") or "").strip()
+    if level not in LEVELS or not name:
+        return jsonify({"success": False, "message": "Maaddada ama heerka sax ma aha."}), 400
+    item = BookSubjectCatalog.query.filter_by(level=level, name=name, is_active=True).first()
+    if not item:
+        return jsonify({"success": False, "message": "Maaddadan lama helin."}), 404
+    if class_name == ALL:
+        item.is_active = False
+    elif class_name not in LEVELS[level]["classes"]:
+        return jsonify({"success": False, "message": "Fasalka la doortay kama tirsana heerkan."}), 400
+    elif not item.class_names:
+        item.class_names = [value for value in LEVELS[level]["classes"] if value != class_name]
+        if not item.class_names:
+            item.is_active = False
+    elif class_name in item.class_names:
+        item.class_names = [value for value in item.class_names if value != class_name]
+        if not item.class_names:
+            item.is_active = False
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Unable to remove book subject")
+        return jsonify({"success": False, "message": "Maaddada lagama saari karin fasalka."}), 500
+    return jsonify({"success": True, "subjects": _subject_manager_payload(), "subjectCatalog": _subject_catalog_payload()})
 
 
 @books_bp.get("/admin/books/api")
@@ -612,7 +761,7 @@ def admin_update(book_id):
     old_cover = item.cover_storage_name
     new_pdf = new_cover = None
     try:
-        values, branches = _validate_scope(request.form, existing=True)
+        values, branches = _validate_scope(request.form, existing_book=item)
         upload_data = _r2_upload_field()
         pdf = request.files.get("pdf_file")
         cover = request.files.get("cover_file")
@@ -702,6 +851,7 @@ def public_page():
         books=[_book_dict(item) for item in books],
         levels=LEVELS,
         subjects=SUBJECTS,
+        subject_catalog=_subject_catalog_payload(),
         branches=[_branch_public_dict(branch) for branch in branches],
         ui_settings=ui_settings,
     )

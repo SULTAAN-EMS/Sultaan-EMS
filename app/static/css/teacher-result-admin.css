@@ -1,0 +1,77 @@
+.teacher-result-admin{max-width:1480px;margin:0 auto;padding:22px 24px 42px;color:#18312e}
+.tra-header{display:flex;justify-content:space-between;align-items:center;gap:20px;margin:0 0 18px}
+.tra-kicker{display:inline-flex;align-items:center;gap:7px;color:#087f6b;font-size:.7rem;font-weight:800;letter-spacing:.07em}
+.tra-header h1{margin:6px 0 4px;font-size:1.55rem;line-height:1.2}
+.tra-header p,.tra-panel-heading p{margin:0;color:#637570;font-size:.84rem}
+.tra-back,.tra-form-action button,.tra-review-form button,.tra-filter-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:39px;padding:8px 13px;border:1px solid transparent;border-radius:6px;background:#087f6b;color:#fff;text-decoration:none;font:inherit;font-size:.8rem;font-weight:750;cursor:pointer}
+.tra-back{background:#fff;border-color:#d7e4e0;color:#365b53}
+.tra-back:hover,.tra-reset:hover{background:#f1f7f5}
+.tra-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 0 15px}
+.tra-metric{position:relative;display:grid;grid-template-columns:1fr auto;gap:5px 10px;min-height:78px;padding:13px 15px;border:1px solid #dce7e3;border-radius:7px;background:#fff;color:#344d47;text-decoration:none;transition:border-color .15s,background-color .15s}
+.tra-metric:hover{border-color:#91c9bb;background:#fbfefd}
+.tra-metric span{align-self:center;color:#667a74;font-size:.76rem;font-weight:650}
+.tra-metric strong{grid-row:2;font-size:1.35rem;line-height:1.1;color:#173d35}
+.tra-metric>i{grid-column:2;grid-row:1/3;align-self:center;color:#0a8972;font-size:1.15rem}
+.tra-metric.review>i{color:#b17712}.tra-metric.draft>i{color:#3875a8}.tra-metric.approved>i{color:#218458}.tra-metric.paused>i{color:#a05d42}
+.tra-panel{margin:14px 0;padding:17px 18px;border:1px solid #dce7e3;border-radius:7px;background:#fff}
+.tra-panel-heading{display:flex;align-items:center;gap:11px;margin-bottom:15px}
+.tra-panel-heading h2{margin:0 0 3px;font-size:1rem;line-height:1.25}
+.tra-icon{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border-radius:6px;background:#eaf7f1;color:#098168}
+.tra-icon.review{background:#edf4ff;color:#356eae}
+.tra-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.tra-form label,.tra-review-form label{display:grid;gap:5px;min-width:0;color:#405851;font-size:.76rem;font-weight:750}
+.tra-form input,.tra-form select,.tra-review-form input,.tra-filters select{width:100%;min-width:0;height:39px;padding:7px 9px;border:1px solid #d2dfda;border-radius:5px;background:#fff;color:#213b35;font:inherit;font-weight:500}
+.tra-form input:focus,.tra-form select:focus,.tra-review-form input:focus,.tra-filters select:focus{outline:2px solid #8bcfc0;outline-offset:1px}
+.tra-form small{color:#788984;font-size:.69rem;font-weight:400;line-height:1.35}
+.tra-optional{margin-left:4px;color:#778781;font-size:.67rem;font-weight:500}
+.tra-form-action{display:flex;align-items:end}
+.tra-form-action button{height:39px;white-space:nowrap}
+.tra-list-heading{align-items:center;flex-wrap:wrap;margin-bottom:13px}
+.tra-list-heading>div{min-width:180px;flex:1}
+.tra-filters{display:flex;align-items:center;gap:7px;margin-left:auto}
+.tra-filters select{width:auto;min-width:140px;height:36px;font-size:.74rem}
+.tra-filter-button{min-height:36px;padding:7px 11px;font-size:.75rem}
+.tra-reset{display:grid;place-items:center;width:36px;height:36px;border:1px solid #dbe5e1;border-radius:5px;color:#64766f;text-decoration:none}
+.tra-list{display:grid;gap:9px}
+.tra-assignment{padding:14px 15px;border:1px solid #e0e9e6;border-radius:6px;background:#fff}
+.tra-assignment-main{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.tra-assignment-identity{min-width:0}
+.tra-scope-label{display:inline-flex;align-items:center;gap:6px;color:#6f817b;font-size:.74rem;font-weight:650}
+.tra-scope-label span,.tra-assignment p span{padding:0 2px;color:#9aaaa5}
+.tra-assignment h3{margin:5px 0 4px;font-size:.97rem;line-height:1.3;color:#203a34}
+.tra-assignment h3 span{padding:0 3px;color:#98a7a1;font-weight:400}
+.tra-assignment p{display:flex;align-items:center;flex-wrap:wrap;gap:3px;margin:0;color:#6d7b76;font-size:.74rem}
+.tra-badges{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+.tra-status{display:inline-flex;align-items:center;padding:4px 8px;border:1px solid #dde6e2;border-radius:999px;background:#f7f9f8;color:#586963;font-size:.67rem;font-weight:750;white-space:nowrap}
+.tra-status.active,.tra-status.approved{background:#edf9f2;border-color:#c9ead6;color:#16724a}
+.tra-status.inactive{background:#fff4ed;border-color:#f0d1bb;color:#9a5427}
+.tra-status.submitted{background:#fff7e5;border-color:#f0dda9;color:#805800}
+.tra-status.reopened{background:#eef6ff;border-color:#d0e3fa;color:#285b8e}
+.tra-status.not-started,.tra-status.draft{background:#f3f6f5;color:#667772}
+.tra-review{margin-top:13px;border-top:1px solid #e7eeeb;padding-top:11px}
+.tra-review summary{width:max-content;max-width:100%;color:#176c5a;font-size:.77rem;font-weight:750;cursor:pointer}
+.tra-marks-table{max-height:300px;overflow:auto;margin-top:10px;border:1px solid #e2e9e6;border-radius:5px}
+.tra-marks-table table{width:100%;border-collapse:collapse;font-size:.77rem}
+.tra-marks-table th,.tra-marks-table td{padding:8px 10px;border-bottom:1px solid #edf1ef;text-align:left}
+.tra-marks-table th{position:sticky;top:0;background:#f4f8f6;color:#5e7069}
+.tra-review-form{display:flex;align-items:end;flex-wrap:wrap;gap:8px;margin-top:11px}
+.tra-review-form label{flex:1;min-width:190px}
+.tra-review-form button{min-height:38px;padding:7px 11px;font-size:.75rem}
+.tra-review-form button.reopen{background:#fff;color:#7f4c13;border-color:#ead2ae}
+.tra-review-form label.tra-confirm{display:flex;flex:1 1 100%;align-items:center;gap:8px;min-width:0;font-weight:600}
+.tra-review-form label.tra-confirm input{width:16px;height:16px;accent-color:#087f6b}
+.tra-assignment-actions{display:flex;justify-content:flex-end;margin-top:8px}
+.tra-assignment-actions form{margin:0}
+.tra-assignment-actions button{padding:5px 7px;border:0;background:transparent;color:#667873;font:inherit;font-size:.72rem;cursor:pointer}
+.tra-assignment-actions button:hover{color:#087f6b}
+.tra-approved-note{display:flex;align-items:center;gap:7px;margin:11px 0 0;padding:9px 10px;border-radius:5px;background:#f0faf4;color:#24704c;font-size:.76rem}
+.tra-reopen-approved{display:flex;align-items:end;gap:8px;margin-top:9px}
+.tra-reopen-approved input{width:min(420px,100%);height:37px;padding:7px 9px;border:1px solid #d2dfda;border-radius:5px;font:inherit;font-size:.75rem}
+.tra-reopen-approved button{min-height:37px;padding:7px 11px;border:1px solid #ead2ae;border-radius:5px;background:#fff;color:#7f4c13;font:inherit;font-size:.74rem;font-weight:700;cursor:pointer}
+.tra-empty{display:grid;justify-items:center;gap:7px;padding:30px 12px;color:#6c7c76;text-align:center}
+.tra-empty-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:#f1f6f4;color:#718b82}
+.tra-empty strong{color:#344d47;font-size:.88rem}
+.tra-empty span{max-width:520px;font-size:.76rem}
+.teacher-result-admin .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:1000px){.tra-summary{grid-template-columns:repeat(3,minmax(0,1fr))}.tra-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.teacher-result-admin{padding:14px 12px 30px}.tra-header{align-items:flex-start;flex-direction:column}.tra-header h1{font-size:1.35rem}.tra-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.tra-metric{min-height:70px;padding:10px 11px}.tra-panel{padding:13px 12px}.tra-form{grid-template-columns:1fr}.tra-form-action button{width:100%}.tra-list-heading{align-items:flex-start}.tra-filters{display:grid;width:100%;grid-template-columns:1fr 1fr;margin-left:0}.tra-filters select{width:100%;min-width:0}.tra-filter-button{width:100%}.tra-reset{width:100%}.tra-assignment-main{flex-direction:column}.tra-badges{justify-content:flex-start}.tra-review-form{align-items:stretch;flex-direction:column}.tra-review-form label{min-width:0;width:100%}.tra-review-form button{width:100%}.tra-reopen-approved{align-items:stretch;flex-direction:column}.tra-reopen-approved input{width:100%}.tra-reopen-approved button{width:100%}.tra-assignment p{align-items:flex-start}.tra-marks-table{overflow-x:auto}.tra-marks-table table{min-width:520px}}

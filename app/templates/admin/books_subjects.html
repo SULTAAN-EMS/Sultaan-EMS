@@ -1,0 +1,121 @@
+{% extends "admin/base.html" %}
+{% block title %}Maaddooyinka Buugaagta{% endblock %}
+{% block page_title %}Maaddooyinka Buugaagta{% endblock %}
+{% block extra_head %}
+{{ super() }}
+<style>
+.book-subject-manager{max-width:1120px;margin:0 auto;padding:22px;color:#172923}
+.book-subject-manager *{box-sizing:border-box}
+.book-subject-manager .top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
+.book-subject-manager h1{margin:0;font-size:22px;line-height:1.25}
+.book-subject-manager .back{display:inline-flex;align-items:center;gap:8px;padding:9px 13px;border:1px solid #d6e2dd;border-radius:9px;background:#fff;color:#24463b;text-decoration:none;font-weight:700}
+.book-subject-manager .intro{margin:5px 0 0;color:#65766f;font-size:14px}
+.book-subject-manager .workspace{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(420px,1.2fr);gap:18px;align-items:start}
+.book-subject-manager .panel{border:1px solid #dce6e1;border-radius:10px;background:#fff;padding:18px}
+.book-subject-manager h2{margin:0 0 15px;font-size:16px}
+.book-subject-manager label{display:block;margin:0 0 6px;font-size:13px;font-weight:700;color:#31453d}
+.book-subject-manager input[type=text],.book-subject-manager select{display:block;width:100%;min-width:0;height:42px;padding:0 11px;border:1px solid #cbd9d3;border-radius:8px;background:#fff;color:#1c3028;font:inherit}
+.book-subject-manager select{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.book-subject-manager .field{margin:0 0 14px}
+.book-subject-manager .class-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,155px),1fr));gap:7px;margin:8px 0 14px}
+.book-subject-manager .class-option{display:flex;align-items:center;gap:8px;min-width:0;min-height:40px;padding:7px 9px;border:1px solid #e0e8e4;border-radius:7px;color:#30463d;font-size:13px;line-height:1.3;overflow-wrap:anywhere}
+.book-subject-manager .class-option input,.book-subject-manager .all-classes input{flex:0 0 16px;width:16px;height:16px;margin:0;accent-color:#087f68}
+.book-subject-manager .all-classes{display:flex;align-items:center;gap:9px;min-width:0;padding:10px 11px;border-radius:8px;background:#eff8f4;color:#155947;font-size:13px;line-height:1.35;font-weight:700}
+.book-subject-manager .save{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;width:100%;border:0;border-radius:8px;background:#087f68;color:#fff;font:inherit;font-weight:700;cursor:pointer}
+.book-subject-manager .save:disabled{opacity:.65;cursor:wait}
+.book-subject-manager .toolbar{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.book-subject-manager .rows{display:grid;gap:8px}
+.book-subject-manager .subject-row{display:grid;grid-template-columns:minmax(100px,1fr) minmax(130px,1fr) auto;align-items:center;gap:12px;padding:10px 11px;border:1px solid #e2e9e6;border-radius:8px}
+.book-subject-manager .subject-row strong{overflow-wrap:anywhere}
+.book-subject-manager .scope-label{color:#61736c;font-size:12px}
+.book-subject-manager .remove{display:inline-flex;align-items:center;gap:6px;padding:7px 9px;border:1px solid #f2d7d4;border-radius:7px;background:#fff;color:#a33a33;font-weight:700;cursor:pointer}
+.book-subject-manager .remove:disabled{opacity:.6;cursor:wait}
+.book-subject-manager .notice{min-height:20px;margin-top:11px;color:#a33a33;font-size:13px}
+.book-subject-manager .empty{padding:22px 12px;border:1px dashed #ccd9d3;border-radius:8px;color:#687a72;text-align:center}
+@media(max-width:760px){.book-subject-manager{padding:14px}.book-subject-manager .workspace{grid-template-columns:1fr}.book-subject-manager .top{align-items:flex-start;flex-direction:column}.book-subject-manager .subject-row{grid-template-columns:1fr auto}.book-subject-manager .scope-label{grid-column:1}.book-subject-manager .remove{grid-column:2;grid-row:1/3}}
+</style>
+{% endblock %}
+{% block admin_content %}
+<main class="book-subject-manager">
+  <header class="top">
+    <div><h1>MAADDOOYINKA BUUGAAGTA</h1></div>
+    <a class="back" href="{{ url_for('books.admin_page') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Buugaagta</a>
+  </header>
+  <div class="workspace">
+    <section class="panel" aria-labelledby="addHeading">
+      <h2 id="addHeading">Ku dar ama habee maaddo</h2>
+      <form id="subjectForm">
+        <div class="field"><label for="subjectLevel">Heerka dugsiga</label><select id="subjectLevel" required>{% for name, info in levels.items() %}<option value="{{ name }}">{{ name }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="subjectName">Magaca maaddada</label><input id="subjectName" type="text" maxlength="120" required placeholder="Tusaale: Teknooloji"></div>
+        <label class="all-classes"><input id="allClasses" type="checkbox" checked> U muuji dhammaan fasallada heerkan</label>
+        <div class="class-list" id="classChoices"></div>
+        <button class="save" id="saveSubject" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Kaydi maaddada</button>
+        <div class="notice" id="subjectNotice" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+    <section class="panel" aria-labelledby="catalogHeading">
+      <h2 id="catalogHeading">Liiska maaddooyinka</h2>
+      <div class="toolbar"><div><label for="filterLevel">Heer</label><select id="filterLevel">{% for name, info in levels.items() %}<option value="{{ name }}">{{ name }}</option>{% endfor %}</select></div><div><label for="filterClass">Fasal</label><select id="filterClass"></select></div></div>
+      <div class="rows" id="subjectRows"></div>
+    </section>
+  </div>
+</main>
+<script id="bookSubjectBootstrap" type="application/json">{{ {'levels': levels, 'subjects': subjects, 'csrf': csrf_value}|tojson }}</script>
+<script>
+(() => {
+  const data=JSON.parse(document.getElementById('bookSubjectBootstrap').textContent);
+  const ALL='Dhammaan';
+  const labels={'Fasal 1':'1aad','Fasal 2':'2aad','Fasal 3':'3aad','Fasal 4':'4aad','Fasal 5':'5aad','Fasal 6':'6aad','Fasal 7':'7aad','Fasal 8':'8aad','Form 1':'Form One (9aad)','Form 2':'Form Two (10aad)','Form 3':'Form Three (11aad)','Form 4':'Form Four (12aad)'};
+  const state={subjects:data.subjects||[]};
+  const $=id=>document.getElementById(id);
+  const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  function classes(level){return data.levels[level]?.classes||[]}
+  function classLabel(value){return labels[value]||value}
+  function renderClassChoices(){
+    const level=$('subjectLevel').value;
+    $('classChoices').innerHTML=classes(level).map(name=>`<label class="class-option"><input type="checkbox" name="classNames" value="${esc(name)}" disabled>${esc(classLabel(name))}</label>`).join('');
+    $('filterClass').innerHTML=`<option value="${ALL}">Dhammaan fasallada</option>${classes($('filterLevel').value).map(name=>`<option value="${esc(name)}">${esc(classLabel(name))}</option>`).join('')}`;
+  }
+  function renderRows(){
+    const level=$('filterLevel').value, className=$('filterClass').value;
+    const rows=state.subjects.filter(item=>item.level===level&&(!className||className===ALL||!item.classNames.length||item.classNames.includes(className)));
+    $('subjectRows').innerHTML=rows.length?rows.map(item=>{
+      const applies=item.classNames.length?item.classNames.map(classLabel).join(', '):'Dhammaan fasallada';
+      const removeScope=className&&className!==ALL?className:ALL;
+      const actionLabel=removeScope===ALL?'Ka saar maaddada':'Ka saar fasalkan';
+      return `<article class="subject-row"><strong>${esc(item.name)}</strong><span class="scope-label">${esc(applies)}</span><button class="remove" type="button" data-remove="${esc(item.name)}" data-level="${esc(item.level)}" data-class="${esc(removeScope)}" aria-label="${actionLabel}: ${esc(item.name)}"><i class="fa-solid fa-trash" aria-hidden="true"></i>${actionLabel}</button></article>`;
+    }).join(''):'<div class="empty">Maaddooyin halkan kama diiwaangashana.</div>';
+  }
+  async function post(url,payload){
+    const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':data.csrf},body:JSON.stringify(payload)});
+    const result=await response.json();
+    if(!response.ok||!result.success)throw new Error(result.message||'Codsiga lama fulin.');
+    state.subjects=result.subjects||[];
+    renderRows();
+    return result;
+  }
+  $('allClasses').addEventListener('change',()=>document.querySelectorAll('#classChoices input').forEach(input=>input.disabled=$('allClasses').checked));
+  $('subjectLevel').addEventListener('change',renderClassChoices);
+  $('filterLevel').addEventListener('change',()=>{renderClassChoices();renderRows()});
+  $('filterClass').addEventListener('change',renderRows);
+  $('subjectForm').addEventListener('submit',async event=>{
+    event.preventDefault();
+    const button=$('saveSubject'), notice=$('subjectNotice');
+    const name=$('subjectName').value.trim(), all=$('allClasses').checked;
+    const classNames=all?[]:[...document.querySelectorAll('#classChoices input:checked')].map(input=>input.value);
+    if(!all&&!classNames.length){notice.textContent='Dooro fasal ama calaamadee dhammaan fasallada.';return}
+    button.disabled=true;notice.textContent='';
+    try{await post('/admin/books/subjects/api',{level:$('subjectLevel').value,name,classNames,appliesToAllClasses:all});$('subjectName').value='';notice.style.color='#087f68';notice.textContent='Maaddada waa la kaydiyey.'}
+    catch(error){notice.style.color='#a33a33';notice.textContent=error.message}
+    finally{button.disabled=false}
+  });
+  $('subjectRows').addEventListener('click',async event=>{
+    const button=event.target.closest('[data-remove]');if(!button)return;
+    button.disabled=true;
+    try{await post('/admin/books/subjects/api/remove',{level:button.dataset.level,name:button.dataset.remove,className:button.dataset.class})}
+    catch(error){$('subjectNotice').style.color='#a33a33';$('subjectNotice').textContent=error.message;button.disabled=false}
+  });
+  renderClassChoices();renderRows();
+})();
+</script>
+{% endblock %}

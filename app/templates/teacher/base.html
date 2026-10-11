@@ -5,9 +5,9 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-dashboard.css') }}">
 <aside class="teacher-sidebar">
   <div class="teacher-sidebar-fixed">
-    <a class="teacher-brand" href="{{ url_for('teacher_portal.dashboard') }}">
-      <span class="brand-logo"><i class="fa-solid fa-chart-line"></i></span>
-      <span><strong>Teacher Portal</strong><small>Analysis Dashboard</small></span>
+    <a class="teacher-brand" href="{{ url_for('teacher_portal.result_entry') }}">
+      <span class="brand-logo"><i class="fa-solid fa-pen-to-square"></i></span>
+      <span><strong>Teacher Portal</strong><small>Result Entry Workspace</small></span>
     </a>
     <div class="teacher-profile">
       <span class="teacher-avatar">
@@ -32,21 +32,21 @@
       {% endif %}
     {% endfor %}
   </nav>
-  <form method="post" action="{{ url_for('teacher_portal.logout') }}" class="teacher-logout">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="logout"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
-  </form>
 </aside>
 <main class="teacher-main">
   <header class="teacher-top glass-card">
     <div>
-      <span class="eyebrow"><i class="fa-solid fa-shield-halved"></i> Secure Teacher Workspace</span>
+      <span class="eyebrow"><i class="fa-solid fa-shield-halved"></i> Secure Result Workspace</span>
       <h1>{{ page_title }}</h1>
-      <p>Personalized analytics for your assigned subjects, classes, and examinations.</p>
+      <p>Record and submit marks for your assigned exam scopes.</p>
     </div>
     <div class="top-actions">
       <button type="button" class="icon-btn" id="themeToggle" title="Toggle theme"><i class="fa-solid fa-moon"></i></button>
       <a class="icon-btn" href="{{ url_for('teacher_portal.change_password') }}" title="Change password"><i class="fa-solid fa-key"></i></a>
+      <form method="post" action="{{ url_for('teacher_portal.logout') }}" class="teacher-logout top-logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="icon-btn" title="Logout" aria-label="Logout"><i class="fa-solid fa-right-from-bracket"></i></button>
+      </form>
     </div>
   </header>
   {% block teacher_filters %}{% include "teacher/_filters.html" %}{% endblock %}

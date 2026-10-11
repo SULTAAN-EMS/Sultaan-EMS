@@ -6,11 +6,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="{{ url_for('static', filename='js/books_cover_library.js', v='books-kind-20261010') }}" defer></script>
-<script src="{{ url_for('static', filename='js/books_admin.js', v='books-kind-20261010') }}" defer></script>
+<style>#booksAdminMount:not([data-books-ready="true"]){visibility:hidden}</style>
+<script src="{{ url_for('static', filename='js/books_cover_library.js', v='book-subject-catalog-20261011') }}" defer></script>
+<script src="{{ url_for('static', filename='js/books_admin.js', v='books-css-ready-20261011') }}" defer></script>
 {% endblock %}
 {% block admin_content %}
-<div id="booksAdminMount">
+<div id="booksAdminMount" aria-busy="true">
   <div class="main" id="booksAdminApp">
     <div class="bar">
       <div class="crumb">Maamul / <b>Buugaagta</b></div>
@@ -21,7 +22,8 @@
         <div><h2>Buugaagta</h2><p>Maaree buugaagta dugsiga: ku dar, wax ka beddel, qari ama tirtir.</p></div>
         <div class="headR">
           <a class="linkpill" href="{{ url_for('books.admin_centers') }}"><svg class="ic"><use href="#i-class"/></svg>Xarumaha & madbacadaha</a>
-          <button class="linkpill" data-act="copy" title="Koobi link-ga dadweynaha"><svg class="ic"><use href="#i-link"/></svg>Link-ga dadweynaha: /books<svg class="ic"><use href="#i-copy"/></svg></button>
+          <a class="linkpill" href="{{ url_for('books.admin_subjects') }}"><svg class="ic"><use href="#i-book"/></svg>Maaree maaddooyinka</a>
+          <button class="linkpill" data-act="copy" title="Koobi link-ga dadweynaha"><svg class="ic"><use href="#i-link"/></svg>Link-ga dadweynaha:<svg class="ic"><use href="#i-copy"/></svg></button>
           <button class="btn pri" data-act="new"><svg class="ic"><use href="#i-plus"/></svg>Buug cusub</button>
         </div>
       </div>
@@ -46,6 +48,6 @@
   </div>
 </div>
 <script id="booksBootstrap" type="application/json">{{ books|tojson }}</script>
-<script id="booksConfig" type="application/json">{{ {'levels': levels, 'subjects': subjects, 'branches': branch_options, 'publicUrl': url_for('books.public_page'), 'csrf': csrf_value, 'maxUploadBytes': config.get('BOOKS_MAX_UPLOAD_BYTES', 1024 * 1024 * 1024), 'storageBackend': config.get('BOOKS_STORAGE_BACKEND', 'local'), 'logoUrl': asset_url(ui_settings.logo_path) if ui_settings.logo_path else ''}|tojson }}</script>
+<script id="booksConfig" type="application/json">{{ {'levels': levels, 'subjects': subjects, 'subjectCatalog': subject_catalog, 'branches': branch_options, 'publicUrl': url_for('books.public_page'), 'csrf': csrf_value, 'maxUploadBytes': config.get('BOOKS_MAX_UPLOAD_BYTES', 1024 * 1024 * 1024), 'storageBackend': config.get('BOOKS_STORAGE_BACKEND', 'local'), 'logoUrl': asset_url(ui_settings.logo_path) if ui_settings.logo_path else ''}|tojson }}</script>
 <template id="booksIcons">{% include "books/_icons.html" %}</template>
 {% endblock %}

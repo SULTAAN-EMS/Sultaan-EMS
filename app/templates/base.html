@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/premium-footer.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/center-notify.css') }}">
   {% block extra_head %}{% endblock %}
   <style>
     :root {
@@ -27,7 +28,9 @@
     {% if messages %}
         <div class="toast-stack">
         {% for category, message in messages %}
-          {% if category == "transition-success" %}
+          {% if category == "center-popup" %}
+            <span hidden data-center-notify="{{ message }}"></span>
+          {% elif category == "transition-success" %}
             <div class="toast transition-success-toast" role="status">
               <span class="transition-success-icon" aria-hidden="true"><i class="fa-solid fa-check"></i></span>
               <span class="transition-success-copy">
@@ -65,6 +68,11 @@
     });
   </script>
   {% block content %}{% endblock %}
+  <svg class="cn-symbols" aria-hidden="true" focusable="false"><defs>
+    <symbol id="cn-i-building" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4"/></symbol>
+    <symbol id="cn-i-printer" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><path d="M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2"/><rect x="6" y="14" width="12" height="7"/></symbol>
+  </defs></svg>
+  <div class="cn-pop" id="center-notify" role="alertdialog" aria-modal="true" aria-live="assertive" aria-hidden="true"></div>
   <style id="global-focus-reset">
     /* Permanent UI preference: focused controls keep their normal border only. */
     html body *:not(#__global_focus_reset_never_match):focus,
@@ -77,5 +85,6 @@
   <script>window.APP_TRANSLATIONS = {{ active_translations|tojson }};</script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/center-notify.js') }}"></script>
 </body>
 </html>

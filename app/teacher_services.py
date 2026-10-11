@@ -242,33 +242,6 @@ def create_or_update_teacher_user(teacher, username, password, account_active, f
     return user
 
 
-def teacher_dashboard_stats():
-    teachers = Teacher.query.all()
-    active = [t for t in teachers if t.employment_status == "Active" and t.is_active]
-    inactive = [t for t in teachers if t.employment_status == "Inactive" or not t.is_active]
-    by_level = {level: 0 for level in SCHOOL_LEVELS}
-    for teacher in teachers:
-        if teacher.school_level:
-            by_level[teacher.school_level] = by_level.get(teacher.school_level, 0) + 1
-    subject_links = db.session.execute(db.text("SELECT COUNT(*) FROM teacher_subjects")).scalar() or 0
-    class_links = db.session.execute(db.text("SELECT COUNT(*) FROM teacher_classes")).scalar() or 0
-    departments = defaultdict(int)
-    for teacher in teachers:
-        if teacher.department:
-            departments[teacher.department] += 1
-    return {
-        "total": len(teachers),
-        "active": len(active),
-        "inactive": len(inactive),
-        "by_level": by_level,
-        "subject_assignments": subject_links,
-        "class_assignments": class_links,
-        "departments": dict(departments),
-        "recent": Teacher.query.order_by(Teacher.updated_at.desc()).limit(8).all(),
-        "recent_activity": TeacherActivity.query.order_by(TeacherActivity.created_at.desc()).limit(10).all(),
-    }
-
-
 def teacher_list_query(filters):
     query = Teacher.query
     if filters.get("q"):

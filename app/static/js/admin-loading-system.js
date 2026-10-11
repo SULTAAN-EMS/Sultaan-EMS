@@ -141,6 +141,10 @@
     showLoader();
   }
 
+  function pageLoaderDisabled() {
+    return Boolean((window.SYSTEM_LOADER_CONFIG || {}).disablePageLoader);
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     document.addEventListener('submit', function (event) {
       var form = event.target;
@@ -152,14 +156,27 @@
       var href = link.getAttribute('href') || '';
       if (link.dataset.navLoader !== undefined || (href && !href.startsWith('#') && !href.startsWith('javascript:'))) showForNavigation();
     });
-    setTimeout(function () { showLoader(null, 72); setTimeout(hideLoader, 180); }, 0);
+    if (!pageLoaderDisabled()) {
+      setTimeout(function () { showLoader(null, 72); setTimeout(hideLoader, 180); }, 0);
+    }
   });
 
   window.addEventListener('pageshow', function (event) {
-    if (event.persisted) { forceClear(); return; }
-    if (sessionStorage.getItem('admin_loader_active') === 'true') {
-      showLoader(sessionStorage.getItem('admin_loader_design'), 84);
+    if (event.persisted) {
+      forceClear();
+      sessionStorage.removeItem('admin_loader_active');
+      sessionStorage.removeItem('admin_loader_design');
+      return;
+    }
+    var navigationLoaderActive = sessionStorage.getItem('admin_loader_active') === 'true';
+    var navigationDesign = sessionStorage.getItem('admin_loader_design');
+    sessionStorage.removeItem('admin_loader_active');
+    sessionStorage.removeItem('admin_loader_design');
+    if (navigationLoaderActive && !pageLoaderDisabled()) {
+      showLoader(navigationDesign, 84);
       setTimeout(hideLoader, 180);
+    } else if (pageLoaderDisabled()) {
+      forceClear();
     }
   });
   window.addEventListener('popstate', forceClear);

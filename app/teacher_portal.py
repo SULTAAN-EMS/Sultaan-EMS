@@ -46,7 +46,7 @@ def teacher_can(permission):
 def safe_teacher_next_url(next_url):
     """Validate that the next URL is safe to redirect to (prevents open redirect attacks)"""
     if not next_url:
-        return url_for("teacher_portal.dashboard")
+        return url_for("teacher_portal.result_entry")
     
     # Parse the next URL
     parsed_next = urlparse(next_url)
@@ -59,7 +59,7 @@ def safe_teacher_next_url(next_url):
         next_host = parsed_next.netloc.split(':')[0]  # Remove port if present
         if next_host != request_host:
             # Host mismatch, redirect to dashboard instead
-            return url_for("teacher_portal.dashboard")
+            return url_for("teacher_portal.result_entry")
     
     # If the URL is relative or has a matching host, it's safe
     return next_url
@@ -151,32 +151,7 @@ def parse_teacher_filters(args):
 
 
 def teacher_nav_items():
-    items = [
-        ("teacher_portal.dashboard", "Dashboard", "fa-chart-pie", "view_dashboard"),
-        ("teacher_portal.classes", "My Classes", "fa-people-roof", "view_assigned_classes"),
-        ("teacher_portal.subjects", "My Subjects", "fa-book-open", "view_assigned_subjects"),
-        ("teacher_portal.examinations", "Exams", "fa-file-circle-check", "view_examinations"),
-        ("teacher_portal.results", "Marks Entry", "fa-pen-to-square", "view_student_results"),
-        ("teacher_portal.results", "Results", "fa-clipboard-list", "view_student_results"),
-        ("teacher_portal.my_students", "Students", "fa-user-graduate", "view_students"),
-        ("teacher_portal.exam_analysis", "Exam Analytics", "fa-chart-line", "view_examinations"),
-        ("teacher_portal.reports", "Reports", "fa-file-export", "generate_reports"),
-        ("teacher_portal.profile", "Profile", "fa-user", None),
-        ("teacher_portal.settings", "Settings", "fa-sliders", None),
-        ("teacher_portal.logout", "Logout", "fa-right-from-bracket", None),
-    ]
-    if teacher_can("future_analysis_features"):
-        items.extend(
-            [
-                ("teacher_portal.trends", "Performance Trends", "fa-chart-line", "future_analysis_features"),
-                ("teacher_portal.grades", "Grade Distribution", "fa-layer-group", "future_analysis_features"),
-                ("teacher_portal.top_performers", "Top Performers", "fa-trophy", "future_analysis_features"),
-                ("teacher_portal.weak_students", "Weak Students", "fa-triangle-exclamation", "future_analysis_features"),
-            ]
-        )
-    if teacher_can("future_ai_features"):
-        items.append(("teacher_portal.ai_insights", "AI Insights", "fa-wand-magic-sparkles", "future_ai_features"))
-    return items
+    return [("teacher_portal.result_entry", "Result Entry", "fa-pen-to-square", None)]
 
 
 def record_teacher_visit(teacher, page_name):
