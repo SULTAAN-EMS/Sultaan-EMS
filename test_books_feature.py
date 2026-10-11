@@ -180,6 +180,50 @@ class BooksFeatureTests(unittest.TestCase):
             session.clear()
         self.assertIn(self.client.get("/admin/books/api").status_code, {302, 401})
 
+    def test_admin_can_delete_branch_and_print_center_without_deleting_books(self):
+        with self.app.app_context():
+            branch = BookBranch(name="Delete Test Branch", slug="delete-test-branch")
+            center = BookPrintCenter(
+                name="Delete Test Printer", phone="252611234567", address="Hodan", branches=[branch],
+            )
+            db.session.add_all([branch, center])
+            db.session.commit()
+            branch_id, center_id = branch.id, center.id
+
+        uploaded = _upload(self.client, catalog_type="local", branch_ids=[branch_id])
+        self.assertEqual(uploaded.status_code, 201, uploaded.get_data(as_text=True))
+        book_id = uploaded.json["book"]["id"]
+        centers_page = self.client.get("/admin/books/centers")
+        self.assertIn(b'<dialog class="books-delete-dialog"', centers_page.data)
+        self.assertIn(b"Dib-u-noqo", centers_page.data)
+        self.assertIn(b"fa-arrow-left", centers_page.data)
+        self.assertIn(b"Tirtir xarunta dugsiga?", centers_page.data)
+        self.assertIn(b"Haa, tirtir madbacadda", centers_page.data)
+        self.assertNotIn(b"onsubmit=\"return confirm(", centers_page.data)
+
+        delete_branch = self.client.post("/admin/books/centers", data={
+            "action": "delete-branch", "item_id": str(branch_id),
+        })
+        self.assertEqual(delete_branch.status_code, 302)
+        with self.app.app_context():
+            self.assertIsNone(db.session.get(BookBranch, branch_id))
+            self.assertIsNotNone(db.session.get(BookPrintCenter, center_id))
+            book = db.session.get(BookLibraryItem, book_id)
+            self.assertIsNotNone(book)
+            self.assertEqual(book.branches, [])
+
+        delete_center = self.client.post("/admin/books/centers", data={
+            "action": "delete-center", "item_id": str(center_id),
+        })
+        self.assertEqual(delete_center.status_code, 302)
+        with self.app.app_context():
+            self.assertIsNone(db.session.get(BookPrintCenter, center_id))
+            self.assertIsNotNone(db.session.get(BookLibraryItem, book_id))
+        admin_page = self.client.get("/admin/books/centers")
+        self.assertNotIn(b"Delete Test Branch", admin_page.data)
+        self.assertNotIn(b"Delete Test Printer", admin_page.data)
+        self.assertNotIn("Maamul xarumaha, buugaagta maxalliga ah iyo xiriirka madbacadaha.".encode(), admin_page.data)
+
     @unittest.skip("The Books order and printer portal workflow has been removed.")
     def test_guest_print_order_quote_acceptance_and_printer_scope(self):
         with self.app.app_context():

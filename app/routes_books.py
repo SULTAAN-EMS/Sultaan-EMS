@@ -404,6 +404,17 @@ def admin_centers():
                 item.is_active = not item.is_active
                 db.session.commit()
                 flash("Xaaladda waa la cusboonaysiiyey.", "success")
+            elif action in {"delete-branch", "delete-center"}:
+                model = BookBranch if action == "delete-branch" else BookPrintCenter
+                item = db.session.get(model, request.form.get("item_id", type=int))
+                if not item:
+                    raise ValueError("Xogta la doortay lama helin ama horay ayaa loo tirtiray.")
+                db.session.delete(item)
+                db.session.commit()
+                if action == "delete-branch":
+                    flash("Xarunta dugsiga waa la tirtiray; buugaagteedii waa la ilaaliyey.", "success")
+                else:
+                    flash("Madbacadda waa la tirtiray.", "success")
             else:
                 raise ValueError("Ficilka lama aqoonsan.")
         except ValueError as error:
