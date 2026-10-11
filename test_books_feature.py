@@ -4,12 +4,13 @@ import json
 import re
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from app import create_app, db
 from app.models import BookBranch, BookLibraryItem, BookPrintCenter, User
+from app.routes_books import _branch_public_dict
 from config import Config
 
 
@@ -327,6 +328,64 @@ class BooksFeatureTests(unittest.TestCase):
             "action": "delete-center", "item_id": str(printer_id),
         }, follow_redirects=True)
         self.assertEqual(popup(printer_deleted), {"type": "del", "kind": "p", "name": "Updated Popup Printer"})
+
+    def test_print_center_logo_upload_replace_remove_and_public_payload(self):
+        with self.app.app_context():
+            branch = BookBranch(name="Logo Test Branch", slug="logo-test-branch")
+            db.session.add(branch)
+            db.session.commit()
+            branch_id = branch.id
+
+        first_logo = "https://res.cloudinary.com/demo/image/upload/v1/sultaan-ems/books/print-centers/first.png"
+        second_logo = "https://res.cloudinary.com/demo/image/upload/v1/sultaan-ems/books/print-centers/second.png"
+        png_bytes = b"\x89PNG\r\n\x1a\nmock-image-content"
+        with patch("app.routes_books.upload_image", side_effect=[first_logo, second_logo]) as upload, \
+                patch("app.routes_books.delete_image") as delete_image:
+            created = self.client.post("/admin/books/centers", data={
+                "action": "create-center", "name": "Logo Test Printer", "phone": "252611234567",
+                "address": "Hodan", "branch_ids": [str(branch_id)],
+                "logo_file": (io.BytesIO(png_bytes), "printer-logo.png", "image/png"),
+            }, follow_redirects=True)
+            self.assertEqual(created.status_code, 200)
+            self.assertIn(first_logo.encode(), created.data)
+            self.assertIn(b'enctype="multipart/form-data"', created.data)
+            upload.assert_called_once()
+
+            with self.app.app_context():
+                center = BookPrintCenter.query.filter_by(name="Logo Test Printer").one()
+                center_id = center.id
+                self.assertEqual(center.logo_url, first_logo)
+                public_branch = db.session.get(BookBranch, branch_id)
+                public_center = next(item for item in _branch_public_dict(public_branch)["printCenters"] if item["id"] == center_id)
+                self.assertEqual(public_center["logoUrl"], first_logo)
+
+            updated = self.client.post("/admin/books/centers", data={
+                "action": "update-center", "item_id": str(center_id), "name": "Logo Test Printer",
+                "phone": "252611234567", "address": "Hodan", "branch_ids": [str(branch_id)],
+                "logo_file": (io.BytesIO(png_bytes), "replacement.png", "image/png"),
+            }, follow_redirects=True)
+            self.assertEqual(updated.status_code, 200)
+            self.assertIn(second_logo.encode(), updated.data)
+            delete_image.assert_called_once_with(first_logo)
+
+            removed = self.client.post("/admin/books/centers", data={
+                "action": "update-center", "item_id": str(center_id), "name": "Logo Test Printer",
+                "phone": "252611234567", "address": "Hodan", "branch_ids": [str(branch_id)],
+                "remove_logo": "1",
+            }, follow_redirects=True)
+            self.assertEqual(removed.status_code, 200)
+            with self.app.app_context():
+                self.assertIsNone(db.session.get(BookPrintCenter, center_id).logo_url)
+            self.assertEqual(delete_image.call_args_list, [call(first_logo), call(second_logo)])
+
+        rejected = self.client.post("/admin/books/centers", data={
+            "action": "create-center", "name": "Invalid Logo Printer", "phone": "252611234567",
+            "address": "Hodan", "branch_ids": [str(branch_id)],
+            "logo_file": (io.BytesIO(b"not a png"), "printer-logo.png", "image/png"),
+        }, follow_redirects=True)
+        self.assertIn("Faylku ma aha sawir waafaqsan".encode(), rejected.data)
+        with self.app.app_context():
+            self.assertIsNone(BookPrintCenter.query.filter_by(name="Invalid Logo Printer").first())
 
     @unittest.skip("The Books order and printer portal workflow has been removed.")
     def test_guest_print_order_quote_acceptance_and_printer_scope(self):

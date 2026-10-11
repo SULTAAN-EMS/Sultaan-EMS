@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from . import csrf, db
 from .books_storage import delete_asset, delete_assets, is_r2_asset, r2_bucket, r2_client, r2_enabled, r2_key, save_r2_small_upload
+from .cloudinary_service import delete_image, upload_image
 from .models import BookBranch, BookLibraryItem, BookPrintCenter, BookSubjectCatalog
 from .security import role_required
 
@@ -48,6 +49,53 @@ ALLOWED_COVERS = {
     ".png": (b"\x89PNG\r\n\x1a\n",),
     ".webp": (b"RIFF",),
 }
+ALLOWED_PRINT_LOGOS = {
+    ".jpg": b"\xff\xd8\xff",
+    ".jpeg": b"\xff\xd8\xff",
+    ".png": b"\x89PNG\r\n\x1a\n",
+    ".webp": b"RIFF",
+}
+PRINT_LOGO_MAX_BYTES = 5 * 1024 * 1024
+
+
+class PrintCenterLogoUploadError(RuntimeError):
+    pass
+
+
+def _upload_print_center_logo(upload):
+    suffix = Path(secure_filename(upload.filename or "")).suffix.lower()
+    if suffix not in ALLOWED_PRINT_LOGOS:
+        raise ValueError("Logo-gu waa inuu noqdaa JPG, PNG ama WEBP.")
+
+    stream = upload.stream
+    stream.seek(0, 2)
+    size = stream.tell()
+    stream.seek(0)
+    if not size or size > PRINT_LOGO_MAX_BYTES:
+        raise ValueError("Logo-gu kama badnaan karo 5 MB.")
+
+    header = stream.read(16)
+    stream.seek(0)
+    valid = header.startswith(ALLOWED_PRINT_LOGOS[suffix])
+    if suffix == ".webp":
+        valid = valid and header[8:12] == b"WEBP"
+    if not valid:
+        raise ValueError("Faylku ma aha sawir waafaqsan nooca la doortay.")
+
+    try:
+        return upload_image(upload, "sultaan-ems/books/print-centers")
+    except Exception as error:
+        current_app.logger.exception("Books print-center logo upload failed")
+        raise PrintCenterLogoUploadError("Logo-ga madbacadda lama soo gelin karin. Hubi kaydinta sawirrada oo mar kale isku day.") from error
+
+
+def _delete_print_center_logo(image_url):
+    if not image_url:
+        return
+    try:
+        delete_image(image_url)
+    except Exception:
+        current_app.logger.exception("Books print-center logo cleanup failed")
 
 
 def _subjects_for_class(level, class_name):
@@ -363,7 +411,7 @@ def _branch_public_dict(branch):
         "name": branch.name,
         "region": (branch.region or "").strip(),
         "printCenters": [
-            {"id": center.id, "name": center.name, "phone": center.phone, "whatsapp": center.whatsapp or "", "address": center.address, "mapUrl": center.map_url or ""}
+            {"id": center.id, "name": center.name, "phone": center.phone, "whatsapp": center.whatsapp or "", "address": center.address, "mapUrl": center.map_url or "", "logoUrl": center.logo_url or ""}
             for center in branch.print_centers if center.is_active
         ],
     }
@@ -374,6 +422,7 @@ def _branch_public_dict(branch):
 def admin_centers():
     if request.method == "POST":
         action = request.form.get("action")
+        uploaded_logo_url = None
         try:
             if action == "create-branch":
                 name = (request.form.get("name") or "").strip()
@@ -410,16 +459,20 @@ def admin_centers():
                 branches = BookBranch.query.filter(BookBranch.id.in_(set(ids)), BookBranch.is_active.is_(True)).all() if ids else []
                 if len(branches) != len(set(ids)) or not branches:
                     raise ValueError("Madbacadda ugu yaraan hal xarun oo dugsi ku xidh.")
+                logo_file = request.files.get("logo_file")
+                uploaded_logo_url = _upload_print_center_logo(logo_file) if logo_file and logo_file.filename else None
                 center = BookPrintCenter(
                     name=name,
                     phone=phone,
                     whatsapp=(request.form.get("whatsapp") or "").strip()[:40] or None,
                     address=address,
                     map_url=map_url[:500] or None,
+                    logo_url=uploaded_logo_url,
                     branches=branches,
                 )
                 db.session.add(center)
                 db.session.commit()
+                uploaded_logo_url = None
                 _flash_center_popup("add", "p", center.name)
             elif action == "update-branch":
                 branch = db.session.get(BookBranch, request.form.get("item_id", type=int))
@@ -448,6 +501,13 @@ def admin_centers():
                     raise ValueError("Link-ga khariidaddu waa inuu ku bilaabmaa https:// ama http://.")
                 if not ids or len(branches) != len(ids):
                     raise ValueError("Madbacadda ugu yaraan hal xarun oo firfircoon ku xidh.")
+                old_logo_url = center.logo_url
+                logo_file = request.files.get("logo_file")
+                if logo_file and logo_file.filename:
+                    uploaded_logo_url = _upload_print_center_logo(logo_file)
+                    center.logo_url = uploaded_logo_url
+                elif request.form.get("remove_logo") == "1":
+                    center.logo_url = None
                 center.name = name
                 center.phone = phone
                 center.whatsapp = (request.form.get("whatsapp") or "").strip()[:40] or None
@@ -455,6 +515,9 @@ def admin_centers():
                 center.map_url = map_url[:500] or None
                 center.branches = branches
                 db.session.commit()
+                uploaded_logo_url = None
+                if center.logo_url != old_logo_url:
+                    _delete_print_center_logo(old_logo_url)
                 _flash_center_popup("edit", "p", center.name)
             elif action in {"toggle-branch", "toggle-center"}:
                 model = BookBranch if action == "toggle-branch" else BookPrintCenter
@@ -474,16 +537,24 @@ def admin_centers():
                     raise ValueError("Xogta la doortay lama helin ama horay ayaa loo tirtiray.")
                 kind = "c" if action == "delete-branch" else "p"
                 name = item.name
+                old_logo_url = item.logo_url if action == "delete-center" else None
                 db.session.delete(item)
                 db.session.commit()
+                _delete_print_center_logo(old_logo_url)
                 _flash_center_popup("del", kind, name)
             else:
                 raise ValueError("Ficilka lama aqoonsan.")
         except ValueError as error:
             db.session.rollback()
+            _delete_print_center_logo(uploaded_logo_url)
+            flash(str(error), "error")
+        except PrintCenterLogoUploadError as error:
+            db.session.rollback()
+            _delete_print_center_logo(uploaded_logo_url)
             flash(str(error), "error")
         except Exception:
             db.session.rollback()
+            _delete_print_center_logo(uploaded_logo_url)
             current_app.logger.exception("Books branch/print-center update failed")
             flash("Xogta lama kaydin. Hubi in magaca xaruntu aanu hore u jirin.", "error")
         return redirect(url_for("books.admin_centers"))

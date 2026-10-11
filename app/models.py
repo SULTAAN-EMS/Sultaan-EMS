@@ -1481,6 +1481,7 @@ class BookPrintCenter(TimestampMixin, db.Model):
     whatsapp = db.Column(db.String(40), nullable=True)
     address = db.Column(db.String(300), nullable=False)
     map_url = db.Column(db.String(500), nullable=True)
+    logo_url = db.Column(db.String(700), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
 
     branches = db.relationship("BookBranch", secondary=book_branch_print_centers, back_populates="print_centers")
