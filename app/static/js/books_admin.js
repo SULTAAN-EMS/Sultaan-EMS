@@ -22,6 +22,7 @@
     .stat:hover{border-color:var(--brand);transform:translateY(-1px)}.stat:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
     .stat.active{border-color:var(--brand);box-shadow:0 0 0 2px var(--brandSoft)}.stat .stat-info{display:flex;flex-direction:column;gap:3px}.stat .stat-info>b{color:var(--text)}
     .books-saving{opacity:.68;pointer-events:none}.fchip .ic{flex:none}.scope-two{grid-template-columns:repeat(2,minmax(0,1fr))}.book-fields-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.general-book-hint{display:flex;align-items:center;gap:8px;margin:-3px 0 15px;color:var(--muted);font-size:13px}.general-book-hint .ic{flex:none;color:var(--brandText)}
+    .delete-spinner{width:15px;height:15px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;animation:books-delete-spin .7s linear infinite}.btn.dng:disabled{opacity:.78;cursor:wait}.btn.dng:disabled:active{transform:none}@keyframes books-delete-spin{to{transform:rotate(360deg)}}
     .catalog-field{display:grid;gap:7px}.catalog-field select{max-width:100%}.branch-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.branch-check{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);font-size:13px}.branch-check input{accent-color:var(--brand)}
     @media(max-width:900px){.head{flex-direction:column}.headR{width:100%;flex-wrap:wrap}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.gridv{grid-template-columns:repeat(2,minmax(0,1fr))}.mb{grid-template-columns:minmax(0,1fr)}.rside{display:grid;grid-template-columns:140px 1fr}.rside .cover{grid-row:span 2}.three,.book-fields-two{grid-template-columns:1fr}.modal{width:min(780px,calc(100vw - 28px));max-height:calc(100vh - 28px)}}
     @media(max-width:560px){.content{padding:16px 12px 22px}.headR{align-items:stretch}.linkpill{justify-content:center;flex:1}.stats{gap:8px}.stat{padding:10px;gap:8px}.stat .tile{width:38px;height:38px}.stat b{font-size:22px}.tools{padding:10px}.field{max-width:100%}.field select{max-width:130px}.gridv{grid-template-columns:1fr 1fr;gap:8px;padding:9px}.gcard{padding:9px 8px}.modal{width:calc(100vw - 18px);max-height:calc(100vh - 18px)}.mb{padding:14px}.mf{padding:12px;flex-wrap:wrap}.up{grid-template-columns:1fr}.scanbox{width:110px}.uptot b{font-size:34px}}
@@ -343,8 +344,26 @@
       else if (key === 'save') uploadSave();
       else if (key === 'upcancel') { if (xhr) xhr.abort(); else $('#ov').classList.remove('show'); }
       else if (key === 'delete') {
-        try { await requestJson(`/admin/books/api/${mode.dataset.id}`,{method:'DELETE'}); books = books.filter(book => book.id !== Number(mode.dataset.id)); $('#ov').classList.remove('show'); render(); toast('Buugga iyo faylashiisa waa la tirtiray.'); }
-        catch (error) { toast(error.message,true); }
+        if (mode.disabled) return;
+        const original = mode.innerHTML;
+        mode.disabled = true;
+        mode.setAttribute('aria-busy','true');
+        mode.innerHTML = `<span class="delete-spinner" aria-hidden="true"></span> Waa la tirtirayaa…`;
+        const close = $('[data-m="close"]');
+        if (close) close.disabled = true;
+        try {
+          await requestJson(`/admin/books/api/${mode.dataset.id}`,{method:'DELETE'});
+          books = books.filter(book => book.id !== Number(mode.dataset.id));
+          $('#ov').classList.remove('show');
+          render();
+          toast('Buugga iyo faylashiisa waa la tirtiray.');
+        } catch (error) {
+          mode.disabled = false;
+          mode.removeAttribute('aria-busy');
+          mode.innerHTML = original;
+          if (close) close.disabled = false;
+          toast(error.message,true);
+        }
       } else if (key === 'vis') { readForm(); draft.visible = !draft.visible; drawEditor(); }
       else if (key === 'img') $('#f-img').click();
       else if (key === 'file') $('#f-file').click();

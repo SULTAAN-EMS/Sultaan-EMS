@@ -444,6 +444,14 @@ class BooksFeatureTests(unittest.TestCase):
             def delete_object(self, Bucket, Key):
                 self.objects.pop(Key, None)
 
+            def delete_objects(self, Bucket, Delete):
+                self.deleted_batches.append(Delete["Objects"])
+                for item in Delete["Objects"]:
+                    self.objects.pop(item["Key"], None)
+                return {"Deleted": Delete["Objects"]}
+
+            deleted_batches = []
+
         fake_r2 = FakeR2()
         self.app.config.update(
             BOOKS_STORAGE_BACKEND="r2",
@@ -480,4 +488,6 @@ class BooksFeatureTests(unittest.TestCase):
             self.assertIn("https://r2.test/get_object/", cover.location)
             deleted = self.client.delete(f"/admin/books/api/{book['id']}")
             self.assertEqual(deleted.status_code, 200)
+            self.assertEqual(len(fake_r2.deleted_batches), 1)
+            self.assertEqual(len(fake_r2.deleted_batches[0]), 2)
             self.assertEqual(fake_r2.objects, {})

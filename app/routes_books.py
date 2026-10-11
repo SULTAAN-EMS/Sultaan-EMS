@@ -11,7 +11,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy.orm import selectinload
 
 from . import csrf, db
-from .books_storage import delete_asset, is_r2_asset, r2_bucket, r2_client, r2_enabled, r2_key, save_r2_small_upload
+from .books_storage import delete_asset, delete_assets, is_r2_asset, r2_bucket, r2_client, r2_enabled, r2_key, save_r2_small_upload
 from .models import BookBranch, BookLibraryItem, BookPrintCenter
 from .security import role_required
 
@@ -671,8 +671,10 @@ def admin_delete(book_id):
     assets = (item.pdf_storage_name, item.cover_storage_name)
     db.session.delete(item)
     db.session.commit()
-    for asset in assets:
-        _remove_private(asset)
+    try:
+        delete_assets(assets)
+    except Exception:
+        current_app.logger.exception("Unable to remove deleted book assets")
     return jsonify({"success": True})
 
 

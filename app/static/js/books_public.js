@@ -9,7 +9,7 @@
   const shadow = mount.attachShadow({mode:'open'});
   const icons = document.getElementById('booksIcons')?.innerHTML || '';
   const template = document.getElementById('booksPublicTemplate');
-  shadow.innerHTML = `<link rel="stylesheet" href="/static/css/books_reference.css"><style>
+  shadow.innerHTML = `<link rel="stylesheet" href="/static/css/books_reference.css?v=books-hero-shorter-20261011"><style>
     :host{display:block;min-height:100dvh;background:var(--bg);color:var(--text)}
     .public-shell{width:min(100%,520px);margin:0 auto;background:var(--bg);min-height:100dvh;position:relative;box-shadow:0 0 44px rgba(10,43,39,.08)}
     .screen{height:auto;min-height:100dvh;border:0;border-radius:0;overflow:visible;background:var(--bg)}
@@ -45,7 +45,7 @@
   const LEVELS = library.LEVELS;
   const SUBJECTS = library.SUBJECTS;
   const LEVEL_ICONS = {[ALL]:'layers',Xanaano:'star',Hoose:'bookopen',Dhexe:'class',Sare:'landmark'};
-  const state = {level:ALL,cls:ALL,subject:ALL,query:'',catalogType:'',branchId:'',view:'grid',readerBook:null,pdf:null,page:1,mode:'scroll',zoom:1,theme:'light',marks:{},downloadBook:null,downloadController:null,downloadStatusTimer:null,objectUrl:null,searchHits:[],searchIndex:0,pageObserver:null,searchRun:0};
+  const state = {level:ALL,cls:ALL,subject:ALL,query:'',catalogType:'',branchId:'',view:'list',readerBook:null,pdf:null,page:1,mode:'scroll',zoom:1,theme:'light',marks:{},downloadBook:null,downloadController:null,downloadStatusTimer:null,objectUrl:null,searchHits:[],searchIndex:0,pageObserver:null,searchRun:0};
   const sym = name => `<svg class="ic" aria-hidden="true"><use href="#i-${name}"/></svg>`;
   const crest = () => config.logoUrl ? `<img class="crest crest-img" src="${esc(config.logoUrl)}" alt="">` : '<svg class="crest" viewBox="0 0 24 26" aria-hidden="true"><use href="#crest"/></svg>';
   const subjectSym = name => `<span class="subject-icon" style="--subject-icon:url('/static/icons/books-fa-free/${esc(name.replace(/^fa-/,''))}.svg')" aria-hidden="true"></span>`;

@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="{{ url_for('static', filename='js/books_cover_library.js', v='books-kind-20261010') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/books_public.js', v='books-level-icons-20261011') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/books_public.js', v='books-list-default-20261011') }}" defer></script>
 </head>
 <body>
   <div id="booksPublicMount"></div>
@@ -21,10 +21,8 @@
       <div class="screen" id="screen">
         <div class="pscroll" id="pscroll">
           <header class="hero">
-            <div class="pill-url"><svg class="ic"><use href="#i-lock"/></svg>…/books</div>
             <div class="lockup">{% if ui_settings.logo_path %}<img class="school-logo" src="{{ asset_url(ui_settings.logo_path) }}" alt="">{% else %}<svg aria-hidden="true"><use href="#crest"/></svg>{% endif %}<div><span id="schoolName"></span><strong>Maktabadda Buugaagta</strong></div></div>
             <h2>Akhri ama soo degso buugaagta dugsiga</h2>
-            <p>Dooro xarunta dugsiga iyo nooca buugga, dabadeed shaandhee heerka, fasalka iyo maaddada.</p>
           </header>
           <div class="filter-stack">
             <section class="filter-block">

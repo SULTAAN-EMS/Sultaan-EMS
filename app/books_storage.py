@@ -86,3 +86,25 @@ def delete_asset(name):
     from .routes_books import _storage_dir
 
     (_storage_dir() / Path(name).name).unlink(missing_ok=True)
+
+
+def delete_assets(names):
+    assets = list(dict.fromkeys(name for name in names if name))
+    if not assets:
+        return
+
+    local_assets = [name for name in assets if not is_r2_asset(name)]
+    for name in local_assets:
+        from .routes_books import _storage_dir
+
+        (_storage_dir() / Path(name).name).unlink(missing_ok=True)
+
+    r2_assets = [name for name in assets if is_r2_asset(name)]
+    if r2_assets:
+        response = r2_client().delete_objects(
+            Bucket=r2_bucket(),
+            Delete={"Objects": [{"Key": r2_key(name)} for name in r2_assets], "Quiet": True},
+        )
+        errors = response.get("Errors", [])
+        if errors:
+            raise RuntimeError(f"R2 could not delete {len(errors)} book asset(s)")
