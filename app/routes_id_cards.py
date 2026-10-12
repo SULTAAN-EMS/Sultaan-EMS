@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import login_required
 from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import joinedload
 
 from . import db
 from .audit import audit
@@ -99,16 +100,34 @@ def dashboard():
         )
     else:
         students = []
-    student_placements = {
-        student.id: resolve_student_placement(student, selected_exam.academic_year_id)
+    placements_by_scope = resolve_student_placements(
+        (student, selected_exam.academic_year_id)
         for student in students
-    }
+    ) if selected_exam else {}
+    student_placements = {
+        student.id: placements_by_scope.get((student.id, selected_exam.academic_year_id), {})
+        for student in students
+    } if selected_exam else {}
     students = [student for student in students if student_placements.get(student.id)]
-    issues = IdCardIssue.query.order_by(IdCardIssue.updated_at.desc()).limit(200).all()
+    issues = (
+        IdCardIssue.query
+        .options(joinedload(IdCardIssue.student), joinedload(IdCardIssue.exam))
+        .order_by(IdCardIssue.updated_at.desc())
+        .limit(200)
+        .all()
+    )
     issue_dates_changed = sync_issue_dates(issues, settings=get_settings())
     if issue_dates_changed:
         db.session.commit()
-    issue_placements = {issue.id: resolve_issue_placement(issue) for issue in issues}
+    issue_placements_by_scope = resolve_student_placements(
+        (issue.student, issue.academic_year_id)
+        for issue in issues
+        if issue.student
+    )
+    issue_placements = {
+        issue.id: issue_placements_by_scope.get((issue.student_id, issue.academic_year_id), {})
+        for issue in issues
+    }
     issue_statuses = {issue.id: effective_issue_status(issue) for issue in issues}
     return render_template(
         "admin/id_cards.html",
@@ -243,10 +262,15 @@ def print_cards():
     settings = get_settings()
     if sync_issue_dates(issues, settings=settings):
         db.session.commit()
+    placements_by_scope = resolve_student_placements(
+        (issue.student, issue.academic_year_id)
+        for issue in issues
+        if issue.student
+    )
     cards = [
         {
             "issue": issue,
-            "placement": resolve_issue_placement(issue),
+            "placement": placements_by_scope.get((issue.student_id, issue.academic_year_id), {}),
             "qr": id_card_qr_payload(issue),
         }
         for issue in issues
@@ -549,20 +573,9 @@ def resolve_id_card_year_id(student, academic_year_id=None):
 
 def resolve_issue_placement(issue):
     """Return the issue-year placement, never a newer legacy snapshot."""
-    from .enrollment_service import resolve_student_academic_context
-
-    placement = resolve_student_academic_context(issue.student, issue.academic_year_id)
-    if placement:
-        return placement
-    if issue.student.academic_year_id != issue.academic_year_id:
-        return {}
-    return {
-        "source": "legacy",
-        "academic_year_id": issue.academic_year_id,
-        "class_name": issue.student.academic_class.name if issue.student.academic_class else issue.student.school_class.name if issue.student.school_class else None,
-        "level_name": issue.student.academic_level.name if issue.student.academic_level else issue.student.level,
-        "section_name": issue.student.academic_section.name if issue.student.academic_section else issue.student.section,
-    }
+    return resolve_student_placements([(issue.student, issue.academic_year_id)]).get(
+        (issue.student_id, issue.academic_year_id), {}
+    )
 
 
 def effective_issue_status(issue):
@@ -641,9 +654,13 @@ def reportlab_image_source(path, image_reader, bytes_io):
 def selected_issues():
     raw = request.args.get("issue_ids", "")
     ids = [int(value) for value in raw.split(",") if value.isdigit()]
+    query = IdCardIssue.query.options(
+        joinedload(IdCardIssue.student),
+        joinedload(IdCardIssue.exam),
+    )
     if ids:
-        return IdCardIssue.query.filter(IdCardIssue.id.in_(ids)).order_by(IdCardIssue.id).all()
-    return IdCardIssue.query.order_by(IdCardIssue.updated_at.desc()).limit(50).all()
+        return query.filter(IdCardIssue.id.in_(ids)).order_by(IdCardIssue.id).all()
+    return query.order_by(IdCardIssue.updated_at.desc()).limit(50).all()
 
 
 def card_filters():
@@ -865,22 +882,212 @@ def filter_class_options(filters):
 
 def resolve_student_placement(student, academic_year_id=None):
     """Resolve display placement without allowing a newer year to leak in."""
-    if academic_year_id:
-        from .enrollment_service import resolve_student_academic_context
+    if not student or not academic_year_id:
+        return {}
+    return resolve_student_placements([(student, academic_year_id)]).get(
+        (student.id, int(academic_year_id)), {}
+    )
 
-        placement = resolve_student_academic_context(student, academic_year_id)
-        if placement:
-            return placement
-        if student.academic_year_id != academic_year_id:
-            return {}
-        return {
+
+def resolve_student_placements(student_year_pairs):
+    """Resolve many year-specific placements using a bounded set of queries."""
+    pairs = {}
+    for student, raw_year_id in student_year_pairs:
+        year_id = int_or_none(raw_year_id)
+        if student and year_id:
+            pairs[(student.id, year_id)] = student
+    if not pairs:
+        return {}
+
+    student_ids = {student_id for student_id, _ in pairs}
+    year_ids = {year_id for _, year_id in pairs}
+    students = {
+        student.id: student
+        for student in Student.query.options(
+            joinedload(Student.academic_class),
+            joinedload(Student.school_class),
+            joinedload(Student.academic_section),
+        ).filter(Student.id.in_(student_ids)).all()
+    }
+    enrollments = StudentEnrollment.query.options(
+        joinedload(StudentEnrollment.academic_year_level),
+        joinedload(StudentEnrollment.academic_year_class),
+        joinedload(StudentEnrollment.academic_section),
+    ).filter(
+        StudentEnrollment.student_id.in_(student_ids),
+        StudentEnrollment.academic_year_id.in_(year_ids),
+    ).all()
+    enrollments_by_scope = {
+        (enrollment.student_id, enrollment.academic_year_id): enrollment
+        for enrollment in enrollments
+    }
+
+    year_levels = AcademicYearLevel.query.filter(
+        AcademicYearLevel.academic_year_id.in_(year_ids)
+    ).all()
+    levels_by_id = {level.id: level for level in year_levels}
+    levels_by_legacy = {}
+    levels_by_name = {}
+    for level in year_levels:
+        if level.legacy_level_id:
+            levels_by_legacy.setdefault((level.academic_year_id, level.legacy_level_id), []).append(level)
+        levels_by_name.setdefault((level.academic_year_id, level.name), []).append(level)
+
+    year_classes = (
+        AcademicYearClass.query
+        .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+        .filter(AcademicYearLevel.academic_year_id.in_(year_ids))
+        .all()
+    )
+    classes_by_id = {year_class.id: year_class for year_class in year_classes}
+    classes_by_level_legacy = {}
+    for year_class in year_classes:
+        if year_class.legacy_class_id:
+            classes_by_level_legacy.setdefault(
+                (year_class.academic_year_level_id, year_class.legacy_class_id), []
+            ).append(year_class)
+
+    placements = {}
+    for (student_id, year_id), _ in pairs.items():
+        student = students.get(student_id)
+        if not student:
+            placements[(student_id, year_id)] = {}
+            continue
+
+        enrollment = enrollments_by_scope.get((student_id, year_id))
+        if enrollment:
+            level = levels_by_id.get(enrollment.academic_year_level_id)
+            year_class = classes_by_id.get(enrollment.academic_year_class_id)
+            section = enrollment.academic_section if enrollment.academic_section_id else None
+            valid = bool(
+                level
+                and level.academic_year_id == year_id
+                and year_class
+                and year_class.academic_year_level_id == level.id
+                and (
+                    not enrollment.academic_section_id
+                    or (
+                        section
+                        and year_class.legacy_class_id
+                        and section.academic_class_id == year_class.legacy_class_id
+                    )
+                )
+            )
+            if not valid:
+                placements[(student_id, year_id)] = unresolved_card_placement(
+                    year_id, "enrollment", enrollment=enrollment
+                )
+            else:
+                placements[(student_id, year_id)] = {
+                    "source": "enrollment",
+                    "context_status": "enrollment",
+                    "academic_year_id": year_id,
+                    "enrollment": enrollment,
+                    "academic_year_level_id": enrollment.academic_year_level_id,
+                    "academic_year_class_id": enrollment.academic_year_class_id,
+                    "academic_level_id": level.legacy_level_id,
+                    "academic_class_id": year_class.legacy_class_id,
+                    "academic_section_id": enrollment.academic_section_id,
+                    "class_name": year_class.name,
+                    "level_name": level.name,
+                    "section_name": section.name if section else None,
+                }
+            continue
+
+        if student.academic_year_id != year_id:
+            placements[(student_id, year_id)] = {}
+            continue
+
+        legacy_level_id = student.academic_level_id or (
+            student.academic_class.academic_level_id if student.academic_class else None
+        )
+        legacy_class_id = student.academic_class_id or (
+            student.academic_class.id if student.academic_class else None
+        )
+        level_candidates = levels_by_legacy.get((year_id, legacy_level_id), []) if legacy_level_id else []
+        if not level_candidates and student.level:
+            level_candidates = levels_by_name.get((year_id, student.level), [])
+        if len(level_candidates) != 1:
+            placements[(student_id, year_id)] = unresolved_card_placement(
+                year_id, "legacy", legacy_level_id, legacy_class_id, student.academic_section_id
+            )
+            continue
+
+        level = level_candidates[0]
+        class_candidates = (
+            classes_by_level_legacy.get((level.id, legacy_class_id), [])
+            if legacy_class_id else []
+        )
+        if legacy_class_id and len(class_candidates) != 1:
+            placements[(student_id, year_id)] = unresolved_card_placement(
+                year_id, "legacy", legacy_level_id, legacy_class_id, student.academic_section_id
+            )
+            continue
+
+        year_class = class_candidates[0] if class_candidates else None
+        section = student.academic_section if student.academic_section_id else None
+        if student.academic_section_id and (
+            not year_class or not section or year_class.legacy_class_id != section.academic_class_id
+        ):
+            placements[(student_id, year_id)] = unresolved_card_placement(
+                year_id, "legacy", legacy_level_id, legacy_class_id, student.academic_section_id
+            )
+            continue
+
+        placements[(student_id, year_id)] = {
             "source": "legacy",
-            "academic_year_id": academic_year_id,
-            "class_name": student.academic_class.name if student.academic_class else student.school_class.name if student.school_class else None,
-            "level_name": student.academic_level.name if student.academic_level else student.level,
-            "section_name": student.academic_section.name if student.academic_section else student.section,
+            "context_status": "legacy_compatible",
+            "academic_year_id": year_id,
+            "enrollment": None,
+            "academic_year_level_id": level.id,
+            "academic_year_class_id": year_class.id if year_class else None,
+            "academic_level_id": legacy_level_id,
+            "academic_class_id": legacy_class_id,
+            "academic_section_id": student.academic_section_id,
+            "legacy_academic_level_id": legacy_level_id,
+            "legacy_academic_class_id": legacy_class_id,
+            "legacy_academic_section_id": student.academic_section_id,
+            "class_name": (
+                year_class.name if year_class else
+                student.academic_class.name if student.academic_class else
+                student.school_class.name if student.school_class else None
+            ),
+            "level_name": level.name,
+            "section_name": section.name if section else student.section,
         }
-    return {}
+    return placements
+
+
+def unresolved_card_placement(
+    year_id,
+    origin,
+    legacy_level_id=None,
+    legacy_class_id=None,
+    legacy_section_id=None,
+    enrollment=None,
+):
+    context = {
+        "source": "unresolved",
+        "origin": origin,
+        "context_status": "unresolved",
+        "academic_year_id": year_id,
+        "enrollment": enrollment,
+        "academic_year_level_id": None,
+        "academic_year_class_id": None,
+        "academic_level_id": None,
+        "academic_class_id": None,
+        "academic_section_id": None,
+        "class_name": None,
+        "level_name": None,
+        "section_name": None,
+    }
+    if origin == "legacy":
+        context.update(
+            legacy_academic_level_id=legacy_level_id,
+            legacy_academic_class_id=legacy_class_id,
+            legacy_academic_section_id=legacy_section_id,
+        )
+    return context
 
 
 def int_or_none(value):

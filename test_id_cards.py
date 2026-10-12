@@ -2,6 +2,8 @@ import unittest
 from datetime import date, timedelta
 from html.parser import HTMLParser
 
+from sqlalchemy import event
+
 from app import create_app, db
 from app.models import (
     AcademicClass,
@@ -198,6 +200,42 @@ class TestIdCards(unittest.TestCase):
         parser = FormNestingParser()
         parser.feed(response.get_data(as_text=True))
         self.assertFalse(parser.has_nested_form)
+
+    def test_initial_history_load_uses_bounded_query_count(self):
+        for index in range(30):
+            student = self._student(
+                f"LOAD-{index:03}",
+                f"Arday Tijaabo {index:03}",
+                self.year,
+                self.year_level,
+                self.year_class,
+            )
+            db.session.add(IdCardIssue(
+                token=f"history-load-token-{index}",
+                student=student,
+                academic_year=self.year,
+                exam=self.exam,
+                issue_date=date.today(),
+                expiry_date=date.today() + timedelta(days=365),
+                status="Active",
+            ))
+        db.session.commit()
+
+        statements = []
+        engine = db.engine
+        def count_statement(_conn, _cursor, statement, _parameters, _context, _executemany):
+            if statement.lstrip().upper().startswith(("SELECT", "UPDATE", "INSERT", "DELETE")):
+                statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", count_statement)
+        try:
+            response = self.client.get("/admin/id-cards/")
+        finally:
+            event.remove(engine, "before_cursor_execute", count_statement)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Arday Tijaabo 029", response.data)
+        self.assertLess(len(statements), 40, f"Expected batched history queries, got {len(statements)}")
 
     def test_scoped_exam_only_shows_and_generates_students_in_its_configured_class(self):
         second_legacy_class = AcademicClass(

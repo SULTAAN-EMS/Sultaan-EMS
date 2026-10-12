@@ -104,7 +104,7 @@
                   <td class="idc-check-col" data-label="Select"><input type="checkbox" name="student_ids" value="{{ s.id }}" aria-label="Select {{ s.full_name }}"></td>
                   <td data-label="Ardeyga">
                     <div class="idc-student-cell">
-                      {% if s.photo_path %}<img class="idc-avatar" src="{{ asset_url(s.photo_path) }}" alt="">{% else %}<span class="idc-avatar idc-avatar-fallback"><i class="fa-solid fa-user-graduate"></i></span>{% endif %}
+                      {% if s.photo_path %}<img class="idc-avatar" src="{{ asset_url(s.photo_path) }}" alt="" loading="lazy" decoding="async">{% else %}<span class="idc-avatar idc-avatar-fallback"><i class="fa-solid fa-user-graduate"></i></span>{% endif %}
                       <span class="idc-student-copy"><strong>{{ s.full_name }}</strong><small>{{ s.student_code }}{% if s.mother_name %} · {{ s.mother_name }}{% endif %}</small></span>
                     </div>
                   </td>
