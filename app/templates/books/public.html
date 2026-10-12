@@ -7,10 +7,10 @@
   <title>Maktabadda Buugaagta · {{ ui_settings.school_name or 'Taysiir International Schools' }}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=DM+Sans:wght@400;500&family=Figtree:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
   <style>#booksPublicMount:not([data-books-ready="true"]){visibility:hidden}</style>
   <script src="{{ url_for('static', filename='js/books_cover_library.js', v='book-subject-catalog-20261011') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/books_public.js', v='books-dialog-fit-20261012-20') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/books_public.js', v='books-copyright-footer-20261012-25') }}" defer></script>
 </head>
 <body>
   <div id="booksPublicMount" aria-busy="true"></div>
@@ -54,7 +54,17 @@
           <div class="cnt"><div class="l"><span id="pCount"></span></div>
             <div class="vt" role="group" aria-label="Qaabka bandhigga"><button id="pvGrid" aria-pressed="true" aria-label="Kaararka" title="Kaararka"><svg class="ic"><use href="#i-grid"/></svg></button><button id="pvList" aria-pressed="false" aria-label="Liis" title="Liis"><svg class="ic"><use href="#i-list"/></svg></button></div></div>
           <div class="plist grid" id="pList" aria-live="polite"></div>
-          <footer class="pfoot" id="publicFooter"></footer>
+          <footer class="pfoot rw" id="publicFooter" aria-label="© SULTAAN EMS — BOOKS">
+            <span class="rw-ic" aria-hidden="true">
+              <svg class="rw-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              <svg class="rw-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"/></svg>
+              <svg class="rw-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16M8 8v12M12 6v14M16 6l4 14"/></svg>
+              <span class="rw-ico rw-logo-ico" aria-hidden="true"><img class="rw-school-logo" alt=""><svg class="rw-school-fallback" viewBox="0 0 24 26"><use href="#crest"/></svg></span>
+              <svg class="rw-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M14.8 9.4a3.6 3.6 0 1 0 0 5.2"/></svg>
+            </span>
+            <span class="rw-msg"></span>
+            <span class="rw-bar" aria-hidden="true"><i class="rw-seg"><b class="rw-fill"></b></i><i class="rw-seg"><b class="rw-fill"></b></i><i class="rw-seg"><b class="rw-fill"></b></i><i class="rw-seg"><b class="rw-fill"></b></i><i class="rw-seg"><b class="rw-fill"></b></i><i class="rw-seg"><b class="rw-fill"></b></i><i class="rw-seg"><b class="rw-fill"></b></i></span>
+          </footer>
         </div>
 
         <section class="reader" id="reader" data-theme="light" aria-label="Akhristaha PDF">

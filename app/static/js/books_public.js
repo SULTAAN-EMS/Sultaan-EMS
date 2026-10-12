@@ -13,7 +13,40 @@
     :host{display:block;min-height:100dvh;background:var(--bg);color:var(--text)}
     .public-shell{width:min(100%,520px);margin:0 auto;background:var(--bg);min-height:100dvh;position:relative;box-shadow:0 0 44px rgba(10,43,39,.08)}
     .screen{height:auto;min-height:100dvh;border:0;border-radius:0;overflow:visible;background:var(--bg)}
-    .pscroll{height:auto;min-height:100dvh;overflow:visible}
+    .pscroll{height:auto;min-height:100dvh;overflow:visible;display:flex;flex-direction:column}
+    .rw{--rw-g:#0A5F4F;--rw-deep:#06352c;--rw-gold:#D4AF5F;--rw-gold-soft:#F1DDA6;position:relative;isolation:isolate;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:11px;width:100%;min-width:0;min-height:54px;margin-top:auto;padding:9px 14px calc(11px + env(safe-area-inset-bottom,0px));background:linear-gradient(100deg,var(--rw-deep),var(--rw-g) 50%,var(--rw-deep));color:#DCEDE7;font-family:'DM Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:13.5px;line-height:1.2;white-space:nowrap;box-sizing:border-box;text-align:initial}
+    .rw *{box-sizing:border-box}
+    .rw::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,var(--rw-gold),var(--rw-gold-soft),var(--rw-gold),transparent);pointer-events:none}
+    .rw::after{content:"";position:absolute;top:0;bottom:0;width:32%;left:-40%;background:linear-gradient(100deg,transparent,rgba(241,221,166,.18),transparent);animation:rw-glide 7s ease-in-out infinite;pointer-events:none;z-index:-1}
+    .rw-ic{position:relative;z-index:1;flex:none;width:30px;height:30px;border-radius:50%;background:linear-gradient(145deg,var(--rw-gold-soft),var(--rw-gold));color:#04211b;perspective:80px;animation:rw-pulse 2.8s ease-in-out infinite}
+    .rw-ico{position:absolute;inset:0;margin:auto;width:17px;height:17px;display:block;opacity:0;transform:rotateY(90deg) scale(.5);transition:opacity .3s ease,transform .5s cubic-bezier(.3,1.5,.5,1)}
+    .rw-ico.on{opacity:1;transform:none}
+    .rw-logo-ico{width:24px;height:24px;overflow:hidden;border-radius:50%}
+    .rw-school-logo{display:block;width:100%;height:100%;padding:2px;border-radius:50%;background:#fff;object-fit:contain}
+    .rw-school-fallback{display:none;width:100%;height:100%}
+    .rw-logo-ico.fallback .rw-school-logo{display:none}
+    .rw-logo-ico.fallback .rw-school-fallback{display:block}
+    .rw-msg{position:relative;z-index:1;display:inline-block;flex:0 1 auto;min-width:0;max-width:100%}
+    .rw-ghost{visibility:hidden;display:inline-block;white-space:nowrap}
+    .rw-live{position:absolute;left:0;top:0;white-space:nowrap}
+    .rw-live span:empty:not(.rw-cur){display:none}
+    .rw-b{font-family:'Sora',system-ui,sans-serif;font-weight:700;letter-spacing:.02em;color:var(--rw-gold-soft)}
+    .rw[data-kind="copy"] .rw-b{color:#fff}
+    .rw-sep{margin:0 .6em;color:var(--rw-gold)}
+    .rw-r{color:rgba(220,237,231,.9)}
+    .rw-cur{display:inline-block;vertical-align:-.15em;margin-left:2px;width:.5em;height:1.1em;background:var(--rw-gold);animation:rw-blink 1s steps(1) infinite}
+    .rw-bar{position:absolute;left:14px;right:14px;bottom:4px;height:3px;display:flex;gap:4px;z-index:1}
+    .rw-seg{position:relative;flex:1;height:100%;border-radius:3px;background:rgba(255,255,255,.14)}
+    .rw-fill{display:block;position:absolute;left:0;top:0;bottom:0;width:0;border-radius:3px;background:linear-gradient(90deg,#b8862f,var(--rw-gold),#fff1c1,var(--rw-gold),#b8862f);background-size:200% 100%;animation:rw-flow 1.8s linear infinite;transition:none}
+    .rw-fill::after{content:"";position:absolute;right:-3px;top:50%;width:7px;height:7px;margin-top:-3.5px;border-radius:50%;background:#fff1c1;box-shadow:0 0 8px 2px rgba(241,221,166,.8);opacity:0;transition:opacity .3s ease}
+    .rw-seg.on .rw-fill::after{opacity:1}
+    @keyframes rw-flow{to{background-position:-200% 0}}
+    @keyframes rw-blink{50%{opacity:0}}
+    @keyframes rw-glide{0%{left:-40%}55%,100%{left:120%}}
+    @keyframes rw-pulse{0%,100%{box-shadow:0 0 0 3px rgba(212,175,95,.25)}50%{box-shadow:0 0 0 9px rgba(212,175,95,0)}}
+    @media(max-width:560px){.rw{font-size:12.5px;gap:9px;padding-left:10px;padding-right:10px}.rw-bar{left:10px;right:10px}}
+    @media(max-width:340px){.rw-ic{display:none}}
+    @media(prefers-reduced-motion:reduce){.rw::after,.rw-ic,.rw-cur,.rw-fill{animation:none!important}.rw-ico,.rw-fill::after{transition:none!important}}
     .hero{padding-top:max(6px,env(safe-area-inset-top))}
     .reader{position:fixed;top:0;bottom:0;left:50%;right:auto;width:min(100vw,520px);transform:translateX(-50%);z-index:100;background:var(--rbg)}
     .reader.show{display:block}.rbody{overscroll-behavior:contain;padding-bottom:calc(176px + env(safe-area-inset-bottom))}
@@ -193,7 +226,168 @@
     }
   });
   $('#schoolName').textContent = config.schoolName || 'Taysiir International Schools';
-  $('#publicFooter').textContent = `${config.schoolName || 'Taysiir International Schools'} · Maktabadda Buugaagta`;
+  function initCopyrightFooter() {
+    const root = $('#publicFooter');
+    if (!root) return;
+    const year = new Date().getFullYear();
+    const copy = {icon:4,h:'\u00A9 SULTAAN EMS \u2014 BOOKS',s:'|',t:String(year),hold:10000,copy:true};
+    const messages = [
+      copy,
+      {icon:0,h:'Akhri',s:'\u2014',t:'Halakan ku dhex Akhri Buugga aad dooneyso',hold:2800},
+      {icon:1,h:'La Degid',s:'\u2014',t:'Waad la degi kadhaa buug, si toos ah Teleefankaaga',hold:2800},
+      copy,
+      {icon:2,h:'Buug kasta',s:'\u2014',t:'waa albaab cilmi',hold:2800},
+      {icon:3,h:'TIS',s:'\u2014',t:'Dugsiyada Caalamiga ah ee Taysiir',hold:2800},
+      copy
+    ];
+    const msg = root.querySelector('.rw-msg');
+    const iconNodes = [...root.querySelectorAll('.rw-ico')];
+    const schoolLogo = root.querySelector('.rw-school-logo');
+    const schoolLogoIcon = root.querySelector('.rw-logo-ico');
+    const segments = [...root.querySelectorAll('.rw-seg')];
+    const mobile = window.matchMedia('(max-width:560px)');
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let timer = 0;
+    let index = 0;
+    let parts = [];
+    let total = 0;
+    let position = 0;
+    let direction = 1;
+    let delays = [];
+
+    if (schoolLogo && schoolLogoIcon) {
+      if (config.logoUrl) {
+        schoolLogo.src = config.logoUrl;
+        schoolLogo.addEventListener('error',() => schoolLogoIcon.classList.add('fallback'),{once:true});
+      } else {
+        schoolLogoIcon.classList.add('fallback');
+      }
+    }
+    root.setAttribute('aria-label', `© SULTAAN EMS — BOOKS | ${year}`);
+
+    function draw() {
+      let remaining = position;
+      parts.forEach(part => {
+        const count = Math.max(0, Math.min(part.text.length, remaining));
+        remaining -= count;
+        part.node.textContent = part.text.slice(0, count);
+      });
+    }
+
+    function fillAll() {
+      segments.forEach(segment => {
+        segment.classList.remove('on');
+        const fill = segment.querySelector('.rw-fill');
+        fill.style.transition = 'none';
+        fill.style.width = '100%';
+      });
+    }
+
+    function startProgress(activeIndex, duration) {
+      segments.forEach((segment, segmentIndex) => {
+        const fill = segment.querySelector('.rw-fill');
+        segment.classList.toggle('on', segmentIndex === activeIndex);
+        fill.style.transition = 'none';
+        fill.style.width = segmentIndex < activeIndex ? '100%' : '0%';
+      });
+      void segments[activeIndex].offsetWidth;
+      const activeFill = segments[activeIndex].querySelector('.rw-fill');
+      activeFill.style.transition = `width ${duration}ms linear`;
+      activeFill.style.width = '100%';
+    }
+
+    function showMessage(nextIndex) {
+      clearTimeout(timer);
+      index = nextIndex;
+      const item = messages[index];
+      root.dataset.kind = item.copy ? 'copy' : 'tip';
+      iconNodes.forEach((node, iconIndex) => node.classList.toggle('on', iconIndex === item.icon));
+      root.classList.toggle('rw-static', reducedMotion.matches);
+      msg.replaceChildren();
+      parts = [];
+      total = 0;
+      const spans = [{className:'rw-b',text:item.h}];
+      if (item.t) {
+        if (item.s) spans.push({className:'rw-sep',text:item.s});
+        spans.push({className:'rw-r',text:item.t});
+      }
+      const ghost = document.createElement('span');
+      ghost.className = 'rw-ghost';
+      ghost.setAttribute('aria-hidden','true');
+      const live = document.createElement('span');
+      live.className = 'rw-live';
+      live.setAttribute('aria-hidden','true');
+      spans.forEach(span => {
+        const ghostPart = document.createElement('span');
+        ghostPart.className = span.className;
+        ghostPart.textContent = span.text;
+        ghost.appendChild(ghostPart);
+        const livePart = document.createElement('span');
+        livePart.className = span.className;
+        live.appendChild(livePart);
+        parts.push({node:livePart,text:span.text});
+        total += span.text.length;
+      });
+      msg.append(ghost,live);
+      position = 0;
+      direction = 1;
+
+      if (reducedMotion.matches) {
+        position = total;
+        draw();
+        fillAll();
+        return;
+      }
+
+      const cursor = document.createElement('span');
+      cursor.className = 'rw-cur';
+      cursor.setAttribute('aria-hidden','true');
+      live.appendChild(cursor);
+      draw();
+      delays = [];
+      let duration = 380;
+      for (let charIndex = 0; charIndex < total; charIndex++) {
+        const delay = 50 + Math.random() * 70;
+        delays.push(delay);
+        duration += delay;
+      }
+      duration += item.hold + total * 18;
+      startProgress(index,duration);
+      timer = window.setTimeout(tick,380);
+    }
+
+    function tick() {
+      draw();
+      let delay;
+      if (direction > 0) {
+        if (position < total) {
+          delay = delays[position];
+          position++;
+        } else {
+          direction = -1;
+          delay = messages[index].hold;
+        }
+      } else if (position > 0) {
+        position--;
+        delay = 18;
+      } else {
+        showMessage((index + 1) % messages.length);
+        return;
+      }
+      timer = window.setTimeout(tick,delay);
+    }
+
+    function restartCurrent() {
+      showMessage(index);
+    }
+    if (mobile.addEventListener) mobile.addEventListener('change',restartCurrent);
+    else mobile.addListener(restartCurrent);
+    const motionChanged = () => restartCurrent();
+    if (reducedMotion.addEventListener) reducedMotion.addEventListener('change',motionChanged);
+    else reducedMotion.addListener(motionChanged);
+    showMessage(reducedMotion.matches ? messages.length - 1 : 0);
+  }
+  initCopyrightFooter();
   function branchBooks() {
     if (!state.branchId) return [];
     const branchId = Number(state.branchId);
@@ -211,7 +405,7 @@
       && (state.cls === ALL || book.class === ALL || book.class === state.cls));
   }
   function renderFilters() {
-    $('#pBranch').innerHTML=`<option value="">Dooro xarunta dugsiga</option>${(config.branches||[]).map(branch=>`<option value="${branch.id}">${esc(branch.name)}${branch.region?` · ${esc(branch.region)}`:''}</option>`).join('')}`;
+    $('#pBranch').innerHTML=`<option value="" disabled hidden ${state.branchId?'':'selected'}>Dooro Xarunta Dugsiga</option>${(config.branches||[]).map(branch=>`<option value="${branch.id}">${esc(branch.name)}${branch.region?` · ${esc(branch.region)}`:''}</option>`).join('')}`;
     $('#pBranch').value=state.branchId;
     const branchItems = branchBooks();
     const availableTypes = new Set(branchItems.map(book => book.catalogType));
