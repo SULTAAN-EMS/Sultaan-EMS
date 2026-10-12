@@ -220,11 +220,9 @@
       const available = availableTypes.has(button.dataset.catalog);
       button.disabled = !state.branchId || !available;
       button.setAttribute('aria-pressed',String(button.dataset.catalog===state.catalogType));
-      button.querySelector('[data-catalog-hint]').textContent = !state.branchId
-        ? 'Dooro xarun marka hore'
-        : available
-          ? button.dataset.catalog==='national'?'Manhaj guud ama xaruntan loo xulay':'Buugaagta xaruntan'
-          : 'Buug kuma jiro xaruntan';
+      const hint = button.querySelector('[data-catalog-hint]');
+      hint.textContent = 'Halakan Buugaag kuma Jiraan';
+      hint.hidden = !state.branchId || available;
     });
     $('#pCatalogHint').textContent = !state.branchId
       ? 'Dooro xarunta dugsiga marka hore.'

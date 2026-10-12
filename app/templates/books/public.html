@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>#booksPublicMount:not([data-books-ready="true"]){visibility:hidden}</style>
   <script src="{{ url_for('static', filename='js/books_cover_library.js', v='book-subject-catalog-20261011') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/books_public.js', v='books-dialog-fit-20261012-18') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/books_public.js', v='books-dialog-fit-20261012-20') }}" defer></script>
 </head>
 <body>
   <div id="booksPublicMount" aria-busy="true"></div>
@@ -34,8 +34,8 @@
               <span class="filter-label">Nooca buugga</span>
               <small class="filter-hint" id="pCatalogHint">Dooro xarunta dugsiga marka hore.</small>
               <div class="catalog-switch" id="pCatalog" role="group" aria-label="Qaybta buugaagta">
-                <button type="button" data-catalog="national" aria-pressed="false" disabled><svg class="ic"><use href="#i-layers"/></svg><span><b>Buugaagta Manhajka Dalka</b><small data-catalog-hint="national">Buugaagta manhajka guud</small></span></button>
-                <button type="button" data-catalog="local" aria-pressed="false" disabled><svg class="ic"><use href="#i-class"/></svg><span><b>Buugaagta Maxalliga ah</b><small data-catalog-hint="local">Buugaagta xarumaha dugsiga</small></span></button>
+                <button type="button" data-catalog="national" aria-pressed="false" disabled><svg class="ic"><use href="#i-layers"/></svg><span><b>Buugaagta Manhajka</b><small data-catalog-hint="national" hidden></small></span></button>
+                <button type="button" data-catalog="local" aria-pressed="false" disabled><svg class="ic"><use href="#i-class"/></svg><span><b>Buugaagta Dugsiga</b><small data-catalog-hint="local" hidden></small></span></button>
               </div>
             </section>
             <section class="filter-block" id="pAcademicFilters" hidden>
