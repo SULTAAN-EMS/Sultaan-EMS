@@ -22,6 +22,42 @@
       print-color-adjust: exact;
       -webkit-print-color-adjust: exact;
     }
+    .print-screen-actions {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      justify-content: center;
+      padding: 12px 16px;
+      background: rgba(248, 250, 252, .94);
+      border-bottom: 1px solid #dbe4ee;
+      box-shadow: 0 6px 20px rgba(15, 23, 42, .08);
+      backdrop-filter: blur(12px);
+    }
+    .print-screen-actions a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 44px;
+      padding: 0 20px;
+      border: 1px solid #0f766e;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #0f766e, #0b5d58);
+      color: #fff;
+      font: 750 15px/1 "Segoe UI", Arial, sans-serif;
+      text-decoration: none;
+      box-shadow: 0 8px 18px rgba(15, 118, 110, .2);
+      transition: transform .18s ease, box-shadow .18s ease;
+    }
+    .print-screen-actions a:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 11px 22px rgba(15, 118, 110, .27);
+    }
+    .print-screen-actions a:focus-visible {
+      outline: 3px solid #99f6e4;
+      outline-offset: 3px;
+    }
     .card-page {
       width: calc(297mm - ({{ settings.id_card_print_margin or 8 }}mm * 2));
       height: calc(210mm - ({{ settings.id_card_print_margin or 8 }}mm * 2));
@@ -400,11 +436,15 @@
     }
     @media print {
       body { margin: 0; }
+      .print-screen-actions { display: none !important; }
       .id-card { box-shadow: none; }
     }
   </style>
 </head>
 <body onload="window.print()">
+  <nav class="print-screen-actions" aria-label="Ku noqoshada bogga kaadhadhka">
+    <a href="{{ return_url }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>Dib-u-noqo</span></a>
+  </nav>
   {% for page in cards|batch(4, none) %}
     <main class="card-page">
       {% for item in page %}

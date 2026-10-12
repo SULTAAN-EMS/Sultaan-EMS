@@ -1,0 +1,371 @@
+import unittest
+from datetime import date, timedelta
+from html.parser import HTMLParser
+
+from app import create_app, db
+from app.models import (
+    AcademicClass,
+    AcademicLevel,
+    AcademicYear,
+    AcademicYearClass,
+    AcademicYearLevel,
+    Exam,
+    IdCardIssue,
+    Student,
+    StudentEnrollment,
+    User,
+)
+
+
+class FormNestingParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.form_depth = 0
+        self.has_nested_form = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "form":
+            self.has_nested_form = self.has_nested_form or self.form_depth > 0
+            self.form_depth += 1
+
+    def handle_endtag(self, tag):
+        if tag == "form":
+            self.form_depth = max(0, self.form_depth - 1)
+
+
+class OptionParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.current = None
+        self.options = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "option":
+            self.current = {"attrs": dict(attrs), "text": ""}
+
+    def handle_data(self, data):
+        if self.current is not None:
+            self.current["text"] += data
+
+    def handle_endtag(self, tag):
+        if tag == "option" and self.current is not None:
+            self.options.append(self.current)
+            self.current = None
+
+
+class TestIdCards(unittest.TestCase):
+    class TestConfig:
+        TESTING = True
+        SECRET_KEY = "id-cards-test"
+        WTF_CSRF_ENABLED = False
+        SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        AUTO_INIT_DB = False
+
+    def setUp(self):
+        self.app = create_app(self.TestConfig)
+        self.ctx = self.app.app_context()
+        self.ctx.push()
+        db.session.remove()
+        db.drop_all()
+        db.create_all()
+
+        self.year = AcademicYear(name="2026-2027", is_current=True)
+        self.other_year = AcademicYear(name="2027-2028", is_current=False)
+        self.level = AcademicLevel(name="Dugsi Sare", sort_order=1)
+        db.session.add_all([self.year, self.other_year, self.level])
+        db.session.flush()
+        self.year_level = AcademicYearLevel(
+            academic_year=self.year,
+            legacy_level=self.level,
+            name="Dugsi Sare",
+            sort_order=1,
+        )
+        self.other_year_level = AcademicYearLevel(
+            academic_year=self.other_year,
+            legacy_level=self.level,
+            name="Dugsi Sare",
+            sort_order=1,
+        )
+        self.legacy_class = AcademicClass(
+            academic_level=self.level,
+            name="Form 1",
+            sort_order=1,
+        )
+        db.session.add_all([self.year_level, self.other_year_level, self.legacy_class])
+        db.session.flush()
+        self.year_class = AcademicYearClass(
+            academic_year_level=self.year_level,
+            legacy_class=self.legacy_class,
+            name="Form 1",
+            sort_order=1,
+        )
+        self.other_year_class = AcademicYearClass(
+            academic_year_level=self.other_year_level,
+            legacy_class=self.legacy_class,
+            name="Form 1",
+            sort_order=1,
+        )
+        self.exam = Exam(name="Imtixaan Bileedka 1aad", academic_year=self.year, is_active=True)
+        self.other_exam = Exam(name="Imtixaan Bileedka 1aad", academic_year=self.other_year, is_active=True)
+        db.session.add_all([self.year_class, self.other_year_class, self.exam, self.other_exam])
+        db.session.flush()
+        self.first_student = self._student("ID-001", "Ardayga Koowaad", self.year, self.year_level, self.year_class)
+        self.second_student = self._student("ID-002", "Ardayga Labaad", self.year, self.year_level, self.year_class)
+        self.other_student = self._student("ID-003", "Arday Sannad Kale", self.other_year, self.other_year_level, self.other_year_class)
+
+        admin = User(username="id-cards-admin", full_name="ID Cards Admin", role="super_admin", is_active=True)
+        admin.set_password("CardAdmin123")
+        db.session.add(admin)
+        db.session.commit()
+
+        self.client = self.app.test_client()
+        response = self.client.post("/admin/login", data={
+            "username": "id-cards-admin",
+            "password": "CardAdmin123",
+        })
+        self.assertIn(response.status_code, (302, 303))
+
+    def tearDown(self):
+        db.session.remove()
+        self.ctx.pop()
+
+    @staticmethod
+    def _student(code, name, year, year_level, year_class):
+        student = Student(student_code=code, full_name=name, is_active=True)
+        db.session.add(student)
+        db.session.flush()
+        db.session.add(StudentEnrollment(
+            student=student,
+            academic_year=year,
+            academic_year_level=year_level,
+            academic_year_class=year_class,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source="manual",
+        ))
+        return student
+
+    def test_exam_filter_shows_correct_year_roster_without_duplicate_bulk_panel_or_nested_forms(self):
+        db.session.add(IdCardIssue(
+            token="history-photo-test-token",
+            student=self.first_student,
+            academic_year=self.year,
+            exam=self.exam,
+            issue_date=date.today(),
+            expiry_date=date.today() + timedelta(days=365),
+            status="Active",
+        ))
+        db.session.commit()
+
+        response = self.client.get(
+            f"/admin/id-cards/?year_id={self.year.id}&exam_id={self.exam.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Ardayga Koowaad", response.data)
+        self.assertIn(b"Ardayga Labaad", response.data)
+        self.assertNotIn(b"Arday Sannad Kale", response.data)
+        self.assertNotIn(b"Bulk Operations", response.data)
+        self.assertNotIn(b"Hal Exam Type dooro, ardayda ku habboon soo saar", response.data)
+        self.assertNotIn(b"Hal mar dooro Exam Type-ka", response.data)
+        self.assertNotIn(b"DIIWAANGELIN ARDAYDA", response.data)
+        self.assertNotIn(b"Daabac, soo dejiso PDF ama xaqiiji kaadhadhkii ugu dambeeyey", response.data)
+        self.assertEqual(response.data.count(b'<select name="exam_id"'), 1)
+        self.assertIn(b"<th>Ardeyga</th><th>Heerka</th><th>Fasalka</th><th>Qeybta</th>", response.data)
+        self.assertIn(b'class="idc-action-col">Kaadhka</th>', response.data)
+        self.assertIn(b'<th>Sawirka</th>', response.data)
+        self.assertIn(b'data-label="Sawirka"', response.data)
+        self.assertIn(
+            "<th>Sawirka</th><th>Ardeyga</th><th>Nuuca Imtixaanka</th><th>Heerka</th>"
+            "<th>Fasalka</th><th>Tr. Bixidda</th><th>Tr. Dhicidda</th><th>Xaalad</th><th>Ficillo</th>".encode(),
+            response.data,
+        )
+        self.assertIn("Hawl-geli kuwa la xushay".encode(), response.data)
+        self.assertIn("Hawl-geli Dhammaan".encode(), response.data)
+        self.assertIn(">Hawl-geli</span>".encode(), response.data)
+        self.assertNotIn(b"Generate Selected", response.data)
+        self.assertNotIn(b"Generate All Filtered", response.data)
+        self.assertIn("Xulo dhammaan inta muuqata".encode(), response.data)
+        self.assertIn("0 la xushay".encode(), response.data)
+        for label in (
+            "Raadi ardayda", "Sannad-dugsiyeedka", "Dhammaan sannadaha",
+            "Nuuca imtixaanka", "Dooro nuuca imtixaanka", "Heerka",
+            "Dhammaan heerarka", "Fasalka", "Dhammaan fasallada",
+            "Qeybta", "Dhammaan qaybaha", "Shaandhee", "Nadiifi",
+        ):
+            self.assertIn(label.encode(), response.data)
+
+        parser = FormNestingParser()
+        parser.feed(response.get_data(as_text=True))
+        self.assertFalse(parser.has_nested_form)
+
+    def test_scoped_exam_only_shows_and_generates_students_in_its_configured_class(self):
+        second_legacy_class = AcademicClass(
+            academic_level=self.level,
+            name="Form 2",
+            sort_order=2,
+        )
+        db.session.add(second_legacy_class)
+        db.session.flush()
+        second_year_class = AcademicYearClass(
+            academic_year_level=self.year_level,
+            legacy_class=second_legacy_class,
+            name="Form 2",
+            sort_order=2,
+        )
+        db.session.add(second_year_class)
+        db.session.flush()
+        other_class_student = self._student(
+            "ID-004", "Arday Fasalka Kale", self.year, self.year_level, second_year_class
+        )
+        self.exam.academic_level_id = self.level.id
+        self.exam.academic_class_id = self.legacy_class.id
+        db.session.commit()
+
+        response = self.client.get(
+            f"/admin/id-cards/?year_id={self.year.id}&exam_id={self.exam.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Ardayga Koowaad", response.data)
+        self.assertNotIn(b"Arday Fasalka Kale", response.data)
+
+        self.client.post("/admin/id-cards/bulk-generate", data={
+            "scope": "filtered",
+            "academic_year_id": str(self.year.id),
+            "exam_id": str(self.exam.id),
+            "q": "",
+            "level": "",
+            "academic_year_class_id": "",
+            "section": "",
+        })
+        self.assertEqual(
+            IdCardIssue.query.filter_by(academic_year_id=self.year.id, exam_id=self.exam.id).count(),
+            2,
+        )
+        self.assertEqual(
+            IdCardIssue.query.filter_by(student_id=other_class_student.id, exam_id=self.exam.id).count(),
+            0,
+        )
+
+    def test_year_enrollment_wins_over_stale_student_level_snapshot(self):
+        legacy_other_level = AcademicLevel(name="Dugsi Dhexe", sort_order=2)
+        db.session.add(legacy_other_level)
+        db.session.flush()
+        db.session.add(AcademicYearLevel(
+            academic_year=self.year,
+            legacy_level=legacy_other_level,
+            name="Dugsi Dhexe",
+            sort_order=2,
+        ))
+        self.first_student.academic_year_id = self.year.id
+        self.first_student.academic_level_id = legacy_other_level.id
+        self.first_student.level = legacy_other_level.name
+        db.session.commit()
+
+        response = self.client.get(
+            f"/admin/id-cards/?year_id={self.year.id}&exam_id={self.exam.id}&level=Dugsi+Dhexe"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"Ardayga Koowaad", response.data)
+
+    def test_level_selection_limits_class_options_and_rejects_mismatched_class(self):
+        other_level = AcademicLevel(name="Dugsi Dhexe", sort_order=2)
+        db.session.add(other_level)
+        db.session.flush()
+        other_year_level = AcademicYearLevel(
+            academic_year=self.year,
+            legacy_level=other_level,
+            name=other_level.name,
+            sort_order=2,
+        )
+        db.session.add(other_year_level)
+        other_legacy_class = AcademicClass(
+            academic_level=other_level,
+            name="7aad",
+            sort_order=1,
+        )
+        db.session.add(other_legacy_class)
+        db.session.flush()
+        other_year_class = AcademicYearClass(
+            academic_year_level=other_year_level,
+            legacy_class=other_legacy_class,
+            name="7aad",
+            sort_order=1,
+        )
+        db.session.add(other_year_class)
+        db.session.flush()
+        other_level_student = self._student(
+            "ID-005", "Arday Dugsi Dhexe", self.year, other_year_level, other_year_class
+        )
+        db.session.commit()
+
+        response = self.client.get(
+            f"/admin/id-cards/?year_id={self.year.id}&exam_id={self.exam.id}&level=Dugsi+Dhexe"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Arday Dugsi Dhexe", response.data)
+        self.assertNotIn(b"Ardayga Koowaad", response.data)
+        options = OptionParser()
+        options.feed(response.get_data(as_text=True))
+        form_one = next(option for option in options.options if option["text"].strip() == "Form 1")
+        class_seven = next(option for option in options.options if option["text"].strip() == "7aad")
+        self.assertEqual(form_one["attrs"].get("data-level"), "Dugsi Sare")
+        self.assertIn("hidden", form_one["attrs"])
+        self.assertIn("disabled", form_one["attrs"])
+        self.assertEqual(class_seven["attrs"].get("data-level"), "Dugsi Dhexe")
+        self.assertNotIn("hidden", class_seven["attrs"])
+
+        mismatched_response = self.client.get(
+            f"/admin/id-cards/?year_id={self.year.id}&exam_id={self.exam.id}"
+            f"&level=Dugsi+Dhexe&academic_year_class_id={self.year_class.id}"
+        )
+        self.assertEqual(mismatched_response.status_code, 200)
+        self.assertNotIn(b"Arday Dugsi Dhexe", mismatched_response.data)
+
+    def test_one_exam_type_generates_all_filtered_students_and_reuses_expired_first_card(self):
+        old_issue = IdCardIssue(
+            token="old-expired-first-card-token",
+            student=self.first_student,
+            academic_year=self.year,
+            exam=self.exam,
+            issue_date=date.today() - timedelta(days=400),
+            expiry_date=date.today() - timedelta(days=30),
+            status="Expired",
+        )
+        db.session.add(old_issue)
+        db.session.commit()
+        old_issue_id = old_issue.id
+
+        response = self.client.post("/admin/id-cards/bulk-generate", data={
+            "scope": "filtered",
+            "academic_year_id": str(self.year.id),
+            "exam_id": str(self.exam.id),
+            "return_year_id": str(self.year.id),
+            "return_exam_id": str(self.exam.id),
+            "q": "",
+            "level": "",
+            "academic_year_class_id": "",
+            "section": "",
+        })
+
+        self.assertIn(response.status_code, (302, 303))
+        self.assertIn("back_exam_id", response.location)
+        print_page = self.client.get(response.location)
+        self.assertEqual(print_page.status_code, 200)
+        self.assertIn(b"Dib-u-noqo", print_page.data)
+        self.assertIn(f"year_id={self.year.id}".encode(), print_page.data)
+        self.assertIn(f"exam_id={self.exam.id}".encode(), print_page.data)
+        issues = IdCardIssue.query.filter_by(academic_year_id=self.year.id, exam_id=self.exam.id).all()
+        self.assertEqual(len(issues), 2)
+        refreshed = db.session.get(IdCardIssue, old_issue_id)
+        self.assertEqual(refreshed.status, "Active")
+        self.assertGreaterEqual(refreshed.expiry_date, date.today())
+        self.assertNotEqual(refreshed.token, "old-expired-first-card-token")
+        self.assertEqual(
+            IdCardIssue.query.filter_by(student_id=self.other_student.id, exam_id=self.exam.id).count(),
+            0,
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -8,11 +8,11 @@ from urllib.request import Request, urlopen
 
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import login_required
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 
 from . import db
 from .audit import audit
-from .models import AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, Exam, IdCardIssue, SchoolClass, Setting, Student, StudentEnrollment
+from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, Exam, IdCardIssue, SchoolClass, Setting, Student, StudentEnrollment
 from .permissions import enforce_endpoint_permission
 from .enrollment_service import EnrollmentValidationError, student_enrollment_legacy_scope_query, student_enrollment_scope_query
 from .services import get_settings
@@ -74,19 +74,35 @@ def dashboard():
     filters = card_filters()
     exams = (
         Exam.query
-        .filter_by(academic_year_id=filters["year_id"], is_active=True)
-        .order_by(Exam.sort_order, Exam.name, Exam.id)
+        .join(AcademicYear, AcademicYear.id == Exam.academic_year_id)
+        .filter(Exam.is_active.is_(True))
+        .order_by(AcademicYear.name.desc(), Exam.sort_order, Exam.name, Exam.id)
         .all()
-        if filters["year_id"] else []
     )
-    students = filtered_students(filters).order_by(Student.full_name).limit(500).all()
+    selected_exam = db.session.get(Exam, filters["exam_id"]) if filters["exam_id"] else None
+    if selected_exam and (
+        not selected_exam.is_active
+        or (filters["year_id"] and selected_exam.academic_year_id != filters["year_id"])
+    ):
+        selected_exam = None
+
+    scope_filters = dict(filters)
+    option_filters = dict(filters)
+    if selected_exam:
+        scope_filters["year_id"] = selected_exam.academic_year_id
+        option_filters["year_id"] = selected_exam.academic_year_id
+        students = (
+            filter_students_for_exam(filtered_students(scope_filters), selected_exam)
+            .order_by(Student.full_name, Student.id)
+            .limit(500)
+            .all()
+        )
+    else:
+        students = []
     student_placements = {
-        student.id: resolve_student_placement(student, filters["year_id"])
+        student.id: resolve_student_placement(student, selected_exam.academic_year_id)
         for student in students
     }
-    # ID-card generation must only show students with a valid placement in the
-    # selected academic year. Unlinked legacy rows stay in the database for
-    # other modules, but cannot leak into this year-scoped workflow.
     students = [student for student in students if student_placements.get(student.id)]
     issues = IdCardIssue.query.order_by(IdCardIssue.updated_at.desc()).limit(200).all()
     issue_dates_changed = sync_issue_dates(issues, settings=get_settings())
@@ -103,10 +119,11 @@ def dashboard():
         issue_placements=issue_placements,
         issue_statuses=issue_statuses,
         filters=filters,
-        classes=filter_class_options(filters),
+        selected_exam=selected_exam,
+        classes=filter_class_options(option_filters),
         years=AcademicYear.query.order_by(AcademicYear.name.desc()).all(),
-        levels=filter_level_options(filters),
-        sections=filter_section_options(filters),
+        levels=filter_level_options(option_filters),
+        sections=filter_section_options(option_filters),
         exams=exams,
         templates=ID_CARD_TEMPLATES,
     )
@@ -149,51 +166,75 @@ def generate(student_id):
 @id_cards_bp.route("/bulk-generate", methods=["POST"])
 def bulk_generate():
     scope = request.form.get("scope", "selected")
-    ids = [int(value) for value in request.form.getlist("student_ids") if value.isdigit()]
+    single_student_id = int_or_none(request.form.get("single_student_id"))
+    requested_ids = list(dict.fromkeys(
+        int(value) for value in request.form.getlist("student_ids") if value.isdigit()
+    ))
     academic_year_id = int_or_none(request.form.get("academic_year_id"))
     exam_id = int_or_none(request.form.get("exam_id"))
-    academic_year_class_id = int_or_none(request.form.get("academic_year_class_id"))
-    query = Student.query
-    has_scope_value = bool(
-        (scope == "class" and request.form.get("academic_year_class_id"))
-        or (scope == "level" and request.form.get("level", "").strip())
-        or (scope == "section" and request.form.get("section", "").strip())
-    )
-    if scope in {"class", "level", "section"} and academic_year_id and has_scope_value:
-        scope_filters = {
-            "q": "",
-            "year_id": academic_year_id,
-            "academic_year_class_id": academic_year_class_id if scope == "class" else None,
-            "level": request.form.get("level", "").strip() if scope == "level" else "",
-            "section": request.form.get("section", "").strip() if scope == "section" else "",
-        }
-        ids = [s.id for s in filtered_students(scope_filters).all()]
-    elif scope == "class" and request.form.get("class_id"):
-        query = query.filter_by(class_id=int(request.form["class_id"]))
-        ids = [s.id for s in query.all()]
-    elif scope == "level" and request.form.get("level"):
-        ids = [s.id for s in query.filter_by(level=request.form["level"].strip()).all()]
-    elif scope == "section" and request.form.get("section"):
-        ids = [s.id for s in query.filter_by(section=request.form["section"].strip()).all()]
-    elif scope == "all" and academic_year_id:
-        ids = [s.id for s in student_enrollment_scope_query(academic_year_id).all()]
-    elif scope == "all":
-        ids = [s.id for s in query.all()]
-    if not ids:
-        flash("Select students or choose a valid bulk scope.", "warning")
+    exam = db.session.get(Exam, exam_id) if exam_id else None
+    if not exam or not exam.is_active or exam.academic_year_id != academic_year_id:
+        flash("Dooro Exam Type firfircoon oo sannadkiisa la jaanqaadaya.", "warning")
         return redirect(url_for("admin_id_cards.dashboard"))
+
+    scope_filters = {
+        "q": request.form.get("q", "").strip(),
+        "class_id": None,
+        "academic_year_class_id": int_or_none(request.form.get("academic_year_class_id")),
+        "year_id": academic_year_id,
+        "level": request.form.get("level", "").strip(),
+        "section": request.form.get("section", "").strip(),
+    }
+    eligible_query = filter_students_for_exam(filtered_students(scope_filters), exam)
+
+    if single_student_id:
+        ids = [single_student_id] if eligible_query.filter(Student.id == single_student_id).first() else []
+    elif scope == "filtered":
+        ids = [student_id for student_id, in eligible_query.with_entities(Student.id).order_by(Student.full_name, Student.id).all()]
+    else:
+        eligible_ids = {
+            student_id
+            for student_id, in eligible_query
+            .filter(Student.id.in_(requested_ids))
+            .with_entities(Student.id)
+            .all()
+        } if requested_ids else set()
+        ids = [student_id for student_id in requested_ids if student_id in eligible_ids]
+
+    if not ids:
+        flash("Arday ku habboon ma helin. Hubi filters-ka ama dooro ardayda.", "warning")
+        return redirect(url_for("admin_id_cards.dashboard"))
+
+    students_by_id = {
+        student.id: student
+        for student in Student.query.filter(Student.id.in_(ids)).all()
+    }
     issue_ids = []
     try:
-        for student in Student.query.filter(Student.id.in_(ids)).all():
+        for student_id in ids:
+            student = students_by_id[student_id]
             issue_ids.append(get_or_create_issue(student, academic_year_id=academic_year_id, exam_id=exam_id).id)
     except EnrollmentValidationError as exc:
         db.session.rollback()
         flash(str(exc), "warning")
         return redirect(url_for("admin_id_cards.dashboard"))
-    audit("ID Card Operations", f"Bulk generated {len(issue_ids)} ID cards")
+    operation = "Generated ID card" if single_student_id else f"Bulk generated {len(issue_ids)} ID cards"
+    audit("ID Card Operations", f"{operation} for {len(issue_ids)} student(s) using exam {exam.id}")
     db.session.commit()
-    flash(f"Generated {len(issue_ids)} ID cards.", "success")
-    return redirect(url_for("admin_id_cards.print_cards", issue_ids=",".join(str(i) for i in issue_ids)))
+    flash(f"Waxaa la diyaariyey {len(issue_ids)} kaadh.", "success")
+    return_filters = {
+        "back_q": request.form.get("q", "").strip(),
+        "back_year_id": request.form.get("return_year_id", ""),
+        "back_exam_id": request.form.get("return_exam_id", ""),
+        "back_level": request.form.get("level", "").strip(),
+        "back_class_id": request.form.get("academic_year_class_id", ""),
+        "back_section": request.form.get("section", "").strip(),
+    }
+    return redirect(url_for(
+        "admin_id_cards.print_cards",
+        issue_ids=",".join(str(i) for i in issue_ids),
+        **return_filters,
+    ))
 
 
 @id_cards_bp.route("/print")
@@ -210,7 +251,26 @@ def print_cards():
         }
         for issue in issues
     ]
-    return render_template("admin/id_card_print.html", cards=cards, settings=settings)
+    return_filter_args = {
+        "q": "back_q",
+        "year_id": "back_year_id",
+        "exam_id": "back_exam_id",
+        "level": "back_level",
+        "academic_year_class_id": "back_class_id",
+        "section": "back_section",
+    }
+    return_url_args = {
+        target: request.args[source]
+        for target, source in return_filter_args.items()
+        if source in request.args
+    }
+    return_url = url_for("admin_id_cards.dashboard", **return_url_args)
+    return render_template(
+        "admin/id_card_print.html",
+        cards=cards,
+        settings=settings,
+        return_url=return_url,
+    )
 
 
 @id_cards_bp.route("/export.pdf")
@@ -368,30 +428,39 @@ def get_or_create_issue(student, academic_year_id=None, exam_id=None):
         raise EnrollmentValidationError("Dooro Exam Type ka hor intaadan sameyn ID Card.")
     if exam.academic_year_id != year_id or not exam.is_active:
         raise EnrollmentValidationError("Exam Type-ka la doortay kuma xirna sannadka ardayga.")
+    if not student.is_active or not filter_students_for_exam(
+        student_enrollment_scope_query(year_id), exam
+    ).filter(Student.id == student.id).first():
+        raise EnrollmentValidationError("Ardaygani kuma jiro baaxadda Exam Type-ka la doortay.")
     issue = IdCardIssue.query.filter_by(
         student_id=student.id,
         academic_year_id=year_id,
         exam_id=exam.id,
-        status="Active",
     ).first()
     settings = get_settings()
     months = configured_issue_months(settings)
     if issue:
         ensure_issue_dates(issue, months=months)
+        if issue.status == "Blocked":
+            raise EnrollmentValidationError("Kaadhkan waa la xannibay; maamulka ha dib u eego ka hor dib-u-soo-saar.")
         if effective_issue_status(issue) != "Active":
-            issue = None
-    if not issue:
-        issue = IdCardIssue(
-            token=secrets.token_urlsafe(32),
-            student=student,
-            academic_year_id=year_id,
-            exam_id=exam.id,
-            issue_date=date.today(),
-            expiry_date=add_months(date.today(), months),
-            status="Active",
-        )
-        db.session.add(issue)
-        db.session.flush()
+            issue.token = secrets.token_urlsafe(32)
+            issue.issue_date = date.today()
+            issue.expiry_date = add_months(date.today(), months)
+            issue.status = "Active"
+        return issue
+
+    issue = IdCardIssue(
+        token=secrets.token_urlsafe(32),
+        student=student,
+        academic_year_id=year_id,
+        exam_id=exam.id,
+        issue_date=date.today(),
+        expiry_date=add_months(date.today(), months),
+        status="Active",
+    )
+    db.session.add(issue)
+    db.session.flush()
     return issue
 
 
@@ -588,16 +657,24 @@ def card_filters():
         "class_id": int_or_none(request.args.get("class_id")),
         "academic_year_class_id": int_or_none(request.args.get("academic_year_class_id")),
         "year_id": year_id,
+        "exam_id": int_or_none(request.args.get("exam_id")),
         "level": request.args.get("level", "").strip(),
         "section": request.args.get("section", "").strip(),
     }
 
 
 def filtered_students(filters):
-    query = Student.query
+    query = Student.query.filter(Student.is_active.is_(True))
     if filters["year_id"]:
         if filters["academic_year_class_id"]:
             try:
+                year_class = db.session.get(AcademicYearClass, filters["academic_year_class_id"])
+                if (
+                    not year_class
+                    or year_class.academic_year_level.academic_year_id != filters["year_id"]
+                    or (filters["level"] and year_class.academic_year_level.name != filters["level"])
+                ):
+                    raise EnrollmentValidationError("Fasalku kuma jiro level-ka ama sannadka la doortay.")
                 query = student_enrollment_scope_query(
                     filters["year_id"],
                     academic_year_class_id=filters["academic_year_class_id"],
@@ -615,32 +692,150 @@ def filtered_students(filters):
         if not filters["year_id"]:
             query = query.filter(Student.level == filters["level"])
         else:
-            level_ids = [
-                row.id
-                for row in AcademicYearLevel.query.filter_by(
-                    academic_year_id=filters["year_id"],
-                    name=filters["level"],
-                ).all()
-            ]
-            query = query.filter(
-                or_(
-                    StudentEnrollment.academic_year_level_id.in_(level_ids),
-                    Student.level == filters["level"],
-                )
-            )
+            year_levels = AcademicYearLevel.query.filter_by(
+                academic_year_id=filters["year_id"],
+                name=filters["level"],
+            ).all()
+            if not year_levels:
+                return query.filter(Student.id == -1)
+            level_ids = [row.id for row in year_levels]
+            legacy_level_ids = [row.legacy_level_id for row in year_levels if row.legacy_level_id]
+            level_filters = []
+            if level_ids:
+                level_filters.append(StudentEnrollment.academic_year_level_id.in_(level_ids))
+            legacy_level_filters = [Student.level == filters["level"]]
+            if legacy_level_ids:
+                legacy_level_filters.append(Student.academic_level_id.in_(legacy_level_ids))
+            query = query.filter(or_(
+                *level_filters,
+                and_(
+                    StudentEnrollment.id.is_(None),
+                    Student.academic_year_id == filters["year_id"],
+                    or_(*legacy_level_filters),
+                ),
+            ))
     if filters["section"]:
-        section_ids = [
-            row.id for row in AcademicSection.query.filter_by(name=filters["section"]).all()
-        ]
         if filters["year_id"]:
-            query = query.filter(
-                or_(
-                    StudentEnrollment.academic_section_id.in_(section_ids),
-                    Student.section == filters["section"],
+            section_ids = [
+                section_id
+                for section_id, in db.session.query(AcademicSection.id)
+                .join(AcademicYearClass, AcademicYearClass.legacy_class_id == AcademicSection.academic_class_id)
+                .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+                .filter(
+                    AcademicSection.name == filters["section"],
+                    AcademicYearLevel.academic_year_id == filters["year_id"],
                 )
-            )
+                .distinct()
+                .all()
+            ]
+            legacy_section_filters = [Student.section == filters["section"]]
+            if section_ids:
+                legacy_section_filters.append(Student.academic_section_id.in_(section_ids))
+            query = query.filter(or_(
+                StudentEnrollment.academic_section_id.in_(section_ids) if section_ids else Student.id == -1,
+                and_(
+                    StudentEnrollment.id.is_(None),
+                    Student.academic_year_id == filters["year_id"],
+                    or_(*legacy_section_filters),
+                ),
+            ))
         else:
             query = query.filter(Student.section == filters["section"])
+    return query
+
+
+def filter_students_for_exam(query, exam):
+    """Restrict an ID-card roster to the selected exam's configured scope."""
+    year_id = exam.academic_year_id
+    if exam.academic_level_id:
+        year_levels = AcademicYearLevel.query.filter_by(
+            academic_year_id=year_id,
+            legacy_level_id=exam.academic_level_id,
+        ).all()
+        if not year_levels:
+            legacy_level = db.session.get(AcademicLevel, exam.academic_level_id)
+            if legacy_level:
+                year_levels = AcademicYearLevel.query.filter_by(
+                    academic_year_id=year_id,
+                    name=legacy_level.name,
+                ).all()
+        level_ids = [item.id for item in year_levels]
+        level_names = list(dict.fromkeys(item.name for item in year_levels))
+        legacy_level = db.session.get(AcademicLevel, exam.academic_level_id)
+        if legacy_level and legacy_level.name not in level_names:
+            level_names.append(legacy_level.name)
+        level_filters = []
+        if level_ids:
+            level_filters.append(StudentEnrollment.academic_year_level_id.in_(level_ids))
+        level_filters.append(and_(
+            StudentEnrollment.id.is_(None),
+            Student.academic_year_id == year_id,
+            Student.academic_level_id == exam.academic_level_id,
+        ))
+        if level_names:
+            level_filters.append(and_(
+                StudentEnrollment.id.is_(None),
+                Student.academic_year_id == year_id,
+                Student.level.in_(level_names),
+            ))
+        query = query.filter(or_(*level_filters))
+
+    if exam.academic_class_id:
+        year_classes = (
+            AcademicYearClass.query
+            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+            .filter(
+                AcademicYearLevel.academic_year_id == year_id,
+                AcademicYearClass.legacy_class_id == exam.academic_class_id,
+            )
+            .all()
+        )
+        legacy_class = db.session.get(AcademicClass, exam.academic_class_id)
+        if not year_classes and legacy_class:
+            year_classes = (
+                AcademicYearClass.query
+                .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+                .filter(
+                    AcademicYearLevel.academic_year_id == year_id,
+                    AcademicYearClass.name == legacy_class.name,
+                )
+                .all()
+            )
+        class_ids = [item.id for item in year_classes]
+        class_names = list(dict.fromkeys(item.name for item in year_classes))
+        if legacy_class and legacy_class.name not in class_names:
+            class_names.append(legacy_class.name)
+        school_class_ids = [
+            item.id for item in SchoolClass.query.filter(SchoolClass.name.in_(class_names)).all()
+        ] if class_names else []
+        class_filters = []
+        if class_ids:
+            class_filters.append(StudentEnrollment.academic_year_class_id.in_(class_ids))
+        class_filters.append(and_(
+            StudentEnrollment.id.is_(None),
+            Student.academic_year_id == year_id,
+            Student.academic_class_id == exam.academic_class_id,
+        ))
+        if school_class_ids:
+            class_filters.append(and_(
+                StudentEnrollment.id.is_(None),
+                Student.academic_year_id == year_id,
+                Student.class_id.in_(school_class_ids),
+            ))
+        query = query.filter(or_(*class_filters))
+
+    if exam.academic_section_id:
+        section = db.session.get(AcademicSection, exam.academic_section_id)
+        if not section:
+            return query.filter(Student.id == -1)
+        query = query.filter(or_(
+            StudentEnrollment.academic_section_id == section.id,
+            and_(
+                StudentEnrollment.id.is_(None),
+                Student.academic_year_id == year_id,
+                or_(Student.academic_section_id == section.id, Student.section == section.name),
+            ),
+        ))
     return query
 
 

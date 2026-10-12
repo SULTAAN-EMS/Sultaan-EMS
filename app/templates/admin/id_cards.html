@@ -4,116 +4,231 @@
 {% block extra_head %}
 {{ super() }}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-page-heroes.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/id_cards.css', v='id-cards-redesign-20261012-1') }}">
+<script src="{{ url_for('static', filename='js/id_cards.js', v='id-cards-redesign-20261012-1') }}" defer></script>
 {% endblock %}
 {% block admin_content %}
 {% from 'partials/admin_page_hero.html' import admin_page_hero %}
-{{ admin_page_hero('id') }}
-<section class="panel">
-  <div class="section-heading"><span><i class="fa-solid fa-layer-group"></i></span><div><h2>ID Card Template Manager</h2><p>Switch the active ID card design instantly. The selected template is saved in system settings.</p></div></div>
-  <div class="template-grid">
-    {% for key, preset in templates.items() %}
-      <form method="post" class="template-card template-card-{{ key }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="action" value="apply_template">
-        <input type="hidden" name="template_name" value="{{ key }}">
-        <span class="template-swatch" style="--tpl-primary: {{ preset.primary }}; --tpl-accent: {{ preset.accent }}"></span>
-        <h3>{{ key|title }}</h3>
-        <p>{{ preset.font }} | {{ preset.border|title }} | {{ preset.rounded|upper }}</p>
-        <button class="{{ 'premium' if settings.id_card_template == key else 'ghost' }}"><i class="fa-solid fa-wand-magic-sparkles"></i> {{ 'Active' if settings.id_card_template == key else 'Use Template' }}</button>
-      </form>
-    {% endfor %}
-  </div>
-</section>
+<div class="idc-page">
+  {{ admin_page_hero('id') }}
 
-<section class="panel">
-  <div class="section-heading"><span><i class="fa-solid fa-pen-ruler"></i></span><div><h2>ID Card Designer</h2><p>Customize card size, orientation, colors, logo placement, QR, footer, watermark, stamp, and signature text.</p></div></div>
-  <form method="post" class="form-grid premium-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label><i class="fa-solid fa-layer-group"></i> Active Template<select name="id_card_template">{% for key in templates %}<option value="{{ key }}" {% if settings.id_card_template==key %}selected{% endif %}>{{ key|title }}</option>{% endfor %}</select></label>
-    <label><i class="fa-solid fa-ruler-combined"></i> Card Size<select name="id_card_size"><option value="large-a4-quarter" {% if settings.id_card_size=='large-a4-quarter' %}selected{% endif %}>Large A4 Quarter</option><option value="cr80" {% if settings.id_card_size=='cr80' %}selected{% endif %}>CR80 Standard</option><option value="custom" {% if settings.id_card_size=='custom' %}selected{% endif %}>Custom</option></select></label>
-    <label><i class="fa-solid fa-mobile-screen"></i> Orientation<select name="id_card_orientation"><option value="landscape" {% if settings.id_card_orientation=='landscape' %}selected{% endif %}>Landscape</option><option value="portrait" {% if settings.id_card_orientation=='portrait' %}selected{% endif %}>Portrait</option></select></label>
-    <label><i class="fa-solid fa-fill-drip"></i> Background<input type="color" name="id_card_background" value="{{ settings.id_card_background }}"></label>
-    <label><i class="fa-solid fa-palette"></i> Primary<input type="color" name="id_card_primary_color" value="{{ settings.id_card_primary_color }}"></label>
-    <label><i class="fa-solid fa-droplet"></i> Accent<input type="color" name="id_card_accent_color" value="{{ settings.id_card_accent_color }}"></label>
-    <label><i class="fa-solid fa-font"></i> Font<select name="id_card_font_family"><option {% if settings.id_card_font_family=='Segoe UI' %}selected{% endif %}>Segoe UI</option><option {% if settings.id_card_font_family=='Arial' %}selected{% endif %}>Arial</option><option {% if settings.id_card_font_family=='Tahoma' %}selected{% endif %}>Tahoma</option><option {% if settings.id_card_font_family=='Times New Roman' %}selected{% endif %}>Times New Roman</option></select></label>
-    <label><i class="fa-solid fa-border-top-left"></i> Border<select name="id_card_border_style"><option value="solid" {% if settings.id_card_border_style=='solid' %}selected{% endif %}>Solid</option><option value="minimal" {% if settings.id_card_border_style=='minimal' %}selected{% endif %}>Minimal</option><option value="double" {% if settings.id_card_border_style=='double' %}selected{% endif %}>Double</option></select></label>
-    <label><i class="fa-solid fa-crop-simple"></i> Rounded Corners<select name="id_card_rounded_corners"><option value="on" {% if settings.id_card_rounded_corners=='on' %}selected{% endif %}>ON</option><option value="off" {% if settings.id_card_rounded_corners!='on' %}selected{% endif %}>OFF</option></select></label>
-    <label><i class="fa-solid fa-image"></i> Logo Position<select name="id_card_logo_position"><option value="left" {% if settings.id_card_logo_position=='left' %}selected{% endif %}>Left</option><option value="center" {% if settings.id_card_logo_position=='center' %}selected{% endif %}>Center</option><option value="right" {% if settings.id_card_logo_position=='right' %}selected{% endif %}>Right</option></select></label>
-    <label><i class="fa-solid fa-user"></i> Photo Position<select name="id_card_photo_position"><option value="left" {% if settings.id_card_photo_position=='left' %}selected{% endif %}>Left</option><option value="right" {% if settings.id_card_photo_position=='right' %}selected{% endif %}>Right</option></select></label>
-    <label><i class="fa-solid fa-qrcode"></i> QR Position<select name="id_card_qr_position"><option value="right" {% if settings.id_card_qr_position=='right' %}selected{% endif %}>Right</option><option value="left" {% if settings.id_card_qr_position=='left' %}selected{% endif %}>Left</option></select></label>
-    <label><i class="fa-solid fa-icons"></i> Icons<select name="id_card_icon_style"><option value="solid" {% if settings.id_card_icon_style=='solid' %}selected{% endif %}>Solid</option><option value="minimal" {% if settings.id_card_icon_style=='minimal' %}selected{% endif %}>Minimal</option></select></label>
-    <label><i class="fa-solid fa-tags"></i> Labels<select name="id_card_label_style"><option value="uppercase" {% if settings.id_card_label_style=='uppercase' %}selected{% endif %}>Uppercase</option><option value="title" {% if settings.id_card_label_style=='title' %}selected{% endif %}>Title Case</option></select></label>
-    <label><i class="fa-solid fa-up-right-and-down-left-from-center"></i> Spacing<select name="id_card_spacing"><option value="comfortable" {% if settings.id_card_spacing=='comfortable' %}selected{% endif %}>Comfortable</option><option value="compact" {% if settings.id_card_spacing=='compact' %}selected{% endif %}>Compact</option><option value="wide" {% if settings.id_card_spacing=='wide' %}selected{% endif %}>Wide</option></select></label>
-    <label><i class="fa-solid fa-border-all"></i> Print Margins (mm)<input type="number" min="5" max="15" name="id_card_print_margin" value="{{ settings.id_card_print_margin }}"></label>
-    <label><i class="fa-solid fa-barcode"></i> Barcode<select name="id_card_show_barcode"><option value="off" {% if settings.id_card_show_barcode!='on' %}selected{% endif %}>OFF</option><option value="on" {% if settings.id_card_show_barcode=='on' %}selected{% endif %}>ON</option></select></label>
-    <label><i class="fa-solid fa-calendar-plus"></i> Valid Months<input type="number" min="1" max="120" step="1" name="id_card_issue_months" value="{{ settings.id_card_issue_months }}"></label>
-    <label class="span-2"><i class="fa-solid fa-file-circle-check"></i> Card label<input name="id_card_exam_type" value="{{ settings.id_card_exam_type }}"><small>Qoraalka naqshadda oo keliya; exam-ka QR-ga generation-ka ayaa lagu doortaa hoos.</small></label>
-    <label class="span-2"><i class="fa-solid fa-heading"></i> Header Title<input name="id_card_header_text" value="{{ settings.id_card_header_text }}"></label>
-    <label><i class="fa-solid fa-signature"></i> Signature<input name="id_card_signature_text" value="{{ settings.id_card_signature_text }}"></label>
-    <label><i class="fa-solid fa-stamp"></i> School Stamp<input name="id_card_stamp_text" value="{{ settings.id_card_stamp_text }}"></label>
-    <label><i class="fa-solid fa-water"></i> Watermark<input name="id_card_watermark" value="{{ settings.id_card_watermark }}"></label>
-    <label class="wide"><i class="fa-solid fa-phone-volume"></i> Footer Contact Text<input name="id_card_footer" value="{{ settings.id_card_footer }}"></label>
-    <input type="hidden" name="id_card_found_contact_text" value="{{ settings.id_card_footer }}">
-    <button class="premium"><i class="fa-solid fa-floppy-disk"></i> Save Designer</button>
-  </form>
-</section>
+  <section class="idc-panel idc-students" aria-labelledby="idc-students-title">
+    <header class="idc-section-head">
+      <span class="idc-head-icon"><i class="fa-solid fa-users-viewfinder"></i></span>
+      <div class="idc-head-copy">
+        <h2 id="idc-students-title">Raadi ardayda</h2>
+      </div>
+      <div class="idc-exam-badge {% if selected_exam %}is-ready{% endif %}">
+        <i class="fa-solid {{ 'fa-circle-check' if selected_exam else 'fa-file-circle-question' }}"></i>
+        <span>{{ selected_exam.name if selected_exam else 'Nuuca imtixaanka lama dooran' }}</span>
+      </div>
+    </header>
 
-<section class="panel">
-  <div class="section-heading"><span><i class="fa-solid fa-filter"></i></span><div><h2>Find Students</h2><p>Generate one ID card or bulk generate by class, level, section, or all students.</p></div></div>
-  <form method="get" class="form-grid premium-form">
-    <label><i class="fa-solid fa-search"></i> Search<input name="q" value="{{ filters.q }}" placeholder="ID, name, mother name"></label>
-    <label><i class="fa-solid fa-calendar-days"></i> Academic Year<select name="year_id"><option value="">All Years</option>{% for y in years %}<option value="{{ y.id }}" {% if filters.year_id==y.id %}selected{% endif %}>{{ y.name }}</option>{% endfor %}</select></label>
-    <label><i class="fa-solid fa-layer-group"></i> Level<select name="level"><option value="">All Levels</option>{% for level in levels %}<option value="{{ level }}" {% if filters.level==level %}selected{% endif %}>{{ level }}</option>{% endfor %}</select></label>
-    <label><i class="fa-solid fa-people-roof"></i> Class<select name="academic_year_class_id"><option value="">All Classes</option>{% for c in classes %}<option value="{{ c.id }}" {% if filters.academic_year_class_id==c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></label>
-    <label><i class="fa-solid fa-table-cells"></i> Section<select name="section"><option value="">All Sections</option>{% for section in sections %}<option value="{{ section }}" {% if filters.section==section %}selected{% endif %}>{{ section }}</option>{% endfor %}</select></label>
-    <button class="premium"><i class="fa-solid fa-filter"></i> Apply</button>
-  </form>
-</section>
+    <form method="get" class="idc-filters" id="idcFilters">
+      <label class="idc-field idc-search-field">
+        <span><i class="fa-solid fa-magnifying-glass"></i> Raadi</span>
+        <input name="q" value="{{ filters.q }}" placeholder="Lambarka ardayga, magaca ama magaca hooyada" autocomplete="off">
+      </label>
+      <label class="idc-field">
+        <span><i class="fa-regular fa-calendar"></i> Sannad-dugsiyeedka</span>
+        <select name="year_id" id="idcYear">
+          <option value="">Dhammaan sannadaha</option>
+          {% for y in years %}<option value="{{ y.id }}" {% if filters.year_id==y.id %}selected{% endif %}>{{ y.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="idc-field idc-exam-field">
+        <span><i class="fa-solid fa-file-circle-check"></i> Nuuca imtixaanka <b aria-hidden="true">*</b></span>
+        <select name="exam_id" id="idcExam" aria-describedby="idcExamHelp">
+          <option value="">Dooro nuuca imtixaanka</option>
+          {% for exam in exams %}
+            <option value="{{ exam.id }}" data-year-id="{{ exam.academic_year_id }}" {% if selected_exam and selected_exam.id==exam.id %}selected{% endif %}>
+              {{ exam.name }} · {{ exam.academic_year.name if exam.academic_year else 'Sannad-dugsiyeed' }}
+            </option>
+          {% endfor %}
+        </select>
+        <small id="idcExamHelp">Nuuca imtixaanka la doortay ayaa loo adeegsanayaa arday kasta.</small>
+      </label>
+      <label class="idc-field">
+        <span><i class="fa-solid fa-layer-group"></i> Heerka</span>
+        <select name="level" id="idcLevel"><option value="">Dhammaan heerarka</option>{% for level in levels %}<option value="{{ level }}" {% if filters.level==level %}selected{% endif %}>{{ level }}</option>{% endfor %}</select>
+      </label>
+      <label class="idc-field">
+        <span><i class="fa-solid fa-people-roof"></i> Fasalka</span>
+        <select name="academic_year_class_id" id="idcClass"><option value="">Dhammaan fasallada</option>{% for c in classes %}<option value="{{ c.id }}" data-level="{{ c.academic_year_level.name }}" {% if filters.academic_year_class_id==c.id %}selected{% endif %} {% if filters.level and filters.level != c.academic_year_level.name %}hidden disabled{% endif %}>{{ c.name }}</option>{% endfor %}</select>
+      </label>
+      <label class="idc-field">
+        <span><i class="fa-solid fa-table-cells"></i> Qeybta</span>
+        <select name="section"><option value="">Dhammaan qaybaha</option>{% for section in sections %}<option value="{{ section }}" {% if filters.section==section %}selected{% endif %}>{{ section }}</option>{% endfor %}</select>
+      </label>
+      <div class="idc-filter-actions">
+        <button class="idc-button idc-button-primary" type="submit"><i class="fa-solid fa-filter"></i> Shaandhee</button>
+        <a class="idc-button idc-button-quiet" href="{{ url_for('admin_id_cards.dashboard') }}"><i class="fa-solid fa-rotate-left"></i> Nadiifi</a>
+      </div>
+    </form>
 
-<section class="panel">
-  <div class="section-heading"><span><i class="fa-solid fa-id-card"></i></span><div><h2>Bulk Operations</h2><p>Select students or generate by class, level, section, or all active records.</p></div></div>
-  <form method="post" action="{{ url_for('admin_id_cards.bulk_generate') }}" class="form-grid premium-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="academic_year_id" value="{{ filters.year_id or '' }}">
-    <label class="span-2"><i class="fa-solid fa-file-circle-check"></i> Exam Type<select name="exam_id" required {% if not exams %}disabled{% endif %}><option value="">Choose Exam Type</option>{% for exam in exams %}<option value="{{ exam.id }}">{{ exam.name }}</option>{% endfor %}</select></label>
-    <label><i class="fa-solid fa-layer-group"></i> Scope<select name="scope"><option value="selected">Selected Students</option><option value="class">Class</option><option value="level">Level</option><option value="section">Section</option><option value="all">All Students</option></select></label>
-    <label><i class="fa-solid fa-layer-group"></i> Level<select name="level"><option value="">Choose Level</option>{% for level in levels %}<option value="{{ level }}">{{ level }}</option>{% endfor %}</select></label>
-    <label><i class="fa-solid fa-people-roof"></i> Class<select name="academic_year_class_id"><option value="">Choose Class</option>{% for c in classes %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
-    <label><i class="fa-solid fa-table-cells"></i> Section<select name="section"><option value="">Choose Section</option>{% for section in sections %}<option value="{{ section }}">{{ section }}</option>{% endfor %}</select></label>
-    <div class="wide responsive-table">
-      <table class="premium-table"><thead><tr><th>Select</th><th>Photo</th><th>ID</th><th>Name</th><th>Level</th><th>Class</th><th>Section</th><th>Action</th></tr></thead><tbody>
-      {% for s in students %}
-        {% set placement = student_placements.get(s.id, {}) %}
-        <tr>
-          <td data-label="Select"><input type="checkbox" name="student_ids" value="{{ s.id }}"></td>
-          <td data-label="Photo">{% if s.photo_path %}<img class="mini-avatar" src="{{ asset_url(s.photo_path) }}" alt="Photo">{% else %}<i class="fa-solid fa-user-graduate"></i>{% endif %}</td>
-          <td data-label="ID">{{ s.student_code }}</td><td data-label="Name">{{ s.full_name }}</td><td data-label="Level">{{ placement.get('level_name') or '-' }}</td><td data-label="Class">{{ placement.get('class_name') or '-' }}</td><td data-label="Section">{{ placement.get('section_name') or '-' }}</td>
-          <td data-label="Action"><form method="post" action="{{ url_for('admin_id_cards.generate', student_id=s.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="academic_year_id" value="{{ filters.year_id or '' }}"><select name="exam_id" required title="Choose Exam Type" {% if not exams %}disabled{% endif %}><option value="">Exam</option>{% for exam in exams %}<option value="{{ exam.id }}">{{ exam.name }}</option>{% endfor %}</select><button class="icon-btn small" title="Generate" {% if not exams %}disabled{% endif %}><i class="fa-solid fa-id-card-clip"></i></button></form></td>
-        </tr>
-      {% else %}
-        <tr><td colspan="8">No students found.</td></tr>
-      {% endfor %}
-      </tbody></table>
+    <div class="idc-results-head">
+      <div>
+        <h3>{% if selected_exam %}Ardayda La Helay{% else %}Dooro nuuca imtixaanka{% endif %}</h3>
+        <p>{% if selected_exam %}{{ selected_exam.academic_year.name }} · {{ students|length }} arday oo la soo bandhigay{% else %}Marka hore dooro sannad-dugsiyeedka iyo nuuca imtixaanka si liiska ardayda loo soo saaro.{% endif %}</p>
+      </div>
+      {% if selected_exam %}<span class="idc-results-context"><i class="fa-solid fa-shield-halved"></i>{{ selected_exam.name }} · {{ selected_exam.academic_year.name }}</span>{% endif %}
     </div>
-    <button class="premium"><i class="fa-solid fa-id-card"></i> Generate Bulk IDs</button>
-  </form>
-</section>
 
-<section class="panel">
-  <div class="section-heading"><span><i class="fa-solid fa-clock-rotate-left"></i></span><div><h2>Recent ID Card Issues</h2><p>Print, export, and verify generated cards.</p></div></div>
-  <div class="toolbar glass-card">
-    <a class="btn ghost" href="{{ url_for('admin_id_cards.print_cards') }}" target="_blank"><i class="fa-solid fa-print"></i> Bulk Print Recent</a>
-    <a class="btn ghost" href="{{ url_for('admin_id_cards.export_pdf') }}"><i class="fa-solid fa-file-pdf"></i> Export Recent PDF</a>
-  </div>
-  <div class="responsive-table">
-    <table class="premium-table"><thead><tr><th>Student</th><th>Exam Type</th><th>Level</th><th>Class</th><th>Issue</th><th>Expiry</th><th>Status</th><th>Actions</th></tr></thead><tbody>
-    {% for issue in issues %}
-      {% set placement = issue_placements.get(issue.id, {}) %}
-      <tr><td data-label="Student">{{ issue.student.student_code }} - {{ issue.student.full_name }}</td><td data-label="Exam Type">{{ issue.exam.name if issue.exam else 'Legacy — exam lama lama ku xirna' }}</td><td data-label="Level">{{ placement.get('level_name') or '-' }}</td><td data-label="Class">{{ placement.get('class_name') or '-' }}</td><td data-label="Issue">{{ issue.issue_date }}</td><td data-label="Expiry">{{ issue.expiry_date }}</td><td data-label="Status"><span class="status-pill">{{ issue_statuses.get(issue.id, issue.status) }}</span></td><td data-label="Actions" class="action-cell"><a class="icon-btn small" href="{{ url_for('admin_id_cards.print_cards', issue_ids=issue.id) }}" target="_blank" title="Print"><i class="fa-solid fa-print"></i></a><a class="icon-btn small" href="{{ url_for('public.verify_id_card', token=issue.token) }}" target="_blank" title="Verify"><i class="fa-solid fa-qrcode"></i></a><a class="icon-btn small" href="{{ url_for('admin_id_cards.export_pdf', issue_ids=issue.id) }}" title="PDF"><i class="fa-solid fa-file-pdf"></i></a></td></tr>
-    {% else %}
-      <tr><td colspan="8">No ID cards generated yet.</td></tr>
-    {% endfor %}
-    </tbody></table>
-  </div>
-</section>
+    <form method="post" action="{{ url_for('admin_id_cards.bulk_generate') }}" id="idcBulkForm" class="idc-roster-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="academic_year_id" value="{{ selected_exam.academic_year_id if selected_exam else '' }}">
+      <input type="hidden" name="exam_id" value="{{ selected_exam.id if selected_exam else '' }}">
+      <input type="hidden" name="return_year_id" value="{{ filters.year_id if filters.year_id is not none else '' }}">
+      <input type="hidden" name="return_exam_id" value="{{ selected_exam.id if selected_exam else '' }}">
+      <input type="hidden" name="q" value="{{ filters.q }}">
+      <input type="hidden" name="level" value="{{ filters.level }}">
+      <input type="hidden" name="academic_year_class_id" value="{{ filters.academic_year_class_id or '' }}">
+      <input type="hidden" name="section" value="{{ filters.section }}">
+
+      {% if selected_exam and students %}
+        <div class="idc-roster-toolbar">
+          <label class="idc-select-all"><input type="checkbox" id="idcSelectAll"><span>Xulo dhammaan inta muuqata</span></label>
+          <span class="idc-selected-count" id="idcSelectedCount">0 la xushay</span>
+          <div class="idc-generate-actions">
+            <button class="idc-button idc-button-secondary" type="submit" name="scope" value="selected"><i class="fa-solid fa-id-card"></i> Hawl-geli kuwa la xushay</button>
+            <button class="idc-button idc-button-primary" type="submit" name="scope" value="filtered"><i class="fa-solid fa-users"></i> Hawl-geli Dhammaan</button>
+          </div>
+        </div>
+        <div class="idc-table-wrap">
+          <table class="idc-table">
+            <thead><tr><th class="idc-check-col" aria-label="Select students"></th><th>Ardeyga</th><th>Heerka</th><th>Fasalka</th><th>Qeybta</th><th class="idc-action-col">Kaadhka</th></tr></thead>
+            <tbody>
+              {% for s in students %}
+                {% set placement = student_placements.get(s.id, {}) %}
+                <tr>
+                  <td class="idc-check-col" data-label="Select"><input type="checkbox" name="student_ids" value="{{ s.id }}" aria-label="Select {{ s.full_name }}"></td>
+                  <td data-label="Ardeyga">
+                    <div class="idc-student-cell">
+                      {% if s.photo_path %}<img class="idc-avatar" src="{{ asset_url(s.photo_path) }}" alt="">{% else %}<span class="idc-avatar idc-avatar-fallback"><i class="fa-solid fa-user-graduate"></i></span>{% endif %}
+                      <span class="idc-student-copy"><strong>{{ s.full_name }}</strong><small>{{ s.student_code }}{% if s.mother_name %} · {{ s.mother_name }}{% endif %}</small></span>
+                    </div>
+                  </td>
+                  <td data-label="Heerka"><span class="idc-data-pill">{{ placement.get('level_name') or '-' }}</span></td>
+                  <td data-label="Fasalka">{{ placement.get('class_name') or '-' }}</td>
+                  <td data-label="Qeybta">{{ placement.get('section_name') or '-' }}</td>
+                  <td class="idc-action-col" data-label="Kaadhka"><button class="idc-row-generate" type="submit" name="single_student_id" value="{{ s.id }}" {% if not selected_exam %}disabled{% endif %} title="Generate card for {{ s.full_name }}"><i class="fa-solid fa-id-card-clip"></i><span>Hawl-geli</span></button></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% elif selected_exam %}
+        <div class="idc-empty-state"><span><i class="fa-solid fa-user-slash"></i></span><h3>No students found</h3><p>Ma jiraan arday firfircoon oo ku jira baaxadda {{ selected_exam.name }} iyo filters-ka la doortay.</p></div>
+      {% else %}
+        <div class="idc-empty-state idc-empty-select"><span><i class="fa-solid fa-file-circle-check"></i></span><h3>Exam Type dooro</h3><p>Hal Exam Type ka dooro filter-ka kore. Waxaan si toos ah u soo saar doonaa ardayda sannadka iyo baaxadda imtixaankaas.</p></div>
+      {% endif %}
+    </form>
+  </section>
+
+  <section class="idc-management" aria-label="ID card design settings">
+    <details class="idc-panel idc-disclosure">
+      <summary>
+        <span class="idc-head-icon is-violet"><i class="fa-solid fa-swatchbook"></i></span>
+        <span class="idc-summary-copy"><strong>ID Card Templates</strong><small>Dooro muuqaalka kaadhka ee systemku adeegsanayo.</small></span>
+        <span class="idc-summary-state">{{ settings.id_card_template|title if settings.id_card_template else 'Classic' }} active</span>
+        <i class="fa-solid fa-chevron-down idc-chevron"></i>
+      </summary>
+      <div class="idc-disclosure-body">
+        <div class="idc-template-grid">
+          {% for key, preset in templates.items() %}
+            <form method="post" class="idc-template-card template-card-{{ key }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="apply_template">
+              <input type="hidden" name="template_name" value="{{ key }}">
+              <span class="idc-template-swatch" style="--tpl-primary: {{ preset.primary }}; --tpl-accent: {{ preset.accent }}"><i class="fa-regular fa-id-card"></i></span>
+              <span class="idc-template-copy"><strong>{{ key|title }}</strong><small>{{ preset.font }} · {{ preset.border|title }}</small></span>
+              <button class="idc-template-select {{ 'is-active' if settings.id_card_template == key else '' }}" type="submit"><i class="fa-solid {{ 'fa-circle-check' if settings.id_card_template == key else 'fa-wand-magic-sparkles' }}"></i>{{ 'Active' if settings.id_card_template == key else 'Use template' }}</button>
+            </form>
+          {% endfor %}
+        </div>
+      </div>
+    </details>
+
+    <details class="idc-panel idc-disclosure">
+      <summary>
+        <span class="idc-head-icon is-gold"><i class="fa-solid fa-pen-ruler"></i></span>
+        <span class="idc-summary-copy"><strong>ID Card Designer</strong><small>Habee cabbirka, midabbada, QR, logo, footer iyo saxiixa.</small></span>
+        <span class="idc-summary-state">Design settings</span>
+        <i class="fa-solid fa-chevron-down idc-chevron"></i>
+      </summary>
+      <div class="idc-disclosure-body">
+        <form method="post" class="idc-designer-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label><span><i class="fa-solid fa-layer-group"></i> Active Template</span><select name="id_card_template">{% for key in templates %}<option value="{{ key }}" {% if settings.id_card_template==key %}selected{% endif %}>{{ key|title }}</option>{% endfor %}</select></label>
+          <label><span><i class="fa-solid fa-ruler-combined"></i> Card Size</span><select name="id_card_size"><option value="large-a4-quarter" {% if settings.id_card_size=='large-a4-quarter' %}selected{% endif %}>Large A4 Quarter</option><option value="cr80" {% if settings.id_card_size=='cr80' %}selected{% endif %}>CR80 Standard</option><option value="custom" {% if settings.id_card_size=='custom' %}selected{% endif %}>Custom</option></select></label>
+          <label><span><i class="fa-solid fa-mobile-screen"></i> Orientation</span><select name="id_card_orientation"><option value="landscape" {% if settings.id_card_orientation=='landscape' %}selected{% endif %}>Landscape</option><option value="portrait" {% if settings.id_card_orientation=='portrait' %}selected{% endif %}>Portrait</option></select></label>
+          <label><span><i class="fa-solid fa-fill-drip"></i> Background</span><input type="color" name="id_card_background" value="{{ settings.id_card_background }}"></label>
+          <label><span><i class="fa-solid fa-palette"></i> Primary</span><input type="color" name="id_card_primary_color" value="{{ settings.id_card_primary_color }}"></label>
+          <label><span><i class="fa-solid fa-droplet"></i> Accent</span><input type="color" name="id_card_accent_color" value="{{ settings.id_card_accent_color }}"></label>
+          <label><span><i class="fa-solid fa-font"></i> Font</span><select name="id_card_font_family"><option {% if settings.id_card_font_family=='Segoe UI' %}selected{% endif %}>Segoe UI</option><option {% if settings.id_card_font_family=='Arial' %}selected{% endif %}>Arial</option><option {% if settings.id_card_font_family=='Tahoma' %}selected{% endif %}>Tahoma</option><option {% if settings.id_card_font_family=='Times New Roman' %}selected{% endif %}>Times New Roman</option></select></label>
+          <label><span><i class="fa-solid fa-border-top-left"></i> Border</span><select name="id_card_border_style"><option value="solid" {% if settings.id_card_border_style=='solid' %}selected{% endif %}>Solid</option><option value="minimal" {% if settings.id_card_border_style=='minimal' %}selected{% endif %}>Minimal</option><option value="double" {% if settings.id_card_border_style=='double' %}selected{% endif %}>Double</option></select></label>
+          <label><span><i class="fa-solid fa-crop-simple"></i> Rounded Corners</span><select name="id_card_rounded_corners"><option value="on" {% if settings.id_card_rounded_corners=='on' %}selected{% endif %}>ON</option><option value="off" {% if settings.id_card_rounded_corners!='on' %}selected{% endif %}>OFF</option></select></label>
+          <label><span><i class="fa-solid fa-image"></i> Logo Position</span><select name="id_card_logo_position"><option value="left" {% if settings.id_card_logo_position=='left' %}selected{% endif %}>Left</option><option value="center" {% if settings.id_card_logo_position=='center' %}selected{% endif %}>Center</option><option value="right" {% if settings.id_card_logo_position=='right' %}selected{% endif %}>Right</option></select></label>
+          <label><span><i class="fa-solid fa-user"></i> Photo Position</span><select name="id_card_photo_position"><option value="left" {% if settings.id_card_photo_position=='left' %}selected{% endif %}>Left</option><option value="right" {% if settings.id_card_photo_position=='right' %}selected{% endif %}>Right</option></select></label>
+          <label><span><i class="fa-solid fa-qrcode"></i> QR Position</span><select name="id_card_qr_position"><option value="right" {% if settings.id_card_qr_position=='right' %}selected{% endif %}>Right</option><option value="left" {% if settings.id_card_qr_position=='left' %}selected{% endif %}>Left</option></select></label>
+          <label><span><i class="fa-solid fa-icons"></i> Icons</span><select name="id_card_icon_style"><option value="solid" {% if settings.id_card_icon_style=='solid' %}selected{% endif %}>Solid</option><option value="minimal" {% if settings.id_card_icon_style=='minimal' %}selected{% endif %}>Minimal</option></select></label>
+          <label><span><i class="fa-solid fa-tags"></i> Labels</span><select name="id_card_label_style"><option value="uppercase" {% if settings.id_card_label_style=='uppercase' %}selected{% endif %}>Uppercase</option><option value="title" {% if settings.id_card_label_style=='title' %}selected{% endif %}>Title Case</option></select></label>
+          <label><span><i class="fa-solid fa-up-right-and-down-left-from-center"></i> Spacing</span><select name="id_card_spacing"><option value="comfortable" {% if settings.id_card_spacing=='comfortable' %}selected{% endif %}>Comfortable</option><option value="compact" {% if settings.id_card_spacing=='compact' %}selected{% endif %}>Compact</option><option value="wide" {% if settings.id_card_spacing=='wide' %}selected{% endif %}>Wide</option></select></label>
+          <label><span><i class="fa-solid fa-border-all"></i> Print Margins (mm)</span><input type="number" min="5" max="15" name="id_card_print_margin" value="{{ settings.id_card_print_margin }}"></label>
+          <label><span><i class="fa-solid fa-barcode"></i> Barcode</span><select name="id_card_show_barcode"><option value="off" {% if settings.id_card_show_barcode!='on' %}selected{% endif %}>OFF</option><option value="on" {% if settings.id_card_show_barcode=='on' %}selected{% endif %}>ON</option></select></label>
+          <label><span><i class="fa-solid fa-calendar-plus"></i> Valid Months</span><input type="number" min="1" max="120" step="1" name="id_card_issue_months" value="{{ settings.id_card_issue_months }}"></label>
+          <label class="idc-wide-field"><span><i class="fa-solid fa-file-circle-check"></i> Card label</span><input name="id_card_exam_type" value="{{ settings.id_card_exam_type }}"><small>Qoraalka naqshadda oo keliya; Exam Type-ka kaadhka filter-ka kore ayaa lagu doortaa.</small></label>
+          <label class="idc-wide-field"><span><i class="fa-solid fa-heading"></i> Header Title</span><input name="id_card_header_text" value="{{ settings.id_card_header_text }}"></label>
+          <label><span><i class="fa-solid fa-signature"></i> Signature</span><input name="id_card_signature_text" value="{{ settings.id_card_signature_text }}"></label>
+          <label><span><i class="fa-solid fa-stamp"></i> School Stamp</span><input name="id_card_stamp_text" value="{{ settings.id_card_stamp_text }}"></label>
+          <label><span><i class="fa-solid fa-water"></i> Watermark</span><input name="id_card_watermark" value="{{ settings.id_card_watermark }}"></label>
+          <label class="idc-wide-field"><span><i class="fa-solid fa-phone-volume"></i> Footer Contact Text</span><input name="id_card_footer" value="{{ settings.id_card_footer }}"></label>
+          <input type="hidden" name="id_card_found_contact_text" value="{{ settings.id_card_footer }}">
+          <div class="idc-designer-submit"><button class="idc-button idc-button-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save Designer</button></div>
+        </form>
+      </div>
+    </details>
+  </section>
+
+  <details class="idc-panel idc-disclosure idc-issues" aria-labelledby="idc-issues-title">
+    <summary>
+      <span class="idc-head-icon is-blue"><i class="fa-solid fa-clock-rotate-left"></i></span>
+      <span class="idc-summary-copy"><span class="idc-eyebrow">HISTORIGA KAADHADKA</span><strong id="idc-issues-title">Recent ID Card Issues</strong></span>
+      <span class="idc-summary-state">{{ issues|length }} records</span>
+      <i class="fa-solid fa-chevron-down idc-chevron"></i>
+    </summary>
+    <div class="idc-disclosure-body">
+      <div class="idc-issue-actions">
+        <a class="idc-button idc-button-quiet" href="{{ url_for('admin_id_cards.print_cards') }}" target="_blank"><i class="fa-solid fa-print"></i> Bulk Print</a>
+        <a class="idc-button idc-button-quiet" href="{{ url_for('admin_id_cards.export_pdf') }}"><i class="fa-solid fa-file-pdf"></i> Export PDF</a>
+      </div>
+      <div class="idc-table-wrap">
+      <table class="idc-table idc-issue-table">
+        <thead><tr><th>Sawirka</th><th>Ardeyga</th><th>Nuuca Imtixaanka</th><th>Heerka</th><th>Fasalka</th><th>Tr. Bixidda</th><th>Tr. Dhicidda</th><th>Xaalad</th><th>Ficillo</th></tr></thead>
+        <tbody>
+          {% for issue in issues %}
+            {% set placement = issue_placements.get(issue.id, {}) %}
+            <tr>
+              <td data-label="Sawirka">
+                {% if issue.student.photo_path %}<img class="idc-issue-avatar" src="{{ asset_url(issue.student.photo_path) }}" alt="Sawirka {{ issue.student.full_name }}" loading="lazy">
+                {% else %}<span class="idc-issue-avatar idc-issue-avatar-fallback" aria-label="Sawir lama hayo"><i class="fa-solid fa-user-graduate"></i></span>{% endif %}
+              </td>
+              <td data-label="Ardeyga"><strong>{{ issue.student.student_code }}</strong><small class="idc-issue-student">{{ issue.student.full_name }}</small></td>
+              <td data-label="Nuuca Imtixaanka">{{ issue.exam.name if issue.exam else 'Legacy — exam lama lama ku xirna' }}</td>
+              <td data-label="Heerka">{{ placement.get('level_name') or '-' }}</td>
+              <td data-label="Fasalka">{{ placement.get('class_name') or '-' }}</td>
+              <td data-label="Tr. Bixidda">{{ issue.issue_date }}</td>
+              <td data-label="Tr. Dhicidda">{{ issue.expiry_date or '-' }}</td>
+              <td data-label="Xaalad"><span class="idc-status-pill {{ 'is-expired' if issue_statuses.get(issue.id, issue.status) == 'Expired' else '' }}">{{ issue_statuses.get(issue.id, issue.status) }}</span></td>
+              <td data-label="Ficillo"><div class="idc-row-actions"><a href="{{ url_for('admin_id_cards.print_cards', issue_ids=issue.id) }}" target="_blank" title="Print card" aria-label="Print card"><i class="fa-solid fa-print"></i></a><a href="{{ url_for('public.verify_id_card', token=issue.token) }}" target="_blank" title="Verify card" aria-label="Verify card"><i class="fa-solid fa-qrcode"></i></a><a href="{{ url_for('admin_id_cards.export_pdf', issue_ids=issue.id) }}" title="Export PDF" aria-label="Export PDF"><i class="fa-solid fa-file-pdf"></i></a></div></td>
+            </tr>
+          {% else %}
+            <tr><td colspan="9"><div class="idc-empty-inline"><i class="fa-regular fa-folder-open"></i><span>No ID cards generated yet.</span></div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </details>
+</div>
 {% endblock %}
