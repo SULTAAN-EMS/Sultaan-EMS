@@ -464,7 +464,7 @@
     const list = filteredBooks();
     const branch=(config.branches||[]).find(item=>String(item.id)===String(state.branchId));
     const contactButton=state.catalogType==='local'&&(branch?.printCenters||[]).length
-      ? `<button class="pc-book-contact" type="button" data-printer-contact aria-label="La xidhiidh Madbacad" title="La xidhiidh Madbacad"><svg class="ic pc-contact-printer" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6zM18 12h.01"/></svg><span class="pc-contact-full">La xidhiidh Madbacad</span><span class="pc-contact-short" aria-hidden="true">Xidhiidh</span></button>`
+      ? `<button class="pc-book-contact" type="button" data-printer-contact aria-label="La xidhiidh Madbacad" title="La xidhiidh Madbacad"><svg class="ic pc-contact-printer" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6zM18 12h.01"/></svg><span class="pc-contact-full">La xidhiidh Madbacad</span><span class="pc-contact-short" aria-hidden="true">Madbacad</span></button>`
       : '';
     $('#pCount').innerHTML = `<b>${list.length}</b> ${list.length===1?'buug':'buug'}`;
     $('#pvGrid').setAttribute('aria-pressed',String(state.view==='grid'));
@@ -529,7 +529,7 @@
     state.pendingContact={href:link.href,kind};
     $('#pcActionTitle').textContent=kind==='whatsapp'?'Xaqiiji WhatsApp':'Xaqiiji wicitaanka';
     $('#pcActionMessage').innerHTML='<strong>Fadlan Ogsoonow:</strong> Madbacaddani waa adeeg madax-bannaan. Dalab iyo lacag-bixin kasta waxaad si toos ah ula heshiinaysaa madbacadda.<span class="pc-disclaimer-boundary"><span class="pc-disclaimer-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span><span>Dugsigu wax lacag ah ma qaado, mana maamulo fulinta dalabka ama waqtiga adeegga ee aad madbacadda ku ballantaan.</span></span>';
-    $('#pcActionContinue').textContent='Waan fahmay, sii wad';
+    $('#pcActionContinue').textContent='Waan gartay, Gudub!';
     $('#pcActionIcon').innerHTML=link.querySelector('.pc-action-icon, span:first-child')?.innerHTML||'';
     $('#pcActionConfirm').showModal();
   }
