@@ -45,6 +45,38 @@
     levelSelect.addEventListener('change', filterClassesByLevel);
   }
 
+  const validityInput = document.getElementById('idcValidityMonths');
+  const validitySummary = document.getElementById('idcValiditySummary');
+  if (validityInput) {
+    const stepButtons = Array.from(document.querySelectorAll('[data-month-step]'));
+    const presetButtons = Array.from(document.querySelectorAll('[data-validity-preset]'));
+    const updateValidityControls = () => {
+      const value = Number(validityInput.value);
+      const valid = Number.isInteger(value) && value >= 1 && value <= 120;
+      stepButtons.forEach((button) => {
+        const step = Number(button.dataset.monthStep);
+        button.disabled = !valid || (step < 0 && value <= 1) || (step > 0 && value >= 120);
+      });
+      presetButtons.forEach((button) => {
+        button.setAttribute('aria-pressed', String(valid && value === Number(button.dataset.validityPreset)));
+      });
+      if (validitySummary && valid) validitySummary.textContent = `${value} bilood`;
+    };
+
+    stepButtons.forEach((button) => button.addEventListener('click', () => {
+      const current = Number(validityInput.value) || 1;
+      const step = Number(button.dataset.monthStep);
+      validityInput.value = String(Math.max(1, Math.min(120, current + step)));
+      validityInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }));
+    presetButtons.forEach((button) => button.addEventListener('click', () => {
+      validityInput.value = button.dataset.validityPreset;
+      validityInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }));
+    validityInput.addEventListener('input', updateValidityControls);
+    updateValidityControls();
+  }
+
   const form = document.getElementById('idcBulkForm');
   const selectAll = document.getElementById('idcSelectAll');
   const selectedCount = document.getElementById('idcSelectedCount');

@@ -6,7 +6,7 @@ from tempfile import NamedTemporaryFile
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, send_file, url_for
 from flask_login import login_required
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import joinedload
@@ -39,6 +39,25 @@ def require_login():
 @id_cards_bp.route("/", methods=["GET", "POST"])
 def dashboard():
     if request.method == "POST":
+        if request.form.get("action") == "save_validity":
+            raw_issue_months = request.form.get("id_card_issue_months", "").strip()
+            try:
+                issue_months = int(raw_issue_months)
+            except (TypeError, ValueError):
+                issue_months = 0
+            if not 1 <= issue_months <= 120:
+                flash("Muddada ansaxnimadu waa inay u dhexaysaa 1 ilaa 120 bilood.", "danger")
+                return redirect(url_for("admin_id_cards.dashboard"))
+
+            setting = db.session.get(Setting, "id_card_issue_months") or Setting(key="id_card_issue_months")
+            setting.value = str(issue_months)
+            db.session.add(setting)
+            audit("Settings Changes", f"Updated ID card validity to {issue_months} months")
+            db.session.commit()
+            g.pop("_sultaan_settings", None)
+            flash("Muddada ansaxnimada waa la kaydiyey.", "success")
+            return redirect(url_for("admin_id_cards.dashboard"))
+
         template_name = request.form.get("template_name", "").strip().lower()
         if request.form.get("action") == "apply_template" and template_name in ID_CARD_TEMPLATES:
             apply_template(template_name)
@@ -51,21 +70,13 @@ def dashboard():
             "id_card_accent_color", "id_card_font_family", "id_card_border_style", "id_card_rounded_corners",
             "id_card_template", "id_card_logo_position", "id_card_photo_position", "id_card_qr_position",
             "id_card_icon_style", "id_card_label_style", "id_card_spacing", "id_card_print_margin",
-            "id_card_show_barcode", "id_card_footer", "id_card_watermark", "id_card_issue_months",
+            "id_card_show_barcode", "id_card_footer", "id_card_watermark",
             "id_card_office_signature", "id_card_stamp_text", "id_card_found_contact_text", "id_card_exam_type",
             "id_card_header_text", "id_card_signature_text",
         ]
-        raw_issue_months = request.form.get("id_card_issue_months", "12").strip()
-        try:
-            issue_months = int(raw_issue_months)
-        except (TypeError, ValueError):
-            issue_months = 0
-        if not 1 <= issue_months <= 120:
-            flash("Valid Months waa inuu noqdaa tiro u dhexeysa 1 iyo 120 bilood.", "danger")
-            return redirect(url_for("admin_id_cards.dashboard"))
         for key in editable_keys:
             setting = db.session.get(Setting, key) or Setting(key=key)
-            setting.value = str(issue_months) if key == "id_card_issue_months" else request.form.get(key, "").strip()
+            setting.value = request.form.get(key, "").strip()
             db.session.add(setting)
         audit("Settings Changes", "Updated ID card designer settings")
         db.session.commit()

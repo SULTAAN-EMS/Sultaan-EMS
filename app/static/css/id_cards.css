@@ -260,6 +260,26 @@
 .idc-template-copy small { color: var(--idc-muted); font-size: .72rem; }
 .idc-template-select { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 33px; padding: 6px; border: 1px solid #d7e1df; border-radius: 6px; background: #fff; color: #425a57; font: inherit; font-size: .73rem; font-weight: 700; cursor: pointer; }
 .idc-template-select.is-active { border-color: #bde1d3; background: #eef8f3; color: var(--idc-green-dark); }
+.idc-validity-card { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(0, 1.5fr); gap: 14px 22px; align-items: center; margin: 0 0 18px; padding: 16px; border: 1px solid #d4e8e1; border-radius: 8px; background: linear-gradient(115deg, #f3faf7, #f7f9ff); }
+.idc-validity-heading { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.idc-validity-icon { display: grid; flex: 0 0 42px; width: 42px; height: 42px; place-items: center; border: 1px solid #bfe3d5; border-radius: 9px; background: linear-gradient(145deg, #e0f5ed, #dfeaff); color: #147c69; font-size: 17px; }
+.idc-validity-heading > div { display: grid; gap: 4px; min-width: 0; }
+.idc-validity-heading strong { color: var(--idc-ink); font-size: .9rem; }
+.idc-validity-heading small, .idc-validity-footer small { color: var(--idc-muted); font-size: .74rem; line-height: 1.4; }
+.idc-validity-controls { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 9px; }
+.idc-month-stepper { display: flex; align-items: center; height: 42px; overflow: hidden; border: 1px solid #cbded8; border-radius: 8px; background: #fff; }
+.idc-month-step { display: grid; flex: 0 0 36px; width: 36px; height: 100%; place-items: center; border: 0; background: transparent; color: #46625d; cursor: pointer; }
+.idc-month-step:hover:not(:disabled) { background: #e8f4ef; color: #087b65; }
+.idc-month-step:disabled { cursor: not-allowed; opacity: .42; }
+.idc-month-stepper input { width: 52px; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: var(--idc-ink); font: inherit; font-size: .95rem; font-weight: 800; text-align: center; appearance: textfield; }
+.idc-month-stepper input::-webkit-inner-spin-button, .idc-month-stepper input::-webkit-outer-spin-button { margin: 0; appearance: none; }
+.idc-month-unit { padding-right: 8px; color: #58716c; font-size: .74rem; }
+.idc-validity-presets { display: flex; flex-wrap: wrap; gap: 5px; }
+.idc-validity-presets button { min-height: 32px; padding: 5px 8px; border: 1px solid #d6e1df; border-radius: 6px; background: #fff; color: #50625f; font: inherit; font-size: .71rem; font-weight: 700; cursor: pointer; }
+.idc-validity-presets button:hover, .idc-validity-presets button[aria-pressed="true"] { border-color: #78b7a3; background: #e8f5ef; color: #116b58; }
+.idc-validity-save { min-height: 38px; white-space: nowrap; }
+.idc-validity-footer { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid rgba(111, 151, 138, .2); }
+.idc-validity-footer output { flex: 0 0 auto; color: #147c69; font-size: .76rem; font-weight: 800; }
 .idc-designer-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; }
 .idc-designer-form > label { display: grid; gap: 6px; min-width: 0; color: var(--idc-ink); font-size: .79rem; font-weight: 700; }
 .idc-designer-form > label > span { display: flex; align-items: center; gap: 7px; }
@@ -292,6 +312,14 @@
 .theme-dark .idc-page .upper-hero { border-color: #34534c; background: linear-gradient(112deg, #162a27, #1a302d 58%, #30291d); }
 .theme-dark .idc-page .upper-hero__content h2 { color: #e9f3ef; }
 .theme-dark .idc-page .upper-hero__content p { color: #a9bbb5; }
+.theme-dark .idc-validity-card { border-color: #36574e; background: linear-gradient(115deg, #1a302b, #202b3b); }
+.theme-dark .idc-validity-heading strong, .theme-dark .idc-month-stepper input { color: var(--idc-ink); }
+.theme-dark .idc-validity-icon { border-color: #39685a; background: linear-gradient(145deg, #203d34, #27364c); color: #8bd5bb; }
+.theme-dark .idc-month-stepper, .theme-dark .idc-validity-presets button { border-color: #455a55; background: #1d2d2a; color: #d4e2dd; }
+.theme-dark .idc-month-unit { color: #b6c8c1; }
+.theme-dark .idc-validity-presets button:hover, .theme-dark .idc-validity-presets button[aria-pressed="true"] { border-color: #4b8e76; background: #244739; color: #c9f0df; }
+.theme-dark .idc-validity-footer { border-color: rgba(130, 170, 156, .2); }
+.theme-dark .idc-validity-footer output { color: #8bd5bb; }
 .theme-dark .idc-panel { border-color: var(--idc-line); background: var(--idc-surface); }
 .theme-dark .idc-filters, .theme-dark .idc-roster-toolbar { border-color: #344743; background: rgba(25, 41, 38, .96); }
 .theme-dark .idc-field, .theme-dark .idc-field input, .theme-dark .idc-field select,
@@ -345,6 +373,9 @@
   .idc-issue-table td[data-label="Actions"] { justify-content: flex-end; }
   .idc-template-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .idc-designer-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .idc-validity-card { grid-template-columns: 1fr; gap: 12px; }
+  .idc-validity-controls { justify-content: flex-start; }
+  .idc-validity-footer { grid-column: auto; }
   .idc-issue-actions { width: 100%; }
   .idc-issue-actions .idc-button { flex: 1; }
 }
@@ -358,6 +389,11 @@
   .idc-disclosure > summary .idc-head-icon { flex-basis: 38px; width: 38px; height: 38px; }
   .idc-summary-state { display: none; }
   .idc-template-grid, .idc-designer-form { grid-template-columns: 1fr; }
+  .idc-validity-controls { display: grid; grid-template-columns: 1fr auto; justify-content: stretch; }
+  .idc-month-stepper { grid-column: 1 / -1; width: max-content; }
+  .idc-validity-presets { grid-column: 1 / -1; }
+  .idc-validity-save { grid-column: 1 / -1; width: 100%; }
+  .idc-validity-footer { align-items: flex-start; }
   .idc-wide-field { grid-column: auto; }
   .idc-designer-submit { justify-content: stretch; }
   .idc-designer-submit .idc-button { width: 100%; }

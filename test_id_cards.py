@@ -5,6 +5,7 @@ from html.parser import HTMLParser
 from sqlalchemy import event
 
 from app import create_app, db
+from app.routes_id_cards import add_months
 from app.models import (
     AcademicClass,
     AcademicLevel,
@@ -13,6 +14,7 @@ from app.models import (
     AcademicYearLevel,
     Exam,
     IdCardIssue,
+    Setting,
     Student,
     StudentEnrollment,
     User,
@@ -236,6 +238,53 @@ class TestIdCards(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Arday Tijaabo 029", response.data)
         self.assertLess(len(statements), 40, f"Expected batched history queries, got {len(statements)}")
+
+    def test_validity_setting_saves_independently_and_updates_new_card_expiry(self):
+        db.session.add(Setting(key="id_card_primary_color", value="#123456"))
+        db.session.commit()
+
+        response = self.client.post("/admin/id-cards/", data={
+            "action": "save_validity",
+            "id_card_issue_months": "24",
+        })
+        self.assertIn(response.status_code, (302, 303))
+        self.assertEqual(db.session.get(Setting, "id_card_issue_months").value, "24")
+        self.assertEqual(db.session.get(Setting, "id_card_primary_color").value, "#123456")
+
+        page = self.client.get("/admin/id-cards/")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'id="idcValidityMonths"', page.data)
+        self.assertIn(b'value="24"', page.data)
+        self.assertIn(b'data-validity-preset="24"', page.data)
+
+        designer_save = self.client.post("/admin/id-cards/", data={
+            "id_card_primary_color": "#654321",
+        })
+        self.assertIn(designer_save.status_code, (302, 303))
+        self.assertEqual(db.session.get(Setting, "id_card_issue_months").value, "24")
+
+        generated = self.client.post("/admin/id-cards/bulk-generate", data={
+            "scope": "filtered",
+            "academic_year_id": str(self.year.id),
+            "exam_id": str(self.exam.id),
+            "q": "",
+            "level": "",
+            "academic_year_class_id": "",
+            "section": "",
+        })
+        self.assertIn(generated.status_code, (302, 303))
+        issue = IdCardIssue.query.filter_by(student_id=self.first_student.id, exam_id=self.exam.id).one()
+        self.assertEqual(issue.expiry_date, add_months(date.today(), 24))
+
+    def test_validity_setting_rejects_values_outside_supported_range(self):
+        for value in ("0", "121", "not-a-number"):
+            with self.subTest(value=value):
+                response = self.client.post("/admin/id-cards/", data={
+                    "action": "save_validity",
+                    "id_card_issue_months": value,
+                })
+                self.assertIn(response.status_code, (302, 303))
+                self.assertIsNone(db.session.get(Setting, "id_card_issue_months"))
 
     def test_scoped_exam_only_shows_and_generates_students_in_its_configured_class(self):
         second_legacy_class = AcademicClass(

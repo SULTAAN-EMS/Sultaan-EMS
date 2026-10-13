@@ -4,8 +4,8 @@
 {% block extra_head %}
 {{ super() }}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-page-heroes.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/id_cards.css', v='id-cards-redesign-20261012-1') }}">
-<script src="{{ url_for('static', filename='js/id_cards.js', v='id-cards-redesign-20261012-1') }}" defer></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/id_cards.css', v='id-cards-validity-20261013-1') }}">
+<script src="{{ url_for('static', filename='js/id_cards.js', v='id-cards-validity-20261013-1') }}" defer></script>
 {% endblock %}
 {% block admin_content %}
 {% from 'partials/admin_page_hero.html' import admin_page_hero %}
@@ -157,6 +157,30 @@
         <i class="fa-solid fa-chevron-down idc-chevron"></i>
       </summary>
       <div class="idc-disclosure-body">
+        <form method="post" class="idc-validity-card" id="idcValidityForm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="save_validity">
+          <div class="idc-validity-heading">
+            <span class="idc-validity-icon"><i class="fa-solid fa-calendar-check"></i></span>
+            <div><strong>Muddada ansaxnimada</strong><small>Dooro inta bilood ee kaadh cusub shaqaynayo.</small></div>
+          </div>
+          <div class="idc-validity-controls">
+            <div class="idc-month-stepper" role="group" aria-label="Muddada ansaxnimada bilaha">
+              <button type="button" class="idc-month-step" data-month-step="-1" aria-label="Yaree hal bil"><i class="fa-solid fa-minus"></i></button>
+              <input id="idcValidityMonths" type="number" min="1" max="120" step="1" inputmode="numeric" required name="id_card_issue_months" value="{{ settings.id_card_issue_months|int }}" aria-describedby="idcValidityHelp idcValiditySummary">
+              <span class="idc-month-unit">bilood</span>
+              <button type="button" class="idc-month-step" data-month-step="1" aria-label="Ku dar hal bil"><i class="fa-solid fa-plus"></i></button>
+            </div>
+            <div class="idc-validity-presets" role="group" aria-label="Doorashooyin degdeg ah">
+              {% for months in [6, 12, 24, 36] %}<button type="button" data-validity-preset="{{ months }}" aria-pressed="{{ 'true' if settings.id_card_issue_months|int == months else 'false' }}">{{ months }} bilood</button>{% endfor %}
+            </div>
+            <button class="idc-button idc-button-primary idc-validity-save" type="submit"><i class="fa-solid fa-floppy-disk"></i> Keydi muddada</button>
+          </div>
+          <div class="idc-validity-footer">
+            <small id="idcValidityHelp">Waxay khusaysaa kaadhadhka cusub iyo kuwa dib loo soo saarayo; kuwa hore lama beddelo.</small>
+            <output id="idcValiditySummary" aria-live="polite">{{ settings.id_card_issue_months|int }} bilood</output>
+          </div>
+        </form>
         <form method="post" class="idc-designer-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <label><span><i class="fa-solid fa-layer-group"></i> Active Template</span><select name="id_card_template">{% for key in templates %}<option value="{{ key }}" {% if settings.id_card_template==key %}selected{% endif %}>{{ key|title }}</option>{% endfor %}</select></label>
@@ -176,7 +200,6 @@
           <label><span><i class="fa-solid fa-up-right-and-down-left-from-center"></i> Spacing</span><select name="id_card_spacing"><option value="comfortable" {% if settings.id_card_spacing=='comfortable' %}selected{% endif %}>Comfortable</option><option value="compact" {% if settings.id_card_spacing=='compact' %}selected{% endif %}>Compact</option><option value="wide" {% if settings.id_card_spacing=='wide' %}selected{% endif %}>Wide</option></select></label>
           <label><span><i class="fa-solid fa-border-all"></i> Print Margins (mm)</span><input type="number" min="5" max="15" name="id_card_print_margin" value="{{ settings.id_card_print_margin }}"></label>
           <label><span><i class="fa-solid fa-barcode"></i> Barcode</span><select name="id_card_show_barcode"><option value="off" {% if settings.id_card_show_barcode!='on' %}selected{% endif %}>OFF</option><option value="on" {% if settings.id_card_show_barcode=='on' %}selected{% endif %}>ON</option></select></label>
-          <label><span><i class="fa-solid fa-calendar-plus"></i> Valid Months</span><input type="number" min="1" max="120" step="1" name="id_card_issue_months" value="{{ settings.id_card_issue_months }}"></label>
           <label class="idc-wide-field"><span><i class="fa-solid fa-file-circle-check"></i> Card label</span><input name="id_card_exam_type" value="{{ settings.id_card_exam_type }}"><small>Qoraalka naqshadda oo keliya; Exam Type-ka kaadhka filter-ka kore ayaa lagu doortaa.</small></label>
           <label class="idc-wide-field"><span><i class="fa-solid fa-heading"></i> Header Title</span><input name="id_card_header_text" value="{{ settings.id_card_header_text }}"></label>
           <label><span><i class="fa-solid fa-signature"></i> Signature</span><input name="id_card_signature_text" value="{{ settings.id_card_signature_text }}"></label>
