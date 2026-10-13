@@ -205,7 +205,7 @@ def bulk_generate():
     exam = db.session.get(Exam, exam_id) if exam_id else None
     if not exam or not exam.is_active or exam.academic_year_id != academic_year_id:
         flash("Dooro Exam Type firfircoon oo sannadkiisa la jaanqaadaya.", "warning")
-        return redirect(url_for("admin_id_cards.dashboard"))
+        return _redirect_to_posted_id_card_filters()
 
     scope_filters = {
         "q": request.form.get("q", "").strip(),
@@ -233,25 +233,33 @@ def bulk_generate():
 
     if not ids:
         flash("Arday ku habboon ma helin. Hubi filters-ka ama dooro ardayda.", "warning")
-        return redirect(url_for("admin_id_cards.dashboard"))
+        return _redirect_to_posted_id_card_filters()
 
     students_by_id = {
         student.id: student
         for student in Student.query.filter(Student.id.in_(ids)).all()
     }
     issue_ids = []
-    try:
-        for student_id in ids:
-            student = students_by_id[student_id]
+    skipped_reasons = []
+    for student_id in ids:
+        student = students_by_id[student_id]
+        try:
             issue_ids.append(get_or_create_issue(student, academic_year_id=academic_year_id, exam_id=exam_id).id)
-    except EnrollmentValidationError as exc:
+        except EnrollmentValidationError as exc:
+            skipped_reasons.append(str(exc))
+
+    if not issue_ids:
         db.session.rollback()
-        flash(str(exc), "warning")
-        return redirect(url_for("admin_id_cards.dashboard"))
+        flash(_id_card_generation_skip_message(0, skipped_reasons), "warning")
+        return _redirect_to_posted_id_card_filters()
+
     operation = "Generated ID card" if single_student_id else f"Bulk generated {len(issue_ids)} ID cards"
     audit("ID Card Operations", f"{operation} for {len(issue_ids)} student(s) using exam {exam.id}")
     db.session.commit()
-    flash(f"Waxaa la diyaariyey {len(issue_ids)} kaadh.", "success")
+    if skipped_reasons:
+        flash(_id_card_generation_skip_message(len(issue_ids), skipped_reasons), "warning")
+    else:
+        flash(f"Waxaa la diyaariyey {len(issue_ids)} kaadh.", "success")
     return_filters = {
         "back_q": request.form.get("q", "").strip(),
         "back_year_id": request.form.get("return_year_id", ""),
@@ -265,6 +273,33 @@ def bulk_generate():
         issue_ids=",".join(str(i) for i in issue_ids),
         **return_filters,
     ))
+
+
+def _redirect_to_posted_id_card_filters():
+    """Return failed generation attempts to the exact roster filter context."""
+    return redirect(url_for(
+        "admin_id_cards.dashboard",
+        q=request.form.get("q", "").strip(),
+        year_id=request.form.get("return_year_id") or request.form.get("academic_year_id", ""),
+        exam_id=request.form.get("return_exam_id") or request.form.get("exam_id", ""),
+        level=request.form.get("level", "").strip(),
+        academic_year_class_id=request.form.get("academic_year_class_id", ""),
+        section=request.form.get("section", "").strip(),
+    ))
+
+
+def _id_card_generation_skip_message(generated_count, reasons):
+    blocked_count = sum("xannib" in reason.lower() for reason in reasons)
+    review_count = len(reasons) - blocked_count
+    details = []
+    if blocked_count:
+        details.append(f"{blocked_count} kaadh xanniban")
+    if review_count:
+        details.append(f"{review_count} arday oo xogtooda u baahan hubin")
+    detail_text = "; ".join(details)
+    if generated_count:
+        return f"Waxaa la diyaariyey {generated_count} kaadh. {len(reasons)} arday waa laga booday: {detail_text}."
+    return f"Kaadh lama hawlgelin. {len(reasons)} arday waa laga booday: {detail_text}. Filters-ka waa la ilaaliyey."
 
 
 @id_cards_bp.route("/print")

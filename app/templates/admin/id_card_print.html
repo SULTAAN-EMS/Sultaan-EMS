@@ -58,6 +58,25 @@
       outline: 3px solid #99f6e4;
       outline-offset: 3px;
     }
+    .generation-notices {
+      width: min(100% - 32px, 900px);
+      margin: 14px auto;
+      display: grid;
+      gap: 8px;
+    }
+    .generation-notice {
+      padding: 12px 16px;
+      border: 1px solid #a7f3d0;
+      border-radius: 10px;
+      background: #ecfdf5;
+      color: #065f46;
+      font: 650 14px/1.45 "Segoe UI", Arial, sans-serif;
+    }
+    .generation-notice.is-warning {
+      border-color: #fcd34d;
+      background: #fffbeb;
+      color: #92400e;
+    }
     .card-page {
       width: calc(297mm - ({{ settings.id_card_print_margin or 8 }}mm * 2));
       height: calc(210mm - ({{ settings.id_card_print_margin or 8 }}mm * 2));
@@ -436,7 +455,7 @@
     }
     @media print {
       body { margin: 0; }
-      .print-screen-actions { display: none !important; }
+      .print-screen-actions, .generation-notices { display: none !important; }
       .id-card { box-shadow: none; }
     }
   </style>
@@ -445,6 +464,15 @@
   <nav class="print-screen-actions" aria-label="Ku noqoshada bogga kaadhadhka">
     <a href="{{ return_url }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>Dib-u-noqo</span></a>
   </nav>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="generation-notices" role="status" aria-live="polite">
+        {% for category, message in messages %}
+          <div class="generation-notice {{ 'is-warning' if category in ['warning', 'danger'] else '' }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
   {% for page in cards|batch(4, none) %}
     <main class="card-page">
       {% for item in page %}

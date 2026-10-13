@@ -465,6 +465,100 @@ class TestIdCards(unittest.TestCase):
         self.assertEqual(mismatched_response.status_code, 200)
         self.assertNotIn(b"Arday Dugsi Dhexe", mismatched_response.data)
 
+    def test_bulk_generation_skips_blocked_student_and_keeps_successful_cards(self):
+        blocked_issue = IdCardIssue(
+            token="blocked-student-card-token",
+            student=self.first_student,
+            academic_year=self.year,
+            exam=self.exam,
+            issue_date=date.today(),
+            expiry_date=date.today() + timedelta(days=30),
+            status="Blocked",
+        )
+        db.session.add(blocked_issue)
+        db.session.commit()
+
+        response = self.client.post("/admin/id-cards/bulk-generate", data={
+            "scope": "filtered",
+            "academic_year_id": str(self.year.id),
+            "exam_id": str(self.exam.id),
+            "return_year_id": str(self.year.id),
+            "return_exam_id": str(self.exam.id),
+            "q": "",
+            "level": "Dugsi Sare",
+            "academic_year_class_id": str(self.year_class.id),
+            "section": "",
+        })
+
+        self.assertIn(response.status_code, (302, 303))
+        self.assertIn("/admin/id-cards/print?", response.location)
+        print_page = self.client.get(response.location)
+        self.assertEqual(print_page.status_code, 200)
+        self.assertIn(b"Waxaa la diyaariyey 1 kaadh", print_page.data)
+        self.assertIn(b"1 arday waa laga booday", print_page.data)
+
+        self.assertEqual(
+            IdCardIssue.query.filter_by(student_id=self.first_student.id, exam_id=self.exam.id).count(),
+            1,
+        )
+        self.assertEqual(
+            IdCardIssue.query.filter_by(student_id=self.second_student.id, exam_id=self.exam.id).count(),
+            1,
+        )
+
+    def test_failed_generation_redirect_preserves_roster_filters(self):
+        response = self.client.post("/admin/id-cards/bulk-generate", data={
+            "single_student_id": str(self.other_student.id),
+            "academic_year_id": str(self.year.id),
+            "exam_id": str(self.exam.id),
+            "return_year_id": str(self.year.id),
+            "return_exam_id": str(self.exam.id),
+            "q": "Arday",
+            "level": "Dugsi Sare",
+            "academic_year_class_id": str(self.year_class.id),
+            "section": "A",
+        })
+
+        self.assertIn(response.status_code, (302, 303))
+        self.assertIn(f"year_id={self.year.id}", response.location)
+        self.assertIn(f"exam_id={self.exam.id}", response.location)
+        self.assertIn("level=Dugsi+Sare", response.location)
+        self.assertIn(f"academic_year_class_id={self.year_class.id}", response.location)
+        self.assertIn("section=A", response.location)
+        self.assertIn("q=Arday", response.location)
+
+    def test_blocked_single_student_returns_to_same_filters_with_reason(self):
+        db.session.add(IdCardIssue(
+            token="blocked-single-card-token",
+            student=self.first_student,
+            academic_year=self.year,
+            exam=self.exam,
+            issue_date=date.today(),
+            expiry_date=date.today() + timedelta(days=30),
+            status="Blocked",
+        ))
+        db.session.commit()
+
+        response = self.client.post("/admin/id-cards/bulk-generate", data={
+            "single_student_id": str(self.first_student.id),
+            "academic_year_id": str(self.year.id),
+            "exam_id": str(self.exam.id),
+            "return_year_id": str(self.year.id),
+            "return_exam_id": str(self.exam.id),
+            "q": "ID-001",
+            "level": "Dugsi Sare",
+            "academic_year_class_id": str(self.year_class.id),
+            "section": "",
+        })
+
+        self.assertIn(response.status_code, (302, 303))
+        self.assertIn("level=Dugsi+Sare", response.location)
+        self.assertIn(f"academic_year_class_id={self.year_class.id}", response.location)
+        dashboard = self.client.get(response.location)
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertIn(b"Kaadh lama hawlgelin", dashboard.data)
+        self.assertIn(b"1 kaadh xanniban", dashboard.data)
+
     def test_one_exam_type_generates_all_filtered_students_and_reuses_expired_first_card(self):
         old_issue = IdCardIssue(
             token="old-expired-first-card-token",
