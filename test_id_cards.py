@@ -286,6 +286,38 @@ class TestIdCards(unittest.TestCase):
                 self.assertIn(response.status_code, (302, 303))
                 self.assertIsNone(db.session.get(Setting, "id_card_issue_months"))
 
+    def test_reissuing_active_card_applies_new_validity_period(self):
+        saved = self.client.post("/admin/id-cards/", data={
+            "action": "save_validity",
+            "id_card_issue_months": "6",
+        })
+        self.assertIn(saved.status_code, (302, 303))
+
+        old_issue_date = date.today() - timedelta(days=20)
+        issue = IdCardIssue(
+            token="active-card-old-validity-token",
+            student=self.first_student,
+            academic_year=self.year,
+            exam=self.exam,
+            issue_date=old_issue_date,
+            expiry_date=add_months(old_issue_date, 12),
+            status="Active",
+        )
+        db.session.add(issue)
+        db.session.commit()
+        old_token = issue.token
+
+        response = self.client.post(f"/admin/id-cards/generate/{self.first_student.id}", data={
+            "academic_year_id": str(self.year.id),
+            "exam_id": str(self.exam.id),
+        })
+        self.assertIn(response.status_code, (302, 303))
+
+        refreshed = db.session.get(IdCardIssue, issue.id)
+        self.assertEqual(refreshed.issue_date, date.today())
+        self.assertEqual(refreshed.expiry_date, add_months(date.today(), 6))
+        self.assertNotEqual(refreshed.token, old_token)
+
     def test_scoped_exam_only_shows_and_generates_students_in_its_configured_class(self):
         second_legacy_class = AcademicClass(
             academic_level=self.level,

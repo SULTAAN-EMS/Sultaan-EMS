@@ -478,7 +478,8 @@ def get_or_create_issue(student, academic_year_id=None, exam_id=None):
         ensure_issue_dates(issue, months=months)
         if issue.status == "Blocked":
             raise EnrollmentValidationError("Kaadhkan waa la xannibay; maamulka ha dib u eego ka hor dib-u-soo-saar.")
-        if effective_issue_status(issue) != "Active":
+        validity_changed = issue.expiry_date != add_months(issue.issue_date, months)
+        if effective_issue_status(issue) != "Active" or validity_changed:
             issue.token = secrets.token_urlsafe(32)
             issue.issue_date = date.today()
             issue.expiry_date = add_months(date.today(), months)
