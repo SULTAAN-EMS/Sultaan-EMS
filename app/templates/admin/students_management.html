@@ -352,24 +352,52 @@
         {% endfor %}
         
         <!-- Pagination -->
-        {% if total_pages > 1 %}
-        <div class="sm-pagination">
-          {% if has_prev %}
-            <a href="javascript:void(0)" data-page="{{ page - 1 }}" class="pagination-link pagination-nav">
-              <i class="fa-solid fa-chevron-left"></i> Previous
-            </a>
-          {% endif %}
-          
-          <span class="pagination-info">
-            Page {{ page }} of {{ total_pages }} ({{ total_students }} students)
-          </span>
-          
-          {% if has_next %}
-            <a href="javascript:void(0)" data-page="{{ page + 1 }}" class="pagination-link pagination-nav">
-              Next <i class="fa-solid fa-chevron-right"></i>
-            </a>
-          {% endif %}
-        </div>
+        {% if total_students > 0 %}
+        <div class="sm-pagination-trigger" aria-hidden="true"></div>
+        <nav class="sm-pagination{{ ' sm-pagination--single' if total_pages <= 1 else '' }}" aria-label="Bogagga ardayda">
+          <div class="sm-pagination__start">
+            {% if has_prev %}
+              <a href="javascript:void(0)" data-page="{{ page - 1 }}" class="pagination-link pagination-nav pagination-step" aria-label="Bogga hore" title="Bogga hore">
+                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i><span class="pagination-step__label">Hore</span>
+              </a>
+            {% else %}
+              <span class="pagination-link pagination-step is-disabled" aria-disabled="true" aria-label="Bog ma jiro ka horreeya">
+                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i><span class="pagination-step__label">Hore</span>
+              </span>
+            {% endif %}
+
+            <div class="sm-pagination__pages" role="group" aria-label="Dooro bogga">
+              {% if pagination_start > 1 %}
+                <a href="javascript:void(0)" data-page="1" class="pagination-link pagination-nav pagination-number pagination-page--edge" aria-label="Bogga 1">1</a>
+              {% endif %}
+              {% if pagination_start > 2 %}<span class="pagination-ellipsis" aria-hidden="true">…</span>{% endif %}
+              {% for page_number in range(pagination_start, pagination_end + 1) %}
+                <a href="javascript:void(0)" data-page="{{ page_number }}" class="pagination-link pagination-nav pagination-number{{ ' is-current' if page_number == page else '' }}" aria-label="Bogga {{ page_number }}"{% if page_number == page %} aria-current="page"{% endif %}>{{ page_number }}</a>
+              {% endfor %}
+              {% if pagination_end < total_pages - 1 %}<span class="pagination-ellipsis" aria-hidden="true">…</span>{% endif %}
+              {% if pagination_end < total_pages %}
+                <a href="javascript:void(0)" data-page="{{ total_pages }}" class="pagination-link pagination-nav pagination-number pagination-page--edge" aria-label="Bogga {{ total_pages }}">{{ total_pages }}</a>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="sm-pagination__end">
+            <span class="sm-pagination__total"><i class="fa-solid fa-users" aria-hidden="true"></i><span>{{ total_students }} arday</span></span>
+            <span class="sm-pagination__summary">
+              <strong class="sm-pagination__summary-long">Bog {{ page }} / {{ total_pages }}</strong>
+              <strong class="sm-pagination__summary-short">{{ page }}/{{ total_pages }}</strong>
+            </span>
+            {% if has_next %}
+              <a href="javascript:void(0)" data-page="{{ page + 1 }}" class="pagination-link pagination-nav pagination-step" aria-label="Bogga xiga" title="Bogga xiga">
+                <span class="pagination-step__label">Xiga</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+              </a>
+            {% else %}
+              <span class="pagination-link pagination-step is-disabled" aria-disabled="true" aria-label="Bog dambe ma jiro">
+                <span class="pagination-step__label">Xiga</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+              </span>
+            {% endif %}
+          </div>
+        </nav>
         {% endif %}
       </div>
 
@@ -839,6 +867,67 @@ function bindPaginationLinks() {
       goToPage(this.getAttribute('data-page'));
     });
   });
+  bindStudentPaginationPosition();
+}
+
+var studentPaginationSyncFrame = 0;
+var studentPaginationResizeObserver = null;
+var studentPaginationPositionEventsBound = false;
+var studentPaginationIsActive = false;
+
+function syncStudentPaginationPosition() {
+  var list = document.getElementById('student-list');
+  var pager = list && list.querySelector('.sm-pagination');
+  var trigger = list && list.querySelector('.sm-pagination-trigger');
+  if (!list || !pager || !trigger) return;
+
+  var rect = list.getBoundingClientRect();
+  var triggerRect = trigger.getBoundingClientRect();
+  var viewportWidth = document.documentElement.clientWidth;
+  var left = Math.max(0, rect.left);
+  var right = Math.min(viewportWidth, rect.right);
+  var activationLine = window.innerHeight + 80;
+  var releaseLine = window.innerHeight + 160;
+  if (!studentPaginationIsActive && triggerRect.top <= activationLine && rect.bottom > 0 && rect.top < window.innerHeight) {
+    studentPaginationIsActive = true;
+  } else if (studentPaginationIsActive && (triggerRect.top > releaseLine || rect.bottom <= 0 || rect.top >= window.innerHeight)) {
+    studentPaginationIsActive = false;
+  }
+  var isVisible = studentPaginationIsActive && right > left && rect.bottom > 0;
+
+  pager.style.setProperty('--sm-pagination-left', left + 'px');
+  pager.style.setProperty('--sm-pagination-width', Math.max(0, right - left) + 'px');
+  pager.style.visibility = isVisible ? 'visible' : 'hidden';
+}
+
+function scheduleStudentPaginationPositionSync() {
+  if (studentPaginationSyncFrame) return;
+  studentPaginationSyncFrame = window.requestAnimationFrame(function() {
+    studentPaginationSyncFrame = 0;
+    syncStudentPaginationPosition();
+  });
+}
+
+function bindStudentPaginationPosition() {
+  var list = document.getElementById('student-list');
+  if (!list) return;
+
+  list.classList.add('sm-list--pagination-pinned');
+  list.addEventListener('scroll', scheduleStudentPaginationPositionSync, { passive: true });
+  if (studentPaginationResizeObserver) {
+    studentPaginationResizeObserver.disconnect();
+    studentPaginationResizeObserver.observe(list);
+  } else if (window.ResizeObserver) {
+    studentPaginationResizeObserver = new ResizeObserver(scheduleStudentPaginationPositionSync);
+    studentPaginationResizeObserver.observe(list);
+  }
+
+  if (!studentPaginationPositionEventsBound) {
+    window.addEventListener('resize', scheduleStudentPaginationPositionSync, { passive: true });
+    document.addEventListener('scroll', scheduleStudentPaginationPositionSync, { capture: true, passive: true });
+    studentPaginationPositionEventsBound = true;
+  }
+  syncStudentPaginationPosition();
 }
 
 function selectStudent(studentId) {
@@ -1489,15 +1578,87 @@ document.addEventListener('DOMContentLoaded', function() {
 
 /* Pagination styling */
 .sm-pagination {
-  display: flex;
+  position: fixed;
+  left: var(--sm-pagination-left, 0px);
+  bottom: 12px;
+  z-index: 40;
+  visibility: hidden;
+  box-sizing: border-box;
+  width: var(--sm-pagination-width, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  margin-top: 16px;
-  background: #fff;
+  gap: 10px;
+  padding: 12px 16px;
+  margin: 0;
+  background: var(--surface, rgba(255, 255, 255, .97));
+  backdrop-filter: blur(8px);
   border-radius: 8px;
   border: 1px solid var(--paper-line);
-  box-shadow: 0 1px 3px rgba(27, 42, 74, 0.04);
+  box-shadow: 0 8px 24px rgba(27, 42, 74, 0.16);
+}
+
+.sm-list--pagination-pinned {
+  padding-bottom: 76px;
+}
+
+.sm-pagination-trigger {
+  flex: 0 0 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+@media (max-width: 520px) {
+  .sm-pagination {
+    bottom: 8px;
+    gap: 5px;
+    padding: 8px;
+  }
+
+  .pagination-link {
+    gap: 4px;
+    padding: 7px 8px;
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+
+  .pagination-info {
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+
+  .sm-list--pagination-pinned {
+    padding-bottom: 62px;
+  }
+}
+
+.sm-pagination--single {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.sm-pagination__start,
+.sm-pagination__end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sm-pagination__start {
+  justify-self: start;
+}
+
+.sm-pagination__end {
+  justify-self: end;
+}
+
+.theme-dark .sm-pagination {
+  border-color: var(--line, #263244);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
+}
+
+.theme-dark .pagination-info {
+  color: var(--ink, #e5e7eb);
 }
 
 .pagination-link {
@@ -1522,11 +1683,213 @@ document.addEventListener('DOMContentLoaded', function() {
   box-shadow: 0 2px 8px rgba(30, 58, 138, 0.2);
 }
 
+.sm-pagination__pages {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pagination-number {
+  width: 38px;
+  height: 38px;
+  justify-content: center;
+  padding: 0;
+  color: var(--navy);
+  background: #f4f6fa;
+  border: 1px solid transparent;
+  box-shadow: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.pagination-number:hover {
+  color: #fff;
+  background: #274477;
+}
+
+.pagination-number.is-current {
+  color: #fff;
+  background: linear-gradient(135deg, #142b55, #244b83);
+  border-color: #d7ad2c;
+  box-shadow: 0 3px 10px rgba(20, 43, 85, .24), inset 0 0 0 1px rgba(255, 255, 255, .12);
+  cursor: default;
+}
+
+.pagination-ellipsis {
+  width: 20px;
+  color: var(--slate);
+  text-align: center;
+  font-weight: 700;
+}
+
+.pagination-step {
+  min-height: 38px;
+  padding: 8px 12px;
+  color: var(--navy);
+  background: #f4f6fa;
+  border: 1px solid var(--paper-line);
+  box-shadow: none;
+  white-space: nowrap;
+}
+
+.pagination-step:hover {
+  color: #fff;
+  background: #274477;
+}
+
+.pagination-step.is-disabled {
+  color: #98a2b3;
+  background: #f7f8fa;
+  border-color: #e4e8ef;
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: .72;
+  transform: none;
+}
+
+.sm-pagination__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--slate);
+  font-size: .82rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.sm-pagination__summary strong {
+  color: var(--ink);
+  font-weight: 750;
+}
+
+.sm-pagination__summary-short {
+  display: none;
+}
+
+.sm-pagination__total {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 8px;
+  padding: 4px 8px;
+  color: #087b68;
+  background: #eaf8f3;
+  border: 1px solid #ccecdf;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.sm-pagination__total i {
+  font-size: .72rem;
+}
+
 .pagination-info {
   font-family: var(--font-sans);
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--slate);
+}
+
+.theme-dark .pagination-number:not(.is-current),
+.theme-dark .pagination-step:not(.is-disabled) {
+  color: var(--ink, #e5e7eb);
+  background: #17243a;
+  border-color: #334155;
+}
+
+.theme-dark .pagination-number:hover:not(.is-current),
+.theme-dark .pagination-step:hover:not(.is-disabled) {
+  color: #fff;
+  background: #284775;
+}
+
+.theme-dark .pagination-step.is-disabled {
+  color: #77849a;
+  background: #111b2c;
+  border-color: #273449;
+}
+
+.theme-dark .pagination-ellipsis,
+.theme-dark .sm-pagination__summary {
+  color: #aab6c8;
+}
+
+.theme-dark .sm-pagination__summary strong {
+  color: var(--ink, #e5e7eb);
+}
+
+.theme-dark .sm-pagination__total {
+  color: #72d7b7;
+  background: #12352f;
+  border-color: #245246;
+}
+
+@media (max-width: 520px) {
+  .sm-pagination {
+    bottom: 8px;
+    gap: 4px;
+    padding: 8px 6px;
+  }
+
+  .sm-pagination__start,
+  .sm-pagination__end {
+    gap: 4px;
+  }
+
+  .sm-pagination__pages {
+    gap: 2px;
+  }
+
+  .sm-pagination .pagination-number {
+    width: 32px;
+    height: 34px;
+    padding: 0;
+    font-size: .78rem;
+  }
+
+  .pagination-page--edge,
+  .pagination-ellipsis,
+  .pagination-step__label {
+    display: none;
+  }
+
+  .sm-pagination .pagination-step {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    min-height: 34px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .sm-pagination__summary {
+    gap: 0;
+    font-size: .72rem;
+    flex: 0 0 auto;
+  }
+
+  .sm-pagination__summary-long {
+    display: none;
+  }
+
+  .sm-pagination__summary-short {
+    display: inline;
+  }
+
+  .sm-pagination__total {
+    gap: 4px;
+    margin-right: 4px;
+    padding: 4px 6px;
+    font-size: .64rem;
+  }
+
+  .sm-pagination__total i {
+    font-size: .62rem;
+  }
 }
 
 /* Height balance for student list and preview */

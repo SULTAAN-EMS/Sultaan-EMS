@@ -10,7 +10,7 @@ from flask import Blueprint, abort, current_app, flash, jsonify, redirect, rende
 from flask_login import current_user, login_required
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font
-from sqlalchemy import and_ as db_and, case, func, or_ as db_or
+from sqlalchemy import and_ as db_and, func, or_ as db_or
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
@@ -3895,9 +3895,20 @@ def students_management():
 
     if gender_filter:
         students_query = students_query.filter(func.lower(Student.gender) == gender_filter)
+
+    if sort_order in {"shift_morning", "shift_afternoon"} and selected_year:
+        selected_shift = "morning" if sort_order == "shift_morning" else "afternoon"
+        students_query = students_query.join(
+            AcademicYearClass,
+            StudentEnrollment.academic_year_class_id == AcademicYearClass.id,
+        ).filter(AcademicYearClass.school_shift == selected_shift)
     
     # Get total count for pagination
     total_students = students_query.count()
+    total_pages = (total_students + per_page - 1) // per_page if total_students > 0 else 1
+    page = max(1, min(page, total_pages))
+    pagination_start = max(1, page - 1)
+    pagination_end = min(total_pages, page + 1)
     
     # Apply pagination
     if sort_order == "name_desc":
@@ -3907,21 +3918,7 @@ def students_management():
     elif sort_order == "id_desc":
         ordering = [func.lower(func.trim(Student.student_code)).desc(), Student.id.desc()]
     elif sort_order in {"shift_morning", "shift_afternoon"} and selected_year:
-        students_query = students_query.outerjoin(
-            AcademicYearClass,
-            StudentEnrollment.academic_year_class_id == AcademicYearClass.id,
-        )
-        first_shift, second_shift = (
-            ("morning", "afternoon")
-            if sort_order == "shift_morning"
-            else ("afternoon", "morning")
-        )
-        shift_order = case(
-            (AcademicYearClass.school_shift == first_shift, 0),
-            (AcademicYearClass.school_shift == second_shift, 1),
-            else_=2,
-        )
-        ordering = [shift_order, func.lower(func.trim(Student.student_code)), Student.id]
+        ordering = [func.lower(func.trim(Student.student_code)), Student.id]
     else:
         ordering = [func.lower(func.trim(Student.full_name)), Student.id]
     students = students_query.order_by(*ordering).offset((page - 1) * per_page).limit(per_page).all()
@@ -3967,7 +3964,6 @@ def students_management():
             }
     
     # Calculate pagination info
-    total_pages = (total_students + per_page - 1) // per_page if total_students > 0 else 1
     has_prev = page > 1
     has_next = page < total_pages
     
@@ -3996,6 +3992,8 @@ def students_management():
         per_page=per_page,
         total_students=total_students,
         total_pages=total_pages,
+        pagination_start=pagination_start,
+        pagination_end=pagination_end,
         has_prev=has_prev,
         has_next=has_next,
         incident_counts=incident_counts,

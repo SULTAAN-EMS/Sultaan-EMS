@@ -197,6 +197,37 @@ class TestPhase2CStudentManagement(unittest.TestCase):
             "TIS-Z-MORNING",
             year_class_id=self.class_a.id,
         )
+        afternoon_students = [afternoon_student]
+        morning_students = [morning_student]
+        for index in range(2, 9):
+            afternoon_item = Student(
+                student_code=f"TIS-AFTERNOON-{index:02}",
+                full_name=f"Afternoon Student {index}",
+            )
+            morning_item = Student(
+                student_code=f"TIS-Z-MORNING-{index:02}",
+                full_name=f"Morning Student {index}",
+            )
+            db.session.add_all([afternoon_item, morning_item])
+            db.session.flush()
+            create_enrollment(
+                afternoon_item.id,
+                self.year_a.id,
+                self.level_a.id,
+                self.class_b.id,
+                self.section.id,
+                enrollment_source="manual",
+            )
+            create_enrollment(
+                morning_item.id,
+                self.year_a.id,
+                self.level_a.id,
+                self.class_a.id,
+                self.section.id,
+                enrollment_source="manual",
+            )
+            afternoon_students.append(afternoon_item)
+            morning_students.append(morning_item)
         unassigned_student = self._create_student("TIS-0-UNASSIGNED")
         db.session.delete(
             StudentEnrollment.query.filter_by(
@@ -212,23 +243,41 @@ class TestPhase2CStudentManagement(unittest.TestCase):
         afternoon_first = self.client.get(
             f"/admin/advanced-results/students-management?year_id={self.year_a.id}&sort=shift_afternoon"
         )
+        morning_second = self.client.get(
+            f"/admin/advanced-results/students-management?year_id={self.year_a.id}&sort=shift_morning&page=2"
+        )
+        afternoon_second = self.client.get(
+            f"/admin/advanced-results/students-management?year_id={self.year_a.id}&sort=shift_afternoon&page=2"
+        )
 
         self.assertEqual(morning_first.status_code, 200)
         self.assertEqual(afternoon_first.status_code, 200)
+        self.assertEqual(morning_second.status_code, 200)
+        self.assertEqual(afternoon_second.status_code, 200)
         self.assertIn(b'<option value="shift_morning" selected>', morning_first.data)
         self.assertIn(b'<option value="shift_afternoon" selected>', afternoon_first.data)
         morning_rows = re.findall(rb'class="sm-row" data-student-id="(\d+)"', morning_first.data)
         afternoon_rows = re.findall(rb'class="sm-row" data-student-id="(\d+)"', afternoon_first.data)
-        self.assertEqual(morning_rows, [
-            str(morning_student.id).encode(),
-            str(afternoon_student.id).encode(),
-            str(unassigned_student.id).encode(),
-        ])
-        self.assertEqual(afternoon_rows, [
-            str(afternoon_student.id).encode(),
-            str(morning_student.id).encode(),
-            str(unassigned_student.id).encode(),
-        ])
+        morning_second_rows = re.findall(rb'class="sm-row" data-student-id="(\d+)"', morning_second.data)
+        afternoon_second_rows = re.findall(rb'class="sm-row" data-student-id="(\d+)"', afternoon_second.data)
+        expected_morning = [str(item.id).encode() for item in sorted(morning_students, key=lambda item: item.student_code.lower())]
+        expected_afternoon = [str(item.id).encode() for item in sorted(afternoon_students, key=lambda item: item.student_code.lower())]
+        self.assertEqual(morning_rows, expected_morning[:7])
+        self.assertEqual(morning_second_rows, expected_morning[7:])
+        self.assertEqual(afternoon_rows, expected_afternoon[:7])
+        self.assertEqual(afternoon_second_rows, expected_afternoon[7:])
+        self.assertIn(b"Bog 1 / 2", morning_first.data)
+        self.assertIn(b"Bog 2 / 2", morning_second.data)
+        self.assertIn(b"8 arday", morning_first.data)
+        self.assertIn(b"fa-users", morning_first.data)
+        self.assertIn(b"Bog 1 / 2", afternoon_first.data)
+        self.assertIn(b"Bog 2 / 2", afternoon_second.data)
+        self.assertIn(b"8 arday", afternoon_first.data)
+        self.assertIn(b'data-page="2" class="pagination-link pagination-nav pagination-number is-current" aria-label="Bogga 2" aria-current="page">2</a>', morning_second.data)
+        self.assertNotIn(str(unassigned_student.id).encode(), morning_rows)
+        self.assertNotIn(str(unassigned_student.id).encode(), afternoon_rows)
+        self.assertTrue(set(morning_rows).isdisjoint({str(item.id).encode() for item in afternoon_students}))
+        self.assertTrue(set(afternoon_rows).isdisjoint({str(item.id).encode() for item in morning_students}))
 
     def test_student_management_lock_filters_use_student_status(self):
         student = self._create_student("TIS-LOCK")
