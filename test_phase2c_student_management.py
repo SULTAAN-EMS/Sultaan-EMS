@@ -1,4 +1,5 @@
 from io import BytesIO
+import re
 import unittest
 
 from werkzeug.datastructures import FileStorage
@@ -164,6 +165,70 @@ class TestPhase2CStudentManagement(unittest.TestCase):
             f"/admin/advanced-results/students-management?year_id={self.year_b.id}&class_id={self.class_a.id}"
         )
         self.assertIn(other_year_page.status_code, (302, 303))
+
+    def test_student_management_defaults_to_student_code_ascending(self):
+        student_z = self._create_student("TIS-Z")
+        student_a = self._create_student("TIS-A")
+        student_z.full_name = "Amina Ali"
+        student_a.full_name = "Zubair Ali"
+        db.session.commit()
+
+        response = self.client.get(
+            f"/admin/advanced-results/students-management?year_id={self.year_a.id}"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'<option value="id_asc" selected>', response.data)
+        row_ids = re.findall(rb'class="sm-row" data-student-id="(\d+)"', response.data)
+        self.assertEqual(row_ids[:2], [str(student_a.id).encode(), str(student_z.id).encode()])
+
+    def test_student_management_shift_sort_uses_selected_year_class_setup(self):
+        self.class_a.school_shift = "morning"
+        self.class_b.academic_year_level_id = self.level_a.id
+        self.class_b.name = "Form Four - Afternoon"
+        self.class_b.school_shift = "afternoon"
+        db.session.commit()
+
+        afternoon_student = self._create_student(
+            "TIS-AFTERNOON",
+            year_class_id=self.class_b.id,
+        )
+        morning_student = self._create_student(
+            "TIS-Z-MORNING",
+            year_class_id=self.class_a.id,
+        )
+        unassigned_student = self._create_student("TIS-0-UNASSIGNED")
+        db.session.delete(
+            StudentEnrollment.query.filter_by(
+                student_id=unassigned_student.id,
+                academic_year_id=self.year_a.id,
+            ).one()
+        )
+        db.session.commit()
+
+        morning_first = self.client.get(
+            f"/admin/advanced-results/students-management?year_id={self.year_a.id}&sort=shift_morning"
+        )
+        afternoon_first = self.client.get(
+            f"/admin/advanced-results/students-management?year_id={self.year_a.id}&sort=shift_afternoon"
+        )
+
+        self.assertEqual(morning_first.status_code, 200)
+        self.assertEqual(afternoon_first.status_code, 200)
+        self.assertIn(b'<option value="shift_morning" selected>', morning_first.data)
+        self.assertIn(b'<option value="shift_afternoon" selected>', afternoon_first.data)
+        morning_rows = re.findall(rb'class="sm-row" data-student-id="(\d+)"', morning_first.data)
+        afternoon_rows = re.findall(rb'class="sm-row" data-student-id="(\d+)"', afternoon_first.data)
+        self.assertEqual(morning_rows, [
+            str(morning_student.id).encode(),
+            str(afternoon_student.id).encode(),
+            str(unassigned_student.id).encode(),
+        ])
+        self.assertEqual(afternoon_rows, [
+            str(afternoon_student.id).encode(),
+            str(morning_student.id).encode(),
+            str(unassigned_student.id).encode(),
+        ])
 
     def test_student_management_lock_filters_use_student_status(self):
         student = self._create_student("TIS-LOCK")

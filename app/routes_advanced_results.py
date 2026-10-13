@@ -10,7 +10,7 @@ from flask import Blueprint, abort, current_app, flash, jsonify, redirect, rende
 from flask_login import current_user, login_required
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font
-from sqlalchemy import and_ as db_and, func, or_ as db_or
+from sqlalchemy import and_ as db_and, case, func, or_ as db_or
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
@@ -3779,9 +3779,9 @@ def students_management():
     gender_filter = request.args.get("gender", "").strip().lower()
     if gender_filter not in {"", "male", "female"}:
         gender_filter = ""
-    sort_order = request.args.get("sort", "name_asc")
-    if sort_order not in {"name_asc", "name_desc", "id_asc", "id_desc"}:
-        sort_order = "name_asc"
+    sort_order = request.args.get("sort", "id_asc")
+    if sort_order not in {"name_asc", "name_desc", "id_asc", "id_desc", "shift_morning", "shift_afternoon"}:
+        sort_order = "id_asc"
     page = int_or_none(request.args.get("page", 1)) or 1
     per_page = 7  # Students per page for balanced layout
     
@@ -3906,6 +3906,22 @@ def students_management():
         ordering = [func.lower(func.trim(Student.student_code)), Student.id]
     elif sort_order == "id_desc":
         ordering = [func.lower(func.trim(Student.student_code)).desc(), Student.id.desc()]
+    elif sort_order in {"shift_morning", "shift_afternoon"} and selected_year:
+        students_query = students_query.outerjoin(
+            AcademicYearClass,
+            StudentEnrollment.academic_year_class_id == AcademicYearClass.id,
+        )
+        first_shift, second_shift = (
+            ("morning", "afternoon")
+            if sort_order == "shift_morning"
+            else ("afternoon", "morning")
+        )
+        shift_order = case(
+            (AcademicYearClass.school_shift == first_shift, 0),
+            (AcademicYearClass.school_shift == second_shift, 1),
+            else_=2,
+        )
+        ordering = [shift_order, func.lower(func.trim(Student.student_code)), Student.id]
     else:
         ordering = [func.lower(func.trim(Student.full_name)), Student.id]
     students = students_query.order_by(*ordering).offset((page - 1) * per_page).limit(per_page).all()
