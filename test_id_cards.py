@@ -6,6 +6,7 @@ from sqlalchemy import event
 
 from app import create_app, db
 from app.routes_id_cards import add_months
+from app.verification import id_card_qr_payload
 from app.models import (
     AcademicClass,
     AcademicLevel,
@@ -317,6 +318,29 @@ class TestIdCards(unittest.TestCase):
         self.assertEqual(refreshed.issue_date, date.today())
         self.assertEqual(refreshed.expiry_date, add_months(date.today(), 6))
         self.assertNotEqual(refreshed.token, old_token)
+
+    def test_card_qr_opens_public_verification_without_login(self):
+        issue = IdCardIssue(
+            token="public-id-card-qr-token",
+            student=self.first_student,
+            academic_year=self.year,
+            exam=self.exam,
+            issue_date=date.today(),
+            expiry_date=add_months(date.today(), 12),
+            status="Active",
+        )
+        db.session.add(issue)
+        db.session.commit()
+
+        with self.app.test_request_context():
+            qr_url = id_card_qr_payload(issue)["url"]
+        self.assertIn(f"/verify-id/{issue.token}", qr_url)
+        self.assertNotIn("/admin/", qr_url)
+
+        anonymous_client = self.app.test_client()
+        response = anonymous_client.get(f"/verify-id/{issue.token}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Ardayga Koowaad", response.data)
 
     def test_scoped_exam_only_shows_and_generates_students_in_its_configured_class(self):
         second_legacy_class = AcademicClass(
