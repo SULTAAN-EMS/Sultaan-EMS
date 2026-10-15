@@ -41,6 +41,7 @@
     store: {}, // key: "hallId::versionId" -> combo object
     studentDirectory: {}, // classId -> [student objects]
     studentHallMap: {}, // studentId -> {hallId, versionId, hallName, versionLabel}
+    pendingTransferAction: null,
     pendingReplace: null,
     worker: null,
     appearance: {},
@@ -209,6 +210,31 @@
     if (first) window.setTimeout(function () { first.focus(); }, 20);
   }
 
+  function closeStudentTransferConfirm() {
+    var overlay = $('smTransferOverlay');
+    if (overlay) overlay.classList.add('hidden');
+    SM.pendingTransferAction = null;
+  }
+
+  function openStudentTransferConfirm(entries, onConfirm) {
+    var overlay = $('smTransferOverlay');
+    if (!overlay || !entries.length) return;
+    var copy = entries.length === 1
+      ? 'Ardaygani hore ayaa loogu qoray hall (ama fasal-imtixaan) kale. Haddii aad xaqiijiso, qorshihii hore waa laga saarayaa marka qorshahan la kaydiyo.'
+      : entries.length + ' arday ayaa hore loogu qoray hall-yo (ama fasal-imtixaan) kale. Haddii aad xaqiijiso, qorshayaashoodii hore waa laga saarayaa marka qorshahan la kaydiyo.';
+    $('smTransferCopy').textContent = copy;
+    $('smTransferList').innerHTML = entries.map(function (entry) {
+      var student = entry.student;
+      var source = entry.assignment;
+      var sourceText = [source.hallName, source.versionLabel].filter(Boolean).join(' · ');
+      return '<div class="sm-transfer-entry"><strong>' + escapeHtml(student.full_name || student.name || '') +
+        '</strong><span>' + escapeHtml(sourceText) + '</span></div>';
+    }).join('');
+    SM.pendingTransferAction = onConfirm;
+    overlay.classList.remove('hidden');
+    $('smTransferConfirm').focus();
+  }
+
   // ── Build seats from config ──
   function buildSeats(cfg) {
     var seats = [];
@@ -241,6 +267,7 @@
         academicYearId: SM.academicYearId,
         activeLevels: new Set(),
         selectedClasses: {}, // classId -> {color, uids: Set, collapsed: bool}
+        pendingTransfers: {}, // studentId -> prior active hall/version assignment
         classColorOverrides: {}, // classId -> #RRGGBB, persisted per hall version
         cfg: cfg,
         seats: buildSeats(cfg),
@@ -883,6 +910,7 @@
         // Rebuild from persistent data instead of retaining an earlier browser
         // session's temporary selection when a version is reopened or previewed.
         combo.selectedClasses = {};
+        combo.pendingTransfers = {};
         combo.activeLevels = new Set();
 
         // Load saved assignment
@@ -1623,6 +1651,7 @@
         assignments: assignments,
         config: combo.cfg,
         selected_students: selectedStudents,
+        transfer_student_ids: Object.keys(combo.pendingTransfers || {}).map(Number),
         academic_year_id: combo.academicYearId || SM.academicYearId,
         exam_id: SM.examId,
         last_meta: combo.lastMeta || 'Saved layout'
@@ -1631,15 +1660,60 @@
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (data.success) {
+          Object.keys(combo.pendingTransfers || {}).forEach(function (studentId) {
+            Object.keys(SM.studentDirectory).some(function (classId) {
+              var student = (SM.studentDirectory[classId] || []).find(function (item) {
+                return item.id === Number(studentId);
+              });
+              if (student) student.elsewhere = null;
+              return !!student;
+            });
+          });
           combo.savedAssignment = combo.seats.map(function (s) {
             return { seatId: s.id, uid: s.assigned ? s.assigned.id : null };
           });
           combo.currentSnapshotId = data.snapshot_id || null;
           combo.previewSnapshotId = null;
+          combo.pendingTransfers = {};
           combo.dirty = false;
           updateSaveBadge(combo);
           renderSaveHistory(data.history || []);
           notify('Seat arrangement saved successfully (' + data.count + ' seats).');
+        } else if (Array.isArray(data.conflicts) && data.conflicts.length) {
+          var seenConflicts = {};
+          var transferEntries = data.conflicts.filter(function (conflict) {
+            if (seenConflicts[conflict.student_id]) return false;
+            seenConflicts[conflict.student_id] = true;
+            return true;
+          }).map(function (conflict) {
+            var student = null;
+            Object.keys(SM.studentDirectory).some(function (classId) {
+              student = (SM.studentDirectory[classId] || []).find(function (item) {
+                return item.id === Number(conflict.student_id);
+              }) || null;
+              return !!student;
+            });
+            student = student || { id: Number(conflict.student_id), full_name: 'Arday #' + conflict.student_id };
+            var assignment = {
+              hallId: null,
+              versionId: null,
+              hallName: conflict.hall_name || '',
+              versionLabel: conflict.version_label || ''
+            };
+            student.elsewhere = {
+              hall_id: assignment.hallId,
+              version_id: assignment.versionId,
+              hall_name: assignment.hallName,
+              version_label: assignment.versionLabel
+            };
+            return { student: student, assignment: assignment };
+          });
+          openStudentTransferConfirm(transferEntries, function () {
+            transferEntries.forEach(function (entry) {
+              combo.pendingTransfers[entry.student.id] = entry.assignment;
+            });
+            persistArrangement(combo);
+          });
         } else {
           notify('Could not save: ' + (data.error || 'Unknown error'), 'error');
         }
@@ -1799,7 +1873,7 @@
         var sel = combo.selectedClasses[cid];
         if (sel) {
           sel.uids.forEach(function (uid) {
-            delete SM.studentHallMap[uid];
+            restoreStudentHallMap(uid, combo);
             var seat = combo.seats.find(function (s) { return s.assigned && s.assigned.id === uid; });
             if (seat) seat.assigned = null;
           });
@@ -1823,19 +1897,37 @@
       if (quickBtn) {
         var cid = quickBtn.dataset.class;
         var sel = combo.selectedClasses[cid];
-        var hall = currentHall();
         if (quickBtn.dataset.act === 'all') {
           var roster = SM.studentDirectory[cid] || [];
-          roster.forEach(function (st) {
-            sel.uids.add(st.id);
-            SM.studentHallMap[st.id] = {
-              hallId: SM.currentHallId, versionId: SM.currentVersionId,
-              hallName: hall ? hall.name : '', versionLabel: $('smCrumbVersionB').textContent
-            };
-          });
+          var incoming = roster.filter(function (student) { return !sel.uids.has(student.id); });
+          var transferEntries = incoming.map(function (student) {
+            var source = transferSourceForStudent(student);
+            return source ? { student: student, assignment: source } : null;
+          }).filter(Boolean);
+          var addStudents = function () {
+            transferEntries.forEach(function (entry) {
+              combo.pendingTransfers[entry.student.id] = entry.assignment;
+            });
+            var hall = currentHall();
+            incoming.forEach(function (student) {
+              sel.uids.add(student.id);
+              SM.studentHallMap[student.id] = {
+                hallId: SM.currentHallId, versionId: SM.currentVersionId,
+                hallName: hall ? hall.name : '', versionLabel: $('smCrumbVersionB').textContent
+              };
+            });
+            renderClassesArea(combo);
+            renderHallFromSeats(combo, combo.lastMeta);
+          };
+          if (transferEntries.length) {
+            openStudentTransferConfirm(transferEntries, addStudents);
+            return;
+          }
+          addStudents();
+          return;
         } else {
           sel.uids.forEach(function (uid) {
-            delete SM.studentHallMap[uid];
+            restoreStudentHallMap(uid, combo);
             var seat = combo.seats.find(function (s) { return s.assigned && s.assigned.id === uid; });
             if (seat) seat.assigned = null;
           });
@@ -1914,6 +2006,67 @@
       });
     }
 
+    function normalizedStudentPlacement(placement) {
+      if (!placement) return null;
+      return {
+        hallId: parseInt(placement.hallId || placement.hall_id, 10) || null,
+        versionId: parseInt(placement.versionId || placement.version_id, 10) || null,
+        hallName: placement.hallName || placement.hall_name || '',
+        versionLabel: placement.versionLabel || placement.version_label || ''
+      };
+    }
+
+    function transferSourceForStudent(student) {
+      var candidates = [
+        normalizedStudentPlacement(student && student.elsewhere),
+        normalizedStudentPlacement(SM.studentHallMap[student && student.id])
+      ];
+      for (var i = 0; i < candidates.length; i++) {
+        var source = candidates[i];
+        if (source && (source.hallId !== SM.currentHallId || source.versionId !== SM.currentVersionId)) return source;
+      }
+      return null;
+    }
+
+    function restoreStudentHallMap(uid, combo) {
+      var previous = combo.pendingTransfers && combo.pendingTransfers[uid];
+      if (previous) {
+        SM.studentHallMap[uid] = previous;
+        delete combo.pendingTransfers[uid];
+        return;
+      }
+      var current = normalizedStudentPlacement(SM.studentHallMap[uid]);
+      if (current && current.hallId === SM.currentHallId && current.versionId === SM.currentVersionId) {
+        delete SM.studentHallMap[uid];
+      }
+    }
+
+    function requestRosterStudentToggle(row, checked) {
+      if (!row) return;
+      var uid = parseInt(row.dataset.uid, 10);
+      var cid = row.dataset.class;
+      var combo = currentCombo();
+      if (!checked) {
+        toggleRosterStudent(row, false);
+        return;
+      }
+      if (!combo || !combo.selectedClasses[cid]) return;
+      var student = (SM.studentDirectory[cid] || []).find(function (item) { return item.id === uid; });
+      var source = student && transferSourceForStudent(student);
+      if (!source || combo.pendingTransfers[uid]) {
+        toggleRosterStudent(row, true);
+        return;
+      }
+
+      var checkbox = row.querySelector('input[type="checkbox"]');
+      if (checkbox) checkbox.checked = false;
+      row.setAttribute('aria-pressed', 'false');
+      openStudentTransferConfirm([{ student: student, assignment: source }], function () {
+        combo.pendingTransfers[uid] = source;
+        toggleRosterStudent(row, true);
+      });
+    }
+
     function toggleRosterStudent(row, checked) {
       if (!row) return;
       var uid = parseInt(row.dataset.uid, 10);
@@ -1932,7 +2085,7 @@
         };
       } else {
         sel.uids.delete(uid);
-        delete SM.studentHallMap[uid];
+        restoreStudentHallMap(uid, combo);
         var seat = combo.seats.find(function (s) { return s.assigned && s.assigned.id === uid; });
         if (seat) seat.assigned = null;
       }
@@ -1968,7 +2121,7 @@
     // so both interaction paths share exactly one toggle and one re-render.
     $('smClassesArea').addEventListener('change', function (e) {
       if (e.target.type !== 'checkbox') return;
-      toggleRosterStudent(e.target.closest('.sm-roster-row'), e.target.checked);
+      requestRosterStudentToggle(e.target.closest('.sm-roster-row'), e.target.checked);
     });
 
     $('smClassesArea').addEventListener('click', function (e) {
@@ -1977,7 +2130,7 @@
       var checkbox = row.querySelector('input[type="checkbox"]');
       if (!checkbox) return;
       checkbox.checked = !checkbox.checked;
-      toggleRosterStudent(row, checkbox.checked);
+      requestRosterStudentToggle(row, checkbox.checked);
     });
 
     $('smClassesArea').addEventListener('keydown', function (e) {
@@ -1988,7 +2141,7 @@
       var checkbox = row.querySelector('input[type="checkbox"]');
       if (!checkbox) return;
       checkbox.checked = !checkbox.checked;
-      toggleRosterStudent(row, checkbox.checked);
+      requestRosterStudentToggle(row, checkbox.checked);
     });
 
     // Action buttons
@@ -2115,6 +2268,19 @@
       $('smHardWarn').classList.remove('show');
       SM.pendingReplace = null;
     });
+    var transferOverlay = $('smTransferOverlay');
+    if (transferOverlay) {
+      $('smTransferClose').addEventListener('click', closeStudentTransferConfirm);
+      $('smTransferCancel').addEventListener('click', closeStudentTransferConfirm);
+      $('smTransferConfirm').addEventListener('click', function () {
+        var action = SM.pendingTransferAction;
+        closeStudentTransferConfirm();
+        if (action) action();
+      });
+      transferOverlay.addEventListener('click', function (e) {
+        if (e.target === transferOverlay) closeStudentTransferConfirm();
+      });
+    }
 
     // Management menus are attached to body because they float outside cards.
     document.addEventListener('click', function (e) {
@@ -2135,7 +2301,7 @@
     $('smManageCancel').addEventListener('click', closeManage);
     $('smManageOverlay').addEventListener('click', function (e) { if (e.target === $('smManageOverlay')) closeManage(); });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { closeActionMenus(); closeManage(); closeClassColorPicker(); }
+      if (e.key === 'Escape') { closeActionMenus(); closeManage(); closeClassColorPicker(); closeStudentTransferConfirm(); }
     });
 
     // Capture phase keeps the established controls and layout intact while all

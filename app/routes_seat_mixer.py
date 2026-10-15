@@ -493,7 +493,7 @@ def seat_mixer_metrics(assignments, academic_year_id=None):
 
 def replace_active_assignments(version_id, assignments, config):
     """Keep the active print/export layout aligned with the selected snapshot."""
-    SeatMixerAssignment.query.filter_by(version_id=version_id).delete(synchronize_session=False)
+    SeatMixerAssignment.query.filter_by(version_id=version_id).delete(synchronize_session="fetch")
     for assignment in assignments:
         db.session.add(SeatMixerAssignment(
             version_id=version_id,
@@ -505,6 +505,56 @@ def replace_active_assignments(version_id, assignments, config):
             tables_per_row_config=config["tablesPerRow"],
             seats_per_table_config=config["seatsPerTable"],
         ))
+
+
+def active_assignments_elsewhere(student_ids, target_version_id, exam_id):
+    """Find current seat placements for these students in other versions of this exam."""
+    if not student_ids:
+        return []
+    return (
+        db.session.query(SeatMixerAssignment, ExamHallVersion, ExamHall)
+        .join(ExamHallVersion, SeatMixerAssignment.version_id == ExamHallVersion.id)
+        .join(ExamHall, ExamHallVersion.exam_hall_id == ExamHall.id)
+        .filter(
+            SeatMixerAssignment.student_id.in_(student_ids),
+            SeatMixerAssignment.version_id != target_version_id,
+            ExamHall.exam_id == exam_id,
+        )
+        .with_for_update()
+        .all()
+    )
+
+
+def create_layout_snapshot(version_id, assignments, config, selected_students, last_meta, academic_year_id, exam_id):
+    metrics = seat_mixer_metrics(assignments, academic_year_id=academic_year_id)
+    snapshot = SeatMixerSaveSnapshot(
+        version_id=version_id,
+        snapshot_json=json.dumps({
+            "config": config,
+            "assignments": assignments,
+            "selected_students": selected_students,
+            "last_meta": last_meta,
+            "academic_year_id": academic_year_id,
+            "exam_id": exam_id,
+        }, separators=(",", ":"), sort_keys=True),
+        integrity_score=metrics["integrity_score"],
+        near_adjacency_count=metrics["near_adjacency_count"],
+        placed_count=metrics["placed_count"],
+    )
+    db.session.add(snapshot)
+    db.session.flush()
+    set_current_snapshot_id(version_id, snapshot.id)
+
+    expired_snapshots = (
+        SeatMixerSaveSnapshot.query
+        .filter_by(version_id=version_id)
+        .order_by(SeatMixerSaveSnapshot.created_at.desc(), SeatMixerSaveSnapshot.id.desc())
+        .offset(SEAT_MIXER_HISTORY_LIMIT)
+        .all()
+    )
+    for expired_snapshot in expired_snapshots:
+        db.session.delete(expired_snapshot)
+    return snapshot, metrics
 
 
 def snapshot_payload(snapshot):
@@ -1284,6 +1334,28 @@ def api_save():
         return jsonify({"error": str(exc)}), 400
 
     selected_students = normalized_selected_students(data.get("selected_students", {}))
+    raw_transfer_ids = data.get("transfer_student_ids", [])
+    if not isinstance(raw_transfer_ids, list):
+        return jsonify({"error": "Transfer confirmations must be a list of student IDs."}), 400
+    transfer_student_ids = set()
+    try:
+        for student_id in raw_transfer_ids:
+            if isinstance(student_id, bool):
+                raise ValueError
+            transfer_student_ids.add(int(student_id))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Transfer confirmations contain an invalid student ID."}), 400
+
+    incoming_student_ids = {
+        item["student_id"] for item in normalized_rows
+    } | {
+        student_id
+        for student_ids in selected_students.values()
+        for student_id in student_ids
+    }
+    if transfer_student_ids - incoming_student_ids:
+        return jsonify({"error": "A confirmed student transfer is not included in this layout."}), 400
+
     last_meta = str(data.get("last_meta") or "Saved layout").strip()[:160] or "Saved layout"
     requested_academic_year_id = data.get("academic_year_id")
     requested_exam_id = data.get("exam_id")
@@ -1323,37 +1395,97 @@ def api_save():
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 422
 
-    try:
-        replace_active_assignments(version_id, normalized_rows, normalized_config)
-        metrics = seat_mixer_metrics(normalized_rows, academic_year_id=academic_year_id)
-        snapshot = SeatMixerSaveSnapshot(
-            version_id=version_id,
-            snapshot_json=json.dumps({
-                "config": normalized_config,
-                "assignments": normalized_rows,
-                "selected_students": selected_students,
-                "last_meta": last_meta,
-                "academic_year_id": academic_year_id,
-                "exam_id": requested_exam_id,
-            }, separators=(",", ":"), sort_keys=True),
-            integrity_score=metrics["integrity_score"],
-            near_adjacency_count=metrics["near_adjacency_count"],
-            placed_count=metrics["placed_count"],
-        )
-        db.session.add(snapshot)
-        db.session.flush()
-        set_current_snapshot_id(version_id, snapshot.id)
+    other_assignments = active_assignments_elsewhere(
+        incoming_student_ids,
+        version_id,
+        requested_exam_id,
+    )
+    conflicting_student_ids = {row.student_id for row, _, _ in other_assignments}
+    unconfirmed_ids = conflicting_student_ids - transfer_student_ids
+    if unconfirmed_ids:
+        return jsonify({
+            "error": "Arday la doortay wuxuu hore ugu jiraa qorshe hall kale. Xaqiiji wareejinta ka hor kaydinta.",
+            "conflicts": [
+                {
+                    "student_id": row.student_id,
+                    "hall_name": other_hall.name,
+                    "version_label": other_version.label,
+                }
+                for row, other_version, other_hall in other_assignments
+                if row.student_id in unconfirmed_ids
+            ],
+        }), 409
+    stale_transfer_ids = transfer_student_ids - conflicting_student_ids
+    if stale_transfer_ids:
+        return jsonify({
+            "error": "Qorshaha ardaygu wuu isbeddelay. Dib u cusboonaysii hall-ka oo mar kale isku day.",
+        }), 409
 
-        # Rolling history: preserve the newest ten revisions only.
-        expired_snapshots = (
-            SeatMixerSaveSnapshot.query
-            .filter_by(version_id=version_id)
-            .order_by(SeatMixerSaveSnapshot.created_at.desc(), SeatMixerSaveSnapshot.id.desc())
-            .offset(SEAT_MIXER_HISTORY_LIMIT)
-            .all()
+    try:
+        transfers_by_version = {}
+        for row, source_version, source_hall in other_assignments:
+            if row.student_id in transfer_student_ids:
+                transfers_by_version.setdefault(source_version.id, set()).add(row.student_id)
+
+        for source_version_id, moved_ids in transfers_by_version.items():
+            source_version = db.session.get(ExamHallVersion, source_version_id)
+            source_snapshot = db.session.get(
+                SeatMixerSaveSnapshot,
+                current_snapshot_id(source_version_id),
+            )
+            source_layout = snapshot_payload(source_snapshot) if source_snapshot else None
+            active_source_rows = SeatMixerAssignment.query.filter_by(version_id=source_version_id).all()
+            if source_layout:
+                source_config = source_layout["config"]
+                source_selected = source_layout["selected_students"]
+            else:
+                source_config = normalized_layout_config({
+                    "rows": active_source_rows[0].rows_config if active_source_rows else 3,
+                    "tablesPerRow": active_source_rows[0].tables_per_row_config if active_source_rows else 5,
+                    "seatsPerTable": active_source_rows[0].seats_per_table_config if active_source_rows else 2,
+                })
+                source_selected = {}
+
+            remaining_source_rows = [
+                {
+                    "student_id": row.student_id,
+                    "row": row.row_number,
+                    "table": row.table_number,
+                    "seat": row.seat_number,
+                }
+                for row in active_source_rows
+                if row.student_id not in moved_ids
+            ]
+            remaining_source_selected = {
+                class_id: [student_id for student_id in student_ids if student_id not in moved_ids]
+                for class_id, student_ids in source_selected.items()
+            }
+            remaining_source_selected = {
+                class_id: student_ids
+                for class_id, student_ids in remaining_source_selected.items()
+                if student_ids
+            }
+            replace_active_assignments(source_version_id, remaining_source_rows, source_config)
+            create_layout_snapshot(
+                source_version_id,
+                remaining_source_rows,
+                source_config,
+                remaining_source_selected,
+                f"Updated after transfer to {hall.name} / {version.label}"[:160],
+                academic_year_id,
+                requested_exam_id,
+            )
+
+        replace_active_assignments(version_id, normalized_rows, normalized_config)
+        snapshot, metrics = create_layout_snapshot(
+            version_id=version_id,
+            assignments=normalized_rows,
+            config=normalized_config,
+            selected_students=selected_students,
+            last_meta=last_meta,
+            academic_year_id=academic_year_id,
+            exam_id=requested_exam_id,
         )
-        for expired_snapshot in expired_snapshots:
-            db.session.delete(expired_snapshot)
         db.session.commit()
         audit(
             "Seat Mixer",
@@ -1454,6 +1586,30 @@ def api_restore_history_snapshot(version_id, snapshot_id):
             + [student_id for student_ids in layout["selected_students"].values() for student_id in student_ids],
             seat_mixer_hall_year_id(version.hall),
         )
+        restore_student_ids = {
+            item["student_id"] for item in restorable_rows
+        } | {
+            student_id
+            for student_ids in layout["selected_students"].values()
+            for student_id in student_ids
+        }
+        restore_conflicts = active_assignments_elsewhere(
+            restore_student_ids,
+            version_id,
+            version.hall.exam_id,
+        )
+        if restore_conflicts:
+            return jsonify({
+                "error": "Qorshahan hore kuma soo celin kartid: arday ayaa hadda hall kale ugu qoran. Marka hore ka wareeji qorshaha kale.",
+                "conflicts": [
+                    {
+                        "student_id": row.student_id,
+                        "hall_name": other_hall.name,
+                        "version_label": other_version.label,
+                    }
+                    for row, other_version, other_hall in restore_conflicts
+                ],
+            }), 409
         replace_active_assignments(version_id, restorable_rows, layout["config"])
         set_current_snapshot_id(version_id, snapshot.id)
         db.session.commit()

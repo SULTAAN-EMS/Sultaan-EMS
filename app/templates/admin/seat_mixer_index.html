@@ -217,9 +217,23 @@
   </div>
 </div>
 
+<div class="sm-modal-overlay hidden" id="smTransferOverlay" role="dialog" aria-modal="true" aria-labelledby="smTransferTitle">
+  <div class="sm-modal-box sm-transfer-box">
+    <button class="sm-modal-close" id="smTransferClose" aria-label="Ka laabo"><i class="fa-solid fa-xmark"></i></button>
+    <div class="sm-transfer-icon"><i class="fa-solid fa-right-left"></i></div>
+    <h2 id="smTransferTitle">FARIIN MUHIIM AH</h2>
+    <p class="sm-transfer-copy" id="smTransferCopy"></p>
+    <div class="sm-transfer-list" id="smTransferList"></div>
+    <div class="sm-transfer-actions">
+      <button class="sm-btn ghost" id="smTransferCancel">Ka laabo</button>
+      <button class="sm-btn save" id="smTransferConfirm">Halakan usoo wareeji</button>
+    </div>
+  </div>
+</div>
+
 <div class="sm-toast-region" id="smToastRegion" aria-live="polite" aria-atomic="true"></div>
 
-<script src="{{ url_for('static', filename='js/seat_mixer.js', v='year-scope-20260824-2') }}"></script>
+<script src="{{ url_for('static', filename='js/seat_mixer.js', v='student-transfer-copy-20261015-2') }}"></script>
 <script>
 window.SM_init({
   halls: {{ halls|tojson }},
