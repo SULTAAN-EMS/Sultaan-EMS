@@ -119,11 +119,12 @@
         </select>
       </div>
       <div class="sm-filter-item">
-        <label for="status-filter"><i class="fa-solid fa-filter"></i> {{ rh_label("students.status", default="Xaalada") }}</label>
+        <label for="status-filter"><i class="fa-solid fa-filter"></i> {{ rh_label("students.status", default="Xaaladda") }}</label>
         <select id="status-filter" class="sm-filter">
           <option value="">{{ rh_label("students.status_all", default="Dhammaan") }}</option>
-          <option value="active" {% if status_filter == 'active' %}selected{% endif %}>{{ rh_label("students.status_active", default="Active") }}</option>
-          <option value="locked" {% if status_filter == 'locked' %}selected{% endif %}>{{ rh_label("students.status_locked", default="Xidhan") }}</option>
+          <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Firfircoon</option>
+          <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Aan Firfircooneyn</option>
+          <option value="locked" {% if status_filter == 'locked' %}selected{% endif %}>Xidhan</option>
         </select>
       </div>
       <div class="sm-filter-item">
@@ -315,9 +316,9 @@
                   <span>{{ enrollment.academic_year_class.name }}</span>
                 </span>
               {% endif %}
-              <span class="status-pill {{ 'locked' if student.is_result_locked else 'active' }}">
-                <i class="fa-solid {{ 'fa-lock' if student.is_result_locked else 'fa-unlock' }}"></i>
-                {{ "Xidhan" if student.is_result_locked else "Active" }}
+              <span class="status-pill {{ 'locked' if student.is_result_locked else ('inactive' if not student.is_active else 'active') }}">
+                <i class="fa-solid {{ 'fa-lock' if student.is_result_locked else ('fa-user-slash' if not student.is_active else 'fa-unlock') }}"></i>
+                {{ "Xidhan" if student.is_result_locked else ("Aan Firfircooneyn" if not student.is_active else "Firfircoon") }}
               </span>
             </div>
             <div class="sm-actions">
@@ -1577,6 +1578,16 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 /* Pagination styling */
+.status-pill.inactive {
+  color: #596579;
+  background: #e9edf3;
+}
+
+.theme-dark .status-pill.inactive {
+  color: #cbd5e1;
+  background: #263548;
+}
+
 .sm-pagination {
   position: fixed;
   left: var(--sm-pagination-left, 0px);

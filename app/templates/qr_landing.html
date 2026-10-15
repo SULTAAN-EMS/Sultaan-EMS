@@ -19,7 +19,7 @@
 
   <div class="action-cards">
     <!-- Verify Student Card -->
-    <a href="{{ url_for('public.verify_id_card', token=token, **qr_context) }}" class="action-card verify-card">
+    <a href="{{ url_for('public.verify_id_card', token=token, action='verify', **qr_context) }}" class="action-card verify-card">
       <div class="card-icon verify-icon">
         <i class="fa-solid fa-user-check"></i>
       </div>

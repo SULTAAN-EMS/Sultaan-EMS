@@ -279,9 +279,15 @@ class TestPhase2CStudentManagement(unittest.TestCase):
         self.assertTrue(set(morning_rows).isdisjoint({str(item.id).encode() for item in afternoon_students}))
         self.assertTrue(set(afternoon_rows).isdisjoint({str(item.id).encode() for item in morning_students}))
 
-    def test_student_management_lock_filters_use_student_status(self):
-        student = self._create_student("TIS-LOCK")
-        student.is_result_locked = True
+    def test_student_management_status_filters_match_active_inactive_and_locked_records(self):
+        active_student = self._create_student("TIS-ACTIVE")
+        inactive_student = self._create_student("TIS-INACTIVE")
+        inactive_student.is_active = False
+        locked_student = self._create_student("TIS-LOCKED")
+        locked_student.is_result_locked = True
+        inactive_locked_student = self._create_student("TIS-INACTIVE-LOCKED")
+        inactive_locked_student.is_active = False
+        inactive_locked_student.is_result_locked = True
         db.session.commit()
 
         locked_page = self.client.get(
@@ -290,11 +296,26 @@ class TestPhase2CStudentManagement(unittest.TestCase):
         active_page = self.client.get(
             f"/admin/advanced-results/students-management?year_id={self.year_a.id}&status_filter=active"
         )
+        inactive_page = self.client.get(
+            f"/admin/advanced-results/students-management?year_id={self.year_a.id}&status_filter=inactive"
+        )
 
         self.assertEqual(locked_page.status_code, 200)
-        self.assertIn(b"TIS-LOCK", locked_page.data)
+        self.assertIn(b"TIS-LOCKED", locked_page.data)
+        self.assertIn(b"TIS-INACTIVE-LOCKED", locked_page.data)
         self.assertEqual(active_page.status_code, 200)
-        self.assertNotIn(b"TIS-LOCK", active_page.data)
+        self.assertIn(b"TIS-ACTIVE", active_page.data)
+        self.assertNotIn(b"TIS-INACTIVE", active_page.data)
+        self.assertNotIn(b"TIS-LOCKED", active_page.data)
+        self.assertNotIn(b"TIS-INACTIVE-LOCKED", active_page.data)
+        self.assertEqual(inactive_page.status_code, 200)
+        self.assertIn(b"TIS-INACTIVE", inactive_page.data)
+        self.assertNotIn(b"TIS-ACTIVE", inactive_page.data)
+        self.assertNotIn(b"TIS-INACTIVE-LOCKED", inactive_page.data)
+        self.assertIn(b"Firfircoon", active_page.data)
+        self.assertIn(b"Aan Firfircooneyn", inactive_page.data)
+        self.assertIn(b"Xidhan", locked_page.data)
+        self.assertIn(b'value="inactive" selected', inactive_page.data)
 
     def test_identity_edit_does_not_overwrite_historical_placement(self):
         student = self._create_student()

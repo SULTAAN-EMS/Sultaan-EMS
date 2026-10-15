@@ -1380,6 +1380,15 @@ def verify_id_card(token):
     issue = IdCardIssue.query.filter_by(token=token).first()
     if not issue:
         return render_template("verify_id.html", settings=settings, verified=False), 404
+    # Printed QR codes from older cards point here directly. Route those scans
+    # through the action chooser while keeping its verification action direct.
+    if request.args.get("action") != "verify":
+        exam_id = issue.exam_id or request.args.get("exam_id", type=int)
+        landing_args = {"token": token}
+        if exam_id:
+            landing_args["exam_id"] = exam_id
+        return redirect(url_for("public.qr_landing", **landing_args))
+
     from .routes_id_cards import effective_issue_status, ensure_issue_dates
     if ensure_issue_dates(issue, settings=settings):
         db.session.commit()

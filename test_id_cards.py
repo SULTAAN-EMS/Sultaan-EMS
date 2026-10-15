@@ -14,7 +14,10 @@ from app.models import (
     AcademicYearClass,
     AcademicYearLevel,
     Exam,
+    ExamHall,
+    ExamHallVersion,
     IdCardIssue,
+    SeatMixerAssignment,
     Setting,
     Student,
     StudentEnrollment,
@@ -319,7 +322,7 @@ class TestIdCards(unittest.TestCase):
         self.assertEqual(refreshed.expiry_date, add_months(date.today(), 6))
         self.assertNotEqual(refreshed.token, old_token)
 
-    def test_card_qr_opens_public_verification_without_login(self):
+    def test_card_qr_opens_action_chooser_and_old_qr_is_kept_compatible(self):
         issue = IdCardIssue(
             token="public-id-card-qr-token",
             student=self.first_student,
@@ -334,13 +337,80 @@ class TestIdCards(unittest.TestCase):
 
         with self.app.test_request_context():
             qr_url = id_card_qr_payload(issue)["url"]
-        self.assertIn(f"/verify-id/{issue.token}", qr_url)
+        self.assertIn(f"/qr/{issue.token}", qr_url)
         self.assertNotIn("/admin/", qr_url)
 
         anonymous_client = self.app.test_client()
-        response = anonymous_client.get(f"/verify-id/{issue.token}")
+        old_card_response = anonymous_client.get(
+            f"/verify-id/{issue.token}?exam_id={self.exam.id}"
+        )
+        self.assertEqual(old_card_response.status_code, 302)
+        self.assertIn(f"/qr/{issue.token}", old_card_response.location)
+        self.assertIn(f"exam_id={self.exam.id}", old_card_response.location)
+
+        response = anonymous_client.get(qr_url.replace("http://localhost", ""))
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Ardayga Koowaad", response.data)
+        self.assertIn("Xaqiiji Ardeyga".encode(), response.data)
+        self.assertIn("Gudbi Warbixin Dhacdo".encode(), response.data)
+        self.assertIn("action=verify".encode(), response.data)
+
+        verify_response = anonymous_client.get(
+            f"/verify-id/{issue.token}?action=verify&exam_id={self.exam.id}"
+        )
+        self.assertEqual(verify_response.status_code, 200)
+        self.assertIn(b"Ardayga Koowaad", verify_response.data)
+
+    def test_same_card_qr_shows_seat_added_after_card_was_issued(self):
+        issue = IdCardIssue(
+            token="seat-mixer-stable-qr-token",
+            student=self.first_student,
+            academic_year=self.year,
+            exam=self.exam,
+            issue_date=date.today(),
+            expiry_date=add_months(date.today(), 12),
+            status="Active",
+        )
+        db.session.add(issue)
+        db.session.commit()
+
+        with self.app.test_request_context():
+            qr_url = id_card_qr_payload(issue)["url"]
+        local_path = qr_url.replace("http://localhost", "")
+        anonymous_client = self.app.test_client()
+        landing = anonymous_client.get(local_path)
+        self.assertEqual(landing.status_code, 200)
+        verify_href = f"/verify-id/{issue.token}?action=verify&exam_id={self.exam.id}"
+        before_seating = anonymous_client.get(verify_href)
+        self.assertEqual(before_seating.status_code, 200)
+        self.assertNotIn("HOOLKA IMTIXAANKA".encode(), before_seating.data)
+
+        hall = ExamHall(
+            name="Hoolka A",
+            code="IDQR-HALL-A",
+            capacity=30,
+            academic_year_id=self.year.id,
+            exam_id=self.exam.id,
+        )
+        db.session.add(hall)
+        db.session.flush()
+        version = ExamHallVersion(exam_hall_id=hall.id, version_number=1, label="Version 1")
+        db.session.add(version)
+        db.session.flush()
+        db.session.add(SeatMixerAssignment(
+            version_id=version.id,
+            student_id=self.first_student.id,
+            row_number=0,
+            table_number=1,
+            seat_number=0,
+        ))
+        db.session.commit()
+
+        after_seating = anonymous_client.get(local_path)
+        self.assertEqual(after_seating.status_code, 200)
+        verify_after_seating = anonymous_client.get(verify_href)
+        self.assertEqual(verify_after_seating.status_code, 200)
+        self.assertIn("Hoolka A".encode(), verify_after_seating.data)
+        self.assertIn("Saf 1 · Miis 2 · Kursi 1".encode(), verify_after_seating.data)
 
     def test_scoped_exam_only_shows_and_generates_students_in_its_configured_class(self):
         second_legacy_class = AcademicClass(

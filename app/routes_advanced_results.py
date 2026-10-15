@@ -3776,6 +3776,8 @@ def students_management():
     section_id = int_or_none(request.args.get("section_id"))
     search_query = request.args.get("q", "").strip()
     status_filter = request.args.get("status_filter", "")
+    if status_filter not in {"", "active", "inactive", "locked"}:
+        status_filter = ""
     gender_filter = request.args.get("gender", "").strip().lower()
     if gender_filter not in {"", "male", "female"}:
         gender_filter = ""
@@ -3891,7 +3893,15 @@ def students_management():
     if status_filter == "locked":
         students_query = students_query.filter(Student.is_result_locked.is_(True))
     elif status_filter == "active":
-        students_query = students_query.filter(Student.is_result_locked.is_(False))
+        students_query = students_query.filter(
+            Student.is_active.is_(True),
+            Student.is_result_locked.is_(False),
+        )
+    elif status_filter == "inactive":
+        students_query = students_query.filter(
+            Student.is_active.is_(False),
+            Student.is_result_locked.is_(False),
+        )
 
     if gender_filter:
         students_query = students_query.filter(func.lower(Student.gender) == gender_filter)
