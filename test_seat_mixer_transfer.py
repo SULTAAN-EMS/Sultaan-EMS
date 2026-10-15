@@ -13,6 +13,7 @@ from app.models import (
     ExamHallVersion,
     SeatMixerAssignment,
     SeatMixerSaveSnapshot,
+    Setting,
     Student,
     StudentEnrollment,
     User,
@@ -20,6 +21,7 @@ from app.models import (
 from app.routes_seat_mixer import (
     api_restore_history_snapshot,
     api_save,
+    get_school_name,
     set_current_snapshot_id,
 )
 
@@ -237,7 +239,18 @@ class SeatMixerTransferTests(unittest.TestCase):
         self.assertIn("FARIIN MUHIIM AH".encode(), response.data)
         self.assertIn("Halakan usoo wareeji".encode(), response.data)
         self.assertIn(b"student-transfer-design-20261015-1", response.data)
-        self.assertIn(b"student-transfer-copy-20261015-2", response.data)
+        self.assertIn(b"student-table-seats-inline-20261015-1", response.data)
+
+    def test_school_name_prefers_somali_setting_over_dashboard_title(self):
+        db.session.add_all([
+            Setting(key="dashboard_title", value="School Result Management"),
+            Setting(key="school_name", value="Taysir Schools"),
+            Setting(key="school_name_so", value="Dugsiyada Caalamiga ah ee Taysiir"),
+        ])
+        db.session.flush()
+
+        self.assertEqual(get_school_name(), "Dugsiyada Caalamiga ah ee Taysiir")
+        self.assertEqual(get_school_name().upper(), "DUGSIYADA CAALAMIGA AH EE TAYSIIR")
 
 
 if __name__ == "__main__":

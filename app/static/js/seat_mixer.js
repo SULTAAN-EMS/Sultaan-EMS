@@ -1349,8 +1349,8 @@
         var counts = {};
         tableSeats.forEach(function (s) { if (s.assigned) counts[s.assigned.classId] = (counts[s.assigned.classId] || 0) + 1; });
         var hasViolation = Object.values(counts).some(function (n) { return n > 1; });
-        var cols = tableSeats.length <= 2 ? tableSeats.length : 2;
-        html += '<div class="sm-table-unit ' + (hasViolation ? 'violation' : '') + '" style="grid-template-columns:repeat(' + cols + ',92px);">';
+        var cols = Math.max(1, tableSeats.length);
+        html += '<div class="sm-table-unit ' + (hasViolation ? 'violation' : '') + '" style="--sm-seat-columns:' + cols + ';">';
         tableSeats.forEach(function (s, idx) {
           if (s.assigned) {
             var cv = classVisual(combo, s.assigned.classId);

@@ -623,7 +623,7 @@
 /* Mission V2: visual controls for a live, document-like seating workspace. */
 .sm-latest-badge { border:1px solid rgba(52,211,153,.45); background:rgba(52,211,153,.12); color:var(--sm-good); border-radius:999px; padding:4px 8px; font:700 9px 'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.04em; }
 .sm-chair { width:var(--sm-seat-size,92px); min-height:118px; padding:var(--sm-card-padding,8px); border-radius:var(--sm-seat-radius,16px); font-size:var(--sm-font-size,12px); font-weight:var(--sm-font-weight,700); border-width:var(--sm-seat-border,1px); transition:transform .16s ease, box-shadow .16s ease, outline-color .16s ease; }
-.sm-table-unit { gap:var(--sm-seat-gap,8px) !important; grid-template-columns:repeat(var(--sm-seat-columns,2),var(--sm-seat-size,92px)) !important; }
+.sm-table-unit { gap:var(--sm-seat-gap,8px) !important; grid-auto-flow:column; grid-template-columns:repeat(var(--sm-seat-columns,2),var(--sm-seat-size,92px)) !important; }
 .sm-chair .photo { width:var(--sm-photo-size,42px); height:var(--sm-photo-size,42px); border-radius:var(--sm-photo-radius,50%); object-fit:cover; }
 .sm-chair .seat-meta { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sm-chair.empty { background:var(--sm-empty-seat,rgba(255,255,255,.04)); }
