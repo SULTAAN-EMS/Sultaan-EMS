@@ -242,9 +242,12 @@ def students_for_current_classes(current_year, class_ids):
 
 def get_school_name():
     """Get school name from settings."""
-    from .models import Setting
-    s = db.session.get(Setting, "dashboard_title")
-    return s.value if s else "School"
+    for key in ("school_name_so", "school_name"):
+        setting = db.session.get(Setting, key)
+        value = str(setting.value or "").strip() if setting else ""
+        if value:
+            return value
+    return "Dugsiyada Caalamiga ah ee Taysiir"
 
 
 def stored_photo_url(path):
@@ -1857,7 +1860,7 @@ def print_arrangement():
         photo_url=stored_photo_url,
         qr_payload=lambda student_id: student_qr.get(str(student_id)),
         placement_for_student=lambda student_id: print_placements.get(student_id, {}),
-        school_name=get_school_name(),
+        school_name=get_school_name().upper(),
         school_logo=stored_photo_url(logo_setting.value) if logo_setting and logo_setting.value else None,
         academic_year_name=academic_year_name,
         exam_name=exam_name,
