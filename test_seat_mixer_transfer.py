@@ -236,6 +236,7 @@ class SeatMixerTransferTests(unittest.TestCase):
         self.assertIn(b'id="smTransferOverlay"', response.data)
         self.assertIn("FARIIN MUHIIM AH".encode(), response.data)
         self.assertIn("Halakan usoo wareeji".encode(), response.data)
+        self.assertIn(b"student-transfer-design-20261015-1", response.data)
         self.assertIn(b"student-transfer-copy-20261015-2", response.data)
 
 
