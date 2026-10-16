@@ -226,8 +226,8 @@
 .sm-col { display: flex; flex-direction: column; gap: 14px; flex: none; }
 .sm-col-label {
   font-family: 'IBM Plex Mono', 'Courier New', monospace;
-  font-size: 10.5px; color: var(--sm-cyan); text-align: center;
-  letter-spacing: .08em; text-transform: uppercase;
+  font-size: 9.5px; line-height: 1.2; color: var(--sm-cyan); text-align: center;
+  letter-spacing: .03em; text-transform: uppercase; white-space: nowrap;
   padding-bottom: 6px; border-bottom: 1px dashed var(--sm-border);
 }
 .sm-table-unit {
@@ -886,7 +886,7 @@
   background:var(--gold-dim, #FBF1E0);
 }
 .ci-position span { color:#966B2D; font:800 8.5px/1 'Inter','Segoe UI',sans-serif; letter-spacing:.08em; text-transform:uppercase; }
-.ci-position strong { color:#604218; font:800 11px/1.2 'Inter','Segoe UI',sans-serif; }
+.ci-position strong { color:#604218; font:800 9px/1.2 'Inter','Segoe UI',sans-serif; white-space:nowrap; }
 .ci-position em { color:#8A6531; font:600 9.5px/1.15 'Inter','Segoe UI',sans-serif; font-style:normal; }
 .sm-replace-divider {
   display:flex;

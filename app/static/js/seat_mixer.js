@@ -122,6 +122,16 @@
 
   function currentCombo() { return SM.store[comboKey(SM.currentHallId, SM.currentVersionId)]; }
 
+  function rowSideName(rowNumber, rowCount) {
+    if (rowNumber === 0) return 'MIDIG';
+    if (rowNumber >= rowCount - 1) return 'BIDIX';
+    return 'DHEXE';
+  }
+
+  function rowSideLabel(rowNumber, rowCount) {
+    return 'Safka ' + (rowNumber + 1) + 'aad ee ' + rowSideName(rowNumber, rowCount);
+  }
+
   function currentHall() {
     return SM.halls.find(function (h) { return h.id === SM.currentHallId; });
   }
@@ -656,7 +666,7 @@
   function placementLabel(combo, seatId) {
     var seat = combo.seats.find(function (s) { return s.id === seatId; });
     if (!seat || !seat.assigned) return 'Not Assigned';
-    return 'Row ' + (seat.row + 1) + ' · Table ' + (seat.tableIdx + 1);
+    return rowSideLabel(seat.row, combo.cfg.rows) + ' · Miis ' + (seat.tableIdx + 1);
   }
 
   // ============================================================
@@ -1390,7 +1400,7 @@
     // Render hall map
     var html = '';
     for (var r = 0; r < combo.cfg.rows; r++) {
-      html += '<div class="sm-col"><div class="sm-col-label">Row ' + (r + 1) + '</div>';
+      html += '<div class="sm-col"><div class="sm-col-label">' + rowSideLabel(r, combo.cfg.rows) + '</div>';
       for (var t = 0; t < combo.cfg.tablesPerRow; t++) {
         var tableSeats = seats.filter(function (s) { return s.row === r && s.tableIdx === t; });
         var counts = {};
@@ -1467,7 +1477,7 @@
       '<span class="sm-replace-avatar sm-current-avatar" style="--replace-class-color:' + escapeHtml(cv.color) + '">' + photoHtml(cur, '') + '</span>' +
       '<div class="ci-copy"><div class="ci-name">' + escapeHtml(cur.full_name) + '</div>' +
       '<div class="ci-meta">' + escapeHtml(cv.name) + ' · ' + escapeHtml(cur.level || '') + ' · ' + escapeHtml(cur.gender || 'Not recorded') + '</div></div>' +
-      '<div class="ci-position"><span>Position</span><strong>Row ' + (seat.row + 1) + '</strong><em>Table ' + (seat.tableIdx + 1) + ' · Seat ' + (seat.seatIdx + 1) + '</em></div>';
+      '<div class="ci-position"><span>Position</span><strong>' + rowSideLabel(seat.row, combo.cfg.rows) + '</strong><em>Miis ' + (seat.tableIdx + 1) + ' · Kursi ' + (seat.seatIdx + 1) + '</em></div>';
 
     // Fetch class students from API
     var params = new URLSearchParams();
@@ -1490,7 +1500,9 @@
             var inMemorySeat = findSeatOf(combo, st.id);
             var placement;
             if (inMemorySeat) {
-              placement = 'R' + (inMemorySeat.row + 1) + ' T' + (inMemorySeat.tableIdx + 1) + ' S' + (inMemorySeat.seatIdx + 1);
+              placement = rowSideLabel(inMemorySeat.row, combo.cfg.rows) + ' · Miis ' + (inMemorySeat.tableIdx + 1) + ' · Kursi ' + (inMemorySeat.seatIdx + 1);
+            } else if (st.position.row !== null) {
+              placement = rowSideLabel(st.position.row, combo.cfg.rows) + ' · Miis ' + (st.position.table + 1) + ' · Kursi ' + (st.position.seat + 1);
             } else {
               placement = st.position.label;
             }
