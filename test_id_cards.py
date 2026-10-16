@@ -433,7 +433,7 @@ class TestIdCards(unittest.TestCase):
         self.assertEqual(after_seating.status_code, 200)
         verify_after_seating = anonymous_client.get(verify_href)
         self.assertEqual(verify_after_seating.status_code, 200)
-        self.assertIn("FASALKA OO IMTIXAANKA LAGU GALAYO".encode(), verify_after_seating.data)
+        self.assertIn("FASALKA IMTIXAANKA LAGU GALAYO".encode(), verify_after_seating.data)
         self.assertIn("Hoolka A".encode(), verify_after_seating.data)
         self.assertIn("Saf 1 · Miis 2 · Kursi 1".encode(), verify_after_seating.data)
         self.assertIn(b"exam-seat-info", verify_after_seating.data)
