@@ -44,6 +44,7 @@
     pendingTransferAction: null,
     pendingReplace: null,
     savingArrangement: false,
+    builderLoadId: 0,
     worker: null,
     appearance: {},
     appearanceTimer: null,
@@ -51,6 +52,22 @@
 
   // ── Utility functions ──
   function $(id) { return document.getElementById(id); }
+
+  function showProgressOverlay(title, message) {
+    var overlay = $('smSaveProgress');
+    if (!overlay) return;
+    overlay.querySelector('strong').textContent = title;
+    overlay.querySelector('.sm-save-progress__message').textContent = message;
+    overlay.hidden = false;
+    overlay.setAttribute('aria-hidden', 'false');
+  }
+
+  function hideProgressOverlay() {
+    var overlay = $('smSaveProgress');
+    if (!overlay) return;
+    overlay.hidden = true;
+    overlay.setAttribute('aria-hidden', 'true');
+  }
 
   function escapeHtml(str) {
     if (!str) return '';
@@ -878,19 +895,32 @@
   // SCREEN 3: Builder
   // ============================================================
   function openBuilder(hallId, versionId, previewSnapshotId, focusMap) {
+    var loadId = ++SM.builderLoadId;
+    var isHistoryPreview = Boolean(previewSnapshotId);
     SM.currentHallId = hallId;
     SM.currentVersionId = versionId;
     updateWorkspaceLocation(hallId, versionId, previewSnapshotId);
     var combo = getOrCreateCombo(hallId, versionId);
+
+    if (isHistoryPreview) {
+      showProgressOverlay('Qorshihii hore ayaa la furayaa', 'Fadlan u kaadi inta xogtu soo degayso.');
+    } else {
+      hideProgressOverlay();
+    }
 
     showScreen('smBuilderScreen');
 
     // Fetch version data (saved assignments + config)
     var builderUrl = '/admin/seat-mixer/api/version/' + versionId + '/data' +
       (previewSnapshotId ? '?snapshot_id=' + encodeURIComponent(previewSnapshotId) : '');
-    fetch(builderUrl)
-      .then(function (r) { return r.json(); })
+    var requestOptions = isHistoryPreview ? { headers: { 'X-No-Loader': '1' } } : undefined;
+    fetch(builderUrl, requestOptions)
+      .then(function (r) {
+        if (!r.ok) throw new Error('The saved layout preview could not be loaded.');
+        return r.json();
+      })
       .then(function (data) {
+        if (loadId !== SM.builderLoadId) return;
         if (data.academic_year_id && SM.levelsByYear[String(data.academic_year_id)]) {
           SM.academicYearId = parseInt(data.academic_year_id, 10);
           SM.levels = SM.levelsByYear[String(data.academic_year_id)];
@@ -983,9 +1013,10 @@
 
           // Load student rosters for these classes, then render
           var loadPromises = classIds.map(function (cid) {
-            return loadStudentsForClass(parseInt(cid));
+            return loadStudentsForClass(parseInt(cid), isHistoryPreview);
           });
           Promise.all(loadPromises).then(function () {
+            if (loadId !== SM.builderLoadId) return;
             // Update studentHallMap for seated students
             var hall = currentHall();
             var hallName = hall ? hall.name : '';
@@ -1005,11 +1036,14 @@
             });
             combo.loaded = true;
             showBuilder(combo, data);
+            if (isHistoryPreview) hideProgressOverlay();
             if (focusMap) scrollToLiveMap();
           }).catch(function (e) {
+            if (loadId !== SM.builderLoadId) return;
             console.error('Failed to load rosters:', e);
             combo.loaded = true;
             showBuilder(combo, data);
+            if (isHistoryPreview) hideProgressOverlay();
             if (focusMap) scrollToLiveMap();
           });
         } else {
@@ -1024,10 +1058,18 @@
           combo.dirty = false;
           combo.loaded = true;
           showBuilder(combo, data);
+          if (isHistoryPreview) hideProgressOverlay();
           if (focusMap) scrollToLiveMap();
         }
       })
-      .catch(function (e) { console.error('Failed to load version data:', e); });
+      .catch(function (e) {
+        if (loadId !== SM.builderLoadId) return;
+        console.error('Failed to load version data:', e);
+        if (isHistoryPreview) {
+          hideProgressOverlay();
+          notify('Qorshihii hore lama soo bandhigi karin. Isku day mar kale.', 'error');
+        }
+      });
   }
 
   function showBuilder(combo, versionData) {
@@ -1113,7 +1155,9 @@
 
   function loadSaveHistory() {
     if (!SM.currentVersionId) return;
-    fetch('/admin/seat-mixer/api/version/' + SM.currentVersionId + '/history')
+    fetch('/admin/seat-mixer/api/version/' + SM.currentVersionId + '/history', {
+      headers: { 'X-No-Loader': '1' }
+    })
       .then(function (response) { return response.json(); })
       .then(function (data) { renderSaveHistory(data.history || []); })
       .catch(function (error) { console.error('Failed to load save history:', error); });
@@ -1257,7 +1301,7 @@
   }
 
   // ── Load students for a class from API ──
-  function loadStudentsForClass(classId) {
+  function loadStudentsForClass(classId, noLoader) {
     var cid = String(classId);
     if (SM.studentDirectory[cid] && SM.studentDirectory[cid].length > 0) return Promise.resolve();
 
@@ -1267,7 +1311,9 @@
     params.append('academic_year_id', SM.academicYearId || '');
     params.append('exam_id', SM.examId || '');
 
-    return fetch('/admin/seat-mixer/api/students?' + params.toString())
+    return fetch('/admin/seat-mixer/api/students?' + params.toString(), noLoader ? {
+      headers: { 'X-No-Loader': '1' }
+    } : undefined)
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (data.students) {
@@ -1634,11 +1680,7 @@
   function persistArrangement(combo) {
     if (SM.savingArrangement) return;
     SM.savingArrangement = true;
-    var saveProgress = $('smSaveProgress');
-    if (saveProgress) {
-      saveProgress.hidden = false;
-      saveProgress.setAttribute('aria-hidden', 'false');
-    }
+    showProgressOverlay('Fadhiga waa la kaydinayaa', 'Fadlan u kaadi inta keydintu socoto');
 
     var assignments = [];
     var selectedStudents = {};
@@ -1729,10 +1771,7 @@
       .catch(function (e) { notify('Could not save: ' + e.message, 'error'); })
       .finally(function () {
         SM.savingArrangement = false;
-        if (saveProgress) {
-          saveProgress.hidden = true;
-          saveProgress.setAttribute('aria-hidden', 'true');
-        }
+        hideProgressOverlay();
       });
   }
 
