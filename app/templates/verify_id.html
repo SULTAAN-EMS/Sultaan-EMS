@@ -2,7 +2,7 @@
 {% block title %}{{ 'Aqoonsiga Ardeyga waa la Xaqiijiyey' if verified else 'Kaarka Aqoonsiga oo aan sax ahayn' }}{% endblock %}
 {% block body_class %}public-body verification-id-body{% endblock %}
 {% block extra_head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/verification-id.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/verification-id.css', v='seat-location-20261016-3') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/verified-name-badge.css') }}">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -73,7 +73,7 @@
         {% if settings.verify_id_show_section != 'off' %}<div class="info-item c-amber"><span class="field-icon"><i class="fa-solid fa-layer-group"></i></span><span class="info-label">QEYBTA</span><span class="info-value">{{ placement.get('section_name') or 'Lama hayo' }}</span></div>{% endif %}
         {% if settings.verify_id_show_academic_year != 'off' %}<div class="info-item c-blue"><span class="field-icon"><i class="fa-solid fa-calendar-days"></i></span><span class="info-label">SANAD DUGSIYEEDKA</span><span class="info-value">{{ issue.academic_year.name }}</span></div>{% endif %}
         {% if settings.verify_id_show_exam_type != 'off' %}<div class="info-item c-sky"><span class="field-icon"><i class="fa-solid fa-file-circle-check"></i></span><span class="info-label">NUUCA IMTIXAANKA</span><span class="info-value">{{ exam.name if exam else 'Lama helin imtixaan firfircoon' }}</span></div>{% endif %}
-        {% if seating %}<div class="info-item wide c-purple"><span class="field-icon"><i class="fa-solid fa-building-columns"></i></span><span class="info-label">HOOLKA IMTIXAANKA</span><span class="info-value">{{ seating.hall_name }}{% if seating.seat_label %} · {{ seating.seat_label }}{% endif %}</span></div>{% endif %}
+        {% if seating %}<div class="info-item wide c-purple exam-seat-info"><span class="field-icon"><i class="fa-solid fa-building-columns"></i></span><span class="info-label">FASALKA OO IMTIXAANKA LAGU GALAYO</span><span class="info-value">{{ seating.hall_name }}{% if seating.seat_label %} · {{ seating.seat_label }}{% endif %}</span></div>{% endif %}
         {% if settings.verify_id_show_issue_date != 'off' %}<div class="info-item c-indigo"><span class="field-icon"><i class="fa-solid fa-calendar-check"></i></span><span class="info-label">XILLIGA BIXIDDA</span><span class="info-value">{{ long_date(issue.issue_date) if issue.issue_date else '-' }}</span></div>{% endif %}
         {% if settings.verify_id_show_expiry_date != 'off' %}<div class="info-item c-red"><span class="field-icon"><i class="fa-solid fa-clock"></i></span><span class="info-label">XILLIGA DHICIDDA</span><span class="info-value">{{ long_date(issue.expiry_date) if issue.expiry_date else '-' }}</span></div>{% endif %}
       </section>

@@ -433,8 +433,11 @@ class TestIdCards(unittest.TestCase):
         self.assertEqual(after_seating.status_code, 200)
         verify_after_seating = anonymous_client.get(verify_href)
         self.assertEqual(verify_after_seating.status_code, 200)
+        self.assertIn("FASALKA OO IMTIXAANKA LAGU GALAYO".encode(), verify_after_seating.data)
         self.assertIn("Hoolka A".encode(), verify_after_seating.data)
         self.assertIn("Saf 1 · Miis 2 · Kursi 1".encode(), verify_after_seating.data)
+        self.assertIn(b"exam-seat-info", verify_after_seating.data)
+        self.assertIn(b"verification-id.css?v=seat-location-20261016-3", verify_after_seating.data)
 
     def test_scoped_exam_only_shows_and_generates_students_in_its_configured_class(self):
         second_legacy_class = AcademicClass(
