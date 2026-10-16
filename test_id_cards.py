@@ -154,6 +154,28 @@ class TestIdCards(unittest.TestCase):
         ))
         return student
 
+    def test_qr_landing_uses_the_students_photo_for_background_floaters(self):
+        self.first_student.photo_path = "students/qr-photo.jpg"
+        issue = IdCardIssue(
+            token="qr-landing-photo-token",
+            student=self.first_student,
+            academic_year=self.year,
+            exam=self.exam,
+            issue_date=date.today(),
+            expiry_date=date.today() + timedelta(days=365),
+            status="Active",
+        )
+        db.session.add(issue)
+        db.session.commit()
+
+        response = self.client.get(f"/qr/{issue.token}?exam_id={self.exam.id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            b'data-photo-url="/static/uploads/students/qr-photo.jpg"',
+            response.data,
+        )
+
     def test_exam_filter_shows_correct_year_roster_without_duplicate_bulk_panel_or_nested_forms(self):
         db.session.add(IdCardIssue(
             token="history-photo-test-token",

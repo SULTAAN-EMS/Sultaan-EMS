@@ -1516,11 +1516,13 @@ def qr_landing(token):
         Exam.query.filter_by(id=requested_exam_id, academic_year_id=issue.academic_year_id).first()
         if (issue.exam_id or requested_exam_id) else None
     )
+    student_photo_url = _public_asset_url(issue.student.photo_path) if issue.student and issue.student.photo_path else ""
     return render_template(
         "qr_landing.html",
         settings=settings,
         token=token,
         student=issue.student,
+        student_photo_url=student_photo_url,
         id_card_status=effective_issue_status(issue),
         qr_exam_id=qr_exam.id if qr_exam else None,
     )

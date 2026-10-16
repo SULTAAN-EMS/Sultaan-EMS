@@ -270,7 +270,7 @@ body[data-theme=radar] .radar{display:block}
 .floaters span.ph{opacity:.75}
 .pfl{width:100%;padding:3px;background:linear-gradient(135deg,#00ff9c,#00c2ff,#ffc857);animation:fglow 3s ease-in-out infinite alternate}
 .pfl.c{border-radius:50%}.pfl.r{border-radius:14px}
-.pfl .im{display:block;width:100%;border-radius:inherit;background:var(--ph) center top/cover no-repeat #fff}
+.pfl .im{display:block;width:100%;height:auto;border-radius:inherit;background:var(--ph) center top/cover no-repeat #fff;object-fit:cover;object-position:center top}
 .pfl.c .im{aspect-ratio:1}.pfl.r .im{aspect-ratio:4/5}
 .vbm{position:absolute;right:-5px;bottom:-5px;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;
   background:#00ff9c;color:#02221a;box-shadow:0 0 0 2px #0b1d3a,0 0 10px rgba(0,255,156,.7)}
