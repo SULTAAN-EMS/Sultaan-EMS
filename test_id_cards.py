@@ -406,6 +406,10 @@ class TestIdCards(unittest.TestCase):
         verify_href = f"/verify-id/{issue.token}?action=verify&exam_id={self.exam.id}"
         before_seating = anonymous_client.get(verify_href)
         self.assertEqual(before_seating.status_code, 200)
+        self.assertIn(
+            b'<span class="info-label">QEYBTA</span><span class="info-value">N/A</span>',
+            before_seating.data,
+        )
         self.assertNotIn("HOOLKA IMTIXAANKA".encode(), before_seating.data)
 
         hall = ExamHall(
