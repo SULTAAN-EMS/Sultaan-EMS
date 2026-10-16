@@ -1,0 +1,22 @@
+{% extends "teacher/base.html" %}
+{% block teacher_title %}Naadigayga{% endblock %}
+{% block teacher_filters %}{% endblock %}
+{% block teacher_content %}
+<style>
+  .club-leader-intro{padding:18px 20px;margin:18px 0;border:1px solid #d7e9df;border-radius:14px;background:linear-gradient(120deg,#f1faf5,#fff);color:#35564a}
+  .club-leader-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+  .club-leader-card{overflow:hidden;border:1px solid #dce5e1;border-radius:14px;background:var(--surface,#fff);box-shadow:0 8px 24px rgba(15,50,40,.06)}
+  .club-leader-card__head{padding:18px 20px;background:#eff8f3;border-bottom:1px solid #dcebe2}.club-leader-card__head h2{margin:0 0 5px;color:#15553a}.club-leader-card__head p{margin:0;color:#5b7167;font-size:13px}
+  .club-leader-table{width:100%;border-collapse:collapse}.club-leader-table th,.club-leader-table td{padding:10px 14px;border-bottom:1px solid #e8efec;text-align:left}.club-leader-table th{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#64748b}.club-leader-table td{font-size:13px}
+  .club-leader-empty{padding:28px;border:1px dashed #bfd5c8;border-radius:12px;background:#f7fbf8;text-align:center;color:#64748b}
+</style>
+<div class="club-leader-intro">Halkan waxaad ka arki kartaa oo keliya kooxaha iyo ardayda hadda laguu qoondeeyey. Ardaydu waxay ka iman karaan fasallo iyo heerar kala duwan.</div>
+{% if teams %}<div class="club-leader-grid">
+  {% for item in teams %}{% set assignment = item.assignment %}
+  <section class="club-leader-card"><header class="club-leader-card__head"><h2>{{ assignment.club.name }} · {{ assignment.team.name }}</h2><p>{{ assignment.team.academic_year.name }} · Hoggaamiye laga bilaabo {{ assignment.start_date.isoformat() }}</p></header>
+    <table class="club-leader-table"><thead><tr><th>Arday</th><th>Heer</th><th>Fasal</th></tr></thead><tbody>
+      {% for membership in item.memberships %}<tr><td><strong>{{ membership.enrollment.student.full_name }}</strong><br><small>{{ membership.enrollment.student.student_code }}</small></td><td>{{ membership.enrollment.academic_year_level.name }}</td><td>{{ membership.enrollment.academic_year_class.name }}</td></tr>{% else %}<tr><td colspan="3">Kooxdan arday looma qoondeyn.</td></tr>{% endfor %}
+    </tbody></table>
+  </section>{% endfor %}
+</div>{% else %}<div class="club-leader-empty"><strong>Koox naadi hadda laguma qoondeyn.</strong><br>La xiriir maamulka dugsiga haddii aad filaysay in koox laguu qoondeeyo.</div>{% endif %}
+{% endblock %}

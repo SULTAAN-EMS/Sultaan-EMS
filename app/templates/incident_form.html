@@ -4,6 +4,7 @@
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/incident-form.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/verified-name-badge.css') }}">
+<script src="{{ url_for('static', filename='js/incident-signature.js') }}" defer></script>
 {% endblock %}
 {% block content %}
 {% from 'partials/verified_name_badge.html' import verified_name_badge %}
@@ -20,7 +21,7 @@
       </div>
     </div>
     <div class="back-link">
-      <a href="{{ url_for('public.qr_landing', token=token) }}">
+      <a href="{{ scan_return_url or url_for('public.qr_landing', token=token) }}">
         <i class="fa-solid fa-arrow-left"></i> Dib-u-noqo
       </a>
     </div>
@@ -32,7 +33,8 @@
     {% if incident_settings.get('show_student_photo') == 'true' %}
     <div class="student-photo-large">
       {% if student.photo_path %}
-      <img src="{{ asset_url(student.photo_path) }}" alt="{{ student.full_name }}">
+      <img src="{{ asset_url(student_photo_url) }}" alt="{{ student.full_name }}" width="320" height="320" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+      <div class="photo-placeholder-large" style="display:none"><i class="fa-solid fa-user"></i></div>
       {% else %}
       <div class="photo-placeholder-large">
         <i class="fa-solid fa-user"></i>
@@ -95,8 +97,9 @@
   <!-- Invigilator Information Card -->
   <div class="invigilator-identity-card glass-card">
     <div class="invigilator-photo">
-      {% if session.get('invigilator_photo_path') %}
-      <img src="{{ asset_url(session.get('invigilator_photo_path')) }}" alt="{{ session.get('invigilator_full_name') }}">
+      {% if invigilator.photo_path %}
+      <img src="{{ asset_url(invigilator_photo_url) }}" alt="{{ invigilator.full_name }}" width="320" height="320" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+      <div class="photo-placeholder" style="display:none"><i class="fa-solid fa-user-shield"></i></div>
       {% else %}
       <div class="photo-placeholder">
         <i class="fa-solid fa-user-shield"></i>
@@ -110,28 +113,28 @@
           <span class="icon"><i class="fa-solid fa-user"></i></span>
           <div class="content">
             <span class="label">MAGACA</span>
-            <span class="value">{{ session.get('invigilator_full_name', 'Lama hayo') }}</span>
+            <span class="value">{{ invigilator.full_name or 'Lama hayo' }}</span>
           </div>
         </div>
         <div class="identity-item">
           <span class="icon"><i class="fa-solid fa-id-badge"></i></span>
           <div class="content">
             <span class="label">LAMBARKA ID-GA</span>
-            <span class="value">{{ session.get('invigilator_invigilator_id', 'Lama hayo') }}</span>
+            <span class="value">{{ invigilator.invigilator_id or 'Lama hayo' }}</span>
           </div>
         </div>
         <div class="identity-item">
           <span class="icon"><i class="fa-solid fa-at"></i></span>
           <div class="content">
             <span class="label">MAGAC-U-YAAL</span>
-            <span class="value">{{ session.get('invigilator_username', 'Lama hayo') }}</span>
+            <span class="value">{{ invigilator.username or 'Lama hayo' }}</span>
           </div>
         </div>
         <div class="identity-item">
           <span class="icon"><i class="fa-solid fa-crown"></i></span>
           <div class="content">
             <span class="label">DOORKA</span>
-            <span class="value">{{ session.get('invigilator_role', 'Ilaaliyaha Imtixaanka') }}</span>
+            <span class="value">{{ invigilator.role or 'Ilaaliyaha Imtixaanka' }}</span>
           </div>
         </div>
       </div>
@@ -139,8 +142,9 @@
   </div>
 
   <!-- Incident Form -->
-  <form method="POST" action="{{ url_for('public.incident_report_form', token=token, exam_id=exam.id) if exam else url_for('public.incident_report_form', token=token) }}" enctype="multipart/form-data" class="incident-form">
+  <form method="POST" action="{{ url_for('public.incident_report_form', token=token, exam_id=exam.id if exam else none, from_scan=1 if scan_return_url else none) }}" enctype="multipart/form-data" class="incident-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if scan_return_url %}<input type="hidden" name="from_scan" value="1">{% endif %}
     <div class="validation-summary" id="validationSummary" hidden>
       <i class="fa-solid fa-circle-exclamation"></i>
       <span>Fadlan buuxi dhammaan meelaha loo baahan yahay ee la calaamadeeyey ka hor gudbinta.</span>
@@ -332,38 +336,37 @@
     {% endif %}
 
     <!-- Digital Signature -->
-    <div class="form-section glass-card signature-section">
-      <h3><i class="fa-solid fa-signature"></i> Saxeex Danabeysan</h3>
-      <p class="help-text">Saxeex gudaha qaanadda hoose. Saxeexa waad kaydsan kartaa, dibna waad u adeegsan kartaa markii siyaasad ahaan laguu oggolaado.</p>
+    <div class="signature-section">
+      <span class="signature-section__label">Saxeexa</span>
       <input type="hidden" id="signature_data" name="signature_data" value="" data-required="{{ incident_settings.get('require_signature', 'false') }}" data-message="Saxeexu waa loo baahan yahay.">
-      <div class="signature-toolbar">
-        <div class="signature-tool-group">
-          <span class="tool-label">Midabka Qalinka</span>
-          <button type="button" class="pen-color active" data-color="#0f172a" style="--pen:#0f172a">Madow</button>
-          <button type="button" class="pen-color" data-color="#2563eb" style="--pen:#2563eb">Buluug</button>
-          <button type="button" class="pen-color" data-color="#059669" style="--pen:#059669">Cagaar</button>
-          <button type="button" class="pen-color" data-color="#7c3aed" style="--pen:#7c3aed">Violet</button>
-          <button type="button" class="pen-color" data-color="#e11d48" style="--pen:#e11d48">Casaan khafiif ah</button>
+      <div class="sigpad" id="sigpad">
+        <div class="sigpad__toolbar">
+          <div class="sigpad__group" role="group" aria-label="Midabka qalinka">
+            <span class="sigpad__group-label">Midab</span>
+            <button type="button" class="sigpad__color is-active" data-color="#16233F" style="--sw-color:#16233F" aria-label="Qalin madow" aria-pressed="true" title="Qalin madow"></button>
+            <button type="button" class="sigpad__color" data-color="#1F5349" style="--sw-color:#1F5349" aria-label="Qalin cagaar-madow" aria-pressed="false" title="Qalin cagaar-madow"></button>
+            <button type="button" class="sigpad__color" data-color="#6E2E27" style="--sw-color:#6E2E27" aria-label="Qalin guduud" aria-pressed="false" title="Qalin guduud"></button>
+          </div>
+          <div class="sigpad__group" role="group" aria-label="Cufka qalinka">
+            <span class="sigpad__group-label">Cuf</span>
+            <button type="button" class="sigpad__size" data-width="1.5" aria-label="Khafiif" aria-pressed="false" title="Khafiif"><i></i></button>
+            <button type="button" class="sigpad__size is-active" data-width="3" aria-label="Dhexdhexaad" aria-pressed="true" title="Dhexdhexaad"><i></i></button>
+            <button type="button" class="sigpad__size" data-width="5" aria-label="Adag" aria-pressed="false" title="Adag"><i></i></button>
+          </div>
         </div>
-        <label class="signature-thickness">
-          <span>Dhumucda</span>
-          <select id="signatureThickness">
-            <option value="2">Fudud</option>
-            <option value="3" selected>Dhexdhexaad</option>
-            <option value="5">Mid weyn</option>
-            <option value="7">Calaamadeeye</option>
-          </select>
-        </label>
-        <button type="button" class="signature-action" id="signatureUndo"><i class="fa-solid fa-rotate-left"></i> Ka noqo</button>
-        <button type="button" class="signature-action" id="signatureRedo"><i class="fa-solid fa-rotate-right"></i> Dib u samee</button>
-        <button type="button" class="signature-action" id="signatureClear"><i class="fa-solid fa-eraser"></i> Nadiifi</button>
-        {% if allow_signature_reuse and invigilator and invigilator.signature_data %}
-        <button type="button" class="signature-action reuse" id="signatureReuse"><i class="fa-solid fa-fingerprint"></i> Dib u isticmaal Saxeexa la kaydiyey</button>
-        {% endif %}
-        <button type="button" class="signature-action primary" id="signatureSave"><i class="fa-solid fa-check"></i> Kaydi Saxeexa</button>
-      </div>
-      <div class="signature-pad-wrap">
-        <canvas id="signatureCanvas"></canvas>
+        <div class="sigpad__canvas-wrap">
+          <canvas id="sigCanvas" class="sigpad__canvas" aria-label="Meesha lagu saxiixo farta ama qalinka"></canvas>
+          <div class="sigpad__baseline" aria-hidden="true"></div>
+          <div class="sigpad__hint" id="sigHint">Halkan ku saxiix (far ama qalin)</div>
+        </div>
+        <div class="sigpad__actions">
+          <button type="button" class="sigpad__btn sigpad__btn--erase" id="sigClearBtn"><i class="fa-solid fa-eraser" aria-hidden="true"></i> Tirtir</button>
+          {% if has_saved_signature %}
+          <button type="button" class="sigpad__btn sigpad__btn--reuse" id="signatureReuse" data-signature-url="{{ url_for('public.invigilator_saved_signature') }}"><i class="fa-solid fa-signature" aria-hidden="true"></i> Dib u isticmaal</button>
+          {% endif %}
+          <span class="sigpad__status" id="sigStatus">La kaydiyay</span>
+          <button type="button" class="sigpad__btn sigpad__btn--save" id="sigSaveBtn"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Kaydi Saxeexa</button>
+        </div>
       </div>
     </div>
 
@@ -390,7 +393,7 @@
       <button type="submit" class="btn-submit">
         <i class="fa-solid fa-paper-plane"></i> GUDBI WARBIXINTA
       </button>
-      <a href="{{ url_for('public.qr_landing', token=token) }}" class="btn-cancel">
+      <a href="{{ scan_return_url or url_for('public.qr_landing', token=token) }}" class="btn-cancel">
         <i class="fa-solid fa-times"></i> Jooji
       </a>
     </div>
@@ -460,13 +463,6 @@
 </div>
 
 <style>
-.signature-section {
-  background:
-    radial-gradient(circle at top left, rgba(14, 165, 233, .12), transparent 35%),
-    linear-gradient(135deg, rgba(255,255,255,.96), rgba(248,250,252,.9));
-  border: 1px solid rgba(37, 99, 235, .16);
-  box-shadow: 0 24px 55px rgba(15, 23, 42, .12);
-}
 .validation-summary {
   display: flex;
   align-items: center;
@@ -486,7 +482,7 @@
 .field-invalid textarea,
 .field-invalid .severity-badges,
 .field-invalid .actions-checkboxes,
-.field-invalid .signature-pad-wrap {
+.field-invalid .sigpad {
   border-color: #f43f5e !important;
   box-shadow: 0 0 0 4px rgba(244, 63, 94, .12) !important;
 }
@@ -497,131 +493,12 @@
   font-size: .83rem;
   font-weight: 800;
 }
-.signature-toast {
-  margin-top: .8rem;
-  padding: .75rem .9rem;
-  border-radius: 14px;
-  color: #065f46;
-  background: linear-gradient(135deg, #ecfdf5, #f0fdfa);
-  border: 1px solid rgba(16, 185, 129, .22);
-  font-weight: 800;
-}
-.signature-section h3 i {
-  color: #4f46e5;
-}
-.signature-section .help-text { margin-bottom: 1rem; color: #475569; }
-.signature-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .65rem;
-  align-items: center;
-  margin-bottom: .9rem;
-}
-.signature-tool-group {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: .5rem;
-  padding: .45rem;
-  border: 1px solid rgba(37, 99, 235, .14);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, .85);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.9);
-}
-.tool-label,
-.signature-thickness span {
-  font-size: .75rem;
-  color: #334155;
-  font-weight: 800;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-.pen-color,
-.signature-action {
-  border: 1px solid rgba(15, 23, 42, .14);
-  background: linear-gradient(180deg, #ffffff, #f8fafc);
-  border-radius: 999px;
-  padding: .55rem .85rem;
-  font-weight: 700;
-  cursor: pointer;
-  color: #0f172a;
-  box-shadow: 0 10px 22px rgba(15, 23, 42, .08);
-  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
-}
-.pen-color:hover,
-.signature-action:hover {
-  transform: translateY(-1px);
-  border-color: rgba(79, 70, 229, .32);
-  box-shadow: 0 14px 28px rgba(15, 23, 42, .12);
-}
-.pen-color::before {
-  content: "";
-  display: inline-block;
-  width: .7rem;
-  height: .7rem;
-  margin-right: .4rem;
-  border-radius: 50%;
-  background: var(--pen);
-  vertical-align: -1px;
-}
-.pen-color.active,
-.signature-action.primary {
-  color: #fff;
-  background: linear-gradient(135deg, #4f46e5, #06b6d4);
-  border-color: transparent;
-}
-.signature-action.reuse {
-  color: #065f46;
-  border-color: rgba(16, 185, 129, .28);
-  background: linear-gradient(135deg, #ecfdf5, #f0fdfa);
-}
-.signature-thickness {
-  display: inline-flex;
-  align-items: center;
-  gap: .5rem;
-  padding: .45rem .55rem .45rem .8rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, .88);
-  border: 1px solid rgba(15, 23, 42, .12);
-}
-.signature-thickness select {
-  height: 34px;
-  border: 0;
-  border-radius: 999px;
-  padding: 0 .7rem;
-  color: #0f172a;
-  font-weight: 800;
-  background: linear-gradient(180deg, #eef2ff, #e0f2fe);
-}
-.signature-pad-wrap {
-  background: linear-gradient(180deg, #ffffff, #f8fafc);
-  border: 1px solid rgba(79, 70, 229, .18);
-  border-radius: 22px;
-  padding: .8rem;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 18px 40px rgba(15,23,42,.1);
-}
-#signatureCanvas {
-  width: 100%;
-  min-height: 180px;
-  display: block;
-  border-radius: 18px;
-  background:
-    linear-gradient(90deg, rgba(37,99,235,.04) 1px, transparent 1px) 0 0 / 34px 34px,
-    linear-gradient(rgba(37,99,235,.04) 1px, transparent 1px) 0 0 / 34px 34px,
-    #fff;
-  border: 1px solid rgba(148, 163, 184, .22);
-  touch-action: none;
-}
-@media (max-width: 768px) and (orientation: portrait) {
-  #signatureCanvas { min-height: 220px; }
-}
 </style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   const fileInput = document.getElementById('evidence');
   const uploadPreview = document.getElementById('upload-preview');
-  const existingSignature = {{ (invigilator.signature_data if allow_signature_reuse and invigilator and invigilator.signature_data else '')|tojson }};
   const incidentForm = document.querySelector('.incident-form');
 
   const formatDate = (value) => {
@@ -1192,155 +1069,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  const canvas = document.getElementById('signatureCanvas');
-  const signatureInput = document.getElementById('signature_data');
-  if (canvas && signatureInput) {
-    const ctx = canvas.getContext('2d');
-    let drawing = false;
-    let penColor = '#0f172a';
-    let penWidth = 3;
-    let hasSignature = false;
-    let undoStack = [];
-    let redoStack = [];
-
-    const resizeCanvas = () => {
-      const saved = hasSignature ? canvas.toDataURL() : signatureInput.value;
-      const rect = canvas.parentElement.getBoundingClientRect();
-      canvas.width = Math.max(320, Math.floor(rect.width * window.devicePixelRatio));
-      canvas.height = Math.floor(180 * window.devicePixelRatio);
-      canvas.style.height = '180px';
-      ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = penWidth;
-      ctx.strokeStyle = penColor;
-      if (saved && saved.length > 100) {
-        const img = new Image();
-        img.onload = () => {
-          ctx.drawImage(img, 0, 0, canvas.width / window.devicePixelRatio, canvas.height / window.devicePixelRatio);
-          hasSignature = true;
-        };
-        img.src = saved;
-      }
-    };
-
-    const point = (event) => {
-      const rect = canvas.getBoundingClientRect();
-      const touch = event.touches ? event.touches[0] : event;
-      return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
-    };
-
-    const saveState = () => {
-      if (hasSignature) {
-        undoStack.push(canvas.toDataURL());
-      }
-      if (undoStack.length > 30) undoStack.shift();
-      redoStack = [];
-    };
-
-    const start = (event) => {
-      event.preventDefault();
-      saveState();
-      drawing = true;
-      const p = point(event);
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-    };
-
-    const move = (event) => {
-      if (!drawing) return;
-      event.preventDefault();
-      const p = point(event);
-      ctx.strokeStyle = penColor;
-      ctx.lineWidth = penWidth;
-      ctx.lineTo(p.x, p.y);
-      ctx.stroke();
-      hasSignature = true;
-    };
-
-    const end = () => {
-      if (!drawing) return;
-      drawing = false;
-      if (hasSignature) signatureInput.value = canvas.toDataURL('image/png');
-    };
-
-    const restore = (dataUrl) => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      hasSignature = false;
-      if (!dataUrl) {
-        signatureInput.value = '';
-        return;
-      }
-      const img = new Image();
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, canvas.width / window.devicePixelRatio, canvas.height / window.devicePixelRatio);
-        hasSignature = true;
-        signatureInput.value = canvas.toDataURL('image/png');
-      };
-      img.src = dataUrl;
-    };
-
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    if (existingSignature) restore(existingSignature);
-
-    canvas.addEventListener('mousedown', start);
-    canvas.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', end);
-    canvas.addEventListener('touchstart', start, { passive: false });
-    canvas.addEventListener('touchmove', move, { passive: false });
-    canvas.addEventListener('touchend', end);
-
-    document.querySelectorAll('.pen-color').forEach((button) => {
-      button.addEventListener('click', () => {
-        document.querySelectorAll('.pen-color').forEach((item) => item.classList.remove('active'));
-        button.classList.add('active');
-        penColor = button.dataset.color;
-      });
-    });
-    document.getElementById('signatureThickness')?.addEventListener('change', (event) => {
-      penWidth = Number(event.target.value || 3);
-      ctx.lineWidth = penWidth;
-    });
-
-    document.getElementById('signatureClear')?.addEventListener('click', () => {
-      saveState();
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      hasSignature = false;
-      signatureInput.value = '';
-    });
-    document.getElementById('signatureUndo')?.addEventListener('click', () => {
-      if (!undoStack.length) return;
-      redoStack.push(canvas.toDataURL());
-      restore(undoStack.pop());
-    });
-    document.getElementById('signatureRedo')?.addEventListener('click', () => {
-      if (!redoStack.length) return;
-      undoStack.push(canvas.toDataURL());
-      restore(redoStack.pop());
-    });
-    document.getElementById('signatureSave')?.addEventListener('click', () => {
-      if (hasSignature) {
-        signatureInput.value = canvas.toDataURL('image/png');
-        let toast = document.querySelector('.signature-toast');
-        if (!toast) {
-          toast = document.createElement('div');
-          toast.className = 'signature-toast';
-          canvas.closest('.signature-section').appendChild(toast);
-        }
-        toast.innerHTML = '<i class="fa-solid fa-circle-check"></i> Saxeexa warbixintan waa la kaydiyey.';
-        setTimeout(() => toast.remove(), 3500);
-      }
-    });
-    document.getElementById('signatureReuse')?.addEventListener('click', () => {
-      if (existingSignature) restore(existingSignature);
-    });
-    incidentForm?.addEventListener('submit', () => {
-      if (hasSignature && !signatureInput.value) {
-        signatureInput.value = canvas.toDataURL('image/png');
-      }
-    });
-  }
 });
 </script>
 {% endblock %}

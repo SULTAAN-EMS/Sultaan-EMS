@@ -2305,6 +2305,78 @@ class TeacherResultMark(TimestampMixin, db.Model):
     )
 
 
+class StudentClub(TimestampMixin, db.Model):
+    """An administrator-managed extracurricular club."""
+
+    __tablename__ = "student_clubs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False, unique=True)
+    description = db.Column(db.String(500))
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+
+
+class ClubTeam(TimestampMixin, db.Model):
+    """A school-year cohort whose members may come from different classes."""
+
+    __tablename__ = "club_teams"
+
+    id = db.Column(db.Integer, primary_key=True)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey("academic_years.id", ondelete="RESTRICT"), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+
+    academic_year = db.relationship("AcademicYear")
+    memberships = db.relationship("ClubTeamMembership", back_populates="team", order_by="ClubTeamMembership.start_date, ClubTeamMembership.id")
+    assignments = db.relationship("ClubTeamLeaderAssignment", back_populates="team", order_by="ClubTeamLeaderAssignment.start_date, ClubTeamLeaderAssignment.id")
+
+    __table_args__ = (UniqueConstraint("academic_year_id", "name", name="uq_club_team_year_name"),)
+
+
+class ClubTeamMembership(TimestampMixin, db.Model):
+    """Effective-dated membership; moving a learner closes, never rewrites, history."""
+
+    __tablename__ = "club_team_memberships"
+
+    id = db.Column(db.Integer, primary_key=True)
+    team_id = db.Column(db.Integer, db.ForeignKey("club_teams.id", ondelete="RESTRICT"), nullable=False, index=True)
+    enrollment_id = db.Column(db.Integer, db.ForeignKey("student_enrollments.id", ondelete="RESTRICT"), nullable=False, index=True)
+    start_date = db.Column(db.Date, nullable=False, default=lambda: datetime.utcnow().date())
+    end_date = db.Column(db.Date, nullable=True, index=True)
+    assigned_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    team = db.relationship("ClubTeam", back_populates="memberships")
+    enrollment = db.relationship("StudentEnrollment")
+    assigned_by = db.relationship("User")
+
+    __table_args__ = (db.CheckConstraint("end_date IS NULL OR end_date >= start_date", name="ck_club_membership_dates"),)
+
+
+class ClubTeamLeaderAssignment(TimestampMixin, db.Model):
+    """Dated club/leader rotation history for a team."""
+
+    __tablename__ = "club_team_leader_assignments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    team_id = db.Column(db.Integer, db.ForeignKey("club_teams.id", ondelete="RESTRICT"), nullable=False, index=True)
+    club_id = db.Column(db.Integer, db.ForeignKey("student_clubs.id", ondelete="RESTRICT"), nullable=False, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey("teachers.id", ondelete="RESTRICT"), nullable=False, index=True)
+    start_date = db.Column(db.Date, nullable=False, default=lambda: datetime.utcnow().date())
+    end_date = db.Column(db.Date, nullable=True, index=True)
+    assigned_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    transfer_note = db.Column(db.String(255))
+
+    team = db.relationship("ClubTeam", back_populates="assignments")
+    club = db.relationship("StudentClub")
+    teacher = db.relationship("Teacher")
+    assigned_by = db.relationship("User")
+
+    __table_args__ = (
+        db.CheckConstraint("end_date IS NULL OR end_date >= start_date", name="ck_club_assignment_dates"),
+        db.Index("idx_club_assignment_leader_dates", "teacher_id", "start_date", "end_date"),
+    )
+
+
 class TeacherPermission(db.Model):
     __tablename__ = "teacher_permissions"
 

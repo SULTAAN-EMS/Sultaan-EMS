@@ -106,8 +106,10 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m11 18-6-6 6-6"/></svg>
 </button>
 <script>
+  const scanReturnUrl = {{ scan_return_url|tojson }};
   document.getElementById('verification-public-back')?.addEventListener('click', () => {
-    if (window.history.length > 1) window.history.back();
+    if (scanReturnUrl) window.location.assign(scanReturnUrl);
+    else if (window.history.length > 1) window.history.back();
     else window.location.assign('/');
   });
 </script>

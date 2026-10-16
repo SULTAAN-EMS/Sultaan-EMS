@@ -1625,3 +1625,62 @@
     font-size: 0.95rem;
   }
 }
+
+/* Complaint-portal signature pad, shared with invigilator reports. */
+.incident-form .signature-section {
+  --ink: #16233F;
+  --ink-soft: #4B5A72;
+  --card: #FFFFFF;
+  --line: #CBD2D9;
+  --brass: #A9812E;
+  --brass-deep: #7C5E20;
+  --brick: #8C3B32;
+  --brick-deep: #6E2E27;
+  --teal: #2B6F63;
+  --teal-deep: #1F5349;
+  margin-bottom: 1rem;
+}
+
+.signature-section__label { display: block; margin-bottom: 6px; color: #16233F; font-size: 12px; font-weight: 600; }
+.signature-section .sigpad { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--card); transition: border-color .15s ease; }
+.signature-section .sigpad.is-error { border-color: var(--brick); }
+.signature-section .sigpad__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; background: #F7F8F8; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.signature-section .sigpad__group { display: flex; align-items: center; gap: 7px; }
+.signature-section .sigpad__group-label { font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); margin-right: 1px; }
+.signature-section .sigpad__color { width: 20px; height: 20px; flex: none; border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: var(--sw-color); box-shadow: 0 0 0 1px var(--line); transition: box-shadow .15s ease, transform .15s ease; }
+.signature-section .sigpad__color:hover { transform: scale(1.08); }
+.signature-section .sigpad__color.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--sw-color); }
+.signature-section .sigpad__color:focus-visible,
+.signature-section .sigpad__size:focus-visible,
+.signature-section .sigpad__btn:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.signature-section .sigpad__size { width: 26px; height: 26px; flex: none; border-radius: 6px; border: 1px solid var(--line); background: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; transition: all .15s ease; }
+.signature-section .sigpad__size i { display: block; border-radius: 50%; background: var(--ink-soft); }
+.signature-section .sigpad__size[data-width="1.5"] i { width: 3px; height: 3px; }
+.signature-section .sigpad__size[data-width="3"] i { width: 5px; height: 5px; }
+.signature-section .sigpad__size[data-width="5"] i { width: 7px; height: 7px; }
+.signature-section .sigpad__size:hover { border-color: var(--brass); }
+.signature-section .sigpad__size.is-active { border-color: var(--brass); background: #FBF8F0; }
+.signature-section .sigpad__size.is-active i { background: var(--brass-deep); }
+.signature-section .sigpad__canvas-wrap { position: relative; }
+.signature-section .sigpad__canvas { display: block; width: 100%; height: 128px; touch-action: none; cursor: crosshair; background: var(--card); }
+.signature-section .sigpad.is-locked .sigpad__canvas { cursor: default; }
+.signature-section .sigpad__baseline { position: absolute; left: 16px; right: 16px; bottom: 26px; height: 0; border-top: 1px dashed var(--line); pointer-events: none; }
+.signature-section .sigpad__hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 20px; font-size: 12px; color: var(--ink-soft); pointer-events: none; opacity: 1; transition: opacity .15s ease; }
+.signature-section .sigpad__hint.is-hidden { opacity: 0; }
+.signature-section .sigpad.is-error .sigpad__hint { color: var(--brick-deep); opacity: 1; }
+.signature-section .sigpad__actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; border-top: 1px solid var(--line); background: #FCFCFC; flex-wrap: wrap; }
+.signature-section .sigpad__btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: #fff; color: var(--ink-soft); font-size: 11.5px; font-weight: 600; padding: 7px 13px; border-radius: 20px; cursor: pointer; transition: all .15s ease; }
+.signature-section .sigpad__btn:hover { border-color: var(--brass); color: var(--ink); }
+.signature-section .sigpad__btn:disabled { opacity: .6; cursor: wait; }
+.signature-section .sigpad__btn--save { border-color: var(--teal); color: var(--teal-deep); background: #F1F8F6; }
+.signature-section .sigpad__btn--save:hover { background: #E3F1EC; border-color: var(--teal-deep); }
+.signature-section .sigpad__btn--save.is-saved { background: var(--teal-deep); border-color: var(--teal-deep); color: #fff; }
+.signature-section .sigpad__btn--reuse { color: var(--ink); background: #FBF8F0; border-color: #E2D5B7; }
+.signature-section .sigpad__status { display: none; align-items: center; gap: 4px; color: var(--teal-deep); font-size: 10.5px; font-weight: 600; }
+.signature-section .sigpad.is-locked .sigpad__status { display: inline-flex; }
+.signature-section .sigpad.is-locked .sigpad__btn--erase { order: 2; }
+
+@media (max-width: 480px) {
+  .signature-section .sigpad__actions { justify-content: flex-start; }
+  .signature-section .sigpad__btn--save { margin-left: auto; }
+}

@@ -7,8 +7,9 @@ import shutil
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from urllib.parse import parse_qs, urlparse
 
-from flask import Blueprint, abort, current_app, flash, jsonify, make_response, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, flash, get_flashed_messages, jsonify, make_response, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
@@ -16,7 +17,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from . import csrf, db
 from .i18n import language_redirect
-from .models import AcademicLevel, AcademicYear, AcademicYearSubject, Exam, ExamHall, ExamHallVersion, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeatMixerAssignment, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, StudentEnrollment, Subject
+from .models import AcademicLevel, AcademicYear, AcademicYearSubject, Exam, ExamHall, ExamHallVersion, ExamInvigilator, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeatMixerAssignment, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, StudentEnrollment, Subject
 from .services import attendance_uf_record, get_settings, result_payload, result_success_overlay_config, scoped_legacy_subjects, top_students_for_class
 from .attendance_rules import normalize_attendance_status
 from .enrollment_service import (
@@ -28,6 +29,7 @@ from .verification import verification_payload
 from .import_wizard import normalize_student_phone
 from .student_identity import find_student_by_code
 from .seat_mixer_layout import seat_row_placement
+from .routes_invigilator import current_invigilator, invigilator_login_required
 
 public_bp = Blueprint("public", __name__)
 
@@ -1380,7 +1382,12 @@ def verify_id_card(token):
     settings = get_settings()
     issue = IdCardIssue.query.filter_by(token=token).first()
     if not issue:
-        return render_template("verify_id.html", settings=settings, verified=False), 404
+        return render_template(
+            "verify_id.html",
+            settings=settings,
+            verified=False,
+            scan_return_url=url_for("public.scan_entry") if request.args.get("from_scan") == "1" else None,
+        ), 404
     # Printed QR codes from older cards point here directly. Route those scans
     # through the action chooser while keeping its verification action direct.
     if request.args.get("action") != "verify":
@@ -1502,6 +1509,7 @@ def verify_id_card(token):
         status_details=status_details,
         exam=exam,
         seating=seating,
+        scan_return_url=url_for("public.scan_entry") if request.args.get("from_scan") == "1" else None,
     )
 
 
@@ -1533,6 +1541,213 @@ def qr_landing(token):
     )
 
 
+def _parse_scan_payload(value):
+    """Extract a card token and optional exam scope from a printed QR payload."""
+    raw = str(value or "").strip()
+    if not raw:
+        return None, None
+
+    parsed = urlparse(raw)
+    segments = [part for part in parsed.path.split("/") if part]
+    token = None
+    for route_name in ("qr", "verify-id"):
+        if route_name in segments:
+            route_index = segments.index(route_name)
+            if route_index + 1 < len(segments):
+                token = segments[route_index + 1]
+                break
+    if token is None and not parsed.scheme and "/" not in raw and "?" not in raw:
+        token = raw
+
+    exam_id = None
+    try:
+        exam_id = int(parse_qs(parsed.query).get("exam_id", [""])[0]) or None
+    except (TypeError, ValueError):
+        pass
+    return token, exam_id
+
+
+def _scan_issue_choices(student):
+    """Return active cards for this student, or the newest card for verification."""
+    from .routes_id_cards import effective_issue_status, ensure_issue_dates
+
+    issues = (
+        IdCardIssue.query
+        .filter_by(student_id=student.id)
+        .order_by(IdCardIssue.issue_date.desc(), IdCardIssue.id.desc())
+        .all()
+    )
+    dates_changed = False
+    for issue in issues:
+        dates_changed = ensure_issue_dates(issue) or dates_changed
+    if dates_changed:
+        db.session.commit()
+    active_issues = [issue for issue in issues if effective_issue_status(issue) == "Active"]
+    return active_issues or issues[:1]
+
+
+@public_bp.route("/scan", methods=["GET", "POST"])
+@invigilator_login_required
+def scan_entry():
+    """Staff-only QR or student-code entry point for exam verification."""
+    invigilator = current_invigilator()
+    if not invigilator:
+        session["invigilator_next"] = url_for("public.scan_entry")
+        return redirect(url_for("invigilator.login"))
+    if invigilator.force_password_change or session.get("invigilator_requires_password_change"):
+        return redirect(url_for("invigilator.change_password"))
+
+    student = None
+    issue_choices = []
+    selected_issue = None
+    exam_id_override = None
+    scan_error = None
+    student_code = (session.get("invigilator_last_student_code") or "").strip()
+
+    if request.method == "POST":
+        session.pop("invigilator_scan_target", None)
+        scan_value = request.form.get("scan_value", "").strip()
+        selected_issue_id = request.form.get("issue_choice_id", type=int)
+        selected_student_id = request.form.get("selected_student_id", type=int)
+
+        if scan_value:
+            token, requested_exam_id = _parse_scan_payload(scan_value)
+            selected_issue = IdCardIssue.query.filter_by(token=token).first() if token else None
+            if not selected_issue:
+                scan_error = "QR code-kan laguma helin kaadh arday oo sax ah."
+            elif requested_exam_id and not selected_issue.exam_id:
+                exam_id_override = Exam.query.filter_by(
+                    id=requested_exam_id,
+                    academic_year_id=selected_issue.academic_year_id,
+                ).with_entities(Exam.id).scalar()
+            student = selected_issue.student if selected_issue else None
+        elif selected_issue_id and selected_student_id:
+            student = db.session.get(Student, selected_student_id)
+            selected_issue = IdCardIssue.query.filter_by(
+                id=selected_issue_id,
+                student_id=selected_student_id,
+            ).first()
+            if not selected_issue:
+                student = None
+                scan_error = "Kaadhka la doortay lama helin. Fadlan mar kale raadi ardayga."
+        else:
+            student_code = request.form.get("student_code", "").strip()
+            if student_code:
+                session["invigilator_last_student_code"] = student_code
+            if not student_code:
+                scan_error = "Geli tira-taxanaha ardayga."
+            else:
+                student = find_student_by_code(student_code)
+                if not student:
+                    scan_error = "Ardayga leh tira-taxanahan lama helin."
+                else:
+                    issue_choices = _scan_issue_choices(student)
+                    if not issue_choices:
+                        scan_error = "Ardayga waa la helay, balse kaadh ID oo diiwaangashan looma helin."
+                    elif len(issue_choices) == 1:
+                        selected_issue = issue_choices[0]
+
+        if scan_error:
+            flash(scan_error, "scan_error")
+            return redirect(url_for("public.scan_entry"), code=303)
+
+        if selected_issue:
+            session["invigilator_scan_target"] = {
+                "token": selected_issue.token,
+                "exam_id": exam_id_override,
+            }
+        elif student and issue_choices:
+            session["invigilator_scan_target"] = {"student_id": student.id}
+        else:
+            flash("Geli QR sax ah ama tira-taxanaha ardayga.", "scan_error")
+        return redirect(url_for("public.scan_entry"), code=303)
+
+    if request.args.get("new") == "1":
+        session.pop("invigilator_scan_target", None)
+        return redirect(url_for("public.scan_entry"), code=303)
+
+    scan_errors = get_flashed_messages(category_filter=["scan_error"])
+    scan_error = scan_errors[-1] if scan_errors else None
+    scan_target = session.get("invigilator_scan_target") or {}
+    if scan_target.get("token"):
+        selected_issue = IdCardIssue.query.filter_by(token=scan_target["token"]).first()
+        if selected_issue:
+            student = selected_issue.student
+            requested_exam_id = scan_target.get("exam_id")
+            if requested_exam_id and not selected_issue.exam_id:
+                exam_id_override = Exam.query.filter_by(
+                    id=requested_exam_id,
+                    academic_year_id=selected_issue.academic_year_id,
+                ).with_entities(Exam.id).scalar()
+        else:
+            session.pop("invigilator_scan_target", None)
+            scan_error = "Kaadhka ardayga lama helin. Mar kale scan garee ama geli tira-taxanaha."
+    elif scan_target.get("student_id"):
+        student = db.session.get(Student, scan_target["student_id"])
+        if student:
+            student_code = student.student_code
+            issue_choices = _scan_issue_choices(student)
+            if not issue_choices:
+                session.pop("invigilator_scan_target", None)
+                student = None
+                student_code = ""
+                scan_error = "Ardayga hadda kaadh ID diiwaangashan uma jiro."
+            elif len(issue_choices) == 1:
+                selected_issue = issue_choices[0]
+                session["invigilator_scan_target"] = {"token": selected_issue.token}
+        else:
+            session.pop("invigilator_scan_target", None)
+            scan_error = "Ardayga lama helin. Mar kale isku day."
+
+    placement = (
+        resolve_student_academic_context(student, selected_issue.academic_year_id) or {}
+        if student and selected_issue
+        else {}
+    )
+    issue_status = None
+    verify_url = None
+    incident_url = None
+    issue_choice_data = []
+    if issue_choices:
+        from .routes_id_cards import effective_issue_status
+
+        issue_choice_data = [
+            {"issue": issue, "status": effective_issue_status(issue)}
+            for issue in issue_choices
+        ]
+    if selected_issue:
+        from .routes_id_cards import effective_issue_status
+
+        issue_status = effective_issue_status(selected_issue)
+        if selected_issue.exam_id:
+            exam_id_override = None
+        route_exam_id = selected_issue.exam_id or exam_id_override
+        verify_args = {"token": selected_issue.token, "action": "verify", "from_scan": 1}
+        incident_args = {"token": selected_issue.token, "from_scan": 1}
+        if route_exam_id:
+            verify_args["exam_id"] = route_exam_id
+            incident_args["exam_id"] = route_exam_id
+        verify_url = url_for("public.verify_id_card", **verify_args)
+        incident_url = url_for("public.incident_report_form", **incident_args)
+
+    return render_template(
+        "invigilator/scan.html",
+        settings=get_settings(),
+        invigilator=invigilator,
+        student=student,
+        student_code=student_code,
+        issue_choices=issue_choice_data,
+        selected_issue=selected_issue,
+        issue_status=issue_status,
+        exam_id_override=exam_id_override,
+        verify_url=verify_url,
+        incident_url=incident_url,
+        placement=placement,
+        scan_error=scan_error,
+        qr_scanner_version="1.4.2",
+    )
+
+
 @public_bp.route("/incident-report/<token>", methods=["GET", "POST"])
 def incident_report_form(token):
     """Incident Report Form - Requires invigilator authentication"""
@@ -1543,6 +1758,7 @@ def incident_report_form(token):
         .options(
             joinedload(IdCardIssue.student).joinedload(Student.school_class),
             joinedload(IdCardIssue.student).joinedload(Student.academic_year),
+            joinedload(IdCardIssue.exam),
         )
         .filter_by(token=token)
         .first()
@@ -1567,6 +1783,9 @@ def incident_report_form(token):
         session["invigilator_next"] = request.url
         return redirect(url_for("invigilator.login"))
 
+    from_scan = request.args.get("from_scan") == "1" or request.form.get("from_scan") == "1"
+    scan_return_url = url_for("public.scan_entry") if from_scan else None
+
     settings = get_settings()
     from .models import IncidentReportSettings
     settings_dict = {
@@ -1574,10 +1793,31 @@ def incident_report_form(token):
         for setting in IncidentReportSettings.query.all()
     }
     allow_signature_reuse = incident_bool_setting(settings_dict, "allow_signature_reuse", True)
+    has_saved_signature = False
+    if request.method == "GET" and allow_signature_reuse:
+        has_saved_signature = bool(
+            db.session.query(ExamInvigilator.signature_data.isnot(None))
+            .filter_by(id=invigilator.id)
+            .scalar()
+        )
 
     student = issue.student
-    placement = resolve_student_academic_context(student, issue.academic_year_id)
-    student_subjects = incident_subjects_for_student(student, issue.academic_year_id, placement=placement)
+    from .cloudinary_service import cloudinary_thumbnail_url
+
+    student_photo_url = cloudinary_thumbnail_url(student.photo_path)
+    invigilator_photo_url = cloudinary_thumbnail_url(invigilator.photo_path)
+    subject_is_shown = settings_dict.get("show_subject") == "true"
+    subject_is_required = incident_bool_setting(settings_dict, "require_subject", False)
+    submitted_subject_id = request.form.get("subject_id", type=int) if request.method == "POST" else None
+    placement = {}
+    student_subjects = []
+    if subject_is_shown or subject_is_required or submitted_subject_id:
+        placement = resolve_student_academic_context(student, issue.academic_year_id) or {}
+        student_subjects = incident_subjects_for_student(
+            student,
+            issue.academic_year_id,
+            placement=placement,
+        )
     student_subject_ids = {subject.id for subject in student_subjects}
 
     # Preserve the exam scope when the form posts back without query-string
@@ -1585,7 +1825,8 @@ def incident_report_form(token):
     # before it is used, so a tampered exam cannot cross academic years.
     requested_exam_id = issue.exam_id or request.args.get("exam_id", type=int) or request.form.get("exam_id", type=int)
     exam = (
-        Exam.query.filter_by(id=requested_exam_id, academic_year_id=issue.academic_year_id).first()
+        issue.exam if issue.exam and issue.exam.academic_year_id == issue.academic_year_id
+        else Exam.query.filter_by(id=requested_exam_id, academic_year_id=issue.academic_year_id).first()
         if requested_exam_id else None
     )
 
@@ -1762,12 +2003,18 @@ def incident_report_form(token):
                 current_app.logger.error(f"File upload processing failed: {str(e)}")
         
         if incident_json_request():
+            success_args = {"token": token, "report_id": report.id}
+            if from_scan:
+                success_args["from_scan"] = 1
             return jsonify(
                 success=True,
                 report_number=report.report_number,
-                success_url=url_for("public.incident_report_success", token=token, report_id=report.id),
+                success_url=url_for("public.incident_report_success", **success_args),
             )
-        return render_template("incident_success.html", settings=settings, report=report, student=student, token=token)
+        success_args = {"token": token, "report_id": report.id}
+        if from_scan:
+            success_args["from_scan"] = 1
+        return redirect(url_for("public.incident_report_success", **success_args), code=303)
     
     # GET request - show form
     categories = IncidentCategory.query.order_by(IncidentCategory.sort_order).all()
@@ -1795,6 +2042,8 @@ def incident_report_form(token):
         incident_settings=settings_dict,
         token=token,
         student=student,
+        student_photo_url=student_photo_url,
+        invigilator_photo_url=invigilator_photo_url,
         categories=categories,
         other_category_ids=other_category_ids,
         severities=severities,
@@ -1808,8 +2057,24 @@ def incident_report_form(token):
         current_user=current_user,
         invigilator=invigilator,
         allow_signature_reuse=allow_signature_reuse,
+        has_saved_signature=has_saved_signature,
+        scan_return_url=scan_return_url,
         exam=exam  # Pass the active exam to the template
     )
+
+
+@public_bp.route("/api/invigilator/signature", methods=["GET"])
+@invigilator_login_required
+def invigilator_saved_signature():
+    """Load the current invigilator's reusable signature only when requested."""
+    invigilator = current_invigilator()
+    if not invigilator:
+        return jsonify(success=False, message="Fadlan mar kale gal akoonka."), 401
+    if invigilator.force_password_change or session.get("invigilator_requires_password_change"):
+        return jsonify(success=False, message="Marka hore beddel password-ka."), 403
+    response = jsonify(signature_data=invigilator.signature_data or "")
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @public_bp.route("/incident-report/<token>/success/<int:report_id>")
@@ -1826,4 +2091,11 @@ def incident_report_success(token, report_id):
         student_id=issue.student_id,
         invigilator_id=invigilator.id,
     ).first_or_404()
-    return render_template("incident_success.html", settings=get_settings(), report=report, student=issue.student, token=token)
+    return render_template(
+        "incident_success.html",
+        settings=get_settings(),
+        report=report,
+        student=issue.student,
+        token=token,
+        scan_return_url=url_for("public.scan_entry") if request.args.get("from_scan") == "1" else None,
+    )

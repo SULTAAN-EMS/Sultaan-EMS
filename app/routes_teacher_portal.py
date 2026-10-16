@@ -1,5 +1,5 @@
 import io
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
@@ -14,8 +14,8 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 from . import db
 from .models import (
-    AcademicClass, AcademicYear, AcademicYearClass, AcademicYearLevel, Exam, Result,
-    Student, Subject, TeacherResultAssignment,
+    AcademicClass, AcademicYear, AcademicYearClass, AcademicYearLevel, ClubTeamLeaderAssignment,
+    ClubTeamMembership, Exam, Result, Student, Subject, TeacherResultAssignment,
     TeacherResultMark, TeacherResultSubmission,
 )
 from .teacher_analytics import (
@@ -80,13 +80,20 @@ def protect_teacher_portal():
 
 def _ctx(teacher, filters, page_title, active_endpoint):
     options = filter_options(teacher, filters)
+    today = date.today()
+    has_club_assignment = ClubTeamLeaderAssignment.query.filter(
+        ClubTeamLeaderAssignment.teacher_id == teacher.id,
+        ClubTeamLeaderAssignment.start_date <= today,
+        db.or_(ClubTeamLeaderAssignment.end_date.is_(None), ClubTeamLeaderAssignment.end_date > today),
+    ).first() is not None
+    nav_items = teacher_nav_items()
     return {
         "teacher": teacher,
         "filters": filters,
         "filter_options": options,
         "page_title": page_title,
         "active_endpoint": active_endpoint,
-        "nav_items": teacher_nav_items(),
+        "nav_items": nav_items,
         "teacher_can": teacher_can,
         "teacher_theme": teacher_theme(),
         "teacher_settings": get_teacher_settings(),
@@ -348,6 +355,30 @@ def result_entry_save():
     return redirect(url_for("teacher_portal.result_entry", assignment_id=assignment.id))
 
 
+@teacher_portal_bp.route("/clubs")
+@teacher_login_required
+def clubs():
+    """Show only the current club assignments and rosters of this leader."""
+    teacher = get_current_teacher()
+    today = date.today()
+    assignments = ClubTeamLeaderAssignment.query.filter(
+        ClubTeamLeaderAssignment.teacher_id == teacher.id,
+        ClubTeamLeaderAssignment.start_date <= today,
+        db.or_(ClubTeamLeaderAssignment.end_date.is_(None), ClubTeamLeaderAssignment.end_date > today),
+    ).order_by(ClubTeamLeaderAssignment.start_date.desc()).all()
+    teams = []
+    for assignment in assignments:
+        memberships = ClubTeamMembership.query.filter(
+            ClubTeamMembership.team_id == assignment.team_id,
+            ClubTeamMembership.start_date <= today,
+            db.or_(ClubTeamMembership.end_date.is_(None), ClubTeamMembership.end_date > today),
+        ).order_by(ClubTeamMembership.id).all()
+        teams.append({"assignment": assignment, "memberships": memberships})
+    record_teacher_visit(teacher, "My Club Teams")
+    ctx = _ctx(teacher, {}, "Kooxaha Naadiga", "teacher_portal.clubs")
+    ctx["teams"] = teams
+    db.session.commit()
+    return render_template("teacher/clubs.html", **ctx)
 
 
 @teacher_portal_bp.route("/subjects")

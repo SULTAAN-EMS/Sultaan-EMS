@@ -1,0 +1,75 @@
+{% extends "admin/base.html" %}
+{% block title %}Maamulka Naadiyada{% endblock %}
+{% block page_title %}Kooxaha iyo hoggaamiyeyaasha naadiyada{% endblock %}
+{% block admin_content %}
+<style>
+  .club-admin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin:18px 0}
+  .club-admin-card{padding:20px;border:1px solid #dce5e1;border-radius:14px;background:#fff}
+  .club-admin-card h2,.club-admin-card h3{margin:0 0 8px;color:#153b32}.club-admin-card p{color:#64748b;font-size:13px}
+  .club-admin-form{display:grid;gap:10px}.club-admin-form label{display:grid;gap:5px;font-size:12px;font-weight:700;color:#475569}
+  .club-admin-form input,.club-admin-form select,.club-team-picker select{min-width:0;padding:9px 10px;border:1px solid #cbd5d1;border-radius:8px;background:#fff;color:#172b27}
+  .club-team-picker{display:flex;align-items:end;gap:12px;padding:16px;background:#f3f8f6;border-radius:12px}.club-team-picker label{display:grid;gap:5px;font-weight:700}
+  .club-table-wrap{overflow:auto}.club-table{width:100%;border-collapse:collapse}.club-table th,.club-table td{padding:10px;border-bottom:1px solid #e5ebe8;text-align:left;vertical-align:top}.club-table th{font-size:11px;text-transform:uppercase;color:#64748b}.club-muted{color:#64748b;font-size:12px}
+  .club-pill{display:inline-block;padding:4px 9px;border-radius:99px;background:#e9f5ee;color:#17633f;font-size:11px;font-weight:700}
+  @media(max-width:620px){.club-team-picker{align-items:stretch;flex-direction:column}}
+</style>
+<section class="club-admin-grid">
+  <article class="club-admin-card">
+    <h2>Abuur naadi</h2><p>Naadiyada waxaa dib loogu adeegsan karaa kooxo iyo wareegyo kala duwan.</p>
+    <form class="club-admin-form" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="operation" value="create_club">
+      <label>Magaca naadiga<input name="name" maxlength="120" required placeholder="Tusaale: Naadiga Beeraha"></label>
+      <label>Faahfaahin kooban<input name="description" maxlength="500"></label><button class="btn premium" type="submit">Abuur Naadi</button>
+    </form>
+  </article>
+  <article class="club-admin-card">
+    <h2>Abuur koox arday</h2><p>Kooxdu waxay ka koobnaan kartaa arday heerar iyo fasallo kala duwan.</p>
+    <form class="club-admin-form" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="operation" value="create_team">
+      <label>Sannad-dugsiyeed<select name="academic_year_id" required>{% for year in years %}<option value="{{ year.id }}" {% if year.id == selected_year_id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}</select></label>
+      <label>Magaca kooxda<input name="name" maxlength="120" required placeholder="Tusaale: Kooxda 1"></label><button class="btn premium" type="submit">Abuur Koox</button>
+    </form>
+  </article>
+</section>
+<form class="club-team-picker" method="get">
+  <label>Sannad-dugsiyeed<select name="year_id" onchange="this.form.submit()">{% for year in years %}<option value="{{ year.id }}" {% if year.id == selected_year_id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}</select></label>
+  <label>Kooxda<select name="team_id" onchange="this.form.submit()">{% for team in teams %}<option value="{{ team.id }}" {% if selected_team and team.id == selected_team.id %}selected{% endif %}>{{ team.name }}</option>{% endfor %}</select></label>
+</form>
+{% if selected_team %}
+  <section class="club-admin-grid">
+    <article class="club-admin-card">
+      <h2>Ku dar ama wareeji arday</h2><p>Arday kasta hal koox ayuu ku jiri karaa isku mar. Wareejintu waxay xidhaysaa xubinnimadii hore, taariikhdana way reebaysaa.</p>
+      <form class="club-admin-form" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="operation" value="add_member"><input type="hidden" name="team_id" value="{{ selected_team.id }}">
+        <label>Arday firfircoon<select name="enrollment_id" required><option value="">Dooro arday</option>{% for enrollment in enrollments %}<option value="{{ enrollment.id }}">{{ enrollment.student.full_name }} · {{ enrollment.academic_year_level.name }} / {{ enrollment.academic_year_class.name }} · {{ enrollment.student.student_code }}</option>{% endfor %}</select></label>
+        <label>Taariikhda bilaabashada<input type="date" name="start_date" value="{{ today.isoformat() }}" required></label><button class="btn premium" type="submit">Ku dar / Wareeji</button>
+      </form>
+    </article>
+    <article class="club-admin-card">
+      <h2>Qoondee hoggaamiye iyo naadi</h2><p>Wareejinta waxay dhammeystiraysaa qoondeyntii hore laga bilaabo taariikhda cusub, iyadoo diiwaanka hore aan la tirtirin.</p>
+      <form class="club-admin-form" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="operation" value="assign_leader"><input type="hidden" name="team_id" value="{{ selected_team.id }}">
+        <label>Naadi<select name="club_id" required><option value="">Dooro naadi</option>{% for club in clubs %}<option value="{{ club.id }}">{{ club.name }}</option>{% endfor %}</select></label>
+        <label>Hoggaamiye<select name="teacher_id" required><option value="">Dooro macallin</option>{% for teacher in teachers %}<option value="{{ teacher.id }}">{{ teacher.full_name }} · {{ teacher.teacher_id }}{% if not teacher.user_id %} (akoon ma leh){% endif %}</option>{% endfor %}</select></label>
+        <label>Wareeggu bilaabanayo<input type="date" name="start_date" value="{{ today.isoformat() }}" required></label>
+        <label>Sababta/tilmaan wareejinta<input name="transfer_note" maxlength="255" placeholder="Ikhtiyaari"></label><button class="btn premium" type="submit">Qoondee Hoggaamiye</button>
+      </form>
+    </article>
+  </section>
+  <section class="club-admin-card">
+    <h2>{{ selected_team.name }} · Ardayda hadda ku jirta</h2>
+    <p>{{ selected_team.academic_year.name }} · Xubnaha waxaa lagu kala muujiyey fasalkooda iyo heerka ay wax ka bartaan.</p>
+    <div class="club-table-wrap"><table class="club-table"><thead><tr><th>Arday</th><th>Aqoonsi</th><th>Heer</th><th>Fasal</th><th>Ku biiray</th></tr></thead><tbody>
+      {% for enrollment_id, membership in active_memberships.items() %}<tr><td>{{ membership.enrollment.student.full_name }}</td><td>{{ membership.enrollment.student.student_code }}</td><td>{{ membership.enrollment.academic_year_level.name }}</td><td>{{ membership.enrollment.academic_year_class.name }}</td><td>{{ membership.start_date.isoformat() }}</td></tr>{% else %}<tr><td colspan="5" class="club-muted">Kooxdan weli arday looma qoondeyn.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+  <section class="club-admin-card">
+    <h2>Taariikhda xubnaha kooxda</h2><p>Wareejinta ardayda lama tirtirayo; halkan ayaad ka arki kartaa muddadii ay kooxdan ku jireen.</p>
+    <div class="club-table-wrap"><table class="club-table"><thead><tr><th>Arday</th><th>Heer / Fasal</th><th>Bilaabasho</th><th>Dhammaad</th></tr></thead><tbody>
+      {% for membership in membership_history %}<tr><td>{{ membership.enrollment.student.full_name }} · {{ membership.enrollment.student.student_code }}</td><td>{{ membership.enrollment.academic_year_level.name }} / {{ membership.enrollment.academic_year_class.name }}</td><td>{{ membership.start_date.isoformat() }}</td><td>{{ membership.end_date.isoformat() if membership.end_date else 'Hadda' }}</td></tr>{% else %}<tr><td colspan="4" class="club-muted">Taariikh xubinnimo ma jirto.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+  <section class="club-admin-grid">
+    <article class="club-admin-card"><h3>Qoondeynta hadda</h3>
+      {% if active_assignment %}<p><span class="club-pill">{{ active_assignment.club.name }}</span></p><p><strong>{{ active_assignment.teacher.full_name }}</strong> · laga bilaabo {{ active_assignment.start_date.isoformat() }}</p>{% if active_assignment.transfer_note %}<p>{{ active_assignment.transfer_note }}</p>{% endif %}{% else %}<p>Kooxdan weli hoggaamiye/naadi looma qoondeyn.</p>{% endif %}
+    </article>
+    <article class="club-admin-card"><h3>Taariikhda wareejinta hoggaamiyeyaasha</h3><div class="club-table-wrap"><table class="club-table"><thead><tr><th>Naadi</th><th>Hoggaamiye</th><th>Laga bilaabo</th><th>Ilaa</th></tr></thead><tbody>{% for item in history %}<tr><td>{{ item.club.name }}</td><td>{{ item.teacher.full_name }}</td><td>{{ item.start_date.isoformat() }}</td><td>{{ item.end_date.isoformat() if item.end_date else 'Hadda' }}</td></tr>{% else %}<tr><td colspan="4" class="club-muted">Wareejin wali ma jirto.</td></tr>{% endfor %}</tbody></table></div></article>
+  </section>
+{% elif years %}<p class="club-admin-card">Marka hore abuur koox sannad-dugsiyeedkan.</p>{% else %}<p class="club-admin-card">Sannad-dugsiyeed lama helin.</p>{% endif %}
+{% endblock %}

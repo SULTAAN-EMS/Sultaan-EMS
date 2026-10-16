@@ -120,6 +120,7 @@ ENDPOINT_PERMISSIONS = {
     "admin_teachers.performance": "teachers",
     "admin_teachers.activity": "teachers",
     "admin_teachers.teacher_settings": "teachers",
+    "admin_teachers.club_teams": "teachers",
     "admin_teachers.export_teachers": ("teachers", "export"),
     "admin_teachers.print_teachers": ("teachers", "print"),
     "academic_structure.index": "manage_academic_structure",

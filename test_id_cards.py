@@ -439,7 +439,8 @@ class TestIdCards(unittest.TestCase):
         self.assertEqual(verify_after_seating.status_code, 200)
         self.assertIn("FASALKA IMTIXAANKA LAGU GALAYO".encode(), verify_after_seating.data)
         self.assertIn("Hoolka A".encode(), verify_after_seating.data)
-        self.assertIn("Saf 1 · Miis 2 · Kursi 1".encode(), verify_after_seating.data)
+        self.assertIn("Safka 1aad ee".encode(), verify_after_seating.data)
+        self.assertIn("Miis 2 · Kursi 1".encode(), verify_after_seating.data)
         self.assertIn(b"exam-seat-info", verify_after_seating.data)
         self.assertIn(b"verification-id.css?v=seat-location-20261016-3", verify_after_seating.data)
 

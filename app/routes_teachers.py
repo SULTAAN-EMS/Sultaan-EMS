@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from tempfile import NamedTemporaryFile
 from zoneinfo import ZoneInfo
 
@@ -9,7 +9,7 @@ from openpyxl import Workbook
 from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
-from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, Exam, Result, SchoolClass, Setting, Student, Subject, Teacher, TeacherActivity, TeacherResultAssignment, TeacherResultMark, TeacherResultSubmission
+from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, ClubTeam, ClubTeamLeaderAssignment, ClubTeamMembership, Exam, Result, SchoolClass, Setting, Student, StudentClub, StudentEnrollment, Subject, Teacher, TeacherActivity, TeacherResultAssignment, TeacherResultMark, TeacherResultSubmission
 from .permissions import enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, allowed_file
 from .teacher_services import (
@@ -630,3 +630,142 @@ def print_teachers():
     }
     teachers = teacher_list_query(filters).all()
     return render_template("admin/teachers/print.html", teachers=teachers, generated_at=datetime.now())
+
+
+@teachers_bp.route("/club-teams", methods=["GET", "POST"])
+def club_teams():
+    """Administer mixed-class club cohorts, rosters, and dated leader rotations."""
+    if request.method == "POST":
+        operation = request.form.get("operation", "")
+        try:
+            if operation == "create_club":
+                name = request.form.get("name", "").strip()
+                if not name:
+                    raise ValueError("Magaca naadigu waa waajib.")
+                if StudentClub.query.filter(db.func.lower(StudentClub.name) == name.lower()).first():
+                    raise ValueError("Naadi magacan leh hore ayuu u jiraa.")
+                db.session.add(StudentClub(name=name, description=request.form.get("description", "").strip() or None))
+                audit("Club Teams", f"Created club {name}")
+                flash("Naadiga waa la abuuray.", "success")
+            elif operation == "create_team":
+                year = db.session.get(AcademicYear, request.form.get("academic_year_id", type=int))
+                name = request.form.get("name", "").strip()
+                if not year or not name:
+                    raise ValueError("Dooro sannad-dugsiyeed, kuna qor magaca kooxda.")
+                if ClubTeam.query.filter_by(academic_year_id=year.id, name=name).first():
+                    raise ValueError("Koox magacan leh sannad-dugsiyeedkan way jirtaa.")
+                db.session.add(ClubTeam(academic_year=year, name=name))
+                audit("Club Teams", f"Created team {name} for {year.name}")
+                flash("Kooxda waa la abuuray.", "success")
+            elif operation == "add_member":
+                team = db.session.get(ClubTeam, request.form.get("team_id", type=int))
+                enrollment = db.session.get(StudentEnrollment, request.form.get("enrollment_id", type=int))
+                start_date = date.fromisoformat(request.form.get("start_date", ""))
+                if not team or not enrollment or enrollment.academic_year_id != team.academic_year_id:
+                    raise ValueError("Ardayga iyo kooxdu waa inay ka wada tirsanaadaan isla sannad-dugsiyeedka.")
+                if start_date < date.today():
+                    raise ValueError("Xubinnimada cusub dib looguma qori karo taariikh hore.")
+                if enrollment.status != "active":
+                    raise ValueError("Kaliya ardayda firfircoon ayaa lagu dari karaa kooxda.")
+                overlapping = ClubTeamMembership.query.filter(
+                    ClubTeamMembership.enrollment_id == enrollment.id,
+                    db.or_(ClubTeamMembership.end_date.is_(None), ClubTeamMembership.end_date > start_date),
+                ).order_by(ClubTeamMembership.start_date.desc()).first()
+                if overlapping:
+                    if overlapping.team_id == team.id:
+                        raise ValueError("Ardaygani kooxdaas ayuu hore ugu jiraa.")
+                    if start_date < overlapping.start_date:
+                        raise ValueError("Wareejintu kama hor mari karto xubinnimada firfircoon ee hadda jirta.")
+                    overlapping.end_date = start_date
+                future_membership = ClubTeamMembership.query.filter(
+                    ClubTeamMembership.enrollment_id == enrollment.id,
+                    ClubTeamMembership.start_date > start_date,
+                    db.or_(ClubTeamMembership.end_date.is_(None), ClubTeamMembership.end_date > start_date),
+                ).first()
+                if future_membership:
+                    raise ValueError("Ardaygan wuxuu leeyahay wareejin mustaqbal ah; marka hore dib u eeg taariikhdaas.")
+                db.session.add(ClubTeamMembership(
+                    team=team, enrollment=enrollment, start_date=start_date,
+                    assigned_by_user_id=getattr(current_user, "id", None),
+                ))
+                audit("Club Teams", f"Assigned enrollment {enrollment.id} to {team.name} effective {start_date.isoformat()}")
+                flash("Xubinta kooxda waa la kaydiyey.", "success")
+            elif operation == "assign_leader":
+                team = db.session.get(ClubTeam, request.form.get("team_id", type=int))
+                club = db.session.get(StudentClub, request.form.get("club_id", type=int))
+                teacher = db.session.get(Teacher, request.form.get("teacher_id", type=int))
+                start_date = date.fromisoformat(request.form.get("start_date", ""))
+                if not team or not club or not club.is_active or not teacher or not teacher.is_active or teacher.employment_status != "Active":
+                    raise ValueError("Koox, naadi firfircoon, iyo hoggaamiye firfircoon dooro.")
+                if not teacher.user_id or not teacher.user or not teacher.user.is_active:
+                    raise ValueError("Hoggaamiyahan weli akoon portal ma leh. Marka hore ka samee/ka hawlgeli akoonka bogga macallinka.")
+                if start_date < date.today():
+                    raise ValueError("Qoondeyn cusub dib looguma qori karo taariikh hore.")
+                current = ClubTeamLeaderAssignment.query.filter(
+                    ClubTeamLeaderAssignment.team_id == team.id,
+                    ClubTeamLeaderAssignment.start_date <= start_date,
+                    db.or_(ClubTeamLeaderAssignment.end_date.is_(None), ClubTeamLeaderAssignment.end_date > start_date),
+                ).order_by(ClubTeamLeaderAssignment.start_date.desc()).first()
+                if current and current.start_date > start_date:
+                    raise ValueError("Wareejintu kama hor mari karto wareegga hadda la qorsheeyey.")
+                if current and current.start_date == start_date and current.teacher_id == teacher.id and current.club_id == club.id:
+                    raise ValueError("Kooxdan hore ayaa loogu qoondeeyey hoggaamiyahan iyo naadiga taariikhdaas.")
+                future_assignment = ClubTeamLeaderAssignment.query.filter(
+                    ClubTeamLeaderAssignment.team_id == team.id,
+                    ClubTeamLeaderAssignment.start_date > start_date,
+                    db.or_(ClubTeamLeaderAssignment.end_date.is_(None), ClubTeamLeaderAssignment.end_date > start_date),
+                ).first()
+                if future_assignment:
+                    raise ValueError("Kooxdan waxay leedahay wareejin mustaqbal ah; marka hore dib u eeg taariikhdaas.")
+                if current:
+                    current.end_date = start_date
+                db.session.add(ClubTeamLeaderAssignment(
+                    team=team, club=club, teacher=teacher, start_date=start_date,
+                    assigned_by_user_id=getattr(current_user, "id", None),
+                    transfer_note=request.form.get("transfer_note", "").strip() or None,
+                ))
+                audit("Club Teams", f"Assigned {team.name} to {teacher.full_name} / {club.name} from {start_date.isoformat()}")
+                flash("Hoggaamiyaha/naadiga waa la qoondeeyey; wareegyadii hore way kaydsan yihiin.", "success")
+            else:
+                raise ValueError("Ficil aan la aqoonsan.")
+            db.session.commit()
+        except (ValueError, TypeError) as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+        return redirect(url_for("admin_teachers.club_teams", team_id=request.form.get("team_id", "")))
+
+    years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
+    selected_year_id = request.args.get("year_id", type=int) or (years[0].id if years else None)
+    teams_query = ClubTeam.query.filter_by(academic_year_id=selected_year_id) if selected_year_id else ClubTeam.query.filter(db.false())
+    teams = teams_query.order_by(ClubTeam.name).all()
+    selected_team_id = request.args.get("team_id", type=int)
+    selected_team = next((item for item in teams if item.id == selected_team_id), None) or (teams[0] if teams else None)
+    today = date.today()
+    active_memberships = {}
+    active_assignment = None
+    if selected_team:
+        active_memberships = {
+            item.enrollment_id: item for item in ClubTeamMembership.query.filter(
+                ClubTeamMembership.team_id == selected_team.id,
+                ClubTeamMembership.start_date <= today,
+                db.or_(ClubTeamMembership.end_date.is_(None), ClubTeamMembership.end_date > today),
+            ).all()
+        }
+        active_assignment = ClubTeamLeaderAssignment.query.filter(
+            ClubTeamLeaderAssignment.team_id == selected_team.id,
+            ClubTeamLeaderAssignment.start_date <= today,
+            db.or_(ClubTeamLeaderAssignment.end_date.is_(None), ClubTeamLeaderAssignment.end_date > today),
+        ).order_by(ClubTeamLeaderAssignment.start_date.desc()).first()
+    enrollments = StudentEnrollment.query.filter_by(
+        academic_year_id=selected_team.academic_year_id, status="active",
+    ).order_by(StudentEnrollment.academic_year_level_id, StudentEnrollment.academic_year_class_id, StudentEnrollment.id).all() if selected_team else []
+    clubs = StudentClub.query.filter_by(is_active=True).order_by(StudentClub.name).all()
+    teachers = Teacher.query.filter_by(is_active=True, employment_status="Active").order_by(Teacher.full_name).all()
+    history = ClubTeamLeaderAssignment.query.filter_by(team_id=selected_team.id).order_by(ClubTeamLeaderAssignment.start_date.desc()).all() if selected_team else []
+    membership_history = ClubTeamMembership.query.filter_by(team_id=selected_team.id).order_by(ClubTeamMembership.start_date.desc(), ClubTeamMembership.id.desc()).all() if selected_team else []
+    return render_template(
+        "admin/teachers/club_teams.html", years=years, selected_year_id=selected_year_id,
+        teams=teams, selected_team=selected_team, active_memberships=active_memberships,
+        active_assignment=active_assignment, enrollments=enrollments, clubs=clubs,
+        teachers=teachers, history=history, membership_history=membership_history, today=today,
+    )

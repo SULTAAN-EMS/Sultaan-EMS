@@ -47,6 +47,11 @@
     </div>
 
     <div class="success-actions">
+      {% if scan_return_url %}
+      <a href="{{ scan_return_url }}" class="btn-secondary">
+        <i class="fa-solid fa-arrow-left"></i> Dib-u-noqo
+      </a>
+      {% endif %}
       <a href="{{ url_for('public.qr_landing', token=token) }}" class="btn-primary">
         <i class="fa-solid fa-qrcode"></i> Scan gareey QR Code kale.
       </a>

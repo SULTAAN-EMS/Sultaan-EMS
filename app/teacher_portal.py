@@ -4,6 +4,7 @@ from urllib.parse import urlparse, urlunparse
 from flask import abort, flash, redirect, request, url_for
 from flask_login import current_user
 
+from . import db
 from .teacher_services import (
     TEACHER_PERMISSIONS,
     get_teacher_settings,

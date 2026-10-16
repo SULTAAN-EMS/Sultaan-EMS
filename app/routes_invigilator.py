@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from flask import Blueprint, flash, g, has_request_context, redirect, render_template, request, session, url_for
+from sqlalchemy.orm import defer
 from werkzeug.security import check_password_hash
 import functools
 
@@ -84,6 +85,8 @@ def logout_invigilator():
     session.pop("invigilator_login_time", None)
     session.pop("invigilator_last_activity", None)
     session.pop("invigilator_remember_login", None)
+    session.pop("invigilator_scan_target", None)
+    session.pop("invigilator_last_student_code", None)
 
 
 def current_invigilator():
@@ -93,7 +96,10 @@ def current_invigilator():
         cached = getattr(g, "_current_invigilator_cache", None)
         if cached and cached[0] == invigilator_id:
             return cached[1]
-    invigilator = db.session.get(ExamInvigilator, invigilator_id) if invigilator_id else None
+    invigilator = (
+        ExamInvigilator.query.options(defer(ExamInvigilator.signature_data)).filter_by(id=invigilator_id).first()
+        if invigilator_id else None
+    )
     if has_request_context():
         g._current_invigilator_cache = (invigilator_id, invigilator)
     return invigilator
@@ -138,7 +144,7 @@ def invigilator_login_required(f):
         if not check_invigilator_session():
             logout_invigilator()
             # Store the intended URL for redirect after login
-            session["invigilator_next"] = request.url
+            session["invigilator_next"] = request.full_path.rstrip("?")
             flash("Your session has expired. Please sign in again to continue.", "warning")
             return redirect(url_for("invigilator.login"))
         
@@ -196,7 +202,7 @@ def login():
         next_url = session.pop("invigilator_next", None)
         if next_url:
             return redirect(next_url)
-        return redirect(url_for("public.qr_landing"))
+        return redirect(url_for("public.scan_entry"))
     
     if request.method == "POST":
         username = request.form.get("username", "").strip()
@@ -204,7 +210,7 @@ def login():
         
         if not username or not password:
             flash("Please provide both username and password.", "danger")
-            return render_template("invigilator/login.html", settings=get_settings())
+            return redirect(url_for("invigilator.login"), code=303)
         
         invigilator = ExamInvigilator.query.filter_by(username=username).first()
         
@@ -215,25 +221,25 @@ def login():
                 status="Failed",
                 failure_reason="Invalid username"
             )
-            return render_template("invigilator/login.html", settings=get_settings())
+            return redirect(url_for("invigilator.login"), code=303)
         
         # Check if account is locked
         if invigilator.status == "Locked":
             flash("Your account has been locked. Please contact an administrator.", "danger")
             record_login_history(invigilator, "Locked", failure_reason="Account locked")
-            return render_template("invigilator/login.html", settings=get_settings())
+            return redirect(url_for("invigilator.login"), code=303)
         
         # Check if account is inactive
         if invigilator.status == "Inactive" or not invigilator.is_active:
             flash("Your account is inactive. Please contact an administrator.", "danger")
             record_login_history(invigilator, "Failed", failure_reason="Account inactive")
-            return render_template("invigilator/login.html", settings=get_settings())
+            return redirect(url_for("invigilator.login"), code=303)
         
         # Check if account is within validity period
         if not invigilator.is_valid():
             flash("Your account is not within the valid examination period.", "danger")
             record_login_history(invigilator, "Expired", failure_reason="Account expired")
-            return render_template("invigilator/login.html", settings=get_settings())
+            return redirect(url_for("invigilator.login"), code=303)
         
         # Check password
         if invigilator.check_password(password):
@@ -253,11 +259,11 @@ def login():
             next_url = session.pop("invigilator_next", None)
             if next_url:
                 return redirect(next_url)
-            return redirect(url_for("public.qr_landing"))
+            return redirect(url_for("public.scan_entry"))
         else:
             flash("Invalid username or password.", "danger")
             record_login_history(invigilator, "Failed", failure_reason="Invalid password")
-            return render_template("invigilator/login.html", settings=get_settings())
+            return redirect(url_for("invigilator.login"), code=303)
     
     return render_template("invigilator/login.html", settings=get_settings())
 

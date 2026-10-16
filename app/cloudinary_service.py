@@ -1,7 +1,31 @@
 import cloudinary
 import cloudinary.uploader
 from flask import current_app
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
+
+
+def cloudinary_thumbnail_url(image_url, width=320, height=320):
+    """Return a lightweight Cloudinary crop without changing the stored URL."""
+    value = str(image_url or "").strip()
+    if not value:
+        return ""
+
+    parsed = urlsplit(value)
+    if parsed.netloc.lower() != "res.cloudinary.com":
+        return value
+
+    marker = "/image/upload/"
+    if marker not in parsed.path:
+        return value
+
+    prefix, remainder = parsed.path.split(marker, 1)
+    first_segment = remainder.split("/", 1)[0]
+    if first_segment.startswith(("c_", "w_", "h_", "q_", "f_", "t_")):
+        return value
+
+    transform = f"c_fill,w_{int(width)},h_{int(height)},q_auto,f_auto"
+    path = f"{prefix}{marker}{transform}/{remainder}"
+    return urlunsplit(parsed._replace(path=path))
 
 
 def upload_image(file, folder):
