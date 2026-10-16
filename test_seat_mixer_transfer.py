@@ -238,8 +238,9 @@ class SeatMixerTransferTests(unittest.TestCase):
         self.assertIn(b'id="smTransferOverlay"', response.data)
         self.assertIn("FARIIN MUHIIM AH".encode(), response.data)
         self.assertIn("Halakan usoo wareeji".encode(), response.data)
-        self.assertIn(b"student-transfer-design-20261015-1", response.data)
-        self.assertIn(b"student-table-seats-inline-20261015-1", response.data)
+        self.assertIn(b'id="smSaveProgress"', response.data)
+        self.assertIn("Fadhiga waa la kaydinayaa".encode(), response.data)
+        self.assertIn(b"seat-save-progress-20261016-1", response.data)
 
     def test_school_name_prefers_somali_setting_over_dashboard_title(self):
         db.session.add_all([

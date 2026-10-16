@@ -43,6 +43,7 @@
     studentHallMap: {}, // studentId -> {hallId, versionId, hallName, versionLabel}
     pendingTransferAction: null,
     pendingReplace: null,
+    savingArrangement: false,
     worker: null,
     appearance: {},
     appearanceTimer: null,
@@ -1631,6 +1632,13 @@
   }
 
   function persistArrangement(combo) {
+    if (SM.savingArrangement) return;
+    SM.savingArrangement = true;
+    var saveProgress = $('smSaveProgress');
+    if (saveProgress) {
+      saveProgress.hidden = false;
+      saveProgress.setAttribute('aria-hidden', 'false');
+    }
 
     var assignments = [];
     var selectedStudents = {};
@@ -1645,7 +1653,7 @@
 
     fetch('/admin/seat-mixer/api/save', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': SM.csrfToken },
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': SM.csrfToken, 'X-No-Loader': '1' },
       body: JSON.stringify({
         version_id: SM.currentVersionId,
         assignments: assignments,
@@ -1718,7 +1726,14 @@
           notify('Could not save: ' + (data.error || 'Unknown error'), 'error');
         }
       })
-      .catch(function (e) { notify('Could not save: ' + e.message, 'error'); });
+      .catch(function (e) { notify('Could not save: ' + e.message, 'error'); })
+      .finally(function () {
+        SM.savingArrangement = false;
+        if (saveProgress) {
+          saveProgress.hidden = true;
+          saveProgress.setAttribute('aria-hidden', 'true');
+        }
+      });
   }
 
   // ── Print / Export ──
