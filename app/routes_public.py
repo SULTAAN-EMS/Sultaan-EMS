@@ -1730,6 +1730,7 @@ def scan_entry():
         verify_url = url_for("public.verify_id_card", **verify_args)
         incident_url = url_for("public.incident_report_form", **incident_args)
 
+    student_photo_url = _public_asset_url(student.photo_path) if student and student.photo_path else ""
     return render_template(
         "invigilator/scan.html",
         settings=get_settings(),
@@ -1743,6 +1744,7 @@ def scan_entry():
         verify_url=verify_url,
         incident_url=incident_url,
         placement=placement,
+        student_photo_url=student_photo_url,
         scan_error=scan_error,
         qr_scanner_version="1.4.2",
     )

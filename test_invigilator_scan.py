@@ -152,6 +152,24 @@ class TestInvigilatorScan(unittest.TestCase):
         entry_page = self.client.get(new_search.headers["Location"])
         self.assertIn('id="student-code" name="student_code" value="tis138"', entry_page.get_data(as_text=True))
 
+    def test_student_photo_is_bound_to_background_floaters_for_both_lookup_methods(self):
+        photo_url = "https://res.cloudinary.com/sultaan/image/upload/v123/students/student.jpg"
+        self.student.photo_path = photo_url
+        db.session.commit()
+        self.authenticate_invigilator()
+
+        lookups = (
+            {"student_code": self.student.student_code},
+            {"scan_value": f"https://www.sultaan-ems.com/qr/{self.issue.token}?exam_id={self.exam.id}"},
+        )
+        for lookup in lookups:
+            post_response = self.client.post("/scan", data=lookup)
+            response = self.client.get(post_response.headers["Location"])
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(f'data-photo-url="{photo_url}"', response.get_data(as_text=True))
+            self.client.get("/scan?new=1")
+
     def test_manual_student_code_is_remembered_after_failed_lookup(self):
         self.authenticate_invigilator()
 
