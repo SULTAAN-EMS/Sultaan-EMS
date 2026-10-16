@@ -1793,6 +1793,12 @@ def print_arrangement():
     rows = assignments[0].rows_config or 3
     tables_per_row = assignments[0].tables_per_row_config or 5
     seats_per_table = assignments[0].seats_per_table_config or 2
+    compact_portrait = (
+        orientation == "portrait"
+        and rows == 3
+        and tables_per_row == 5
+        and seats_per_table == 2
+    )
     seat_map = {(item.row_number, item.table_number, item.seat_number): item for item in assignments}
     print_columns = [
         {"side": side, "rows": []}
@@ -1875,4 +1881,5 @@ def print_arrangement():
         exam_name=exam_name,
         hall_start_time=hall.start_time,
         orientation=orientation,
+        compact_portrait=compact_portrait,
     )

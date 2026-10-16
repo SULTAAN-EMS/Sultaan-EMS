@@ -87,6 +87,42 @@
     .student-photo { width: 12mm; height: 13mm; }
     .student-qr-link, .qr-missing { width: 17mm; height: 17mm; }
     {% endif %}
+    {% if compact_portrait %}
+    .sheet { padding: 10px; }
+    .doc-head { gap: 12px; padding-bottom: 8px; }
+    .school-logo { width: 40px; height: 40px; flex-basis: 40px; }
+    .school-name { font-size: 15px; }
+    .meta-grid { gap: 3px; margin: 7px 0 5px; padding: 3px; }
+    .meta-item { gap: 4px; padding: 3px 4px; }
+    .meta-icon { flex-basis: 12px; }
+    .meta-icon svg { width: 11px; height: 11px; }
+    .meta-label { font-size: 5.4px; }
+    .meta-item:nth-child(1) .meta-value,
+    .meta-item:nth-child(2) .meta-value,
+    .meta-item:nth-child(3) .meta-value,
+    .meta-item:nth-child(4) .meta-value { font-size: 7.8px; }
+    .summary { gap: 4px; margin-bottom: 5px; padding: 4px 6px; }
+    .summary-icon { flex-basis: 18px; width: 18px; height: 18px; }
+    .summary-icon svg { width: 12px; height: 12px; }
+    .summary-label { font-size: 7.5px; }
+    .class-list { gap: 3px; }
+    .class-chip { padding: 1px 4px; font-size: 7px; }
+    .row-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-bottom: 6px; break-inside: avoid; page-break-inside: avoid; }
+    .row-stack { gap: 2px; break-inside: avoid; page-break-inside: avoid; }
+    .row-column { break-inside: avoid; page-break-inside: avoid; }
+    .row-title { margin-bottom: 2px; padding: 3px 5px; font-size: 9px; line-height: 1.1; }
+    .table { margin-bottom: 2px; border-radius: 5px; }
+    .table-title { padding: 2px 5px; font-size: 7px; line-height: 1.1; }
+    .student-card { grid-template-columns: 12mm minmax(0, 1fr) 18mm; gap: 2px; padding: 2px 3px; }
+    .seat-label { font-size: 6px; }
+    .student-photo { width: 10mm; height: 11mm; }
+    .student-name { font-size: 7px; line-height: 1.08; }
+    .student-id, .student-class { margin-top: 1px; font-size: 6.5px; }
+    .seat-ref { margin-top: 1px; font-size: 6px; }
+    .student-qr-link, .qr-missing { width: 17mm; height: 17mm; padding: .5mm; }
+    .empty-seat { padding: 4px 2px; font-size: 7px; }
+    .doc-foot { margin-top: 4px; padding-top: 4px; font-size: 7px; }
+    {% endif %}
     @media (max-width: 700px) {
       .sheet { width: calc(100% - 16px); margin: 8px auto; padding: 13px; }
       .doc-head { align-items: flex-start; flex-direction: column; gap: 9px; }
@@ -96,6 +132,7 @@
       .meta-item:nth-child(-n+2) { border-bottom: 1px solid var(--line); padding-bottom: 7px; }
       .meta-item:nth-child(n+3) { padding-top: 7px; }
       .row-grid { grid-template-columns: 1fr; }
+      {% if compact_portrait %}.sheet .row-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }{% endif %}
       .actions { position: static; justify-content: center; margin: 10px 0; }
     }
     @media print {
@@ -106,7 +143,7 @@
   </style>
 </head>
 <body>
-  <main class="sheet">
+  <main class="sheet{% if compact_portrait %} compact-portrait{% endif %}">
     <header class="doc-head">
       <div class="brand-lockup">
         <div class="school-logo">{% if school_logo %}<img src="{{ school_logo }}" alt="{{ school_name }} logo">{% else %}S{% endif %}</div>
