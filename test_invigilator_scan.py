@@ -4,7 +4,7 @@ from sqlalchemy import event
 
 from app import create_app, db
 from app.cloudinary_service import cloudinary_thumbnail_url
-from app.models import AcademicYear, Exam, ExamInvigilator, IdCardIssue, IncidentReportSettings, Student, StudentCodeAlias
+from app.models import AcademicYear, Exam, ExamHall, ExamInvigilator, IdCardIssue, IncidentReportSettings, Student, StudentCodeAlias, User
 
 
 class TestInvigilatorScan(unittest.TestCase):
@@ -34,9 +34,21 @@ class TestInvigilatorScan(unittest.TestCase):
             is_active=True,
         )
         self.invigilator.set_password("TestPass123")
-        db.session.add_all([self.year, self.student, self.invigilator])
+        self.invigilator.visible_password = "TestPass123"
+        self.admin = User(username="invigilator-share-admin", full_name="Admin Tijaabo", role="super_admin")
+        self.admin.set_password("AdminPass123")
+        db.session.add_all([self.year, self.student, self.invigilator, self.admin])
         db.session.flush()
         db.session.add(self.exam)
+        db.session.flush()
+        self.hall = ExamHall(
+            name="Form 1A (Gabdhaha)",
+            code="INV-SHARE-HALL-1",
+            academic_year_id=self.year.id,
+            exam_id=self.exam.id,
+            is_active=True,
+        )
+        db.session.add(self.hall)
         db.session.flush()
         self.issue = self.add_issue("scan-token-001", self.exam)
         db.session.commit()
@@ -70,6 +82,40 @@ class TestInvigilatorScan(unittest.TestCase):
             session["invigilator_logged_in"] = True
             session["invigilator_login_time"] = now
             session["invigilator_last_activity"] = now
+
+    def authenticate_admin(self):
+        return self.client.post("/admin/login", data={
+            "username": self.admin.username,
+            "password": "AdminPass123",
+        })
+
+    def test_invigilator_share_data_is_authenticated_uncached_and_uses_real_hall_context(self):
+        url = f"/admin/invigilators/{self.invigilator.id}/share-info"
+        denied = self.client.get(url)
+        self.assertEqual(denied.status_code, 302)
+        self.authenticate_admin()
+
+        response = self.client.get(url)
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("no-store", response.headers["Cache-Control"])
+        self.assertEqual(data["full_name"], self.invigilator.full_name)
+        self.assertEqual(data["invigilator_id"], self.invigilator.invigilator_id)
+        self.assertEqual(data["username"], self.invigilator.username)
+        self.assertEqual(data["password"], "TestPass123")
+        page = self.client.get("/admin/invigilators")
+        page_html = page.get_data(as_text=True)
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Diyaari xogta ilaaliyaha", page_html)
+        self.assertNotIn("TestPass123", page_html)
+        self.assertEqual(data["halls"], [{
+            "id": self.hall.id,
+            "hall": self.hall.name,
+            "class_name": self.hall.name,
+            "exam_name": self.exam.name,
+            "year_name": self.year.name,
+        }])
 
     def test_scan_page_requires_invigilator_login_and_preserves_return_path(self):
         response = self.client.get("/scan")

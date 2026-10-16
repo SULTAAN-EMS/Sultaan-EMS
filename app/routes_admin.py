@@ -2048,6 +2048,64 @@ def invigilators():
     )
 
 
+@admin_bp.route("/invigilators/<int:invigilator_id>/share-info")
+@permission_required("system_settings")
+def invigilator_share_info(invigilator_id):
+    """Return credential-sharing data only after an authenticated admin asks for it."""
+    invigilator = ExamInvigilator.query.get_or_404(invigilator_id)
+    settings = get_settings()
+
+    def asset_url(path):
+        value = str(path or "").strip().replace("\\", "/")
+        if not value:
+            return ""
+        if value.startswith("//"):
+            return f"https:{value}"
+        if value.startswith(("http://", "https://", "data:")):
+            return value
+        if value.startswith("/uploads/"):
+            return url_for("static", filename=value.lstrip("/"))
+        if value.startswith("/"):
+            return value
+        if value.startswith("static/"):
+            value = value[len("static/"):]
+        return url_for("static", filename=value)
+
+    logo_path = asset_url(settings.get("logo_path"))
+
+    hall_options = []
+    halls = ExamHall.query.filter_by(is_active=True).order_by(ExamHall.sort_order, ExamHall.name).all()
+    for hall in halls:
+        exam = hall.exam
+        exam_type = hall.exam_type
+        year = hall.academic_year or (exam.academic_year if exam else None) or (exam_type.academic_year if exam_type else None)
+        exam_name = (exam.name if exam else None) or (exam_type.name if exam_type else None) or ""
+        class_name = hall.academic_class.name if hall.academic_class else hall.name
+        hall_options.append({
+            "id": hall.id,
+            "hall": hall.name,
+            "class_name": class_name,
+            "exam_name": exam_name,
+            "year_name": year.name if year else "",
+        })
+
+    response = jsonify({
+        "full_name": invigilator.full_name,
+        "invigilator_id": invigilator.invigilator_id,
+        "username": invigilator.username,
+        "password": invigilator.visible_password or "",
+        "photo_url": asset_url(invigilator.photo_path),
+        "role": invigilator.role,
+        "school_name": settings.get("school_name_so") or settings.get("school_name") or "Dugsiga",
+        "school_logo": logo_path,
+        "login_url": url_for("invigilator.login", _external=True),
+        "halls": hall_options,
+    })
+    response.headers["Cache-Control"] = "private, no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
 @admin_bp.route("/invigilators/add", methods=["GET", "POST"])
 def invigilator_add():
     """Add new invigilator"""

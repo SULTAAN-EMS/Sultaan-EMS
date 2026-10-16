@@ -288,6 +288,11 @@
             </td>
             <td>
               <div class="action-buttons">
+                {% if can('system_settings') %}
+                <button type="button" class="btn-action btn-share-info" title="Diyaari xogta ilaaliyaha" aria-label="Diyaari xogta {{ invigilator.full_name }}" data-share-url="{{ url_for('admin.invigilator_share_info', invigilator_id=invigilator.id) }}">
+                  <i class="fa-solid fa-address-card"></i>
+                </button>
+                {% endif %}
                 <a href="{{ url_for('admin.invigilator_history', invigilator_id=invigilator.id) }}" class="btn-action btn-view" title="View">
                   <i class="fa-solid fa-eye"></i>
                 </a>
@@ -355,6 +360,52 @@
       </a>
     </div>
     {% endif %}
+</div>
+
+<div class="inv-share-backdrop" id="invShareBackdrop" hidden>
+  <section class="inv-share-dialog" role="dialog" aria-modal="true" aria-labelledby="invShareTitle" tabindex="-1">
+    <button type="button" class="inv-share-close" id="invShareClose" aria-label="Xir" title="Xir"><i class="fa-solid fa-xmark"></i></button>
+    <div class="inv-share-heading">
+      <div class="inv-share-heading-icon"><i class="fa-solid fa-id-card-clip"></i></div>
+      <div><span class="inv-share-eyebrow">XOGTA SHAQAALAHA IMTIXAANKA</span><h2 id="invShareTitle">Xogta Ilaaliyaha</h2><p>Hubi fasalka iyo imtixaanka ka hor intaadan dirin.</p></div>
+    </div>
+    <div class="inv-share-error" id="invShareError" role="status" hidden></div>
+    <div class="inv-share-content" id="invShareContent" hidden>
+      <label class="inv-share-select-label" for="invShareHall"><i class="fa-solid fa-school"></i> Fasalka iyo imtixaanka</label>
+      <select id="invShareHall" class="inv-share-select">
+        <option value="">Dooro fasalka imtixaanka</option>
+      </select>
+      <div class="inv-share-preview" id="invSharePreview">
+        <div class="inv-share-brand">
+          <div class="inv-share-logo" id="invShareLogo"><i class="fa-solid fa-school"></i></div>
+          <div><span class="inv-share-school" id="invShareSchool"></span><span class="inv-share-brand-sub">MAAMULKA IMTIXAANKA</span></div>
+          <span class="inv-share-verified"><i class="fa-solid fa-circle-check"></i> RASMI</span>
+        </div>
+        <div class="inv-share-profile">
+          <div class="inv-share-photo" id="invSharePhoto"><i class="fa-solid fa-user-tie"></i></div>
+          <div class="inv-share-person"><h3 id="invShareName"></h3><span class="inv-share-role" id="invShareRole"></span><span class="inv-share-id"><i class="fa-solid fa-fingerprint"></i> <b id="invShareId"></b></span></div>
+        </div>
+        <div class="inv-share-exam-grid">
+          <div class="inv-share-detail"><span><i class="fa-solid fa-file-pen"></i> Nuuca imtixaanka</span><strong id="invShareExam">Dooro fasalka kore</strong></div>
+          <div class="inv-share-detail"><span><i class="fa-solid fa-calendar-days"></i> Sannad-dugsiyeedka</span><strong id="invShareYear">-</strong></div>
+          <div class="inv-share-detail inv-share-class-detail"><span><i class="fa-solid fa-door-open"></i> Fasalka / Hoolka</span><strong id="invShareClass">-</strong></div>
+        </div>
+        <div class="inv-share-credentials">
+          <div class="inv-share-credentials-title"><i class="fa-solid fa-key"></i> Xogta gelitaanka</div>
+          <div class="inv-share-credential"><span>Username</span><strong id="invShareUsername"></strong></div>
+          <div class="inv-share-credential"><span>Password</span><div class="inv-share-password"><strong id="invSharePassword"></strong><button type="button" id="invShareTogglePassword" aria-label="Qari password-ka" title="Qari password-ka"><i class="fa-solid fa-eye-slash"></i></button></div></div>
+          <div class="inv-share-login"><i class="fa-solid fa-arrow-up-right-from-square"></i><span id="invShareLoginUrl"></span></div>
+        </div>
+        <div class="inv-share-security"><i class="fa-solid fa-shield-halved"></i><span>Fariintan si gaar ah ula wadaag ilaaliyaha. Ha ku dirin koox guud.</span></div>
+      </div>
+      <div class="inv-share-actions">
+        <button type="button" class="inv-share-copy" id="invShareCopy" disabled><i class="fa-regular fa-copy"></i> Nuqul ka samee</button>
+        <button type="button" class="inv-share-whatsapp" id="invShareWhatsapp" disabled><i class="fa-brands fa-whatsapp"></i> WhatsApp ku dir</button>
+      </div>
+      <div class="inv-share-feedback" id="invShareFeedback" role="status" aria-live="polite"></div>
+    </div>
+    <div class="inv-share-loading" id="invShareLoading" role="status"><span class="inv-share-spinner"></span><span>Xogta ayaa la soo rarayaa...</span></div>
+  </section>
 </div>
 
 <style>
@@ -1228,6 +1279,90 @@
     padding: 1rem;
   }
 }
+
+.btn-share-info { color: #0b8068; background: #e9fbf5; }
+.btn-share-info:hover { color: #fff; background: linear-gradient(135deg, #0d8f72, #18b88a); }
+.inv-share-backdrop[hidden], .inv-share-error[hidden], .inv-share-content[hidden] { display: none !important; }
+.inv-share-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 20px; background: rgba(10, 18, 43, .68); backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px); animation: invShareFade .18s ease-out; }
+.inv-share-dialog { position: relative; width: min(100%, 650px); max-height: min(92dvh, 860px); overflow: auto; padding: 26px; border: 1px solid rgba(255,255,255,.75); border-radius: 20px; background: #f7f9fd; color: #18233f; box-shadow: 0 28px 90px rgba(4, 12, 35, .38); animation: invShareRise .24s cubic-bezier(.2,.8,.2,1); outline: none; }
+.inv-share-close { position: absolute; top: 17px; right: 17px; width: 38px; height: 38px; border: 1px solid #e0e7f0; border-radius: 12px; background: #fff; color: #52617a; cursor: pointer; font-size: 17px; }
+.inv-share-close:hover { background: #fff0f0; color: #c92e42; border-color: #ffc9ce; }
+.inv-share-close:focus-visible, .inv-share-dialog button:focus-visible, .inv-share-select:focus-visible { outline: 3px solid #66cdb1; outline-offset: 2px; }
+.inv-share-heading { display: flex; align-items: center; gap: 14px; padding-right: 42px; margin-bottom: 20px; }
+.inv-share-heading-icon { width: 52px; height: 52px; flex: none; display: grid; place-items: center; border-radius: 15px; background: linear-gradient(145deg, #0f9678, #22bd91); color: white; box-shadow: 0 8px 18px rgba(16, 150, 120, .24); font-size: 21px; }
+.inv-share-eyebrow { display: block; margin-bottom: 4px; color: #10866d; font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+.inv-share-heading h2 { margin: 0; color: #17233f; font-size: 21px; line-height: 1.25; font-weight: 800; }
+.inv-share-heading p { margin: 4px 0 0; color: #65728a; font-size: 13px; line-height: 1.45; }
+.inv-share-select-label { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; color: #394963; font-size: 12px; font-weight: 750; }
+.inv-share-select-label i { color: #536c95; }
+.inv-share-select { width: 100%; min-height: 46px; padding: 0 13px; border: 1px solid #d5deeb; border-radius: 11px; background: #fff; color: #24324c; font: inherit; font-size: 13px; }
+.inv-share-preview { margin-top: 16px; overflow: hidden; border: 1px solid #dfe6ef; border-radius: 16px; background: #fff; box-shadow: 0 9px 24px rgba(25, 42, 74, .06); }
+.inv-share-brand { min-height: 71px; display: flex; align-items: center; gap: 11px; padding: 12px 16px; background: linear-gradient(110deg, #f0faf8 0%, #f3f6ff 100%); border-bottom: 1px solid #e5edf4; }
+.inv-share-logo { width: 43px; height: 43px; flex: none; display: grid; place-items: center; overflow: hidden; border-radius: 12px; background: #fff; color: #16896f; box-shadow: 0 2px 8px rgba(30, 60, 90, .12); font-size: 20px; }
+.inv-share-logo img { width: 100%; height: 100%; object-fit: contain; }
+.inv-share-school { display: block; color: #17233e; font-size: 13px; line-height: 1.3; font-weight: 800; }
+.inv-share-brand-sub { display: block; margin-top: 3px; color: #75819a; font-size: 9px; letter-spacing: .08em; font-weight: 750; }
+.inv-share-verified { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 6px 9px; border: 1px solid #c8ede1; border-radius: 999px; background: #e9faf3; color: #08785f; font-size: 9px; font-weight: 800; letter-spacing: .04em; }
+.inv-share-verified i { font-size: 12px; }
+.inv-share-profile { display: flex; align-items: center; gap: 14px; padding: 16px; }
+.inv-share-photo { width: 72px; height: 72px; flex: none; display: grid; place-items: center; overflow: hidden; border: 3px solid #fff; border-radius: 18px; background: linear-gradient(145deg, #e3f5f1, #e7ebfb); color: #548078; box-shadow: 0 0 0 1px #d7e4e8, 0 5px 12px rgba(28, 46, 77, .12); font-size: 28px; }
+.inv-share-photo img { width: 100%; height: 100%; object-fit: cover; }
+.inv-share-person { min-width: 0; }
+.inv-share-person h3 { margin: 0 0 4px; color: #192641; font-size: 18px; line-height: 1.25; font-weight: 800; overflow-wrap: anywhere; }
+.inv-share-role { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: #eef3ff; color: #445bb0; font-size: 10px; font-weight: 750; }
+.inv-share-id { display: flex; align-items: center; gap: 5px; margin-top: 7px; color: #697791; font-size: 11px; }
+.inv-share-id i { color: #bd8c24; }
+.inv-share-id b { color: #263855; letter-spacing: .04em; }
+.inv-share-exam-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; padding: 0 16px 15px; }
+.inv-share-detail { min-width: 0; padding: 10px 11px; border: 1px solid #e7edf4; border-radius: 11px; background: #f9fbfd; }
+.inv-share-detail span { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; color: #77839a; font-size: 10px; font-weight: 700; }
+.inv-share-detail span i { color: #138a73; }
+.inv-share-detail strong { display: block; color: #263652; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+.inv-share-class-detail { grid-column: 1 / -1; }
+.inv-share-credentials { margin: 0 16px 14px; padding: 13px; border: 1px solid #d9e7f2; border-radius: 12px; background: linear-gradient(135deg, #f6faff, #f3fbf8); }
+.inv-share-credentials-title { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; color: #263c5b; font-size: 11px; font-weight: 800; }
+.inv-share-credentials-title i { color: #c28e20; }
+.inv-share-credential { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 34px; border-top: 1px solid #e5ebf0; color: #77839a; font-size: 11px; }
+.inv-share-credential strong { min-width: 0; color: #1d2b46; font-size: 12px; font-weight: 800; overflow-wrap: anywhere; text-align: right; }
+.inv-share-password { display: flex; align-items: center; gap: 7px; }
+.inv-share-password button { width: 27px; height: 27px; flex: none; border: 0; border-radius: 8px; background: #e7eef5; color: #566680; cursor: pointer; }
+.inv-share-login { display: flex; align-items: center; gap: 7px; padding-top: 8px; border-top: 1px solid #e5ebf0; color: #2870a0; font-size: 10px; overflow-wrap: anywhere; }
+.inv-share-login i { flex: none; }
+.inv-share-security { display: flex; align-items: flex-start; gap: 8px; margin: 0 16px 15px; padding: 10px 11px; border: 1px solid #f1dfb3; border-radius: 10px; background: #fff9e9; color: #725d2c; font-size: 10px; line-height: 1.5; }
+.inv-share-security i { flex: none; margin-top: 1px; color: #bb8c20; }
+.inv-share-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.inv-share-actions button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 11px; color: #fff; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; transition: transform .16s ease, filter .16s ease; }
+.inv-share-actions button:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.04); }
+.inv-share-actions button:disabled { opacity: .48; cursor: not-allowed; }
+.inv-share-copy { background: linear-gradient(135deg, #345baf, #5676d4); }
+.inv-share-whatsapp { background: linear-gradient(135deg, #0b9567, #12b981); }
+.inv-share-whatsapp i { font-size: 16px; }
+.inv-share-feedback { min-height: 18px; padding-top: 7px; color: #118267; text-align: center; font-size: 11px; font-weight: 700; }
+.inv-share-loading { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 150px; color: #68768f; font-size: 13px; font-weight: 650; }
+.inv-share-spinner { width: 20px; height: 20px; border: 2px solid #d5e8e2; border-top-color: #0b9878; border-radius: 50%; animation: invShareSpin .75s linear infinite; }
+.inv-share-error { padding: 13px 14px; border: 1px solid #ffd1d4; border-radius: 11px; background: #fff2f2; color: #a72c38; font-size: 13px; }
+@keyframes invShareFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes invShareRise { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes invShareSpin { to { transform: rotate(360deg); } }
+@media (max-width: 560px) {
+  .inv-share-backdrop { align-items: end; padding: 0; }
+  .inv-share-dialog { width: 100%; max-height: 94dvh; padding: 22px 16px calc(16px + env(safe-area-inset-bottom, 0px)); border-radius: 22px 22px 0 0; }
+  .inv-share-heading { gap: 11px; margin-bottom: 16px; }
+  .inv-share-heading-icon { width: 46px; height: 46px; }
+  .inv-share-heading h2 { font-size: 19px; }
+  .inv-share-brand { padding-inline: 12px; }
+  .inv-share-school { font-size: 11px; }
+  .inv-share-profile { padding: 14px 12px; }
+  .inv-share-photo { width: 62px; height: 62px; }
+  .inv-share-person h3 { font-size: 16px; }
+  .inv-share-exam-grid { padding-inline: 12px; }
+  .inv-share-credentials { margin-inline: 12px; }
+  .inv-share-security { margin-inline: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .inv-share-backdrop, .inv-share-dialog, .inv-share-spinner { animation: none !important; }
+  .inv-share-actions button { transition: none; }
+}
 </style>
 
 <script>
@@ -1263,5 +1398,210 @@ function toggleSelectAll() {
     checkbox.checked = selectAll.checked;
   });
 }
+
+(() => {
+  const backdrop = document.getElementById('invShareBackdrop');
+  if (!backdrop) return;
+
+  const dialog = backdrop.querySelector('.inv-share-dialog');
+  const closeButton = document.getElementById('invShareClose');
+  const loading = document.getElementById('invShareLoading');
+  const content = document.getElementById('invShareContent');
+  const errorBox = document.getElementById('invShareError');
+  const hallSelect = document.getElementById('invShareHall');
+  const copyButton = document.getElementById('invShareCopy');
+  const whatsappButton = document.getElementById('invShareWhatsapp');
+  const passwordValue = document.getElementById('invSharePassword');
+  const feedback = document.getElementById('invShareFeedback');
+  let currentData = null;
+  let activeOpener = null;
+  let passwordVisible = true;
+  let selectedHall = null;
+  let previousBodyOverflow = '';
+
+  function setImage(container, url, fallbackClass) {
+    container.replaceChildren();
+    if (url) {
+      const image = document.createElement('img');
+      image.src = url;
+      image.alt = '';
+      image.onerror = () => {
+        container.replaceChildren();
+        const icon = document.createElement('i');
+        icon.className = fallbackClass;
+        container.append(icon);
+      };
+      container.append(image);
+      return;
+    }
+    const icon = document.createElement('i');
+    icon.className = fallbackClass;
+    container.append(icon);
+  }
+
+  function refreshShareActions() {
+    const hasExamContext = Boolean(selectedHall && selectedHall.exam_name && selectedHall.year_name && selectedHall.class_name);
+    const hasPassword = Boolean(currentData && currentData.password);
+    copyButton.disabled = whatsappButton.disabled = !(hasExamContext && hasPassword);
+    if (currentData && !hasPassword) {
+      feedback.textContent = 'Password muuqda lama hayo. Marka hore dib u samee password-ka ilaaliyaha.';
+    } else if (currentData && !hasExamContext) {
+      feedback.textContent = !currentData.halls.length
+        ? 'Ma jiro fasal imtixaan oo firfircoon oo xogtiisa la dooran karo.'
+        : selectedHall
+          ? 'Fasalkan kuma dhammaystirna imtixaan ama sannad-dugsiyeed. Dooro fasal kale.'
+          : 'Dooro fasalka imtixaanka si xogta saxda ahi ugu darto.';
+    } else {
+      feedback.textContent = '';
+    }
+  }
+
+  function updateExamDetails() {
+    selectedHall = currentData?.halls.find(hall => String(hall.id) === hallSelect.value) || null;
+    document.getElementById('invShareExam').textContent = selectedHall?.exam_name || 'Lama cayimin';
+    document.getElementById('invShareYear').textContent = selectedHall?.year_name || 'Lama cayimin';
+    const classAndHall = selectedHall
+      ? [selectedHall.class_name, selectedHall.hall && selectedHall.hall !== selectedHall.class_name ? selectedHall.hall : ''].filter(Boolean).join(' · ')
+      : 'Lama cayimin';
+    document.getElementById('invShareClass').textContent = classAndHall;
+    refreshShareActions();
+  }
+
+  function fillCard(data) {
+    currentData = data;
+    document.getElementById('invShareSchool').textContent = data.school_name || 'Dugsiga';
+    document.getElementById('invShareName').textContent = data.full_name;
+    document.getElementById('invShareId').textContent = data.invigilator_id;
+    document.getElementById('invShareUsername').textContent = data.username;
+    document.getElementById('invShareRole').textContent = data.role || 'Ilaaliye';
+    document.getElementById('invShareLoginUrl').textContent = data.login_url || '';
+    passwordValue.dataset.password = data.password || '';
+    passwordVisible = true;
+    passwordValue.textContent = data.password || 'Lama hayo';
+    document.getElementById('invShareTogglePassword').innerHTML = '<i class="fa-solid fa-eye-slash"></i>';
+    document.getElementById('invShareTogglePassword').setAttribute('aria-label', 'Qari password-ka');
+    setImage(document.getElementById('invShareLogo'), data.school_logo, 'fa-solid fa-school');
+    setImage(document.getElementById('invSharePhoto'), data.photo_url, 'fa-solid fa-user-tie');
+
+    hallSelect.replaceChildren(new Option('Dooro fasalka imtixaanka', ''));
+    data.halls.forEach(hall => {
+      const pieces = [hall.year_name, hall.exam_name, hall.class_name, hall.hall !== hall.class_name ? hall.hall : ''].filter(Boolean);
+      hallSelect.add(new Option(pieces.join(' · ') || hall.hall || 'Fasal imtixaan', String(hall.id)));
+    });
+    hallSelect.disabled = data.halls.length === 0;
+    hallSelect.value = '';
+    updateExamDetails();
+  }
+
+  async function openShareCard(button) {
+    activeOpener = button;
+    currentData = null;
+    selectedHall = null;
+    feedback.textContent = '';
+    content.hidden = true;
+    errorBox.hidden = true;
+    loading.hidden = false;
+    backdrop.hidden = false;
+    previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialog.focus();
+
+    try {
+      const response = await fetch(button.dataset.shareUrl, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!response.ok) throw new Error(response.status === 404 ? 'Xogta ilaaliyaha lama helin.' : 'Xogta lama soo qaadi karin. Dib u gal maamulka oo mar kale isku day.');
+      fillCard(await response.json());
+      loading.hidden = true;
+      content.hidden = false;
+    } catch (error) {
+      loading.hidden = true;
+      errorBox.textContent = error.message || 'Cilad ayaa dhacday markii xogta la soo rarayay.';
+      errorBox.hidden = false;
+    }
+  }
+
+  function closeShareCard() {
+    backdrop.hidden = true;
+    document.body.style.overflow = previousBodyOverflow;
+    currentData = null;
+    selectedHall = null;
+    if (activeOpener) activeOpener.focus();
+  }
+
+  function shareMessage() {
+    return [
+      currentData.school_name,
+      'XOGTA GELITAANKA ILAALIYAHA IMTIXAANKA',
+      '',
+      `Imtixaan: ${selectedHall.exam_name || 'Lama cayimin'}`,
+      `Sannad-dugsiyeed: ${selectedHall.year_name || 'Lama cayimin'}`,
+      `Fasal / Hool: ${[selectedHall.class_name, selectedHall.hall !== selectedHall.class_name ? selectedHall.hall : ''].filter(Boolean).join(' · ') || 'Lama cayimin'}`,
+      '',
+      `Magaca: ${currentData.full_name}`,
+      `Aqoonsiga: ${currentData.invigilator_id}`,
+      `Username: ${currentData.username}`,
+      `Password: ${currentData.password}`,
+      `Gal portalka: ${currentData.login_url}`,
+      '',
+      'Fadlan xogtan adiga keliya u isticmaal, hana la wadaagin qof kale.'
+    ].join('\n');
+  }
+
+  async function copyShareMessage() {
+    const text = shareMessage();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {
+      const helper = document.createElement('textarea');
+      helper.value = text;
+      helper.style.position = 'fixed';
+      helper.style.opacity = '0';
+      document.body.append(helper);
+      helper.select();
+      document.execCommand('copy');
+      helper.remove();
+    }
+    feedback.textContent = 'Xogta waa la koobiyeeyey. Hadda si gaar ah ugu dir ilaaliyaha.';
+  }
+
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-share-url]');
+    if (button) openShareCard(button);
+  });
+  closeButton.addEventListener('click', closeShareCard);
+  backdrop.addEventListener('click', event => { if (event.target === backdrop) closeShareCard(); });
+  dialog.addEventListener('keydown', event => {
+    if (event.key !== 'Tab') return;
+    const focusable = [...dialog.querySelectorAll('button:not(:disabled), select:not(:disabled), a[href]')];
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (!backdrop.hidden && event.key === 'Escape') closeShareCard();
+  });
+  hallSelect.addEventListener('change', updateExamDetails);
+  copyButton.addEventListener('click', copyShareMessage);
+  whatsappButton.addEventListener('click', () => {
+    const url = `https://wa.me/?text=${encodeURIComponent(shareMessage())}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  });
+  document.getElementById('invShareTogglePassword').addEventListener('click', event => {
+    passwordVisible = !passwordVisible;
+    passwordValue.textContent = passwordVisible ? (passwordValue.dataset.password || 'Lama hayo') : '•'.repeat(Math.max(8, passwordValue.dataset.password.length));
+    event.currentTarget.innerHTML = `<i class="fa-solid ${passwordVisible ? 'fa-eye-slash' : 'fa-eye'}"></i>`;
+    event.currentTarget.setAttribute('aria-label', passwordVisible ? 'Qari password-ka' : 'Muuji password-ka');
+  });
+})();
 </script>
 {% endblock %}
