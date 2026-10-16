@@ -37,6 +37,7 @@ from .enrollment_service import EnrollmentValidationError, enrollment_placement_
 from .academic_hierarchy import year_classes, year_levels
 from .permissions import enforce_endpoint_permission
 from .verification import id_card_qr_payload
+from .seat_mixer_layout import seat_row_placement
 
 seat_mixer_bp = Blueprint("seat_mixer", __name__)
 
@@ -1793,7 +1794,10 @@ def print_arrangement():
     tables_per_row = assignments[0].tables_per_row_config or 5
     seats_per_table = assignments[0].seats_per_table_config or 2
     seat_map = {(item.row_number, item.table_number, item.seat_number): item for item in assignments}
-    print_rows = []
+    print_columns = [
+        {"side": side, "rows": []}
+        for side in ("MIDIG", "DHEXE", "BIDIX")
+    ]
     for row_number in range(rows):
         tables = []
         for table_number in range(tables_per_row):
@@ -1802,7 +1806,12 @@ def print_arrangement():
                 "table": table_number,
                 "seats": [seat_map.get((row_number, table_number, seat_number)) for seat_number in range(seats_per_table)],
             })
-        print_rows.append(tables)
+        side, grid_column = seat_row_placement(row_number, rows)
+        print_columns[grid_column - 1]["rows"].append({
+            "number": row_number + 1,
+            "side": side,
+            "tables": tables,
+        })
     hall_exam = hall.exam
     hall_exam_type = hall.exam_type
     academic_year_id = seat_mixer_hall_year_id(
@@ -1852,7 +1861,7 @@ def print_arrangement():
         hall=hall,
         version=version,
         assignments=assignments,
-        print_rows=print_rows,
+        print_columns=print_columns,
         print_classes=sorted(print_classes.items(), key=lambda item: item[1]),
         class_counts=class_counts,
         seats_per_table=seats_per_table,

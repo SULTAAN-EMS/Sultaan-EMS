@@ -52,6 +52,7 @@
     .class-chip { display: inline-flex; align-items: center; padding: 2px 6px; border: 1px solid color-mix(in srgb, var(--chip-color, #315f9e) 40%, #fff); border-radius: 999px; background: color-mix(in srgb, var(--chip-color, #315f9e) 13%, #fff); color: color-mix(in srgb, var(--chip-color, #315f9e) 82%, #14233a); font-size: 8px; font-weight: 900; white-space: nowrap; }
     .notice { margin-bottom: 13px; padding: 6px 10px; border: 1px solid #d9e4f3; border-radius: 7px; background: #f8fbff; color: #425673; font-size: 9px; }
     .row-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-bottom: 12px; align-items: start; break-inside: auto; page-break-inside: auto; }
+    .row-stack { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
     .row-column { min-width: 0; }
     .row-column { break-inside: auto; page-break-inside: auto; }
     .row-title { margin: 0 0 4px; padding: 4px 7px; border-radius: 6px; background: var(--row-color, var(--navy)); color: #fff; font-size: 11px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
@@ -125,11 +126,13 @@
 
     {% set row_colors = ['#c2185b', '#2f67b2', '#35a053', '#e4771d', '#6f55a8', '#168b99'] %}
     <section class="row-grid">
-      {% for row in print_rows %}
-      {% set row_color = row_colors[loop.index0 % (row_colors|length)] %}
+      {% for print_column in print_columns %}
+      <div class="row-stack">
+      {% for print_row in print_column.rows %}
+      {% set row_color = row_colors[(print_row.number - 1) % (row_colors|length)] %}
       <section class="row-column" style="--row-color:{{ row_color }}">
-        <h2 class="row-title">Safka {{ loop.index }}</h2>
-        {% for table in row %}
+        <h2 class="row-title">Safka {{ print_row.number }}aad ee {{ print_row.side }}</h2>
+        {% for table in print_row.tables %}
         <article class="table">
           <h3 class="table-title">Miiska {{ table.table + 1 }}</h3>
           {% for assignment in table.seats %}
@@ -150,6 +153,8 @@
         </article>
         {% endfor %}
       </section>
+      {% endfor %}
+      </div>
       {% endfor %}
     </section>
 

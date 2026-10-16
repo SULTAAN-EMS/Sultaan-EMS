@@ -27,6 +27,7 @@ from .enrollment_service import (
 from .verification import verification_payload
 from .import_wizard import normalize_student_phone
 from .student_identity import find_student_by_code
+from .seat_mixer_layout import seat_row_placement
 
 public_bp = Blueprint("public", __name__)
 
@@ -1465,9 +1466,13 @@ def verify_id_card(token):
             .first()
         )
         if seating_row and seating_row.version and seating_row.version.hall:
+            side, _ = seat_row_placement(
+                seating_row.row_number,
+                seating_row.rows_config,
+            )
             seating = {
                 "hall_name": seating_row.version.hall.name,
-                "seat_label": f"Saf {seating_row.row_number + 1} · Miis {seating_row.table_number + 1} · Kursi {seating_row.seat_number + 1}",
+                "seat_label": f"Safka {seating_row.row_number + 1}aad ee {side} · Miis {seating_row.table_number + 1} · Kursi {seating_row.seat_number + 1}",
             }
     
     if exam:
