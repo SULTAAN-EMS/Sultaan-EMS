@@ -36,6 +36,10 @@
   .att-scope .hint-bar{padding:12px 20px;font-size:11.5px;color:var(--slate);background:var(--paper-2);border-top:1px solid var(--line);}.att-scope .exports-bar{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;}
   @media(max-width:900px){.att-scope .stepper{grid-template-columns:1fr 1fr;}.att-scope .roster-row{flex-direction:column;align-items:flex-start;}.att-scope .student-info,.att-scope .student-subjects{width:100%;}}@media(max-width:600px){.att-scope .stepper{grid-template-columns:minmax(0,1fr);}.att-scope .step{min-width:0;}.att-scope .step .field{min-width:0;}.att-scope .step select{font-size:14px;}.att-scope .statusrow{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:100%;}.att-scope .opt{justify-content:center;}.att-scope .level-head{padding:11px 13px;}.att-scope .student-subjects{min-width:0;grid-template-columns:1fr;}}
 </style>
+<style>
+  .att-scope .roster-loading{display:flex;align-items:center;justify-content:center;gap:10px;min-height:120px;padding:24px;color:#40516F;font-size:13px;font-weight:700;}
+  .att-scope .roster-loading i{color:#2563EB;font-size:18px;}
+</style>
 {% endblock %}
 
 {% block admin_content %}
@@ -75,5 +79,93 @@ function renderStatusOptions(container,selectedKey,onChoose){container.innerHTML
 function recalcTallies(){STATUSES.forEach(status=>currentTallies[status.key]=0);currentGroups.forEach(group=>(group.students||[]).forEach(student=>(student.slots||[]).forEach(slot=>{if(currentTallies[slot.status]!==undefined)currentTallies[slot.status]++;})));}function renderTallies(){document.getElementById('tallies').innerHTML=STATUSES.map(status=>`<span class="tally-pill tally-${status.key}"><i class="fa-solid ${status.icon}"></i>${status.label} <b>${currentTallies[status.key]||0}</b></span>`).join('');}
 async function bulkUpdate(status){const {hallId,sessionId,yearId}=selectedContext();if(!hallId||!sessionId){showSaveMessage('Fadlan dooro hall-ka iyo fadhiga jadwalka marka hore.',true);return;}const previous=[];currentGroups.forEach(group=>(group.students||[]).forEach(student=>(student.slots||[]).forEach(slot=>{previous.push({slot,status:slot.status});slot.status=status==='clear'?null:status;})));renderRoster();recalcTallies();renderTallies();showSaveMessage(status==='clear'?'Nadiifinaya...':'Kaydinaya...');try{await attendancePost('/admin/attendance/api/mark-bulk',{exam_hall_id:hallId,exam_session_id:sessionId,academic_year_id:yearId,...selectedExamPayload(),status});showSaveMessage(status==='clear'?'Xaadirinta fadhigan waa la nadiifiyey.':'Dhammaan slot-yada muuqda waxaa loo calaamadeeyey Joogto.');}catch(error){previous.forEach(item=>{item.slot.status=item.status;});renderRoster();recalcTallies();renderTallies();showSaveMessage(error.message||'Kaydinta xaadirinta way fashilantay.',true);console.error(error);}}
 function sessionQuery(){const {hallId,sessionId}=selectedContext();return `exam_hall_id=${encodeURIComponent(hallId)}&exam_session_id=${encodeURIComponent(sessionId)}`;}function selectedFilterPreference(){const params=new URLSearchParams(location.search),preferences=readAttendancePreferences(),yearSelect=document.getElementById('selYear'),requestedYear=params.get('academic_year_id')||params.get('year_id')||preferences.yearId,yearOption=[...yearSelect.options].find(option=>String(option.value)===String(requestedYear));if(yearOption)yearSelect.value=yearOption.value;const yearId=yearSelect.value,exam=params.has('exam_type_id')?{id:params.get('exam_type_id'),source:'legacy'}:params.has('exam_id')?{id:params.get('exam_id'),source:'exam'}:preferences.exams?.[yearId]||null,key=attendanceScopeKey(yearId,exam);return {exam,hallId:params.get('exam_hall_id')||params.get('hall_id')||preferences.halls?.[key]||'',sessionId:params.get('session_id')||params.get('exam_session_id')||preferences.sessions?.[key]||''};}document.getElementById('btnMarkAll').addEventListener('click',()=>bulkUpdate('present'));document.getElementById('btnClearAll').addEventListener('click',()=>bulkUpdate('clear'));document.getElementById('btnExportExcel').addEventListener('click',()=>{window.location.href=`/admin/attendance/export.xlsx?${sessionQuery()}`;});document.getElementById('btnExportPdf').addEventListener('click',()=>{window.location.href=`/admin/attendance/export.pdf?${sessionQuery()}`;});document.getElementById('btnPrintSheet').addEventListener('click',()=>{window.open(`/admin/attendance/print?${sessionQuery()}`,'_blank');});document.getElementById('selYear').addEventListener('change',()=>{const preferences=readAttendancePreferences(),yearId=document.getElementById('selYear').value,exam=preferences.exams?.[yearId],key=attendanceScopeKey(yearId,exam);loadExamTypes(exam,preferences.halls?.[key]||'',preferences.sessions?.[key]||'');});document.getElementById('selExamType').addEventListener('change',()=>loadHalls());document.getElementById('selHall').addEventListener('change',()=>loadSessions());document.getElementById('selSession').addEventListener('change',loadAttendanceData);document.getElementById('sortMode')?.addEventListener('change',event=>{sortMode=event.target.value;renderRoster();});document.getElementById('letterFilter')?.addEventListener('change',event=>{letterFilter=event.target.value;renderRoster();});document.addEventListener('DOMContentLoaded',async()=>{const selected=selectedFilterPreference();await loadExamTypes(selected.exam,selected.hallId,selected.sessionId);});
+</script>
+<script>
+let attendanceContextRequest=0,attendanceContextController=null,attendanceDataRequest=0,attendanceDataController=null;
+function showRosterLoading(message='Liiska ardayda waa la soo qaadayaa...'){
+  const body=document.getElementById('rosterBody');
+  body.innerHTML=`<div class="roster-loading" role="status" aria-live="polite"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>${escapeHtml(message)}</span></div>`;
+}
+function attendanceHeader(){
+  const year=document.getElementById('selYear'),exam=document.getElementById('selExamType'),hall=document.getElementById('selHall'),session=document.getElementById('selSession');
+  document.getElementById('regTitle').textContent=hall.options[hall.selectedIndex]?.text||'-';
+  document.getElementById('regMeta').textContent=`${year.options[year.selectedIndex]?.text||''} - ${exam.options[exam.selectedIndex]?.text||''} - Fadhi: ${session.options[session.selectedIndex]?.text||'-'}`;
+}
+async function loadAttendanceContext(preferredExam=null,preferredHallId='',preferredSessionId=''){
+  const yearId=document.getElementById('selYear').value,preferences=readAttendancePreferences();
+  preferredExam=preferredExam||preferences.exams?.[yearId]||null;
+  const scope=attendanceScopeKey(yearId,preferredExam);
+  preferredHallId=preferredHallId||preferences.halls?.[scope]||'';
+  preferredSessionId=preferredSessionId||preferences.sessions?.[scope]||'';
+  const params=new URLSearchParams({academic_year_id:yearId});
+  if(preferredExam?.id)params.set(preferredExam.source==='legacy'?'exam_type_id':'exam_id',preferredExam.id);
+  if(preferredHallId)params.set('exam_hall_id',preferredHallId);
+  if(preferredSessionId)params.set('exam_session_id',preferredSessionId);
+  attendanceContextController?.abort();
+  attendanceDataController?.abort();
+  const controller=new AbortController(),requestId=++attendanceContextRequest;
+  attendanceContextController=controller;
+  showRosterLoading();
+  try{
+    const response=await fetch(`/admin/attendance/api/attendance-context?${params}`,{signal:controller.signal,cache:'no-store',credentials:'same-origin',noLoader:true});
+    const data=await response.json();
+    if(!response.ok||!data.success)throw new Error(data.error||'Xogta xaadirinta lama soo qaadi karo.');
+    if(requestId!==attendanceContextRequest)return;
+    const examSelect=document.getElementById('selExamType'),hallSelect=document.getElementById('selHall'),sessionSelect=document.getElementById('selSession');
+    examSelect.innerHTML=(data.exam_types||[]).map(item=>`<option value="${item.id}" data-source="${item.source}">${escapeHtml(item.name)}</option>`).join('')||'<option value="">(Ma jiro imtixaan)</option>';
+    if(data.selected_exam)examSelect.value=String(data.selected_exam.id);
+    hallSelect.innerHTML=(data.halls||[]).map(item=>`<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('')||'<option value="">(Ma jiro hall imtixaankan)</option>';
+    if(data.selected_hall_id)hallSelect.value=String(data.selected_hall_id);
+    sessionSelect.innerHTML=(data.sessions||[]).map(item=>`<option value="${item.id}">${escapeHtml(item.label)}</option>`).join('')||'<option value="">(Fadhi jadwal lama dejin ama heerka hall-ka kuma jiro)</option>';
+    if(data.selected_session_id)sessionSelect.value=String(data.selected_session_id);
+    currentGroups=data.groups||[];
+    currentTallies=data.tallies||{};
+    showSaveMessage('');
+    attendanceHeader();
+    refreshLetterOptions();
+    renderRoster();
+    renderTallies();
+    persistAttendanceSelection();
+  }catch(error){
+    if(error.name==='AbortError'||requestId!==attendanceContextRequest)return;
+    currentGroups=[];currentTallies={};renderRoster();renderTallies();showSaveMessage(error.message||'Cilad ayaa ka dhacday soo qaadista xaadirinta.',true);
+  }
+}
+loadExamTypes=function(preferredExam=null,preferredHallId='',preferredSessionId=''){
+  return loadAttendanceContext(preferredExam,preferredHallId,preferredSessionId);
+};
+loadHalls=function(preferredHallId='',preferredSessionId=''){
+  return loadAttendanceContext(selectedExam(),preferredHallId,preferredSessionId);
+};
+loadSessions=function(preferredSessionId=''){
+  return loadAttendanceContext(selectedExam(),selectedContext().hallId,preferredSessionId);
+};
+loadAttendanceData=async function(){
+  const {hallId,sessionId,yearId}=selectedContext();
+  attendanceContextController?.abort();
+  const requestId=++attendanceDataRequest;
+  attendanceDataController?.abort();
+  const controller=new AbortController();attendanceDataController=controller;
+  attendanceHeader();
+  if(!hallId||!sessionId){currentGroups=[];currentTallies={};renderRoster();renderTallies();persistAttendanceSelection();return;}
+  showRosterLoading();
+  try{
+    const query=`academic_year_id=${encodeURIComponent(yearId)}&${selectedExamScope()}&exam_hall_id=${encodeURIComponent(hallId)}&exam_session_id=${encodeURIComponent(sessionId)}`;
+    const response=await fetch(`/admin/attendance/api/attendance-data?${query}`,{signal:controller.signal,cache:'no-store',credentials:'same-origin',noLoader:true});
+    const data=await response.json();
+    if(!response.ok||!data.success)throw new Error(data.error||'Lama soo qaadi karo xaadirinta.');
+    if(requestId!==attendanceDataRequest)return;
+    currentGroups=data.groups||[];currentTallies=data.tallies||{};showSaveMessage('');refreshLetterOptions();renderRoster();renderTallies();persistAttendanceSelection();
+  }catch(error){
+    if(error.name==='AbortError'||requestId!==attendanceDataRequest)return;
+    currentGroups=[];currentTallies={};renderRoster();renderTallies();showSaveMessage(error.message||'Cilad ayaa ka dhacday soo qaadista xaadirinta.',true);
+  }
+};
+attendancePost=async function(url,payload){
+  const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken},body:JSON.stringify(payload),noLoader:true});
+  let data={};try{data=await response.json();}catch(error){data={error:'Server returned an unexpected response.'};}
+  if(!response.ok||!data.success)throw new Error(data.error||'Kaydinta xaadirinta way fashilantay.');
+  return data;
+};
 </script>
 {% endblock %}

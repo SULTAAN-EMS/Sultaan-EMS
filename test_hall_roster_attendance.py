@@ -628,7 +628,91 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn("params.get('exam_hall_id')", attendance_tmpl)
         self.assertIn('.att-scope .stepper{grid-template-columns:minmax(0,1fr);}', attendance_tmpl)
         self.assertIn('(Fadhi jadwal lama dejin ama heerka hall-ka kuma jiro)', attendance_tmpl)
+        self.assertIn('/admin/attendance/api/attendance-context?', attendance_tmpl)
+        self.assertIn('noLoader:true', attendance_tmpl)
+        self.assertIn('roster-loading', attendance_tmpl)
         print("[PASS] Test (j1): Attendance filter restoration and mobile visibility verified.")
+
+    def test_attendance_context_loads_filters_and_large_roster_with_bounded_queries(self):
+        """The attendance page returns filter options and the roster in one bounded-query request."""
+        self.login()
+        import uuid
+
+        suffix = str(uuid.uuid4())[:8]
+        hall = ExamHall(
+            name=f'Official Performance Hall {suffix}',
+            code=f'OFFICIAL_PERF_{suffix}',
+            academic_year_id=self.year.id,
+            exam_id=self.exam.id,
+            academic_class_id=self.class_form1.id,
+            is_active=True,
+        )
+        db.session.add(hall)
+        db.session.flush()
+
+        created = self.client.post('/admin/attendance/api/sessions', json={
+            'academic_year_id': self.year.id,
+            'exam_id': self.exam.id,
+            'date': '2026-08-12',
+            'time': '08:00',
+            'sitting_label': 'Fadhi Performance',
+        }).get_json()
+        self.assertTrue(created['success'], created)
+        session_id = created['session']['id']
+        saved = self.client.put(
+            f'/admin/attendance/api/sessions/{session_id}/subjects',
+            json={'assignments': [{'level_id': self.level_sec.id, 'subject_id': self.subject.id}]},
+        ).get_json()
+        self.assertTrue(saved['success'], saved)
+
+        students = [self.student1]
+        students.extend(
+            Student(
+                student_code=f'TIS-CTX-{suffix}-{index}',
+                full_name=f'Context Student {index:02d}',
+                academic_year_id=self.year.id,
+                academic_level_id=self.level_sec.id,
+                academic_class_id=self.class_form1.id,
+                class_id=self.school_class.id,
+                is_active=True,
+            )
+            for index in range(30)
+        )
+        db.session.add_all(students[1:])
+        db.session.flush()
+        db.session.add_all([
+            ExamHallEnrollment(exam_hall_id=hall.id, student_id=student.id)
+            for student in students
+        ])
+        db.session.commit()
+
+        query_count = 0
+
+        def count_selects(_conn, _cursor, statement, _parameters, _context, _executemany):
+            nonlocal query_count
+            if statement.lstrip().upper().startswith('SELECT'):
+                query_count += 1
+
+        event.listen(db.engine, 'before_cursor_execute', count_selects)
+        try:
+            response = self.client.get(
+                f'/admin/attendance/api/attendance-context?academic_year_id={self.year.id}'
+                f'&exam_id={self.exam.id}&exam_hall_id={hall.id}&exam_session_id={session_id}'
+            )
+        finally:
+            event.remove(db.engine, 'before_cursor_execute', count_selects)
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload['success'], payload)
+        self.assertEqual(payload['selected_exam']['id'], self.exam.id)
+        self.assertEqual(payload['selected_hall_id'], hall.id)
+        self.assertEqual(payload['selected_session_id'], session_id)
+        self.assertEqual(
+            sum(group['student_count'] for group in payload['groups']),
+            len(students),
+        )
+        self.assertLess(query_count, 45, f'Attendance bootstrap made {query_count} SELECT queries')
 
     def test_k_all_six_attendance_statuses_and_switching(self):
         """All six attendance statuses (Joogto, Maqan, La fasaxay, Cudur daar, Xaalad degdeg, Soo daahid) work and switch cleanly."""

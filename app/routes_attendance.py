@@ -465,9 +465,26 @@ def session_attendance_payload(hall, session, allowed_pairs=None):
     students = (
         student_enrollment_scope_query(session.academic_year_id)
         .filter(Student.id.in_(student_ids))
+        .options(
+            joinedload(Student.academic_class),
+            joinedload(Student.school_class),
+            joinedload(Student.academic_section),
+        )
         .all()
         if student_ids else []
     )
+    placements = resolve_student_placements(
+        (student, session.academic_year_id) for student in students
+    )
+    level_ids = {
+        placement.get("academic_level_id")
+        for placement in placements.values()
+        if placement and placement.get("academic_level_id")
+    }
+    levels_by_id = {
+        level.id: level
+        for level in AcademicLevel.query.filter(AcademicLevel.id.in_(level_ids)).all()
+    } if level_ids else {}
     records = (
         AttendanceRecord.query
         .filter_by(exam_hall_id=hall.id, exam_session_id=session.id)
@@ -482,9 +499,9 @@ def session_attendance_payload(hall, session, allowed_pairs=None):
     group_order = {}
 
     for student in students:
-        placement = enrollment_placement_for_student(student, session.academic_year_id) or {}
+        placement = placements.get((student.id, session.academic_year_id)) or {}
         level_id = placement.get("academic_level_id") or effective_student_level_id(student)
-        level = db.session.get(AcademicLevel, level_id) if level_id else None
+        level = levels_by_id.get(level_id)
         class_name = placement.get("class_name") or student_class_name(student)
         class_id = placement.get("academic_class_id") or student.academic_class_id or student.class_id or 0
         key = (level_id or 0, class_id, class_name)
@@ -728,6 +745,76 @@ def sessions_in_scope(year_id, exam, legacy_exam_type):
     )
 
 
+def attendance_halls_in_scope(year_id, exam=None, legacy_exam_type=None):
+    if exam:
+        hall_scope = [ExamHall.exam_id == exam.id]
+        if legacy_exam_type:
+            hall_scope.append(and_(ExamHall.exam_id.is_(None), ExamHall.exam_type_id == legacy_exam_type.id))
+        query = ExamHall.query.filter(ExamHall.is_active.is_(True), or_(*hall_scope))
+    elif legacy_exam_type:
+        query = ExamHall.query.filter(
+            ExamHall.is_active.is_(True),
+            ExamHall.exam_type_id == legacy_exam_type.id,
+        )
+    else:
+        return []
+    return query.options(
+        joinedload(ExamHall.exam),
+        joinedload(ExamHall.exam_type),
+        joinedload(ExamHall.academic_class),
+    ).order_by(ExamHall.sort_order, ExamHall.name).all()
+
+
+def attendance_hall_payload(hall, exam_id=None):
+    return {
+        "id": hall.id,
+        "name": hall.name,
+        "academic_year_id": hall.academic_year_id or (
+            hall.exam.academic_year_id if hall.exam else hall.exam_type.academic_year_id if hall.exam_type else None
+        ),
+        "academic_class_id": hall.academic_class_id,
+        "academic_level_id": hall.academic_class.academic_level_id if hall.academic_class else None,
+        "exam_id": hall.exam_id or exam_id,
+        "exam_type_id": hall.exam_type_id,
+    }
+
+
+def sessions_for_attendance_hall(year_id, exam, legacy_exam_type, hall):
+    sessions = sessions_in_scope(year_id, exam, legacy_exam_type)
+    student_ids = [
+        student_id
+        for (student_id,) in db.session.query(ExamHallEnrollment.student_id)
+        .filter_by(exam_hall_id=hall.id)
+        .all()
+    ]
+    if not student_ids or not sessions:
+        return []
+
+    students = Student.query.options(
+        joinedload(Student.academic_class),
+        joinedload(Student.school_class),
+        joinedload(Student.academic_section),
+    ).filter(Student.id.in_(student_ids)).all()
+    placements = resolve_student_placements(
+        (student, year_id) for student in students
+    )
+    hall_level_ids = set()
+    for student in students:
+        placement = placements.get((student.id, year_id)) or {}
+        level_id = placement.get("academic_level_id")
+        if level_id is None:
+            level_id = student.academic_level_id or (
+                student.academic_class.academic_level_id if student.academic_class else None
+            )
+        if level_id is not None:
+            hall_level_ids.add(level_id)
+
+    return [
+        session for session in sessions
+        if {assignment.academic_level_id for assignment in session.subject_assignments} & hall_level_ids
+    ]
+
+
 def conflicting_subject_assignments(session, selected):
     """Find subjects already scheduled in another sitting of this exam scope.
 
@@ -934,7 +1021,6 @@ def api_sessions():
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc), "sessions": []}), 400
 
-    sessions = sessions_in_scope(year_id, exam, legacy_exam_type)
     if hall_id:
         hall = db.session.get(ExamHall, hall_id)
         if not hall or not hall.is_active:
@@ -945,20 +1031,9 @@ def api_sessions():
             hall_context(year_id, exam_id, exam_type_id, hall_id)
         except ValueError as exc:
             return jsonify({"success": False, "error": str(exc), "sessions": []}), 400
-        enrolled_ids = [row.student_id for row in ExamHallEnrollment.query.filter_by(exam_hall_id=hall.id).all()]
-        students = Student.query.filter(Student.id.in_(enrolled_ids)).all() if enrolled_ids else []
-        # Resolve each student's level from the selected academic year. The
-        # legacy Student.academic_level_id can describe an older placement and
-        # must not hide timetable sessions for the current year's hall roster.
-        hall_level_ids = {
-            effective_student_level_id(student, year_id)
-            for student in students
-        }
-        hall_level_ids.discard(None)
-        sessions = [
-            session for session in sessions
-            if {assignment.academic_level_id for assignment in session.subject_assignments} & hall_level_ids
-        ]
+        sessions = sessions_for_attendance_hall(year_id, exam, legacy_exam_type, hall)
+    else:
+        sessions = sessions_in_scope(year_id, exam, legacy_exam_type)
 
     _, allowed_pairs = timetable_level_scope(year_id, exam=exam)
     return jsonify({"success": True, "sessions": [serialize_session(session, allowed_pairs) for session in sessions]})
@@ -1197,41 +1272,100 @@ def api_halls():
 
     if not year_id or not (exam_id or legacy_exam_type_id):
         return jsonify({"success": True, "halls": []})
-    if exam_id:
-        exam = db.session.get(Exam, exam_id)
-        if not exam or exam.academic_year_id != year_id:
-            return jsonify({"success": True, "halls": []})
-        legacy_exam_type = ExamType.query.filter_by(
-            academic_year_id=exam.academic_year_id,
-            name=exam.name,
-        ).first()
-        hall_scope = [ExamHall.exam_id == exam_id]
-        if legacy_exam_type:
-            hall_scope.append(and_(ExamHall.exam_id.is_(None), ExamHall.exam_type_id == legacy_exam_type.id))
-        query = ExamHall.query.filter(ExamHall.is_active.is_(True), or_(*hall_scope))
-    else:
-        legacy_exam_type = db.session.get(ExamType, legacy_exam_type_id)
-        if not legacy_exam_type or legacy_exam_type.academic_year_id != year_id:
-            return jsonify({"success": True, "halls": []})
-        query = ExamHall.query.filter(
-            ExamHall.is_active.is_(True),
-            ExamHall.exam_type_id == legacy_exam_type_id,
-        )
-
-    halls = query.order_by(ExamHall.sort_order, ExamHall.name).all()
+    exam = db.session.get(Exam, exam_id) if exam_id else None
+    if exam_id and (not exam or exam.academic_year_id != year_id):
+        return jsonify({"success": True, "halls": []})
+    legacy_exam_type = (
+        ExamType.query.filter_by(academic_year_id=exam.academic_year_id, name=exam.name).first()
+        if exam else db.session.get(ExamType, legacy_exam_type_id)
+    )
+    if not exam and (
+        not legacy_exam_type or legacy_exam_type.academic_year_id != year_id
+    ):
+        return jsonify({"success": True, "halls": []})
+    halls = attendance_halls_in_scope(year_id, exam, legacy_exam_type)
     return jsonify({
         "success": True,
-        "halls": [{
-            "id": h.id,
-            "name": h.name,
-            "academic_year_id": h.academic_year_id or (
-                h.exam.academic_year_id if h.exam else h.exam_type.academic_year_id if h.exam_type else None
-            ),
-            "academic_class_id": h.academic_class_id,
-            "academic_level_id": h.academic_class.academic_level_id if h.academic_class else None,
-            "exam_id": h.exam_id or exam_id,
-            "exam_type_id": h.exam_type_id,
-        } for h in halls]
+        "halls": [attendance_hall_payload(hall, exam.id if exam else None) for hall in halls]
+    })
+
+
+@attendance_bp.route("/api/attendance-context")
+def api_attendance_context():
+    year_id = request.args.get("academic_year_id", type=int)
+    requested_exam_id = request.args.get("exam_id", type=int)
+    requested_exam_type_id = request.args.get("exam_type_id", type=int)
+    requested_hall_id = request.args.get("exam_hall_id", type=int)
+    requested_session_id = request.args.get("exam_session_id", type=int)
+    if not year_id or not db.session.get(AcademicYear, year_id):
+        return jsonify({"success": False, "error": "Sanad-dugsiyeedka lama heli karo."}), 400
+
+    exam_types = get_exam_types(year_id)
+    exam_options = [
+        {
+            "id": item.id,
+            "name": item.name,
+            "source": "legacy" if isinstance(item, ExamType) else "exam",
+        }
+        for item in exam_types
+    ]
+    selected_exam = next((
+        item for item in exam_types
+        if (isinstance(item, ExamType) and item.id == requested_exam_type_id)
+        or (isinstance(item, Exam) and item.id == requested_exam_id)
+    ), None) or (exam_types[0] if exam_types else None)
+    exam = selected_exam if selected_exam and not isinstance(selected_exam, ExamType) else None
+    legacy_exam_type = selected_exam if isinstance(selected_exam, ExamType) else (
+        ExamType.query.filter_by(academic_year_id=year_id, name=exam.name).first() if exam else None
+    )
+    selected_exam_value = next((
+        option for option in exam_options
+        if selected_exam and option["id"] == selected_exam.id
+        and option["source"] == ("legacy" if isinstance(selected_exam, ExamType) else "exam")
+    ), None)
+
+    halls = attendance_halls_in_scope(year_id, exam, legacy_exam_type)
+    selected_hall = next((hall for hall in halls if hall.id == requested_hall_id), None)
+    if selected_hall is None and halls:
+        selected_hall = halls[0]
+
+    sessions = []
+    selected_session = None
+    groups = []
+    tallies = {status["key"]: 0 for status in ATTENDANCE_STATUSES}
+    if selected_hall:
+        try:
+            hall_context(
+                year_id,
+                exam.id if exam else None,
+                legacy_exam_type.id if legacy_exam_type else None,
+                selected_hall.id,
+            )
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
+        scoped_sessions = sessions_for_attendance_hall(
+            year_id, exam, legacy_exam_type, selected_hall
+        )
+        _, allowed_pairs = timetable_level_scope(year_id, exam=exam)
+        sessions = [serialize_session(session, allowed_pairs) for session in scoped_sessions]
+        selected_session = next((
+            session for session in scoped_sessions if session.id == requested_session_id
+        ), None) or (scoped_sessions[0] if scoped_sessions else None)
+        if selected_session:
+            groups, tallies = session_attendance_payload(
+                selected_hall, selected_session, allowed_pairs
+            )
+
+    return jsonify({
+        "success": True,
+        "exam_types": exam_options,
+        "halls": [attendance_hall_payload(hall, exam.id if exam else None) for hall in halls],
+        "sessions": sessions,
+        "selected_exam": selected_exam_value,
+        "selected_hall_id": selected_hall.id if selected_hall else None,
+        "selected_session_id": selected_session.id if selected_session else None,
+        "groups": groups,
+        "tallies": tallies,
     })
 
 
