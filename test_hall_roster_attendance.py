@@ -1339,6 +1339,100 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIsNone(statuses[second_subject.id])
         print("[PASS] Test (o): One student x subject slot cannot affect another subject slot.")
 
+    def test_bulk_session_attendance_uses_bounded_reads_and_updates_existing_slots(self):
+        """A class-sized bulk save reads existing marks in batches and never duplicates slots."""
+        self.login()
+        import uuid
+
+        suffix = str(uuid.uuid4())[:8]
+        primary_level, primary_subject, primary_student = self._add_primary_student_and_subject()
+        students = [self.student1, primary_student] + [
+            Student(
+                student_code=f'TIS-BULK-{suffix}-{index}',
+                full_name=f'Bulk Attendance Student {index:02d}',
+                academic_year_id=self.year.id,
+                academic_level_id=self.level_sec.id,
+                academic_class_id=self.class_form1.id,
+                class_id=self.school_class.id,
+                is_active=True,
+            )
+            for index in range(28)
+        ]
+        subjects = [self.subject] + [
+            Subject(
+                name=f'Bulk Attendance Subject {index}',
+                academic_level_id=self.level_sec.id,
+            )
+            for index in range(2, 9)
+        ]
+        db.session.add_all(students[1:] + subjects[1:])
+        db.session.flush()
+        db.session.add_all([
+            ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=student.id)
+            for student in students
+        ])
+        db.session.commit()
+
+        session_id = self._create_schedule_session([
+            {'level_id': self.level_sec.id, 'subject_id': subject.id}
+            for subject in subjects
+        ] + [{'level_id': primary_level.id, 'subject_id': primary_subject.id}])
+        previous = AttendanceRecord(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=self.hall.id,
+            subject_id=self.subject.id,
+            exam_session_id=session_id,
+            exam_id=self.exam.id,
+            exam_type_id=self.exam_type.id,
+            status='absent',
+        )
+        db.session.add(previous)
+        db.session.commit()
+
+        query_count = 0
+
+        def count_selects(_conn, _cursor, statement, _parameters, _context, _executemany):
+            nonlocal query_count
+            if statement.lstrip().upper().startswith('SELECT'):
+                query_count += 1
+
+        event.listen(db.engine, 'before_cursor_execute', count_selects)
+        try:
+            response = self.client.post('/admin/attendance/api/mark-bulk', json={
+                'exam_hall_id': self.hall.id,
+                'academic_year_id': self.year.id,
+                'exam_type_id': self.exam_type.id,
+                'exam_session_id': session_id,
+                'status': 'present',
+            })
+        finally:
+            event.remove(db.engine, 'before_cursor_execute', count_selects)
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200, payload)
+        self.assertTrue(payload['success'], payload)
+        self.assertLess(query_count, 80, f'Bulk save made {query_count} SELECT queries')
+        records = AttendanceRecord.query.filter_by(
+            exam_hall_id=self.hall.id,
+            exam_session_id=session_id,
+        ).all()
+        expected_slots = (len(students) - 1) * len(subjects) + 1
+        self.assertEqual(len(records), expected_slots)
+        self.assertTrue(all(record.status == 'present' for record in records))
+        self.assertEqual(
+            sum(record.student_id == self.student1.id and record.subject_id == self.subject.id for record in records),
+            1,
+        )
+        primary_student_subjects = {
+            record.subject_id for record in records if record.student_id == primary_student.id
+        }
+        self.assertEqual(primary_student_subjects, {primary_subject.id})
+        print(
+            f'[PASS] Bulk attendance saved {len(students)} students across levels '
+            f'({expected_slots} slots) with {query_count} SELECT queries.'
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

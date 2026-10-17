@@ -276,7 +276,7 @@ def attendance_record_for(
     return None
 
 
-def legacy_school_class_id(student, class_name=None):
+def legacy_school_class_id(student, class_name=None, class_cache=None):
     """Provide the legacy class link required by older attendance schemas."""
     if student.class_id and not class_name:
         return student.class_id
@@ -284,12 +284,17 @@ def legacy_school_class_id(student, class_name=None):
     class_name = class_name or (
         student.academic_class.name if student.academic_class else None
     ) or student.level or "Unassigned"
+    if class_cache is not None and class_name in class_cache:
+        student.class_id = class_cache[class_name]
+        return class_cache[class_name]
     legacy_class = SchoolClass.query.filter_by(name=class_name).first()
     if not legacy_class:
         legacy_class = SchoolClass(name=class_name)
         db.session.add(legacy_class)
         db.session.flush()
     student.class_id = legacy_class.id
+    if class_cache is not None:
+        class_cache[class_name] = legacy_class.id
     return legacy_class.id
 
 
@@ -302,15 +307,22 @@ def apply_attendance_values(
     legacy_exam_type,
     status_val,
     exam_session=None,
+    placement=None,
+    legacy_class_cache=None,
 ):
     """Apply the canonical Results Hub scope and selected attendance status."""
     record.academic_year_id = year_id
-    placement = enrollment_placement_for_student(student, year_id) or {}
+    if placement is None:
+        placement = enrollment_placement_for_student(student, year_id) or {}
     class_name = placement.get("class_name")
     # Some deployed databases predate the nullable class_id model change.
     # Populate both current and legacy class fields so a status click is valid
     # on every supported schema.
-    record.class_id = legacy_school_class_id(student, class_name=class_name)
+    record.class_id = legacy_school_class_id(
+        student,
+        class_name=class_name,
+        class_cache=legacy_class_cache,
+    )
     record.academic_level_id = placement.get("academic_level_id") or student.academic_level_id
     record.academic_class_id = placement.get("academic_class_id") or student.academic_class_id
     record.academic_section_id = placement.get("academic_section_id") or student.academic_section_id
@@ -2069,6 +2081,11 @@ def mark_session_bulk_attendance(*, hall, exam, legacy_exam_type, session, year_
     students = (
         student_enrollment_scope_query(year_id)
         .filter(Student.id.in_(student_ids))
+        .options(
+            joinedload(Student.academic_class),
+            joinedload(Student.school_class),
+            joinedload(Student.academic_section),
+        )
         .all()
         if student_ids else []
     )
@@ -2090,19 +2107,46 @@ def mark_session_bulk_attendance(*, hall, exam, legacy_exam_type, session, year_
         return {"success": False, "error": "Xaaladda xaadirinta lama aqoonsan."}, 400
 
     updated_count = 0
+    new_records = []
+    legacy_class_cache = {}
     try:
+        placements = resolve_student_placements(
+            (student, year_id) for student in students
+        )
+        student_level_ids = {}
         for student in students:
-            placement = enrollment_placement_for_student(student, year_id) or {}
-            for subject in subject_map.get(placement.get("academic_level_id") or effective_student_level_id(student), []):
-                record = attendance_record_for(
-                    student.id,
-                    hall.id,
-                    subject.id,
-                    year_id=year_id,
-                    exam_id=exam.id if exam else None,
-                    exam_type_id=legacy_exam_type.id if legacy_exam_type else None,
-                    exam_session_id=session.id,
+            placement = placements.get((student.id, year_id)) or {}
+            student_level_ids[student.id] = (
+                placement.get("academic_level_id")
+                or student.academic_level_id
+                or (student.academic_class.academic_level_id if student.academic_class else None)
+            )
+
+        subject_ids = {
+            subject.id
+            for subjects in subject_map.values()
+            for subject in subjects
+        }
+        existing_records = []
+        if student_ids and subject_ids:
+            existing_records = (
+                AttendanceRecord.query
+                .filter_by(exam_hall_id=hall.id, exam_session_id=session.id)
+                .filter(
+                    AttendanceRecord.student_id.in_(student_ids),
+                    AttendanceRecord.subject_id.in_(subject_ids),
                 )
+                .order_by(AttendanceRecord.id.desc())
+                .all()
+            )
+        records_by_slot = {}
+        for record in existing_records:
+            records_by_slot.setdefault((record.student_id, record.subject_id), record)
+
+        for student in students:
+            placement = placements.get((student.id, year_id)) or {}
+            for subject in subject_map.get(student_level_ids[student.id], []):
+                record = records_by_slot.get((student.id, subject.id))
                 if not record:
                     record = AttendanceRecord(
                         student_id=student.id,
@@ -2110,6 +2154,8 @@ def mark_session_bulk_attendance(*, hall, exam, legacy_exam_type, session, year_
                         subject_id=subject.id,
                         exam_session_id=session.id,
                     )
+                    new_records.append(record)
+                    records_by_slot[(student.id, subject.id)] = record
                 record.exam_hall_id = hall.id
                 record.subject_id = subject.id
                 apply_attendance_values(
@@ -2120,9 +2166,11 @@ def mark_session_bulk_attendance(*, hall, exam, legacy_exam_type, session, year_
                     legacy_exam_type=legacy_exam_type,
                     status_val=status_val,
                     exam_session=session,
+                    placement=placement,
+                    legacy_class_cache=legacy_class_cache,
                 )
-                db.session.add(record)
                 updated_count += 1
+        db.session.add_all(new_records)
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
