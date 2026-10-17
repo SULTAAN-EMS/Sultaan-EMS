@@ -2743,7 +2743,6 @@ class ExamSessionSubject(TimestampMixin, db.Model):
     subject = db.relationship("Subject")
 
     __table_args__ = (
-        UniqueConstraint("exam_session_id", "subject_id", name="uq_exam_session_subject"),
         UniqueConstraint("exam_scope_key", "academic_level_id", "subject_id", name="uq_exam_scope_level_subject"),
     )
 

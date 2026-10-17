@@ -1,11 +1,13 @@
 from datetime import date, datetime, time
 from tempfile import NamedTemporaryFile
+from types import SimpleNamespace
 
 from flask import Blueprint, current_app, jsonify, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from openpyxl import Workbook
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload, selectinload
 from uuid import uuid4
 
 from . import db
@@ -369,8 +371,12 @@ def serialize_session(session, allowed_pairs=None):
     assignments = [
         assignment
         for assignment in session.subject_assignments
-        if assignment.subject and assignment.subject.academic_level_id == assignment.academic_level_id
-        and (allowed_pairs is None or (assignment.academic_level_id, assignment.subject_id) in allowed_pairs)
+        if assignment.subject
+        and (
+            (assignment.academic_level_id, assignment.subject_id) in allowed_pairs
+            if allowed_pairs is not None
+            else assignment.subject.academic_level_id == assignment.academic_level_id
+        )
     ]
     rendered_date = session.session_date.strftime("%A, %d %b %Y") if session.session_date else ""
     rendered_time = session.session_time.strftime("%I:%M %p") if session.session_time else ""
@@ -403,16 +409,44 @@ def subjects_by_session_level(session, allowed_pairs=None):
         .filter(
             ExamSessionSubject.exam_session_id == session.id,
             Subject.is_active.is_(True),
-            Subject.academic_level_id == ExamSessionSubject.academic_level_id,
         )
         .order_by(ExamSessionSubject.academic_level_id, Subject.sort_order, Subject.name)
         .all()
     )
     grouped = {}
+    subject_ids = {row.subject_id for row in rows}
+    scoped_names = {}
+    if subject_ids:
+        names = (
+            db.session.query(
+                AcademicYearLevel.legacy_level_id,
+                AcademicYearSubject.legacy_subject_id,
+                AcademicYearSubject.name,
+            )
+            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearSubject.academic_year_level_id)
+            .filter(
+                AcademicYearSubject.academic_year_id == session.academic_year_id,
+                AcademicYearSubject.subject_kind == "exam",
+                AcademicYearSubject.is_active.is_(True),
+                AcademicYearSubject.legacy_subject_id.in_(subject_ids),
+            )
+            .all()
+        )
+        scoped_names = {
+            (level_id, subject_id): name
+            for level_id, subject_id, name in names
+        }
     for row in rows:
-        if allowed_pairs is not None and (row.academic_level_id, row.subject_id) not in allowed_pairs:
+        pair = (row.academic_level_id, row.subject_id)
+        if allowed_pairs is not None:
+            if pair not in allowed_pairs:
+                continue
+        elif row.subject.academic_level_id != row.academic_level_id:
             continue
-        grouped.setdefault(row.academic_level_id, []).append(row.subject)
+        grouped.setdefault(row.academic_level_id, []).append(SimpleNamespace(
+            id=row.subject.id,
+            name=scoped_names.get(pair, row.subject.name),
+        ))
     return grouped
 
 
@@ -581,41 +615,72 @@ def timetable_level_scope(year_id, exam=None):
 
     level_data = []
     allowed_pairs = set()
-    for year_level in year_levels:
-        subjects = (
-            AcademicYearSubject.query
-            .join(Subject, AcademicYearSubject.legacy_subject_id == Subject.id)
-            .filter(
-                AcademicYearSubject.academic_year_id == year_id,
-                AcademicYearSubject.academic_year_level_id == year_level.id,
-                AcademicYearSubject.subject_kind == "exam",
-                AcademicYearSubject.is_active.is_(True),
-                AcademicYearSubject.legacy_subject_id.isnot(None),
-                Subject.is_active.is_(True),
-                Subject.academic_level_id == year_level.legacy_level_id,
-            )
-            .order_by(AcademicYearSubject.sort_order, AcademicYearSubject.name, AcademicYearSubject.id)
-            .all()
+    year_level_ids = [year_level.id for year_level in year_levels]
+    legacy_level_ids = [year_level.legacy_level_id for year_level in year_levels]
+    year_subject_rows = (
+        AcademicYearSubject.query
+        .filter(
+            AcademicYearSubject.academic_year_id == year_id,
+            AcademicYearSubject.academic_year_level_id.in_(year_level_ids),
+            AcademicYearSubject.subject_kind == "exam",
+            AcademicYearSubject.is_active.is_(True),
         )
+        .order_by(
+            AcademicYearSubject.academic_year_level_id,
+            AcademicYearSubject.sort_order,
+            AcademicYearSubject.name,
+            AcademicYearSubject.id,
+        )
+        .all()
+    )
+    year_subjects_by_level = {}
+    for row in year_subject_rows:
+        year_subjects_by_level.setdefault(row.academic_year_level_id, []).append(row)
+
+    linked_subject_ids = {row.legacy_subject_id for row in year_subject_rows if row.legacy_subject_id}
+    linked_subjects = (
+        {
+            subject.id: subject
+            for subject in Subject.query.filter(Subject.id.in_(linked_subject_ids)).all()
+        }
+        if linked_subject_ids else {}
+    )
+    fallback_level_ids = [
+        year_level.legacy_level_id
+        for year_level in year_levels
+        if not year_subjects_by_level.get(year_level.id)
+    ]
+    legacy_subjects_by_level = {}
+    legacy_subjects = (
+        Subject.query
+        .filter(
+            Subject.academic_level_id.in_(fallback_level_ids),
+            Subject.is_active.is_(True),
+        )
+        .order_by(Subject.academic_level_id, Subject.sort_order, Subject.name, Subject.id)
+        .all()
+        if fallback_level_ids else []
+    )
+    for subject in legacy_subjects:
+        legacy_subjects_by_level.setdefault(subject.academic_level_id, []).append(subject)
+
+    for year_level in year_levels:
         subject_data = []
-        if subjects:
-            for year_subject in subjects:
-                subject = year_subject.legacy_subject
-                if not subject:
+        scoped_subject_rows = year_subjects_by_level.get(year_level.id, [])
+        if scoped_subject_rows:
+            for year_subject in scoped_subject_rows:
+                subject = linked_subjects.get(year_subject.legacy_subject_id)
+                if not subject or not subject.is_active:
                     continue
+                # The explicit year-level mapping is authoritative. Legacy
+                # Subject identities can be shared across levels for compatibility.
                 allowed_pairs.add((year_level.legacy_level_id, subject.id))
                 subject_data.append({"id": subject.id, "name": year_subject.name})
         else:
             # Older attendance setups may already have a year-aware level but
             # no AcademicYearSubject bridge yet. Keep those schedules usable
             # while still restricting the level list to this year's records.
-            legacy_subjects = (
-                Subject.query
-                .filter_by(academic_level_id=year_level.legacy_level_id, is_active=True)
-                .order_by(Subject.sort_order, Subject.name, Subject.id)
-                .all()
-            )
-            for subject in legacy_subjects:
+            for subject in legacy_subjects_by_level.get(year_level.legacy_level_id, []):
                 allowed_pairs.add((year_level.legacy_level_id, subject.id))
                 subject_data.append({"id": subject.id, "name": subject.name})
         level_data.append({
@@ -635,15 +700,20 @@ def sessions_in_scope(year_id, exam, legacy_exam_type):
         query = query.filter(or_(*filters))
     elif legacy_exam_type:
         query = query.filter(ExamSession.exam_type_id == legacy_exam_type.id)
-    return query.order_by(ExamSession.session_date, ExamSession.session_time, ExamSession.id).all()
+    return (
+        query.options(
+            selectinload(ExamSession.subject_assignments).joinedload(ExamSessionSubject.subject)
+        )
+        .order_by(ExamSession.session_date, ExamSession.session_time, ExamSession.id)
+        .all()
+    )
 
 
 def conflicting_subject_assignments(session, selected):
     """Find subjects already scheduled in another sitting of this exam scope.
 
-    A subject belongs to one level and may be examined only once for the same
-    academic year/examination scope.  We validate before replacing the current
-    session assignments, keeping the existing schedule intact on conflict.
+    A level-subject pair may be examined only once for the same academic
+    year/examination scope. Validate before replacing the current assignments.
     """
     if not selected:
         return []
@@ -717,10 +787,19 @@ def timetable():
     """Timetable setup is the single source for attendance session subjects."""
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
     current_year = AcademicYear.query.filter_by(is_current=True).first() or (years[0] if years else None)
+    exam_types = [
+        {
+            "id": exam.id,
+            "name": exam.name,
+            "source": "legacy" if isinstance(exam, ExamType) else "exam",
+        }
+        for exam in get_exam_types(current_year.id if current_year else None)
+    ]
     return render_template(
         "admin/exam_timetable.html",
         years=years,
         current_year=current_year,
+        exam_types=exam_types,
         settings=get_settings(),
     )
 
@@ -828,7 +907,7 @@ def api_session_detail(session_id):
         "assignments": [
             {"level_id": assignment.academic_level_id, "subject_id": assignment.subject_id}
             for assignment in session.subject_assignments
-            if assignment.subject and assignment.subject.academic_level_id == assignment.academic_level_id
+            if assignment.subject
             and (assignment.academic_level_id, assignment.subject_id) in allowed_pairs
         ],
     })
@@ -897,7 +976,7 @@ def api_update_session_subjects(session_id):
     exam, _ = exam_scope_context(session.academic_year_id, session.exam_id, session.exam_type_id)
     _, allowed_pairs = timetable_level_scope(session.academic_year_id, exam=exam)
     selected = []
-    seen_subject_ids = set()
+    seen_pairs = set()
     for assignment in assignments:
         level_id = parse_int(assignment.get("level_id")) if isinstance(assignment, dict) else None
         subject_id = parse_int(assignment.get("subject_id")) if isinstance(assignment, dict) else None
@@ -905,13 +984,12 @@ def api_update_session_subjects(session_id):
         level = db.session.get(AcademicLevel, level_id) if level_id else None
         if not level or not level.is_active or not subject or not subject.is_active:
             return jsonify({"success": False, "error": "Waxaa jira level ama maado aan sax ahayn."}), 400
-        if subject.academic_level_id != level.id:
-            return jsonify({"success": False, "error": f"{subject.name} kuma xirna heerka {level.name}."}), 400
         if (level.id, subject.id) not in allowed_pairs:
             return jsonify({"success": False, "error": "Level-ka ama maadada laguma dejin sanadkan iyo nooca imtixaankan."}), 400
-        if subject.id in seen_subject_ids:
+        pair = (level.id, subject.id)
+        if pair in seen_pairs:
             return jsonify({"success": False, "error": "Maado isku mid ah laba jeer looma dejin karo fadhigan."}), 400
-        seen_subject_ids.add(subject.id)
+        seen_pairs.add(pair)
         selected.append((level.id, subject.id))
 
     conflicts = conflicting_subject_assignments(session, selected)

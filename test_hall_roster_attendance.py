@@ -15,6 +15,7 @@ from app.models import (
 )
 from app.attendance_rules import scheduled_subject_scope_key
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import MetaData, UniqueConstraint, inspect
 
 
 class AttendanceTestConfig(Config):
@@ -770,6 +771,146 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertEqual(rejected.status_code, 400)
         self.assertFalse(rejected.get_json()['success'])
         print("[PASS] Test (p): Timetable year isolation blocks other-year levels and subjects.")
+
+    def test_timetable_respects_year_level_mapping_for_shared_legacy_subjects(self):
+        """A shared Subject identity remains visible and schedulable per configured year level."""
+        self.login()
+        middle_level = AcademicLevel(name='Middle Shared Subject Test', sort_order=3)
+        db.session.add(middle_level)
+        db.session.flush()
+        middle_year_level = AcademicYearLevel(
+            academic_year_id=self.year.id,
+            legacy_level_id=middle_level.id,
+            name='Dugsi Dhexe Test',
+            sort_order=2,
+        )
+        db.session.add(middle_year_level)
+        db.session.flush()
+        shared_subjects = [self.subject] + [
+            Subject(name=f'Middle Curriculum Subject {index}', academic_level_id=self.level_sec.id)
+            for index in range(2, 10)
+        ]
+        db.session.add_all(shared_subjects[1:])
+        db.session.flush()
+        db.session.add_all([
+            AcademicYearSubject(
+                academic_year_id=self.year.id,
+                academic_year_level_id=self.year_scope_level.id,
+                legacy_subject_id=self.subject.id,
+                name='Af Soomaali Sare',
+                subject_kind='exam',
+                is_active=True,
+                sort_order=1,
+            ),
+            *[
+                AcademicYearSubject(
+                    academic_year_id=self.year.id,
+                    academic_year_level_id=middle_year_level.id,
+                    legacy_subject_id=subject.id,
+                    name='Af Soomaali Dhexe' if subject.id == self.subject.id else subject.name,
+                    subject_kind='exam',
+                    is_active=True,
+                    sort_order=index,
+                )
+                for index, subject in enumerate(shared_subjects, start=1)
+            ],
+        ])
+        db.session.commit()
+
+        query = (
+            f'/admin/attendance/api/timetable-data?academic_year_id={self.year.id}'
+            f'&exam_type_id={self.exam_type.id}'
+        )
+        payload = self.client.get(query).get_json()
+        middle_payload = next(level for level in payload['levels'] if level['id'] == middle_level.id)
+        self.assertEqual(len(middle_payload['subjects']), 9)
+        self.assertEqual(middle_payload['subjects'][0], {'id': self.subject.id, 'name': 'Af Soomaali Dhexe'})
+
+        session_id = self._create_schedule_session([
+            {'level_id': self.level_sec.id, 'subject_id': self.subject.id},
+            {'level_id': middle_level.id, 'subject_id': self.subject.id},
+        ])
+        detail = self.client.get(f'/admin/attendance/api/sessions/{session_id}').get_json()
+        self.assertEqual(
+            {(item['level_id'], item['subject_id']) for item in detail['assignments']},
+            {(self.level_sec.id, self.subject.id), (middle_level.id, self.subject.id)},
+        )
+
+        from app.routes_attendance import subjects_by_session_level, timetable_level_scope
+        _, allowed_pairs = timetable_level_scope(self.year.id)
+        session = db.session.get(ExamSession, session_id)
+        subject_map = subjects_by_session_level(session, allowed_pairs)
+        self.assertEqual(
+            next(item.name for item in subject_map[middle_level.id] if item.id == self.subject.id),
+            'Af Soomaali Dhexe',
+        )
+        print('[PASS] Timetable honours year-level subject links even when a legacy Subject is shared.')
+
+    def test_timetable_page_renders_exam_options_without_an_extra_bootstrap_request(self):
+        self.login()
+        response = self.client.get('/admin/attendance/timetable')
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn(f'value="{self.exam.id}" data-source="exam"', html)
+        self.assertIn('Results Setup Final', html)
+
+    def test_timetable_migrates_legacy_subject_only_unique_constraint(self):
+        """Older SQLite files can schedule a shared subject for two levels after startup migration."""
+        from app.schema_compat import migrate_exam_session_subject_level_scope
+
+        self.login()
+        session_id = self._create_schedule_session([
+            {'level_id': self.level_sec.id, 'subject_id': self.subject.id},
+        ])
+        year_id = self.year.id
+        exam_type_id = self.exam_type.id
+        subject_id = self.subject.id
+        current = db.session.query(ExamSessionSubject).filter_by(exam_session_id=session_id).one()
+        values = {column.name: getattr(current, column.name) for column in ExamSessionSubject.__table__.columns}
+        db.session.remove()
+
+        source = ExamSessionSubject.__table__
+        legacy_metadata = MetaData()
+        legacy_metadata.reflect(bind=db.engine)
+        legacy_table = source.to_metadata(legacy_metadata, name='exam_session_subjects_legacy')
+        legacy_table.append_constraint(UniqueConstraint(
+            legacy_table.c.exam_session_id,
+            legacy_table.c.subject_id,
+            name='uq_exam_session_subject',
+        ))
+        connection = db.engine.connect().execution_options(isolation_level='AUTOCOMMIT')
+        try:
+            connection.exec_driver_sql('PRAGMA foreign_keys=OFF')
+            connection.exec_driver_sql('DROP TABLE exam_session_subjects')
+            legacy_table.create(connection)
+            connection.execute(legacy_table.insert().values(**values))
+            connection.exec_driver_sql(
+                'ALTER TABLE exam_session_subjects_legacy RENAME TO exam_session_subjects'
+            )
+            for index in source.indexes:
+                index.create(connection, checkfirst=True)
+            connection.exec_driver_sql('PRAGMA foreign_keys=ON')
+        finally:
+            connection.close()
+
+        migrate_exam_session_subject_level_scope()
+        unique_columns = [
+            set(item.get('column_names') or [])
+            for item in inspect(db.engine).get_unique_constraints('exam_session_subjects')
+        ]
+        self.assertNotIn({'exam_session_id', 'subject_id'}, unique_columns)
+
+        middle_level = AcademicLevel(name='Shared Subject Migration Test', sort_order=3)
+        db.session.add(middle_level)
+        db.session.flush()
+        db.session.add(ExamSessionSubject(
+            exam_session_id=session_id,
+            academic_level_id=middle_level.id,
+            subject_id=subject_id,
+            exam_scope_key=scheduled_subject_scope_key(year_id, None, exam_type_id),
+        ))
+        db.session.commit()
+        self.assertEqual(ExamSessionSubject.query.filter_by(exam_session_id=session_id).count(), 2)
 
     def test_n_delete_session_cascades_subject_assignments(self):
         """The confirmation-backed delete endpoint removes the session and its assignments."""

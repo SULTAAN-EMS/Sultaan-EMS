@@ -1,7 +1,15 @@
 import json
 from decimal import Decimal
 
-from sqlalchemy import inspect, text
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    ForeignKeyConstraint,
+    Table,
+    UniqueConstraint,
+    inspect,
+    text,
+)
 
 from . import db
 
@@ -168,6 +176,7 @@ def ensure_schema_compatibility():
     )
     migrate_attendance_session_unique_constraint()
     migrate_exam_schedule_subject_scope_constraint()
+    migrate_exam_session_subject_level_scope()
 
     # Phase 4C: the final archived-year purge may remove a student identity
     # only when it has no surviving enrollment. PostgreSQL production schemas
@@ -1543,6 +1552,146 @@ def migrate_exam_schedule_subject_scope_constraint():
         )
     except Exception:
         db.session.rollback()
+
+
+def migrate_exam_session_subject_level_scope():
+    """Allow one shared legacy subject to be scheduled for multiple levels in one sitting."""
+    inspector = inspect(db.engine)
+    table_name = "exam_session_subjects"
+    if not inspector.has_table(table_name):
+        return
+
+    old_columns = {"exam_session_id", "subject_id"}
+    unique_constraints = [
+        item for item in inspector.get_unique_constraints(table_name)
+        if item.get("name") == "uq_exam_session_subject"
+        or set(item.get("column_names") or []) == old_columns
+    ]
+    unique_indexes = [
+        item for item in inspector.get_indexes(table_name)
+        if item.get("unique")
+        and (
+            item.get("name") == "uq_exam_session_subject"
+            or set(item.get("column_names") or []) == old_columns
+        )
+    ]
+    if not unique_constraints and not unique_indexes:
+        return
+
+    dialect = db.engine.dialect.name
+    try:
+        if dialect == "sqlite":
+            _rebuild_exam_session_subjects_without_subject_only_unique()
+            return
+
+        preparer = db.engine.dialect.identifier_preparer
+        with db.engine.begin() as connection:
+            if dialect == "mysql":
+                names = {
+                    item.get("name")
+                    for item in unique_constraints + unique_indexes
+                    if item.get("name")
+                }
+                for name in names:
+                    quoted = preparer.quote(name)
+                    connection.execute(text(
+                        f"ALTER TABLE {table_name} DROP INDEX {quoted}"
+                    ))
+            elif dialect == "postgresql":
+                constraint_names = {
+                    item.get("name") for item in unique_constraints if item.get("name")
+                }
+                for name in constraint_names:
+                    connection.execute(text(
+                        f"ALTER TABLE {table_name} DROP CONSTRAINT IF EXISTS {preparer.quote(name)}"
+                    ))
+                for item in unique_indexes:
+                    name = item.get("name")
+                    if name and name not in constraint_names:
+                        connection.execute(text(
+                            f"DROP INDEX IF EXISTS {preparer.quote(name)}"
+                        ))
+    except Exception:
+        db.session.rollback()
+        raise
+
+
+def _rebuild_exam_session_subjects_without_subject_only_unique():
+    """SQLite cannot drop a table-level UNIQUE constraint without rebuilding."""
+    from .models import ExamSessionSubject
+
+    source = ExamSessionSubject.__table__
+    temporary_name = "exam_session_subjects_level_scope_new"
+    metadata = source.metadata
+    columns = [
+        Column(
+            column.name,
+            column.type,
+            primary_key=column.primary_key,
+            nullable=column.nullable,
+            autoincrement=column.autoincrement,
+            server_default=column.server_default,
+        )
+        for column in source.columns
+    ]
+    constraints = []
+    for constraint in source.constraints:
+        if isinstance(constraint, UniqueConstraint):
+            constraints.append(UniqueConstraint(
+                *[column.name for column in constraint.columns],
+                name=constraint.name,
+            ))
+        elif isinstance(constraint, ForeignKeyConstraint):
+            constraints.append(ForeignKeyConstraint(
+                [element.parent.name for element in constraint.elements],
+                [element.target_fullname for element in constraint.elements],
+                name=constraint.name,
+                ondelete=constraint.ondelete,
+                onupdate=constraint.onupdate,
+            ))
+        elif isinstance(constraint, CheckConstraint):
+            constraints.append(CheckConstraint(str(constraint.sqltext), name=constraint.name))
+
+    replacement = Table(temporary_name, metadata, *columns, *constraints)
+    quoted_table = db.engine.dialect.identifier_preparer.quote(source.name)
+    quoted_temp = db.engine.dialect.identifier_preparer.quote(temporary_name)
+    column_names = [column.name for column in source.columns]
+    quoted_columns = ", ".join(
+        db.engine.dialect.identifier_preparer.quote(name)
+        for name in column_names
+    )
+
+    connection = db.engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+    try:
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.exec_driver_sql("BEGIN IMMEDIATE")
+        replacement.create(connection)
+        connection.exec_driver_sql(
+            f"INSERT INTO {quoted_temp} ({quoted_columns}) "
+            f"SELECT {quoted_columns} FROM {quoted_table}"
+        )
+        connection.exec_driver_sql(f"DROP TABLE {quoted_table}")
+        connection.exec_driver_sql(
+            f"ALTER TABLE {quoted_temp} RENAME TO {quoted_table}"
+        )
+        for index in source.indexes:
+            index.create(connection, checkfirst=True)
+        connection.exec_driver_sql("COMMIT")
+        connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+    except Exception:
+        try:
+            connection.exec_driver_sql("ROLLBACK")
+        except Exception:
+            pass
+        raise
+    finally:
+        try:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+        except Exception:
+            pass
+        connection.close()
+        if metadata.tables.get(temporary_name) is replacement:
+            metadata.remove(replacement)
 
 
 def add_foreign_key_if_missing(table, constraint_name, columns, ref_table, ref_columns, ondelete=None):
