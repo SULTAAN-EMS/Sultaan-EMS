@@ -548,6 +548,21 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn('--card-accent:#2563EB', attendance_tmpl)
         print("[PASS] Test (j): Round 3 UI polish markers verified.")
 
+    def test_j1_attendance_restores_timetable_filters_and_mobile_session_field_is_visible(self):
+        """Attendance follows the timetable's saved scope and keeps its session selector readable on phones."""
+        self.login()
+        response = self.client.get('/admin/attendance/')
+        self.assertEqual(response.status_code, 200)
+        attendance_tmpl = response.get_data(as_text=True)
+
+        self.assertIn("attendancePreferenceKey='sultaan.attendance-timetable.v1'", attendance_tmpl)
+        self.assertIn('preferences.exams?.[yearId]', attendance_tmpl)
+        self.assertIn("params.get('session_id')", attendance_tmpl)
+        self.assertIn("params.get('exam_hall_id')", attendance_tmpl)
+        self.assertIn('.att-scope .stepper{grid-template-columns:minmax(0,1fr);}', attendance_tmpl)
+        self.assertIn('(Fadhi jadwal lama dejin ama heerka hall-ka kuma jiro)', attendance_tmpl)
+        print("[PASS] Test (j1): Attendance filter restoration and mobile visibility verified.")
+
     def test_k_all_six_attendance_statuses_and_switching(self):
         """All six attendance statuses (Joogto, Maqan, La fasaxay, Cudur daar, Xaalad degdeg, Soo daahid) work and switch cleanly."""
         self.login()
