@@ -199,6 +199,13 @@ class TestHallRosterAndAttendance(unittest.TestCase):
             sess['_user_id'] = str(self.user.id)
             sess['_fresh'] = True
 
+    def test_hall_roster_page_renders_without_preloading_unused_filter_data(self):
+        self.login()
+        response = self.client.get('/admin/attendance/hall-roster')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Diiwaan-gelinta Hall Exam', response.data)
+        self.assertIn(b'selExamType', response.data)
+
     def test_a_hall_roster_filters_students_by_level_and_class(self):
         """(a) Hall roster only offers students matching the selected level/class filter, from real class records."""
         self.login()
@@ -266,6 +273,46 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertTrue(payload['success'])
         self.assertEqual(len(payload['available_students']), 32)
         self.assertLessEqual(query_count, 24, f'Roster made {query_count} SELECT queries')
+
+    def test_hall_roster_pool_paginates_without_reloading_assigned_students(self):
+        """Pool pages are stable and the lighter continuation response omits the assigned roster."""
+        self.login()
+        import uuid
+
+        suffix = str(uuid.uuid4())[:8]
+        students = [self.student1, self.student2]
+        students.extend(
+            Student(
+                student_code=f'TIS-PAGE-{suffix}-{index}',
+                full_name=f'Paged Student {index:02d}',
+                academic_year_id=self.year.id,
+                academic_level_id=self.level_sec.id,
+                academic_class_id=self.class_form1.id,
+                class_id=self.school_class.id,
+                is_active=True,
+            )
+            for index in range(3)
+        )
+        db.session.add_all(students[2:])
+        db.session.add(ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student1.id))
+        db.session.commit()
+
+        base_url = (
+            f'/admin/attendance/api/hall-roster-data?exam_hall_id={self.hall.id}'
+            f'&academic_level_id={self.level_sec.id}&academic_class_id={self.class_form1.id}'
+        )
+        first = self.client.get(f'{base_url}&limit=2').get_json()
+        second = self.client.get(f'{base_url}&limit=2&offset=2&include_assigned=0').get_json()
+
+        first_ids = [student['id'] for student in first['available_students']]
+        second_ids = [student['id'] for student in second['available_students']]
+        self.assertTrue(first['has_more'])
+        self.assertFalse(second['has_more'])
+        self.assertEqual(len(first_ids), 2)
+        self.assertEqual(len(second_ids), 2)
+        self.assertFalse(set(first_ids) & set(second_ids))
+        self.assertNotIn(self.student1.id, first_ids + second_ids)
+        self.assertEqual(second['assigned_students'], [])
 
     def test_levels_and_classes_are_scoped_to_selected_academic_year(self):
         self.login()

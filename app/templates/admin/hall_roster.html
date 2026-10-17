@@ -87,6 +87,9 @@
   .hr-scope .move.remove{color:#fff;background:#EF4444;border-radius:7px;width:29px;height:24px;}
   .hr-scope .move.transfer{width:auto;font-size:11px;color:#fff;background:linear-gradient(135deg,#0F766E,#14B8A6);border-radius:999px;padding:5px 9px;box-shadow:0 10px 20px -16px rgba(15,118,110,.8);}
   .hr-scope .empty{padding:30px 20px;text-align:center;color:var(--slate);font-size:13px;font-style:italic;}
+  .hr-scope .load-more{display:flex;width:calc(100% - 24px);justify-content:center;align-items:center;gap:8px;margin:10px 12px 12px;padding:10px 12px;border:1px solid #D6DFEC;border-radius:10px;background:#F5F8FC;color:#1B2A4A;font:700 12px 'Inter',sans-serif;cursor:pointer;}
+  .hr-scope .load-more:hover{background:#EAF0F8;border-color:#B8C8DE;}
+  .hr-scope .load-more:disabled{opacity:.65;cursor:wait;}
   .hr-scope .foot-note{margin-top:20px;font-size:12px;color:var(--slate);line-height:1.6;}
   .hr-scope .foot-note b{color:var(--ink);}
   .hr-scope .toast{position:fixed;right:26px;bottom:26px;z-index:80;min-width:260px;max-width:360px;padding:14px 16px;border-radius:18px;background:linear-gradient(135deg,#FFFFFF,#F8F5EB);border:1px solid rgba(220,214,198,.9);box-shadow:0 24px 60px -28px rgba(22,34,59,.55);display:none;align-items:center;gap:12px;font-size:13px;font-weight:800;color:var(--ink);}
@@ -135,14 +138,14 @@
       <i class="fa-solid fa-file-pen icon"></i>
       <div class="field">
         <label>Nooca Imtixaanka</label>
-        <select id="selExamType"></select>
+        <select id="selExamType"><option value="">Imtixaannada waa la soo qaadayaa...</option></select>
       </div>
     </div>
     <div class="step">
       <i class="fa-solid fa-school icon"></i>
       <div class="field">
         <label>Hall / Fasal Imtixaan</label>
-        <select id="selHall"></select>
+        <select id="selHall"><option value="">Hall-yada waa la soo qaadayaa...</option></select>
       </div>
     </div>
   </div>
@@ -167,11 +170,11 @@
       <div class="poolfilters">
         <div class="pool-select level">
           <i class="fa-solid fa-layer-group"></i>
-          <select id="selLevel"><option value="">Heer...</option></select>
+          <select id="selLevel"><option value="">Heerarka waa la soo qaadayaa...</option></select>
         </div>
         <div class="pool-select class">
           <i class="fa-solid fa-users-rectangle"></i>
-          <select id="selClass"><option value="">Fasal...</option></select>
+          <select id="selClass"><option value="">Heer dooro marka hore</option></select>
         </div>
       </div>
       <div class="search">
@@ -272,15 +275,23 @@ function selectedExamPayload(){
     : {exam_id:select.value};
 }
 
-let levelsData=[];
 const csrfToken=document.querySelector('meta[name="csrf-token"]')?.content||'';
+const hallRosterPreferenceKey='sultaan.hall-roster.v1';
+const rosterPageSize=50;
+let levelsData=[];
+let initialRosterFilters=null;
 let toastTimer=null;
 let pendingTransferStudent=null;
 let pendingClearClass=null;
 let rosterRequestController=null;
 let rosterRequestSequence=0;
 let hallsRequestSequence=0;
+let examsRequestSequence=0;
 let assignedRosterStudents=[];
+let poolStudents=[];
+let poolOffset=0;
+let poolHasMore=false;
+let loadingMorePool=false;
 let poolSearchTimer=null;
 
 async function rosterPost(url,payload){
@@ -309,48 +320,122 @@ function showToast(message,isError=false){
   toastTimer=setTimeout(()=>toast.classList.remove('show'),3200);
 }
 
-async function loadExamTypes({loadHallsAfter=true}={}){
-  const yearId=document.getElementById('selYear').value;
-  const res=await fetch(`/admin/attendance/api/exam-types?academic_year_id=${encodeURIComponent(yearId)}`);
-  const data=await res.json();
-  document.getElementById('selExamType').innerHTML=(data.exam_types||[]).map(et=>`<option value="${et.id}" data-source="${et.source||'exam'}">${et.name}</option>`).join('');
-  if(loadHallsAfter) await loadHalls();
+function readRosterPreferences(){try{return JSON.parse(localStorage.getItem(hallRosterPreferenceKey)||'{}')||{};}catch(error){return {};}}
+function initialFilterValue(params,preferences,queryKeys,property){
+  for(const key of queryKeys){if(params.has(key))return params.get(key)||'';}
+  return preferences[property]||'';
+}
+function restoreRosterFilters(){
+  const params=new URLSearchParams(location.search),saved=readRosterPreferences();
+  return {
+    yearId:initialFilterValue(params,saved,['academic_year_id','year_id'],'yearId'),
+    examId:initialFilterValue(params,saved,['exam_id','exam_type_id'],'examId'),
+    examSource:params.has('exam_type_id')?'legacy':(params.has('exam_id')?'exam':(saved.examSource||'exam')),
+    hallId:initialFilterValue(params,saved,['exam_hall_id','hall_id'],'hallId'),
+    levelId:initialFilterValue(params,saved,['academic_level_id','level_id'],'levelId'),
+    classId:initialFilterValue(params,saved,['academic_class_id','class_id'],'classId'),
+    poolSearch:initialFilterValue(params,saved,['pool_q'],'poolSearch'),
+    hallSearch:initialFilterValue(params,saved,['hall_q'],'hallSearch'),
+  };
+}
+function persistRosterFilters(){
+  const year=document.getElementById('selYear'),exam=document.getElementById('selExamType'),examOption=exam.options[exam.selectedIndex];
+  const state={
+    yearId:year.value,examId:exam.value,examSource:examOption?.dataset.source||'exam',
+    hallId:document.getElementById('selHall').value,levelId:document.getElementById('selLevel').value,
+    classId:document.getElementById('selClass').value,poolSearch:document.getElementById('poolSearch').value,
+    hallSearch:document.getElementById('hallSearch').value,
+  };
+  try{localStorage.setItem(hallRosterPreferenceKey,JSON.stringify(state));}catch(error){}
+  const url=new URL(location.href),params=url.searchParams;
+  const setParam=(key,value)=>{if(value)params.set(key,value);else params.delete(key);};
+  params.delete('year_id');params.set('academic_year_id',state.yearId);
+  params.delete('exam_id');params.delete('exam_type_id');
+  if(state.examId)params.set(state.examSource==='legacy'?'exam_type_id':'exam_id',state.examId);
+  params.delete('hall_id');setParam('exam_hall_id',state.hallId);
+  params.delete('level_id');setParam('academic_level_id',state.levelId);
+  params.delete('class_id');setParam('academic_class_id',state.classId);
+  setParam('pool_q',state.poolSearch);setParam('hall_q',state.hallSearch);
+  history.replaceState(history.state,'',url);
 }
 
-async function loadHalls(preferredHallId=null){
+async function loadExamTypes({loadHallsAfter=true,preferredExamId='',preferredExamSource='exam',preferredHallId=''}={}){
+  const requestSequence=++examsRequestSequence;
+  const yearId=document.getElementById('selYear').value;
+  const select=document.getElementById('selExamType');
+  select.innerHTML='<option value="">Imtixaannada waa la soo qaadayaa...</option>';
+  try{
+    const res=await fetch(`/admin/attendance/api/exam-types?academic_year_id=${encodeURIComponent(yearId)}`,{cache:'no-store',credentials:'same-origin'});
+    const data=await res.json();
+    if(requestSequence!==examsRequestSequence)return;
+    if(!res.ok||!data.success)throw new Error(data.error||'Noocyada imtixaanka lama soo qaadi karo.');
+    const exams=data.exam_types||[];
+    select.innerHTML=exams.length?exams.map(et=>`<option value="${et.id}" data-source="${et.source||'exam'}">${escapeHtml(et.name)}</option>`).join(''):'<option value="">(Sanadkan imtixaan laguma dejin)</option>';
+    const preferred=exams.find(item=>String(item.id)===String(preferredExamId)&&String(item.source||'exam')===String(preferredExamSource));
+    if(preferred)select.value=String(preferred.id);
+    if(loadHallsAfter)await loadHalls(preferredHallId);
+  }catch(error){
+    if(requestSequence!==examsRequestSequence)return;
+    select.innerHTML='<option value="">(Imtixaannada lama soo qaadi karo)</option>';
+    document.getElementById('selHall').innerHTML='<option value="">(Hall-yada lama soo qaadi karo)</option>';
+    document.getElementById('poolList').innerHTML=`<div class="empty">${escapeHtml(error.message||'Imtixaannada lama soo qaadi karo.')}</div>`;
+  }
+}
+
+async function loadHalls(preferredHallId=null,{syncScope=true}={}){
   const requestSequence=++hallsRequestSequence;
   const yearId=document.getElementById('selYear').value;
-  const res=await fetch(`/admin/attendance/api/halls?academic_year_id=${encodeURIComponent(yearId)}&${selectedExamScope()}`);
-  const data=await res.json();
-  if(requestSequence!==hallsRequestSequence) return;
-  const halls=data.halls||[];
-  document.getElementById('selHall').innerHTML=halls.length
-    ? halls.map(h=>`<option value="${h.id}" data-class-id="${h.academic_class_id||''}" data-level-id="${h.academic_level_id||''}">${h.name}</option>`).join('')
-    : '<option value="">(Ma jiro hall — mid cusub samee)</option>';
-  if(preferredHallId&&halls.some(h=>String(h.id)===String(preferredHallId))){
-    document.getElementById('selHall').value=preferredHallId;
+  const hallSelect=document.getElementById('selHall');
+  hallSelect.innerHTML='<option value="">Hall-yada waa la soo qaadayaa...</option>';
+  try{
+    const res=await fetch(`/admin/attendance/api/halls?academic_year_id=${encodeURIComponent(yearId)}&${selectedExamScope()}`,{cache:'no-store',credentials:'same-origin'});
+    const data=await res.json();
+    if(requestSequence!==hallsRequestSequence)return;
+    if(!res.ok||!data.success)throw new Error(data.error||'Hall-yada lama soo qaadi karo.');
+    const halls=data.halls||[];
+    hallSelect.innerHTML=halls.length
+      ? halls.map(h=>`<option value="${h.id}" data-class-id="${h.academic_class_id||''}" data-level-id="${h.academic_level_id||''}">${escapeHtml(h.name)}</option>`).join('')
+      : '<option value="">(Ma jiro hall — mid cusub samee)</option>';
+    if(preferredHallId&&halls.some(h=>String(h.id)===String(preferredHallId)))hallSelect.value=String(preferredHallId);
+    document.getElementById('btnDeleteHall').disabled=!halls.length;
+    if(syncScope)trySyncFilterToHall();
+    persistRosterFilters();
+    await loadRosterData();
+  }catch(error){
+    if(requestSequence!==hallsRequestSequence)return;
+    hallSelect.innerHTML='<option value="">(Hall-yada lama soo qaadi karo)</option>';
+    document.getElementById('btnDeleteHall').disabled=true;
+    document.getElementById('poolList').innerHTML=`<div class="empty">${escapeHtml(error.message||'Hall-yada lama soo qaadi karo.')}</div>`;
+    document.getElementById('hallList').innerHTML='<div class="empty">Xogta hall-ka lama heli karo.</div>';
   }
-  document.getElementById('btnDeleteHall').disabled=!halls.length;
-  trySyncFilterToHall();
-  await loadRosterData();
 }
 
-async function loadLevelsAndClasses(){
+async function loadLevelsAndClasses(preferredLevelId='',preferredClassId=''){
   const yearId=document.getElementById('selYear').value;
-  const res=await fetch(`/admin/attendance/api/levels-and-classes?academic_year_id=${encodeURIComponent(yearId)}`);
-  const data=await res.json();
-  levelsData=data.levels||[];
-  document.getElementById('selLevel').innerHTML=levelsData.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
-  refreshClasses();
+  const levelSelect=document.getElementById('selLevel');
+  levelSelect.innerHTML='<option value="">Heerarka waa la soo qaadayaa...</option>';
+  try{
+    const res=await fetch(`/admin/attendance/api/levels-and-classes?academic_year_id=${encodeURIComponent(yearId)}`,{cache:'no-store',credentials:'same-origin'});
+    const data=await res.json();
+    if(!res.ok||!data.success)throw new Error(data.error||'Heerarka iyo fasallada lama soo qaadi karo.');
+    levelsData=data.levels||[];
+    levelSelect.innerHTML=levelsData.length?'<option value="">Dhammaan Heerarka</option>'+levelsData.map(level=>`<option value="${level.id}">${escapeHtml(level.name)}</option>`).join(''):'<option value="">(Sanadkan heerar laguma dejin)</option>';
+    if(levelsData.some(level=>String(level.id)===String(preferredLevelId)))levelSelect.value=String(preferredLevelId);
+    refreshClasses(preferredClassId);
+  }catch(error){
+    levelsData=[];
+    levelSelect.innerHTML='<option value="">(Heerarka lama soo qaadi karo)</option>';
+    document.getElementById('selClass').innerHTML='<option value="">(Fasallada lama soo qaadi karo)</option>';
+  }
 }
 
-function refreshClasses(){
+function refreshClasses(preferredClassId=''){
   const levelId=document.getElementById('selLevel').value;
-  const levelObj=levelsData.find(l=>String(l.id)===String(levelId));
+  const levelObj=levelId?levelsData.find(l=>String(l.id)===String(levelId)):null;
   const sel=document.getElementById('selClass');
-  sel.innerHTML=(levelObj&&levelObj.classes&&levelObj.classes.length)
-    ? levelObj.classes.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')
-    : '<option value="">(Kuma jiraan fasallo)</option>';
+  const classes=levelObj?levelObj.classes||[]:levelsData.flatMap(level=>level.classes||[]);
+  sel.innerHTML=classes.length?'<option value="">Dhammaan Fasallada</option>'+classes.map(cls=>`<option value="${cls.id}">${escapeHtml(cls.name)}</option>`).join(''):'<option value="">(Heerkan fasallo kuma jiraan)</option>';
+  if(preferredClassId&&classes.some(cls=>String(cls.id)===String(preferredClassId)))sel.value=String(preferredClassId);
 }
 
 function trySyncFilterToHall(){
@@ -366,7 +451,7 @@ function trySyncFilterToHall(){
   }
 }
 
-async function loadRosterData(){
+async function loadRosterData({append=false,includeAssigned=true}={}){
   if(rosterRequestController) rosterRequestController.abort();
   const requestSequence=++rosterRequestSequence;
   const hallId=document.getElementById('selHall').value;
@@ -376,6 +461,7 @@ async function loadRosterData(){
   if(!hallId){
     rosterRequestController=null;
     assignedRosterStudents=[];
+    poolStudents=[];poolOffset=0;poolHasMore=false;
     document.getElementById('poolList').innerHTML='<div class="empty">Fadlan dooro ama samee Hall Imtixaan munaasib ah.</div>';
     document.getElementById('hallList').innerHTML='<div class="empty">Fadlan dooro Hall Imtixaan.</div>';
     document.getElementById('poolCount').textContent='0 ardey';
@@ -384,29 +470,46 @@ async function loadRosterData(){
   }
   const hallName=document.getElementById('selHall').options[document.getElementById('selHall').selectedIndex]?.text||'';
   document.getElementById('hallListTitle').textContent=`Ardeyda: ${hallName}`;
+  if(!append){poolOffset=0;poolHasMore=false;poolStudents=[];}
   const controller=new AbortController();
   rosterRequestController=controller;
-  document.getElementById('poolList').innerHTML='<div class="empty"><i class="fa-solid fa-spinner fa-spin"></i> Xogta ardayda waa la soo qaadayaa...</div>';
+  if(!append)document.getElementById('poolList').innerHTML='<div class="empty"><i class="fa-solid fa-spinner fa-spin"></i> Xogta ardayda waa la soo qaadayaa...</div>';
   try{
-    const res=await fetch(`/admin/attendance/api/hall-roster-data?exam_hall_id=${encodeURIComponent(hallId)}&academic_level_id=${encodeURIComponent(levelId)}&academic_class_id=${encodeURIComponent(classId)}&q=${encodeURIComponent(qPool)}`,{signal:controller.signal});
+    const offset=append?poolOffset:0;
+    const query=new URLSearchParams({exam_hall_id:hallId,academic_level_id:levelId,academic_class_id:classId,q:qPool,offset:String(offset),limit:String(rosterPageSize),include_assigned:includeAssigned?'1':'0'});
+    const res=await fetch(`/admin/attendance/api/hall-roster-data?${query}`,{signal:controller.signal,cache:'no-store',credentials:'same-origin'});
     const data=await res.json();
     if(requestSequence!==rosterRequestSequence) return;
     if(!data.success){
-      document.getElementById('poolList').innerHTML=`<div class="empty">${data.error||'Lama soo qaadi karo ardeyda.'}</div>`;
-      document.getElementById('hallList').innerHTML='';
-      assignedRosterStudents=[];
+      if(!append){document.getElementById('poolList').innerHTML=`<div class="empty">${escapeHtml(data.error||'Lama soo qaadi karo ardeyda.')}</div>`;document.getElementById('hallList').innerHTML='';assignedRosterStudents=[];}
       return;
     }
-    renderPoolList(data.available_students||[]);
-    assignedRosterStudents=data.assigned_students||[];
-    renderHallList(assignedRosterStudents,document.getElementById('hallSearch').value);
+    poolStudents=append?poolStudents.concat(data.available_students||[]):(data.available_students||[]);
+    poolOffset=offset+(data.available_students||[]).length;
+    poolHasMore=Boolean(data.has_more);
+    renderPoolList(poolStudents,poolHasMore);
+    if(includeAssigned){
+      assignedRosterStudents=data.assigned_students||[];
+      renderHallList(assignedRosterStudents,document.getElementById('hallSearch').value);
+    }
+    persistRosterFilters();
   }catch(error){
     if(error.name==='AbortError'||requestSequence!==rosterRequestSequence) return;
-    document.getElementById('poolList').innerHTML='<div class="empty">Xogta ardayda lama soo qaadi karin. Fadlan mar kale isku day.</div>';
+    if(!append)document.getElementById('poolList').innerHTML='<div class="empty">Xogta ardayda lama soo qaadi karin. Fadlan mar kale isku day.</div>';
+    else showToast('Arday dheeraad ah lama soo qaadi karin. Mar kale isku day.',true);
     console.error(error);
   }finally{
     if(requestSequence===rosterRequestSequence) rosterRequestController=null;
   }
+}
+
+async function loadMorePool(){
+  if(!poolHasMore||loadingMorePool)return;
+  loadingMorePool=true;
+  renderPoolList(poolStudents,poolHasMore);
+  await loadRosterData({append:true,includeAssigned:false});
+  loadingMorePool=false;
+  renderPoolList(poolStudents,poolHasMore);
 }
 
 function makeRow(s,isAssigned){
@@ -434,8 +537,8 @@ function makeRow(s,isAssigned){
     row.classList.add('busy');
     try{
       await rosterPost(ep,{exam_hall_id:hallId,student_id:s.id});
+      updateRosterAfterAction(s,!isAssigned);
       showToast(isAssigned?'Ardayga hall-ka waa laga saaray.':'Ardayga hall-ka si sax ah ayaa loogu daray.');
-      await loadRosterData();
     }catch(error){
       showToast(error.message,true);
       console.error(error);
@@ -446,11 +549,52 @@ function makeRow(s,isAssigned){
   return row;
 }
 
-function renderPoolList(items){
+function renderPoolList(items,hasMore=poolHasMore){
   const list=document.getElementById('poolList');
-  document.getElementById('poolCount').textContent=`${items.length} ardey`;
+  document.getElementById('poolCount').textContent=`${items.length}${hasMore?'+':''} ardey`;
   list.innerHTML=items.length?'':`<div class="empty">Ma jiro ardey hadhay fasalkan.</div>`;
   items.forEach(s=>list.appendChild(makeRow(s,false)));
+  if(hasMore){
+    const button=document.createElement('button');
+    button.type='button';button.className='load-more';button.disabled=loadingMorePool;
+    button.innerHTML=loadingMorePool?'<i class="fa-solid fa-spinner fa-spin"></i> Soo raraya...':'<i class="fa-solid fa-angles-down"></i> Soo rar arday badan';
+    button.addEventListener('click',loadMorePool);
+    list.appendChild(button);
+  }
+}
+
+function matchesPoolFilters(student){
+  const levelId=document.getElementById('selLevel').value,classId=document.getElementById('selClass').value;
+  const studentClassId=String(student.academic_class_id||'');
+  if(classId&&studentClassId!==String(classId))return false;
+  if(levelId){
+    const level=levelsData.find(item=>String(item.id)===String(levelId));
+    if(level?.classes?.length&&!level.classes.some(cls=>String(cls.id)===studentClassId))return false;
+  }
+  const query=document.getElementById('poolSearch').value.trim().toLocaleLowerCase();
+  return !query||String(student.full_name||'').toLocaleLowerCase().includes(query)||String(student.student_code||'').toLocaleLowerCase().includes(query);
+}
+
+function updateRosterAfterAction(student,assign){
+  const hallId=String(document.getElementById('selHall').value),hallName=document.getElementById('selHall').selectedOptions[0]?.text||'';
+  if(assign){
+    const wasInPool=poolStudents.some(item=>item.id===student.id);
+    poolStudents=poolStudents.filter(item=>item.id!==student.id);
+    if(wasInPool)poolOffset=Math.max(0,poolOffset-1);
+    assignedRosterStudents=assignedRosterStudents.filter(item=>item.id!==student.id);
+    assignedRosterStudents.push({...student,assigned_hall_id:Number(hallId),assigned_hall_name:hallName,is_current_hall:true});
+  }else{
+    assignedRosterStudents=assignedRosterStudents.filter(item=>item.id!==student.id);
+    const available={...student,assigned_hall_id:null,assigned_hall_name:'',is_current_hall:false};
+    if(matchesPoolFilters(available)&&!poolStudents.some(item=>item.id===student.id)){
+      poolStudents.push(available);
+      poolOffset+=1;
+    }
+  }
+  poolStudents.sort((left,right)=>String(left.full_name||'').localeCompare(String(right.full_name||''))||Number(left.id)-Number(right.id));
+  renderPoolList(poolStudents,poolHasMore);
+  renderHallList(assignedRosterStudents,document.getElementById('hallSearch').value);
+  persistRosterFilters();
 }
 
 async function clearClassGroup(group){
@@ -591,13 +735,14 @@ document.getElementById('btnConfirmDeleteHall').addEventListener('click',async()
 document.getElementById('btnConfirmTransferHall').addEventListener('click',async()=>{
   const hall=selectedHallDetails();
   if(!hall.id||!pendingTransferStudent) return;
+  const student=pendingTransferStudent;
   const btn=document.getElementById('btnConfirmTransferHall');
   btn.disabled=true;
   try{
-    const data=await rosterPost('/admin/attendance/api/hall-roster/transfer',{to_exam_hall_id:hall.id,student_id:pendingTransferStudent.id});
+    const data=await rosterPost('/admin/attendance/api/hall-roster/transfer',{to_exam_hall_id:hall.id,student_id:student.id});
     closeTransferHallModal();
     showToast(data.message||`Ardayga si sax ah ayaa loogu wareejiyey ${hall.name}.`);
-    await loadRosterData();
+    updateRosterAfterAction(student,true);
   }catch(error){
     showToast(error.message,true);
     console.error(error);
@@ -611,24 +756,36 @@ function bindRosterScopeListeners(){
   if(rosterScopeListenersBound) return;
   rosterScopeListenersBound=true;
   document.getElementById('selYear').addEventListener('change',async()=>{
+    persistRosterFilters();
     await Promise.all([loadLevelsAndClasses(),loadExamTypes({loadHallsAfter:false})]);
-    await loadHalls();
+    await loadHalls('',{syncScope:false});
   });
-  document.getElementById('selLevel').addEventListener('change',()=>{refreshClasses();loadRosterData();});
-  document.getElementById('selClass').addEventListener('change',loadRosterData);
+  document.getElementById('selLevel').addEventListener('change',()=>{refreshClasses();persistRosterFilters();loadRosterData();});
+  document.getElementById('selClass').addEventListener('change',()=>{persistRosterFilters();loadRosterData();});
 }
-document.getElementById('selExamType').addEventListener('change',loadHalls);
-document.getElementById('selHall').addEventListener('change',()=>{trySyncFilterToHall();loadRosterData();});
+document.getElementById('selExamType').addEventListener('change',()=>{persistRosterFilters();loadHalls('',{syncScope:false});});
+document.getElementById('selHall').addEventListener('change',()=>{trySyncFilterToHall();persistRosterFilters();loadRosterData();});
 document.getElementById('poolSearch').addEventListener('input',()=>{
+  persistRosterFilters();
   clearTimeout(poolSearchTimer);
   poolSearchTimer=setTimeout(loadRosterData,240);
 });
-document.getElementById('hallSearch').addEventListener('input',()=>renderHallList(assignedRosterStudents,document.getElementById('hallSearch').value));
+document.getElementById('hallSearch').addEventListener('input',()=>{persistRosterFilters();renderHallList(assignedRosterStudents,document.getElementById('hallSearch').value);});
 
 document.addEventListener('DOMContentLoaded',async()=>{
   bindRosterScopeListeners();
-  await Promise.all([loadLevelsAndClasses(),loadExamTypes({loadHallsAfter:false})]);
-  await loadHalls();
+  initialRosterFilters=restoreRosterFilters();
+  const yearSelect=document.getElementById('selYear');
+  if(Array.from(yearSelect.options).some(option=>option.value===String(initialRosterFilters.yearId)))yearSelect.value=String(initialRosterFilters.yearId);
+  document.getElementById('poolSearch').value=initialRosterFilters.poolSearch;
+  document.getElementById('hallSearch').value=initialRosterFilters.hallSearch;
+  await Promise.all([
+    loadLevelsAndClasses(initialRosterFilters.levelId,initialRosterFilters.classId),
+    loadExamTypes({loadHallsAfter:false,preferredExamId:initialRosterFilters.examId,preferredExamSource:initialRosterFilters.examSource}),
+  ]);
+  await loadHalls(initialRosterFilters.hallId,{syncScope:false});
+  initialRosterFilters=null;
+  persistRosterFilters();
 });
 </script>
 {% endblock %}

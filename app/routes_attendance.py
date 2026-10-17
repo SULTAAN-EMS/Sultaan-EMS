@@ -864,18 +864,9 @@ def dashboard():
 def hall_roster():
     """Hall Exam Roster Page."""
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
-    current_year = AcademicYear.query.filter_by(is_current=True).first() or (years[0] if years else None)
-    exam_types = get_exam_types(current_year.id if current_year else None)
-
-    levels = AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
-    
     return render_template(
         "admin/hall_roster.html",
         years=years,
-        current_year=current_year,
-        exam_types=exam_types,
-        levels=levels,
-        settings=get_settings(),
     )
 
 
@@ -1342,6 +1333,10 @@ def api_hall_roster_data():
     level_id = request.args.get("academic_level_id", type=int)
     class_id = request.args.get("academic_class_id", type=int)
     q = (request.args.get("q") or "").strip().lower()
+    offset = max(request.args.get("offset", default=0, type=int) or 0, 0)
+    requested_limit = request.args.get("limit", default=100, type=int)
+    limit = min(max(requested_limit if requested_limit is not None else 100, 1), 100)
+    include_assigned = request.args.get("include_assigned", "1") != "0"
 
     if not exam_hall_id:
         return jsonify({"success": True, "assigned_students": [], "available_students": []})
@@ -1359,13 +1354,15 @@ def api_hall_roster_data():
     # Enrollment order is the source of truth for class-group order.  This keeps
     # the roster in the order classes were added to the hall, instead of letting
     # an unordered student query silently alphabetize or interleave groups.
-    enrollments = (
-        ExamHallEnrollment.query
-        .filter_by(exam_hall_id=exam_hall_id)
-        .order_by(ExamHallEnrollment.created_at, ExamHallEnrollment.id)
-        .all()
-    )
-    assigned_student_ids = [e.student_id for e in enrollments]
+    assigned_enrollment_query = ExamHallEnrollment.query.filter_by(exam_hall_id=exam_hall_id)
+    if include_assigned:
+        enrollments = assigned_enrollment_query.order_by(
+            ExamHallEnrollment.created_at, ExamHallEnrollment.id
+        ).all()
+        assigned_student_ids = [enrollment.student_id for enrollment in enrollments]
+    else:
+        enrollments = []
+        assigned_student_ids = None
     try:
         scope_query = attendance_student_scope_query(
             exam_context.academic_year_id,
@@ -1383,7 +1380,7 @@ def api_hall_roster_data():
     )
 
     assigned_students_raw = {}
-    if assigned_student_ids:
+    if include_assigned and assigned_student_ids:
         assigned_students_raw = {
             student.id: student
             for student in scope_query.filter(Student.id.in_(assigned_student_ids)).all()
@@ -1392,13 +1389,16 @@ def api_hall_roster_data():
     # Available pool: system students matching level/class filters NOT YET assigned
     pool_query = scope_query.filter(Student.is_active.is_(True))
 
-    if assigned_student_ids:
-        pool_query = pool_query.filter(~Student.id.in_(assigned_student_ids))
+    pool_query = pool_query.filter(
+        ~Student.id.in_(db.session.query(ExamHallEnrollment.student_id).filter_by(exam_hall_id=exam_hall_id))
+    )
 
     if q:
         pool_query = pool_query.filter(or_(Student.student_code.ilike(f"%{q}%"), Student.full_name.ilike(f"%{q}%")))
 
-    available_students_raw = pool_query.order_by(Student.full_name).limit(300).all()
+    available_page = pool_query.order_by(Student.full_name, Student.id).offset(offset).limit(limit + 1).all()
+    has_more = len(available_page) > limit
+    available_students_raw = available_page[:limit]
 
     # Placement resolution is batched: resolving each row independently adds
     # several hierarchy queries per student and makes large classes very slow.
@@ -1411,8 +1411,6 @@ def api_hall_roster_data():
     for enrollment in enrollments:
         s = assigned_students_raw.get(enrollment.student_id)
         if not s:
-            continue
-        if q and q not in s.student_code.lower() and q not in s.full_name.lower():
             continue
         placement = placements.get((s.id, exam_context.academic_year_id)) or {}
         cls_name = placement.get("class_name") or (
@@ -1472,6 +1470,9 @@ def api_hall_roster_data():
         "success": True,
         "assigned_students": assigned_list,
         "available_students": available_list,
+        "has_more": has_more,
+        "offset": offset,
+        "limit": limit,
     })
 
 
