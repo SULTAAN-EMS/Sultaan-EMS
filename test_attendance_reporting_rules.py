@@ -190,6 +190,54 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         detail = self.client.get(f"/admin/attendance/api/sessions/{session_id}").get_json()
         self.assertEqual(detail["assignments"], [{"level_id": self.level.id, "subject_id": self.subject.id}])
 
+    def test_timetable_session_update_returns_and_persists_replaced_subjects(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        replacement = Subject(name="Science", academic_level_id=self.level.id, max_score=100)
+        anchor_subject = Subject(name="History", academic_level_id=self.level.id, max_score=100)
+        anchor_exam = Exam(name="Midterm", academic_year_id=self.year.id, is_active=True)
+        db.session.add_all([replacement, anchor_subject, anchor_exam])
+        db.session.commit()
+        anchor = self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": self.year.id,
+            "exam_id": anchor_exam.id,
+            "date": "2030-06-16",
+            "time": "08:00",
+            "sitting_label": "Anchor session",
+        }).get_json()
+        anchor_saved = self.client.put(
+            f"/admin/attendance/api/sessions/{anchor['session']['id']}/subjects",
+            json={"assignments": [
+                {"level_id": self.level.id, "subject_id": self.subject.id},
+                {"level_id": self.level.id, "subject_id": anchor_subject.id},
+            ]},
+        )
+        self.assertEqual(anchor_saved.status_code, 200, anchor_saved.get_json())
+        created = self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": self.year.id,
+            "exam_id": self.exam.id,
+            "date": "2030-06-17",
+            "time": "08:00",
+            "sitting_label": "Replace subject session",
+        }).get_json()
+        session_id = created["session"]["id"]
+        initial = self.client.put(
+            f"/admin/attendance/api/sessions/{session_id}/subjects",
+            json={"assignments": [{"level_id": self.level.id, "subject_id": self.subject.id}]},
+        )
+        self.assertEqual(initial.status_code, 200, initial.get_json())
+
+        updated = self.client.put(
+            f"/admin/attendance/api/sessions/{session_id}/subjects",
+            json={"assignments": [{"level_id": self.level.id, "subject_id": replacement.id}]},
+        )
+        self.assertEqual(updated.status_code, 200, updated.get_json())
+        expected = [{"level_id": self.level.id, "subject_id": replacement.id}]
+        self.assertEqual(updated.get_json()["session"]["assignments"], expected)
+        refreshed = self.client.get(f"/admin/attendance/api/sessions/{session_id}").get_json()
+        self.assertEqual(refreshed["assignments"], expected)
+
     def test_timetable_payload_exposes_scheduled_subjects_for_picker_filtering(self):
         with self.client.session_transaction() as session:
             session["_user_id"] = str(self.admin.id)

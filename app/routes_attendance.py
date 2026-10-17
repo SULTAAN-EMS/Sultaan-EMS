@@ -1002,7 +1002,7 @@ def api_update_session_subjects(session_id):
         }), 409
 
     try:
-        ExamSessionSubject.query.filter_by(exam_session_id=session.id).delete(synchronize_session=False)
+        ExamSessionSubject.query.filter_by(exam_session_id=session.id).delete(synchronize_session="fetch")
         db.session.add_all([
             ExamSessionSubject(
                 exam_session_id=session.id,
@@ -1027,6 +1027,7 @@ def api_update_session_subjects(session_id):
         }), 409
     audit("Exam Timetable", f"Updated subjects for session '{session.sitting_label}'")
     db.session.refresh(session)
+    db.session.expire(session, ["subject_assignments"])
     return jsonify({"success": True, "session": serialize_session(session, allowed_pairs)})
 
 
