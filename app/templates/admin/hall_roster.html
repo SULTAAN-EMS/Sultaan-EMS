@@ -85,7 +85,10 @@
   .hr-scope .student-action:hover{transform:translateY(-1px);opacity:.92;}
   .hr-scope .student-action:active{transform:scale(.96);}
   .hr-scope .move.remove{color:#fff;background:#EF4444;border-radius:7px;width:29px;height:24px;}
-  .hr-scope .move.transfer{width:auto;font-size:11px;color:#fff;background:linear-gradient(135deg,#0F766E,#14B8A6);border-radius:999px;padding:5px 9px;box-shadow:0 10px 20px -16px rgba(15,118,110,.8);}
+  .hr-scope .move.transfer{width:32px;height:30px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;color:#fff;background:linear-gradient(135deg,#0F766E,#14B8A6);border:1px solid rgba(255,255,255,.55);border-radius:9px;padding:0;box-shadow:0 8px 18px -12px rgba(15,118,110,.9);transition:transform .16s ease,filter .16s ease,box-shadow .16s ease;}
+  .hr-scope .move.transfer:hover{transform:translateY(-1px);filter:brightness(1.06);box-shadow:0 10px 20px -12px rgba(15,118,110,.9);}
+  .hr-scope .move.transfer:focus-visible{outline:3px solid #0F766E;outline-offset:2px;}
+  .hr-scope .move.transfer:active{transform:scale(.95);}
   .hr-scope .empty{padding:30px 20px;text-align:center;color:var(--slate);font-size:13px;font-style:italic;}
   .hr-scope .roster-loading{display:grid;justify-items:center;align-content:center;gap:2px;min-height:210px;padding:20px;text-align:center;color:var(--slate);}
   .hr-scope .roster-loading__visual{display:grid;place-items:center;width:150px;height:112px;overflow:hidden;}
@@ -121,7 +124,7 @@
   .hr-scope .btn-confirm-delete{background:linear-gradient(135deg,#A6402F,#D94D3D);color:#fff;border:none;}
   .hr-scope .btn-confirm-delete:hover{filter:brightness(.96);}
   @keyframes modalPop{from{opacity:0;transform:scale(.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);}}
-  @media (max-width:800px){.hr-scope .filters{grid-template-columns:1fr;}.hr-scope .split{grid-template-columns:1fr;}.hr-scope .row{grid-template-columns:30px 72px minmax(0,1fr) auto auto 36px;gap:7px;padding-inline:10px;}.hr-scope .rid{width:auto;font-size:10px;}.hr-scope .rname{font-size:12.5px;}.hr-scope .rclass,.hr-scope .hall-note{font-size:10px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.hr-scope .move.transfer{font-size:0;width:28px;height:28px;padding:0;}.hr-scope .move.transfer::before{content:"\f362";font-family:"Font Awesome 6 Free";font-weight:900;font-size:12px;}}
+  @media (max-width:800px){.hr-scope .filters{grid-template-columns:1fr;}.hr-scope .split{grid-template-columns:1fr;}.hr-scope .row{grid-template-columns:30px 72px minmax(0,1fr) auto auto 36px;gap:7px;padding-inline:10px;}.hr-scope .rid{width:auto;font-size:10px;}.hr-scope .rname{font-size:12.5px;}.hr-scope .rclass,.hr-scope .hall-note{font-size:10px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.hr-scope .move.transfer{width:28px;height:28px;font-size:12px;}}
 </style>
 {% endblock %}
 
@@ -131,8 +134,6 @@
 
   {% set active_area = 'hall' %}{% include 'admin/_attendance_section_nav.html' %}
 
-  <h1 class="pagetitle">Diiwaan-gelinta Hall Exam / Fasal Imtixaan</h1>
-  <p class="lede">Dooro sanad-dugsiyeedka iyo nooca imtixaanka, kadibna samee ama dooro hall/fasal-imtixaan. Ardeyda geli tan uu doonayo pool-ka bidix — waa liiska ardeyda saxda ah ee <b>hore loogu diiwaan-geliyey system-ka</b> (fasalkooda dhabta ah), si aan loo isticmaalin xog qalad ah.</p>
 
   <div class="filters">
     <div class="step">
@@ -257,7 +258,7 @@
       <div class="modal-actions">
         <button class="btn btn-outline" id="btnCancelTransferHall" type="button">Cancel</button>
         <button class="btn btn-confirm-delete" id="btnConfirmTransferHall" type="button" style="background:linear-gradient(135deg,#0F766E,#14B8A6);">
-          <i class="fa-solid fa-right-left"></i> Transfer
+          <i class="fa-solid fa-right-left"></i> U Wareeji
         </button>
       </div>
     </div>
@@ -593,7 +594,7 @@ function makeRow(s,isAssigned){
   const moveIcon=isAssigned
     ?'<button class="move student-action danger-state" type="button" title="Ka saar" aria-label="Remove student"><span class="action-icon">&times;</span></button>'
     : assignedElsewhere
-      ?'<button class="move transfer" type="button" title="Transfer garee">Transfer</button>'
+      ?'<button class="move transfer" type="button" title="Ardayga u wareeji hall-kan" aria-label="Ardayga u wareeji hall-kan"><i class="fa-solid fa-right-left" aria-hidden="true"></i></button>'
       :'<button class="move student-action success-state" type="button" title="Geli Hall-kan" aria-label="Add student"><span class="action-icon">+</span></button>';
   row.innerHTML=`<span class="avatar" style="${bgStyle}">${av}</span><span class="rid">${s.student_code}</span><span class="rname">${s.full_name}</span><span class="rclass" style="background:${cColor};">${s.class_name||''}</span>${hallNote}${moveIcon}`;
   row.addEventListener('click',async()=>{

@@ -6,24 +6,40 @@
   .attendance-section-nav a:nth-child(2){background:linear-gradient(135deg,#F8F2FF 0%,#EEE5FF 58%,#FCFAFF 100%);border-color:#D9C9F7}
   .attendance-section-nav a:nth-child(3){background:linear-gradient(135deg,#EFFBF7 0%,#E0F5EF 58%,#FAFFFD 100%);border-color:#BFE6DA}
   .attendance-section-nav a:hover,.attendance-section-nav a:focus-visible{filter:saturate(1.08);transform:translateY(-1px);box-shadow:0 14px 28px -22px rgba(36,64,107,.7);outline:none}
-  .attendance-section-nav a.active{color:#16223B;box-shadow:0 0 0 2px rgba(255,255,255,.9),0 14px 28px -22px rgba(36,64,107,.75)}
+  .attendance-section-nav a:focus-visible{outline:3px solid #16223B;outline-offset:2px}
+  .attendance-section-nav a.active{color:#fff;transform:translateY(-1px)}
+  .attendance-section-nav a.active:nth-child(1){background:linear-gradient(135deg,#1D4ED8,#2563EB);border-color:#1D4ED8;box-shadow:0 0 0 2px rgba(255,255,255,.9),0 14px 28px -22px rgba(37,99,235,.8)}
+  .attendance-section-nav a.active:nth-child(2){background:linear-gradient(135deg,#6D28D9,#7C3AED);border-color:#6D28D9;box-shadow:0 0 0 2px rgba(255,255,255,.9),0 14px 28px -22px rgba(124,58,237,.8)}
+  .attendance-section-nav a.active:nth-child(3){background:linear-gradient(135deg,#0F766E,#0F9F82);border-color:#0F766E;box-shadow:0 0 0 2px rgba(255,255,255,.9),0 14px 28px -22px rgba(15,118,110,.8)}
   .attendance-section-nav__icon{width:32px;height:32px;display:grid;place-items:center;flex:0 0 32px;border-radius:10px;background:linear-gradient(135deg,#D8E7FF,#EDF4FF);color:#2563EB;box-shadow:inset 0 1px 0 rgba(255,255,255,.8)}
   .attendance-section-nav a:nth-child(2) .attendance-section-nav__icon{background:linear-gradient(135deg,#E7D8FF,#F5EEFF);color:#7C3AED}.attendance-section-nav a:nth-child(3) .attendance-section-nav__icon{background:linear-gradient(135deg,#CDEFE5,#ECFBF6);color:#0F766E}
   .attendance-section-nav strong{display:block;font:800 12px Inter,Arial,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.attendance-section-nav small{display:block;margin-top:2px;font:600 10px Inter,Arial,sans-serif;color:#7A8495;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .attendance-section-nav a>span:nth-child(2){min-width:0;flex:1}
+  .attendance-section-nav a.active .attendance-section-nav__icon{background:rgba(255,255,255,.18);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.22)}
+  .attendance-section-nav a.active small{color:rgba(255,255,255,.82)}
+  .attendance-section-nav__current{width:22px;height:22px;display:grid;place-items:center;flex:0 0 22px;border:1px solid rgba(255,255,255,.45);border-radius:50%;background:rgba(255,255,255,.16);color:#fff;font-size:11px}
+  .upper-hero--attendance{min-height:0;padding:14px 26px}
+  .upper-hero--attendance .upper-hero__attendance-title{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .upper-hero--attendance .upper-hero__attendance-visual{right:26px;bottom:8px;transform:scale(.44);transform-origin:right bottom}
+  @media(max-width:850px){.upper-hero--attendance{min-height:0;padding:14px 20px}.upper-hero--attendance .upper-hero__attendance-visual{right:16px;bottom:8px}}
+  @media(max-width:520px){.upper-hero--attendance{min-height:0;padding:12px 14px}.upper-hero--attendance .upper-hero__attendance-visual{right:12px;bottom:6px;transform:scale(.38)}}
   @media(max-width:700px){.attendance-section-nav{grid-template-columns:1fr;margin-bottom:18px}.attendance-section-nav a{padding:9px 10px}}
 </style>
 {{ admin_page_hero('attendance') }}
 <nav class="attendance-section-nav" aria-label="Qaybaha Exam Attendance">
-  <a class="{{ 'active' if active_area == 'hall' else '' }}" href="{{ url_for('admin_attendance.hall_roster') }}">
+  <a class="{{ 'active' if active_area == 'hall' else '' }}" href="{{ url_for('admin_attendance.hall_roster') }}" {% if active_area == 'hall' %}aria-current="page"{% endif %}>
     <span class="attendance-section-nav__icon"><i class="fa-solid fa-list-check"></i></span>
     <span><strong>Diiwaan-gelinta Hall Exam</strong><small>Geli ardayda hall-ka</small></span>
+    {% if active_area == 'hall' %}<span class="attendance-section-nav__current" aria-hidden="true"><i class="fa-solid fa-check"></i></span>{% endif %}
   </a>
-  <a class="{{ 'active' if active_area == 'schedule' else '' }}" href="{{ url_for('admin_attendance.timetable') }}">
+  <a class="{{ 'active' if active_area == 'schedule' else '' }}" href="{{ url_for('admin_attendance.timetable') }}" {% if active_area == 'schedule' %}aria-current="page"{% endif %}>
     <span class="attendance-section-nav__icon"><i class="fa-solid fa-calendar-days"></i></span>
     <span><strong>Jadwalka Imtixaanka</strong><small>Maadooyin iyo fadhi</small></span>
+    {% if active_area == 'schedule' %}<span class="attendance-section-nav__current" aria-hidden="true"><i class="fa-solid fa-check"></i></span>{% endif %}
   </a>
-  <a class="{{ 'active' if active_area == 'attendance' else '' }}" href="{{ url_for('admin_attendance.dashboard') }}">
+  <a class="{{ 'active' if active_area == 'attendance' else '' }}" href="{{ url_for('admin_attendance.dashboard') }}" {% if active_area == 'attendance' %}aria-current="page"{% endif %}>
     <span class="attendance-section-nav__icon"><i class="fa-solid fa-clipboard-user"></i></span>
     <span><strong>Xaadirinta</strong><small>La soco xaaladda ardayda</small></span>
+    {% if active_area == 'attendance' %}<span class="attendance-section-nav__current" aria-hidden="true"><i class="fa-solid fa-check"></i></span>{% endif %}
   </a>
 </nav>

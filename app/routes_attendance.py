@@ -2220,12 +2220,21 @@ def mark_session_bulk_attendance(*, hall, exam, legacy_exam_type, session, year_
     subject_map = subjects_by_session_level(session, allowed_pairs)
 
     if status_val == "clear":
-        removed = (
-            AttendanceRecord.query
-            .filter_by(exam_hall_id=hall.id, exam_session_id=session.id)
-            .delete(synchronize_session=False)
-        )
-        db.session.commit()
+        try:
+            removed = (
+                AttendanceRecord.query
+                .filter_by(exam_hall_id=hall.id, exam_session_id=session.id)
+                .delete(synchronize_session=False)
+            )
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Unable to clear attendance for hall %s, session %s",
+                hall.id,
+                session.id,
+            )
+            return {"success": False, "error": "Xaadirinta lama nadiifin. Xogtii hore waa la ilaaliyey; fadlan mar kale isku day."}, 500
         audit("Bulk Attendance", f"Cleared {removed} session slots in Hall {hall.id}")
         return {"success": True, "updated_count": removed, "status": "clear"}
 

@@ -875,8 +875,11 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn('roster-loading', attendance_tmpl)
         self.assertIn("label:'Joogid'", attendance_tmpl)
         self.assertIn('Calaamadi dhammaan: Joogid', attendance_tmpl)
-        self.assertIn('loo calaamadeeyey Joogid.', attendance_tmpl)
+        self.assertIn('loo xaadiriyey Joogid.', attendance_tmpl)
         self.assertNotIn('Joogto', attendance_tmpl)
+        self.assertIn('upper-hero__attendance-title', attendance_tmpl)
+        self.assertNotIn('Track examination attendance directly', attendance_tmpl)
+        self.assertIn('.upper-hero--attendance{min-height:0;padding:14px 26px}', attendance_tmpl)
         print("[PASS] Test (j1): Attendance filter restoration and mobile visibility verified.")
 
     def test_attendance_context_loads_filters_and_large_roster_with_bounded_queries(self):
@@ -1678,6 +1681,92 @@ class TestHallRosterAndAttendance(unittest.TestCase):
             f'[PASS] Bulk attendance saved {len(students)} students across levels '
             f'({expected_slots} slots) with {query_count} SELECT queries.'
         )
+
+    def test_clear_bulk_session_only_clears_selected_hall_and_sitting(self):
+        """Clear resets the selected sitting while preserving other sessions and legacy rows."""
+        self.login()
+        db.session.add(ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student1.id))
+        db.session.commit()
+
+        first_session = self._create_schedule_session(
+            [{'level_id': self.level_sec.id, 'subject_id': self.subject.id}],
+            when=date(2026, 8, 12),
+        )
+        second_subject = Subject(name='Second Sitting Test', academic_level_id=self.level_sec.id)
+        db.session.add(second_subject)
+        db.session.commit()
+        second_session = self._create_schedule_session(
+            [{'level_id': self.level_sec.id, 'subject_id': second_subject.id}],
+            when=date(2026, 8, 13),
+        )
+        legacy_record = AttendanceRecord(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=self.hall.id,
+            subject_id=self.subject.id,
+            exam_id=self.exam.id,
+            exam_type_id=self.exam_type.id,
+            status='late',
+        )
+        db.session.add(legacy_record)
+        db.session.commit()
+
+        def mark(session_id, status):
+            return self.client.post('/admin/attendance/api/mark-bulk', json={
+                'exam_hall_id': self.hall.id,
+                'academic_year_id': self.year.id,
+                'exam_type_id': self.exam_type.id,
+                'exam_session_id': session_id,
+                'status': status,
+            })
+
+        first_mark = mark(first_session, 'present')
+        second_mark = mark(second_session, 'absent')
+        self.assertTrue(first_mark.get_json()['success'], first_mark.get_json())
+        self.assertTrue(second_mark.get_json()['success'], second_mark.get_json())
+
+        cleared = mark(first_session, 'clear')
+        self.assertEqual(cleared.status_code, 200, cleared.get_json())
+        self.assertEqual(cleared.get_json()['updated_count'], 1)
+        self.assertEqual(
+            AttendanceRecord.query.filter_by(
+                exam_hall_id=self.hall.id,
+                exam_session_id=first_session,
+            ).count(),
+            0,
+        )
+        self.assertEqual(
+            AttendanceRecord.query.filter_by(
+                exam_hall_id=self.hall.id,
+                exam_session_id=second_session,
+                student_id=self.student1.id,
+                subject_id=second_subject.id,
+            ).one().status,
+            'absent',
+        )
+        self.assertEqual(
+            AttendanceRecord.query.filter_by(
+                exam_hall_id=self.hall.id,
+                exam_session_id=None,
+                student_id=self.student1.id,
+                subject_id=self.subject.id,
+            ).one().status,
+            'late',
+        )
+
+        refreshed = self.client.get(
+            f'/admin/attendance/api/attendance-data?academic_year_id={self.year.id}'
+            f'&exam_type_id={self.exam_type.id}&exam_hall_id={self.hall.id}'
+            f'&exam_session_id={first_session}'
+        ).get_json()
+        student_slots = next(
+            student['slots']
+            for group in refreshed['groups']
+            for student in group['students']
+            if student['id'] == self.student1.id
+        )
+        self.assertIsNone(next(slot['status'] for slot in student_slots if slot['subject_id'] == self.subject.id))
+        print('[PASS] Clear removes only the selected hall/sitting and reloads as unmarked.')
 
 
 if __name__ == '__main__':
