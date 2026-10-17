@@ -896,17 +896,16 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(f'value="{self.exam.id}" data-source="exam"', html)
         self.assertIn('Results Setup Final', html)
 
-    def test_timetable_migrates_legacy_subject_only_unique_constraint(self):
-        """Older SQLite files can schedule a shared subject for two levels after startup migration."""
-        from app.schema_compat import migrate_exam_session_subject_level_scope
+    def test_timetable_save_repairs_legacy_subject_only_unique_constraint(self):
+        """Saving shared subjects repairs the legacy constraint and persists both levels."""
 
         self.login()
         session_id = self._create_schedule_session([
             {'level_id': self.level_sec.id, 'subject_id': self.subject.id},
         ])
-        year_id = self.year.id
-        exam_type_id = self.exam_type.id
         subject_id = self.subject.id
+        secondary_level_id = self.level_sec.id
+        year_id = self.year.id
         current = db.session.query(ExamSessionSubject).filter_by(exam_session_id=session_id).one()
         values = {column.name: getattr(current, column.name) for column in ExamSessionSubject.__table__.columns}
         db.session.remove()
@@ -935,24 +934,53 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         finally:
             connection.close()
 
-        migrate_exam_session_subject_level_scope()
+        middle_level = AcademicLevel(name='Shared Subject Migration Test', sort_order=3)
+        db.session.add(middle_level)
+        db.session.flush()
+        middle_year_level = AcademicYearLevel(
+            academic_year_id=year_id,
+            legacy_level_id=middle_level.id,
+            name='Dugsi Dhexe Shared Subject Test',
+            sort_order=2,
+        )
+        db.session.add(middle_year_level)
+        db.session.flush()
+        db.session.add(AcademicYearSubject(
+            academic_year_id=year_id,
+            academic_year_level_id=middle_year_level.id,
+            legacy_subject_id=subject_id,
+            name='Af Soomaali Dhexe',
+            subject_kind='exam',
+            is_active=True,
+            sort_order=1,
+        ))
+        db.session.commit()
+
+        saved = self.client.put(
+            f'/admin/attendance/api/sessions/{session_id}/subjects',
+            json={'assignments': [
+                {'level_id': secondary_level_id, 'subject_id': subject_id},
+                {'level_id': middle_level.id, 'subject_id': subject_id},
+            ]},
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_json())
+        self.assertTrue(saved.get_json()['success'])
+        self.assertEqual(
+            {(item.academic_level_id, item.subject_id)
+             for item in ExamSessionSubject.query.filter_by(exam_session_id=session_id).all()},
+            {(secondary_level_id, subject_id), (middle_level.id, subject_id)},
+        )
         unique_columns = [
             set(item.get('column_names') or [])
             for item in inspect(db.engine).get_unique_constraints('exam_session_subjects')
         ]
+        unique_columns.extend(
+            set(item.get('column_names') or [])
+            for item in inspect(db.engine).get_indexes('exam_session_subjects')
+            if item.get('unique')
+        )
+        self.assertIn({'exam_scope_key', 'academic_level_id', 'subject_id'}, unique_columns)
         self.assertNotIn({'exam_session_id', 'subject_id'}, unique_columns)
-
-        middle_level = AcademicLevel(name='Shared Subject Migration Test', sort_order=3)
-        db.session.add(middle_level)
-        db.session.flush()
-        db.session.add(ExamSessionSubject(
-            exam_session_id=session_id,
-            academic_level_id=middle_level.id,
-            subject_id=subject_id,
-            exam_scope_key=scheduled_subject_scope_key(year_id, None, exam_type_id),
-        ))
-        db.session.commit()
-        self.assertEqual(ExamSessionSubject.query.filter_by(exam_session_id=session_id).count(), 2)
 
     def test_n_delete_session_cascades_subject_assignments(self):
         """The confirmation-backed delete endpoint removes the session and its assignments."""

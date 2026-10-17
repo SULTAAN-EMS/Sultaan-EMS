@@ -1109,7 +1109,7 @@ def api_update_session_subjects(session_id):
             f"{', '.join(sorted(details)) or 'Fadhi kale'}."
         }), 409
 
-    try:
+    def persist_assignments():
         ExamSessionSubject.query.filter_by(exam_session_id=session.id).delete(synchronize_session="fetch")
         db.session.add_all([
             ExamSessionSubject(
@@ -1125,14 +1125,37 @@ def api_update_session_subjects(session_id):
             for level_id, subject_id in selected
         ])
         db.session.commit()
+
+    try:
+        persist_assignments()
     except IntegrityError:
         db.session.rollback()
-        # The database scope constraint is the final guard for concurrent
-        # browsers. Give the same clear business error as the pre-check.
-        return jsonify({
-            "success": False,
-            "error": "Maadadan hore ayaa loogu dejiyey fadhi kale oo imtixaankan ah."
-        }), 409
+        try:
+            # Older production schemas may still have a per-session subject
+            # constraint, which blocks a shared subject across two levels.
+            from .schema_compat import ensure_exam_session_subject_scope_constraints
+
+            ensure_exam_session_subject_scope_constraints()
+            db.session.expire_all()
+            session = db.session.get(ExamSession, session_id)
+            persist_assignments()
+        except IntegrityError:
+            db.session.rollback()
+            # Keep the database scope constraint as the final guard against a
+            # real duplicate assignment or a concurrent write.
+            return jsonify({
+                "success": False,
+                "error": "Maadadan hore ayaa loogu dejiyey fadhi kale oo imtixaankan ah."
+            }), 409
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Timetable subject constraint repair failed for session %s", session_id
+            )
+            return jsonify({
+                "success": False,
+                "error": "Jadwalka maadooyinka lama kaydin karin. Fadlan dib u tijaabi."
+            }), 500
     audit("Exam Timetable", f"Updated subjects for session '{session.sitting_label}'")
     db.session.refresh(session)
     db.session.expire(session, ["subject_assignments"])

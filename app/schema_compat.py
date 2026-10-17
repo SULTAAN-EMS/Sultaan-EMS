@@ -1616,6 +1616,34 @@ def migrate_exam_session_subject_level_scope():
         raise
 
 
+def ensure_exam_session_subject_scope_constraints():
+    """Ensure timetable subjects are unique per exam scope and academic level."""
+    table_name = "exam_session_subjects"
+    inspector = inspect(db.engine)
+    if not inspector.has_table(table_name):
+        raise RuntimeError("The timetable subject table is not available.")
+
+    migrate_exam_schedule_subject_scope_constraint()
+
+    def unique_column_sets():
+        current = inspect(db.engine)
+        constraints = current.get_unique_constraints(table_name)
+        indexes = [item for item in current.get_indexes(table_name) if item.get("unique")]
+        return [
+            set(item.get("column_names") or [])
+            for item in constraints + indexes
+        ]
+
+    scoped_columns = {"exam_scope_key", "academic_level_id", "subject_id"}
+    legacy_columns = {"exam_session_id", "subject_id"}
+    if scoped_columns not in unique_column_sets():
+        raise RuntimeError("The level-scoped timetable constraint could not be installed.")
+
+    migrate_exam_session_subject_level_scope()
+    if legacy_columns in unique_column_sets():
+        raise RuntimeError("The obsolete timetable subject constraint is still present.")
+
+
 def _rebuild_exam_session_subjects_without_subject_only_unique():
     """SQLite cannot drop a table-level UNIQUE constraint without rebuilding."""
     from .models import ExamSessionSubject
