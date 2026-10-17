@@ -735,14 +735,39 @@ def conflicting_subject_assignments(session, selected):
         .filter(ExamSessionSubject.exam_session_id.in_(scoped_session_ids))
         .all()
     )
-    return [
-        row for row in matches
+    conflicts = {
+        row.id: row for row in matches
         if (row.academic_level_id, row.subject_id) in selected_pairs
-    ]
+    }
+
+    # The database's UNIQUE constraint uses this key, not the session-list
+    # query above. Include any rows that the list may not expose so we can
+    # report the real conflict before attempting the write.
+    scope_key = scheduled_subject_scope_key(
+        session.academic_year_id,
+        session.exam_id,
+        session.exam_type_id,
+    )
+    scope_matches = (
+        ExamSessionSubject.query
+        .join(Subject, ExamSessionSubject.subject_id == Subject.id)
+        .filter(
+            ExamSessionSubject.exam_scope_key == scope_key,
+            ExamSessionSubject.exam_session_id != session.id,
+            ExamSessionSubject.academic_level_id.in_({level_id for level_id, _ in selected}),
+            ExamSessionSubject.subject_id.in_({subject_id for _, subject_id in selected}),
+        )
+        .all()
+    )
+    conflicts.update({
+        row.id: row for row in scope_matches
+        if (row.academic_level_id, row.subject_id) in selected_pairs
+    })
+    return list(conflicts.values())
 
 
 def remove_orphaned_subject_assignments(session, selected):
-    """Free stale unique-scope entries left behind by a deleted sitting."""
+    """Remove orphaned or mis-scoped reservations before enforcing uniqueness."""
     if not selected:
         return 0
     scope_key = scheduled_subject_scope_key(
@@ -753,7 +778,7 @@ def remove_orphaned_subject_assignments(session, selected):
     level_ids = {level_id for level_id, _ in selected}
     subject_ids = {subject_id for _, subject_id in selected}
     existing_session_ids = db.session.query(ExamSession.id)
-    return (
+    removed = (
         ExamSessionSubject.query
         .filter(
             ExamSessionSubject.exam_scope_key == scope_key,
@@ -763,6 +788,45 @@ def remove_orphaned_subject_assignments(session, selected):
         )
         .delete(synchronize_session=False)
     )
+    selected_pairs = set(selected)
+    assignments = (
+        ExamSessionSubject.query
+        .filter(
+            ExamSessionSubject.exam_scope_key == scope_key,
+            ExamSessionSubject.exam_session_id != session.id,
+            ExamSessionSubject.academic_level_id.in_(level_ids),
+            ExamSessionSubject.subject_id.in_(subject_ids),
+        )
+        .options(joinedload(ExamSessionSubject.exam_session))
+        .all()
+    )
+    for assignment in assignments:
+        pair = (assignment.academic_level_id, assignment.subject_id)
+        if pair not in selected_pairs:
+            continue
+        owner = assignment.exam_session
+        if owner is None:
+            db.session.delete(assignment)
+            removed += 1
+            continue
+        owner_scope_key = scheduled_subject_scope_key(
+            owner.academic_year_id,
+            owner.exam_id,
+            owner.exam_type_id,
+        )
+        if owner_scope_key == scope_key:
+            continue
+        duplicate = ExamSessionSubject.query.filter(
+            ExamSessionSubject.exam_scope_key == owner_scope_key,
+            ExamSessionSubject.academic_level_id == assignment.academic_level_id,
+            ExamSessionSubject.subject_id == assignment.subject_id,
+            ExamSessionSubject.id != assignment.id,
+        ).first()
+        assignment.exam_scope_key = (
+            f"{owner_scope_key}:historic-{assignment.id}"
+            if duplicate else owner_scope_key
+        )
+    return removed
 
 
 # ==========================================

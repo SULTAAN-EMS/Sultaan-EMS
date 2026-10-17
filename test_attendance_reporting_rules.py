@@ -298,6 +298,60 @@ class AttendanceReportingRuleTests(unittest.TestCase):
             1,
         )
 
+    def test_reassigning_subject_repairs_stale_scope_reservation(self):
+        year_id = self.year.id
+        exam_id = self.exam.id
+        level_id = self.level.id
+        subject_id = self.subject.id
+        with self.client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+
+        other_exam = Exam(name="Midterm", academic_year_id=year_id, is_active=True)
+        db.session.add(other_exam)
+        db.session.commit()
+        other_session = self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": year_id,
+            "exam_id": other_exam.id,
+            "date": "2030-06-21",
+            "time": "09:00",
+            "sitting_label": "Other exam sitting",
+        }).get_json()["session"]
+
+        stale_assignment = ExamSessionSubject(
+            exam_session_id=other_session["id"],
+            academic_level_id=level_id,
+            subject_id=subject_id,
+            # Simulate a legacy bad key that blocks a different exam's valid schedule.
+            exam_scope_key=f"exam:{year_id}:{exam_id}",
+        )
+        db.session.add(stale_assignment)
+        db.session.commit()
+        stale_assignment_id = stale_assignment.id
+
+        replacement = self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": year_id,
+            "exam_id": exam_id,
+            "date": "2030-06-22",
+            "time": "09:00",
+            "sitting_label": "Correct exam sitting",
+        }).get_json()["session"]
+        reassigned = self.client.put(
+            f"/admin/attendance/api/sessions/{replacement['id']}/subjects",
+            json={"assignments": [{"level_id": level_id, "subject_id": subject_id}]},
+        )
+
+        self.assertEqual(reassigned.status_code, 200, reassigned.get_json())
+        db.session.expire_all()
+        self.assertEqual(
+            db.session.get(ExamSessionSubject, stale_assignment_id).exam_scope_key,
+            f"exam:{year_id}:{other_exam.id}",
+        )
+        self.assertEqual(
+            ExamSessionSubject.query.filter_by(exam_session_id=replacement["id"]).count(),
+            1,
+        )
+
     def test_timetable_session_saves_its_level_subjects(self):
         with self.client.session_transaction() as session:
             session["_user_id"] = str(self.admin.id)
