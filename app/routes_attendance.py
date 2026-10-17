@@ -741,6 +741,30 @@ def conflicting_subject_assignments(session, selected):
     ]
 
 
+def remove_orphaned_subject_assignments(session, selected):
+    """Free stale unique-scope entries left behind by a deleted sitting."""
+    if not selected:
+        return 0
+    scope_key = scheduled_subject_scope_key(
+        session.academic_year_id,
+        session.exam_id,
+        session.exam_type_id,
+    )
+    level_ids = {level_id for level_id, _ in selected}
+    subject_ids = {subject_id for _, subject_id in selected}
+    existing_session_ids = db.session.query(ExamSession.id)
+    return (
+        ExamSessionSubject.query
+        .filter(
+            ExamSessionSubject.exam_scope_key == scope_key,
+            ExamSessionSubject.academic_level_id.in_(level_ids),
+            ExamSessionSubject.subject_id.in_(subject_ids),
+            ~ExamSessionSubject.exam_session_id.in_(existing_session_ids),
+        )
+        .delete(synchronize_session=False)
+    )
+
+
 # ==========================================
 # PAGE ROUTES
 # ==========================================
@@ -993,6 +1017,7 @@ def api_update_session_subjects(session_id):
         seen_pairs.add(pair)
         selected.append((level.id, subject.id))
 
+    remove_orphaned_subject_assignments(session, selected)
     conflicts = conflicting_subject_assignments(session, selected)
     if conflicts:
         names = ", ".join(sorted({row.subject.name for row in conflicts if row.subject}))

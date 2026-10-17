@@ -207,6 +207,97 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         db.session.refresh(record)
         self.assertIsNone(record.exam_session_id)
 
+        replacement = self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": self.year.id,
+            "exam_id": self.exam.id,
+            "date": "2030-06-17",
+            "time": "09:00",
+            "sitting_label": "Replacement session",
+        }).get_json()
+        reassigned = self.client.put(
+            f"/admin/attendance/api/sessions/{replacement['session']['id']}/subjects",
+            json={"assignments": [{"level_id": self.level.id, "subject_id": self.subject.id}]},
+        )
+        self.assertEqual(reassigned.status_code, 200, reassigned.get_json())
+
+    def test_reassigning_subject_cleans_orphaned_old_sitting_assignment(self):
+        year_id = self.year.id
+        exam_id = self.exam.id
+        level_id = self.level.id
+        subject_id = self.subject.id
+        with self.client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": year_id,
+            "exam_id": exam_id,
+            "date": "2030-06-17",
+            "time": "09:00",
+            "sitting_label": "ID reservation session",
+        })
+        old_session = self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": year_id,
+            "exam_id": exam_id,
+            "date": "2030-06-18",
+            "time": "09:00",
+            "sitting_label": "Orphan source session",
+        }).get_json()["session"]
+        self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": year_id,
+            "exam_id": exam_id,
+            "date": "2030-06-20",
+            "time": "09:00",
+            "sitting_label": "Second ID reservation session",
+        })
+        stale_assignment = ExamSessionSubject(
+            exam_session_id=old_session["id"],
+            academic_level_id=level_id,
+            subject_id=subject_id,
+            exam_scope_key=f"exam:{year_id}:{exam_id}",
+        )
+        db.session.add(stale_assignment)
+        db.session.commit()
+        stale_assignment_id = stale_assignment.id
+        db.session.expunge(stale_assignment)
+
+        # Simulate a legacy/partial deletion that left its unique-scope row.
+        with db.engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.exec_driver_sql(
+                "DELETE FROM exam_sessions WHERE id = ?", (old_session["id"],)
+            )
+            connection.commit()
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+            connection.commit()
+        self.assertEqual(ExamSession.query.filter_by(id=old_session["id"]).count(), 0)
+        self.assertEqual(
+            ExamSessionSubject.query.filter_by(id=stale_assignment_id).count(),
+            1,
+        )
+
+        replacement = self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": year_id,
+            "exam_id": exam_id,
+            "date": "2030-06-19",
+            "time": "09:00",
+            "sitting_label": "Replacement after orphan",
+        }).get_json()["session"]
+        reassigned = self.client.put(
+            f"/admin/attendance/api/sessions/{replacement['id']}/subjects",
+            json={"assignments": [{"level_id": level_id, "subject_id": subject_id}]},
+        )
+
+        self.assertEqual(reassigned.status_code, 200, reassigned.get_json())
+        db.session.expire_all()
+        self.assertEqual(
+            ExamSessionSubject.query.filter_by(exam_session_id=old_session["id"]).count(),
+            0,
+        )
+        self.assertEqual(
+            ExamSessionSubject.query.filter_by(exam_session_id=replacement["id"]).count(),
+            1,
+        )
+
     def test_timetable_session_saves_its_level_subjects(self):
         with self.client.session_transaction() as session:
             session["_user_id"] = str(self.admin.id)
