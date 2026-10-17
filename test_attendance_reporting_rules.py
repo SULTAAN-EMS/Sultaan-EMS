@@ -10,7 +10,7 @@ from openpyxl import Workbook, load_workbook
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from app import create_app, db
-from app.models import AcademicClass, AcademicLevel, AcademicYear, AttendanceRecord, Exam, GradeScale, Result, Student, Subject, User
+from app.models import AcademicClass, AcademicLevel, AcademicYear, AttendanceRecord, Exam, ExamSession, ExamSessionSubject, GradeScale, Result, Student, Subject, User
 from app.routes_advanced_results import build_analytics_results_report_data
 from app.attendance_rules import counts_as_exam_sitting
 from app.import_wizard import process_student_import
@@ -167,6 +167,45 @@ class AttendanceReportingRuleTests(unittest.TestCase):
             f"/admin/attendance/api/timetable-data?academic_year_id={self.year.id}&exam_id={self.exam.id}"
         )
         self.assertNotIn(session_id, [row["id"] for row in refreshed.get_json()["sessions"]])
+
+    def test_deleting_timetable_session_preserves_attendance_history(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        created = self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": self.year.id,
+            "exam_id": self.exam.id,
+            "date": "2030-06-16",
+            "time": "09:00",
+            "sitting_label": "Session with attendance",
+        })
+        self.assertEqual(created.status_code, 200, created.get_json())
+        session_id = created.get_json()["session"]["id"]
+        record = AttendanceRecord(
+            student_id=self.present_student.id,
+            academic_year_id=self.year.id,
+            exam_id=self.exam.id,
+            subject_id=self.subject.id,
+            exam_session_id=session_id,
+            status="present",
+        )
+        assignment = ExamSessionSubject(
+            exam_session_id=session_id,
+            academic_level_id=self.level.id,
+            subject_id=self.subject.id,
+            exam_scope_key=f"exam:{self.exam.id}",
+        )
+        db.session.add_all([record, assignment])
+        db.session.commit()
+        assignment_id = assignment.id
+
+        deleted = self.client.delete(f"/admin/attendance/api/sessions/{session_id}")
+
+        self.assertEqual(deleted.status_code, 200, deleted.get_json())
+        self.assertIsNone(db.session.get(ExamSession, session_id))
+        self.assertIsNone(db.session.get(ExamSessionSubject, assignment_id))
+        db.session.refresh(record)
+        self.assertIsNone(record.exam_session_id)
 
     def test_timetable_session_saves_its_level_subjects(self):
         with self.client.session_transaction() as session:

@@ -1038,6 +1038,15 @@ def api_delete_session(session_id):
         return jsonify({"success": False, "error": "Fadhiga jadwalka lama heli karo."}), 404
     label = session.sitting_label
     try:
+        # Preserve attendance history while avoiding ORM-loading every row
+        # linked to this sitting during the parent delete.
+        AttendanceRecord.query.filter_by(exam_session_id=session.id).update(
+            {AttendanceRecord.exam_session_id: None},
+            synchronize_session=False,
+        )
+        ExamSessionSubject.query.filter_by(exam_session_id=session.id).delete(
+            synchronize_session=False
+        )
         db.session.delete(session)
         db.session.commit()
     except Exception as exc:

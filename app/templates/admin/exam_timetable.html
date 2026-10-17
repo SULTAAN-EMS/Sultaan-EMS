@@ -27,7 +27,7 @@
 const csrfToken=document.querySelector('meta[name="csrf-token"]')?.content||'';
 const timetablePreferenceKey='sultaan.attendance-timetable.v1';
 let levels=[],sessions=[],activeSession=null,assignmentKeys=new Set(),deleteTarget=null,toastTimer=null;
-let timetableRequestId=0,examTypesRequestId=0,savingSubjects=false;
+let timetableRequestId=0,examTypesRequestId=0,savingSubjects=false,deletingSession=false;
 function esc(value){const node=document.createElement('span');node.textContent=value||'';return node.innerHTML;}
 function readTimetablePreferences(){try{return JSON.parse(localStorage.getItem(timetablePreferenceKey)||'{}')||{};}catch(error){return {};}}
 function saveTimetablePreferences(value){try{localStorage.setItem(timetablePreferenceKey,JSON.stringify(value));}catch(error){}}
@@ -53,11 +53,25 @@ async function saveSubjects(){if(!activeSession||savingSubjects)return;const ses
 document.getElementById('createSessionForm').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;try{const data=await api('/admin/attendance/api/sessions',{method:'POST',body:JSON.stringify({academic_year_id:document.getElementById('yearSelect').value,...scope(),date:document.getElementById('sessionDate').value,time:document.getElementById('sessionTime').value,sitting_label:document.getElementById('sessionLabel').value})});sessions=[...sessions.filter(session=>Number(session.id)!==Number(data.session.id)),data.session];activeSession=data.session;assignmentKeys.clear();persistTimetableSelection(data.session.id);renderSessions(data.session.id);renderBuilder();form.reset();toast('Fadhi cusub si sax ah ayaa loo sameeyey.');await loadTimetable(data.session.id);}catch(error){toast(error.message,true);}});
 function forgetSavedSession(sessionId){const preferences=readTimetablePreferences(),exam=selectedExam(),key=sessionPreferenceKey(document.getElementById('yearSelect').value,exam);preferences.sessions={...(preferences.sessions||{})};if(String(preferences.sessions[key])===String(sessionId))delete preferences.sessions[key];saveTimetablePreferences(preferences);}
 function openDelete(){deleteTarget=activeSession;document.getElementById('deleteModal').classList.add('show');document.getElementById('deleteModal').setAttribute('aria-hidden','false');}
-function closeDelete(){deleteTarget=null;document.getElementById('deleteModal').classList.remove('show');document.getElementById('deleteModal').setAttribute('aria-hidden','true');}
+function closeDelete(){if(deletingSession)return;deleteTarget=null;document.getElementById('deleteModal').classList.remove('show');document.getElementById('deleteModal').setAttribute('aria-hidden','true');}
 document.getElementById('cancelDelete').addEventListener('click',closeDelete);
-document.getElementById('deleteModal').addEventListener('click',event=>{if(event.target===event.currentTarget)closeDelete();});
-document.addEventListener('keydown',event=>{if(event.key==='Escape')closeDelete();});
-document.getElementById('confirmDelete').addEventListener('click',async()=>{if(!deleteTarget)return;try{const deletedId=deleteTarget.id;await api(`/admin/attendance/api/sessions/${deletedId}`,{method:'DELETE'});forgetSavedSession(deletedId);sessions=sessions.filter(session=>Number(session.id)!==Number(deletedId));activeSession=null;assignmentKeys.clear();closeDelete();renderSessions();renderBuilder();persistTimetableSelection();toast('Fadhiga jadwalka si sax ah ayaa loo tirtiray.');await loadTimetable();}catch(error){toast(error.message,true);}});
+document.getElementById('deleteModal').addEventListener('click',event=>{if(event.target===event.currentTarget&&!deletingSession)closeDelete();});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!deletingSession)closeDelete();});
+document.getElementById('confirmDelete').addEventListener('click',async event=>{
+  if(!deleteTarget||deletingSession)return;
+  const deletedId=deleteTarget.id,button=event.currentTarget,cancel=document.getElementById('cancelDelete');
+  deletingSession=true;button.disabled=true;cancel.disabled=true;button.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Tirtiraya...';
+  document.getElementById('deleteModal').setAttribute('aria-busy','true');
+  try{
+    await api(`/admin/attendance/api/sessions/${deletedId}`,{method:'DELETE'});
+    forgetSavedSession(deletedId);sessions=sessions.filter(session=>Number(session.id)!==Number(deletedId));activeSession=null;assignmentKeys.clear();
+    deletingSession=false;document.getElementById('deleteModal').setAttribute('aria-busy','false');closeDelete();
+    renderSessions();renderBuilder();persistTimetableSelection();toast('Fadhiga jadwalka si sax ah ayaa loo tirtiray.');await loadTimetable();
+  }catch(error){
+    deletingSession=false;button.disabled=false;cancel.disabled=false;button.innerHTML='<i class="fa-solid fa-trash"></i> Tirtir';
+    document.getElementById('deleteModal').setAttribute('aria-busy','false');toast(error.message,true);
+  }
+});
 document.getElementById('yearSelect').addEventListener('change',async()=>{activeSession=null;sessions=[];assignmentKeys.clear();renderSessions();renderBuilder();const yearId=document.getElementById('yearSelect').value;if(!await loadExamTypes(examPreferenceForYear(yearId)))return;persistTimetableSelection();await loadTimetable(savedSessionForCurrentScope());});
 document.getElementById('examSelect').addEventListener('change',async()=>{activeSession=null;sessions=[];assignmentKeys.clear();renderSessions();renderBuilder();persistTimetableSelection();await loadTimetable(savedSessionForCurrentScope());});
 document.addEventListener('DOMContentLoaded',initializeTimetable);
