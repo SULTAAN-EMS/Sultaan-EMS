@@ -14,6 +14,7 @@ from app.models import (
     ExamSessionSubject, ExamType, SchoolClass, Student, StudentEnrollment, Subject, User
 )
 from app.attendance_rules import scheduled_subject_scope_key
+from app.schema_compat import migrate_exam_schedule_subject_scope_constraint
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import MetaData, UniqueConstraint, event, inspect
 
@@ -955,6 +956,9 @@ class TestHallRosterAndAttendance(unittest.TestCase):
             sort_order=1,
         ))
         db.session.commit()
+
+        migrate_exam_schedule_subject_scope_constraint()
+        self.assertFalse(db.session().in_transaction())
 
         saved = self.client.put(
             f'/admin/attendance/api/sessions/{session_id}/subjects',

@@ -1544,6 +1544,10 @@ def migrate_exam_schedule_subject_scope_constraint():
                 changed = True
         if changed:
             db.session.commit()
+        else:
+            # The read above still opens a transaction. Release its table
+            # lock before the following compatibility migration runs DDL.
+            db.session.rollback()
         add_index_if_missing(
             "exam_session_subjects",
             "uq_exam_scope_level_subject",
