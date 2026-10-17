@@ -208,6 +208,248 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(b'rosterLoadingView', response.data)
         self.assertIn(b'noLoader:true', response.data)
 
+    def test_hall_transfer_moves_scoped_attendance_and_keeps_it_editable(self):
+        self.login()
+        target_hall = ExamHall(
+            name=f'Form One Hall B {self.student1.id}',
+            code=f'HALL_F1_B_{self.student1.id}',
+            exam_type_id=self.exam_type.id,
+            academic_class_id=self.class_form1.id,
+            is_active=True,
+        )
+        archived_hall = ExamHall(
+            name=f'Archived Hall {self.student1.id}',
+            code=f'HALL_ARCHIVED_{self.student1.id}',
+            exam_type_id=self.exam_type.id,
+            academic_class_id=self.class_form1.id,
+            is_active=False,
+        )
+        other_exam_type = ExamType(
+            academic_year_id=self.year.id,
+            name=f'Other Exam {self.student1.id}',
+        )
+        db.session.add_all([target_hall, archived_hall, other_exam_type])
+        db.session.add_all([
+            ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student1.id),
+            ExamHallEnrollment(exam_hall_id=archived_hall.id, student_id=self.student1.id),
+            ExamHallEnrollment(exam_hall_id=target_hall.id, student_id=self.student1.id),
+        ])
+        second_subject = Subject(
+            name=f'Xisaab Transfer Test {self.student1.id}',
+            academic_level_id=self.level_sec.id,
+        )
+        db.session.add(second_subject)
+        db.session.flush()
+
+        first_session = self._create_schedule_session(
+            [{'level_id': self.level_sec.id, 'subject_id': self.subject.id}],
+            when=date(2026, 8, 12),
+        )
+        second_session = self._create_schedule_session(
+            [{'level_id': self.level_sec.id, 'subject_id': second_subject.id}],
+            when=date(2026, 8, 13),
+        )
+        first_record = AttendanceRecord(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=self.hall.id,
+            subject_id=self.subject.id,
+            exam_session_id=first_session,
+            exam_type_id=self.exam_type.id,
+            status='absent',
+            note='Waxaa la xaqiijiyey',
+            marked_by_id=self.user.id,
+        )
+        second_record = AttendanceRecord(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=self.hall.id,
+            subject_id=second_subject.id,
+            exam_session_id=second_session,
+            exam_type_id=self.exam_type.id,
+            status='late',
+            note='Waqti dambe ayuu yimid',
+            marked_by_id=self.user.id,
+        )
+        legacy_record = AttendanceRecord(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=None,
+            subject_id=self.subject.id,
+            exam_type_id=self.exam_type.id,
+            status='excused',
+            note='Xog hore',
+        )
+        other_exam_record = AttendanceRecord(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=self.hall.id,
+            subject_id=self.subject.id,
+            exam_type_id=other_exam_type.id,
+            status='present',
+        )
+        other_student_record = AttendanceRecord(
+            student_id=self.student2.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=self.hall.id,
+            subject_id=self.subject.id,
+            exam_type_id=self.exam_type.id,
+            status='sick',
+        )
+        matching_target_record = AttendanceRecord(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=target_hall.id,
+            subject_id=self.subject.id,
+            exam_session_id=first_session,
+            exam_type_id=self.exam_type.id,
+            status='absent',
+            note='Xogtii hall-ka cusub',
+        )
+        archived_record = AttendanceRecord(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=archived_hall.id,
+            subject_id=self.subject.id,
+            exam_session_id=first_session,
+            exam_type_id=self.exam_type.id,
+            status='absent',
+            note='Xogtii hall hore',
+        )
+        db.session.add_all([
+            first_record,
+            second_record,
+            legacy_record,
+            other_exam_record,
+            other_student_record,
+            matching_target_record,
+            archived_record,
+        ])
+        db.session.commit()
+
+        response = self.client.post('/admin/attendance/api/hall-roster/transfer', json={
+            'to_exam_hall_id': target_hall.id,
+            'student_id': self.student1.id,
+        })
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200, payload)
+        self.assertTrue(payload['success'], payload)
+        self.assertEqual(payload['attendance_records_moved'], 2)
+        self.assertEqual(payload['attendance_records_merged'], 2)
+        self.assertIsNone(ExamHallEnrollment.query.filter_by(
+            exam_hall_id=self.hall.id,
+            student_id=self.student1.id,
+        ).first())
+        self.assertIsNone(ExamHallEnrollment.query.filter_by(
+            exam_hall_id=archived_hall.id,
+            student_id=self.student1.id,
+        ).first())
+        self.assertIsNotNone(ExamHallEnrollment.query.filter_by(
+            exam_hall_id=target_hall.id,
+            student_id=self.student1.id,
+        ).first())
+
+        moved = AttendanceRecord.query.filter_by(
+            student_id=self.student1.id,
+            exam_hall_id=target_hall.id,
+        ).order_by(AttendanceRecord.id).all()
+        self.assertEqual({record.id for record in moved}, {
+            matching_target_record.id,
+            second_record.id,
+            legacy_record.id,
+        })
+        self.assertEqual({record.status for record in moved}, {'absent', 'late', 'excused'})
+        self.assertIsNone(db.session.get(AttendanceRecord, first_record.id))
+        self.assertEqual(
+            matching_target_record.note,
+            'Xogtii hall-ka cusub | Waxaa la xaqiijiyey | Xogtii hall hore',
+        )
+        self.assertEqual(matching_target_record.marked_by_id, self.user.id)
+        self.assertEqual(other_exam_record.exam_hall_id, self.hall.id)
+        self.assertEqual(other_student_record.exam_hall_id, self.hall.id)
+
+        data = self.client.get(
+            f'/admin/attendance/api/attendance-data?academic_year_id={self.year.id}'
+            f'&exam_type_id={self.exam_type.id}&exam_hall_id={target_hall.id}'
+            f'&exam_session_id={first_session}'
+        ).get_json()
+        student_row = next(
+            student
+            for group in data['groups']
+            for student in group['students']
+            if student['id'] == self.student1.id
+        )
+        self.assertEqual(student_row['slots'][0]['status'], 'absent')
+
+        update = self.client.post('/admin/attendance/api/mark-status', json={
+            'student_id': self.student1.id,
+            'exam_hall_id': target_hall.id,
+            'subject_id': self.subject.id,
+            'academic_year_id': self.year.id,
+            'exam_type_id': self.exam_type.id,
+            'exam_session_id': first_session,
+            'status': 'present',
+        }).get_json()
+        self.assertTrue(update['success'], update)
+        self.assertEqual(matching_target_record.status, 'present')
+        self.assertEqual(matching_target_record.exam_hall_id, target_hall.id)
+
+    def test_hall_transfer_conflict_rolls_back_without_losing_attendance(self):
+        self.login()
+        target_hall = ExamHall(
+            name=f'Form One Hall B {self.student1.id}',
+            code=f'HALL_F1_B_{self.student1.id}',
+            exam_type_id=self.exam_type.id,
+            academic_class_id=self.class_form1.id,
+            is_active=True,
+        )
+        db.session.add(target_hall)
+        db.session.add(ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student1.id))
+        db.session.flush()
+        session_id = self._create_schedule_session(
+            [{'level_id': self.level_sec.id, 'subject_id': self.subject.id}]
+        )
+        source_record = AttendanceRecord(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=self.hall.id,
+            subject_id=self.subject.id,
+            exam_session_id=session_id,
+            exam_type_id=self.exam_type.id,
+            status='absent',
+        )
+        target_record = AttendanceRecord(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=target_hall.id,
+            subject_id=self.subject.id,
+            exam_session_id=session_id,
+            exam_type_id=self.exam_type.id,
+            status='present',
+        )
+        db.session.add_all([source_record, target_record])
+        db.session.commit()
+
+        response = self.client.post('/admin/attendance/api/hall-roster/transfer', json={
+            'to_exam_hall_id': target_hall.id,
+            'student_id': self.student1.id,
+        })
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(payload['code'], 'ATTENDANCE_CONFLICT')
+        self.assertEqual(source_record.exam_hall_id, self.hall.id)
+        self.assertEqual(target_record.exam_hall_id, target_hall.id)
+        self.assertEqual(source_record.status, 'absent')
+        self.assertEqual(target_record.status, 'present')
+        self.assertIsNotNone(ExamHallEnrollment.query.filter_by(
+            exam_hall_id=self.hall.id,
+            student_id=self.student1.id,
+        ).first())
+        self.assertIsNone(ExamHallEnrollment.query.filter_by(
+            exam_hall_id=target_hall.id,
+            student_id=self.student1.id,
+        ).first())
+
     def test_a_hall_roster_filters_students_by_level_and_class(self):
         """(a) Hall roster only offers students matching the selected level/class filter, from real class records."""
         self.login()
@@ -631,6 +873,10 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn('/admin/attendance/api/attendance-context?', attendance_tmpl)
         self.assertIn('noLoader:true', attendance_tmpl)
         self.assertIn('roster-loading', attendance_tmpl)
+        self.assertIn("label:'Joogid'", attendance_tmpl)
+        self.assertIn('Calaamadi dhammaan: Joogid', attendance_tmpl)
+        self.assertIn('loo calaamadeeyey Joogid.', attendance_tmpl)
+        self.assertNotIn('Joogto', attendance_tmpl)
         print("[PASS] Test (j1): Attendance filter restoration and mobile visibility verified.")
 
     def test_attendance_context_loads_filters_and_large_roster_with_bounded_queries(self):
@@ -715,7 +961,7 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertLess(query_count, 45, f'Attendance bootstrap made {query_count} SELECT queries')
 
     def test_k_all_six_attendance_statuses_and_switching(self):
-        """All six attendance statuses (Joogto, Maqan, La fasaxay, Cudur daar, Xaalad degdeg, Soo daahid) work and switch cleanly."""
+        """All six attendance statuses (Joogid, Maqan, La fasaxay, Cudur daar, Xaalad degdeg, Soo daahid) work and switch cleanly."""
         self.login()
 
         # Enroll student1 in hall
@@ -786,7 +1032,7 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         db.session.add_all([legacy_rec1, legacy_rec2])
         db.session.commit()
 
-        # Test single status click (Joogto / present) on student1
+        # Test single status click (Joogid / present) on student1
         res1 = self.client.post('/admin/attendance/api/mark-status', json={
             'student_id': self.student1.id,
             'exam_hall_id': self.hall.id,
@@ -799,7 +1045,7 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertTrue(data1['success'], f"Single status mark failed with error: {data1.get('error')}")
         self.assertEqual(data1['status'], 'present')
 
-        # Test bulk action ("Calaamadi dhammaan: Joogto")
+        # Test bulk action ("Calaamadi dhammaan: Joogid")
         res_bulk = self.client.post('/admin/attendance/api/mark-bulk', json={
             'exam_hall_id': self.hall.id,
             'subject_id': self.subject.id,

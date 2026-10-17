@@ -2634,7 +2634,7 @@ def build_analytics_results_report_data(academic_year, exam):
         .all()
     )
     # Attendance is the source of truth for an examination sitting.  A student
-    # counts only after Joogto/present or Daahid/late was recorded.  Older
+    # counts only after Joogid/present or Daahid/late was recorded.  Older
     # records can contain localized labels, which ``counts_as_exam_sitting``
     # normalizes without rewriting historical data.
     latest_attendance = {}

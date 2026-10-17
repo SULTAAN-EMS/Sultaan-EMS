@@ -811,7 +811,10 @@ document.getElementById('btnConfirmTransferHall').addEventListener('click',async
   try{
     const data=await rosterPost('/admin/attendance/api/hall-roster/transfer',{to_exam_hall_id:hall.id,student_id:student.id});
     closeTransferHallModal();
-    showToast(data.message||`Ardayga si sax ah ayaa loogu wareejiyey ${hall.name}.`);
+    const moved=data.attendance_records_moved||0;
+    const merged=data.attendance_records_merged||0;
+    const attendanceNote=(moved||merged)?` Xaadirin hore: ${moved} waa la wareejiyey${merged?`, ${merged} waa la mideeyey`:''}.`:'';
+    showToast((data.message||`Ardayga si sax ah ayaa loogu wareejiyey ${hall.name}.`)+attendanceNote);
     updateRosterAfterAction(student,true);
   }catch(error){
     showToast(error.message,true);

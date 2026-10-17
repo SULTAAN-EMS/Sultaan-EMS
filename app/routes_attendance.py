@@ -33,7 +33,7 @@ from .enrollment_service import (
 attendance_bp = Blueprint("admin_attendance", __name__)
 
 ATTENDANCE_STATUSES = [
-    {"key": "present", "label": "Joogto", "cls": "o-present", "icon": "fa-circle-check"},
+    {"key": "present", "label": "Joogid", "cls": "o-present", "icon": "fa-circle-check"},
     {"key": "absent", "label": "Maqan", "cls": "o-absent", "icon": "fa-circle-xmark"},
     {"key": "excused", "label": "La fasaxay", "cls": "o-excused", "icon": "fa-file-circle-check"},
     {"key": "sick", "label": "Cudur daar", "cls": "o-sick", "icon": "fa-notes-medical"},
@@ -1707,7 +1707,7 @@ def api_transfer_student():
         return jsonify({"success": False, "error": "Invalid parameters"}), 400
 
     target_hall = db.session.get(ExamHall, target_hall_id)
-    student = db.session.get(Student, student_id)
+    student = Student.query.filter_by(id=student_id).with_for_update().first()
     exam_context = hall_exam_context(target_hall) if target_hall else None
     if not target_hall or not target_hall.is_active or not exam_context or not student or not student.is_active:
         return jsonify({"success": False, "error": "Hall-ka ama ardayga lama heli karo."}), 404
@@ -1722,36 +1722,163 @@ def api_transfer_student():
         exam_hall_id=target_hall_id,
         student_id=student_id,
     ).first()
-    if existing_target:
-        return jsonify({"success": True, "message": "Ardaygu hore ayuu hall-kan ugu qornaa."})
 
     previous_assignments = (
         ExamHallEnrollment.query
         .join(ExamHall, ExamHallEnrollment.exam_hall_id == ExamHall.id)
         .filter(
             ExamHallEnrollment.student_id == student_id,
-            ExamHall.is_active.is_(True),
             or_(*same_exam_hall_filters(target_hall)),
+            ExamHall.id != target_hall_id,
         )
         .all()
     )
+    if existing_target and not previous_assignments:
+        return jsonify({"success": True, "message": "Ardaygu hore ayuu hall-kan ugu qornaa."})
+
     previous_hall_names = [en.exam_hall.name for en in previous_assignments if en.exam_hall]
+    previous_hall_ids = [en.exam_hall_id for en in previous_assignments]
+    year_id = exam_context.academic_year_id
+
+    # Restrict migration to this exam's sessions and legacy rows. A hall can
+    # contain stale records from another exam, which must remain untouched.
+    legacy_exam_type = (
+        exam_context
+        if isinstance(exam_context, ExamType)
+        else ExamType.query.filter_by(
+            academic_year_id=year_id,
+            name=exam_context.name,
+        ).first()
+    )
+    session_query = ExamSession.query.filter_by(academic_year_id=year_id)
+    if isinstance(exam_context, Exam):
+        session_filters = [ExamSession.exam_id == exam_context.id]
+        if legacy_exam_type:
+            session_filters.append(ExamSession.exam_type_id == legacy_exam_type.id)
+        session_query = session_query.filter(or_(*session_filters))
+    elif legacy_exam_type:
+        session_query = session_query.filter_by(exam_type_id=legacy_exam_type.id)
+    scoped_session_ids = [session.id for session in session_query.all()]
+
+    valid_session_scope = [AttendanceRecord.exam_session_id.is_(None)]
+    if scoped_session_ids:
+        valid_session_scope.append(AttendanceRecord.exam_session_id.in_(scoped_session_ids))
+
+    attendance_scope = []
+    if isinstance(exam_context, Exam):
+        attendance_scope.append(and_(
+            AttendanceRecord.exam_id == exam_context.id,
+            or_(
+                AttendanceRecord.exam_type_id.is_(None),
+                AttendanceRecord.exam_type_id == (legacy_exam_type.id if legacy_exam_type else None),
+            ),
+            or_(*valid_session_scope),
+        ))
+    if legacy_exam_type:
+        attendance_scope.append(and_(
+            AttendanceRecord.exam_id.is_(None),
+            AttendanceRecord.exam_type_id == legacy_exam_type.id,
+            or_(*valid_session_scope),
+        ))
+    if scoped_session_ids:
+        attendance_scope.append(and_(
+            AttendanceRecord.exam_id.is_(None),
+            AttendanceRecord.exam_type_id.is_(None),
+            AttendanceRecord.exam_session_id.in_(scoped_session_ids),
+        ))
+    attendance_scope.append(and_(
+        AttendanceRecord.exam_id.is_(None),
+        AttendanceRecord.exam_type_id.is_(None),
+        AttendanceRecord.exam_session_id.is_(None),
+    ))
+
+    source_records = []
+    target_records = []
+    if previous_hall_ids or not existing_target:
+        scoped_records = AttendanceRecord.query.filter(
+            AttendanceRecord.student_id == student_id,
+            AttendanceRecord.academic_year_id == year_id,
+            or_(*attendance_scope),
+        )
+        source_hall_scope = [AttendanceRecord.exam_hall_id.is_(None)]
+        if previous_hall_ids:
+            source_hall_scope.append(AttendanceRecord.exam_hall_id.in_(previous_hall_ids))
+        source_records = scoped_records.filter(
+            or_(*source_hall_scope)
+        ).order_by(AttendanceRecord.id).all()
+        target_records = scoped_records.filter_by(exam_hall_id=target_hall_id).all()
+
+    target_by_slot = {}
+    for record in target_records:
+        target_by_slot.setdefault((record.subject_id, record.exam_session_id), record)
+
+    merges = []
+    for record in source_records:
+        target_record = target_by_slot.get((record.subject_id, record.exam_session_id))
+        if not target_record:
+            continue
+        if normalize_attendance_status(record.status) != normalize_attendance_status(target_record.status):
+            return jsonify({
+                "success": False,
+                "code": "ATTENDANCE_CONFLICT",
+                "error": (
+                    "Xaadirinta ardaygan ee labada hall way kala duwan tahay. "
+                    "Wareejinta lama samayn si aan xogta midna u lumin. "
+                    "Fadlan marka hore sax xaadirinta is-khilaafsan."
+                ),
+                "subject": record.subject.name if record.subject else None,
+            }), 409
+        merges.append((record, target_record))
 
     try:
+        for source_record, target_record in merges:
+            notes = [note.strip() for note in (target_record.note, source_record.note) if note and note.strip()]
+            target_record.note = " | ".join(dict.fromkeys(notes))[:255] or None
+            if source_record.recorded_at and (
+                not target_record.recorded_at or source_record.recorded_at > target_record.recorded_at
+            ):
+                target_record.recorded_at = source_record.recorded_at
+                target_record.attendance_date = source_record.attendance_date
+            target_record.marked_by_id = target_record.marked_by_id or source_record.marked_by_id
+            target_record.class_id = target_record.class_id or source_record.class_id
+            target_record.academic_level_id = target_record.academic_level_id or source_record.academic_level_id
+            target_record.academic_class_id = target_record.academic_class_id or source_record.academic_class_id
+            target_record.academic_section_id = target_record.academic_section_id or source_record.academic_section_id
+            target_record.exam_id = target_record.exam_id or source_record.exam_id
+            target_record.exam_type_id = target_record.exam_type_id or source_record.exam_type_id
+            target_record.exam_session_id = target_record.exam_session_id or source_record.exam_session_id
+            db.session.delete(source_record)
+
+        merged_ids = {source.id for source, _ in merges}
+        for record in source_records:
+            if record.id not in merged_ids:
+                record.exam_hall_id = target_hall_id
         for enrollment in previous_assignments:
             db.session.delete(enrollment)
-        db.session.add(ExamHallEnrollment(exam_hall_id=target_hall_id, student_id=student_id))
+        if not existing_target:
+            db.session.add(ExamHallEnrollment(exam_hall_id=target_hall_id, student_id=student_id))
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
         return jsonify({"success": False, "error": "Transfer-ka lama dhammeystiri karin. Fadlan mar kale isku day."}), 409
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Failed migrating attendance while transferring student %s", student_id)
+        return jsonify({"success": False, "error": "Wareejinta iyo xaadirinta lama wada kaydin. Fadlan mar kale isku day."}), 500
 
-    audit("Hall Roster", f"Transferred {student.student_code} from {', '.join(previous_hall_names) or 'no hall'} to '{target_hall.name}'")
+    audit(
+        "Hall Roster",
+        f"Transferred {student.student_code} from {', '.join(previous_hall_names) or 'no hall'} "
+        f"to '{target_hall.name}'; moved {len(source_records) - len(merges)} attendance rows, "
+        f"merged {len(merges)} duplicate rows",
+    )
     return jsonify({
         "success": True,
         "student_id": student_id,
         "from_halls": previous_hall_names,
         "to_hall": {"id": target_hall.id, "name": target_hall.name},
+        "attendance_records_moved": len(source_records) - len(merges),
+        "attendance_records_merged": len(merges),
         "message": f"Ardayga si sax ah ayaa loogu wareejiyey {target_hall.name}.",
     })
 
