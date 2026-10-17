@@ -411,7 +411,7 @@ def subjects_by_session_level(session, allowed_pairs=None):
             ExamSessionSubject.exam_session_id == session.id,
             Subject.is_active.is_(True),
         )
-        .order_by(ExamSessionSubject.academic_level_id, Subject.sort_order, Subject.name)
+        .order_by(ExamSessionSubject.academic_level_id, ExamSessionSubject.id)
         .all()
     )
     grouped = {}
@@ -454,8 +454,14 @@ def subjects_by_session_level(session, allowed_pairs=None):
 def session_attendance_payload(hall, session, allowed_pairs=None):
     """Build the timetable-driven attendance roster grouped by student level/class."""
     subjects_by_level = subjects_by_session_level(session, allowed_pairs)
-    enrollment_rows = ExamHallEnrollment.query.filter_by(exam_hall_id=hall.id).all()
+    enrollment_rows = (
+        ExamHallEnrollment.query
+        .filter_by(exam_hall_id=hall.id)
+        .order_by(ExamHallEnrollment.created_at, ExamHallEnrollment.id)
+        .all()
+    )
     student_ids = [row.student_id for row in enrollment_rows]
+    student_order = {student_id: index for index, student_id in enumerate(student_ids)}
     students = (
         student_enrollment_scope_query(session.academic_year_id)
         .filter(Student.id.in_(student_ids))
@@ -473,6 +479,7 @@ def session_attendance_payload(hall, session, allowed_pairs=None):
     }
     tallies = {status["key"]: 0 for status in ATTENDANCE_STATUSES}
     groups = {}
+    group_order = {}
 
     for student in students:
         placement = enrollment_placement_for_student(student, session.academic_year_id) or {}
@@ -491,6 +498,8 @@ def session_attendance_payload(hall, session, allowed_pairs=None):
             ],
             "students": [],
         })
+        assigned_order = student_order.get(student.id, len(student_order))
+        group_order[key] = min(group_order.get(key, assigned_order), assigned_order)
         slots = []
         for subject in subjects_by_level.get(level_id, []):
             current_status = status_map.get((student.id, subject.id))
@@ -514,12 +523,13 @@ def session_attendance_payload(hall, session, allowed_pairs=None):
         })
 
     payload_groups = []
-    for group in groups.values():
-        group["students"].sort(key=lambda student: (student["full_name"] or "").lower())
+    for key, group in groups.items():
+        group["students"].sort(key=lambda student: student_order.get(student["id"], len(student_order)))
         group["student_count"] = len(group["students"])
         group["subject_count"] = len(group["subjects"])
-        payload_groups.append(group)
-    payload_groups.sort(key=lambda item: (item["level_name"].lower(), item["class_name"].lower()))
+        payload_groups.append((group_order[key], group))
+    payload_groups.sort(key=lambda item: item[0])
+    payload_groups = [group for _, group in payload_groups]
     return payload_groups, tallies
 
 
@@ -1364,30 +1374,40 @@ def api_hall_roster_data():
         enrollments = []
         assigned_student_ids = None
     try:
-        scope_query = attendance_student_scope_query(
+        pool_scope_query = attendance_student_scope_query(
             exam_context.academic_year_id,
             exam=exam_context,
             level_id=level_id,
             class_id=class_id,
         )
+        assigned_scope_query = (
+            attendance_student_scope_query(exam_context.academic_year_id, exam=exam_context)
+            if include_assigned and assigned_student_ids else None
+        )
     except EnrollmentValidationError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
 
-    scope_query = scope_query.options(
+    pool_scope_query = pool_scope_query.options(
         joinedload(Student.academic_class),
         joinedload(Student.school_class),
         joinedload(Student.academic_section),
     )
+    if assigned_scope_query is not None:
+        assigned_scope_query = assigned_scope_query.options(
+            joinedload(Student.academic_class),
+            joinedload(Student.school_class),
+            joinedload(Student.academic_section),
+        )
 
     assigned_students_raw = {}
     if include_assigned and assigned_student_ids:
         assigned_students_raw = {
             student.id: student
-            for student in scope_query.filter(Student.id.in_(assigned_student_ids)).all()
+            for student in assigned_scope_query.filter(Student.id.in_(assigned_student_ids)).all()
         }
     
     # Available pool: system students matching level/class filters NOT YET assigned
-    pool_query = scope_query.filter(Student.is_active.is_(True))
+    pool_query = pool_scope_query.filter(Student.is_active.is_(True))
 
     pool_query = pool_query.filter(
         ~Student.id.in_(db.session.query(ExamHallEnrollment.student_id).filter_by(exam_hall_id=exam_hall_id))
@@ -1702,16 +1722,26 @@ def api_attendance_data():
         subject_id = subjects[0].id if subjects else None
 
     # Fetch enrolled students
-    enrollments = ExamHallEnrollment.query.filter_by(exam_hall_id=exam_hall_id).all()
+    enrollments = (
+        ExamHallEnrollment.query
+        .filter_by(exam_hall_id=exam_hall_id)
+        .order_by(ExamHallEnrollment.created_at, ExamHallEnrollment.id)
+        .all()
+    )
     enrolled_student_ids = [e.student_id for e in enrollments]
 
-    students_raw = (
+    scoped_students = (
         student_enrollment_scope_query(year_id)
         .filter(Student.id.in_(enrolled_student_ids))
-        .order_by(Student.full_name)
         .all()
         if enrolled_student_ids else []
     )
+    scoped_students_by_id = {student.id: student for student in scoped_students}
+    students_raw = [
+        scoped_students_by_id[student_id]
+        for student_id in enrolled_student_ids
+        if student_id in scoped_students_by_id
+    ]
 
     # Fetch recorded attendance for this hall & subject
     records = AttendanceRecord.query.filter_by(exam_hall_id=exam_hall_id, subject_id=subject_id).order_by(AttendanceRecord.id.asc()).all() if subject_id else []

@@ -205,6 +205,8 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Diiwaan-gelinta Hall Exam', response.data)
         self.assertIn(b'selExamType', response.data)
+        self.assertIn(b'rosterLoadingView', response.data)
+        self.assertIn(b'noLoader:true', response.data)
 
     def test_a_hall_roster_filters_students_by_level_and_class(self):
         """(a) Hall roster only offers students matching the selected level/class filter, from real class records."""
@@ -231,6 +233,22 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(self.student3_form2.id, available_ids2)
         self.assertNotIn(self.student1.id, available_ids2)
         print("[PASS] Test (a): Hall roster filtering by level/class verified.")
+
+    def test_hall_roster_pool_filters_do_not_hide_students_already_assigned_to_hall(self):
+        self.login()
+        db.session.add(ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student3_form2.id))
+        db.session.commit()
+
+        response = self.client.get(
+            f'/admin/attendance/api/hall-roster-data?exam_hall_id={self.hall.id}'
+            f'&academic_level_id={self.level_sec.id}&academic_class_id={self.class_form1.id}'
+        )
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload['success'])
+        self.assertEqual([student['id'] for student in payload['available_students']], [self.student1.id, self.student2.id])
+        self.assertEqual([student['id'] for student in payload['assigned_students']], [self.student3_form2.id])
 
     def test_hall_roster_placement_queries_do_not_grow_per_student(self):
         """Roster placement resolution stays batched for a full class-sized pool."""
@@ -593,6 +611,8 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn('letterFilter', attendance_tmpl)
         self.assertIn('status-icon', attendance_tmpl)
         self.assertIn('--card-accent:#2563EB', attendance_tmpl)
+        self.assertIn('.att-scope .sname{', attendance_tmpl)
+        self.assertIn('white-space:normal;overflow:visible;overflow-wrap:anywhere', attendance_tmpl)
         print("[PASS] Test (j): Round 3 UI polish markers verified.")
 
     def test_j1_attendance_restores_timetable_filters_and_mobile_session_field_is_visible(self):
@@ -816,6 +836,84 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertEqual(student_slots[self.student1.id], {self.subject.id})
         self.assertEqual(student_slots[primary_student.id], {primary_subject.id})
         print("[PASS] Test (m): Timetable session persistence + strictly level-specific roster verified.")
+
+    def test_attendance_preserves_hall_and_subject_selection_order(self):
+        """Attendance keeps the order students entered a hall and subjects were selected in a sitting."""
+        self.login()
+        first_subject = Subject(
+            name='Tarbiyo Selection Order Test',
+            academic_level_id=self.level_sec.id,
+            sort_order=2,
+        )
+        second_subject = Subject(
+            name='Carabi Selection Order Test',
+            academic_level_id=self.level_sec.id,
+            sort_order=1,
+        )
+        db.session.add_all([first_subject, second_subject])
+        db.session.flush()
+        db.session.add_all([
+            AcademicYearSubject(
+                academic_year_id=self.year.id,
+                academic_year_level_id=self.year_scope_level.id,
+                legacy_subject_id=first_subject.id,
+                name=first_subject.name,
+                subject_kind='exam',
+                is_active=True,
+                sort_order=2,
+            ),
+            AcademicYearSubject(
+                academic_year_id=self.year.id,
+                academic_year_level_id=self.year_scope_level.id,
+                legacy_subject_id=second_subject.id,
+                name=second_subject.name,
+                subject_kind='exam',
+                is_active=True,
+                sort_order=1,
+            ),
+        ])
+        self.year_scope_class_form2.sort_order = 1
+        self.year_scope_class.sort_order = 2
+        db.session.add_all([
+            ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student3_form2.id),
+            ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student2.id),
+            ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student1.id),
+        ])
+        db.session.commit()
+
+        session_id = self._create_schedule_session([
+            {'level_id': self.level_sec.id, 'subject_id': first_subject.id},
+            {'level_id': self.level_sec.id, 'subject_id': second_subject.id},
+        ])
+        response = self.client.get(
+            f'/admin/attendance/api/attendance-data?academic_year_id={self.year.id}'
+            f'&exam_type_id={self.exam_type.id}&exam_hall_id={self.hall.id}'
+            f'&exam_session_id={session_id}'
+        )
+        payload = response.get_json()
+        self.assertTrue(payload['success'], payload)
+        self.assertEqual(
+            [group['class_name'] for group in payload['groups']],
+            [self.class_form2.name, self.class_form1.name],
+        )
+        form_one_group = next(group for group in payload['groups'] if group['class_name'] == self.class_form1.name)
+        self.assertEqual(
+            [subject['id'] for subject in form_one_group['subjects']],
+            [first_subject.id, second_subject.id],
+        )
+        self.assertEqual(
+            [student['id'] for student in form_one_group['students']],
+            [self.student2.id, self.student1.id],
+        )
+        legacy_payload = self.client.get(
+            f'/admin/attendance/api/attendance-data?academic_year_id={self.year.id}'
+            f'&exam_type_id={self.exam_type.id}&exam_hall_id={self.hall.id}'
+            f'&subject_id={self.subject.id}'
+        ).get_json()
+        self.assertEqual(
+            [student['id'] for student in legacy_payload['students']],
+            [self.student3_form2.id, self.student2.id, self.student1.id],
+        )
 
     def test_m1_year_enrollment_controls_session_visibility_over_legacy_student_level(self):
         """A current-year enrollment must override a stale legacy student level when loading sessions."""
