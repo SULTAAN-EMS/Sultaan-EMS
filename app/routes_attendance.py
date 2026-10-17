@@ -25,6 +25,7 @@ from .enrollment_service import (
     EnrollmentValidationError,
     enrollment_placement_for_student,
     get_enrollment_for_student_year,
+    resolve_student_placements,
     student_enrollment_legacy_scope_query,
     student_enrollment_scope_query,
 )
@@ -1224,18 +1225,6 @@ def api_hall_roster_data():
         .all()
     )
     assigned_student_ids = [e.student_id for e in enrollments]
-    same_context_enrollments = (
-        ExamHallEnrollment.query
-        .join(ExamHall, ExamHallEnrollment.exam_hall_id == ExamHall.id)
-        .filter(
-            ExamHallEnrollment.student_id.isnot(None),
-            ExamHall.is_active.is_(True),
-            or_(*same_exam_hall_filters(hall)),
-        )
-        .all()
-    )
-    assignment_map = {en.student_id: en.exam_hall for en in same_context_enrollments if en.exam_hall_id != exam_hall_id}
-
     try:
         scope_query = attendance_student_scope_query(
             exam_context.academic_year_id,
@@ -1246,6 +1235,12 @@ def api_hall_roster_data():
     except EnrollmentValidationError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
 
+    scope_query = scope_query.options(
+        joinedload(Student.academic_class),
+        joinedload(Student.school_class),
+        joinedload(Student.academic_section),
+    )
+
     assigned_students_raw = {}
     if assigned_student_ids:
         assigned_students_raw = {
@@ -1253,30 +1248,6 @@ def api_hall_roster_data():
             for student in scope_query.filter(Student.id.in_(assigned_student_ids)).all()
         }
     
-    # Filter assigned list by search query
-    assigned_list = []
-    for enrollment in enrollments:
-        s = assigned_students_raw.get(enrollment.student_id)
-        if not s:
-            continue
-        if q and q not in s.student_code.lower() and q not in s.full_name.lower():
-            continue
-        placement = enrollment_placement_for_student(s, exam_context.academic_year_id)
-        cls_name = (placement or {}).get("class_name") or (
-            s.academic_class.name if s.academic_class else (s.school_class.name if s.school_class else (s.level or ""))
-        )
-        assigned_list.append({
-            "id": s.id,
-            "student_code": s.student_code,
-            "full_name": s.full_name,
-            "class_name": cls_name,
-            "academic_class_id": (placement or {}).get("academic_class_id") or s.academic_class_id,
-            "assigned_hall_id": hall.id,
-            "assigned_hall_name": hall.name,
-            "is_current_hall": True,
-            "photo_url": stored_photo_url(s.photo_path),
-        })
-
     # Available pool: system students matching level/class filters NOT YET assigned
     pool_query = scope_query.filter(Student.is_active.is_(True))
 
@@ -1288,17 +1259,68 @@ def api_hall_roster_data():
 
     available_students_raw = pool_query.order_by(Student.full_name).limit(300).all()
 
+    # Placement resolution is batched: resolving each row independently adds
+    # several hierarchy queries per student and makes large classes very slow.
+    placements = resolve_student_placements(
+        (student, exam_context.academic_year_id)
+        for student in [*assigned_students_raw.values(), *available_students_raw]
+    )
+
+    assigned_list = []
+    for enrollment in enrollments:
+        s = assigned_students_raw.get(enrollment.student_id)
+        if not s:
+            continue
+        if q and q not in s.student_code.lower() and q not in s.full_name.lower():
+            continue
+        placement = placements.get((s.id, exam_context.academic_year_id)) or {}
+        cls_name = placement.get("class_name") or (
+            s.academic_class.name if s.academic_class else (s.school_class.name if s.school_class else (s.level or ""))
+        )
+        assigned_list.append({
+            "id": s.id,
+            "student_code": s.student_code,
+            "full_name": s.full_name,
+            "class_name": cls_name,
+            "academic_class_id": placement.get("academic_class_id") or s.academic_class_id,
+            "assigned_hall_id": hall.id,
+            "assigned_hall_name": hall.name,
+            "is_current_hall": True,
+            "photo_url": stored_photo_url(s.photo_path),
+        })
+
+    available_ids = [student.id for student in available_students_raw]
+    assignment_map = {}
+    if available_ids:
+        same_context_enrollments = (
+            ExamHallEnrollment.query
+            .join(ExamHall, ExamHallEnrollment.exam_hall_id == ExamHall.id)
+            .options(joinedload(ExamHallEnrollment.exam_hall))
+            .filter(
+                ExamHallEnrollment.student_id.in_(available_ids),
+                ExamHall.is_active.is_(True),
+                or_(*same_exam_hall_filters(hall)),
+                ExamHallEnrollment.exam_hall_id != exam_hall_id,
+            )
+            .all()
+        )
+        assignment_map = {
+            enrollment.student_id: enrollment.exam_hall
+            for enrollment in same_context_enrollments
+            if enrollment.exam_hall
+        }
+
     available_list = []
     for s in available_students_raw:
-        placement = enrollment_placement_for_student(s, exam_context.academic_year_id)
-        cls_name = (placement or {}).get("class_name") or (s.academic_class.name if s.academic_class else (s.school_class.name if s.school_class else (s.level or "")))
+        placement = placements.get((s.id, exam_context.academic_year_id)) or {}
+        cls_name = placement.get("class_name") or (s.academic_class.name if s.academic_class else (s.school_class.name if s.school_class else (s.level or "")))
         assigned_hall = assignment_map.get(s.id)
         available_list.append({
             "id": s.id,
             "student_code": s.student_code,
             "full_name": s.full_name,
             "class_name": cls_name,
-            "academic_class_id": (placement or {}).get("academic_class_id") or s.academic_class_id,
+            "academic_class_id": placement.get("academic_class_id") or s.academic_class_id,
             "assigned_hall_id": assigned_hall.id if assigned_hall else None,
             "assigned_hall_name": assigned_hall.name if assigned_hall else "",
             "is_current_hall": False,

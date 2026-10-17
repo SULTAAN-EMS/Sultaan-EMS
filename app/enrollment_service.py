@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import and_, exists, or_
+from sqlalchemy.orm import joinedload
 
 from . import db
 from .models import (
@@ -398,6 +399,189 @@ def resolve_student_academic_context(student, academic_year_id):
 def enrollment_placement_for_student(student, academic_year_id):
     """Return the selected-year placement through the centralized resolver."""
     return resolve_student_academic_context(student, academic_year_id)
+
+
+def resolve_student_placements(student_year_pairs):
+    """Resolve placements for many students with a bounded number of queries."""
+    pairs = {}
+    for student, raw_year_id in student_year_pairs:
+        try:
+            year_id = int(raw_year_id)
+        except (TypeError, ValueError):
+            continue
+        if student and year_id > 0:
+            pairs[(student.id, year_id)] = student
+    if not pairs:
+        return {}
+
+    student_ids = {student_id for student_id, _ in pairs}
+    year_ids = {year_id for _, year_id in pairs}
+    students = {
+        student.id: student
+        for student in Student.query.options(
+            joinedload(Student.academic_class),
+            joinedload(Student.school_class),
+            joinedload(Student.academic_section),
+        ).filter(Student.id.in_(student_ids)).all()
+    }
+    enrollments = StudentEnrollment.query.options(
+        joinedload(StudentEnrollment.academic_year_level),
+        joinedload(StudentEnrollment.academic_year_class),
+        joinedload(StudentEnrollment.academic_section),
+    ).filter(
+        StudentEnrollment.student_id.in_(student_ids),
+        StudentEnrollment.academic_year_id.in_(year_ids),
+    ).all()
+    enrollments_by_scope = {
+        (enrollment.student_id, enrollment.academic_year_id): enrollment
+        for enrollment in enrollments
+    }
+    year_levels = AcademicYearLevel.query.filter(
+        AcademicYearLevel.academic_year_id.in_(year_ids)
+    ).all()
+    levels_by_id = {level.id: level for level in year_levels}
+    levels_by_legacy = {}
+    levels_by_name = {}
+    for level in year_levels:
+        if level.legacy_level_id:
+            levels_by_legacy.setdefault((level.academic_year_id, level.legacy_level_id), []).append(level)
+        levels_by_name.setdefault((level.academic_year_id, level.name), []).append(level)
+
+    year_classes = (
+        AcademicYearClass.query
+        .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+        .filter(AcademicYearLevel.academic_year_id.in_(year_ids))
+        .all()
+    )
+    classes_by_id = {year_class.id: year_class for year_class in year_classes}
+    classes_by_level_legacy = {}
+    for year_class in year_classes:
+        if year_class.legacy_class_id:
+            classes_by_level_legacy.setdefault(
+                (year_class.academic_year_level_id, year_class.legacy_class_id), []
+            ).append(year_class)
+
+    placements = {}
+    for (student_id, year_id) in pairs:
+        student = students.get(student_id)
+        if not student:
+            placements[(student_id, year_id)] = {}
+            continue
+
+        enrollment = enrollments_by_scope.get((student_id, year_id))
+        if enrollment:
+            level = levels_by_id.get(enrollment.academic_year_level_id)
+            year_class = classes_by_id.get(enrollment.academic_year_class_id)
+            section = enrollment.academic_section if enrollment.academic_section_id else None
+            valid = bool(
+                level
+                and level.academic_year_id == year_id
+                and year_class
+                and year_class.academic_year_level_id == level.id
+                and (
+                    not enrollment.academic_section_id
+                    or (
+                        section
+                        and year_class.legacy_class_id
+                        and section.academic_class_id == year_class.legacy_class_id
+                    )
+                )
+            )
+            if not valid:
+                placements[(student_id, year_id)] = _unresolved_student_context(
+                    year_id, origin="enrollment", enrollment=enrollment
+                )
+            else:
+                placements[(student_id, year_id)] = {
+                    "source": "enrollment",
+                    "context_status": "enrollment",
+                    "academic_year_id": year_id,
+                    "enrollment": enrollment,
+                    "academic_year_level_id": enrollment.academic_year_level_id,
+                    "academic_year_class_id": enrollment.academic_year_class_id,
+                    "academic_level_id": level.legacy_level_id,
+                    "academic_class_id": year_class.legacy_class_id,
+                    "academic_section_id": enrollment.academic_section_id,
+                    "class_name": year_class.name,
+                    "level_name": level.name,
+                    "section_name": section.name if section else None,
+                }
+            continue
+
+        if student.academic_year_id != year_id:
+            placements[(student_id, year_id)] = {}
+            continue
+
+        legacy_level_id = student.academic_level_id or (
+            student.academic_class.academic_level_id if student.academic_class else None
+        )
+        legacy_class_id = student.academic_class_id or (
+            student.academic_class.id if student.academic_class else None
+        )
+        level_candidates = levels_by_legacy.get((year_id, legacy_level_id), []) if legacy_level_id else []
+        if not level_candidates and student.level:
+            level_candidates = levels_by_name.get((year_id, student.level), [])
+        if len(level_candidates) != 1:
+            placements[(student_id, year_id)] = _unresolved_student_context(
+                year_id,
+                origin="legacy",
+                legacy_level_id=legacy_level_id,
+                legacy_class_id=legacy_class_id,
+                legacy_section_id=student.academic_section_id,
+            )
+            continue
+
+        level = level_candidates[0]
+        class_candidates = (
+            classes_by_level_legacy.get((level.id, legacy_class_id), [])
+            if legacy_class_id else []
+        )
+        if legacy_class_id and len(class_candidates) != 1:
+            placements[(student_id, year_id)] = _unresolved_student_context(
+                year_id,
+                origin="legacy",
+                legacy_level_id=legacy_level_id,
+                legacy_class_id=legacy_class_id,
+                legacy_section_id=student.academic_section_id,
+            )
+            continue
+
+        year_class = class_candidates[0] if class_candidates else None
+        section = student.academic_section if student.academic_section_id else None
+        if student.academic_section_id and (
+            not year_class or not section or year_class.legacy_class_id != section.academic_class_id
+        ):
+            placements[(student_id, year_id)] = _unresolved_student_context(
+                year_id,
+                origin="legacy",
+                legacy_level_id=legacy_level_id,
+                legacy_class_id=legacy_class_id,
+                legacy_section_id=student.academic_section_id,
+            )
+            continue
+
+        placements[(student_id, year_id)] = {
+            "source": "legacy",
+            "context_status": "legacy_compatible",
+            "academic_year_id": year_id,
+            "enrollment": None,
+            "academic_year_level_id": level.id,
+            "academic_year_class_id": year_class.id if year_class else None,
+            "academic_level_id": legacy_level_id,
+            "academic_class_id": legacy_class_id,
+            "academic_section_id": student.academic_section_id,
+            "legacy_academic_level_id": legacy_level_id,
+            "legacy_academic_class_id": legacy_class_id,
+            "legacy_academic_section_id": student.academic_section_id,
+            "class_name": (
+                year_class.name if year_class else
+                student.academic_class.name if student.academic_class else
+                student.school_class.name if student.school_class else None
+            ),
+            "level_name": level.name,
+            "section_name": section.name if section else student.section,
+        }
+    return placements
 
 
 def create_enrollment(

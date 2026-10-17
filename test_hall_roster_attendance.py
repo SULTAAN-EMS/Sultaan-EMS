@@ -15,7 +15,7 @@ from app.models import (
 )
 from app.attendance_rules import scheduled_subject_scope_key
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import MetaData, UniqueConstraint, inspect
+from sqlalchemy import MetaData, UniqueConstraint, event, inspect
 
 
 class AttendanceTestConfig(Config):
@@ -223,6 +223,48 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(self.student3_form2.id, available_ids2)
         self.assertNotIn(self.student1.id, available_ids2)
         print("[PASS] Test (a): Hall roster filtering by level/class verified.")
+
+    def test_hall_roster_placement_queries_do_not_grow_per_student(self):
+        """Roster placement resolution stays batched for a full class-sized pool."""
+        self.login()
+        import uuid
+
+        suffix = str(uuid.uuid4())[:8]
+        db.session.add_all([
+            Student(
+                student_code=f'TIS-PERF-{suffix}-{index}',
+                full_name=f'Performance Student {index:02d}',
+                academic_year_id=self.year.id,
+                academic_level_id=self.level_sec.id,
+                academic_class_id=self.class_form1.id,
+                class_id=self.school_class.id,
+                is_active=True,
+            )
+            for index in range(30)
+        ])
+        db.session.commit()
+
+        query_count = 0
+
+        def count_selects(_conn, _cursor, statement, _parameters, _context, _executemany):
+            nonlocal query_count
+            if statement.lstrip().upper().startswith('SELECT'):
+                query_count += 1
+
+        event.listen(db.engine, 'before_cursor_execute', count_selects)
+        try:
+            response = self.client.get(
+                f'/admin/attendance/api/hall-roster-data?exam_hall_id={self.hall.id}'
+                f'&academic_level_id={self.level_sec.id}&academic_class_id={self.class_form1.id}'
+            )
+        finally:
+            event.remove(db.engine, 'before_cursor_execute', count_selects)
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload['success'])
+        self.assertEqual(len(payload['available_students']), 32)
+        self.assertLessEqual(query_count, 24, f'Roster made {query_count} SELECT queries')
 
     def test_levels_and_classes_are_scoped_to_selected_academic_year(self):
         self.login()
