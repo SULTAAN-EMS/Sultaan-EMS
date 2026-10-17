@@ -4,13 +4,14 @@ import io
 import os
 import sys
 import unittest
+from datetime import date
 
 from openpyxl import Workbook, load_workbook
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from app import create_app, db
-from app.models import AcademicClass, AcademicLevel, AcademicYear, AttendanceRecord, Exam, ExamSession, ExamSessionSubject, GradeScale, Result, Student, Subject, User
+from app.models import AcademicClass, AcademicLevel, AcademicYear, AttendanceRecord, Exam, ExamSession, ExamSessionSubject, ExamType, GradeScale, Result, Student, Subject, User
 from app.routes_advanced_results import build_analytics_results_report_data
 from app.attendance_rules import counts_as_exam_sitting
 from app.import_wizard import process_student_import
@@ -373,6 +374,59 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         self.assertEqual(saved.get_json()["session"]["subject_count"], 1)
         detail = self.client.get(f"/admin/attendance/api/sessions/{session_id}").get_json()
         self.assertEqual(detail["assignments"], [{"level_id": self.level.id, "subject_id": self.subject.id}])
+
+    def test_timetable_scope_does_not_confuse_other_canonical_exam_sharing_legacy_type(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+
+        legacy_type = ExamType(academic_year_id=self.year.id, name=self.exam.name, is_active=True)
+        other_exam = Exam(name="Other canonical exam", academic_year_id=self.year.id, is_active=True)
+        db.session.add_all([legacy_type, other_exam])
+        db.session.flush()
+        other_session = ExamSession(
+            academic_year_id=self.year.id,
+            exam_id=other_exam.id,
+            exam_type_id=legacy_type.id,
+            session_date=date(2030, 6, 18),
+            sitting_label="Other exam sitting",
+        )
+        db.session.add(other_session)
+        db.session.flush()
+        db.session.add(ExamSessionSubject(
+            exam_session_id=other_session.id,
+            academic_level_id=self.level.id,
+            subject_id=self.subject.id,
+            exam_scope_key=f"exam:{self.year.id}:{other_exam.id}",
+        ))
+        db.session.commit()
+
+        created = self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": self.year.id,
+            "exam_id": self.exam.id,
+            "date": "2030-06-19",
+            "time": "11:00",
+            "sitting_label": "Current exam sitting",
+        }).get_json()
+        saved = self.client.put(
+            f"/admin/attendance/api/sessions/{created['session']['id']}/subjects",
+            json={"assignments": [{"level_id": self.level.id, "subject_id": self.subject.id}]},
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_json())
+
+        duplicate_session = self.client.post("/admin/attendance/api/sessions", json={
+            "academic_year_id": self.year.id,
+            "exam_id": self.exam.id,
+            "date": "2030-06-20",
+            "time": "11:00",
+            "sitting_label": "Duplicate current exam sitting",
+        }).get_json()
+        duplicate = self.client.put(
+            f"/admin/attendance/api/sessions/{duplicate_session['session']['id']}/subjects",
+            json={"assignments": [{"level_id": self.level.id, "subject_id": self.subject.id}]},
+        )
+        self.assertEqual(duplicate.status_code, 409)
+        self.assertIn("Current exam sitting", duplicate.get_json()["error"])
 
     def test_timetable_session_update_returns_and_persists_replaced_subjects(self):
         with self.client.session_transaction() as session:

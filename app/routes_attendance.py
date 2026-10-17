@@ -697,10 +697,18 @@ def sessions_in_scope(year_id, exam, legacy_exam_type):
     if exam:
         filters = [ExamSession.exam_id == exam.id]
         if legacy_exam_type:
-            filters.append(ExamSession.exam_type_id == legacy_exam_type.id)
+            # Canonical exam IDs take precedence; only legacy-only sessions
+            # should be pulled in through the matching legacy type.
+            filters.append(and_(
+                ExamSession.exam_id.is_(None),
+                ExamSession.exam_type_id == legacy_exam_type.id,
+            ))
         query = query.filter(or_(*filters))
     elif legacy_exam_type:
-        query = query.filter(ExamSession.exam_type_id == legacy_exam_type.id)
+        query = query.filter(
+            ExamSession.exam_id.is_(None),
+            ExamSession.exam_type_id == legacy_exam_type.id,
+        )
     return (
         query.options(
             selectinload(ExamSession.subject_assignments).joinedload(ExamSessionSubject.subject)
@@ -1084,10 +1092,21 @@ def api_update_session_subjects(session_id):
     remove_orphaned_subject_assignments(session, selected)
     conflicts = conflicting_subject_assignments(session, selected)
     if conflicts:
-        names = ", ".join(sorted({row.subject.name for row in conflicts if row.subject}))
+        details = set()
+        for row in conflicts:
+            if not row.subject:
+                continue
+            owner = row.exam_session
+            location = ""
+            if owner:
+                location = owner.sitting_label or "Fadhi aan magac lahayn"
+                if owner.session_date:
+                    location = f"{location}, {owner.session_date.strftime('%d %b %Y')}"
+            details.add(f"{row.subject.name} ({location})" if location else row.subject.name)
         return jsonify({
             "success": False,
-            "error": f"Maadadan hore ayaa loogu dejiyey fadhi kale oo imtixaankan ah: {names}."
+            "error": "Maadadan hore ayaa loogu dejiyey fadhi kale oo imtixaankan ah: "
+            f"{', '.join(sorted(details)) or 'Fadhi kale'}."
         }), 409
 
     try:
