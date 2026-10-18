@@ -1,12 +1,7 @@
 import secrets
 from datetime import date, datetime
 from io import BytesIO
-import os
 import re
-import shutil
-import subprocess
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from urllib.parse import parse_qs, urlparse
 
 from flask import Blueprint, abort, current_app, flash, get_flashed_messages, jsonify, make_response, redirect, render_template, request, send_file, session, url_for
@@ -29,6 +24,7 @@ from .verification import verification_payload
 from .import_wizard import normalize_student_phone
 from .student_identity import find_student_by_code
 from .seat_mixer_layout import seat_row_placement
+from .pdf_rendering import html_report_to_pdf
 from .routes_invigilator import current_invigilator, invigilator_login_required
 
 public_bp = Blueprint("public", __name__)
@@ -708,58 +704,8 @@ def _behavior_download_filename(student, exam):
 
 
 def _html_report_to_pdf(html_text, base_url):
-    """Render the Reading View HTML without opening a browser print dialog."""
-    chrome_candidates = [
-        os.environ.get("CHROME_BIN"),
-        os.environ.get("CHROMIUM_BIN"),
-        shutil.which("google-chrome"),
-        shutil.which("chromium"),
-        shutil.which("chromium-browser"),
-        shutil.which("msedge"),
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-    ]
-    chrome = next(
-        (candidate for candidate in chrome_candidates if candidate and Path(candidate).exists()),
-        None,
-    )
-    if chrome:
-        with TemporaryDirectory(prefix="sultaan-attendance-pdf-") as temp_dir:
-            html_path = Path(temp_dir) / "report.html"
-            pdf_path = Path(temp_dir) / "report.pdf"
-            html_path.write_text(
-                html_text.replace("<head>", f'<head><base href="{base_url}">', 1),
-                encoding="utf-8",
-            )
-            subprocess.run(
-                [
-                    chrome,
-                    "--headless=new",
-                    "--disable-gpu",
-                    "--no-sandbox",
-                    "--no-pdf-header-footer",
-                    f"--print-to-pdf={pdf_path}",
-                    html_path.as_uri(),
-                ],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=60,
-            )
-            return pdf_path.read_bytes()
-
-    from xhtml2pdf import pisa
-
-    pdf_buffer = BytesIO()
-    pdf_result = pisa.CreatePDF(
-        html_text,
-        dest=pdf_buffer,
-        encoding="UTF-8",
-        capacity=100 * 1024 * 1024,
-    )
-    if pdf_result.err:
-        abort(500, description="Attendance PDF could not be generated")
-    return pdf_buffer.getvalue()
+    """Keep the historical helper name while using the shared renderer."""
+    return html_report_to_pdf(html_text, base_url)
 
 
 @public_bp.route("/download/<student_code>")

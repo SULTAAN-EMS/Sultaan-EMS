@@ -2,6 +2,7 @@ import os
 import sys
 import unittest
 from datetime import date
+from unittest.mock import patch
 
 # Add root directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -207,6 +208,54 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(b'selExamType', response.data)
         self.assertIn(b'rosterLoadingView', response.data)
         self.assertIn(b'noLoader:true', response.data)
+
+    def test_attendance_print_and_pdf_share_year_exam_sitting_report(self):
+        self.login()
+        self.student1.mother_name = 'Hodan Maxamed'
+        db.session.add_all([
+            ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student1.id),
+            ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student2.id),
+        ])
+        session_id = self._create_schedule_session([
+            {'level_id': self.level_sec.id, 'subject_id': self.subject.id},
+        ])
+        db.session.add(AttendanceRecord(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=self.hall.id,
+            subject_id=self.subject.id,
+            exam_session_id=session_id,
+            exam_type_id=self.exam_type.id,
+            status='present',
+        ))
+        db.session.commit()
+
+        query = f'exam_hall_id={self.hall.id}&exam_session_id={session_id}'
+        printed = self.client.get(f'/admin/attendance/print?{query}')
+        self.assertEqual(printed.status_code, 200)
+        self.assertIn('WARBIXINTA XAADIRINTA IMTIXAANKA'.encode(), printed.data)
+        self.assertIn(self.student1.student_code.encode(), printed.data)
+        self.assertIn(b'Hooyada: Hodan Maxamed', printed.data)
+        self.assertIn(b'Joogid', printed.data)
+        self.assertIn(b'Lama calaamadin', printed.data)
+        self.assertIn(b'Firfircoon', printed.data)
+
+        rendered = {}
+
+        def capture_pdf(html, base_url):
+            rendered['html'] = html
+            rendered['base_url'] = base_url
+            return b'%PDF-1.4 test'
+
+        with patch('app.routes_attendance.html_report_to_pdf', side_effect=capture_pdf):
+            downloaded = self.client.get(f'/admin/attendance/export.pdf?{query}')
+
+        self.assertEqual(downloaded.status_code, 200)
+        self.assertEqual(downloaded.mimetype, 'application/pdf')
+        self.assertEqual(downloaded.data, b'%PDF-1.4 test')
+        self.assertIn('WARBIXINTA XAADIRINTA IMTIXAANKA', rendered['html'])
+        self.assertIn('Hodan Maxamed', rendered['html'])
+        self.assertIn(self.student1.student_code, rendered['html'])
 
     def test_hall_transfer_moves_scoped_attendance_and_keeps_it_editable(self):
         self.login()
@@ -491,6 +540,39 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertTrue(payload['success'])
         self.assertEqual([student['id'] for student in payload['available_students']], [self.student1.id, self.student2.id])
         self.assertEqual([student['id'] for student in payload['assigned_students']], [self.student3_form2.id])
+
+    def test_hall_roster_accepts_class_from_year_level_mapping(self):
+        """The selected year mapping, not a stale legacy class-level link, defines the class scope."""
+        self.login()
+        middle_level = AcademicLevel(name=f'Middle Mapping {self.student1.id}', sort_order=3)
+        db.session.add(middle_level)
+        db.session.flush()
+        middle_year_level = AcademicYearLevel(
+            academic_year_id=self.year.id,
+            legacy_level_id=middle_level.id,
+            name='Dugsi Dhexe',
+            sort_order=3,
+        )
+        db.session.add(middle_year_level)
+        db.session.flush()
+        db.session.add(AcademicYearClass(
+            academic_year_level_id=middle_year_level.id,
+            legacy_class_id=self.class_form1.id,
+            name='8aad A',
+            sort_order=1,
+        ))
+        db.session.commit()
+
+        response = self.client.get(
+            f'/admin/attendance/api/hall-roster-data?exam_hall_id={self.hall.id}'
+            f'&academic_level_id={middle_level.id}&academic_class_id={self.class_form1.id}'
+        )
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload['success'])
+        available_ids = {student['id'] for student in payload['available_students']}
+        self.assertEqual(available_ids, {self.student1.id, self.student2.id})
 
     def test_hall_roster_placement_queries_do_not_grow_per_student(self):
         """Roster placement resolution stays batched for a full class-sized pool."""

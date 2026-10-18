@@ -1,4 +1,5 @@
 from datetime import date, datetime, time
+from io import BytesIO
 from tempfile import NamedTemporaryFile
 from types import SimpleNamespace
 
@@ -19,6 +20,7 @@ from .models import (
 )
 from .permissions import enforce_endpoint_permission
 from .services import get_settings
+from .pdf_rendering import html_report_to_pdf
 from .attendance_rules import NON_SAT_STATUSES, SAT_STATUSES, normalize_attendance_status, scheduled_subject_scope_key
 from .academic_hierarchy import year_classes, year_levels
 from .enrollment_service import (
@@ -1503,7 +1505,22 @@ def api_hall_roster_data():
         return jsonify({"success": False, "error": "Hall-ka la doortay lama heli karo."}), 404
     if class_id:
         selected_class = db.session.get(AcademicClass, class_id)
-        if not selected_class or (level_id and selected_class.academic_level_id != level_id):
+        selected_level_id = level_id or getattr(exam_context, "academic_level_id", None)
+        class_scope_query = (
+            AcademicYearClass.query
+            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+            .filter(
+                AcademicYearLevel.academic_year_id == exam_context.academic_year_id,
+                AcademicYearLevel.is_active.is_(True),
+                AcademicYearClass.legacy_class_id == class_id,
+                AcademicYearClass.is_active.is_(True),
+            )
+        )
+        if selected_level_id:
+            class_scope_query = class_scope_query.filter(
+                AcademicYearLevel.legacy_level_id == selected_level_id
+            )
+        if not selected_class or not selected_class.is_active or not class_scope_query.first():
             return jsonify({"success": False, "error": "Fasalka la doortay kuma jiro heerkan."}), 400
 
     # Assigned students for this hall
@@ -2500,75 +2517,129 @@ def export_excel():
 
 @attendance_bp.route("/export.pdf")
 def export_pdf():
-    exam_hall_id = request.args.get("exam_hall_id", type=int)
-    subject_id = request.args.get("subject_id", type=int)
-    exam_session_id = request.args.get("exam_session_id", type=int)
-
-    query = AttendanceRecord.query
-    if exam_hall_id:
-        query = query.filter_by(exam_hall_id=exam_hall_id)
-    if subject_id:
-        query = query.filter_by(subject_id=subject_id)
-    if exam_session_id:
-        query = query.filter_by(exam_session_id=exam_session_id)
-
-    rows = query.order_by(AttendanceRecord.recorded_at.desc()).limit(1000).all()
-
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-
-    tmp = NamedTemporaryFile(delete=False, suffix=".pdf")
-    doc = SimpleDocTemplate(tmp.name, pagesize=landscape(A4), leftMargin=24, rightMargin=24, topMargin=24, bottomMargin=24)
-    styles = getSampleStyleSheet()
-    data = [["Date", "Student ID", "Name", "Exam Hall", "Subject", "Status"]]
-    
-    for row in rows:
-        data.append([
-            row.recorded_at.strftime("%Y-%m-%d %H:%M") if row.recorded_at else "",
-            row.student.student_code if row.student else "",
-            row.student.full_name if row.student else "",
-            row.exam_hall.name if row.exam_hall else "",
-            row.subject.name if row.subject else "",
-            row.status.capitalize(),
-        ])
-
-    table = Table(data, repeatRows=1)
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#002060")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fbff")]),
-    ]))
-    settings = get_settings()
-    doc.build([Paragraph(f"{settings.get('school_name', 'SULTAN EMS')} Attendance Report", styles["Title"]), Spacer(1, 12), table])
-    return send_file(tmp.name, as_attachment=True, download_name="attendance.pdf")
+    report = _attendance_report_context()
+    html = render_template("admin/attendance_print.html", **report, auto_print=False)
+    pdf = html_report_to_pdf(html, request.url_root)
+    return send_file(
+        BytesIO(pdf),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"Warbixinta-Xaadirinta-{report['hall'].code}-{report['exam_session'].session_date.isoformat()}.pdf",
+    )
 
 
 @attendance_bp.route("/print")
 def print_sheet():
-    exam_hall_id = request.args.get("exam_hall_id", type=int)
-    subject_id = request.args.get("subject_id", type=int)
-    exam_session_id = request.args.get("exam_session_id", type=int)
-
-    enrollments = ExamHallEnrollment.query.filter_by(exam_hall_id=exam_hall_id).all() if exam_hall_id else []
-    student_ids = [e.student_id for e in enrollments]
-    students = Student.query.filter(Student.id.in_(student_ids)).order_by(Student.full_name).all() if student_ids else []
-
-    hall = db.session.get(ExamHall, exam_hall_id) if exam_hall_id else None
-    subject = db.session.get(Subject, subject_id) if subject_id else None
-    session = db.session.get(ExamSession, exam_session_id) if exam_session_id else None
-
     return render_template(
         "admin/attendance_print.html",
-        students=students,
-        hall=hall,
-        subject=subject,
-        exam_session=session,
-        statuses=ATTENDANCE_STATUSES,
-        settings=get_settings(),
-        today=date.today(),
+        **_attendance_report_context(),
+        auto_print=True,
     )
+
+
+def _attendance_report_context():
+    """Build the same year/exam/hall/sitting-scoped dataset for print and PDF."""
+    year_id = request.args.get("academic_year_id", type=int)
+    exam_id = request.args.get("exam_id", type=int)
+    exam_type_id = request.args.get("exam_type_id", type=int)
+    hall_id = request.args.get("exam_hall_id", type=int)
+    session_id = request.args.get("exam_session_id", type=int)
+    scoped_hall = db.session.get(ExamHall, hall_id) if hall_id else None
+    hall_exam = hall_exam_context(scoped_hall) if scoped_hall else None
+    if hall_exam:
+        year_id = year_id or hall_exam.academic_year_id
+        if not exam_id and not exam_type_id:
+            if isinstance(hall_exam, Exam):
+                exam_id = hall_exam.id
+                legacy_exam_type = ExamType.query.filter_by(
+                    academic_year_id=year_id,
+                    name=hall_exam.name,
+                ).first()
+                exam_type_id = legacy_exam_type.id if legacy_exam_type else None
+            else:
+                exam_type_id = hall_exam.id
+    if not all((year_id, hall_id, session_id)) or not (exam_id or exam_type_id):
+        abort(400, description="Dooro sanad-dugsiyeedka, imtixaanka, hall-ka iyo fadhiga ka hor samaynta warbixinta.")
+
+    try:
+        hall, exam, legacy_exam_type, exam_session = attendance_session_context(
+            year_id, exam_id, exam_type_id, hall_id, session_id
+        )
+    except ValueError as exc:
+        abort(400, description=str(exc))
+
+    _, allowed_pairs = timetable_level_scope(year_id, exam=exam)
+    groups, tallies = session_attendance_payload(hall, exam_session, allowed_pairs)
+    roster_ids = [
+        student_row["id"]
+        for group in groups
+        for student_row in group["students"]
+    ]
+    students = (
+        Student.query
+        .filter(Student.id.in_(roster_ids))
+        .options(
+            joinedload(Student.academic_class),
+            joinedload(Student.school_class),
+            joinedload(Student.academic_section),
+        )
+        .all()
+        if roster_ids else []
+    )
+    students_by_id = {student.id: student for student in students}
+    placements = resolve_student_placements(
+        (student, year_id) for student in students
+    )
+    status_labels = {item["key"]: item["label"] for item in ATTENDANCE_STATUSES}
+    status_classes = {item["key"]: item["key"] for item in ATTENDANCE_STATUSES}
+    report_students = []
+    subject_record_count = 0
+    marked_record_count = 0
+
+    for group in groups:
+        for student_row in group["students"]:
+            student = students_by_id.get(student_row["id"])
+            if not student:
+                continue
+            placement = placements.get((student.id, year_id)) or {}
+            slots = []
+            for slot in student_row["slots"]:
+                status = slot.get("status")
+                subject_record_count += 1
+                if status:
+                    marked_record_count += 1
+                slots.append({
+                    "subject_name": slot["subject_name"],
+                    "status": status,
+                    "status_label": status_labels.get(status, "Lama calaamadin"),
+                    "status_class": status_classes.get(status, "unmarked"),
+                })
+            report_students.append({
+                "student": student,
+                "photo_url": stored_photo_url(student.photo_path),
+                "class_name": placement.get("class_name") or student_row.get("class_name") or "Lama diiwaangelin",
+                "level_name": placement.get("level_name") or group.get("level_name") or "Lama diiwaangelin",
+                "section_name": placement.get("section_name") or student.section or "",
+                "slots": slots,
+            })
+
+    return {
+        "students": report_students,
+        "hall": hall,
+        "exam": exam,
+        "exam_id": exam.id if exam else None,
+        "exam_type_id": legacy_exam_type.id if legacy_exam_type else None,
+        "exam_name": exam.name if exam else legacy_exam_type.name,
+        "exam_session": exam_session,
+        "academic_year": exam_session.academic_year,
+        "settings": get_settings(),
+        "today": date.today(),
+        "statuses": [
+            {**status, "count": tallies.get(status["key"], 0)}
+            for status in ATTENDANCE_STATUSES
+        ],
+        "student_count": len(report_students),
+        "subject_record_count": subject_record_count,
+        "marked_record_count": marked_record_count,
+        "unmarked_record_count": subject_record_count - marked_record_count,
+    }

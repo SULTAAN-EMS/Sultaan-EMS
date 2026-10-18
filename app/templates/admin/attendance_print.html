@@ -1,48 +1,212 @@
 <!doctype html>
-<html lang="en">
+<html lang="so">
 <head>
   <meta charset="utf-8">
-  <title>Attendance Sheet</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Warbixinta Xaadirinta | {{ settings.school_name or 'Dugsiga' }}</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <style>
-    @page { size: A4 landscape; margin: 10mm; }
-    * { box-sizing: border-box; }
-    body { font-family: "Segoe UI", Arial, sans-serif; color: #111827; margin: 0; print-color-adjust: exact; }
-    header { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #002060; padding-bottom: 10px; margin-bottom: 14px; }
-    .brand { display: flex; gap: 12px; align-items: center; }
-    .logo { width: 54px; height: 54px; border: 1px solid #cbd5e1; border-radius: 10px; display: grid; place-items: center; color: #002060; overflow: hidden; }
-    .logo img { width: 100%; height: 100%; object-fit: contain; }
-    h1 { margin: 0; font-size: 22px; color: #002060; }
-    p { margin: 2px 0; color: #64748b; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th { background: #002060; color: #fff; text-align: left; }
-    th, td { border: 1px solid #cbd5e1; padding: 7px; }
-    tbody tr:nth-child(even) { background: #f8fbff; }
-    .status-box { width: 18px; height: 18px; border: 1px solid #64748b; display: inline-block; vertical-align: middle; }
-    .meta { text-align: right; font-weight: 700; color: #002060; }
-    @media print { body { margin: 0; } }
+    *{box-sizing:border-box}
+    html,body{margin:0;min-height:100%;font-family:Inter,"Segoe UI",Arial,sans-serif;color:#17243e;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{background:#f2f5f9;padding:24px}
+    .report{max-width:1440px;margin:0 auto;background:#fff;border:1px solid #dce4ee;border-radius:16px;overflow:hidden;box-shadow:0 22px 56px rgba(23,55,99,.13)}
+    .top-rule{height:7px;background:#1d4ed8;border-bottom:2px solid #0c8a68}
+    .report-content{padding:22px 26px 18px}
+    .masthead{display:table;width:100%;table-layout:fixed;border-bottom:2px solid #dce5ef;padding-bottom:16px}
+    .school-brand,.report-heading{display:table-cell;vertical-align:middle}
+    .school-brand{width:64%;}
+    .school-logo{display:inline-block;width:68px;height:68px;vertical-align:middle;margin-right:14px;border:1px solid #d7e1ed;border-radius:14px;padding:5px;background:#fff;text-align:center;line-height:56px;color:#2563eb;font-size:24px;overflow:hidden}
+    .school-logo img{width:100%;height:100%;object-fit:contain;vertical-align:top}
+    .school-copy{display:inline-block;vertical-align:middle;max-width:calc(100% - 96px)}
+    .school-name{margin:0;color:#173763;font-size:22px;line-height:1.18;font-weight:900;text-transform:uppercase;overflow-wrap:anywhere}
+    .school-motto{margin-top:5px;color:#62748b;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+    .school-contact{margin-top:7px;color:#718096;font-size:9px;line-height:1.55}
+    .school-contact span{display:inline-block;margin-right:12px}
+    .report-heading{text-align:right}
+    .official-tag{display:inline-block;padding:5px 9px;border:1px solid #d5e7e1;border-radius:999px;background:#effaf6;color:#117556;font-size:8px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+    .report-heading h1{margin:8px 0 4px;color:#17243e;font-size:19px;line-height:1.16;font-weight:900}
+    .report-heading p{margin:0;color:#64748b;font-size:9px}
+    .metadata{display:table;width:100%;table-layout:fixed;margin-top:15px;border-spacing:7px 0}
+    .metadata-item{display:table-cell;vertical-align:middle;padding:9px 11px;border:1px solid #e0e7ef;border-top:3px solid #2563eb;border-radius:8px;background:#f5f8ff}
+    .metadata-item:nth-child(2){border-top-color:#7c50b8;background:#f8f4ff}.metadata-item:nth-child(3){border-top-color:#0c8a68;background:#effaf6}.metadata-item:nth-child(4){border-top-color:#d08b27;background:#fff8eb}
+    .metadata-label{display:block;color:#2563eb;font-size:8px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+    .metadata-item:nth-child(2) .metadata-label,.metadata-item:nth-child(2) .metadata-value i{color:#7c50b8}.metadata-item:nth-child(3) .metadata-label,.metadata-item:nth-child(3) .metadata-value i{color:#0c8a68}.metadata-item:nth-child(4) .metadata-label,.metadata-item:nth-child(4) .metadata-value i{color:#b7791f}
+    .metadata-value{display:block;margin-top:5px;color:#20304c;font-size:11px;font-weight:800;line-height:1.3;overflow-wrap:anywhere}
+    .metadata-value i{margin-right:5px;color:#2563eb}
+    .summary{display:table;width:100%;table-layout:fixed;border-spacing:6px 0;margin:14px -6px 0}
+    .summary-item{display:table-cell;vertical-align:middle;border:1px solid #cbd9f5;border-radius:8px;padding:8px 9px;background:#f1f5ff}
+    .summary-students{border-color:#cbd9f5;background:#f1f5ff}.summary-present{border-color:#bde7d5;background:#effaf5}.summary-absent{border-color:#f4c9c0;background:#fff3f0}.summary-excused{border-color:#ead8bd;background:#fff9ed}.summary-sick{border-color:#d9c9ee;background:#f8f4ff}.summary-emergency{border-color:#edc7d8;background:#fff3f8}.summary-late{border-color:#c2e2e8;background:#effafd}
+    .summary-label{display:block;color:#617087;font-size:8px;font-weight:800;line-height:1.25}
+    .summary-value{display:block;margin-top:4px;color:#2852ad;font-size:16px;line-height:1;font-weight:900}
+    .summary-students .summary-value{color:#2852ad}.summary-present .summary-value{color:#14805b}.summary-absent .summary-value{color:#b53a2e}.summary-excused .summary-value{color:#a96a12}.summary-sick .summary-value{color:#7650b5}.summary-emergency .summary-value{color:#a83e6b}.summary-late .summary-value{color:#16778d}
+    .summary-value i{font-size:11px;margin-right:4px}
+    .roster-title{display:table;width:100%;margin:18px 0 8px;padding-bottom:7px;border-bottom:1px solid #dfe7ef}
+    .roster-title strong,.roster-title span{display:table-cell;vertical-align:middle}
+    .roster-title strong{font-size:12px;color:#173763}
+    .roster-title strong i{margin-right:6px;color:#2563eb}
+    .roster-title span{text-align:right;color:#63748b;font-size:9px;font-weight:700}
+    .roster{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9px}
+    .roster thead{display:table-header-group}
+    .roster th{padding:8px 7px;text-align:left;color:#fff;background:#1d3c69;border-right:1px solid rgba(255,255,255,.16);font-size:8px;font-weight:900;letter-spacing:.04em;text-transform:uppercase}
+    .roster th:first-child{border-radius:6px 0 0 0}
+    .roster th:last-child{border-radius:0 6px 0 0}
+    .roster td{padding:7px;border-bottom:1px solid #dce4ed;vertical-align:top;overflow-wrap:anywhere}
+    .roster tbody tr:nth-child(even){background:#f6f9fc}
+    .roster tr{break-inside:avoid;page-break-inside:avoid}
+    .col-number{width:30px;text-align:center!important;color:#60728a;font-weight:800}
+    .col-photo{width:48px}
+    .col-student{width:205px}
+    .col-placement{width:145px}
+    .col-signature{width:90px}
+    .student-photo{display:block;width:38px;height:46px;object-fit:cover;border:1px solid #cfdae7;border-radius:7px;background:#e8eef7}
+    .photo-fallback{display:block;width:38px;height:46px;border:1px solid #c9d8ed;border-radius:7px;background:#e8f0ff;color:#284c7a;text-align:center;line-height:44px;font-size:15px;font-weight:900}
+    .student-name{display:block;color:#1b2e4c;font-size:10px;line-height:1.3;font-weight:900}
+    .student-id{display:block;margin-top:3px;color:#2454a0;font-size:8px;font-weight:900}
+    .student-mother{display:block;margin-top:3px;color:#68788d;font-size:8px;line-height:1.3}
+    .student-mother i{width:11px;color:#a1662b}
+    .placement-main{display:block;color:#253956;font-weight:900;line-height:1.35}
+    .placement-sub{display:block;margin-top:3px;color:#68788d;font-size:8px;line-height:1.35}
+    .student-state{display:inline-block;margin-top:5px;padding:3px 6px;border-radius:999px;background:#eaf7ef;color:#147047;font-size:7px;font-weight:900}
+    .student-state.inactive{background:#fff0ee;color:#b5352d}
+    .subject-list{font-size:0;line-height:1.4}
+    .subject-entry{display:inline-block;vertical-align:top;min-width:116px;max-width:190px;margin:0 4px 4px 0;padding:4px 6px;border:1px solid #dce4ed;border-radius:5px;background:#fff;font-size:8px;line-height:1.25;break-inside:avoid;page-break-inside:avoid}
+    .subject-name{display:block;color:#34465e;font-weight:800;overflow-wrap:anywhere}
+    .subject-status{display:block;margin-top:3px;font-size:7px;font-weight:900}
+    .subject-status i{margin-right:3px}
+    .subject-status.present{color:#13815a}.subject-status.absent{color:#bf3d32}.subject-status.excused{color:#9a6712}.subject-status.sick{color:#7650b5}.subject-status.emergency{color:#a33669}.subject-status.late{color:#147d91}.subject-status.unmarked{color:#728096}
+    .empty-state{padding:28px 14px!important;text-align:center;color:#64748b;font-size:10px}
+    .report-footer{display:table;width:100%;margin-top:14px;padding-top:8px;border-top:1px solid #dce4ed;color:#6b7c91;font-size:8px}
+    .report-footer span{display:table-cell;width:50%}
+    .report-footer span:last-child{text-align:right}
+    .actions{max-width:1440px;margin:0 auto 12px;display:flex;justify-content:flex-end;gap:9px}
+    .action{border:0;border-radius:8px;padding:10px 15px;display:inline-flex;align-items:center;gap:8px;text-decoration:none;cursor:pointer;font:800 12px Inter,"Segoe UI",Arial,sans-serif}
+    .action-print{background:#1d3c69;color:#fff}.action-back{border:1px solid #d6e0ec;background:#fff;color:#31455f}
+    @page{size:A4 portrait;margin:7mm}
+    @media print{
+      html,body{background:#fff!important;padding:0!important}
+      .actions{display:none!important}
+      .report{max-width:none;border:0;border-radius:0;box-shadow:none;overflow:visible}
+      .top-rule{height:5px}
+      .report-content{padding:8px 9px 6px}
+      .masthead,.school-brand,.report-heading{display:block;width:auto;text-align:left}
+      .masthead{padding-bottom:9px}
+      .school-logo{width:54px;height:54px;line-height:44px;margin-right:9px}
+      .school-copy{max-width:calc(100% - 72px)}
+      .school-name{font-size:18px;line-height:1.15}
+      .school-motto{font-size:9px}
+      .school-contact{font-size:9px;line-height:1.35}
+      .report-heading{margin-top:8px}
+      .official-tag{font-size:8px;padding:4px 7px}
+      .report-heading h1{font-size:17px;margin:5px 0 2px}
+      .report-heading p{font-size:9px}
+      .metadata{display:block;margin:8px 0 0;border-spacing:0;font-size:0;white-space:nowrap}
+      .metadata-item{display:inline-block;vertical-align:top;width:24%;min-height:47px;margin:0 1.333% 0 0;padding:6px 5px;white-space:normal}
+      .metadata-item:last-child{margin-right:0}
+      .metadata-label{font-size:8px;white-space:nowrap}
+      .metadata-value{font-size:10px;line-height:1.2}
+      .metadata-item:nth-child(4) .metadata-value{font-size:9px;white-space:nowrap}
+      .summary{display:block;margin:5px 0 0;border-spacing:0;font-size:0;white-space:nowrap}
+      .summary-item{display:inline-block;vertical-align:top;width:14%;min-height:42px;margin:0 .333% 0 0;padding:5px 4px;white-space:normal}
+      .summary-item:last-child{margin-right:0}
+      .summary-label{font-size:8px;line-height:1.2;white-space:nowrap}
+      .summary-value{font-size:14px;margin-top:3px}
+      .roster-title{margin:8px 0 5px;padding-bottom:5px}
+      .roster-title strong{font-size:11px}
+      .roster-title span{font-size:9px}
+      .roster{font-size:11px}
+      .roster th{padding:7px 5px;font-size:10px;line-height:1.2}
+      .roster td{padding:7px 5px}
+      .col-number{width:25px}
+      .col-photo{width:50px}
+      .col-student{width:182px}
+      .col-placement{width:110px}
+      .col-signature{width:55px}
+      .student-photo,.photo-fallback{width:38px;height:46px}
+      .student-name{font-size:11px;line-height:1.25}
+      .student-id,.student-mother{font-size:9px}
+      .student-state{font-size:8.5px;padding:3px 5px}
+      .placement-main{font-size:10px}
+      .placement-sub{font-size:9px}
+      .subject-entry{min-width:98px;max-width:155px;margin:0 3px 3px 0;padding:5px 6px;font-size:10px}
+      .subject-name{font-size:9.5px}
+      .subject-status{font-size:8.5px}
+      .empty-state{padding:18px 10px!important;font-size:11px}
+      .report-footer{margin-top:8px;padding-top:6px;font-size:9px}
+      a{color:inherit;text-decoration:none}
+    }
+    @media screen and (max-width:760px){
+      body{padding:10px}.report-content{padding:16px 12px}.masthead,.school-brand,.report-heading{display:block;width:auto;text-align:left}.report-heading{margin-top:14px}.metadata,.summary{display:block;margin:12px 0 0;border-spacing:0}.metadata-item,.summary-item{display:block;margin:6px 0}.roster{min-width:900px}.roster-wrap{overflow-x:auto}.col-student{width:185px}.col-placement{width:130px}
+    }
   </style>
 </head>
-<body onload="window.print()">
-  <header>
-    <div class="brand">
-      <div class="logo">{% if settings.logo_path %}<img src="{{ asset_url(settings.logo_path) }}" alt="Logo">{% else %}<i class="fa-solid fa-school"></i>{% endif %}</div>
-      <div><h1>{{ settings.school_name }}</h1><p>Examination Attendance Sheet</p><p>{{ settings.school_address }} | {{ settings.school_phone }}</p></div>
+<body>
+  <div class="actions" aria-label="Ficillada warbixinta">
+    <button class="action action-print" type="button" onclick="window.print()"><i class="fa-solid fa-print" aria-hidden="true"></i> Daabac</button>
+    <a class="action action-back" href="{{ url_for('admin_attendance.dashboard', academic_year_id=academic_year.id, exam_id=exam_id, exam_type_id=exam_type_id, exam_hall_id=hall.id, session_id=exam_session.id) }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Dib-u-noqo</a>
+  </div>
+  <main class="report">
+    <div class="top-rule"></div>
+    <div class="report-content">
+      <header class="masthead">
+        <div class="school-brand">
+          <span class="school-logo">{% if settings.logo_path %}<img src="{{ asset_url(settings.logo_path) }}" alt="Astaanta dugsiga">{% else %}<i class="fa-solid fa-school" aria-hidden="true"></i>{% endif %}</span>
+          <div class="school-copy">
+            <h1 class="school-name">{{ settings.school_name or 'DUGSIYADA CAALAMIGA AH EE TAYSIIR' }}</h1>
+            {% if settings.school_motto %}<div class="school-motto">{{ settings.school_motto }}</div>{% endif %}
+            <div class="school-contact">
+              {% if settings.school_address %}<span><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ settings.school_address }}</span>{% endif %}
+              {% if settings.school_phone %}<span><i class="fa-solid fa-phone" aria-hidden="true"></i> {{ settings.school_phone }}</span>{% endif %}
+              {% if settings.school_email %}<span><i class="fa-solid fa-envelope" aria-hidden="true"></i> {{ settings.school_email }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="report-heading">
+          <span class="official-tag"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Warbixin rasmi ah</span>
+          <h1>WARBIXINTA XAADIRINTA IMTIXAANKA</h1>
+          <p><i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Diiwaanka fadhiga imtixaanka</p>
+        </div>
+      </header>
+
+      <section class="metadata" aria-label="Xogta imtixaanka">
+        <div class="metadata-item"><span class="metadata-label"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i> Sanad-dugsiyeedka</span><strong class="metadata-value">{{ academic_year.name }}</strong></div>
+        <div class="metadata-item"><span class="metadata-label"><i class="fa-solid fa-file-pen" aria-hidden="true"></i> Nooca imtixaanka</span><strong class="metadata-value">{{ exam_name }}</strong></div>
+        <div class="metadata-item"><span class="metadata-label"><i class="fa-solid fa-school" aria-hidden="true"></i> Goobta imtixaanka</span><strong class="metadata-value">{{ hall.name }}</strong></div>
+        <div class="metadata-item"><span class="metadata-label"><i class="fa-solid fa-clock" aria-hidden="true"></i> Taariikhda iyo fadhiga</span><strong class="metadata-value">{{ exam_session.session_date.strftime('%d/%m/%Y') }} · {{ exam_session.sitting_label }}{% if exam_session.session_time %} · {{ exam_session.session_time.strftime('%I:%M %p').lstrip('0') }}{% endif %}</strong></div>
+      </section>
+
+      <section class="summary" aria-label="Tirokoobka xaadirinta">
+        <div class="summary-item summary-students"><span class="summary-label"><i class="fa-solid fa-users" aria-hidden="true"></i> Ardayda</span><strong class="summary-value">{{ student_count }}</strong></div>
+        {% for status in statuses %}
+        <div class="summary-item summary-{{ status.key }}"><span class="summary-label"><i class="fa-solid {{ status.icon }}" aria-hidden="true"></i> {{ status.label }}</span><strong class="summary-value">{{ status.count }}</strong></div>
+        {% endfor %}
+      </section>
+
+      <div class="roster-title"><strong><i class="fa-solid fa-list-check" aria-hidden="true"></i> LIISKA ARDAYDA IYO XAADIRINTA MAADOYINKA</strong><span>{{ marked_record_count }} la diiwaangeliyey · {{ unmarked_record_count }} aan weli la calaamadin</span></div>
+
+      <div class="roster-wrap">
+        <table class="roster">
+          <thead><tr><th class="col-number">#</th><th class="col-photo">Sawir</th><th class="col-student">Ardayga iyo xogta<br>hooyada</th><th class="col-placement">Heerka iyo fasalka</th><th>Xaadirinta maadooyinka</th><th class="col-signature">Saxiixa</th></tr></thead>
+          <tbody>
+            {% for row in students %}
+            <tr>
+              <td class="col-number">{{ loop.index }}</td>
+              <td class="col-photo">{% if row.photo_url %}<img class="student-photo" src="{{ row.photo_url }}" alt="Sawirka {{ row.student.full_name }}">{% else %}<span class="photo-fallback">{{ row.student.full_name[:1]|upper }}</span>{% endif %}</td>
+              <td class="col-student"><strong class="student-name">{{ row.student.full_name }}</strong><span class="student-id"><i class="fa-solid fa-id-card" aria-hidden="true"></i> {{ row.student.student_code }}</span><span class="student-mother"><i class="fa-solid fa-person-dress" aria-hidden="true"></i> Hooyada: {{ row.student.mother_name or 'Lama diiwaangelin' }}</span><span class="student-state{% if not row.student.is_active %} inactive{% endif %}">{% if row.student.is_active %}Firfircoon{% else %}Aan firfircoonayn{% endif %}</span></td>
+              <td class="col-placement"><strong class="placement-main">{{ row.level_name }}</strong><span class="placement-sub">Fasal: {{ row.class_name }}{% if row.section_name %}<br>Qaybta: {{ row.section_name }}{% endif %}</span></td>
+              <td><div class="subject-list">{% for slot in row.slots %}<span class="subject-entry"><strong class="subject-name">{{ slot.subject_name }}</strong><span class="subject-status {{ slot.status_class }}"><i class="fa-solid {% if slot.status == 'present' %}fa-circle-check{% elif slot.status == 'absent' %}fa-circle-xmark{% elif slot.status == 'excused' %}fa-file-circle-check{% elif slot.status == 'sick' %}fa-notes-medical{% elif slot.status == 'emergency' %}fa-triangle-exclamation{% elif slot.status == 'late' %}fa-clock{% else %}fa-minus{% endif %}" aria-hidden="true"></i>{{ slot.status_label }}</span></span>{% else %}<span class="subject-entry"><strong class="subject-name">Maado jadwal looma dejin</strong></span>{% endfor %}</div></td>
+              <td class="col-signature">&nbsp;</td>
+            </tr>
+            {% else %}
+            <tr><td class="empty-state" colspan="6"><i class="fa-solid fa-user-slash" aria-hidden="true"></i> Arday laguma diiwaangelin goobtan iyo fadhigan.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <footer class="report-footer"><span><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Warbixintan waxaa laga soo saaray diiwaanka fadhiga imtixaanka ee la doortay.</span><span>La diyaariyey: {{ today.strftime('%d/%m/%Y') }} · {{ settings.school_name or 'SULTAAN EMS' }}</span></footer>
     </div>
-    <div class="meta">
-      <div>Date: {{ filters.date or today }}</div>
-      <div>Generated: {{ today }}</div>
-    </div>
-  </header>
-  <table>
-    <thead><tr><th>#</th><th>Student ID</th><th>Student Name</th><th>Class</th><th>Level</th><th>Section</th>{% for status in statuses %}<th>{{ status }}</th>{% endfor %}<th>Signature</th></tr></thead>
-    <tbody>
-      {% for s in students %}
-        <tr><td>{{ loop.index }}</td><td>{{ s.student_code }}</td><td>{{ s.full_name }}</td><td>{{ s.school_class.name }}</td><td>{{ s.level or '' }}</td><td>{{ s.section or '' }}</td>{% for status in statuses %}<td><span class="status-box"></span></td>{% endfor %}<td></td></tr>
-      {% else %}
-        <tr><td colspan="{{ 7 + statuses|length }}">No students found.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  </main>
+  {% if auto_print %}<script>window.addEventListener('load',()=>window.print());</script>{% endif %}
 </body>
 </html>
