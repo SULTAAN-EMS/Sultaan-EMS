@@ -67,6 +67,7 @@
     .student-mother i{width:11px;color:#a1662b}
     .placement-main{display:block;color:#253956;font-size:11px;font-weight:900;line-height:1.35}
     .placement-sub{display:block;margin-top:3px;color:#68788d;font-size:11px;line-height:1.35}
+    .placement-class{display:inline-block;margin-left:2px;padding:2px 6px;border-radius:999px;color:#fff;font-size:9px;font-weight:800;line-height:1.25;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     .subject-list{display:grid;grid-template-columns:repeat(var(--subject-columns,3),minmax(0,1fr));gap:3px;line-height:1.4}
     .subject-entry{display:block;width:100%;min-width:0;max-width:none;margin:0;padding:3px 4px;border:1px solid #dce4ed;border-radius:5px;background:#fff;font-size:9px;line-height:1.25;break-inside:avoid;page-break-inside:avoid}
     .subject-name{display:block;color:#34465e;font-size:9px;font-weight:800;overflow-wrap:anywhere}
@@ -187,7 +188,7 @@
               <td class="col-number">{{ loop.index }}</td>
               <td class="col-photo">{% if row.photo_url %}<img class="student-photo" src="{{ row.photo_url }}" alt="Sawirka {{ row.student.full_name }}">{% else %}<span class="photo-fallback">{{ row.student.full_name[:1]|upper }}</span>{% endif %}</td>
               <td class="col-student"><strong class="student-name">{{ row.student.full_name }}</strong><span class="student-id"><i class="fa-solid fa-id-card" aria-hidden="true"></i> {{ row.student.student_code }}</span><span class="student-mother">{{ row.student.mother_name or 'Lama diiwaangelin' }}</span></td>
-              <td class="col-placement"><strong class="placement-main">{{ row.level_name }}</strong><span class="placement-sub">Fasal: {{ row.class_name }}{% if row.section_name %}<br>Qaybta: {{ row.section_name }}{% endif %}</span></td>
+              <td class="col-placement"><strong class="placement-main">{{ row.level_name }}</strong><span class="placement-sub">Fasal: <strong class="placement-class" style="background-color:{{ row.class_color }};">{{ row.class_name }}</strong>{% if row.section_name %}<br>Qaybta: {{ row.section_name }}{% endif %}</span></td>
               <td><div class="subject-list" style="--subject-columns: {{ 1 if row.slots|length < 2 else (2 if row.slots|length == 2 else 3) }};">{% for slot in row.slots %}<span class="subject-entry"><strong class="subject-name">{{ slot.subject_name }}</strong><span class="subject-status {{ slot.status_class }}"><i class="fa-solid {% if slot.status == 'present' %}fa-circle-check{% elif slot.status == 'absent' %}fa-circle-xmark{% elif slot.status == 'excused' %}fa-file-circle-check{% elif slot.status == 'sick' %}fa-notes-medical{% elif slot.status == 'emergency' %}fa-triangle-exclamation{% elif slot.status == 'late' %}fa-clock{% else %}fa-minus{% endif %}" aria-hidden="true"></i>{{ slot.status_label }}</span></span>{% else %}<span class="subject-entry"><strong class="subject-name">Maado jadwal looma dejin</strong></span>{% endfor %}</div></td>
               <td class="col-notes"><div class="notes-list">{% for slot in row.slots if slot.note %}<div class="note-entry"><strong>{{ slot.subject_name }}</strong>{{ slot.note }}</div>{% else %}<span class="note-empty">Faallo ma jidho</span>{% endfor %}</div></td>
             </tr>

@@ -43,6 +43,21 @@ ATTENDANCE_STATUSES = [
     {"key": "late", "label": "Soo daahid", "cls": "o-late", "icon": "fa-clock"},
 ]
 
+ATTENDANCE_CLASS_COLORS = [
+    "#24406B", "#B8863E", "#2F6B4F", "#A6402F", "#6C4E9E",
+    "#2C6C87", "#96355E", "#0F766E", "#7C3AED", "#BE123C",
+]
+
+
+def attendance_class_color(class_name):
+    """Match the deterministic class badge color used by the attendance roster."""
+    encoded = f"class:{class_name or ''}".encode("utf-16-le", errors="surrogatepass")
+    hashed = 0
+    for offset in range(0, len(encoded), 2):
+        code_unit = encoded[offset] | (encoded[offset + 1] << 8)
+        hashed = (hashed * 31 + code_unit) & 0xFFFFFFFF
+    return ATTENDANCE_CLASS_COLORS[hashed % len(ATTENDANCE_CLASS_COLORS)]
+
 # Keep API validation and report calculations tied to the same canonical keys.
 ATTENDANCE_STATUS_KEYS = SAT_STATUSES | NON_SAT_STATUSES
 
@@ -972,6 +987,7 @@ def dashboard():
         exam_types=exam_types,
         halls=[],
         statuses=ATTENDANCE_STATUSES,
+        attendance_class_colors=ATTENDANCE_CLASS_COLORS,
         settings=get_settings(),
     )
 
@@ -2836,6 +2852,9 @@ def _attendance_report_context():
                 "student": student,
                 "photo_url": stored_photo_url(student.photo_path),
                 "class_name": placement.get("class_name") or student_row.get("class_name") or "Lama diiwaangelin",
+                "class_color": attendance_class_color(
+                    placement.get("class_name") or student_row.get("class_name") or "Lama diiwaangelin"
+                ),
                 "level_name": placement.get("level_name") or group.get("level_name") or "Lama diiwaangelin",
                 "section_name": placement.get("section_name") or student.section or "",
                 "slots": slots,

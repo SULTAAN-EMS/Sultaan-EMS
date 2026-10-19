@@ -15,6 +15,7 @@ from app.models import (
     ExamSessionSubject, ExamType, SchoolClass, Student, StudentEnrollment, Subject, User
 )
 from app.attendance_rules import scheduled_subject_scope_key
+from app.routes_attendance import attendance_class_color
 from app.schema_compat import migrate_exam_schedule_subject_scope_constraint
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import MetaData, UniqueConstraint, event, inspect
@@ -286,6 +287,13 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(b'.student-mother{font-size:10px;line-height:1.35}', printed.data)
         self.assertIn(b'.placement-main{font-size:11px}', printed.data)
         self.assertIn(b'.placement-sub{font-size:11px}', printed.data)
+        expected_class_color = attendance_class_color('Form One Test')
+        self.assertIn(
+            f'style="background-color:{expected_class_color};">Form One Test'.encode(),
+            printed.data,
+        )
+        attendance_page = self.client.get('/admin/attendance/')
+        self.assertIn(b'const COLORS=["#24406B"', attendance_page.data)
         self.assertIn(b'.summary-label{font-size:9px;line-height:1.2;white-space:nowrap}', printed.data)
         self.assertIn(b'.summary-value{font-size:16px;margin-top:3px}', printed.data)
         self.assertIn(b'@page{size:A4 portrait;margin:0}', printed.data)
