@@ -217,6 +217,14 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(b'Keydi faallada', response.data)
         self.assertIn(b'Taariikhda Xaadirinta', response.data)
 
+    def test_attendance_history_keeps_admin_layout(self):
+        self.login()
+        response = self.client.get('/admin/attendance/history')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'<aside class="sidebar">', response.data)
+        self.assertIn(b'<main class="admin-main"', response.data)
+        self.assertIn(b'class="attendance-history"', response.data)
+
     def test_attendance_print_and_pdf_share_year_exam_sitting_report(self):
         self.login()
         self.student1.mother_name = 'Hodan Maxamed'

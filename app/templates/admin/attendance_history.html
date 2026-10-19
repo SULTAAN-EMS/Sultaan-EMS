@@ -2,9 +2,10 @@
 {% block title %}Taariikhda Xaadirinta | SULTAAN EMS{% endblock %}
 {% block body_class %}{{ super() }} admin-page-hero-layout{% endblock %}
 {% block extra_head %}
+{{ super() }}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-page-heroes.css') }}">
 <style>
-  .attendance-history{--ink:#16223b;--muted:#68758a;--line:#dce3ec;--blue:#1d4ed8;--violet:#7042ad;--green:#12764f;--red:#b23b31;--gold:#a16207;color:var(--ink);font-family:Inter,"Segoe UI",Arial,sans-serif;padding:0 0 34px}
+  .attendance-history{--ink:#16223b;--muted:#68758a;--line:#dce3ec;--blue:#1d4ed8;--violet:#7042ad;--green:#12764f;--red:#b23b31;--gold:#a16207;color:var(--ink);font-family:Inter,"Segoe UI",Arial,sans-serif;padding:0 0 34px;min-width:0;width:100%}
   .attendance-history .history-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin:4px 0 18px}
   .attendance-history h1{margin:0;font:700 25px/1.2 Newsreader,Georgia,serif}
   .attendance-history .lede{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
@@ -34,7 +35,7 @@
   @media(max-width:600px){.attendance-history{padding-top:0}.attendance-history .history-heading{align-items:flex-start;flex-direction:column}.attendance-history h1{font-size:22px}.attendance-history .filters{grid-template-columns:1fr}.attendance-history .filter-actions{align-items:stretch;flex-direction:column}.attendance-history .filter-actions>.action-group,.attendance-history .filter-actions .button{width:100%}.attendance-history .result-bar{align-items:flex-start;flex-direction:column}}
 </style>
 {% endblock %}
-{% block content %}
+{% block admin_content %}
 <div class="attendance-history">
   {% set active_area = 'history' %}{% include 'admin/_attendance_section_nav.html' %}
   <header class="history-heading">
