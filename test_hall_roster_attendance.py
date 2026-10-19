@@ -224,8 +224,15 @@ class TestHallRosterAndAttendance(unittest.TestCase):
             ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student1.id),
             ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student2.id),
         ])
+        extra_subjects = [
+            Subject(name=f'PDF Subject {index}', academic_level_id=self.level_sec.id)
+            for index in range(1, 4)
+        ]
+        db.session.add_all(extra_subjects)
+        db.session.flush()
         session_id = self._create_schedule_session([
-            {'level_id': self.level_sec.id, 'subject_id': self.subject.id},
+            {'level_id': self.level_sec.id, 'subject_id': subject_id}
+            for subject_id in [self.subject.id, *(subject.id for subject in extra_subjects)]
         ])
         db.session.add(AttendanceRecord(
             student_id=self.student1.id,
@@ -243,8 +250,14 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         printed = self.client.get(f'/admin/attendance/print?{query}')
         self.assertEqual(printed.status_code, 200)
         self.assertIn('WARBIXINTA XAADIRINTA IMTIXAANKA'.encode(), printed.data)
+        self.assertIn('Arbaco, Agoosto 12, 2026'.encode(), printed.data)
+        self.assertIn(b'class="sitting-badge"', printed.data)
+        self.assertIn(b'<i class="fa-solid fa-chair" aria-hidden="true"></i>Fadhi 1aad', printed.data)
+        self.assertNotIn('Diiwaanka fadhiga imtixaanka'.encode(), printed.data)
+        self.assertNotIn('diiwaanka fadhiga imtixaanka'.encode(), printed.data)
         self.assertIn(self.student1.student_code.encode(), printed.data)
-        self.assertIn(b'Hooyada: Hodan Maxamed', printed.data)
+        self.assertIn(b'Hodan Maxamed', printed.data)
+        self.assertNotIn(b'Hooyada:', printed.data)
         self.assertIn(b'Joogid', printed.data)
         self.assertIn(b'Lama calaamadin', printed.data)
         self.assertNotIn(b'Firfircoon', printed.data)
@@ -255,6 +268,23 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(b'Faallo', printed.data)
         self.assertIn('Faallo ma jidho'.encode(), printed.data)
         self.assertNotIn('Faallo ma jirto'.encode(), printed.data)
+        self.assertIn(b'grid-template-columns:repeat(var(--subject-columns,3),minmax(0,1fr))', printed.data)
+        self.assertIn(b'--subject-columns: 3;', printed.data)
+        self.assertIn(b'.subject-name{font-size:10px}', printed.data)
+        self.assertIn(b'.subject-status{font-size:9px}', printed.data)
+        self.assertIn(b'.note-entry{font-size:10px;padding:5px 6px;line-height:1.4}', printed.data)
+        self.assertIn(b'.note-entry strong{font-size:9px}', printed.data)
+        self.assertIn(b'.note-empty{font-size:9px}', printed.data)
+        self.assertIn(b'.student-mother{font-size:10px;line-height:1.35}', printed.data)
+        self.assertIn(b'.placement-main{font-size:11px}', printed.data)
+        self.assertIn(b'.placement-sub{font-size:11px}', printed.data)
+        self.assertIn(b'.summary-label{font-size:9px;line-height:1.2;white-space:nowrap}', printed.data)
+        self.assertIn(b'.summary-value{font-size:16px;margin-top:3px}', printed.data)
+        self.assertIn(b'@page{size:A4 portrait;margin:0}', printed.data)
+        self.assertIn(b'.report{width:210mm;min-height:297mm;max-width:none;margin:0 auto;border:0;border-radius:0;box-shadow:none;overflow:visible;zoom:95%}', printed.data)
+        self.assertIn(b'.metadata-item:nth-child(1),.metadata-item:nth-child(3){width:20%}', printed.data)
+        self.assertIn(b'.metadata-value{font-size:11px;line-height:1.2}', printed.data)
+        self.assertIn(b'.metadata-item:nth-child(4) .metadata-value{font-size:11px;white-space:nowrap}', printed.data)
         self.assertNotIn(b'Saxiixa', printed.data)
         self.assertIn('Faallo tijaabo oo PDF ah'.encode(), printed.data)
 

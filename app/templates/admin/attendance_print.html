@@ -23,19 +23,22 @@
     .report-heading{text-align:right}
     .official-tag{display:inline-block;padding:5px 9px;border:1px solid #d5e7e1;border-radius:999px;background:#effaf6;color:#117556;font-size:8px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
     .report-heading h1{margin:8px 0 4px;color:#17243e;font-size:19px;line-height:1.16;font-weight:900}
+    .sitting-badge{display:inline-flex;align-items:center;gap:6px;margin-top:3px;padding:4px 9px;border:1px solid #c8e7dc;border-radius:999px;background:#effaf6;color:#126b50;font-size:10px;font-weight:800;line-height:1.2}
+    .sitting-badge i{color:#0c8a68}
     .report-heading p{margin:0;color:#64748b;font-size:9px}
     .metadata{display:table;width:100%;table-layout:fixed;margin-top:15px;border-spacing:7px 0}
     .metadata-item{display:table-cell;vertical-align:middle;padding:9px 11px;border:1px solid #e0e7ef;border-top:3px solid #2563eb;border-radius:8px;background:#f5f8ff}
+    .metadata-item:nth-child(1),.metadata-item:nth-child(3){width:20%}
     .metadata-item:nth-child(2){border-top-color:#7c50b8;background:#f8f4ff}.metadata-item:nth-child(3){border-top-color:#0c8a68;background:#effaf6}.metadata-item:nth-child(4){border-top-color:#d08b27;background:#fff8eb}
     .metadata-label{display:block;color:#2563eb;font-size:8px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
     .metadata-item:nth-child(2) .metadata-label,.metadata-item:nth-child(2) .metadata-value i{color:#7c50b8}.metadata-item:nth-child(3) .metadata-label,.metadata-item:nth-child(3) .metadata-value i{color:#0c8a68}.metadata-item:nth-child(4) .metadata-label,.metadata-item:nth-child(4) .metadata-value i{color:#b7791f}
-    .metadata-value{display:block;margin-top:5px;color:#20304c;font-size:11px;font-weight:800;line-height:1.3;overflow-wrap:anywhere}
+    .metadata-value{display:block;margin-top:5px;color:#20304c;font-size:12px;font-weight:800;line-height:1.3;overflow-wrap:anywhere}
     .metadata-value i{margin-right:5px;color:#2563eb}
     .summary{display:table;width:100%;table-layout:fixed;border-spacing:6px 0;margin:14px -6px 0}
     .summary-item{display:table-cell;vertical-align:middle;border:1px solid #cbd9f5;border-radius:8px;padding:8px 9px;background:#f1f5ff}
     .summary-students{border-color:#cbd9f5;background:#f1f5ff}.summary-present{border-color:#bde7d5;background:#effaf5}.summary-absent{border-color:#f4c9c0;background:#fff3f0}.summary-excused{border-color:#ead8bd;background:#fff9ed}.summary-sick{border-color:#d9c9ee;background:#f8f4ff}.summary-emergency{border-color:#edc7d8;background:#fff3f8}.summary-late{border-color:#c2e2e8;background:#effafd}
-    .summary-label{display:block;color:#617087;font-size:8px;font-weight:800;line-height:1.25}
-    .summary-value{display:block;margin-top:4px;color:#2852ad;font-size:16px;line-height:1;font-weight:900}
+    .summary-label{display:block;color:#617087;font-size:9px;font-weight:800;line-height:1.25}
+    .summary-value{display:block;margin-top:4px;color:#2852ad;font-size:18px;line-height:1;font-weight:900}
     .summary-students .summary-value{color:#2852ad}.summary-present .summary-value{color:#14805b}.summary-absent .summary-value{color:#b53a2e}.summary-excused .summary-value{color:#a96a12}.summary-sick .summary-value{color:#7650b5}.summary-emergency .summary-value{color:#a83e6b}.summary-late .summary-value{color:#16778d}
     .summary-value i{font-size:11px;margin-right:4px}
     .roster-title{display:table;width:100%;margin:18px 0 8px;padding-bottom:7px;border-bottom:1px solid #dfe7ef}
@@ -51,38 +54,37 @@
     .roster td{padding:7px;border-bottom:1px solid #dce4ed;vertical-align:top;overflow-wrap:anywhere}
     .roster tbody tr:nth-child(even){background:#f6f9fc}
     .roster tr{break-inside:avoid;page-break-inside:avoid}
-    .col-number{width:30px;text-align:center!important;color:#60728a;font-weight:800}
-    .col-photo{width:48px}
-    .col-student{width:205px}
-    .col-placement{width:145px}
-    .col-notes{width:130px}
+    .col-number{width:25px;text-align:center!important;color:#60728a;font-weight:800}
+    .col-photo{width:50px}
+    .col-student{width:160px}
+    .col-placement{width:95px}
+    .col-notes{width:175px}
     .student-photo{display:block;width:38px;height:46px;object-fit:cover;border:1px solid #cfdae7;border-radius:7px;background:#e8eef7}
     .photo-fallback{display:block;width:38px;height:46px;border:1px solid #c9d8ed;border-radius:7px;background:#e8f0ff;color:#284c7a;text-align:center;line-height:44px;font-size:15px;font-weight:900}
     .student-name{display:block;color:#1b2e4c;font-size:10px;line-height:1.3;font-weight:900}
     .student-id{display:block;margin-top:3px;color:#2454a0;font-size:8px;font-weight:900}
-    .student-mother{display:block;margin-top:3px;color:#68788d;font-size:8px;line-height:1.3}
+    .student-mother{display:block;margin-top:3px;color:#68788d;font-size:10px;line-height:1.35}
     .student-mother i{width:11px;color:#a1662b}
-    .placement-main{display:block;color:#253956;font-weight:900;line-height:1.35}
-    .placement-sub{display:block;margin-top:3px;color:#68788d;font-size:8px;line-height:1.35}
-    .subject-list{font-size:0;line-height:1.4}
-    .subject-entry{display:inline-block;vertical-align:top;min-width:116px;max-width:190px;margin:0 4px 4px 0;padding:4px 6px;border:1px solid #dce4ed;border-radius:5px;background:#fff;font-size:8px;line-height:1.25;break-inside:avoid;page-break-inside:avoid}
-    .subject-name{display:block;color:#34465e;font-weight:800;overflow-wrap:anywhere}
-    .subject-status{display:block;margin-top:3px;font-size:7px;font-weight:900}
+    .placement-main{display:block;color:#253956;font-size:11px;font-weight:900;line-height:1.35}
+    .placement-sub{display:block;margin-top:3px;color:#68788d;font-size:11px;line-height:1.35}
+    .subject-list{display:grid;grid-template-columns:repeat(var(--subject-columns,3),minmax(0,1fr));gap:3px;line-height:1.4}
+    .subject-entry{display:block;width:100%;min-width:0;max-width:none;margin:0;padding:3px 4px;border:1px solid #dce4ed;border-radius:5px;background:#fff;font-size:9px;line-height:1.25;break-inside:avoid;page-break-inside:avoid}
+    .subject-name{display:block;color:#34465e;font-size:9px;font-weight:800;overflow-wrap:anywhere}
+    .subject-status{display:block;margin-top:3px;font-size:8px;font-weight:900;overflow-wrap:anywhere}
     .subject-status i{margin-right:3px}
     .subject-status.present{color:#13815a}.subject-status.absent{color:#bf3d32}.subject-status.excused{color:#9a6712}.subject-status.sick{color:#7650b5}.subject-status.emergency{color:#a33669}.subject-status.late{color:#147d91}.subject-status.unmarked{color:#728096}
-    .notes-list{display:grid;gap:5px}.note-entry{padding:4px 5px;border-left:2px solid #7c50b8;border-radius:0 4px 4px 0;background:#f8f4ff;color:#34465e;font-size:8px;line-height:1.3;overflow-wrap:anywhere}.note-entry strong{display:block;margin-bottom:2px;color:#68439d;font-size:7px}.note-empty{color:#8a96a7;font-style:italic}
+    .notes-list{display:grid;gap:5px}.note-entry{padding:5px 7px;border-left:2px solid #7c50b8;border-radius:0 4px 4px 0;background:#f8f4ff;color:#34465e;font-size:10px;line-height:1.4;overflow-wrap:anywhere}.note-entry strong{display:block;margin-bottom:2px;color:#68439d;font-size:9px}.note-empty{color:#8a96a7;font-size:9px;font-style:italic}
     .empty-state{padding:28px 14px!important;text-align:center;color:#64748b;font-size:10px}
-    .report-footer{display:table;width:100%;margin-top:14px;padding-top:8px;border-top:1px solid #dce4ed;color:#6b7c91;font-size:8px}
-    .report-footer span{display:table-cell;width:50%}
-    .report-footer span:last-child{text-align:right}
+    .report-footer{display:block;width:100%;margin-top:14px;padding-top:8px;border-top:1px solid #dce4ed;color:#6b7c91;font-size:8px}
+    .report-footer span{display:block;text-align:right}
     .actions{width:210mm;max-width:calc(100vw - 48px);margin:0 auto 12px;display:flex;justify-content:flex-end;gap:9px}
     .action{border:0;border-radius:8px;padding:10px 15px;display:inline-flex;align-items:center;gap:8px;text-decoration:none;cursor:pointer;font:800 12px Inter,"Segoe UI",Arial,sans-serif}
     .action-print{background:#1d3c69;color:#fff}.action-back{border:1px solid #d6e0ec;background:#fff;color:#31455f}
-    @page{size:A4 portrait;margin:7mm}
+    @page{size:A4 portrait;margin:0}
     @media print{
       html,body{background:#fff!important;padding:0!important}
       .actions{display:none!important}
-      .report{max-width:none;border:0;border-radius:0;box-shadow:none;overflow:visible}
+      .report{width:210mm;min-height:297mm;max-width:none;margin:0 auto;border:0;border-radius:0;box-shadow:none;overflow:visible;zoom:95%}
       .top-rule{height:5px}
       .report-content{padding:8px 9px 6px}
       .masthead,.school-brand,.report-heading{display:block;width:auto;text-align:left}
@@ -93,18 +95,19 @@
       .report-heading{margin-top:8px}
       .official-tag{font-size:8px;padding:4px 7px}
       .report-heading h1{font-size:17px;margin:5px 0 2px}
+      .sitting-badge{font-size:9px;padding:3px 8px}
       .report-heading p{font-size:9px}
-      .metadata{display:block;margin:8px 0 0;border-spacing:0;font-size:0;white-space:nowrap}
-      .metadata-item{display:inline-block;vertical-align:top;width:24%;min-height:47px;margin:0 1.333% 0 0;padding:6px 5px;white-space:normal}
-      .metadata-item:last-child{margin-right:0}
+      .metadata{display:table;width:100%;table-layout:fixed;margin:8px 0 0;border-spacing:4px 0;white-space:normal}
+      .metadata-item{display:table-cell;vertical-align:top;width:30%;min-height:47px;margin:0;padding:6px 5px;white-space:normal}
+      .metadata-item:nth-child(1),.metadata-item:nth-child(3){width:20%}
       .metadata-label{font-size:8px;white-space:nowrap}
-      .metadata-value{font-size:10px;line-height:1.2}
-      .metadata-item:nth-child(4) .metadata-value{font-size:9px;white-space:nowrap}
+      .metadata-value{font-size:11px;line-height:1.2}
+      .metadata-item:nth-child(4) .metadata-value{font-size:11px;white-space:nowrap}
       .summary{display:block;margin:5px 0 0;border-spacing:0;font-size:0;white-space:nowrap}
       .summary-item{display:inline-block;vertical-align:top;width:14%;min-height:42px;margin:0 .333% 0 0;padding:5px 4px;white-space:normal}
       .summary-item:last-child{margin-right:0}
-      .summary-label{font-size:8px;line-height:1.2;white-space:nowrap}
-      .summary-value{font-size:14px;margin-top:3px}
+      .summary-label{font-size:9px;line-height:1.2;white-space:nowrap}
+      .summary-value{font-size:16px;margin-top:3px}
       .roster-title{margin:8px 0 5px;padding-bottom:5px}
       .roster-title strong{font-size:11px}
       .roster-title span{font-size:9px}
@@ -113,24 +116,25 @@
       .roster td{padding:7px 5px}
       .col-number{width:25px}
       .col-photo{width:50px}
-      .col-student{width:182px}
-      .col-placement{width:110px}
-      .col-notes{width:125px}
+      .col-student{width:160px}
+      .col-placement{width:95px}
+      .col-notes{width:175px}
       .student-photo,.photo-fallback{width:38px;height:46px}
       .student-name{font-size:11px;line-height:1.25}
-      .student-id,.student-mother{font-size:9px}
-      .placement-main{font-size:10px}
-      .placement-sub{font-size:9px}
-      .subject-entry{min-width:98px;max-width:155px;margin:0 3px 3px 0;padding:5px 6px;font-size:10px}
-      .subject-name{font-size:9.5px}
-      .subject-status{font-size:8.5px}
-      .note-entry{font-size:8.5px;padding:4px}.note-entry strong{font-size:8px}
+      .student-id{font-size:9px}
+      .student-mother{font-size:10px;line-height:1.35}
+      .placement-main{font-size:11px}
+      .placement-sub{font-size:11px}
+      .subject-entry{min-width:0;max-width:none;margin:0;padding:4px 3px;font-size:9px}
+      .subject-name{font-size:10px}
+      .subject-status{font-size:9px}
+      .note-entry{font-size:10px;padding:5px 6px;line-height:1.4}.note-entry strong{font-size:9px}.note-empty{font-size:9px}
       .empty-state{padding:18px 10px!important;font-size:11px}
       .report-footer{margin-top:8px;padding-top:6px;font-size:9px}
       a{color:inherit;text-decoration:none}
     }
     @media screen and (max-width:760px){
-      body{padding:10px}.report,.actions{max-width:calc(100vw - 20px)}.report-content{padding:16px 12px}.masthead,.school-brand,.report-heading{display:block;width:auto;text-align:left}.report-heading{margin-top:14px}.metadata,.summary{display:block;margin:12px 0 0;border-spacing:0}.metadata-item,.summary-item{display:block;margin:6px 0}.roster{min-width:900px}.roster-wrap{overflow-x:auto}.col-student{width:185px}.col-placement{width:130px}
+      body{padding:10px}.report,.actions{max-width:calc(100vw - 20px)}.report-content{padding:16px 12px}.masthead,.school-brand,.report-heading{display:block;width:auto;text-align:left}.report-heading{margin-top:14px}.metadata,.summary{display:block;margin:12px 0 0;border-spacing:0}.metadata-item,.summary-item{display:block;margin:6px 0}.metadata-item{width:auto}.roster{min-width:900px}.roster-wrap{overflow-x:auto}.col-student{width:185px}.col-placement{width:130px}
     }
   </style>
 </head>
@@ -152,15 +156,17 @@
         <div class="report-heading">
           <span class="official-tag"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Warbixin rasmi ah</span>
           <h1>WARBIXINTA XAADIRINTA IMTIXAANKA</h1>
-          <p><i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Diiwaanka fadhiga imtixaanka</p>
+          <span class="sitting-badge"><i class="fa-solid fa-chair" aria-hidden="true"></i>{{ exam_session.sitting_label }}</span>
         </div>
       </header>
 
+      {% set somali_weekdays = ['Isniin', 'Talaado', 'Arbaco', 'Khamiis', 'Jimco', 'Sabti', 'Axad'] %}
+      {% set somali_months = ['Janaayo', 'Febraayo', 'Maarso', 'Abriil', 'Maajo', 'Juun', 'Luulyo', 'Agoosto', 'Sebteembar', 'Oktoober', 'Nofeembar', 'Diseembar'] %}
       <section class="metadata" aria-label="Xogta imtixaanka">
         <div class="metadata-item"><span class="metadata-label"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i> Sanad-dugsiyeedka</span><strong class="metadata-value">{{ academic_year.name }}</strong></div>
         <div class="metadata-item"><span class="metadata-label"><i class="fa-solid fa-file-pen" aria-hidden="true"></i> Nooca imtixaanka</span><strong class="metadata-value">{{ exam_name }}</strong></div>
         <div class="metadata-item"><span class="metadata-label"><i class="fa-solid fa-school" aria-hidden="true"></i> Goobta imtixaanka</span><strong class="metadata-value">{{ hall.name }}</strong></div>
-        <div class="metadata-item"><span class="metadata-label"><i class="fa-solid fa-clock" aria-hidden="true"></i> Taariikhda iyo fadhiga</span><strong class="metadata-value">{{ exam_session.session_date.strftime('%d/%m/%Y') }} · {{ exam_session.sitting_label }}{% if exam_session.session_time %} · {{ exam_session.session_time.strftime('%I:%M %p').lstrip('0') }}{% endif %}</strong></div>
+        <div class="metadata-item"><span class="metadata-label"><i class="fa-solid fa-clock" aria-hidden="true"></i> Taariikhda imtixaanka</span><strong class="metadata-value">{{ somali_weekdays[exam_session.session_date.weekday()] }}, {{ somali_months[exam_session.session_date.month - 1] }} {{ exam_session.session_date.day }}, {{ exam_session.session_date.year }}{% if exam_session.session_time %} · {{ exam_session.session_time.strftime('%I:%M %p').lstrip('0') }}{% endif %}</strong></div>
       </section>
 
       <section class="summary" aria-label="Tirokoobka xaadirinta">
@@ -180,9 +186,9 @@
             <tr>
               <td class="col-number">{{ loop.index }}</td>
               <td class="col-photo">{% if row.photo_url %}<img class="student-photo" src="{{ row.photo_url }}" alt="Sawirka {{ row.student.full_name }}">{% else %}<span class="photo-fallback">{{ row.student.full_name[:1]|upper }}</span>{% endif %}</td>
-              <td class="col-student"><strong class="student-name">{{ row.student.full_name }}</strong><span class="student-id"><i class="fa-solid fa-id-card" aria-hidden="true"></i> {{ row.student.student_code }}</span><span class="student-mother"><i class="fa-solid fa-person-dress" aria-hidden="true"></i> Hooyada: {{ row.student.mother_name or 'Lama diiwaangelin' }}</span></td>
+              <td class="col-student"><strong class="student-name">{{ row.student.full_name }}</strong><span class="student-id"><i class="fa-solid fa-id-card" aria-hidden="true"></i> {{ row.student.student_code }}</span><span class="student-mother">{{ row.student.mother_name or 'Lama diiwaangelin' }}</span></td>
               <td class="col-placement"><strong class="placement-main">{{ row.level_name }}</strong><span class="placement-sub">Fasal: {{ row.class_name }}{% if row.section_name %}<br>Qaybta: {{ row.section_name }}{% endif %}</span></td>
-              <td><div class="subject-list">{% for slot in row.slots %}<span class="subject-entry"><strong class="subject-name">{{ slot.subject_name }}</strong><span class="subject-status {{ slot.status_class }}"><i class="fa-solid {% if slot.status == 'present' %}fa-circle-check{% elif slot.status == 'absent' %}fa-circle-xmark{% elif slot.status == 'excused' %}fa-file-circle-check{% elif slot.status == 'sick' %}fa-notes-medical{% elif slot.status == 'emergency' %}fa-triangle-exclamation{% elif slot.status == 'late' %}fa-clock{% else %}fa-minus{% endif %}" aria-hidden="true"></i>{{ slot.status_label }}</span></span>{% else %}<span class="subject-entry"><strong class="subject-name">Maado jadwal looma dejin</strong></span>{% endfor %}</div></td>
+              <td><div class="subject-list" style="--subject-columns: {{ 1 if row.slots|length < 2 else (2 if row.slots|length == 2 else 3) }};">{% for slot in row.slots %}<span class="subject-entry"><strong class="subject-name">{{ slot.subject_name }}</strong><span class="subject-status {{ slot.status_class }}"><i class="fa-solid {% if slot.status == 'present' %}fa-circle-check{% elif slot.status == 'absent' %}fa-circle-xmark{% elif slot.status == 'excused' %}fa-file-circle-check{% elif slot.status == 'sick' %}fa-notes-medical{% elif slot.status == 'emergency' %}fa-triangle-exclamation{% elif slot.status == 'late' %}fa-clock{% else %}fa-minus{% endif %}" aria-hidden="true"></i>{{ slot.status_label }}</span></span>{% else %}<span class="subject-entry"><strong class="subject-name">Maado jadwal looma dejin</strong></span>{% endfor %}</div></td>
               <td class="col-notes"><div class="notes-list">{% for slot in row.slots if slot.note %}<div class="note-entry"><strong>{{ slot.subject_name }}</strong>{{ slot.note }}</div>{% else %}<span class="note-empty">Faallo ma jidho</span>{% endfor %}</div></td>
             </tr>
             {% else %}
@@ -192,7 +198,7 @@
         </table>
       </div>
 
-      <footer class="report-footer"><span><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Warbixintan waxaa laga soo saaray diiwaanka fadhiga imtixaanka ee la doortay.</span><span>La diyaariyey: {{ today.strftime('%d/%m/%Y') }} · {{ settings.school_name or 'SULTAAN EMS' }}</span></footer>
+      <footer class="report-footer"><span>La diyaariyey: {{ today.strftime('%d/%m/%Y') }} · {{ settings.school_name or 'SULTAAN EMS' }}</span></footer>
     </div>
   </main>
   {% if auto_print %}<script>window.addEventListener('load',()=>window.print());</script>{% endif %}
