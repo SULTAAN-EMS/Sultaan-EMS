@@ -9,8 +9,8 @@
   <style>
     *{box-sizing:border-box}
     html,body{margin:0;min-height:100%;font-family:Inter,"Segoe UI",Arial,sans-serif;color:#17243e;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    body{background:#f2f5f9;padding:24px}
-    .report{max-width:1440px;margin:0 auto;background:#fff;border:1px solid #dce4ee;border-radius:16px;overflow:hidden;box-shadow:0 22px 56px rgba(23,55,99,.13)}
+    body{background:#e9eef5;padding:24px}
+    .report{width:210mm;max-width:calc(100vw - 48px);min-height:297mm;margin:0 auto;background:#fff;border:1px solid #dce4ee;border-radius:0;overflow:hidden;box-shadow:0 22px 56px rgba(23,55,99,.13)}
     .top-rule{height:7px;background:#1d4ed8;border-bottom:2px solid #0c8a68}
     .report-content{padding:22px 26px 18px}
     .masthead{display:table;width:100%;table-layout:fixed;border-bottom:2px solid #dce5ef;padding-bottom:16px}
@@ -20,9 +20,6 @@
     .school-logo img{width:100%;height:100%;object-fit:contain;vertical-align:top}
     .school-copy{display:inline-block;vertical-align:middle;max-width:calc(100% - 96px)}
     .school-name{margin:0;color:#173763;font-size:22px;line-height:1.18;font-weight:900;text-transform:uppercase;overflow-wrap:anywhere}
-    .school-motto{margin-top:5px;color:#62748b;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
-    .school-contact{margin-top:7px;color:#718096;font-size:9px;line-height:1.55}
-    .school-contact span{display:inline-block;margin-right:12px}
     .report-heading{text-align:right}
     .official-tag{display:inline-block;padding:5px 9px;border:1px solid #d5e7e1;border-radius:999px;background:#effaf6;color:#117556;font-size:8px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
     .report-heading h1{margin:8px 0 4px;color:#17243e;font-size:19px;line-height:1.16;font-weight:900}
@@ -58,7 +55,7 @@
     .col-photo{width:48px}
     .col-student{width:205px}
     .col-placement{width:145px}
-    .col-signature{width:90px}
+    .col-notes{width:130px}
     .student-photo{display:block;width:38px;height:46px;object-fit:cover;border:1px solid #cfdae7;border-radius:7px;background:#e8eef7}
     .photo-fallback{display:block;width:38px;height:46px;border:1px solid #c9d8ed;border-radius:7px;background:#e8f0ff;color:#284c7a;text-align:center;line-height:44px;font-size:15px;font-weight:900}
     .student-name{display:block;color:#1b2e4c;font-size:10px;line-height:1.3;font-weight:900}
@@ -67,19 +64,18 @@
     .student-mother i{width:11px;color:#a1662b}
     .placement-main{display:block;color:#253956;font-weight:900;line-height:1.35}
     .placement-sub{display:block;margin-top:3px;color:#68788d;font-size:8px;line-height:1.35}
-    .student-state{display:inline-block;margin-top:5px;padding:3px 6px;border-radius:999px;background:#eaf7ef;color:#147047;font-size:7px;font-weight:900}
-    .student-state.inactive{background:#fff0ee;color:#b5352d}
     .subject-list{font-size:0;line-height:1.4}
     .subject-entry{display:inline-block;vertical-align:top;min-width:116px;max-width:190px;margin:0 4px 4px 0;padding:4px 6px;border:1px solid #dce4ed;border-radius:5px;background:#fff;font-size:8px;line-height:1.25;break-inside:avoid;page-break-inside:avoid}
     .subject-name{display:block;color:#34465e;font-weight:800;overflow-wrap:anywhere}
     .subject-status{display:block;margin-top:3px;font-size:7px;font-weight:900}
     .subject-status i{margin-right:3px}
     .subject-status.present{color:#13815a}.subject-status.absent{color:#bf3d32}.subject-status.excused{color:#9a6712}.subject-status.sick{color:#7650b5}.subject-status.emergency{color:#a33669}.subject-status.late{color:#147d91}.subject-status.unmarked{color:#728096}
+    .notes-list{display:grid;gap:5px}.note-entry{padding:4px 5px;border-left:2px solid #7c50b8;border-radius:0 4px 4px 0;background:#f8f4ff;color:#34465e;font-size:8px;line-height:1.3;overflow-wrap:anywhere}.note-entry strong{display:block;margin-bottom:2px;color:#68439d;font-size:7px}.note-empty{color:#8a96a7;font-style:italic}
     .empty-state{padding:28px 14px!important;text-align:center;color:#64748b;font-size:10px}
     .report-footer{display:table;width:100%;margin-top:14px;padding-top:8px;border-top:1px solid #dce4ed;color:#6b7c91;font-size:8px}
     .report-footer span{display:table-cell;width:50%}
     .report-footer span:last-child{text-align:right}
-    .actions{max-width:1440px;margin:0 auto 12px;display:flex;justify-content:flex-end;gap:9px}
+    .actions{width:210mm;max-width:calc(100vw - 48px);margin:0 auto 12px;display:flex;justify-content:flex-end;gap:9px}
     .action{border:0;border-radius:8px;padding:10px 15px;display:inline-flex;align-items:center;gap:8px;text-decoration:none;cursor:pointer;font:800 12px Inter,"Segoe UI",Arial,sans-serif}
     .action-print{background:#1d3c69;color:#fff}.action-back{border:1px solid #d6e0ec;background:#fff;color:#31455f}
     @page{size:A4 portrait;margin:7mm}
@@ -94,8 +90,6 @@
       .school-logo{width:54px;height:54px;line-height:44px;margin-right:9px}
       .school-copy{max-width:calc(100% - 72px)}
       .school-name{font-size:18px;line-height:1.15}
-      .school-motto{font-size:9px}
-      .school-contact{font-size:9px;line-height:1.35}
       .report-heading{margin-top:8px}
       .official-tag{font-size:8px;padding:4px 7px}
       .report-heading h1{font-size:17px;margin:5px 0 2px}
@@ -121,22 +115,22 @@
       .col-photo{width:50px}
       .col-student{width:182px}
       .col-placement{width:110px}
-      .col-signature{width:55px}
+      .col-notes{width:125px}
       .student-photo,.photo-fallback{width:38px;height:46px}
       .student-name{font-size:11px;line-height:1.25}
       .student-id,.student-mother{font-size:9px}
-      .student-state{font-size:8.5px;padding:3px 5px}
       .placement-main{font-size:10px}
       .placement-sub{font-size:9px}
       .subject-entry{min-width:98px;max-width:155px;margin:0 3px 3px 0;padding:5px 6px;font-size:10px}
       .subject-name{font-size:9.5px}
       .subject-status{font-size:8.5px}
+      .note-entry{font-size:8.5px;padding:4px}.note-entry strong{font-size:8px}
       .empty-state{padding:18px 10px!important;font-size:11px}
       .report-footer{margin-top:8px;padding-top:6px;font-size:9px}
       a{color:inherit;text-decoration:none}
     }
     @media screen and (max-width:760px){
-      body{padding:10px}.report-content{padding:16px 12px}.masthead,.school-brand,.report-heading{display:block;width:auto;text-align:left}.report-heading{margin-top:14px}.metadata,.summary{display:block;margin:12px 0 0;border-spacing:0}.metadata-item,.summary-item{display:block;margin:6px 0}.roster{min-width:900px}.roster-wrap{overflow-x:auto}.col-student{width:185px}.col-placement{width:130px}
+      body{padding:10px}.report,.actions{max-width:calc(100vw - 20px)}.report-content{padding:16px 12px}.masthead,.school-brand,.report-heading{display:block;width:auto;text-align:left}.report-heading{margin-top:14px}.metadata,.summary{display:block;margin:12px 0 0;border-spacing:0}.metadata-item,.summary-item{display:block;margin:6px 0}.roster{min-width:900px}.roster-wrap{overflow-x:auto}.col-student{width:185px}.col-placement{width:130px}
     }
   </style>
 </head>
@@ -153,12 +147,6 @@
           <span class="school-logo">{% if settings.logo_path %}<img src="{{ asset_url(settings.logo_path) }}" alt="Astaanta dugsiga">{% else %}<i class="fa-solid fa-school" aria-hidden="true"></i>{% endif %}</span>
           <div class="school-copy">
             <h1 class="school-name">{{ settings.school_name or 'DUGSIYADA CAALAMIGA AH EE TAYSIIR' }}</h1>
-            {% if settings.school_motto %}<div class="school-motto">{{ settings.school_motto }}</div>{% endif %}
-            <div class="school-contact">
-              {% if settings.school_address %}<span><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ settings.school_address }}</span>{% endif %}
-              {% if settings.school_phone %}<span><i class="fa-solid fa-phone" aria-hidden="true"></i> {{ settings.school_phone }}</span>{% endif %}
-              {% if settings.school_email %}<span><i class="fa-solid fa-envelope" aria-hidden="true"></i> {{ settings.school_email }}</span>{% endif %}
-            </div>
           </div>
         </div>
         <div class="report-heading">
@@ -186,16 +174,16 @@
 
       <div class="roster-wrap">
         <table class="roster">
-          <thead><tr><th class="col-number">#</th><th class="col-photo">Sawir</th><th class="col-student">Ardayga iyo xogta<br>hooyada</th><th class="col-placement">Heerka iyo fasalka</th><th>Xaadirinta maadooyinka</th><th class="col-signature">Saxiixa</th></tr></thead>
+          <thead><tr><th class="col-number">#</th><th class="col-photo">Sawir</th><th class="col-student">Ardeyga</th><th class="col-placement">Heerka iyo fasalka</th><th>Xaadirinta maadooyinka</th><th class="col-notes">Faallo</th></tr></thead>
           <tbody>
             {% for row in students %}
             <tr>
               <td class="col-number">{{ loop.index }}</td>
               <td class="col-photo">{% if row.photo_url %}<img class="student-photo" src="{{ row.photo_url }}" alt="Sawirka {{ row.student.full_name }}">{% else %}<span class="photo-fallback">{{ row.student.full_name[:1]|upper }}</span>{% endif %}</td>
-              <td class="col-student"><strong class="student-name">{{ row.student.full_name }}</strong><span class="student-id"><i class="fa-solid fa-id-card" aria-hidden="true"></i> {{ row.student.student_code }}</span><span class="student-mother"><i class="fa-solid fa-person-dress" aria-hidden="true"></i> Hooyada: {{ row.student.mother_name or 'Lama diiwaangelin' }}</span><span class="student-state{% if not row.student.is_active %} inactive{% endif %}">{% if row.student.is_active %}Firfircoon{% else %}Aan firfircoonayn{% endif %}</span></td>
+              <td class="col-student"><strong class="student-name">{{ row.student.full_name }}</strong><span class="student-id"><i class="fa-solid fa-id-card" aria-hidden="true"></i> {{ row.student.student_code }}</span><span class="student-mother"><i class="fa-solid fa-person-dress" aria-hidden="true"></i> Hooyada: {{ row.student.mother_name or 'Lama diiwaangelin' }}</span></td>
               <td class="col-placement"><strong class="placement-main">{{ row.level_name }}</strong><span class="placement-sub">Fasal: {{ row.class_name }}{% if row.section_name %}<br>Qaybta: {{ row.section_name }}{% endif %}</span></td>
               <td><div class="subject-list">{% for slot in row.slots %}<span class="subject-entry"><strong class="subject-name">{{ slot.subject_name }}</strong><span class="subject-status {{ slot.status_class }}"><i class="fa-solid {% if slot.status == 'present' %}fa-circle-check{% elif slot.status == 'absent' %}fa-circle-xmark{% elif slot.status == 'excused' %}fa-file-circle-check{% elif slot.status == 'sick' %}fa-notes-medical{% elif slot.status == 'emergency' %}fa-triangle-exclamation{% elif slot.status == 'late' %}fa-clock{% else %}fa-minus{% endif %}" aria-hidden="true"></i>{{ slot.status_label }}</span></span>{% else %}<span class="subject-entry"><strong class="subject-name">Maado jadwal looma dejin</strong></span>{% endfor %}</div></td>
-              <td class="col-signature">&nbsp;</td>
+              <td class="col-notes"><div class="notes-list">{% for slot in row.slots if slot.note %}<div class="note-entry"><strong>{{ slot.subject_name }}</strong>{{ slot.note }}</div>{% else %}<span class="note-empty">Faallo ma jidho</span>{% endfor %}</div></td>
             </tr>
             {% else %}
             <tr><td class="empty-state" colspan="6"><i class="fa-solid fa-user-slash" aria-hidden="true"></i> Arday laguma diiwaangelin goobtan iyo fadhigan.</td></tr>

@@ -82,6 +82,7 @@ ENDPOINT_PERMISSIONS = {
     "admin.feedback_complaints": "settings",
     "admin.reply_feedback_complaint": "settings",
     "admin_attendance.dashboard": "attendance",
+    "admin_attendance.history": "attendance",
     "admin_attendance.save": "attendance",
     "admin_attendance.bulk": "attendance",
     "admin_attendance.delete": "attendance",

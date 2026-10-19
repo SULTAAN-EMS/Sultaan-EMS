@@ -1,0 +1,88 @@
+{% extends 'admin/base.html' %}
+{% block title %}Taariikhda Xaadirinta | SULTAAN EMS{% endblock %}
+{% block body_class %}{{ super() }} admin-page-hero-layout{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin-page-heroes.css') }}">
+<style>
+  .attendance-history{--ink:#16223b;--muted:#68758a;--line:#dce3ec;--blue:#1d4ed8;--violet:#7042ad;--green:#12764f;--red:#b23b31;--gold:#a16207;color:var(--ink);font-family:Inter,"Segoe UI",Arial,sans-serif;padding:0 0 34px}
+  .attendance-history .history-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin:4px 0 18px}
+  .attendance-history h1{margin:0;font:700 25px/1.2 Newsreader,Georgia,serif}
+  .attendance-history .lede{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
+  .attendance-history .back-link{display:inline-flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:#34435e;text-decoration:none;font-size:12px;font-weight:800;white-space:nowrap}
+  .attendance-history .filter-panel{margin-bottom:16px;padding:16px;border:1px solid #dfe5ec;border-radius:12px;background:linear-gradient(135deg,#fff,#f8fbff);box-shadow:0 16px 35px -30px rgba(22,34,59,.55)}
+  .attendance-history .filters{display:grid;grid-template-columns:repeat(4,minmax(135px,1fr));gap:12px}
+  .attendance-history .field{min-width:0}.attendance-history .field label{display:block;margin-bottom:5px;color:#58677e;font-size:10px;font-weight:900;letter-spacing:.04em;text-transform:uppercase}
+  .attendance-history select,.attendance-history input{width:100%;height:39px;padding:0 10px;border:1px solid #cfd8e4;border-radius:7px;background:#fff;color:#25324a;font:600 12px Inter,"Segoe UI",Arial,sans-serif;min-width:0}
+  .attendance-history select:focus,.attendance-history input:focus{outline:3px solid rgba(37,99,235,.16);border-color:#2563eb}
+  .attendance-history .filter-actions{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:13px}
+  .attendance-history .action-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .attendance-history .button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;padding:8px 13px;border:1px solid transparent;border-radius:7px;text-decoration:none;font:800 12px Inter,"Segoe UI",Arial,sans-serif;cursor:pointer}
+  .attendance-history .button-primary{background:#1d3c69;color:#fff}.attendance-history .button-muted{border-color:#d6dfe9;background:#fff;color:#34435e}
+  .attendance-history .filter-error{margin:0 0 14px;padding:10px 13px;border:1px solid #f0c4bf;border-left:4px solid #b23b31;border-radius:7px;background:#fff5f3;color:#8c2d26;font-size:12px}
+  .attendance-history .result-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 9px;color:#68758a;font-size:12px}.attendance-history .result-count{display:inline-flex;align-items:center;gap:7px;color:#263957;font-weight:900}
+  .attendance-history .table-wrap{overflow:auto;border:1px solid #dfe5ec;border-radius:10px;background:#fff;box-shadow:0 18px 40px -34px rgba(22,34,59,.5)}
+  .attendance-history table{width:100%;min-width:1050px;border-collapse:collapse;font-size:12px}
+  .attendance-history th{padding:10px 11px;background:#1d3c69;color:#fff;text-align:left;font-size:10px;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+  .attendance-history td{padding:10px 11px;border-bottom:1px solid #e8edf3;vertical-align:top;color:#34435e;line-height:1.4}
+  .attendance-history tbody tr:nth-child(even){background:#f8fafc}.attendance-history tbody tr:hover{background:#f1f6ff}
+  .attendance-history .student-cell strong,.attendance-history .scope-cell strong{display:block;color:#202f49;font-weight:800}.attendance-history .secondary{display:block;margin-top:3px;color:#78859a;font-size:10px}
+  .attendance-history .status-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border-radius:999px;font-size:10px;font-weight:900;white-space:nowrap}
+  .attendance-history .status-present{background:#e8f7ef;color:#12764f}.attendance-history .status-absent{background:#fff0ed;color:#b23b31}.attendance-history .status-excused{background:#fff6e6;color:#94600d}.attendance-history .status-sick{background:#f3edfc;color:#7042ad}.attendance-history .status-emergency{background:#fff0f5;color:#a72d5e}.attendance-history .status-late{background:#eaf7fa;color:#146b7c}
+  .attendance-history .note-cell{max-width:280px;white-space:pre-wrap;overflow-wrap:anywhere;color:#43345a}.attendance-history .empty{padding:36px 16px;text-align:center;color:#758197}
+  .attendance-history .pagination{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:15px}.attendance-history .pagination .button{min-width:92px}.attendance-history .page-label{font-size:12px;font-weight:800;color:#42516a}
+  @media(max-width:900px){.attendance-history .filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:600px){.attendance-history{padding-top:0}.attendance-history .history-heading{align-items:flex-start;flex-direction:column}.attendance-history h1{font-size:22px}.attendance-history .filters{grid-template-columns:1fr}.attendance-history .filter-actions{align-items:stretch;flex-direction:column}.attendance-history .filter-actions>.action-group,.attendance-history .filter-actions .button{width:100%}.attendance-history .result-bar{align-items:flex-start;flex-direction:column}}
+</style>
+{% endblock %}
+{% block content %}
+<div class="attendance-history">
+  {% set active_area = 'history' %}{% include 'admin/_attendance_section_nav.html' %}
+  <header class="history-heading">
+    <div><h1>Taariikhda Xaadirinta</h1><p class="lede">Raadi oo dib u eeg xaadirintii la kaydiyey, faallooyinka iyo xogta fadhiga imtixaanka.</p></div>
+    <a class="back-link" href="{{ url_for('admin_attendance.dashboard') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Ku noqo xaadirinta</a>
+  </header>
+
+  <form class="filter-panel" method="get" action="{{ url_for('admin_attendance.history') }}">
+    <div class="filters">
+      <div class="field"><label for="historyYear">Sanad-dugsiyeedka</label><select id="historyYear" name="academic_year_id"><option value="">Dhammaan sannadaha</option>{% for year in years %}<option value="{{ year.id }}" {% if selected.year_id == year.id|string %}selected{% endif %}>{{ year.name }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="historyExam">Nooca imtixaanka</label><select id="historyExam" name="exam_scope"><option value="">Dhammaan imtixaannada</option>{% for exam_option in exam_options %}<option value="{{ exam_option.value }}" {% if selected.exam_scope == exam_option.value %}selected{% endif %}>{{ exam_option.label }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="historyHall">Hall-ka / Fasal-imtixaanka</label><select id="historyHall" name="hall_id"><option value="">Dhammaan goobaha</option>{% for hall in hall_options %}<option value="{{ hall.id }}" {% if selected.hall_id == hall.id|string %}selected{% endif %}>{{ hall.name }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="historySession">Fadhiga</label><select id="historySession" name="session_id"><option value="">Dhammaan fadhiyada</option>{% for session in session_options %}<option value="{{ session.id }}" {% if selected.session_id == session.id|string %}selected{% endif %}>{{ session.session_date.strftime('%d/%m/%Y') }} · {{ session.sitting_label }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="historyStatus">Xaaladda xaadirinta</label><select id="historyStatus" name="status"><option value="">Dhammaan xaaladaha</option>{% for status in statuses %}<option value="{{ status.key }}" {% if selected.status == status.key %}selected{% endif %}>{{ status.label }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="historyFrom">Taariikhda laga bilaabo</label><input id="historyFrom" type="date" name="date_from" value="{{ selected.date_from }}"></div>
+      <div class="field"><label for="historyTo">Taariikhda ilaa</label><input id="historyTo" type="date" name="date_to" value="{{ selected.date_to }}"></div>
+      <div class="field"><label for="historySearch">Raadi arday</label><input id="historySearch" type="search" name="q" value="{{ selected.q }}" maxlength="100" placeholder="Magac ama ID"></div>
+    </div>
+    <div class="filter-actions"><div class="action-group"><button class="button button-primary" type="submit"><i class="fa-solid fa-filter" aria-hidden="true"></i> Shaandhee</button><a class="button button-muted" href="{{ url_for('admin_attendance.history', all_years=1) }}"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Nadiifi filtarrada</a></div><span class="secondary">Diiwaannada waxaa loo kala hormariyey taariikhda ugu dambeysay.</span></div>
+  </form>
+
+  {% for message in filter_errors %}<div class="filter-error" role="alert"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> {{ message }}</div>{% endfor %}
+  <div class="result-bar"><span class="result-count"><i class="fa-solid fa-database" aria-hidden="true"></i> {{ total_records }} diiwaan oo la helay</span><span>Muujinaya {{ records|length }} / {{ total_records }}</span></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Taariikh / Waqti</th><th>Sanad-dugsiyeedka</th><th>Ardayga</th><th>Xaalad</th><th>Maado</th><th>Imtixaan / Fadhi</th><th>Goobta</th><th>Faallo</th><th>Diiwaangeliyey</th></tr></thead>
+    <tbody>
+      {% for record in records %}
+      {% set status = (statuses|selectattr('key','equalto',record.status)|first) %}
+      <tr>
+        <td>{{ record.attendance_date.strftime('%d/%m/%Y') if record.attendance_date else '—' }}<span class="secondary">{{ record.recorded_at.strftime('%I:%M %p') if record.recorded_at else '' }}</span></td>
+        <td>{{ record.academic_year.name if record.academic_year else '—' }}</td>
+        <td class="student-cell"><strong>{{ record.student.full_name if record.student else 'Arday aan la aqoon' }}</strong><span class="secondary">{{ record.student.student_code if record.student else '' }}</span></td>
+        <td><span class="status-pill status-{{ record.status }}"><i class="fa-solid {{ status.icon if status else 'fa-circle-question' }}" aria-hidden="true"></i>{{ status.label if status else record.status }}</span></td>
+        <td>{{ record.subject.name if record.subject else '—' }}</td>
+        <td class="scope-cell"><strong>{{ record.exam.name if record.exam else (record.exam_type.name if record.exam_type else '—') }}</strong><span class="secondary">{{ record.exam_session.sitting_label if record.exam_session else 'Fadhi lama diiwaangelin' }}{% if record.exam_session and record.exam_session.session_date %} · {{ record.exam_session.session_date.strftime('%d/%m/%Y') }}{% endif %}</span></td>
+        <td>{{ record.exam_hall.name if record.exam_hall else '—' }}</td>
+        <td class="note-cell">{{ record.note or '—' }}</td>
+        <td>{{ record.marked_by.full_name if record.marked_by else '—' }}</td>
+      </tr>
+      {% else %}<tr><td class="empty" colspan="9"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><br>Wax diiwaan ah kuma jiro filtarradan.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if page_count > 1 %}
+  <nav class="pagination" aria-label="Bogagga taariikhda xaadirinta">
+    {% if page > 1 %}<a class="button button-muted" href="{{ url_for('admin_attendance.history', academic_year_id=selected.year_id, exam_scope=selected.exam_scope, hall_id=selected.hall_id, session_id=selected.session_id, status=selected.status, date_from=selected.date_from, date_to=selected.date_to, q=selected.q, all_years=1 if selected.all_years else None, page=page-1) }}"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i> Hore</a>{% endif %}
+    <span class="page-label">Bog {{ page }} / {{ page_count }}</span>
+    {% if page < page_count %}<a class="button button-muted" href="{{ url_for('admin_attendance.history', academic_year_id=selected.year_id, exam_scope=selected.exam_scope, hall_id=selected.hall_id, session_id=selected.session_id, status=selected.status, date_from=selected.date_from, date_to=selected.date_to, q=selected.q, all_years=1 if selected.all_years else None, page=page+1) }}">Xiga <i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>{% endif %}
+  </nav>
+  {% endif %}
+</div>
+{% endblock %}

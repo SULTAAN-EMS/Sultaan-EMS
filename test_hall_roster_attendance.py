@@ -1,7 +1,7 @@
 import os
 import sys
 import unittest
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import patch
 
 # Add root directory to sys.path
@@ -209,6 +209,14 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(b'rosterLoadingView', response.data)
         self.assertIn(b'noLoader:true', response.data)
 
+    def test_attendance_page_renders_comment_controls_and_history_navigation(self):
+        self.login()
+        response = self.client.get('/admin/attendance/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Faallo (ikhtiyaari)', response.data)
+        self.assertIn(b'Keydi faallada', response.data)
+        self.assertIn(b'Taariikhda Xaadirinta', response.data)
+
     def test_attendance_print_and_pdf_share_year_exam_sitting_report(self):
         self.login()
         self.student1.mother_name = 'Hodan Maxamed'
@@ -227,6 +235,7 @@ class TestHallRosterAndAttendance(unittest.TestCase):
             exam_session_id=session_id,
             exam_type_id=self.exam_type.id,
             status='present',
+            note='Faallo tijaabo oo PDF ah',
         ))
         db.session.commit()
 
@@ -238,7 +247,16 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(b'Hooyada: Hodan Maxamed', printed.data)
         self.assertIn(b'Joogid', printed.data)
         self.assertIn(b'Lama calaamadin', printed.data)
-        self.assertIn(b'Firfircoon', printed.data)
+        self.assertNotIn(b'Firfircoon', printed.data)
+        self.assertNotIn(b'Aan firfircoonayn', printed.data)
+        self.assertNotIn(b'school-contact', printed.data)
+        self.assertIn(b'Ardeyga', printed.data)
+        self.assertNotIn(b'Ardayga iyo xogta', printed.data)
+        self.assertIn(b'Faallo', printed.data)
+        self.assertIn('Faallo ma jidho'.encode(), printed.data)
+        self.assertNotIn('Faallo ma jirto'.encode(), printed.data)
+        self.assertNotIn(b'Saxiixa', printed.data)
+        self.assertIn('Faallo tijaabo oo PDF ah'.encode(), printed.data)
 
         rendered = {}
 
@@ -256,6 +274,100 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn('WARBIXINTA XAADIRINTA IMTIXAANKA', rendered['html'])
         self.assertIn('Hodan Maxamed', rendered['html'])
         self.assertIn(self.student1.student_code, rendered['html'])
+        self.assertIn('Faallo tijaabo oo PDF ah', rendered['html'])
+
+    def test_attendance_note_is_saved_shown_in_roster_and_filterable_in_history(self):
+        self.login()
+        db.session.add_all([
+            ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student1.id),
+            ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student2.id),
+        ])
+        session_id = self._create_schedule_session([
+            {'level_id': self.level_sec.id, 'subject_id': self.subject.id},
+        ])
+        marked_at = datetime(2026, 8, 11, 9, 0)
+        record = AttendanceRecord(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=self.hall.id,
+            subject_id=self.subject.id,
+            exam_session_id=session_id,
+            exam_type_id=self.exam_type.id,
+            status='present',
+            note='Wuxuu yimid waqtigii loogu talagalay',
+            attendance_date=date.today(),
+            recorded_at=marked_at,
+        )
+        db.session.add(record)
+        db.session.add(AttendanceRecord(
+            student_id=self.student2.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=self.hall.id,
+            subject_id=self.subject.id,
+            exam_session_id=session_id,
+            exam_type_id=self.exam_type.id,
+            status='absent',
+            note='Maqnaanshihiisa waa la xaqiijiyey',
+            attendance_date=date.today(),
+        ))
+        db.session.commit()
+
+        update = self.client.post('/admin/attendance/api/mark-status', json={
+            'student_id': self.student1.id,
+            'exam_hall_id': self.hall.id,
+            'exam_session_id': session_id,
+            'subject_id': self.subject.id,
+            'academic_year_id': self.year.id,
+            'exam_type_id': self.exam_type.id,
+            'status': 'present',
+            'note': 'Faallo cusub oo la keydiyey',
+            'note_only': True,
+        })
+        self.assertEqual(update.status_code, 200)
+        self.assertTrue(update.get_json()['success'])
+        db.session.refresh(record)
+        self.assertEqual(record.status, 'present')
+        self.assertEqual(record.note, 'Faallo cusub oo la keydiyey')
+        self.assertEqual(record.recorded_at, marked_at)
+
+        roster = self.client.get(
+            f'/admin/attendance/api/attendance-data?academic_year_id={self.year.id}'
+            f'&exam_type_id={self.exam_type.id}&exam_hall_id={self.hall.id}'
+            f'&exam_session_id={session_id}'
+        ).get_json()
+        saved_slot = roster['groups'][0]['students'][0]['slots'][0]
+        self.assertEqual(saved_slot['note'], 'Faallo cusub oo la keydiyey')
+
+        history = self.client.get(
+            f'/admin/attendance/history?academic_year_id={self.year.id}'
+            f'&exam_scope=legacy:{self.exam_type.id}&hall_id={self.hall.id}'
+            f'&session_id={session_id}&status=present&q={self.student1.student_code}'
+            f'&date_from={date.today().isoformat()}&date_to={date.today().isoformat()}'
+        )
+        self.assertEqual(history.status_code, 200)
+        self.assertIn('Taariikhda Xaadirinta'.encode(), history.data)
+        self.assertIn('Faallo cusub oo la keydiyey'.encode(), history.data)
+        self.assertNotIn('Maqnaanshihiisa waa la xaqiijiyey'.encode(), history.data)
+
+    def test_attendance_note_cannot_create_an_unmarked_record(self):
+        self.login()
+        db.session.add(ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student1.id))
+        session_id = self._create_schedule_session([
+            {'level_id': self.level_sec.id, 'subject_id': self.subject.id},
+        ])
+        response = self.client.post('/admin/attendance/api/mark-status', json={
+            'student_id': self.student1.id,
+            'exam_hall_id': self.hall.id,
+            'exam_session_id': session_id,
+            'subject_id': self.subject.id,
+            'academic_year_id': self.year.id,
+            'exam_type_id': self.exam_type.id,
+            'status': 'present',
+            'note': 'Faallo aan xaalad lahayn',
+            'note_only': True,
+        })
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(AttendanceRecord.query.count(), 0)
 
     def test_hall_transfer_moves_scoped_attendance_and_keeps_it_editable(self):
         self.login()

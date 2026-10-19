@@ -504,8 +504,11 @@ def session_attendance_payload(hall, session, allowed_pairs=None):
         .filter_by(exam_hall_id=hall.id, exam_session_id=session.id)
         .all()
     )
-    status_map = {
-        (record.student_id, record.subject_id): normalize_attendance_status(record.status)
+    record_map = {
+        (record.student_id, record.subject_id): {
+            "status": normalize_attendance_status(record.status),
+            "note": record.note or "",
+        }
         for record in records
     }
     tallies = {status["key"]: 0 for status in ATTENDANCE_STATUSES}
@@ -533,7 +536,8 @@ def session_attendance_payload(hall, session, allowed_pairs=None):
         group_order[key] = min(group_order.get(key, assigned_order), assigned_order)
         slots = []
         for subject in subjects_by_level.get(level_id, []):
-            current_status = status_map.get((student.id, subject.id))
+            saved_record = record_map.get((student.id, subject.id), {})
+            current_status = saved_record.get("status")
             if current_status not in tallies:
                 current_status = None
             if current_status:
@@ -542,6 +546,7 @@ def session_attendance_payload(hall, session, allowed_pairs=None):
                 "subject_id": subject.id,
                 "subject_name": subject.name,
                 "status": current_status,
+                "note": saved_record.get("note", ""),
             })
         group["students"].append({
             "id": student.id,
@@ -968,6 +973,176 @@ def dashboard():
         halls=[],
         statuses=ATTENDANCE_STATUSES,
         settings=get_settings(),
+    )
+
+
+@attendance_bp.route("/history")
+def history():
+    """Browse attendance records with filters scoped to saved history."""
+    years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
+    current_year = AcademicYear.query.filter_by(is_current=True).first()
+    all_years = request.args.get("all_years") == "1"
+    year_was_provided = "academic_year_id" in request.args
+    year_id = request.args.get("academic_year_id", type=int)
+    if not year_was_provided and not all_years:
+        year_id = current_year.id if current_year else (years[0].id if years else None)
+    if year_id not in {year.id for year in years}:
+        year_id = None
+
+    exam_options = []
+    exam_query = Exam.query
+    legacy_exam_query = ExamType.query
+    if year_id:
+        exam_query = exam_query.filter_by(academic_year_id=year_id)
+        legacy_exam_query = legacy_exam_query.filter_by(academic_year_id=year_id)
+    for exam in exam_query.options(joinedload(Exam.academic_year)).order_by(
+        Exam.academic_year_id.desc(), Exam.sort_order, Exam.name
+    ).all():
+        year_label = exam.academic_year.name if exam.academic_year else ""
+        label = f"{exam.name} · {year_label}" if not year_id else exam.name
+        exam_options.append({"value": f"exam:{exam.id}", "label": f"{label} · Nidaam cusub"})
+    for legacy_exam in legacy_exam_query.options(joinedload(ExamType.academic_year)).order_by(
+        ExamType.academic_year_id.desc(), ExamType.sort_order, ExamType.name
+    ).all():
+        year_label = legacy_exam.academic_year.name if legacy_exam.academic_year else ""
+        label = f"{legacy_exam.name} · {year_label}" if not year_id else legacy_exam.name
+        exam_options.append({"value": f"legacy:{legacy_exam.id}", "label": f"{label} · Diiwaan hore"})
+    exam_options.sort(key=lambda option: option["label"].casefold())
+
+    selected_exam_scope = (request.args.get("exam_scope") or "").strip()
+    selected_exam = None
+    selected_legacy_exam = None
+    if selected_exam_scope.startswith("exam:"):
+        selected_exam = db.session.get(Exam, parse_int(selected_exam_scope.split(":", 1)[1]))
+        if selected_exam and year_id and selected_exam.academic_year_id != year_id:
+            selected_exam = None
+    elif selected_exam_scope.startswith("legacy:"):
+        selected_legacy_exam = db.session.get(ExamType, parse_int(selected_exam_scope.split(":", 1)[1]))
+        if selected_legacy_exam and year_id and selected_legacy_exam.academic_year_id != year_id:
+            selected_legacy_exam = None
+    if not selected_exam and not selected_legacy_exam:
+        selected_exam_scope = ""
+
+    base_query = AttendanceRecord.query
+    if year_id:
+        base_query = base_query.filter(AttendanceRecord.academic_year_id == year_id)
+    if selected_exam:
+        matching_legacy = ExamType.query.filter_by(
+            academic_year_id=selected_exam.academic_year_id,
+            name=selected_exam.name,
+        ).first()
+        exam_scope_filters = [AttendanceRecord.exam_id == selected_exam.id]
+        if matching_legacy:
+            exam_scope_filters.append(and_(
+                AttendanceRecord.exam_id.is_(None),
+                AttendanceRecord.exam_type_id == matching_legacy.id,
+            ))
+        base_query = base_query.filter(or_(*exam_scope_filters))
+    elif selected_legacy_exam:
+        base_query = base_query.filter(AttendanceRecord.exam_type_id == selected_legacy_exam.id)
+
+    hall_ids = [hall_id for (hall_id,) in base_query.with_entities(AttendanceRecord.exam_hall_id).filter(
+        AttendanceRecord.exam_hall_id.isnot(None)
+    ).distinct().all()]
+    hall_options = ExamHall.query.filter(ExamHall.id.in_(hall_ids)).order_by(ExamHall.name).all() if hall_ids else []
+
+    selected_hall_id = request.args.get("hall_id", type=int)
+    session_options_query = base_query.with_entities(AttendanceRecord.exam_session_id).filter(
+        AttendanceRecord.exam_session_id.isnot(None)
+    )
+    if selected_hall_id:
+        session_options_query = session_options_query.filter(AttendanceRecord.exam_hall_id == selected_hall_id)
+    session_ids = [session_id for (session_id,) in session_options_query.distinct().all()]
+    session_options = ExamSession.query.filter(ExamSession.id.in_(session_ids)).order_by(
+        ExamSession.session_date.desc(), ExamSession.session_time.desc(), ExamSession.id.desc()
+    ).all() if session_ids else []
+
+    selected_session_id = request.args.get("session_id", type=int)
+    selected_status = request.args.get("status", "").strip().lower()
+    status_keys = {item["key"] for item in ATTENDANCE_STATUSES}
+    if selected_status not in status_keys:
+        selected_status = ""
+    search = (request.args.get("q") or "").strip()[:100]
+    filter_errors = []
+
+    def parse_filter_date(name, label):
+        value = (request.args.get(name) or "").strip()
+        if not value:
+            return None, ""
+        try:
+            return date.fromisoformat(value), value
+        except ValueError:
+            filter_errors.append(f"Taariikhda {label} sax ma aha.")
+            return None, ""
+
+    start_date, start_date_value = parse_filter_date("date_from", "bilowga")
+    end_date, end_date_value = parse_filter_date("date_to", "dhammaadka")
+    if start_date and end_date and start_date > end_date:
+        filter_errors.append("Taariikhda bilowgu kama dambayn karto taariikhda dhammaadka.")
+        start_date = end_date = None
+        start_date_value = end_date_value = ""
+
+    query = base_query
+    if selected_hall_id:
+        query = query.filter(AttendanceRecord.exam_hall_id == selected_hall_id)
+    if selected_session_id:
+        query = query.filter(AttendanceRecord.exam_session_id == selected_session_id)
+    if selected_status:
+        query = query.filter(AttendanceRecord.status == selected_status)
+    if start_date:
+        query = query.filter(AttendanceRecord.attendance_date >= start_date)
+    if end_date:
+        query = query.filter(AttendanceRecord.attendance_date <= end_date)
+    if search:
+        query = query.join(Student).filter(or_(
+            Student.full_name.ilike(f"%{search}%"),
+            Student.student_code.ilike(f"%{search}%"),
+        ))
+
+    per_page = 50
+    total_records = query.count()
+    page = max(1, request.args.get("page", type=int) or 1)
+    page_count = max(1, (total_records + per_page - 1) // per_page)
+    page = min(page, page_count)
+    records = query.options(
+        joinedload(AttendanceRecord.student),
+        joinedload(AttendanceRecord.exam_hall),
+        joinedload(AttendanceRecord.subject),
+        joinedload(AttendanceRecord.academic_year),
+        joinedload(AttendanceRecord.exam_session),
+        joinedload(AttendanceRecord.exam),
+        joinedload(AttendanceRecord.exam_type),
+        joinedload(AttendanceRecord.marked_by),
+    ).order_by(
+        AttendanceRecord.attendance_date.desc(),
+        AttendanceRecord.recorded_at.desc(),
+        AttendanceRecord.id.desc(),
+    ).offset((page - 1) * per_page).limit(per_page).all()
+
+    return render_template(
+        "admin/attendance_history.html",
+        active_area="history",
+        years=years,
+        exam_options=exam_options,
+        hall_options=hall_options,
+        session_options=session_options,
+        statuses=ATTENDANCE_STATUSES,
+        records=records,
+        total_records=total_records,
+        page=page,
+        page_count=page_count,
+        selected={
+            "year_id": str(year_id or ""),
+            "exam_scope": selected_exam_scope,
+            "hall_id": str(selected_hall_id or ""),
+            "session_id": str(selected_session_id or ""),
+            "status": selected_status,
+            "date_from": start_date_value,
+            "date_to": end_date_value,
+            "q": search,
+            "all_years": all_years or (year_was_provided and not year_id),
+        },
+        filter_errors=filter_errors,
     )
 
 
@@ -2037,7 +2212,10 @@ def api_attendance_data():
     records = AttendanceRecord.query.filter_by(exam_hall_id=exam_hall_id, subject_id=subject_id).order_by(AttendanceRecord.id.asc()).all() if subject_id else []
     record_map = {}
     for r in records:
-        record_map[r.student_id] = normalize_attendance_status(r.status)
+        record_map[r.student_id] = {
+            "status": normalize_attendance_status(r.status),
+            "note": r.note or "",
+        }
 
     students_data = []
     tallies = {st["key"]: 0 for st in ATTENDANCE_STATUSES}
@@ -2045,7 +2223,8 @@ def api_attendance_data():
     for s in students_raw:
         # An absent record is intentionally unmarked. Attendance becomes a
         # committed per-subject decision only after the operator clicks a status.
-        st_val = record_map.get(s.id)
+        saved_record = record_map.get(s.id, {})
+        st_val = saved_record.get("status")
         if st_val not in tallies:
             st_val = None
         if st_val:
@@ -2061,6 +2240,7 @@ def api_attendance_data():
             "academic_class_id": placement.get("academic_class_id") or s.academic_class_id,
             "photo_url": stored_photo_url(s.photo_path),
             "status": st_val,
+            "note": saved_record.get("note", ""),
         })
 
     return jsonify({
@@ -2084,6 +2264,12 @@ def api_mark_status():
     exam_type_id = parse_int(data.get("exam_type_id"))
     exam_session_id = parse_int(data.get("exam_session_id"))
     status_val = (data.get("status") or "present").lower().strip()
+    note_was_submitted = "note" in data
+    note_value = str(data.get("note") or "").strip()
+    note_only = str(data.get("note_only") or "").strip().lower() in {"1", "true", "yes"}
+
+    if len(note_value) > 255:
+        return jsonify({"success": False, "error": "Faalladu kama badnaan karto 255 xaraf."}), 400
 
     status_val = normalize_attendance_status(status_val)
     if status_val not in ATTENDANCE_STATUS_KEYS:
@@ -2152,6 +2338,27 @@ def api_mark_status():
         exam_session_id=exam_session.id if exam_session else None,
     )
 
+    if note_only:
+        if not existing:
+            return jsonify({
+                "success": False,
+                "error": "Marka hore calaamadee xaaladda xaadirinta, dabadeed faallada kaydi.",
+            }), 409
+        existing.note = note_value or None
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Unable to save attendance note")
+            return jsonify({"success": False, "error": "Faallada lama kaydin. Fadlan mar kale isku day."}), 500
+        return jsonify({
+            "success": True,
+            "student_id": student_id,
+            "status": normalize_attendance_status(existing.status),
+            "note": existing.note or "",
+            "record_id": existing.id,
+        })
+
     record = existing or AttendanceRecord(
         student_id=student_id,
         exam_hall_id=exam_hall_id,
@@ -2169,6 +2376,8 @@ def api_mark_status():
         status_val=status_val,
         exam_session=exam_session,
     )
+    if note_was_submitted:
+        record.note = note_value or None
 
     db.session.add(record)
     try:
@@ -2200,6 +2409,8 @@ def api_mark_status():
             status_val=status_val,
             exam_session=exam_session,
         )
+        if note_was_submitted:
+            record.note = note_value or None
         try:
             db.session.commit()
         except IntegrityError:
@@ -2215,7 +2426,13 @@ def api_mark_status():
         current_app.logger.exception("Unexpected database error saving attendance: %s", exc)
         return jsonify({"success": False, "error": "Xaadirinta lama kaydin. Fadlan mar kale isku day."}), 500
 
-    return jsonify({"success": True, "student_id": student_id, "status": record.status, "record_id": record.id})
+    return jsonify({
+        "success": True,
+        "student_id": student_id,
+        "status": record.status,
+        "note": record.note or "",
+        "record_id": record.id,
+    })
 
 
 def mark_session_bulk_attendance(*, hall, exam, legacy_exam_type, session, year_id, status_val):
@@ -2613,6 +2830,7 @@ def _attendance_report_context():
                     "status": status,
                     "status_label": status_labels.get(status, "Lama calaamadin"),
                     "status_class": status_classes.get(status, "unmarked"),
+                    "note": slot.get("note") or "",
                 })
             report_students.append({
                 "student": student,
