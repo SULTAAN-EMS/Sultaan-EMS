@@ -16,7 +16,7 @@
   .attendance-section-nav__icon{width:32px;height:32px;display:grid;place-items:center;flex:0 0 32px;border-radius:10px;background:linear-gradient(135deg,#D8E7FF,#EDF4FF);color:#2563EB;box-shadow:inset 0 1px 0 rgba(255,255,255,.8)}
   .attendance-section-nav a:nth-child(2) .attendance-section-nav__icon{background:linear-gradient(135deg,#E7D8FF,#F5EEFF);color:#7C3AED}.attendance-section-nav a:nth-child(3) .attendance-section-nav__icon{background:linear-gradient(135deg,#CDEFE5,#ECFBF6);color:#0F766E}
   .attendance-section-nav a:nth-child(4) .attendance-section-nav__icon{background:linear-gradient(135deg,#FDE7B0,#FFF4D7);color:#A16207}
-  .attendance-section-nav strong{display:block;font:800 12px Inter,Arial,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.attendance-section-nav small{display:block;margin-top:2px;font:600 10px Inter,Arial,sans-serif;color:#7A8495;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .attendance-section-nav strong{display:block;font:800 12px/1.35 Inter,Arial,sans-serif;white-space:normal;overflow-wrap:anywhere}.attendance-section-nav small{display:block;margin-top:3px;font:600 10px/1.35 Inter,Arial,sans-serif;color:#7A8495;white-space:normal;overflow-wrap:anywhere}
   .attendance-section-nav a>span:nth-child(2){min-width:0;flex:1}
   .attendance-section-nav a.active .attendance-section-nav__icon{background:rgba(255,255,255,.18);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.22)}
   .attendance-section-nav a.active small{color:rgba(255,255,255,.82)}
@@ -26,6 +26,7 @@
   .upper-hero--attendance .upper-hero__attendance-visual{right:26px;bottom:8px;transform:scale(.44);transform-origin:right bottom}
   @media(max-width:850px){.upper-hero--attendance{min-height:0;padding:14px 20px}.upper-hero--attendance .upper-hero__attendance-visual{right:16px;bottom:8px}}
   @media(max-width:520px){.upper-hero--attendance{min-height:0;padding:12px 14px}.upper-hero--attendance .upper-hero__attendance-visual{right:12px;bottom:6px;transform:scale(.38)}}
+  @media(max-width:1100px){.attendance-section-nav{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media(max-width:700px){.attendance-section-nav{grid-template-columns:1fr;margin-bottom:18px}.attendance-section-nav a{padding:9px 10px}}
 </style>
 {{ admin_page_hero('attendance') }}
