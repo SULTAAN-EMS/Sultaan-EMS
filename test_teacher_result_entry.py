@@ -6,7 +6,7 @@ from unittest.mock import patch
 from app import create_app, db
 from app.models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel,
-    AcademicYearSubject, Exam, Result, Student, StudentEnrollment, Subject, Teacher,
+    AcademicSection, AcademicYearSubject, Exam, Result, Student, StudentEnrollment, Subject, Teacher,
     TeacherResultAssignment, TeacherResultSubmission, User,
 )
 from migrations import phase_14_teacher_result_entry
@@ -96,10 +96,203 @@ class TestTeacherResultEntry(unittest.TestCase):
     def test_teacher_portal_exposes_only_result_entry_and_limits_roster_to_assignment(self):
         response = self._teacher_login()
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Result Entry", response.data)
+        self.assertIn(b"Gelinta natiijooyinka", response.data)
         self.assertIn(b"Student 1", response.data)
         self.assertNotIn(b"Exam Analytics", response.data)
         self.assertNotIn(b"Naadigayga", response.data)
+
+    def test_teacher_home_redirects_to_the_real_assigned_result_workspace(self):
+        self._teacher_login()
+        response = self.client.get("/teacher/?academic_level_id=1")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/teacher/result-entry?academic_level_id=1", response.headers["Location"])
+
+    def test_result_entry_filters_resolve_assignments_across_multiple_levels(self):
+        middle_level = AcademicLevel(name="Middle", sort_order=2, is_active=True)
+        db.session.add(middle_level)
+        db.session.flush()
+        middle_year_level = AcademicYearLevel(
+            academic_year=self.year, legacy_level=middle_level, name="Middle"
+        )
+        middle_class = AcademicClass(academic_level=middle_level, name="Grade 7", is_active=True)
+        middle_subject = Subject(name="Arabic", academic_level=middle_level, max_score=50, is_active=True)
+        db.session.add_all([middle_year_level, middle_class, middle_subject])
+        db.session.flush()
+        middle_year_class = AcademicYearClass(
+            academic_year_level=middle_year_level, legacy_class=middle_class, name="Grade 7"
+        )
+        db.session.add_all([
+            middle_year_class,
+            AcademicYearSubject(
+                academic_year=self.year, academic_year_level=middle_year_level,
+                legacy_subject=middle_subject, name=middle_subject.name,
+                subject_kind="exam", max_score=50,
+            ),
+        ])
+        middle_student = Student(student_code="ST-M1", full_name="Middle Student", is_active=True)
+        db.session.add(middle_student)
+        db.session.flush()
+        db.session.add_all([
+            StudentEnrollment(
+                student=middle_student, academic_year=self.year,
+                academic_year_level=middle_year_level, academic_year_class=middle_year_class,
+                status="active", academic_outcome="pending", enrollment_source="manual",
+            ),
+            TeacherResultAssignment(
+                teacher=self.teacher, academic_year=self.year, exam=self.exam,
+                school_class=middle_class, subject=middle_subject,
+            ),
+        ])
+        db.session.commit()
+
+        self._teacher_login()
+        response = self.client.get(
+            "/teacher/result-entry",
+            query_string={
+                "academic_year_id": self.year.id,
+                "exam_id": self.exam.id,
+                "academic_level_id": middle_level.id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Middle Student", response.data)
+        self.assertIn(b"Grade 7", response.data)
+        self.assertIn(b"Arabic", response.data)
+        self.assertNotIn(b"Student 1", response.data)
+        self.assertNotIn(b"Mathematics", response.data)
+
+    def test_saving_result_keeps_scope_filters_without_sticking_to_stale_status(self):
+        self._teacher_login()
+        response = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": str(self.assignment.id),
+            "action": "draft",
+            "academic_year_id": str(self.year.id),
+            "exam_id": str(self.exam.id),
+            "academic_level_id": str(self.level.id),
+            "class_id": str(self.school_class.id),
+            "subject_id": str(self.subject.id),
+            "status": "not_started",
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(f"academic_level_id={self.level.id}", response.headers["Location"])
+        self.assertIn(f"subject_id={self.subject.id}", response.headers["Location"])
+        self.assertNotIn("status=not_started", response.headers["Location"])
+        self.assertEqual(TeacherResultSubmission.query.one().status, "draft")
+
+    def test_admin_teacher_form_saves_multi_level_subjects_classes_and_sections(self):
+        middle_level = AcademicLevel(name="Middle", sort_order=2, is_active=True)
+        legacy_level = AcademicLevel(name="Legacy Primary", sort_order=3, is_active=True)
+        db.session.add_all([middle_level, legacy_level])
+        db.session.flush()
+        middle_year_level = AcademicYearLevel(
+            academic_year=self.year, legacy_level=middle_level, name="Dugsi Dhexe", sort_order=2,
+        )
+        middle_class = AcademicClass(academic_level=middle_level, name="Grade 7", is_active=True)
+        middle_subject = Subject(name="Arabic", academic_level=middle_level, is_active=True)
+        legacy_class = AcademicClass(academic_level=legacy_level, name="Old Grade", is_active=True)
+        legacy_subject = Subject(name="Old Arts", academic_level=legacy_level, is_active=True)
+        db.session.add_all([middle_year_level, middle_class, middle_subject, legacy_class, legacy_subject])
+        db.session.flush()
+        middle_year_class = AcademicYearClass(
+            academic_year_level=middle_year_level, legacy_class=middle_class, name="Grade 7",
+        )
+        middle_year_subject = AcademicYearSubject(
+            academic_year=self.year, academic_year_level=middle_year_level,
+            legacy_subject=middle_subject, name=middle_subject.name, subject_kind="exam",
+        )
+        middle_section = AcademicSection(academic_class=middle_class, name="A", is_active=True)
+        db.session.add_all([middle_year_class, middle_year_subject, middle_section])
+        db.session.commit()
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        form = self.client.get(f"/admin/teachers/{self.teacher.id}/edit")
+        self.assertEqual(form.status_code, 200)
+        self.assertIn(b"Dugsi Dhexe", form.data)
+        self.assertIn(b"Arabic", form.data)
+        self.assertNotIn(b"Legacy Primary", form.data)
+        self.assertNotIn(b"Old Arts", form.data)
+        self.assertNotIn(b"Legacy Class Assignments", form.data)
+
+        response = self.client.post(f"/admin/teachers/{self.teacher.id}/edit", data={
+            "teacher_id": self.teacher.teacher_id,
+            "teacher_code": self.teacher.teacher_code,
+            "full_name": self.teacher.full_name,
+            "gender": "",
+            "phone": "",
+            "email": "",
+            "address": "",
+            "emergency_contact": "",
+            "employment_type": "Full Time",
+            "years_experience": "0",
+            "department": "",
+            "employment_status": "Active",
+            "academic_level_ids": [str(self.level.id), str(middle_level.id)],
+            "academic_class_ids": [str(self.school_class.id), str(middle_class.id)],
+            "academic_section_ids": [str(middle_section.id)],
+            "subject_ids": [str(self.subject.id), str(middle_subject.id)],
+            "username": self.teacher_user.username,
+            "account_active": "on",
+        }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(self.teacher)
+        self.assertEqual({item.id for item in self.teacher.classes}, {self.school_class.id, middle_class.id})
+        self.assertEqual({item.id for item in self.teacher.subjects}, {self.subject.id, middle_subject.id})
+        self.assertEqual({item.id for item in self.teacher.sections}, {middle_section.id})
+        self.assertEqual({item.id for item in self.teacher.academic_levels}, {self.level.id, middle_level.id})
+
+    def test_admin_teacher_form_rejects_active_legacy_scope_not_configured_this_year(self):
+        legacy_level = AcademicLevel(name="Unconfigured Level", is_active=True)
+        db.session.add(legacy_level)
+        db.session.flush()
+        legacy_class = AcademicClass(academic_level=legacy_level, name="Old Class", is_active=True)
+        legacy_subject = Subject(name="Old Subject", academic_level=legacy_level, is_active=True)
+        db.session.add_all([legacy_class, legacy_subject])
+        db.session.commit()
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        response = self.client.post(f"/admin/teachers/{self.teacher.id}/edit", data={
+            "teacher_id": self.teacher.teacher_id,
+            "teacher_code": self.teacher.teacher_code,
+            "full_name": self.teacher.full_name,
+            "gender": "",
+            "phone": "",
+            "email": "",
+            "address": "",
+            "emergency_contact": "",
+            "employment_type": "Full Time",
+            "years_experience": "0",
+            "department": "",
+            "employment_status": "Active",
+            "academic_level_ids": [str(self.level.id), str(legacy_level.id)],
+            "academic_class_ids": [str(self.school_class.id), str(legacy_class.id)],
+            "subject_ids": [str(self.subject.id), str(legacy_subject.id)],
+            "username": self.teacher_user.username,
+            "account_active": "on",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("qaab-dhismeedka sanad-dugsiyeedka hadda".encode(), response.data)
+        db.session.refresh(self.teacher)
+        self.assertNotIn(legacy_class, self.teacher.classes)
+        self.assertNotIn(legacy_subject, self.teacher.subjects)
+
+    def test_admin_teacher_directory_filters_academic_class_and_real_portal_access(self):
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        response = self.client.get("/admin/teachers/list", query_string={"class_id": self.school_class.id})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Results Teacher", response.data)
+
+        self.teacher_user.is_active = False
+        db.session.commit()
+        disabled = self.client.get("/admin/teachers/list?account_status=disabled")
+        enabled = self.client.get("/admin/teachers/list?account_status=enabled")
+        self.assertEqual(disabled.status_code, 200)
+        self.assertIn(b"Results Teacher", disabled.data)
+        self.assertEqual(enabled.status_code, 200)
+        self.assertNotIn(b"Results Teacher", enabled.data)
 
     def test_invalid_score_is_not_saved_and_submitted_marks_publish_only_after_admin_approval(self):
         self._teacher_login()
@@ -225,6 +418,71 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn(b"Mathematics", response.data)
         self.assertNotIn(b"Unmapped legacy class", response.data)
         self.assertNotIn(b"Unoffered legacy subject", response.data)
+
+    def test_unlinked_staff_account_can_be_linked_and_then_used_for_result_assignment(self):
+        portal_user = User(
+            username="new-teacher-login", full_name="New Teacher", role="staff", is_active=True,
+        )
+        portal_user.set_password("TeacherPass123")
+        db.session.add(portal_user)
+        db.session.commit()
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        setup = self.client.get("/admin/teachers/result-entry")
+        self.assertEqual(setup.status_code, 200)
+        self.assertIn(b"new-teacher-login", setup.data)
+        self.assertIn(f"user_id={portal_user.id}".encode(), setup.data)
+
+        form = self.client.get(f"/admin/teachers/new?user_id={portal_user.id}")
+        self.assertEqual(form.status_code, 200)
+        self.assertIn(b"new-teacher-login", form.data)
+        response = self.client.post("/admin/teachers/new", data={
+            "existing_user_id": str(portal_user.id),
+            "teacher_id": "NEW-TEACHER",
+            "teacher_code": "",
+            "full_name": "New Teacher",
+            "employment_type": "Full Time",
+            "years_experience": "0",
+            "employment_status": "Active",
+            "academic_level_ids": [str(self.level.id)],
+            "academic_class_ids": [str(self.school_class.id)],
+            "subject_ids": [str(self.subject.id)],
+            "username": portal_user.username,
+            "account_active": "on",
+        }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        linked_teacher = Teacher.query.filter_by(teacher_id="NEW-TEACHER").one()
+        db.session.refresh(portal_user)
+        self.assertEqual(linked_teacher.user_id, portal_user.id)
+        self.assertEqual(portal_user.role, "staff")
+        self.assertEqual(Teacher.query.filter_by(user_id=portal_user.id).count(), 1)
+
+        setup = self.client.get("/admin/teachers/result-entry")
+        self.assertIn(f'value="{linked_teacher.id}">{linked_teacher.full_name}'.encode(), setup.data)
+        self.assertNotIn(b"new-teacher-login", setup.data)
+
+    def test_teacher_form_refuses_to_link_an_admin_login_as_a_teacher(self):
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        response = self.client.post("/admin/teachers/new", data={
+            "existing_user_id": str(self.admin.id),
+            "teacher_id": "INVALID-TEACHER",
+            "full_name": "Should Not Link",
+            "employment_type": "Full Time",
+            "years_experience": "0",
+            "employment_status": "Active",
+            "academic_level_ids": [str(self.level.id)],
+            "academic_class_ids": [str(self.school_class.id)],
+            "subject_ids": [str(self.subject.id)],
+            "username": self.admin.username,
+            "account_active": "on",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Akoonka la doortay ma aha staff".encode(), response.data)
+        self.assertIsNone(Teacher.query.filter_by(teacher_id="INVALID-TEACHER").first())
+        db.session.refresh(self.admin)
+        self.assertEqual(self.admin.role, "admin")
 
     def test_admin_rejects_class_and_subject_scopes_from_another_level(self):
         other_level = AcademicLevel(name="Middle", is_active=True)

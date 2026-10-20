@@ -152,7 +152,7 @@ def parse_teacher_filters(args):
 
 
 def teacher_nav_items():
-    return [("teacher_portal.result_entry", "Result Entry", "fa-pen-to-square", None)]
+    return [("teacher_portal.result_entry", "Gelinta natiijooyinka", "fa-pen-to-square", None)]
 
 
 def record_teacher_visit(teacher, page_name):

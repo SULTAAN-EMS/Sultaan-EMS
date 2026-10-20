@@ -1,60 +1,84 @@
 {% extends "teacher/base.html" %}
-{% block teacher_title %}Result Entry{% endblock %}
+{% block teacher_title %}Gelinta natiijooyinka{% endblock %}
 {% block teacher_filters %}{% endblock %}
 {% block teacher_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css') }}">
 <section class="result-entry-page">
   <div class="entry-intro">
-    <div><span class="entry-kicker"><i class="fa-solid fa-shield-check"></i> SECURE MARKS WORKSPACE</span><h2>Result Entry</h2><p>Enter, review, and submit marks for your assigned classes.</p></div>
-    <div class="entry-status"><span class="entry-status-dot"></span><span>{{ 'Submission locked' if locked else 'Ready for entry' }}</span></div>
+    <div><span class="entry-kicker"><i class="fa-solid fa-shield-check"></i> GELINTA NATIIJOOYINKA</span><h2>Xaashida dhibcaha</h2><p>Geli, dib u eeg, una gudbi dhibcaha fasallada iyo maaddooyinka laguu xilsaaray.</p></div>
+    <div class="entry-status"><span class="entry-status-dot"></span><span>{{ 'Gudbintu way xiran tahay' if locked else 'Diyaar u ah gelinta' }}</span></div>
   </div>
 
   {% if assignments %}
-    <form method="get" class="assignment-select glass-card">
-      <label for="entry-assignment"><i class="fa-solid fa-layer-group"></i> Assigned exam</label>
-      <select id="entry-assignment" name="assignment_id" onchange="this.form.submit()">
-        {% for item in assignments %}
-          <option value="{{ item.id }}" {% if assignment and assignment.id == item.id %}selected{% endif %}>
-            {{ item.exam.name }} · {{ item.school_class.name }} · {{ item.subject.name }}
-          </option>
-        {% endfor %}
-      </select>
+    <form method="get" class="assignment-select glass-card" id="resultScopeFilters">
+      <label><i class="fa-solid fa-calendar-days"></i> Sannad-dugsiyeedka
+        <select name="academic_year_id"><option value="">Dhammaan sannadaha</option>{% for item in entry_filter_options.academic_years %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.academic_year_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select>
+      </label>
+      <label><i class="fa-solid fa-file-circle-check"></i> Imtixaanka
+        <select name="exam_id"><option value="">Dhammaan imtixaannada</option>{% for item in entry_filter_options.exams %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.exam_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select>
+      </label>
+      <label><i class="fa-solid fa-layer-group"></i> Heerka
+        <select name="academic_level_id"><option value="">Dhammaan heerarka</option>{% for item in entry_filter_options.levels %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.academic_level_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select>
+      </label>
+      <label><i class="fa-solid fa-people-group"></i> Fasalka
+        <select name="class_id"><option value="">Dhammaan fasallada</option>{% for item in entry_filter_options.classes %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.class_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select>
+      </label>
+      <label><i class="fa-solid fa-book-open"></i> Maaddada
+        <select name="subject_id"><option value="">Dhammaan maaddooyinka</option>{% for item in entry_filter_options.subjects %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.subject_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select>
+      </label>
+      <label><i class="fa-solid fa-list-check"></i> Xaaladda
+        <select name="status">{% for value, label in entry_filter_options.statuses %}<option value="{{ value }}" {{ 'selected' if entry_filters.status == value else '' }}>{{ label }}</option>{% endfor %}</select>
+      </label>
+      <label class="scope-assignment"><i class="fa-solid fa-clipboard-list"></i> Xaashida natiijada
+        <select id="entry-assignment" name="assignment_id" {% if not visible_assignments %}disabled{% endif %}>
+          {% for item in visible_assignments %}
+            <option value="{{ item.id }}" {% if assignment and assignment.id == item.id %}selected{% endif %}>
+              {{ item.academic_year.name }} · {{ item.exam.name }} · {{ item.school_class.academic_level.name }} · {{ item.school_class.name }} · {{ item.subject.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="scope-actions"><button class="entry-button primary" type="submit"><i class="fa-solid fa-filter"></i> Shaandhee</button><a class="entry-button secondary" href="{{ url_for('teacher_portal.result_entry') }}"><i class="fa-solid fa-rotate-left"></i> Nadiifi</a><span>{{ visible_assignments|length }} xilsaaris</span></div>
     </form>
 
     {% if assignment %}
       <div class="entry-context-grid">
-        <article class="context-tile"><span><i class="fa-regular fa-calendar"></i> Academic year</span><strong>{{ assignment.academic_year.name }}</strong></article>
-        <article class="context-tile"><span><i class="fa-solid fa-file-circle-check"></i> Exam</span><strong>{{ assignment.exam.name }}</strong></article>
-        <article class="context-tile"><span><i class="fa-solid fa-people-group"></i> Class</span><strong>{{ assignment.school_class.name }}</strong></article>
-        <article class="context-tile"><span><i class="fa-solid fa-book-open"></i> Subject</span><strong>{{ assignment.subject.name }}</strong></article>
+        <article class="context-tile"><span><i class="fa-regular fa-calendar"></i> Sannad-dugsiyeedka</span><strong>{{ assignment.academic_year.name }}</strong></article>
+        <article class="context-tile"><span><i class="fa-solid fa-file-circle-check"></i> Imtixaanka</span><strong>{{ assignment.exam.name }}</strong></article>
+        <article class="context-tile"><span><i class="fa-solid fa-layer-group"></i> Heerka · Fasalka</span><strong>{{ assignment.school_class.academic_level.name }} · {{ assignment.school_class.name }}</strong></article>
+        <article class="context-tile"><span><i class="fa-solid fa-book-open"></i> Maaddada</span><strong>{{ assignment.subject.name }}</strong></article>
       </div>
 
       <div class="entry-progress glass-card">
-        <div><strong>{{ rows|length }} students</strong><span>Maximum score: {{ max_score|academic_number(ui_settings) if max_score is not none else '—' }}</span></div>
+        <div><strong>{{ rows|length }} arday</strong><span>Dhibcaha ugu badan: {{ max_score|academic_number(ui_settings) if max_score is not none else '—' }}</span></div>
         <div class="submission-meta">
-          {% if assignment.deadline_at %}<span><i class="fa-regular fa-clock"></i> Due {{ deadline_labels[assignment.id].strftime('%b %d, %Y %I:%M %p') }} EAT</span>{% else %}<span><i class="fa-regular fa-clock"></i> No deadline</span>{% endif %}
-          <span class="submission-pill {{ submission.status if submission else 'draft' }}">{{ (submission.status if submission else 'draft')|title }}</span>
+          {% if assignment.deadline_at %}<span><i class="fa-regular fa-clock"></i> Kama dambaysiga: {{ deadline_labels[assignment.id].strftime('%d/%m/%Y %I:%M %p') }}</span>{% else %}<span><i class="fa-regular fa-clock"></i> Waqti kama dambays ah lama cayimin</span>{% endif %}
+          {% set submission_status = submission.status if submission else 'draft' %}<span class="submission-pill {{ submission_status }}">{{ {'draft':'Qabyo','submitted':'La gudbiyey','approved':'La ansixiyey','reopened':'Dib loo furay'}.get(submission_status, 'Qabyo') }}</span>
         </div>
       </div>
 
       <form method="post" action="{{ url_for('teacher_portal.result_entry_save') }}" id="teacherResultForm" class="glass-card entry-sheet">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="assignment_id" value="{{ assignment.id }}">
-        <div class="sheet-heading"><div><h3>Class mark sheet</h3><p>Scores are saved as a private draft until you submit them for review.</p></div><span id="entry-completion">0 / {{ rows|length }} entered</span></div>
-        <div class="entry-table-wrap"><table class="entry-table"><thead><tr><th>#</th><th>Student</th><th>Student ID</th><th>Score <small>/ {{ max_score|academic_number(ui_settings) if max_score is not none else '—' }}</small></th><th>Record</th></tr></thead><tbody>
+        {% for key in ['academic_year_id', 'exam_id', 'academic_level_id', 'class_id', 'subject_id', 'status'] %}{% if entry_filters[key] is not none %}<input type="hidden" name="{{ key }}" value="{{ entry_filters[key] }}">{% endif %}{% endfor %}
+        <div class="sheet-heading"><div><h3>Diiwaanka dhibcaha fasalka</h3><p>Dhibcuhu waxay ahaanayaan qabyo ilaa aad maamulka u gudbiso.</p></div><span id="entry-completion">0 / {{ rows|length }} la geliyey</span></div>
+        <label class="entry-student-search" for="entry-student-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span class="sr-only">Raadi arday</span><input id="entry-student-search" type="search" placeholder="Raadi magac ama aqoonsiga ardayga" autocomplete="off"></label>
+        <div class="entry-table-wrap"><table class="entry-table"><thead><tr><th>#</th><th>Ardayga</th><th>Aqoonsiga ardayga</th><th>Dhibco <small>/ {{ max_score|academic_number(ui_settings) if max_score is not none else '—' }}</small></th><th>Diiwaan</th></tr></thead><tbody>
           {% for row in rows %}
-            <tr><td>{{ loop.index }}</td><td><div class="entry-student">{% if row.student.photo_path %}<img src="{{ asset_url(row.student.photo_path) }}" alt="" class="entry-student-avatar">{% else %}<span class="entry-student-avatar placeholder"><i class="fa-solid fa-user"></i></span>{% endif %}<span><strong>{{ row.student.full_name }}</strong><small>{{ row.student.mother_name or '—' }}</small></span></div></td><td>{{ row.student.student_code }}</td><td><input class="score-input" type="number" inputmode="decimal" min="0" max="{{ max_score }}" step="0.001" name="score_{{ row.student.id }}" value="{{ row.score if row.score is not none else '' }}" aria-label="Score for {{ row.student.full_name }}" {% if locked %}disabled{% endif %}></td><td>{% if row.is_existing %}<span class="record-badge existing">Existing result</span>{% else %}<span class="record-badge">New entry</span>{% endif %}</td></tr>
-          {% else %}<tr><td colspan="5" class="empty-roster"><i class="fa-solid fa-user-group"></i><strong>No students in this assigned class</strong><span>Check the academic-year enrollment list or contact administration.</span></td></tr>{% endfor %}
+            <tr data-student-search="{{ (row.student.full_name ~ ' ' ~ (row.student.student_code or ''))|lower }}"><td>{{ loop.index }}</td><td><div class="entry-student">{% if row.student.photo_path %}<img src="{{ asset_url(row.student.photo_path) }}" alt="" class="entry-student-avatar">{% else %}<span class="entry-student-avatar placeholder"><i class="fa-solid fa-user"></i></span>{% endif %}<span><strong>{{ row.student.full_name }}</strong><small>{{ row.student.mother_name or '—' }}</small></span></div></td><td>{{ row.student.student_code or '—' }}</td><td><input class="score-input" type="number" inputmode="decimal" min="0" max="{{ max_score }}" step="0.001" name="score_{{ row.student.id }}" value="{{ row.score if row.score is not none else '' }}" aria-label="Dhibcaha {{ row.student.full_name }}" {% if locked %}disabled{% endif %}></td><td>{% if row.is_existing %}<span class="record-badge existing">Natiijo hore</span>{% else %}<span class="record-badge">Gelitaan cusub</span>{% endif %}</td></tr>
+          {% else %}<tr><td colspan="5" class="empty-roster"><i class="fa-solid fa-user-group"></i><strong>Arday kuma jiro fasalkan xilsaaran</strong><span>Hubi diiwaanka ardayda sannad-dugsiyeedka ama la xiriir maamulka.</span></td></tr>{% endfor %}
         </tbody></table></div>
         {% if rows %}<div class="sheet-footer"><span class="entry-hint"><i class="fa-solid fa-circle-info"></i> Blank marks are allowed in drafts; every student needs a score before submission.</span><div class="sheet-actions">
-          {% if not locked %}<button class="entry-button secondary" type="submit" name="action" value="draft"><i class="fa-regular fa-floppy-disk"></i> Save draft</button><button class="entry-button primary" type="submit" name="action" value="submit" onclick="return confirm('Submit these marks for administration review? You will not be able to edit them unless an administrator reopens the submission.')"><i class="fa-solid fa-paper-plane"></i> Submit for review</button>{% endif %}
+          {% if not locked %}<button class="entry-button secondary" type="submit" name="action" value="draft"><i class="fa-regular fa-floppy-disk"></i> Kaydi qabyo</button><button class="entry-button primary" type="submit" name="action" value="submit" onclick="return confirm('Ma u gudbinaysaa dhibcahan maamulka si ay dib ugu eegaan? Wax ka beddelku wuxuu suurtagal noqonayaa oo keliya haddii maamulka dib u furo.')"><i class="fa-solid fa-paper-plane"></i> U gudbi maamulka</button>{% endif %}
         </div></div>{% endif %}
       </form>
+    {% else %}
+      <section class="no-assignments glass-card"><span><i class="fa-solid fa-filter-circle-xmark"></i></span><h2>Xilsaaris ku habboon lama helin</h2><p>Isku-darka filters-ka la doortay ma hayo xaashi natiijo. Nadiifi filters-ka ama dooro scope kale.</p></section>
     {% endif %}
   {% else %}
-    <section class="no-assignments glass-card"><span><i class="fa-solid fa-clipboard-check"></i></span><h2>No result-entry assignments yet</h2><p>Your administrator will assign the academic year, exam, class, subject, and submission deadline here.</p></section>
+    <section class="no-assignments glass-card"><span><i class="fa-solid fa-clipboard-check"></i></span><h2>Weli xilsaaris gelinta natiijo ma lihid</h2><p>Maamulka ayaa kuu qoondeynaya sannad-dugsiyeedka, imtixaanka, heerka, fasalka, maaddada iyo waqtiga gudbinta.</p></section>
   {% endif %}
-  <footer class="result-entry-footer">© SULTAAN EMS | 2026 <span>Secure academic records</span></footer>
+  <footer class="result-entry-footer">SULTAAN EMS <span>Nidaamka Maaraynta Imtixaannada</span></footer>
 </section>
 <script>
 (() => {
@@ -64,7 +88,7 @@
   const counter = document.getElementById('entry-completion');
   const update = () => {
     const count = inputs.filter(input => input.value.trim() !== '').length;
-    counter.textContent = `${count} / ${inputs.length} entered`;
+    counter.textContent = `${count} / ${inputs.length} la geliyey`;
   };
   inputs.forEach((input, index) => {
     input.addEventListener('input', update);
@@ -73,6 +97,13 @@
     });
   });
   update();
+  const search = document.getElementById('entry-student-search');
+  search?.addEventListener('input', () => {
+    const needle = search.value.trim().toLocaleLowerCase();
+    form.querySelectorAll('tbody tr[data-student-search]').forEach(row => {
+      row.hidden = !row.dataset.studentSearch.includes(needle);
+    });
+  });
 })();
 </script>
 {% endblock %}

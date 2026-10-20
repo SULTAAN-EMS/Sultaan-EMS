@@ -13,7 +13,7 @@
   </header>
   <table class="premium-table">
     <thead>
-      <tr><th>Teacher ID</th><th>Teacher Code</th><th>Name</th><th>Phone</th><th>Email</th><th>Department</th><th>Level</th><th>Subjects</th><th>Classes</th><th>Status</th></tr>
+      <tr><th>Teacher ID</th><th>Teacher Code</th><th>Name</th><th>Phone</th><th>Email</th><th>Department</th><th>Heerarka</th><th>Maaddooyinka</th><th>Fasallada</th><th>Shaqaalaysiin</th><th>Akoonka portalka</th></tr>
     </thead>
     <tbody>
       {% for teacher in teachers %}
@@ -24,13 +24,14 @@
           <td>{{ teacher.phone or '-' }}</td>
           <td>{{ teacher.email or '-' }}</td>
           <td>{{ teacher.department or '-' }}</td>
-          <td>{{ teacher.school_level or '-' }}</td>
+          <td>{{ teacher.academic_levels|map(attribute='name')|join(', ') or teacher.classes|map(attribute='academic_level.name')|join(', ') or '-' }}</td>
           <td>{{ teacher.subjects|map(attribute='name')|join(', ') or '-' }}</td>
           <td>{{ teacher.classes|map(attribute='name')|join(', ') or '-' }}</td>
           <td>{{ teacher.employment_status }}</td>
+          <td>{% if teacher.user %}{{ 'Gelitaan shaqaynaya' if teacher.user.is_active and teacher.is_active and teacher.employment_status == 'Active' else 'Gelitaan xiran' }}{% else %}Akoon ma jiro{% endif %}</td>
         </tr>
       {% else %}
-        <tr><td colspan="10">No teachers found.</td></tr>
+        <tr><td colspan="11">No teachers found.</td></tr>
       {% endfor %}
     </tbody>
   </table>

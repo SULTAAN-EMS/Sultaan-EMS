@@ -26,6 +26,12 @@
       <span class="tra-icon"><i class="fa-solid fa-user-plus"></i></span>
       <div><h2>Assign a result sheet</h2><p>Assignments use the active academic-year, level, class, subject and exam records.</p></div>
     </div>
+    {% if unlinked_staff_users %}
+      <aside class="tra-unlinked-users" aria-label="Akoonnada aan weli profile macallin lahayn">
+        <div><strong><i class="fa-solid fa-link" aria-hidden="true"></i> Akoon staff ah kuma soo baxayo xilsaarista ilaa profile macallin lala xiriiriyo.</strong><span>{{ unlinked_staff_users|length }} akoon ayaa sugaya xiriirin.</span></div>
+        <ul>{% for account in unlinked_staff_users %}<li><span>{{ account.full_name }} · @{{ account.username }}{% if not account.is_active %}<small>Aan firfircoonayn</small>{% endif %}</span><a href="{{ url_for('admin_teachers.teacher_form', user_id=account.id) }}"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Samee profile macallin</a></li>{% endfor %}</ul>
+      </aside>
+    {% endif %}
     <form method="post" class="tra-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="create">

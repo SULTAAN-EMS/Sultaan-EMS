@@ -5,16 +5,16 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from openpyxl import Workbook
+from sqlalchemy.orm import selectinload
 
 from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
-from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, ClubTeam, ClubTeamLeaderAssignment, ClubTeamMembership, Exam, Result, SchoolClass, Setting, Student, StudentClub, StudentEnrollment, Subject, Teacher, TeacherActivity, TeacherResultAssignment, TeacherResultMark, TeacherResultSubmission
+from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, ClubTeam, ClubTeamLeaderAssignment, ClubTeamMembership, Exam, Result, Setting, Student, StudentClub, StudentEnrollment, Subject, Teacher, TeacherActivity, TeacherResultAssignment, TeacherResultMark, TeacherResultSubmission, User
 from .permissions import enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, allowed_file
 from .teacher_services import (
     EMPLOYMENT_TYPES,
-    SCHOOL_LEVELS,
     TEACHER_PERMISSIONS,
     create_or_update_teacher_user,
     default_teacher_username,
@@ -33,6 +33,193 @@ from .routes_advanced_results import students_for_scope_query, _year_scope_ids_f
 from .services import resolve_subject_max_score
 
 teachers_bp = Blueprint("admin_teachers", __name__)
+
+
+def _teacher_profile_scopes(teacher):
+    """Build teacher profile choices from the current year's configured catalog."""
+    years = AcademicYear.query.order_by(AcademicYear.is_current.desc(), AcademicYear.name.desc()).all()
+    year = next((item for item in years if item.is_current), years[0] if years else None)
+    year_levels = []
+    if year:
+        year_levels = (
+            AcademicYearLevel.query
+            .filter_by(academic_year_id=year.id, is_active=True)
+            .order_by(AcademicYearLevel.sort_order, AcademicYearLevel.name)
+            .all()
+        )
+        year_levels = [
+            item for item in year_levels
+            if item.legacy_level and item.legacy_level.is_active
+        ]
+
+    groups = []
+    current_level_ids = set()
+    current_class_ids = set()
+    current_section_ids = set()
+    current_subject_ids = set()
+    level_groups = {}
+
+    for year_level in year_levels:
+        level = year_level.legacy_level
+        level_id = level.id
+        current_level_ids.add(level_id)
+        group = level_groups.get(level_id)
+        if group is None:
+            group = {
+                "level": level,
+                "label": year_level.name,
+                "is_legacy": False,
+                "classes": [],
+                "subjects": [],
+            }
+            level_groups[level_id] = group
+            groups.append(group)
+
+        year_classes = (
+            AcademicYearClass.query
+            .filter_by(academic_year_level_id=year_level.id, is_active=True)
+            .order_by(AcademicYearClass.sort_order, AcademicYearClass.name)
+            .all()
+        )
+        for year_class in year_classes:
+            school_class = year_class.legacy_class
+            assignable = bool(
+                school_class and school_class.is_active
+                and school_class.academic_level_id == level_id
+            )
+            if assignable:
+                current_class_ids.add(school_class.id)
+            linked_sections = [
+                section for section in teacher.sections
+                if assignable and section.academic_class_id == school_class.id
+            ]
+            sections = (
+                AcademicSection.query
+                .filter(AcademicSection.academic_class_id == school_class.id)
+                .filter(db.or_(AcademicSection.is_active.is_(True), AcademicSection.id.in_([s.id for s in linked_sections])))
+                .order_by(AcademicSection.sort_order, AcademicSection.name)
+                .all()
+            ) if assignable else []
+            current_section_ids.update(section.id for section in sections if section.is_active)
+            group["classes"].append({
+                "record": school_class,
+                "label": year_class.name,
+                "sections": sections,
+                "assignable": assignable,
+                "is_legacy": False,
+            })
+
+        year_subjects = (
+            AcademicYearSubject.query
+            .filter_by(
+                academic_year_id=year.id,
+                academic_year_level_id=year_level.id,
+                is_active=True,
+                subject_kind="exam",
+            )
+            .order_by(AcademicYearSubject.sort_order, AcademicYearSubject.name)
+            .all()
+        )
+        for year_subject in year_subjects:
+            subject = year_subject.legacy_subject
+            assignable = bool(
+                subject and subject.is_active
+                and (subject.academic_level_id is None or subject.academic_level_id == level_id)
+            )
+            if assignable:
+                current_subject_ids.add(subject.id)
+            group["subjects"].append({
+                "record": subject,
+                "label": year_subject.name,
+                "assignable": assignable,
+                "is_legacy": False,
+            })
+
+    linked_level_ids = {item.id for item in teacher.academic_levels}
+    linked_class_ids = {item.id for item in teacher.classes}
+    linked_section_ids = {item.id for item in teacher.sections}
+    linked_subject_ids = {item.id for item in teacher.subjects}
+    linked_level_ids.update(item.academic_level_id for item in teacher.classes)
+    linked_level_ids.update(item.academic_level_id for item in teacher.subjects if item.academic_level_id)
+
+    # Keep explicitly assigned historic scopes visible while excluding unrelated legacy catalog rows.
+    for group in groups:
+        level_id = group["level"].id
+        known_class_ids = {
+            item["record"].id for item in group["classes"] if item["record"]
+        }
+        for school_class in teacher.classes:
+            if school_class.academic_level_id == level_id and school_class.id not in known_class_ids:
+                group["classes"].append({
+                    "record": school_class,
+                    "label": school_class.name,
+                    "sections": [section for section in teacher.sections if section.academic_class_id == school_class.id],
+                    "assignable": True,
+                    "is_legacy": True,
+                })
+        known_subject_ids = {
+            item["record"].id for item in group["subjects"] if item["record"]
+        }
+        for subject in teacher.subjects:
+            if subject.academic_level_id == level_id and subject.id not in known_subject_ids:
+                group["subjects"].append({
+                    "record": subject,
+                    "label": subject.name,
+                    "assignable": True,
+                    "is_legacy": True,
+                })
+
+    historic_level_ids = linked_level_ids - current_level_ids
+    for level_id in sorted(historic_level_ids):
+        level = db.session.get(AcademicLevel, level_id)
+        if not level:
+            continue
+        historic_classes = [item for item in teacher.classes if item.academic_level_id == level_id]
+        historic_subjects = [item for item in teacher.subjects if item.academic_level_id == level_id]
+        if not historic_classes and not historic_subjects and level not in teacher.academic_levels:
+            continue
+        groups.append({
+            "level": level,
+            "label": level.name,
+            "is_legacy": True,
+            "classes": [{
+                "record": school_class,
+                "label": school_class.name,
+                "sections": [section for section in teacher.sections if section.academic_class_id == school_class.id],
+                "assignable": True,
+                "is_legacy": True,
+            } for school_class in historic_classes],
+            "subjects": [{
+                "record": subject,
+                "label": subject.name,
+                "assignable": True,
+                "is_legacy": True,
+            } for subject in historic_subjects],
+        })
+
+    current_subject_ids.update(
+        item["record"].id
+        for group in groups if not group["is_legacy"]
+        for item in group["subjects"]
+        if item["record"] and item["assignable"] and not item["is_legacy"]
+    )
+    shared_subjects = [
+        subject for subject in teacher.subjects
+        if subject.academic_level_id is None and subject.id not in current_subject_ids
+    ]
+    return {
+        "year": year,
+        "groups": groups,
+        "shared_subjects": shared_subjects,
+        "linked_level_ids": linked_level_ids,
+        "linked_class_ids": linked_class_ids,
+        "linked_section_ids": linked_section_ids,
+        "linked_subject_ids": linked_subject_ids,
+        "current_level_ids": current_level_ids,
+        "current_class_ids": current_class_ids,
+        "current_section_ids": current_section_ids,
+        "current_subject_ids": current_subject_ids,
+    }
 
 
 @teachers_bp.before_request
@@ -249,6 +436,12 @@ def result_entry_setup():
         for item in assignments if item.deadline_at
     }
     teachers = Teacher.query.filter_by(is_active=True, employment_status="Active").order_by(Teacher.full_name).all()
+    unlinked_staff_users = (
+        User.query
+        .filter(User.role == "staff", ~User.teacher_profile.has())
+        .order_by(User.full_name, User.username)
+        .all()
+    )
     years = AcademicYear.query.order_by(AcademicYear.is_current.desc(), AcademicYear.name.desc()).all()
     year_levels = (
         AcademicYearLevel.query
@@ -319,7 +512,8 @@ def result_entry_setup():
         }
     return render_template(
         "admin/teachers/result_entry_setup.html",
-        assignments=assignments, teachers=teachers, years=years, exams=exams,
+        assignments=assignments, teachers=teachers, unlinked_staff_users=unlinked_staff_users,
+        years=years, exams=exams,
         year_levels=year_levels, year_classes=year_classes, year_subjects=year_subjects,
         selected_year_id=selected_year_id, selected_year_level_id=selected_year_level_id,
         assignment_scope_details=assignment_scope_details,
@@ -335,41 +529,91 @@ def teacher_list():
     filters = {
         "q": request.args.get("q", "").strip(),
         "department": request.args.get("department", "").strip(),
-        "school_level": request.args.get("school_level", "").strip(),
+        "academic_level_id": request.args.get("academic_level_id", "").strip(),
         "employment_status": request.args.get("employment_status", "").strip(),
         "subject_id": request.args.get("subject_id", "").strip(),
         "class_id": request.args.get("class_id", "").strip(),
+        "account_status": request.args.get("account_status", "").strip(),
     }
     page = max(request.args.get("page", 1, type=int), 1)
     per_page = 15
-    pagination = teacher_list_query(filters).paginate(page=page, per_page=per_page, error_out=False)
+    pagination = teacher_list_query(filters).options(
+        selectinload(Teacher.user),
+        selectinload(Teacher.academic_levels),
+        selectinload(Teacher.classes).joinedload(AcademicClass.academic_level),
+        selectinload(Teacher.subjects),
+    ).paginate(page=page, per_page=per_page, error_out=False)
     departments = [
         row[0]
         for row in db.session.query(Teacher.department).filter(Teacher.department.isnot(None), Teacher.department != "").distinct().order_by(Teacher.department).all()
     ]
+    teacher_scope_names = {}
+    for item in pagination.items:
+        levels_by_id = {level.id: level.name for level in item.academic_levels}
+        levels_by_id.update({school_class.academic_level.id: school_class.academic_level.name for school_class in item.classes if school_class.academic_level})
+        teacher_scope_names[item.id] = {
+            "levels": sorted(levels_by_id.values(), key=str.casefold),
+            "classes": [f"{school_class.name}" for school_class in sorted(item.classes, key=lambda value: (value.academic_level.sort_order, value.sort_order, value.name.casefold()))],
+        }
     return render_template(
         "admin/teachers/list.html",
         teachers=pagination.items,
         pagination=pagination,
         filters=filters,
+        teacher_scope_names=teacher_scope_names,
         departments=departments,
-        subjects=Subject.query.order_by(Subject.sort_order, Subject.name).all(),
-        classes=SchoolClass.query.order_by(SchoolClass.name).all(),
-        school_levels=SCHOOL_LEVELS,
+        subjects=Subject.query.filter_by(is_active=True).order_by(Subject.sort_order, Subject.name).all(),
+        classes=AcademicClass.query.filter_by(is_active=True).order_by(AcademicClass.academic_level_id, AcademicClass.sort_order, AcademicClass.name).all(),
+        academic_levels=AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order, AcademicLevel.name).all(),
+        account_summary={
+            "total": Teacher.query.count(),
+            "linked": Teacher.query.filter(Teacher.user_id.isnot(None)).count(),
+            "enabled": Teacher.query.filter(
+                Teacher.is_active.is_(True),
+                Teacher.employment_status == "Active",
+                Teacher.user.has(User.is_active.is_(True)),
+            ).count(),
+            "missing": Teacher.query.filter(Teacher.user_id.is_(None)).count(),
+        },
     )
 
 
 @teachers_bp.route("/new", methods=["GET", "POST"])
 @teachers_bp.route("/<int:teacher_id>/edit", methods=["GET", "POST"])
 def teacher_form(teacher_id=None):
-    teacher = db.session.get(Teacher, teacher_id) if teacher_id else Teacher()
-    subjects = Subject.query.order_by(Subject.sort_order, Subject.name).all()
-    classes = SchoolClass.query.order_by(SchoolClass.name).all()
-    academic_levels = AcademicLevel.query.filter_by(is_active=True).order_by(AcademicLevel.sort_order).all()
+    teacher = (db.session.get(Teacher, teacher_id) or abort(404)) if teacher_id else Teacher()
     settings = get_teacher_settings()
+    scope_data = _teacher_profile_scopes(teacher)
+    selected_portal_user_id = request.args.get("user_id", type=int)
+    if request.method == "POST":
+        selected_portal_user_id = request.form.get("existing_user_id", type=int)
+    linkable_staff_users = (
+        User.query
+        .filter(User.role == "staff", ~User.teacher_profile.has())
+        .order_by(User.full_name, User.username)
+        .all()
+    ) if not teacher.user_id else []
+    selected_portal_user = next(
+        (item for item in linkable_staff_users if item.id == selected_portal_user_id), None
+    )
+    if selected_portal_user and not teacher.id:
+        teacher.full_name = teacher.full_name or selected_portal_user.full_name
 
     if request.method == "POST":
         try:
+            if selected_portal_user_id:
+                if teacher.user_id:
+                    raise ValueError("Macallinkan akoon ayuu hore ugu xiran yahay; akoon kale laguma beddeli karo form-kan.")
+                selected_portal_user = db.session.get(User, selected_portal_user_id)
+                linked_profile = Teacher.query.filter_by(user_id=selected_portal_user_id).first()
+                if (
+                    not selected_portal_user
+                    or selected_portal_user.role != "staff"
+                    or (linked_profile and linked_profile.id != teacher.id)
+                ):
+                    raise ValueError("Akoonka la doortay ma aha staff aan macallin kale ku xirnayn.")
+                teacher.user_id = selected_portal_user.id
+
             teacher.teacher_id = request.form["teacher_id"].strip()
             if not teacher.teacher_id:
                 raise ValueError("Teacher ID is required and must be entered manually.")
@@ -396,7 +640,6 @@ def teacher_form(teacher_id=None):
             teacher.years_experience = int(request.form.get("years_experience") or 0)
             teacher.department = request.form.get("department", "").strip()
             teacher.employment_status = request.form.get("employment_status") or settings.get("teacher_default_status") or "Active"
-            teacher.school_level = request.form.get("school_level") or None
             teacher.is_active = teacher.employment_status == "Active"
 
             photo = request.files.get("photo")
@@ -405,21 +648,53 @@ def teacher_form(teacher_id=None):
                     raise ValueError("Photo must be JPG, PNG, or WEBP.")
                 teacher.photo_path = upload_image(photo, "school/teachers")
 
-            selected_subjects = [int(value) for value in request.form.getlist("subject_ids") if value.isdigit()]
-            teacher.subjects = Subject.query.filter(Subject.id.in_(selected_subjects)).all() if selected_subjects else []
-            
-            # New academic hierarchy assignments
-            selected_academic_levels = [int(value) for value in request.form.getlist("academic_level_ids") if value.isdigit()]
-            selected_academic_classes = [int(value) for value in request.form.getlist("academic_class_ids") if value.isdigit()]
-            selected_academic_sections = [int(value) for value in request.form.getlist("academic_section_ids") if value.isdigit()]
-            
-            teacher.academic_levels = AcademicLevel.query.filter(AcademicLevel.id.in_(selected_academic_levels)).all() if selected_academic_levels else []
-            teacher.classes = AcademicClass.query.filter(AcademicClass.id.in_(selected_academic_classes)).all() if selected_academic_classes else []
-            teacher.sections = AcademicSection.query.filter(AcademicSection.id.in_(selected_academic_sections)).all() if selected_academic_sections else []
-            
-            # Legacy class assignments for backward compatibility
-            selected_legacy_classes = [int(value) for value in request.form.getlist("class_ids") if value.isdigit()]
-            # Note: We don't assign to teacher.classes here anymore since it now references AcademicClass
+            def posted_ids(field):
+                values = request.form.getlist(field)
+                if any(not value.isdigit() or int(value) < 1 for value in values):
+                    raise ValueError("Xulashada heerka, fasalka, qaybta ama maaddadu sax ma aha.")
+                return list(dict.fromkeys(int(value) for value in values))
+
+            def selected_records(model, ids, existing_ids):
+                records = model.query.filter(model.id.in_(ids)).all() if ids else []
+                if len(records) != len(ids) or any(
+                    not record.is_active and record.id not in existing_ids for record in records
+                ):
+                    raise ValueError("Waxaa la doortay xog aan jirin ama aan hadda firfircoonayn.")
+                return records
+
+            existing_level_ids = scope_data["linked_level_ids"]
+            existing_class_ids = scope_data["linked_class_ids"]
+            existing_section_ids = scope_data["linked_section_ids"]
+            existing_subject_ids = scope_data["linked_subject_ids"]
+            selected_level_ids = posted_ids("academic_level_ids")
+            selected_class_ids = posted_ids("academic_class_ids")
+            selected_section_ids = posted_ids("academic_section_ids")
+            selected_subject_ids = posted_ids("subject_ids")
+
+            allowed_ids = (
+                (selected_level_ids, scope_data["current_level_ids"] | existing_level_ids),
+                (selected_class_ids, scope_data["current_class_ids"] | existing_class_ids),
+                (selected_section_ids, scope_data["current_section_ids"] | existing_section_ids),
+                (selected_subject_ids, scope_data["current_subject_ids"] | existing_subject_ids),
+            )
+            if any(set(ids) - allowed for ids, allowed in allowed_ids):
+                raise ValueError("Heer, fasal, qayb ama maaddo laguma diiwaangelin qaab-dhismeedka sanad-dugsiyeedka hadda.")
+
+            selected_levels = selected_records(AcademicLevel, selected_level_ids, existing_level_ids)
+            selected_classes = selected_records(AcademicClass, selected_class_ids, existing_class_ids)
+            selected_sections = selected_records(AcademicSection, selected_section_ids, existing_section_ids)
+            selected_subjects = selected_records(Subject, selected_subject_ids, existing_subject_ids)
+            selected_class_id_set = {item.id for item in selected_classes}
+            if any(section.academic_class_id not in selected_class_id_set for section in selected_sections):
+                raise ValueError("Qaybta ardaydu waxay u baahan tahay in fasalkeeda la doorto.")
+
+            level_ids = {item.id for item in selected_levels}
+            level_ids.update(item.academic_level_id for item in selected_classes)
+            level_ids.update(item.academic_level_id for item in selected_subjects if item.academic_level_id)
+            teacher.academic_levels = AcademicLevel.query.filter(AcademicLevel.id.in_(level_ids)).all() if level_ids else []
+            teacher.classes = selected_classes
+            teacher.sections = selected_sections
+            teacher.subjects = selected_subjects
 
             db.session.add(teacher)
             db.session.flush()
@@ -428,14 +703,14 @@ def teacher_form(teacher_id=None):
             password = request.form.get("password", "")
             confirm = request.form.get("confirm_password", "")
             create_account = bool(request.form.get("create_account"))
-            if create_account or teacher.user_id:
+            if selected_portal_user_id or create_account or teacher.user_id:
                 if password and password != confirm:
                     raise ValueError("Passwords do not match.")
                 create_or_update_teacher_user(
                     teacher,
                     username=username,
                     password=password,
-                    account_active=bool(request.form.get("account_active", "on") == "on"),
+                    account_active=request.form.get("account_active") == "on",
                     force_change=bool(request.form.get("force_password_change")),
                 )
 
@@ -451,13 +726,16 @@ def teacher_form(teacher_id=None):
     return render_template(
         "admin/teachers/form.html",
         teacher=teacher,
-        subjects=subjects,
-        classes=classes,
-        academic_levels=academic_levels,
+        current_academic_year=scope_data["year"],
+        scope_groups=scope_data["groups"],
+        shared_subjects=scope_data["shared_subjects"],
+        linked_level_ids=scope_data["linked_level_ids"],
         settings=settings,
-        school_levels=SCHOOL_LEVELS,
         employment_types=EMPLOYMENT_TYPES,
         default_username=default_teacher_username(teacher) if teacher.teacher_id else "",
+        linkable_staff_users=linkable_staff_users,
+        selected_portal_user=selected_portal_user,
+        selected_portal_user_id=selected_portal_user_id,
     )
 
 
@@ -576,6 +854,15 @@ def teacher_settings():
 
 @teachers_bp.route("/export")
 def export_teachers():
+    filters = {
+        "q": request.args.get("q", "").strip(),
+        "department": request.args.get("department", "").strip(),
+        "academic_level_id": request.args.get("academic_level_id", "").strip(),
+        "employment_status": request.args.get("employment_status", "").strip(),
+        "subject_id": request.args.get("subject_id", "").strip(),
+        "class_id": request.args.get("class_id", "").strip(),
+        "account_status": request.args.get("account_status", "").strip(),
+    }
     wb = Workbook()
     ws = wb.active
     ws.title = "Teachers"
@@ -594,7 +881,7 @@ def export_teachers():
             "Account Status",
         ]
     )
-    for teacher in Teacher.query.order_by(Teacher.full_name).all():
+    for teacher in teacher_list_query(filters).all():
         ws.append(
             [
                 teacher.teacher_id,
@@ -603,11 +890,11 @@ def export_teachers():
                 teacher.phone,
                 teacher.email,
                 teacher.department,
-                teacher.school_level,
+                ", ".join(sorted({level.name for level in teacher.academic_levels} | {item.academic_level.name for item in teacher.classes if item.academic_level})),
                 ", ".join(subject.name for subject in teacher.subjects),
                 ", ".join(school_class.name for school_class in teacher.classes),
                 teacher.employment_status,
-                "Active" if teacher.is_active else "Inactive",
+                "Gelitaan shaqaynaya" if teacher.user and teacher.user.is_active and teacher.is_active and teacher.employment_status == "Active" else ("Gelitaan xiran" if teacher.user else "Akoon ma jiro"),
             ]
         )
     audit("Teacher Export", "Exported teacher list")
@@ -623,10 +910,11 @@ def print_teachers():
     filters = {
         "q": request.args.get("q", "").strip(),
         "department": request.args.get("department", "").strip(),
-        "school_level": request.args.get("school_level", "").strip(),
+        "academic_level_id": request.args.get("academic_level_id", "").strip(),
         "employment_status": request.args.get("employment_status", "").strip(),
         "subject_id": request.args.get("subject_id", "").strip(),
         "class_id": request.args.get("class_id", "").strip(),
+        "account_status": request.args.get("account_status", "").strip(),
     }
     teachers = teacher_list_query(filters).all()
     return render_template("admin/teachers/print.html", teachers=teachers, generated_at=datetime.now())

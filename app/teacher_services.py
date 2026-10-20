@@ -7,7 +7,7 @@ from flask import request
 from flask_login import current_user
 
 from . import db
-from .models import Result, SchoolClass, Setting, Student, Subject, Teacher, TeacherActivity, TeacherCodeSequence, TeacherPermission, User
+from .models import AcademicClass, AcademicLevel, Result, Setting, Student, Subject, Teacher, TeacherActivity, TeacherCodeSequence, TeacherPermission, User
 from .services import get_settings, grade_for
 
 TEACHER_PERMISSIONS = [
@@ -260,12 +260,39 @@ def teacher_list_query(filters):
         query = query.filter(Teacher.department == filters["department"])
     if filters.get("school_level") in SCHOOL_LEVELS:
         query = query.filter(Teacher.school_level == filters["school_level"])
+    if filters.get("academic_level_id") and str(filters["academic_level_id"]).isdigit():
+        level_id = int(filters["academic_level_id"])
+        query = query.filter(
+            db.or_(
+                Teacher.academic_levels.any(AcademicLevel.id == level_id),
+                Teacher.classes.any(AcademicClass.academic_level_id == level_id),
+            )
+        )
     if filters.get("employment_status") in ("Active", "Inactive"):
         query = query.filter(Teacher.employment_status == filters["employment_status"])
     if filters.get("subject_id") and str(filters["subject_id"]).isdigit():
         query = query.filter(Teacher.subjects.any(Subject.id == int(filters["subject_id"])))
     if filters.get("class_id") and str(filters["class_id"]).isdigit():
-        query = query.filter(Teacher.classes.any(SchoolClass.id == int(filters["class_id"])))
+        query = query.filter(Teacher.classes.any(AcademicClass.id == int(filters["class_id"])))
+    if filters.get("account_status") == "linked":
+        query = query.filter(Teacher.user_id.isnot(None))
+    elif filters.get("account_status") == "enabled":
+        query = query.filter(
+            Teacher.is_active.is_(True),
+            Teacher.employment_status == "Active",
+            Teacher.user.has(User.is_active.is_(True)),
+        )
+    elif filters.get("account_status") == "disabled":
+        query = query.filter(
+            Teacher.user_id.isnot(None),
+            db.or_(
+                Teacher.is_active.is_(False),
+                Teacher.employment_status != "Active",
+                Teacher.user.has(User.is_active.is_(False)),
+            ),
+        )
+    elif filters.get("account_status") == "missing":
+        query = query.filter(Teacher.user_id.is_(None))
     return query.order_by(Teacher.full_name.asc())
 
 

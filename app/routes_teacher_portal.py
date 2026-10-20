@@ -11,17 +11,17 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from sqlalchemy.orm import joinedload
 
 from . import db
 from .models import (
-    AcademicClass, AcademicYear, AcademicYearClass, AcademicYearLevel, ClubTeamLeaderAssignment,
+    AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, ClubTeamLeaderAssignment,
     ClubTeamMembership, Exam, Result, Student, Subject, TeacherResultAssignment,
     TeacherResultMark, TeacherResultSubmission,
 )
 from .teacher_analytics import (
     classes_cards,
     comparison_data,
-    dashboard_summary,
     examinations_list_data,
     exam_analysis_data,
     filter_options,
@@ -67,6 +67,109 @@ from .services import resolve_subject_max_score
 from .routes_advanced_results import students_for_scope_query, _year_scope_ids_from_legacy
 
 teacher_portal_bp = Blueprint("teacher_portal", __name__)
+
+RESULT_ENTRY_FILTER_KEYS = (
+    "academic_year_id", "exam_id", "academic_level_id", "class_id", "subject_id", "status",
+)
+
+
+def _unique_assignments(items, key):
+    relationship = {"exam_id": "exam", "class_id": "school_class", "subject_id": "subject"}[key]
+    unique = {getattr(item, key): getattr(item, relationship) for item in items}
+    return sorted(unique.values(), key=lambda item: (getattr(item, "sort_order", 0), item.name.casefold()))
+
+
+def _result_entry_scope(teacher):
+    assignments = (
+        TeacherResultAssignment.query
+        .options(
+            joinedload(TeacherResultAssignment.academic_year),
+            joinedload(TeacherResultAssignment.exam),
+            joinedload(TeacherResultAssignment.school_class).joinedload(AcademicClass.academic_level),
+            joinedload(TeacherResultAssignment.subject),
+            joinedload(TeacherResultAssignment.submissions),
+        )
+        .filter_by(teacher_id=teacher.id, is_active=True)
+        .order_by(
+            TeacherResultAssignment.deadline_at.is_(None),
+            TeacherResultAssignment.deadline_at,
+            TeacherResultAssignment.id,
+        )
+        .all()
+    )
+
+    raw_filters = {key: request.args.get(key, type=int) for key in RESULT_ENTRY_FILTER_KEYS if key != "status"}
+    raw_filters["status"] = (request.args.get("status") or "all").strip()
+    filters = {key: None for key in RESULT_ENTRY_FILTER_KEYS}
+    filters["status"] = raw_filters["status"] if raw_filters["status"] in {"all", "not_started", "draft", "submitted", "approved", "reopened"} else "all"
+
+    years = sorted(
+        {item.academic_year_id: item.academic_year for item in assignments}.values(),
+        key=lambda year: (not year.is_current, year.name),
+    )
+    if raw_filters["academic_year_id"] in {item.id for item in years}:
+        filters["academic_year_id"] = raw_filters["academic_year_id"]
+    scoped = [item for item in assignments if not filters["academic_year_id"] or item.academic_year_id == filters["academic_year_id"]]
+
+    exams = _unique_assignments(scoped, "exam_id")
+    if raw_filters["exam_id"] in {item.id for item in exams}:
+        filters["exam_id"] = raw_filters["exam_id"]
+    scoped = [item for item in scoped if not filters["exam_id"] or item.exam_id == filters["exam_id"]]
+
+    levels = sorted(
+        {item.school_class.academic_level_id: item.school_class.academic_level for item in scoped}.values(),
+        key=lambda level: (level.sort_order, level.name.casefold()),
+    )
+    if raw_filters["academic_level_id"] in {item.id for item in levels}:
+        filters["academic_level_id"] = raw_filters["academic_level_id"]
+    scoped = [item for item in scoped if not filters["academic_level_id"] or item.school_class.academic_level_id == filters["academic_level_id"]]
+
+    classes = _unique_assignments(scoped, "class_id")
+    if raw_filters["class_id"] in {item.id for item in classes}:
+        filters["class_id"] = raw_filters["class_id"]
+    scoped = [item for item in scoped if not filters["class_id"] or item.class_id == filters["class_id"]]
+
+    subjects = _unique_assignments(scoped, "subject_id")
+    if raw_filters["subject_id"] in {item.id for item in subjects}:
+        filters["subject_id"] = raw_filters["subject_id"]
+    status_options = [
+        ("all", "Dhammaan xaaladaha"),
+        ("not_started", "Aan la bilaabin"),
+        ("draft", "Qabyo"),
+        ("reopened", "Dib loo furay"),
+        ("submitted", "La gudbiyey"),
+        ("approved", "La ansixiyey"),
+    ]
+    if filters["status"] != "all":
+        scoped = [
+            item for item in scoped
+            if (next(iter(item.submissions), None).status if item.submissions else "not_started") == filters["status"]
+        ]
+
+    selected_id = request.args.get("assignment_id", type=int)
+    assignment = next((item for item in scoped if item.id == selected_id), None)
+    if assignment is None and scoped:
+        assignment = scoped[0]
+    filter_options = {
+        "academic_years": years,
+        "exams": exams,
+        "levels": levels,
+        "classes": classes,
+        "subjects": subjects,
+        "statuses": status_options,
+    }
+    return assignments, filter_options, filters, scoped, assignment
+
+
+def _redirect_result_entry(assignment_id, preserve_status=True):
+    arguments = {"assignment_id": assignment_id}
+    for key in RESULT_ENTRY_FILTER_KEYS:
+        if key == "status" and not preserve_status:
+            continue
+        value = request.form.get(key)
+        if value:
+            arguments[key] = value
+    return redirect(url_for("teacher_portal.result_entry", **arguments))
 
 
 @teacher_portal_bp.before_request
@@ -175,29 +278,14 @@ def change_password():
 @teacher_portal_bp.route("/")
 @teacher_login_required
 def dashboard():
-    teacher = get_current_teacher()
-    filters = validate_filter_ids(teacher, parse_teacher_filters(request.args))
-    record_teacher_visit(teacher, "Dashboard")
-    ctx = _ctx(teacher, filters, "Teacher Analysis Dashboard", "teacher_portal.dashboard")
-    ctx["summary"] = dashboard_summary(teacher, filters)
-    db.session.commit()
-    return render_template("teacher/dashboard.html", **ctx)
+    return redirect(url_for("teacher_portal.result_entry", **request.args))
 
 
 @teacher_portal_bp.route("/result-entry")
 @teacher_login_required
 def result_entry():
     teacher = get_current_teacher()
-    assignments = (
-        TeacherResultAssignment.query
-        .filter_by(teacher_id=teacher.id, is_active=True)
-        .order_by(TeacherResultAssignment.deadline_at.is_(None), TeacherResultAssignment.deadline_at, TeacherResultAssignment.id)
-        .all()
-    )
-    selected_id = request.args.get("assignment_id", type=int)
-    assignment = next((item for item in assignments if item.id == selected_id), None)
-    if assignment is None and assignments:
-        assignment = assignments[0]
+    assignments, entry_filter_options, filters, visible_assignments, assignment = _result_entry_scope(teacher)
     deadline_labels = {
         item.id: item.deadline_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Africa/Mogadishu"))
         for item in assignments if item.deadline_at
@@ -249,13 +337,16 @@ def result_entry():
     return render_template(
         "teacher/result_entry.html",
         teacher=teacher,
-        page_title="Result Entry",
+        page_title="Gelinta natiijooyinka",
         active_endpoint="teacher_portal.result_entry",
         nav_items=teacher_nav_items(),
         teacher_can=teacher_can,
         teacher_theme=teacher_theme(),
         teacher_settings=get_teacher_settings(),
         assignments=assignments,
+        visible_assignments=visible_assignments,
+        entry_filter_options=entry_filter_options,
+        entry_filters=filters,
         deadline_labels=deadline_labels,
         assignment=assignment,
         submission=submission,
@@ -277,13 +368,13 @@ def result_entry_save():
     submission = TeacherResultSubmission.query.filter_by(assignment_id=assignment.id).first()
     if submission and submission.status in {"submitted", "approved"}:
         flash("Natiijadan waa la gudbiyey oo waa xiran tahay. Maamulka ayaa dib u furi kara.", "warning")
-        return redirect(url_for("teacher_portal.result_entry", assignment_id=assignment.id))
+        return _redirect_result_entry(assignment.id)
     if assignment.deadline_at and now > assignment.deadline_at and not (submission and submission.status == "reopened"):
         flash("Waqtigii gudbinta natiijadan wuu dhammaaday.", "danger")
-        return redirect(url_for("teacher_portal.result_entry", assignment_id=assignment.id))
+        return _redirect_result_entry(assignment.id)
     if submission and submission.submission_count >= assignment.max_submissions:
         flash("Tirada gudbinta ee laguu oggolaaday way dhammaatay. La xiriir maamulka.", "danger")
-        return redirect(url_for("teacher_portal.result_entry", assignment_id=assignment.id))
+        return _redirect_result_entry(assignment.id)
 
     year_level, year_class = _year_scope_ids_from_legacy(
         assignment.academic_year_id,
@@ -325,7 +416,7 @@ def result_entry_save():
         score_by_student[student.id] = score
     if errors:
         flash("Dhibcaha qaar waa maqan yihiin ama kama dhex jiraan 0 iyo %s: %s" % (max_score, ", ".join(errors[:6])), "danger")
-        return redirect(url_for("teacher_portal.result_entry", assignment_id=assignment.id))
+        return _redirect_result_entry(assignment.id)
 
     if not submission:
         submission = TeacherResultSubmission(assignment=assignment)
@@ -342,7 +433,7 @@ def result_entry_save():
         if submission.submission_count >= assignment.max_submissions:
             db.session.rollback()
             flash("Tirada gudbinta ee laguu oggolaaday way dhammaatay.", "danger")
-            return redirect(url_for("teacher_portal.result_entry", assignment_id=assignment.id))
+            return _redirect_result_entry(assignment.id)
         submission.status = "submitted"
         submission.submission_count += 1
         submission.submitted_at = now
@@ -352,7 +443,7 @@ def result_entry_save():
             submission.status = "draft"
         flash("Qabyada natiijada waa la kaydiyey.", "success")
     db.session.commit()
-    return redirect(url_for("teacher_portal.result_entry", assignment_id=assignment.id))
+    return _redirect_result_entry(assignment.id, preserve_status=False)
 
 
 @teacher_portal_bp.route("/clubs")

@@ -1,69 +1,66 @@
 {% extends "admin/base.html" %}
-{% block title %}Teacher List{% endblock %}
-{% block page_title %}Teacher List{% endblock %}
+{% block title %}Macallimiinta{% endblock %}
+{% block page_title %}Macallimiinta{% endblock %}
 {% block admin_content %}
-<section class="toolbar glass-card">
-  <form class="search-tools" method="get">
-    <label><i class="fa-solid fa-search"></i><input name="q" value="{{ filters.q }}" placeholder="Search by ID, code, name, phone, email"></label>
-    <label><i class="fa-solid fa-building"></i><select name="department"><option value="">All Departments</option>{% for department in departments %}<option value="{{ department }}" {% if filters.department == department %}selected{% endif %}>{{ department }}</option>{% endfor %}</select></label>
-    <label><i class="fa-solid fa-layer-group"></i><select name="school_level"><option value="">All Levels</option>{% for level in school_levels %}<option value="{{ level }}" {% if filters.school_level == level %}selected{% endif %}>{{ level }}</option>{% endfor %}</select></label>
-    <label><i class="fa-solid fa-toggle-on"></i><select name="employment_status"><option value="">All Status</option><option value="Active" {% if filters.employment_status == 'Active' %}selected{% endif %}>Active</option><option value="Inactive" {% if filters.employment_status == 'Inactive' %}selected{% endif %}>Inactive</option></select></label>
-    <label><i class="fa-solid fa-book"></i><select name="subject_id"><option value="">All Subjects</option>{% for subject in subjects %}<option value="{{ subject.id }}" {% if filters.subject_id == subject.id|string %}selected{% endif %}>{{ subject.name }}</option>{% endfor %}</select></label>
-    <label><i class="fa-solid fa-people-roof"></i><select name="class_id"><option value="">All Classes</option>{% for school_class in classes %}<option value="{{ school_class.id }}" {% if filters.class_id == school_class.id|string %}selected{% endif %}>{{ school_class.name }}</option>{% endfor %}</select></label>
-    <button><i class="fa-solid fa-magnifying-glass"></i> Filter</button>
-  </form>
-  <div class="toolbar-actions">
-    <a class="btn premium" href="{{ url_for('admin_teachers.teacher_form') }}"><i class="fa-solid fa-user-plus"></i> Add Teacher</a>
-    <a class="btn ghost" href="{{ url_for('admin_teachers.export_teachers') }}"><i class="fa-solid fa-file-export"></i> Export</a>
-    <a class="btn ghost" href="{{ url_for('admin_teachers.print_teachers', **filters) }}" target="_blank"><i class="fa-solid fa-print"></i> Print</a>
-  </div>
-</section>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-admin.css') }}">
+<main class="teacher-directory">
+  <header class="teacher-directory-head">
+    <div>
+      <span class="teacher-eyebrow"><i class="fa-solid fa-users-gear" aria-hidden="true"></i> MAAMULKA MACALLIMIINTA</span>
+      <h1>Macallimiinta iyo akoonnada</h1>
+      <p>Maamul xogta macallimiinta, heerarka ay dhigaan iyo gelitaankooda portalka.</p>
+    </div>
+    <nav class="teacher-directory-actions" aria-label="Ficillada macallimiinta">
+      <a class="btn premium" href="{{ url_for('admin_teachers.teacher_form') }}"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Macallin cusub</a>
+      <a class="icon-btn" href="{{ url_for('admin_teachers.export_teachers', **filters) }}" title="Soo dejiso Excel" aria-label="Soo dejiso Excel"><i class="fa-solid fa-file-export" aria-hidden="true"></i></a>
+      <a class="icon-btn" href="{{ url_for('admin_teachers.print_teachers', **filters) }}" target="_blank" rel="noopener" title="Daabac liiska" aria-label="Daabac liiska"><i class="fa-solid fa-print" aria-hidden="true"></i></a>
+    </nav>
+  </header>
 
-<section class="panel">
-  <div class="section-heading"><span><i class="fa-solid fa-chalkboard-user"></i></span><div><h2>Teacher Directory</h2><p>Manage teacher records, assignments, and account status.</p></div></div>
-  <div class="responsive-table">
-    <table class="premium-table">
-      <thead>
-        <tr>
-          <th>Photo</th><th>Teacher ID</th><th>Teacher Code</th><th>Full Name</th><th>Phone</th><th>Email</th>
-          <th>Department</th><th>School Level</th><th>Subjects</th><th>Classes</th><th>Status</th><th>Actions</th>
-        </tr>
-      </thead>
+  <section class="teacher-stat-strip" aria-label="Tirada akoonnada">
+    <div><span>Dhammaan macallimiinta</span><strong>{{ account_summary.total }}</strong></div>
+    <div><span>Akoonno la sameeyey</span><strong>{{ account_summary.linked }}</strong></div>
+    <div><span>Gelitaan shaqaynaya</span><strong>{{ account_summary.enabled }}</strong></div>
+    <div><span>Akoon aan lahayn</span><strong>{{ account_summary.missing }}</strong></div>
+  </section>
+
+  <form class="teacher-filter-bar" method="get">
+    <label class="teacher-search"><span><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Raadi</span><input name="q" value="{{ filters.q }}" placeholder="Magac, aqoonsi, taleefan ama iimayl"></label>
+    <label><span><i class="fa-solid fa-building" aria-hidden="true"></i> Waax</span><select name="department"><option value="">Dhammaan waaxyaha</option>{% for department in departments %}<option value="{{ department }}" {{ 'selected' if filters.department == department else '' }}>{{ department }}</option>{% endfor %}</select></label>
+    <label><span><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Heer</span><select name="academic_level_id"><option value="">Dhammaan heerarka</option>{% for level in academic_levels %}<option value="{{ level.id }}" {{ 'selected' if filters.academic_level_id == level.id|string else '' }}>{{ level.name }}</option>{% endfor %}</select></label>
+    <label><span><i class="fa-solid fa-people-group" aria-hidden="true"></i> Fasalka</span><select name="class_id"><option value="">Dhammaan fasallada</option>{% for school_class in classes %}<option value="{{ school_class.id }}" {{ 'selected' if filters.class_id == school_class.id|string else '' }}>{{ school_class.academic_level.name }} · {{ school_class.name }}</option>{% endfor %}</select></label>
+    <label><span><i class="fa-solid fa-book-open" aria-hidden="true"></i> Maaddo</span><select name="subject_id"><option value="">Dhammaan maaddooyinka</option>{% for subject in subjects %}<option value="{{ subject.id }}" {{ 'selected' if filters.subject_id == subject.id|string else '' }}>{{ subject.name }}{% if subject.academic_level %} · {{ subject.academic_level.name }}{% endif %}</option>{% endfor %}</select></label>
+    <label><span><i class="fa-solid fa-briefcase" aria-hidden="true"></i> Shaqaalaysiin</span><select name="employment_status"><option value="">Dhammaan</option><option value="Active" {{ 'selected' if filters.employment_status == 'Active' else '' }}>Firfircoon</option><option value="Inactive" {{ 'selected' if filters.employment_status == 'Inactive' else '' }}>Aan firfircoonayn</option></select></label>
+    <label><span><i class="fa-solid fa-key" aria-hidden="true"></i> Akoonka</span><select name="account_status"><option value="">Dhammaan akoonnada</option><option value="enabled" {{ 'selected' if filters.account_status == 'enabled' else '' }}>Gelitaan shaqaynaya</option><option value="disabled" {{ 'selected' if filters.account_status == 'disabled' else '' }}>Gelitaan xiran</option><option value="missing" {{ 'selected' if filters.account_status == 'missing' else '' }}>Akoon ma jiro</option></select></label>
+    <div class="teacher-filter-actions"><button class="btn premium" type="submit"><i class="fa-solid fa-filter" aria-hidden="true"></i> Shaandhee</button><a class="btn ghost" href="{{ url_for('admin_teachers.teacher_list') }}" title="Nadiifi shaandhooyinka" aria-label="Nadiifi shaandhooyinka"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></a></div>
+  </form>
+
+  <section class="teacher-table-panel" aria-labelledby="teacher-list-title">
+    <div class="teacher-table-heading"><div><h2 id="teacher-list-title">Diiwaanka macallimiinta</h2><p>{{ pagination.total }} macallin oo ku habboon shaandhooyinka</p></div><span class="teacher-result-count"><i class="fa-solid fa-list-check" aria-hidden="true"></i> {{ teachers|length }} / {{ pagination.total }}</span></div>
+    <div class="teacher-table-scroll"><table class="teacher-directory-table">
+      <thead><tr><th>Macallin</th><th>Xiriir</th><th>Heerarka iyo fasallada</th><th>Maaddooyinka</th><th>Shaqaalaysiin</th><th>Akoonka portalka</th><th><span class="sr-only">Ficillo</span></th></tr></thead>
       <tbody>
         {% for teacher in teachers %}
           <tr>
-            <td data-label="Photo">
-              {% if teacher.photo_path %}<img src="{{ asset_url(teacher.photo_path) }}" alt="{{ teacher.full_name }}" class="table-avatar">{% else %}<span class="table-avatar placeholder"><i class="fa-solid fa-user"></i></span>{% endif %}
-            </td>
-            <td data-label="Teacher ID"><strong>{{ teacher.teacher_id }}</strong></td>
-            <td data-label="Teacher Code">{{ teacher.teacher_code }}</td>
-            <td data-label="Full Name">{{ teacher.full_name }}</td>
-            <td data-label="Phone">{{ teacher.phone or '-' }}</td>
-            <td data-label="Email">{{ teacher.email or '-' }}</td>
-            <td data-label="Department">{{ teacher.department or '-' }}</td>
-            <td data-label="School Level">{{ teacher.school_level or '-' }}</td>
-            <td data-label="Subjects">{{ teacher.subjects|map(attribute='name')|join(', ') or '-' }}</td>
-            <td data-label="Classes">{{ teacher.classes|map(attribute='name')|join(', ') or '-' }}</td>
-            <td data-label="Status"><span class="status-pill {{ 'ok' if teacher.employment_status == 'Active' else 'warn' }}"><i class="fa-solid {{ 'fa-check' if teacher.employment_status == 'Active' else 'fa-ban' }}"></i>{{ teacher.employment_status }}</span></td>
-            <td data-label="Actions" class="action-cell">
-              <a class="icon-btn small" href="{{ url_for('admin_teachers.teacher_view', teacher_id=teacher.id) }}" title="View"><i class="fa-solid fa-eye"></i></a>
-              <a class="icon-btn small" href="{{ url_for('admin_teachers.teacher_form', teacher_id=teacher.id) }}" title="Edit"><i class="fa-solid fa-pen"></i></a>
-              <a class="icon-btn small" href="{{ url_for('admin_teachers.teacher_permissions', teacher_id=teacher.id) }}" title="Permissions"><i class="fa-solid fa-key"></i></a>
-              <form method="post" action="{{ url_for('admin_teachers.delete_teacher', teacher_id=teacher.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="icon-btn small danger" title="Delete"><i class="fa-solid fa-trash"></i></button></form>
+            <td data-label="Macallin"><div class="teacher-identity">{% if teacher.photo_path %}<img src="{{ asset_url(teacher.photo_path) }}" alt="" class="teacher-avatar">{% else %}<span class="teacher-avatar teacher-avatar-placeholder"><i class="fa-solid fa-user" aria-hidden="true"></i></span>{% endif %}<span><strong>{{ teacher.full_name }}</strong><small>{{ teacher.teacher_id }} · {{ teacher.teacher_code }}</small></span></div></td>
+            <td data-label="Xiriir"><span class="teacher-contact">{{ teacher.phone or 'Taleefan ma jiro' }}</span>{% if teacher.email %}<small class="teacher-contact-sub">{{ teacher.email }}</small>{% endif %}</td>
+            <td data-label="Heerarka iyo fasallada"><strong>{{ teacher_scope_names[teacher.id].levels|join(', ') or 'Heer looma qoondeyn' }}</strong>{% if teacher_scope_names[teacher.id].classes %}<small class="teacher-contact-sub">{{ teacher_scope_names[teacher.id].classes|join(', ') }}</small>{% endif %}</td>
+            <td data-label="Maaddooyinka">{{ teacher.subjects|map(attribute='name')|join(', ') or 'Maaddo looma qoondeyn' }}</td>
+            <td data-label="Shaqaalaysiin"><span class="teacher-state {{ 'is-active' if teacher.employment_status == 'Active' else 'is-inactive' }}">{{ 'Firfircoon' if teacher.employment_status == 'Active' else 'Aan firfircoonayn' }}</span></td>
+            <td data-label="Akoonka portalka">{% if teacher.user %}{% set portal_enabled = teacher.user.is_active and teacher.is_active and teacher.employment_status == 'Active' %}<span class="teacher-state {{ 'is-active' if portal_enabled else 'is-inactive' }}">{{ 'Gelitaan shaqaynaya' if portal_enabled else 'Gelitaan xiran' }}</span><small class="teacher-contact-sub">{{ teacher.user.username }}</small>{% else %}<span class="teacher-state is-missing">Akoon ma jiro</span>{% endif %}</td>
+            <td data-label="Ficillo" class="teacher-row-actions">
+              <a class="icon-btn small" href="{{ url_for('admin_teachers.teacher_view', teacher_id=teacher.id) }}" title="Faahfaahin" aria-label="Faahfaahinta {{ teacher.full_name }}"><i class="fa-solid fa-eye" aria-hidden="true"></i></a>
+              <a class="icon-btn small" href="{{ url_for('admin_teachers.teacher_form', teacher_id=teacher.id) }}" title="Wax ka beddel" aria-label="Wax ka beddel {{ teacher.full_name }}"><i class="fa-solid fa-pen" aria-hidden="true"></i></a>
+              <a class="icon-btn small" href="{{ url_for('admin_teachers.teacher_permissions', teacher_id=teacher.id) }}" title="Ogolaanshaha" aria-label="Ogolaanshaha {{ teacher.full_name }}"><i class="fa-solid fa-key" aria-hidden="true"></i></a>
+              <form method="post" action="{{ url_for('admin_teachers.delete_teacher', teacher_id=teacher.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="icon-btn small danger" type="submit" title="Tirtir macallinka" aria-label="Tirtir {{ teacher.full_name }}" onclick="return confirm('Ma hubtaa inaad tirtirayso diiwaanka macallinkan?')"><i class="fa-solid fa-trash" aria-hidden="true"></i></button></form>
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="12">No teachers found.</td></tr>
+          <tr><td colspan="7"><div class="teacher-empty-state"><i class="fa-solid fa-user-slash" aria-hidden="true"></i><strong>Macallin lama helin</strong><span>Wax natiijo ah kuma waafaqin raadinta iyo shaandhooyinka.</span></div></td></tr>
         {% endfor %}
       </tbody>
-    </table>
-  </div>
-  {% if pagination.pages > 1 %}
-    <div class="pagination-bar">
-      {% if pagination.has_prev %}<a class="btn ghost" href="{{ url_for('admin_teachers.teacher_list', page=pagination.prev_num, **filters) }}"><i class="fa-solid fa-chevron-left"></i> Previous</a>{% endif %}
-      <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
-      {% if pagination.has_next %}<a class="btn ghost" href="{{ url_for('admin_teachers.teacher_list', page=pagination.next_num, **filters) }}">Next <i class="fa-solid fa-chevron-right"></i></a>{% endif %}
-    </div>
-  {% endif %}
-</section>
+    </table></div>
+    {% if pagination.pages > 1 %}<nav class="teacher-pagination" aria-label="Bogagga macallimiinta">{% if pagination.has_prev %}<a class="btn ghost" href="{{ url_for('admin_teachers.teacher_list', page=pagination.prev_num, **filters) }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Hore</a>{% else %}<span></span>{% endif %}<span>Bog {{ pagination.page }} / {{ pagination.pages }}</span>{% if pagination.has_next %}<a class="btn ghost" href="{{ url_for('admin_teachers.teacher_list', page=pagination.next_num, **filters) }}">Xiga <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>{% else %}<span></span>{% endif %}</nav>{% endif %}
+  </section>
+</main>
 {% endblock %}

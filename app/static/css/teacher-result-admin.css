@@ -26,6 +26,16 @@
 .tra-optional{margin-left:4px;color:#778781;font-size:.67rem;font-weight:500}
 .tra-form-action{display:flex;align-items:end}
 .tra-form-action button{height:39px;white-space:nowrap}
+.tra-unlinked-users{margin:-2px 0 15px;padding:11px 13px;border:1px solid #f0d8a7;border-radius:6px;background:#fffaf0;color:#594619;font-size:.76rem}
+.tra-unlinked-users>div{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.tra-unlinked-users>div strong{display:inline-flex;align-items:center;gap:7px;color:#725514}
+.tra-unlinked-users>div span{color:#82734f}
+.tra-unlinked-users ul{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:7px 12px;margin:9px 0 0;padding:0;list-style:none}
+.tra-unlinked-users li{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:8px 9px;border:1px solid #f2e5c9;border-radius:5px;background:#fff}
+.tra-unlinked-users li>span{min-width:0;overflow-wrap:anywhere;color:#46544e}
+.tra-unlinked-users li small{display:block;color:#a25a39;font-size:.66rem}
+.tra-unlinked-users li a{display:inline-flex;align-items:center;gap:6px;flex:none;color:#087f6b;font-size:.71rem;font-weight:750;text-decoration:none}
+.tra-unlinked-users li a:hover{text-decoration:underline}
 .tra-list-heading{align-items:center;flex-wrap:wrap;margin-bottom:13px}
 .tra-list-heading>div{min-width:180px;flex:1}
 .tra-filters{display:flex;align-items:center;gap:7px;margin-left:auto}

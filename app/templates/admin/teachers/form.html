@@ -1,81 +1,101 @@
 {% extends "admin/base.html" %}
-{% block title %}{{ "Edit" if teacher.id else "Add" }} Teacher{% endblock %}
-{% block page_title %}{{ "Edit" if teacher.id else "Add" }} Teacher{% endblock %}
+{% block title %}{{ 'Wax ka beddel macallinka' if teacher.id else 'Macallin cusub' }}{% endblock %}
+{% block page_title %}{{ 'Wax ka beddel macallinka' if teacher.id else 'Macallin cusub' }}{% endblock %}
 {% block admin_content %}
-<form method="post" enctype="multipart/form-data" class="panel form-grid premium-form">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-admin.css') }}">
+<form method="post" enctype="multipart/form-data" class="teacher-form-page">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <section class="teacher-form-section">
+    <header class="teacher-form-heading"><span><i class="fa-solid fa-address-card" aria-hidden="true"></i></span><div><h2>Xogta iyo xiriirka</h2><p>Aqoonsiga macallinka iyo xogta lagula xiriirayo.</p></div></header>
+    <div class="teacher-form-grid">
+      <label>Sawirka macallinka<input type="file" name="photo" accept="image/jpeg,image/png,image/webp">{% if teacher.photo_path %}<small>Sawirka hadda jira: <a href="{{ asset_url(teacher.photo_path) }}" target="_blank" rel="noopener">Eeg</a></small>{% endif %}</label>
+      <label>Aqoonsiga macallinka<input name="teacher_id" value="{{ teacher.teacher_id or '' }}" required></label>
+      <label>Koodhka nidaamka<input name="teacher_code" value="{{ teacher.teacher_code or '' }}" placeholder="{{ 'Si toos ah ayaa loo abuuri doonaa' if settings.teacher_code_auto_generate == 'on' and not teacher.id else 'Koodhka nidaamka' }}"></label>
+      <label class="span-2">Magaca oo buuxa<input name="full_name" value="{{ teacher.full_name or '' }}" required></label>
+      <label>Jinsiga<select name="gender"><option value="">Dooro</option><option value="Male" {{ 'selected' if teacher.gender == 'Male' else '' }}>Lab</option><option value="Female" {{ 'selected' if teacher.gender == 'Female' else '' }}>Dhedig</option><option value="Other" {{ 'selected' if teacher.gender == 'Other' else '' }}>Kale</option></select></label>
+      <label>Taleefanka<input name="phone" value="{{ teacher.phone or '' }}" inputmode="tel"></label>
+      <label>Iimaylka<input name="email" type="email" value="{{ teacher.email or '' }}"></label>
+      <label>Cinwaanka<input name="address" value="{{ teacher.address or '' }}"></label>
+      <label class="span-2">Xiriirka degdegga ah<input name="emergency_contact" value="{{ teacher.emergency_contact or '' }}"></label>
+    </div>
+  </section>
 
-  <div class="section-heading wide"><span><i class="fa-solid fa-user"></i></span><div><h2>Personal Information</h2><p>Core identity and contact details. Teacher ID must be entered manually.</p></div></div>
-  <label><i class="fa-solid fa-image"></i> Teacher Photo<input type="file" name="photo" accept="image/*">{% if teacher.photo_path %}<small>Current: <a href="{{ asset_url(teacher.photo_path) }}" target="_blank">View photo</a></small>{% endif %}</label>
-  <label><i class="fa-solid fa-id-card"></i> Teacher ID<input name="teacher_id" value="{{ teacher.teacher_id or '' }}" required placeholder="Enter manually — never auto-generated"></label>
-  <label><i class="fa-solid fa-barcode"></i> Teacher Code<input name="teacher_code" value="{{ teacher.teacher_code or '' }}" placeholder="{{ 'Auto-generated on save' if settings.teacher_code_auto_generate == 'on' and not teacher.id else 'Internal system code' }}"></label>
-  <label class="span-2"><i class="fa-solid fa-user-tie"></i> Full Name<input name="full_name" value="{{ teacher.full_name or '' }}" required></label>
-  <label><i class="fa-solid fa-venus-mars"></i> Gender<select name="gender"><option value="">Select</option><option {% if teacher.gender == 'Male' %}selected{% endif %}>Male</option><option {% if teacher.gender == 'Female' %}selected{% endif %}>Female</option><option {% if teacher.gender == 'Other' %}selected{% endif %}>Other</option></select></label>
-  <label><i class="fa-solid fa-phone"></i> Phone Number<input name="phone" value="{{ teacher.phone or '' }}"></label>
-  <label><i class="fa-solid fa-envelope"></i> Email<input name="email" type="email" value="{{ teacher.email or '' }}"></label>
-  <label class="span-2"><i class="fa-solid fa-location-dot"></i> Address<textarea name="address">{{ teacher.address or '' }}</textarea></label>
-  <label class="span-2"><i class="fa-solid fa-kit-medical"></i> Emergency Contact<input name="emergency_contact" value="{{ teacher.emergency_contact or '' }}"></label>
+  <section class="teacher-form-section">
+    <header class="teacher-form-heading"><span><i class="fa-solid fa-briefcase" aria-hidden="true"></i></span><div><h2>Xogta shaqada</h2><p>Xaaladda shaqaalaysiinta iyo waayo-aragnimada.</p></div></header>
+    <div class="teacher-form-grid">
+      <label>Taariikhda shaqaalaysiinta<input type="date" name="employment_date" value="{{ teacher.employment_date.isoformat() if teacher.employment_date else '' }}"></label>
+      <label>Nooca shaqada<select name="employment_type">{% for item in employment_types %}<option value="{{ item }}" {{ 'selected' if teacher.employment_type == item else '' }}>{{ {'Full Time':'Waqti buuxa','Part Time':'Waqti-dhiman','Contract':'Heshiis'}[item] }}</option>{% endfor %}</select></label>
+      <label>Shahaado / aqoon<input name="qualification" value="{{ teacher.qualification or '' }}"></label>
+      <label>Sannadaha waayo-aragnimada<input type="number" min="0" name="years_experience" value="{{ teacher.years_experience or 0 }}"></label>
+      <label>Waaxda<input name="department" value="{{ teacher.department or '' }}"></label>
+      <label>Xaaladda shaqada<select name="employment_status"><option value="Active" {{ 'selected' if teacher.employment_status == 'Active' or not teacher.id else '' }}>Firfircoon</option><option value="Inactive" {{ 'selected' if teacher.employment_status == 'Inactive' else '' }}>Aan firfircoonayn</option></select></label>
+    </div>
+  </section>
 
-  <div class="section-heading wide"><span><i class="fa-solid fa-briefcase"></i></span><div><h2>Employment Information</h2><p>Professional background and employment status.</p></div></div>
-  <label><i class="fa-solid fa-calendar-day"></i> Employment Date<input type="date" name="employment_date" value="{{ teacher.employment_date.isoformat() if teacher.employment_date else '' }}"></label>
-  <label><i class="fa-solid fa-clock"></i> Employment Type<select name="employment_type">{% for item in employment_types %}<option {% if teacher.employment_type == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
-  <label class="span-2"><i class="fa-solid fa-graduation-cap"></i> Qualification<input name="qualification" value="{{ teacher.qualification or '' }}"></label>
-  <label><i class="fa-solid fa-hourglass-half"></i> Years of Experience<input type="number" min="0" name="years_experience" value="{{ teacher.years_experience or 0 }}"></label>
-  <label><i class="fa-solid fa-building"></i> Department<input name="department" value="{{ teacher.department or '' }}"></label>
-  <label><i class="fa-solid fa-toggle-on"></i> Employment Status<select name="employment_status"><option {% if teacher.employment_status == 'Active' or not teacher.id %}selected{% endif %}>Active</option><option {% if teacher.employment_status == 'Inactive' %}selected{% endif %}>Inactive</option></select></label>
+  <section class="teacher-form-section teacher-scope-section">
+    <header class="teacher-form-heading"><span><i class="fa-solid fa-school" aria-hidden="true"></i></span><div><h2>Heerarka, fasallada iyo maaddooyinka</h2><p>{% if current_academic_year %}Qaab-dhismeedka rasmiga ah ee {{ current_academic_year.name }} ayaa saldhig u ah doorashooyinkan.{% else %}Sanad-dugsiyeed firfircoon lama hayo; doorasho cusub lama samayn karo.{% endif %}</p></div></header>
+    {% for group in scope_groups %}
+      <fieldset class="teacher-scope-group">
+        <legend><label class="teacher-scope-level"><input type="checkbox" name="academic_level_ids" value="{{ group.level.id }}" {{ 'checked' if group.level.id in linked_level_ids else '' }}><span>{{ group.label }}</span>{% if group.is_legacy %}<small>Qoondeyn hore</small>{% endif %}</label></legend>
+        <div class="teacher-scope-columns">
+          <div class="teacher-scope-column">
+            <h3><i class="fa-solid fa-people-group" aria-hidden="true"></i> Fasallada iyo qaybaha</h3>
+            {% for class_group in group.classes %}
+              <div class="teacher-class-scope {{ 'teacher-scope-legacy' if class_group.is_legacy or not class_group.assignable else '' }}">
+                <label class="teacher-check-row"><input type="checkbox" name="academic_class_ids" value="{{ class_group.record.id if class_group.record else '' }}" {{ 'checked' if class_group.record and class_group.record in teacher.classes else '' }} {{ 'disabled' if not class_group.assignable else '' }}><span>{{ class_group.label }}{% if class_group.is_legacy %}<small> · Qoondeyn hore</small>{% elif not class_group.assignable %}<small> · Xidhiidhka fasalka lama samayn</small>{% endif %}</span></label>
+                {% for section in class_group.sections %}<label class="teacher-check-row teacher-section-check"><input type="checkbox" name="academic_section_ids" value="{{ section.id }}" {{ 'checked' if section in teacher.sections else '' }} {{ 'disabled' if not class_group.assignable else '' }}><span>{{ section.name }}{% if not section.is_active %}<small> · Kayd hore</small>{% endif %}</span></label>{% endfor %}
+              </div>
+            {% else %}<p class="teacher-scope-empty">Heerkan fasallo firfircoon looma diiwaangelin.</p>{% endfor %}
+          </div>
+          <div class="teacher-scope-column">
+            <h3><i class="fa-solid fa-book-open" aria-hidden="true"></i> Maaddooyinka</h3>
+            <div class="teacher-subject-options">{% for subject in group.subjects %}<label class="teacher-check-row {{ 'teacher-scope-legacy' if subject.is_legacy or not subject.assignable else '' }}"><input type="checkbox" name="subject_ids" value="{{ subject.record.id if subject.record else '' }}" {{ 'checked' if subject.record and subject.record in teacher.subjects else '' }} {{ 'disabled' if not subject.assignable else '' }}><span>{{ subject.label }}{% if subject.is_legacy %}<small> · Qoondeyn hore</small>{% elif not subject.assignable %}<small> · Xidhiidhka maaddada lama samayn</small>{% endif %}</span></label>{% else %}<p class="teacher-scope-empty">Maaddo sanadkan heerkan uga diiwaangashan ma jirto.</p>{% endfor %}</div>
+          </div>
+        </div>
+      </fieldset>
+    {% else %}<p class="teacher-scope-empty">Qaab-dhismeed heerar firfircoon oo sanadkan ku xiran lama hayo.</p>{% endfor %}
+    {% if shared_subjects %}<fieldset class="teacher-shared-subjects"><legend>Maaddooyin qoondeyn hore ah oo aan heer ku xirnayn</legend><div class="teacher-subject-options">{% for subject in shared_subjects %}<label class="teacher-check-row teacher-scope-legacy"><input type="checkbox" name="subject_ids" value="{{ subject.id }}" checked><span>{{ subject.name }}<small> · Qoondeyn hore</small></span></label>{% endfor %}</div></fieldset>{% endif %}
+  </section>
 
-  <div class="section-heading wide"><span><i class="fa-solid fa-school"></i></span><div><h2>Academic Assignment</h2><p>Assign one or multiple subjects and classes using the new academic hierarchy.</p></div></div>
-  <label><i class="fa-solid fa-layer-group"></i> School Level<select name="school_level"><option value="">Select level</option>{% for level in school_levels %}<option value="{{ level }}" {% if teacher.school_level == level %}selected{% endif %}>{{ level }}</option>{% endfor %}</select></label>
-  
-  <!-- New Academic Hierarchy -->
-  <div class="wide permission-grid">
-    <strong><i class="fa-solid fa-layer-group"></i> Assigned Academic Levels</strong>
-    {% for level in academic_levels %}
-      <label class="check"><input type="checkbox" name="academic_level_ids" value="{{ level.id }}" {% if level in teacher.academic_levels %}checked{% endif %}> {{ level.name }}</label>
-    {% endfor %}
-  </div>
-  <div class="wide permission-grid">
-    <strong><i class="fa-solid fa-graduation-cap"></i> Assigned Academic Classes</strong>
-    {% for level in academic_levels %}
-      {% for cls in level.classes %}
-        <label class="check"><input type="checkbox" name="academic_class_ids" value="{{ cls.id }}" {% if cls in teacher.classes %}checked{% endif %}> {{ level.name }} - {{ cls.name }}</label>
-      {% endfor %}
-    {% endfor %}
-  </div>
-  <div class="wide permission-grid">
-    <strong><i class="fa-solid fa-table-cells"></i> Assigned Academic Sections</strong>
-    {% for level in academic_levels %}
-      {% for cls in level.classes %}
-        {% for section in cls.sections %}
-          <label class="check"><input type="checkbox" name="academic_section_ids" value="{{ section.id }}" {% if section in teacher.sections %}checked{% endif %}> {{ level.name }} - {{ cls.name }} - {{ section.name }}</label>
-        {% endfor %}
-      {% endfor %}
-    {% endfor %}
-  </div>
-  
-  <!-- Legacy Assignment for Backward Compatibility -->
-  <div class="wide permission-grid" style="margin-top: 20px; border-top: 1px solid #ddd; padding-top: 15px;">
-    <strong><i class="fa-solid fa-people-roof"></i> Legacy Class Assignments (Backward Compatibility)</strong>
-    {% for school_class in classes %}
-      <label class="check"><input type="checkbox" name="class_ids" value="{{ school_class.id }}" {% if school_class in teacher.classes %}checked{% endif %}> {{ school_class.name }}</label>
-    {% endfor %}
-  </div>
-  
-  <div class="wide permission-grid">
-    <strong><i class="fa-solid fa-book"></i> Assigned Subjects</strong>
-    {% for subject in subjects %}
-      <label class="check"><input type="checkbox" name="subject_ids" value="{{ subject.id }}" {% if subject in teacher.subjects %}checked{% endif %}> {{ subject.name }}</label>
-    {% endfor %}
-  </div>
+  <section class="teacher-form-section">
+    <header class="teacher-form-heading"><span><i class="fa-solid fa-key" aria-hidden="true"></i></span><div><h2>Akoonka portalka</h2><p>Samee ama cusboonaysii gelitaanka macallinka.</p></div></header>
+    <div class="teacher-form-grid">
+      {% if linkable_staff_users %}<label class="span-2">Ku xidh akoon staff oo hore loo sameeyey<select id="teacher-existing-user" name="existing_user_id"><option value="">Akoon cusub samee</option>{% for account in linkable_staff_users %}<option value="{{ account.id }}" data-username="{{ account.username }}" data-full-name="{{ account.full_name }}" data-active="{{ 'true' if account.is_active else 'false' }}" {{ 'selected' if selected_portal_user_id == account.id else '' }}>{{ account.full_name }} · @{{ account.username }} · {{ 'Firfircoon' if account.is_active else 'Aan firfircoonayn' }}</option>{% endfor %}</select><small>Akoonka la doorto ayaa lagu xiriirinayaa profile-kan; lama abuuri doono akoon kale.</small></label>{% endif %}
+      {% if not teacher.user_id %}<label class="teacher-check-row teacher-account-toggle span-2"><input type="checkbox" name="create_account" checked><span>U samee macallinka akoonka portalka</span></label>{% else %}<div class="teacher-account-current span-2"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Akoon jira: <strong>{{ teacher.user.username }}</strong></span></div>{% endif %}
+      <label>Magaca gelitaanka<input id="teacher-account-username" name="username" value="{{ selected_portal_user.username if selected_portal_user else (teacher.user.username if teacher.user else default_username) }}" placeholder="{{ settings.teacher_default_username_format }}" autocomplete="username"></label>
+      <label>Furaha sirta ah<input type="password" name="password" autocomplete="new-password" placeholder="{{ 'Ka tag madhan si uusan isu beddelin' if teacher.user_id or selected_portal_user else 'Waajib marka akoon cusub la samaynayo' }}"></label>
+      <label>Xaqiiji furaha sirta ah<input type="password" name="confirm_password" autocomplete="new-password"></label>
+      <label class="teacher-check-row"><input type="checkbox" name="force_password_change" {{ 'checked' if teacher.force_password_change else '' }}><span>Ku khasab beddelka furaha gelitaanka koowaad</span></label>
+      <label class="teacher-check-row"><input id="teacher-account-active" type="checkbox" name="account_active" {{ 'checked' if (selected_portal_user.is_active if selected_portal_user else (not teacher.user or teacher.user.is_active)) else '' }}><span>Gelitaanka portalka ha shaqeeyo</span></label>
+    </div>
+  </section>
 
-  <div class="section-heading wide"><span><i class="fa-solid fa-key"></i></span><div><h2>Login Account</h2><p>Optional credentials for future teacher portal access.</p></div></div>
-  <label class="check wide"><input type="checkbox" name="create_account" {% if teacher.user_id or not teacher.id %}checked{% endif %}> <i class="fa-solid fa-user-lock"></i> Create / Update Login Account</label>
-  <label><i class="fa-solid fa-user"></i> Username<input name="username" value="{{ teacher.user.username if teacher.user else default_username }}" placeholder="{{ settings.teacher_default_username_format }}"></label>
-  <label><i class="fa-solid fa-lock"></i> Password<input type="password" name="password" placeholder="{{ 'Leave blank to keep current' if teacher.user_id else 'Required for new account' }}"></label>
-  <label><i class="fa-solid fa-lock"></i> Confirm Password<input type="password" name="confirm_password"></label>
-  <label class="check"><input type="checkbox" name="force_password_change" {% if teacher.force_password_change %}checked{% endif %}> <i class="fa-solid fa-rotate"></i> Force Password Change on First Login</label>
-  <label class="check"><input type="checkbox" name="account_active" {% if not teacher.user or teacher.user.is_active %}checked{% endif %}> <i class="fa-solid fa-circle-check"></i> Account Active</label>
-
-  <button class="premium wide"><i class="fa-solid fa-floppy-disk"></i> Save Teacher</button>
+  <div class="teacher-form-actions"><a class="btn ghost" href="{{ url_for('admin_teachers.teacher_list') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Ka noqo</a><button class="btn premium" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Kaydi macallinka</button></div>
 </form>
+<script>
+(() => {
+  const select = document.getElementById('teacher-existing-user');
+  if (!select) return;
+  const username = document.getElementById('teacher-account-username');
+  const active = document.getElementById('teacher-account-active');
+  const createAccount = document.querySelector('input[name="create_account"]');
+  const fullName = document.querySelector('input[name="full_name"]');
+  const syncAccount = () => {
+    const option = select.selectedOptions[0];
+    const linked = Boolean(select.value);
+    username.value = linked ? (option.dataset.username || '') : '';
+    active.checked = linked ? option.dataset.active === 'true' : true;
+    if (linked) {
+      if (fullName && !fullName.value.trim()) fullName.value = option.dataset.fullName || '';
+    }
+    if (createAccount) {
+      createAccount.disabled = linked;
+      if (linked) createAccount.checked = false;
+      else if (!createAccount.checked) createAccount.checked = true;
+    }
+  };
+  select.addEventListener('change', syncAccount);
+  if (select.value) syncAccount();
+})();
+</script>
 {% endblock %}

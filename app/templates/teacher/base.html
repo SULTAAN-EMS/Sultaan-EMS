@@ -1,44 +1,50 @@
 {% extends "base.html" %}
 {% block body_class %}teacher-body {{ 'theme-dark' if teacher_theme == 'dark' else 'theme-light' }}{% endblock %}
-{% block title %}{% block teacher_title %}{{ page_title }}{% endblock %} | Teacher Dashboard{% endblock %}
+{% block title %}{% block teacher_title %}{{ page_title }}{% endblock %} | SULTAAN EMS{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-dashboard.css') }}">
-<aside class="teacher-sidebar">
-  <div class="teacher-sidebar-fixed">
-    <a class="teacher-brand" href="{{ url_for('teacher_portal.result_entry') }}">
-      <span class="brand-logo"><i class="fa-solid fa-pen-to-square"></i></span>
-      <span><strong>Teacher Portal</strong><small>Result Entry Workspace</small></span>
-    </a>
-    <div class="teacher-profile">
-      <span class="teacher-avatar">
-        {% if teacher.photo_path %}
-          <img src="{{ asset_url(teacher.photo_path) }}" alt="{{ teacher.full_name }}">
-        {% else %}
-          <i class="fa-solid fa-chalkboard-user"></i>
-        {% endif %}
-      </span>
-      <span>
-        <strong>{{ teacher.full_name }}</strong>
-        <small>{{ teacher.teacher_code }}</small>
-      </span>
-    </div>
-  </div>
-  <nav class="teacher-nav">
+<header class="teacher-portal-bar">
+  <a class="teacher-brand" href="{{ url_for('teacher_portal.result_entry') }}" aria-label="{{ ui_settings.school_name or 'Taysiir International Schools' }} - Portalka Macallinka">
+    <span class="brand-logo" aria-hidden="true">
+      {% if ui_settings.admin_logo_path or ui_settings.logo_path %}
+        <img src="{{ asset_url(ui_settings.admin_logo_path or ui_settings.logo_path) }}" alt="" data-fallback-src="{{ asset_url(ui_settings.logo_path) if ui_settings.logo_path else '' }}" onerror="if(this.dataset.fallbackSrc&&!this.dataset.fallbackTried){this.dataset.fallbackTried='1';this.src=this.dataset.fallbackSrc;}else{this.hidden=true;this.nextElementSibling.hidden=false;}">
+      {% endif %}
+      <i class="fa-solid fa-school" {% if ui_settings.admin_logo_path or ui_settings.logo_path %}hidden{% endif %}></i>
+    </span>
+    <span class="teacher-brand-copy">
+      <strong>{{ ui_settings.school_name or 'Taysiir International Schools' }}</strong>
+      <small>SULTAAN EMS <span aria-hidden="true">·</span> PORTALKA MACALLINKA</small>
+    </span>
+  </a>
+  <nav class="teacher-nav" aria-label="Hagidda portalka macallinka">
     {% for endpoint, label, icon, permission in nav_items %}
       {% if not permission or teacher_can(permission) %}
-        <a href="{{ url_for(endpoint) }}" class="{% if active_endpoint == endpoint %}active{% endif %}">
+        <a href="{{ url_for(endpoint) }}" class="{% if active_endpoint == endpoint %}active{% endif %}" {% if active_endpoint == endpoint %}aria-current="page"{% endif %}>
           <i class="fa-solid {{ icon }}"></i><span>{{ label }}</span>
         </a>
       {% endif %}
     {% endfor %}
   </nav>
-</aside>
+  <div class="teacher-profile" title="{{ teacher.full_name }}">
+    <span class="teacher-avatar">
+      {% if teacher.photo_path %}
+        <img src="{{ asset_url(teacher.photo_path) }}" alt="">
+      {% else %}
+        <i class="fa-solid fa-chalkboard-user" aria-hidden="true"></i>
+      {% endif %}
+    </span>
+    <span class="teacher-profile-copy">
+      <strong>{{ teacher.full_name }}</strong>
+      <small><i class="fa-regular fa-id-card" aria-hidden="true"></i> {{ teacher.teacher_code }}</small>
+    </span>
+  </div>
+</header>
 <main class="teacher-main">
   <header class="teacher-top glass-card">
     <div>
-      <span class="eyebrow"><i class="fa-solid fa-shield-halved"></i> Secure Result Workspace</span>
+      <span class="eyebrow"><i class="fa-solid fa-shield-halved"></i> NIDAAMKA NATIIJOOYINKA</span>
       <h1>{{ page_title }}</h1>
-      <p>Record and submit marks for your assigned exam scopes.</p>
+      <p>{% if active_endpoint == 'teacher_portal.result_entry' %}Geli oo gudbi dhibcaha imtixaannada laguu xilsaaray.{% else %}SULTAAN EMS · Portalka Macallinka{% endif %}</p>
     </div>
     <div class="top-actions">
       <button type="button" class="icon-btn" id="themeToggle" title="Toggle theme"><i class="fa-solid fa-moon"></i></button>
@@ -52,6 +58,6 @@
   {% block teacher_filters %}{% include "teacher/_filters.html" %}{% endblock %}
   {% block teacher_content %}{% endblock %}
 </main>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% if active_endpoint != 'teacher_portal.result_entry' %}<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>{% endif %}
 <script src="{{ url_for('static', filename='js/teacher-dashboard.js') }}"></script>
 {% endblock %}
