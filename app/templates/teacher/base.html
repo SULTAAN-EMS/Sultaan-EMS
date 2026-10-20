@@ -40,18 +40,23 @@
   </div>
 </header>
 <main class="teacher-main">
-  <header class="teacher-top glass-card">
-    <div>
-      <span class="eyebrow"><i class="fa-solid fa-shield-halved"></i> NIDAAMKA NATIIJOOYINKA</span>
-      <h1>{{ page_title }}</h1>
-      <p>{% if active_endpoint == 'teacher_portal.result_entry' %}Geli oo gudbi dhibcaha imtixaannada laguu xilsaaray.{% else %}SULTAAN EMS · Portalka Macallinka{% endif %}</p>
+  <header class="teacher-top glass-card{% if active_endpoint == 'teacher_portal.result_entry' %} teacher-top-results{% endif %}">
+    <div class="teacher-top-main">
+      {% if active_endpoint == 'teacher_portal.result_entry' %}
+        <span class="teacher-top-mark" aria-hidden="true"><i class="fa-solid fa-pen-to-square"></i></span>
+      {% endif %}
+      <div class="teacher-top-copy">
+        <span class="eyebrow"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> NIDAAMKA NATIIJOOYINKA</span>
+        <h1>{{ page_title }}</h1>
+        <p>{% if active_endpoint == 'teacher_portal.result_entry' %}Geli oo gudbi dhibcaha imtixaannada laguu xilsaaray.{% else %}SULTAAN EMS · Portalka Macallinka{% endif %}</p>
+      </div>
     </div>
-    <div class="top-actions">
-      <button type="button" class="icon-btn" id="themeToggle" title="Toggle theme"><i class="fa-solid fa-moon"></i></button>
-      <a class="icon-btn" href="{{ url_for('teacher_portal.change_password') }}" title="Change password"><i class="fa-solid fa-key"></i></a>
+    <div class="top-actions" aria-label="Ficillada akoonka">
+      <button type="button" class="icon-btn" id="themeToggle" title="Beddel muuqaalka" aria-label="Beddel muuqaalka"><i class="fa-solid fa-moon" aria-hidden="true"></i></button>
+      <a class="icon-btn" href="{{ url_for('teacher_portal.change_password') }}" title="Beddel furaha sirta" aria-label="Beddel furaha sirta"><i class="fa-solid fa-key" aria-hidden="true"></i></a>
       <form method="post" action="{{ url_for('teacher_portal.logout') }}" class="teacher-logout top-logout">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="icon-btn" title="Logout" aria-label="Logout"><i class="fa-solid fa-right-from-bracket"></i></button>
+        <button type="submit" class="icon-btn" title="Ka bax" aria-label="Ka bax"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i></button>
       </form>
     </div>
   </header>
