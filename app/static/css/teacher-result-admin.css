@@ -56,6 +56,7 @@
 .tra-status.active,.tra-status.approved{background:#edf9f2;border-color:#c9ead6;color:#16724a}
 .tra-status.inactive{background:#fff4ed;border-color:#f0d1bb;color:#9a5427}
 .tra-status.submitted{background:#fff7e5;border-color:#f0dda9;color:#805800}
+.tra-status.partial{background:#eaf8f5;border-color:#b9e6db;color:#087f6b}
 .tra-status.reopened{background:#eef6ff;border-color:#d0e3fa;color:#285b8e}
 .tra-status.not-started,.tra-status.draft{background:#f3f6f5;color:#667772}
 .tra-review{margin-top:13px;border-top:1px solid #e7eeeb;padding-top:11px}

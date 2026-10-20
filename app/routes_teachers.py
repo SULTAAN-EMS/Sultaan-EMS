@@ -322,14 +322,25 @@ def result_entry_setup():
             if not reviewer_note:
                 flash("Qor sababta dib loogu furayo xaashida natiijada.", "warning")
                 return redirect(url_for("admin_teachers.result_entry_setup"))
+            reopen_status = "submitted" if submission.status == "submitted" else "approved"
             submission.status = "reopened"
+            for mark in submission.marks:
+                if mark.status == reopen_status:
+                    mark.status = "draft"
             assignment.max_submissions = max(assignment.max_submissions, submission.submission_count + 1)
             submission.reviewer_note = reviewer_note[:500]
         elif action == "approve":
             if submission.status != "submitted":
                 flash("Submission-ku waa inuu ku jiraa xaaladda dib-u-eegis.", "warning")
                 return redirect(url_for("admin_teachers.result_entry_setup"))
-            marks = {mark.student_id: mark for mark in submission.marks}
+            pending_marks = [
+                mark for mark in submission.marks
+                if mark.status == "submitted" and mark.score is not None
+            ]
+            if not pending_marks:
+                flash("Ma jiraan dhibco cusub oo sugaya ansixin.", "warning")
+                return redirect(url_for("admin_teachers.result_entry_setup"))
+            marks = {mark.student_id: mark for mark in pending_marks}
             year_level, year_class = _year_scope_ids_from_legacy(
                 assignment.academic_year_id,
                 assignment.school_class.academic_level_id,
@@ -341,10 +352,12 @@ def result_entry_setup():
                 class_id=assignment.class_id,
                 exam=assignment.exam,
             ).all()
-            if not year_level or not year_class or any(student.id not in marks or marks[student.id].score is None for student in students):
-                flash("Natiijadu ma dhammaystirna ama fasalka/sanadku sax ma aha; lama ansixin.", "danger")
+            roster_ids = {student.id for student in students}
+            if not year_level or not year_class or any(student_id not in roster_ids for student_id in marks):
+                flash("Xogta ardayda ama fasalka/sanadku sax ma aha; lama ansixin.", "danger")
                 return redirect(url_for("admin_teachers.result_entry_setup"))
-            if any(student.is_result_locked for student in students):
+            pending_students = [student for student in students if student.id in marks]
+            if any(student.is_result_locked for student in pending_students):
                 flash("Fasalka waxaa ku jira arday natiijadoodu xiran tahay. Furitaanka natiijooyinkaas ayaa loo baahan yahay ka hor ansixinta.", "danger")
                 return redirect(url_for("admin_teachers.result_entry_setup"))
             maximum = resolve_subject_max_score(
@@ -353,18 +366,19 @@ def result_entry_setup():
                 academic_year_level_id=year_level.id,
                 academic_level_id=assignment.school_class.academic_level_id,
             )
-            if any(marks[student.id].score < 0 or marks[student.id].score > maximum for student in students):
+            if any(mark.score < 0 or mark.score > maximum for mark in pending_marks):
                 flash("Dhibco ka baxsan xadka maaddada ayaa jira; submission-ka lama ansixin.", "danger")
                 return redirect(url_for("admin_teachers.result_entry_setup"))
+            pending_ids = [student.id for student in pending_students]
             existing_result_count = Result.query.filter(
                 Result.exam_id == assignment.exam_id,
                 Result.subject_id == assignment.subject_id,
-                Result.student_id.in_([student.id for student in students]),
-            ).count() if students else 0
+                Result.student_id.in_(pending_ids),
+            ).count() if pending_ids else 0
             if existing_result_count and request.form.get("confirm_replace") != "yes":
                 flash("Dhibco rasmi ah ayaa hore u jira. Isbarbar dhig kadib calaamadee sanduuqa si si cad loogu oggolaado beddeliddooda.", "warning")
                 return redirect(url_for("admin_teachers.result_entry_setup"))
-            for student in students:
+            for student in pending_students:
                 result = Result.query.filter_by(
                     student_id=student.id, exam_id=assignment.exam_id, subject_id=assignment.subject_id
                 ).first()
@@ -374,15 +388,30 @@ def result_entry_setup():
                 else:
                     result.score = marks[student.id].score
                 result.is_published = True
-            submission.status = "approved"
+                marks[student.id].status = "approved"
+            already_published_ids = {
+                student_id for (student_id,) in db.session.query(Result.student_id).filter(
+                    Result.exam_id == assignment.exam_id,
+                    Result.subject_id == assignment.subject_id,
+                    Result.is_published.is_(True),
+                    Result.student_id.in_(roster_ids),
+                ).all()
+            } if roster_ids else set()
+            complete_roster = roster_ids.issubset(already_published_ids | set(pending_ids))
+            submission.status = "approved" if complete_roster else "draft"
             submission.reviewed_at = datetime.utcnow()
             submission.reviewed_by_id = current_user.id
             submission.reviewer_note = (request.form.get("reviewer_note") or "Approved and published.").strip()[:500]
-            audit("Teacher Result Approval", f"Approved submission {submission.id} ({len(students)} students; {existing_result_count} existing scores replaced): {assignment.exam.name} / {assignment.school_class.name} / {assignment.subject.name}")
+            audit("Teacher Result Approval", f"Approved submission {submission.id} ({len(pending_marks)} submitted marks; {existing_result_count} existing scores replaced): {assignment.exam.name} / {assignment.school_class.name} / {assignment.subject.name}")
+            if complete_roster:
+                flash("Dhammaan dhibcaha xaashidan waa la ansixiyey oo la daabacay.", "success")
+            else:
+                flash("Qaybta dhibcaha la gudbiyey waa la ansixiyey; inta harsan macallinku wuu sii gelin karaa.", "success")
         else:
             abort(400)
         db.session.commit()
-        flash("Isbeddelka xilsaarista/submission-ka waa la kaydiyey.", "success")
+        if action != "approve":
+            flash("Isbeddelka xilsaarista/submission-ka waa la kaydiyey.", "success")
         return redirect(url_for("admin_teachers.result_entry_setup"))
 
     all_assignments = TeacherResultAssignment.query.order_by(TeacherResultAssignment.updated_at.desc()).all()
@@ -412,11 +441,20 @@ def result_entry_setup():
         assignments = [item for item in assignments if not item.is_active]
     review_rows = {}
     assignments_with_existing_results = set()
+    assignment_progress = {}
     for assignment in assignments:
         submission = next(iter(assignment.submissions), None)
-        if not submission or submission.status != "submitted":
+        if not submission:
             continue
-        student_ids = [mark.student_id for mark in submission.marks]
+        assignment_progress[assignment.id] = {
+            "approved": sum(mark.status == "approved" for mark in submission.marks),
+            "pending": sum(mark.status == "submitted" for mark in submission.marks),
+            "draft": sum(mark.status == "draft" and mark.score is not None for mark in submission.marks),
+        }
+        if submission.status != "submitted":
+            continue
+        submitted_marks = [mark for mark in submission.marks if mark.status == "submitted" and mark.score is not None]
+        student_ids = [mark.student_id for mark in submitted_marks]
         official_scores = {
             result.student_id: result.score
             for result in Result.query.filter(
@@ -429,7 +467,7 @@ def result_entry_setup():
             assignments_with_existing_results.add(assignment.id)
         review_rows[assignment.id] = [
             {"mark": mark, "official_score": official_scores.get(mark.student_id)}
-            for mark in submission.marks
+            for mark in submitted_marks
         ]
     deadline_labels = {
         item.id: item.deadline_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Africa/Mogadishu"))
@@ -519,6 +557,7 @@ def result_entry_setup():
         assignment_scope_details=assignment_scope_details,
         deadline_labels=deadline_labels,
         review_rows=review_rows,
+        assignment_progress=assignment_progress,
         assignments_with_existing_results=assignments_with_existing_results,
         summary=summary, status_filter=status_filter, teacher_filter=teacher_filter,
     )

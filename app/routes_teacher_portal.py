@@ -323,6 +323,8 @@ def result_entry():
                 "student": student,
                 "score": draft.score if draft and draft.score is not None else (existing.score if existing else None),
                 "is_existing": bool(existing),
+                "mark_status": draft.status if draft else "draft",
+                "is_locked": bool(draft and draft.status in {"submitted", "approved"}),
             })
         max_score = resolve_subject_max_score(
             assignment.subject,
@@ -332,7 +334,10 @@ def result_entry():
         )
         deadline_passed = bool(assignment.deadline_at and datetime.utcnow() > assignment.deadline_at)
         reopened = bool(submission and submission.status == "reopened")
-        locked = (deadline_passed and not reopened) or bool(submission and submission.status in {"submitted", "approved"})
+        locked = (deadline_passed and not reopened) or bool(submission and submission.status == "approved")
+
+    approved_mark_count = sum(mark.status == "approved" for mark in submission.marks) if submission else 0
+    pending_mark_count = sum(mark.status == "submitted" for mark in submission.marks) if submission else 0
 
     return render_template(
         "teacher/result_entry.html",
@@ -353,6 +358,8 @@ def result_entry():
         rows=rows,
         max_score=max_score,
         locked=locked,
+        approved_mark_count=approved_mark_count,
+        pending_mark_count=pending_mark_count,
         now=datetime.utcnow(),
     )
 
@@ -366,13 +373,14 @@ def result_entry_save():
     ).first_or_404()
     now = datetime.utcnow()
     submission = TeacherResultSubmission.query.filter_by(assignment_id=assignment.id).first()
-    if submission and submission.status in {"submitted", "approved"}:
-        flash("Natiijadan waa la gudbiyey oo waa xiran tahay. Maamulka ayaa dib u furi kara.", "warning")
+    action = request.form.get("action")
+    if submission and submission.status == "approved":
+        flash("Xaashida oo dhan waa la ansixiyey oo way xiran tahay. Maamulka ayaa dib u furi kara.", "warning")
         return _redirect_result_entry(assignment.id)
     if assignment.deadline_at and now > assignment.deadline_at and not (submission and submission.status == "reopened"):
         flash("Waqtigii gudbinta natiijadan wuu dhammaaday.", "danger")
         return _redirect_result_entry(assignment.id)
-    if submission and submission.submission_count >= assignment.max_submissions:
+    if action == "submit" and submission and submission.status == "reopened" and submission.submission_count >= assignment.max_submissions:
         flash("Tirada gudbinta ee laguu oggolaaday way dhammaatay. La xiriir maamulka.", "danger")
         return _redirect_result_entry(assignment.id)
 
@@ -389,7 +397,6 @@ def result_entry_save():
         class_id=assignment.class_id,
         exam=assignment.exam,
     ).order_by(Student.full_name).all()
-    score_by_student = {}
     max_score = Decimal(str(resolve_subject_max_score(
         assignment.subject,
         exam=assignment.exam,
@@ -397,13 +404,17 @@ def result_entry_save():
         academic_level_id=assignment.school_class.academic_level_id,
     )))
     errors = []
-    submit_now = request.form.get("action") == "submit"
+    submit_now = action == "submit"
+    existing_marks = {
+        mark.student_id: mark for mark in submission.marks
+    } if submission else {}
+    score_by_student = {}
     for student in students:
+        mark = existing_marks.get(student.id)
+        if mark and mark.status in {"submitted", "approved"}:
+            continue
         raw = (request.form.get(f"score_{student.id}") or "").strip()
         if not raw:
-            if submit_now:
-                errors.append(student.full_name)
-            score_by_student[student.id] = None
             continue
         try:
             score = Decimal(raw)
@@ -415,7 +426,7 @@ def result_entry_save():
             continue
         score_by_student[student.id] = score
     if errors:
-        flash("Dhibcaha qaar waa maqan yihiin ama kama dhex jiraan 0 iyo %s: %s" % (max_score, ", ".join(errors[:6])), "danger")
+        flash("Dhibcaha ardaydan kama dhex jiraan 0 iyo %s: %s" % (max_score, ", ".join(errors[:6])), "danger")
         return _redirect_result_entry(assignment.id)
 
     if not submission:
@@ -423,23 +434,38 @@ def result_entry_save():
         db.session.add(submission)
         db.session.flush()
     mark_by_student = {mark.student_id: mark for mark in submission.marks}
-    for student in students:
-        mark = mark_by_student.get(student.id)
+    if not submit_now:
+        for student in students:
+            existing_mark = mark_by_student.get(student.id)
+            if existing_mark and existing_mark.status == "draft" and not (request.form.get(f"score_{student.id}") or "").strip():
+                existing_mark.score = None
+    for student_id, score in score_by_student.items():
+        mark = mark_by_student.get(student_id)
         if not mark:
-            mark = TeacherResultMark(submission=submission, student_id=student.id)
+            mark = TeacherResultMark(submission=submission, student_id=student_id)
             db.session.add(mark)
-        mark.score = score_by_student.get(student.id)
+        mark.score = score
+        mark.status = "submitted" if submit_now else "draft"
     if submit_now:
-        if submission.submission_count >= assignment.max_submissions:
+        pending_marks = [mark for mark in submission.marks if mark.status == "submitted" and mark.score is not None]
+        if not pending_marks:
             db.session.rollback()
-            flash("Tirada gudbinta ee laguu oggolaaday way dhammaatay.", "danger")
+            flash("Geli ugu yaraan hal dhibcood oo cusub ka hor intaadan maamulka u gudbin.", "warning")
             return _redirect_result_entry(assignment.id)
+        reopened = submission.status == "reopened"
+        if reopened:
+            if submission.submission_count >= assignment.max_submissions:
+                db.session.rollback()
+                flash("Tirada gudbinta ee laguu oggolaaday way dhammaatay.", "danger")
+                return _redirect_result_entry(assignment.id)
+            submission.submission_count += 1
+        elif submission.submission_count == 0:
+            submission.submission_count = 1
         submission.status = "submitted"
-        submission.submission_count += 1
         submission.submitted_at = now
-        flash("Natiijada si guul leh ayaa loogu gudbiyey maamulka si dib loogu eego.", "success")
+        flash("Dhibcaha %s arday ayaa maamulka loo gudbiyey si dib loogu eego." % len(score_by_student), "success")
     else:
-        if submission.status != "reopened":
+        if submission.status not in {"submitted", "reopened"}:
             submission.status = "draft"
         flash("Qabyada natiijada waa la kaydiyey.", "success")
     db.session.commit()

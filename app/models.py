@@ -2286,7 +2286,7 @@ class TeacherResultSubmission(TimestampMixin, db.Model):
 
 
 class TeacherResultMark(TimestampMixin, db.Model):
-    """Draft score that is not visible in official result reports until approval."""
+    """Per-student mark state; only approved scores enter official result reports."""
 
     __tablename__ = "teacher_result_marks"
 
@@ -2295,6 +2295,7 @@ class TeacherResultMark(TimestampMixin, db.Model):
     student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     score = db.Column(db.Numeric(8, 3), nullable=True)
     comment = db.Column(db.String(255), nullable=True)
+    status = db.Column(db.String(16), nullable=False, default="draft")
 
     submission = db.relationship("TeacherResultSubmission", back_populates="marks")
     student = db.relationship("Student")
@@ -2302,6 +2303,7 @@ class TeacherResultMark(TimestampMixin, db.Model):
     __table_args__ = (
         UniqueConstraint("submission_id", "student_id", name="uq_teacher_result_mark_student"),
         db.CheckConstraint("score IS NULL OR score >= 0", name="ck_teacher_result_mark_nonnegative"),
+        db.CheckConstraint("status IN ('draft', 'submitted', 'approved')", name="ck_teacher_result_mark_status"),
     )
 
 

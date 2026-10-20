@@ -8,8 +8,10 @@ from app.models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel,
     AcademicSection, AcademicYearSubject, Exam, Result, Student, StudentEnrollment, Subject, Teacher,
     TeacherResultAssignment, TeacherResultSubmission, User,
+    TeacherResultMark,
 )
 from migrations import phase_14_teacher_result_entry
+from migrations import phase_19_teacher_result_partial
 
 
 class TestTeacherResultEntry(unittest.TestCase):
@@ -593,10 +595,79 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(submission.status, "approved")
         self.assertEqual(float(Result.query.filter_by(student_id=self.students[0].id).one().score), 46)
 
+    def test_partial_submission_approval_publishes_only_entered_students_and_allows_continuation(self):
+        self._teacher_login()
+        first = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "44",
+            f"score_{self.students[1].id}": "",
+        }, follow_redirects=True)
+
+        self.assertEqual(first.status_code, 200)
+        submission = TeacherResultSubmission.query.one()
+        self.assertEqual(submission.status, "submitted")
+        self.assertEqual(submission.submission_count, 1)
+        first_mark = TeacherResultMark.query.filter_by(student_id=self.students[0].id).one()
+        self.assertEqual(first_mark.status, "submitted")
+        self.assertEqual(Result.query.count(), 0)
+
+        self.client.post("/teacher/logout")
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        review = self.client.get("/admin/teachers/result-entry?status=review")
+        self.assertEqual(review.status_code, 200)
+        self.assertIn(b"Review 1 submitted student marks", review.data)
+        self.assertNotIn(b"Student 2</td>", review.data)
+        approved_first = self.client.post("/admin/teachers/result-entry", data={
+            "action": "approve", "assignment_id": str(self.assignment.id),
+        }, follow_redirects=True)
+        self.assertEqual(approved_first.status_code, 200)
+        self.assertEqual(submission.status, "draft")
+        self.assertEqual(first_mark.status, "approved")
+        self.assertEqual(float(Result.query.filter_by(student_id=self.students[0].id).one().score), 44)
+        self.assertIsNone(Result.query.filter_by(student_id=self.students[1].id).first())
+
+        self.client.post("/admin/logout")
+        self._teacher_login()
+        workspace = self.client.get(f"/teacher/result-entry?assignment_id={self.assignment.id}")
+        self.assertEqual(workspace.status_code, 200)
+        self.assertIn(b"Qaybo la ansixiyey", workspace.data)
+        self.assertIn(f'name="score_{self.students[0].id}"'.encode(), workspace.data)
+        self.assertIn(f'name="score_{self.students[1].id}"'.encode(), workspace.data)
+        self.assertIn(f'name="score_{self.students[0].id}" value="44.000"'.encode(), workspace.data)
+        self.assertIn(f'name="score_{self.students[1].id}" value=""'.encode(), workspace.data)
+        self.assertRegex(workspace.data, f'name="score_{self.students[0].id}"[^>]*disabled'.encode())
+        self.assertNotRegex(workspace.data, f'name="score_{self.students[1].id}"[^>]*disabled'.encode())
+
+        second = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "44",
+            f"score_{self.students[1].id}": "39",
+        }, follow_redirects=True)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(submission.submission_count, 1)
+        second_mark = TeacherResultMark.query.filter_by(student_id=self.students[1].id).one()
+        self.assertEqual(second_mark.status, "submitted")
+
+        self.client.post("/teacher/logout")
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        approved_second = self.client.post("/admin/teachers/result-entry", data={
+            "action": "approve", "assignment_id": str(self.assignment.id),
+        }, follow_redirects=True)
+        self.assertEqual(approved_second.status_code, 200)
+        self.assertEqual(submission.status, "approved")
+        self.assertEqual(second_mark.status, "approved")
+        self.assertEqual(Result.query.count(), 2)
+        self.assertEqual(submission.submission_count, 1)
+
     def test_migration_is_repeatable(self):
         with patch.object(phase_14_teacher_result_entry, "create_app", return_value=self.app):
             self.assertEqual(phase_14_teacher_result_entry.upgrade(), {"status": "applied", "tables": 3})
             self.assertEqual(phase_14_teacher_result_entry.upgrade(), {"status": "applied", "tables": 3})
+        with patch.object(phase_19_teacher_result_partial, "create_app", return_value=self.app):
+            self.assertEqual(phase_19_teacher_result_partial.upgrade(), {"status": "applied", "columns": 1})
+            self.assertEqual(phase_19_teacher_result_partial.upgrade(), {"status": "applied", "columns": 1})
 
 
 if __name__ == "__main__":
