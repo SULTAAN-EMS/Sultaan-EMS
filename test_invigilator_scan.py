@@ -141,6 +141,7 @@ class TestInvigilatorScan(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Arday", html)
         self.assertIn("Howl-wadeen", html)
+        self.assertIn("XULO HABKA HUBINTA", html)
         self.assertIn("/scan/student", html)
         self.assertIn("/scan/staff", html)
 
@@ -158,7 +159,7 @@ class TestInvigilatorScan(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Geli Tira-taxanaha Ardayga", html)
-        self.assertIn("Fur kamarada", html)
+        self.assertIn("Fur Kamarada", html)
         self.assertIn("Raadi aqoonsiga", html)
         self.assertIn('class="student-lookup-button"', html)
         self.assertNotIn('<label for="student-code">Tira-taxanaha ardayga</label>', html)
