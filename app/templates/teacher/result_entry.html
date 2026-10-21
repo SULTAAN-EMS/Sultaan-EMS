@@ -2,103 +2,177 @@
 {% block teacher_title %}Gelinta natiijooyinka{% endblock %}
 {% block teacher_filters %}{% endblock %}
 {% block teacher_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-entry-20261020-2') }}">
-<section class="result-entry-page">
-  {% if assignments %}
-    <form method="get" class="assignment-select glass-card" id="resultScopeFilters">
-      <label><i class="fa-solid fa-calendar-days"></i> Sannad-dugsiyeedka
-        <select name="academic_year_id"><option value="">Dhammaan sannadaha</option>{% for item in entry_filter_options.academic_years %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.academic_year_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select>
-      </label>
-      <label><i class="fa-solid fa-file-circle-check"></i> Imtixaanka
-        <select name="exam_id"><option value="">Dhammaan imtixaannada</option>{% for item in entry_filter_options.exams %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.exam_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select>
-      </label>
-      <label><i class="fa-solid fa-layer-group"></i> Heerka
-        <select name="academic_level_id"><option value="">Dhammaan heerarka</option>{% for item in entry_filter_options.levels %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.academic_level_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select>
-      </label>
-      <label><i class="fa-solid fa-people-group"></i> Fasalka
-        <select name="class_id"><option value="">Dhammaan fasallada</option>{% for item in entry_filter_options.classes %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.class_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select>
-      </label>
-      <label><i class="fa-solid fa-book-open"></i> Maaddada
-        <select name="subject_id"><option value="">Dhammaan maaddooyinka</option>{% for item in entry_filter_options.subjects %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.subject_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select>
-      </label>
-      <label><i class="fa-solid fa-list-check"></i> Xaaladda
-        <select name="status">{% for value, label in entry_filter_options.statuses %}<option value="{{ value }}" {{ 'selected' if entry_filters.status == value else '' }}>{{ label }}</option>{% endfor %}</select>
-      </label>
-      <label class="scope-assignment"><i class="fa-solid fa-clipboard-list"></i> Xaashida natiijada
-        <select id="entry-assignment" name="assignment_id" {% if not visible_assignments %}disabled{% endif %}>
-          {% for item in visible_assignments %}
-            <option value="{{ item.id }}" {% if assignment and assignment.id == item.id %}selected{% endif %}>
-              {{ item.academic_year.name }} · {{ item.exam.name }} · {{ item.school_class.academic_level.name }} · {{ item.school_class.name }} · {{ item.subject.name }}
-            </option>
-          {% endfor %}
-        </select>
-      </label>
-      <div class="scope-actions"><button class="entry-button primary" type="submit"><i class="fa-solid fa-filter"></i> Shaandhee</button><a class="entry-button secondary" href="{{ url_for('teacher_portal.result_entry') }}"><i class="fa-solid fa-rotate-left"></i> Nadiifi</a><span>{{ visible_assignments|length }} xilsaaris</span></div>
-    </form>
-
-    {% if assignment %}
-      <div class="entry-context-grid">
-        <article class="context-tile"><span><i class="fa-regular fa-calendar"></i> Sannad-dugsiyeedka</span><strong>{{ assignment.academic_year.name }}</strong></article>
-        <article class="context-tile"><span><i class="fa-solid fa-file-circle-check"></i> Imtixaanka</span><strong>{{ assignment.exam.name }}</strong></article>
-        <article class="context-tile"><span><i class="fa-solid fa-layer-group"></i> Heerka · Fasalka</span><strong>{{ assignment.school_class.academic_level.name }} · {{ assignment.school_class.name }}</strong></article>
-        <article class="context-tile"><span><i class="fa-solid fa-book-open"></i> Maaddada</span><strong>{{ assignment.subject.name }}</strong></article>
-      </div>
-
-      <div class="entry-progress glass-card">
-        <div><strong>{{ rows|length }} arday</strong><span>Dhibcaha ugu badan: {{ max_score|academic_number(ui_settings) if max_score is not none else '—' }}</span></div>
-        <div class="submission-meta">
-          {% if assignment.deadline_at %}<span><i class="fa-regular fa-clock"></i> Kama dambaysiga: {{ deadline_labels[assignment.id].strftime('%d/%m/%Y %I:%M %p') }}</span>{% else %}<span><i class="fa-regular fa-clock"></i> Waqti kama dambays ah lama cayimin</span>{% endif %}
-          {% set submission_status = submission.status if submission else 'draft' %}<span class="submission-pill {{ submission_status }}">{{ 'Qaybo la ansixiyey' if submission_status == 'draft' and approved_mark_count else {'draft':'Qabyo','submitted':'La gudbiyey','approved':'La ansixiyey','reopened':'Dib loo furay'}.get(submission_status, 'Qabyo') }}</span>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-entry-20261021-6') }}">
+{% set initials = teacher.full_name.split() %}
+<section class="result-entry-page" id="resultEntryPage"
+  data-max-score="{{ max_score if max_score is not none else '' }}"
+  data-assignment-id="{{ assignment.id if assignment else '' }}"
+  data-current-subject-id="{{ assignment.subject_id if assignment else '' }}"
+  data-grade-scales="{{ grade_scales|tojson|forceescape }}"
+  data-autosave-url="{{ url_for('teacher_portal.result_entry_autosave') }}"
+  data-autosave-delay="1800"
+  data-locked="{{ 'true' if locked else 'false' }}"
+  data-deadline-locks="{{ 'true' if assignment and assignment.deadline_at and not (submission and submission.status == 'reopened') else 'false' }}">
+  <header class="re-hero">
+    <div class="re-hero-inner">
+      <div class="re-topline">
+        <a class="re-school" href="{{ url_for('teacher_portal.result_entry') }}" aria-label="Portalka macallinka">
+          <span class="re-logo">
+            {% if ui_settings.admin_logo_path or ui_settings.logo_path %}
+              <img src="{{ asset_url(ui_settings.admin_logo_path or ui_settings.logo_path) }}" alt="" onerror="this.hidden=true;this.nextElementSibling.hidden=false">
+            {% endif %}
+            <b {% if ui_settings.admin_logo_path or ui_settings.logo_path %}hidden{% endif %}>T</b>
+          </span>
+          <span class="re-school-copy"><strong>{{ (ui_settings.school_name or 'TAYSIIR INTERNATIONAL SCHOOLS')|upper }}</strong><small>SULTAAN EMS <i aria-hidden="true">·</i> PORTALKA MACALLINKA</small></span>
+        </a>
+        <div class="re-account">
+          <span class="re-teacher-avatar" aria-hidden="true">{{ (initials[0][0] ~ (initials[1][0] if initials|length > 1 else ''))|upper }}</span>
+          <span class="re-account-copy"><strong>{{ teacher.full_name }}</strong><small>{{ teacher.teacher_code }}</small></span>
         </div>
+        <button type="button" class="re-theme-toggle" id="themeToggle" title="Beddel muuqaalka" aria-label="U beddel muuqaalka madow"><i class="fa-regular fa-moon" aria-hidden="true"></i></button>
       </div>
+      <div class="re-heading">
+        <span class="re-eyebrow"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> NIDAAMKA NATIIJOOYINKA</span>
+        <h1>Gelinta natiijooyinka</h1>
+        <p>Geli darajada ardayga, hubi, kadibna u gudbi.</p>
+      </div>
+    </div>
+  </header>
 
-      <form method="post" action="{{ url_for('teacher_portal.result_entry_save') }}" id="teacherResultForm" class="glass-card entry-sheet">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="assignment_id" value="{{ assignment.id }}">
-        {% for key in ['academic_year_id', 'exam_id', 'academic_level_id', 'class_id', 'subject_id', 'status'] %}{% if entry_filters[key] is not none %}<input type="hidden" name="{{ key }}" value="{{ entry_filters[key] }}">{% endif %}{% endfor %}
-        <div class="sheet-heading"><div><h3>Diiwaanka dhibcaha fasalka</h3><p>Waad gudbin kartaa dhibcaha aad gelisay; ardayda bannaan waad u sii buuxin kartaa mar dambe.</p></div><span id="entry-completion" data-approved="{{ approved_mark_count }}" data-pending="{{ pending_mark_count }}">0 / {{ rows|length }} la geliyey</span></div>
-        <label class="entry-student-search" for="entry-student-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span class="sr-only">Raadi arday</span><input id="entry-student-search" type="search" placeholder="Raadi magac ama aqoonsiga ardayga" autocomplete="off"></label>
-        <div class="entry-table-wrap"><table class="entry-table"><thead><tr><th>#</th><th>Ardayga</th><th>Aqoonsiga ardayga</th><th>Dhibco <small>/ {{ max_score|academic_number(ui_settings) if max_score is not none else '—' }}</small></th><th>Diiwaan</th></tr></thead><tbody>
-          {% for row in rows %}
-            <tr data-student-search="{{ (row.student.full_name ~ ' ' ~ (row.student.student_code or ''))|lower }}"><td>{{ loop.index }}</td><td><div class="entry-student">{% if row.student.photo_path %}<img src="{{ asset_url(row.student.photo_path) }}" alt="" class="entry-student-avatar">{% else %}<span class="entry-student-avatar placeholder"><i class="fa-solid fa-user"></i></span>{% endif %}<span><strong>{{ row.student.full_name }}</strong><small>{{ row.student.mother_name or '—' }}</small></span></div></td><td>{{ row.student.student_code or '—' }}</td><td><input class="score-input" type="number" inputmode="decimal" min="0" max="{{ max_score }}" step="0.001" name="score_{{ row.student.id }}" value="{{ row.score if row.score is not none else '' }}" aria-label="Dhibcaha {{ row.student.full_name }}" {% if locked or row.is_locked %}disabled{% endif %}></td><td>{% if row.mark_status == 'submitted' %}<span class="record-badge existing">Sugaya ansixin</span>{% elif row.mark_status == 'approved' %}<span class="record-badge existing">La ansixiyey</span>{% elif row.is_existing %}<span class="record-badge existing">Natiijo hore</span>{% else %}<span class="record-badge">Gelitaan cusub</span>{% endif %}</td></tr>
-          {% else %}<tr><td colspan="5" class="empty-roster"><i class="fa-solid fa-user-group"></i><strong>Arday kuma jiro fasalkan xilsaaran</strong><span>Hubi diiwaanka ardayda sannad-dugsiyeedka ama la xiriir maamulka.</span></td></tr>{% endfor %}
-        </tbody></table></div>
-        {% if rows %}<div class="sheet-footer"><span class="entry-hint"><i class="fa-solid fa-circle-info"></i> Kaliya dhibcaha aad gelisay ayaa la gudbinayaa; kuwa madhan way kuu furnaanayaan.</span><div class="sheet-actions">
-          {% if not locked %}<button class="entry-button secondary" type="submit" name="action" value="draft"><i class="fa-regular fa-floppy-disk"></i> Kaydi qabyo</button><button class="entry-button primary" type="submit" name="action" value="submit" onclick="return confirm('Ma u gudbinaysaa dhibcaha aad gelisay maamulka? Ardayda aan dhibcaha loo gelin waad sii buuxin kartaa mar dambe.')"><i class="fa-solid fa-paper-plane"></i> U gudbi dhibcaha la geliyey</button>{% endif %}
-        </div></div>{% endif %}
-      </form>
+  <div class="re-main">
+    {% if assignments %}
+      {% if assignment %}
+        {% set submission_status = submission.status if submission else 'draft' %}
+        {% set submission_status_label = 'Qaybo la ansixiyey' if submission_status == 'draft' and approved_mark_count else {'draft':'Qabyo','submitted':'La gudbiyey','approved':'La ansixiyey','reopened':'Dib loo furay'}.get(submission_status, 'Qabyo') %}
+        {% set submission_status_icon = {'draft':'fa-pen-to-square','submitted':'fa-paper-plane','approved':'fa-circle-check','reopened':'fa-arrow-rotate-left'}.get(submission_status, 'fa-file-lines') %}
+        {% set submission_status_tone = {'draft':'amber','submitted':'blue','approved':'green','reopened':'amber'}.get(submission_status, 'amber') %}
+        {% if submission_status == 'draft' and approved_mark_count %}
+          {% set submission_status_icon = 'fa-list-check' %}
+          {% set submission_status_tone = 'green' %}
+        {% endif %}
+        {% set saved_values = rows|selectattr('score', 'ne', none)|list %}
+        <section class="re-stats" aria-label="Soo koobidda natiijooyinka">
+          <article class="re-stat"><span class="re-stat-icon purple"><i class="fa-solid fa-users" aria-hidden="true"></i></span><span><b data-stat="total" data-target="{{ rows|length }}">{{ rows|length }}</b><small>Arday guud</small></span></article>
+          <article class="re-stat"><span class="re-stat-icon green"><i class="fa-solid fa-check" aria-hidden="true"></i></span><span><b data-stat="entered" data-target="0">0</b><small>La geliyey</small></span></article>
+          <article class="re-stat"><span class="re-stat-icon amber"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span><span><b data-stat="flagged" data-target="0">0</b><small>La hubiyo</small></span></article>
+          <article class="re-stat"><span class="re-stat-icon blue"><i class="fa-solid fa-arrow-trend-up" aria-hidden="true"></i></span><span><b data-stat="average" data-target="0">0%</b><small>Celcelis (%)</small></span></article>
+        </section>
+
+        <section class="re-policy" aria-label="Xogta xaashida natiijada">
+          <article class="re-policy-item re-deadline-card" data-deadline-card data-deadline-at="{{ deadline_labels[assignment.id].isoformat() if assignment.deadline_at else '' }}" data-state="normal">
+            <span class="re-policy-icon blue re-deadline-calendar" aria-hidden="true"><i class="fa-solid fa-calendar-check"></i></span>
+            <div class="re-deadline-summary"><small>Waqtiga gelinta</small>
+              {% if assignment.deadline_at %}<b>{{ deadline_labels[assignment.id].strftime('%d/%m/%Y · %I:%M %p') }}</b><span>Kama dambaysiga natiijada</span>
+              {% else %}<b>Waqti lama cayimin</b><span>La xiriir maamulka haddii loo baahdo</span>{% endif %}</div>
+            {% if assignment.deadline_at %}
+              <span class="re-live-badge" data-deadline-live><i aria-hidden="true"></i><span data-deadline-live-label>TOOS</span></span>
+              <div class="re-countdown-panel">
+                <div class="re-countdown-heading"><strong data-countdown-status>Waqtigu wuu socdaa</strong><span><i class="fa-solid fa-stopwatch" aria-hidden="true"></i> Waqtiga haray</span></div>
+                <div class="re-countdown-units" role="timer" aria-label="Tirinta waqtiga kama dambaysta ah">
+                  <div class="re-countdown-unit"><b data-countdown-days>00</b><span><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Maalin</span></div>
+                  <div class="re-countdown-unit"><b data-countdown-hours>00</b><span><i class="fa-regular fa-clock" aria-hidden="true"></i> Saacad</span></div>
+                  <div class="re-countdown-unit"><b data-countdown-minutes>00</b><span><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> Daqiiqo</span></div>
+                  <div class="re-countdown-unit seconds"><b data-countdown-seconds>00</b><span><i class="fa-solid fa-stopwatch" aria-hidden="true"></i> Ilbidhiqsi</span></div>
+                </div>
+                <div class="re-countdown-alert" role="status"><span class="re-countdown-alert-icon"><i class="fa-solid fa-bell" data-deadline-alert-icon aria-hidden="true"></i></span><span data-deadline-message>Ku gudbi natiijooyinka ka hor waqtiga kama dambaysta ah.</span></div>
+              </div>
+            {% else %}
+              <div class="re-no-deadline"><i class="fa-solid fa-infinity" aria-hidden="true"></i><span>Ma jiro waqti kama dambays ah oo loo cayimay xaashidan.</span></div>
+            {% endif %}
+          </article>
+          <article class="re-policy-item"><span class="re-policy-icon {{ submission_status_tone }}"><i class="fa-solid {{ submission_status_icon }}" aria-hidden="true"></i></span><div><small>Xaaladda gudbinta</small><b>{{ submission_status_label }}</b><span>{{ remaining_submissions }} gudbin oo hadhay</span></div></article>
+        </section>
+        {% if locked %}<div class="re-lock-note" role="status"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Xaashidan hadda waa xiran tahay. Maamulka ayaa dib u furi kara haddii wax laga beddelayo.</span></div>{% endif %}
+
+        <form method="get" class="re-filter-card" id="resultScopeFilters" data-filter-assignment-id="{{ assignment.id }}">
+          <button type="button" class="re-filter-toggle" id="filterToggle" aria-expanded="false" aria-controls="filterBody">
+            <span class="re-filter-heading"><span class="re-filter-icon"><i class="fa-solid fa-sliders" aria-hidden="true"></i></span><span><strong>Shaandhaynta</strong><small>Dooro xaashida iyo ardayda aad rabto</small></span></span>
+            <i class="fa-solid fa-chevron-down re-filter-chevron" aria-hidden="true"></i>
+          </button>
+          <div class="re-filter-body" id="filterBody">
+            <input type="hidden" name="assignment_id" value="{{ assignment.id }}">
+            <div class="re-filter-grid">
+              <label><span>Sannad-dugsiyeedka</span><select name="academic_year_id"><option value="">Dhammaan sannadaha</option>{% for item in entry_filter_options.academic_years %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.academic_year_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
+              <label><span>Imtixaanka</span><select name="exam_id"><option value="">Dhammaan imtixaannada</option>{% for item in entry_filter_options.exams %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.exam_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
+              <label><span>Heerka</span><select name="academic_level_id"><option value="">Dhammaan heerarka</option>{% for item in entry_filter_options.levels %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.academic_level_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
+              <label><span>Fasalka</span><select name="class_id"><option value="">Dhammaan fasallada</option>{% for item in entry_filter_options.classes %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.class_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
+              <label><span>Maaddada</span><select name="subject_id"><option value="">Dhammaan maaddooyinka</option>{% for item in entry_filter_options.subjects %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.subject_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
+              <label><span>Xaaladda</span><select name="status">{% for value, label in entry_filter_options.statuses %}<option value="{{ value }}" {{ 'selected' if entry_filters.status == value else '' }}>{{ label }}</option>{% endfor %}</select></label>
+            </div>
+            <div class="re-filter-actions"><button class="re-button primary" type="submit"><i class="fa-solid fa-filter" aria-hidden="true"></i>Shaandhee</button><a class="re-button quiet" id="filterReset" href="{{ url_for('teacher_portal.result_entry') }}"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i>Nadiifi</a><span>{{ visible_assignments|length }} xaashi natiijo</span></div>
+          </div>
+        </form>
+
+        <section class="re-current-scope" aria-label="Xogta xaashida hadda furan">
+          <span class="re-current-scope-icon"><i class="fa-solid fa-book-open" aria-hidden="true"></i></span>
+          <div><small>Xaashida hadda furan</small><strong>{{ assignment.subject.name }}</strong><span>{{ assignment.school_class.academic_level.name }} · {{ assignment.school_class.name }} · {{ assignment.exam.name }} · {{ assignment.academic_year.name }}</span></div>
+        </section>
+
+        <div class="re-tools">
+          <label class="re-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span class="sr-only">Raadi arday</span><input id="studentSearch" type="search" placeholder="Raadi magac, hooyo ama aqoonsi" autocomplete="off"></label>
+          <div class="re-segments" role="group" aria-label="Shaandhee liiska ardayda">
+            <button type="button" class="re-segment active" data-filter="all"><span><i class="fa-solid fa-users" aria-hidden="true"></i><b data-pill-count="all">0</b></span>Dhammaan</button>
+            <button type="button" class="re-segment" data-filter="todo"><span><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i><b data-pill-count="todo">0</b></span>Aan la gelin</button>
+            <button type="button" class="re-segment" data-filter="flag"><span><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><b data-pill-count="flag">0</b></span>Hubi</button>
+          </div>
+        </div>
+
+        <form method="post" action="{{ url_for('teacher_portal.result_entry_save') }}" id="teacherResultForm" data-submit-url="{{ url_for('teacher_portal.result_entry_save') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}">
+          {% for key in ['academic_year_id', 'exam_id', 'academic_level_id', 'class_id', 'subject_id', 'status'] %}{% if entry_filters[key] is not none %}<input type="hidden" name="{{ key }}" value="{{ entry_filters[key] }}">{% endif %}{% endfor %}
+          <div class="re-student-list" id="studentList">
+            {% for row in rows %}
+              {% set current_value = '%.2f'|format(row.score) if row.score is not none else '' %}
+              {% set previous_value = row.previous_score|string if row.previous_score is not none else '' %}
+              <article class="re-student-card" data-student-card data-student-id="{{ row.student.id }}" data-search="{{ (row.student.full_name ~ ' ' ~ (row.student.mother_name or '') ~ ' ' ~ (row.student.student_code or '') ~ ' ' ~ assignment.school_class.name)|lower }}" data-saved="{{ current_value }}" data-previous="{{ previous_value }}" data-mark-status="{{ row.mark_status }}" data-has-draft="{{ 'true' if row.has_draft_mark else 'false' }}" data-locked="{{ 'true' if locked or row.is_locked else 'false' }}" style="--avatar-hue:{{ (loop.index * 47) % 360 }}deg">
+                <div class="re-student-main">
+                  <div class="re-avatar-wrap"><span class="re-avatar">{% if row.student.photo_path %}<img src="{{ asset_url(row.student.photo_path) }}" alt="" loading="lazy">{% else %}<b>{{ (row.student.full_name.split()[0][0] ~ (row.student.full_name.split()[1][0] if row.student.full_name.split()|length > 1 else ''))|upper }}</b>{% endif %}</span><span class="re-state-badge" data-state-icon><i class="fa-solid fa-user" aria-hidden="true"></i></span></div>
+                  <div class="re-student-info"><span class="re-student-number">Arday #{{ loop.index }}</span><span class="re-active-label">Hadda waad geliysaa</span><h2>{{ row.student.full_name }}</h2><p><i class="fa-solid fa-person-dress" aria-hidden="true"></i><span>Hooyo: {{ row.student.mother_name or '—' }}</span></p><div class="re-student-meta"><span class="re-student-id"><i class="fa-regular fa-id-card" aria-hidden="true"></i>ID: {{ row.student.student_code or '—' }}</span><span class="re-student-class"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i>Fasalka: {{ assignment.school_class.name }}</span></div><span class="re-mark-action{% if row.action_type %} is-{{ row.action_type }}{% endif %}" data-mark-action data-action-type="{{ row.action_type or '' }}" role="status" aria-live="polite" {% if not row.action_type %}hidden{% endif %}><i class="fa-solid {% if row.action_type == 'entered' %}fa-circle-plus{% elif row.action_type == 'edited' %}fa-pen-to-square{% elif row.action_type == 'cleared' %}fa-trash-can{% else %}fa-clock-rotate-left{% endif %}" aria-hidden="true"></i><span data-action-label>{% if row.action_type == 'entered' %}Natiijo cusub la geliyey{% elif row.action_type == 'edited' %}Natiijo waa la beddelay{% elif row.action_type == 'cleared' %}Natiijo waa la tirtiray{% elif row.action_type == 'legacy' %}Taariikh ficil hore lama hayo{% endif %}</span></span></div>
+                </div>
+                <div class="re-score-area">
+                  <div class="re-performance"><div class="re-performance-line"><b data-percent>—</b></div><span class="re-progress"><i data-progress></i></span></div>
+                  <button type="button" class="re-next" data-next aria-label="U gudub ardayga xiga"><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>
+                  <div class="re-grade" data-grade aria-label="Darajada">—</div>
+                  <div class="re-score-input-wrap"><label class="sr-only" for="score-{{ row.student.id }}">Dhibcaha {{ row.student.full_name }}</label><div class="re-score-box"><input id="score-{{ row.student.id }}" class="re-score-input" type="text" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" name="score_{{ row.student.id }}" value="{{ current_value }}" data-score-input data-student-id="{{ row.student.id }}" aria-label="Dhibcaha {{ row.student.full_name }}" {% if locked or row.is_locked or max_score is none %}disabled{% endif %}><span>/ {{ max_score|academic_number(ui_settings) if max_score is not none else '—' }}</span></div></div>
+                </div>
+                <div class="re-message" data-message role="status" aria-live="polite"></div>
+              </article>
+            {% else %}<div class="re-empty"><span><i class="fa-solid fa-user-group" aria-hidden="true"></i></span><strong>Arday kuma jiro fasalkan xilsaaran</strong><p>Hubi diiwaanka ardayda sannad-dugsiyeedka ama la xiriir maamulka.</p></div>{% endfor %}
+          </div>
+        </form>
+      {% else %}
+        <section class="re-empty"><span><i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i></span><strong>Xilsaaris ku habboon lama helin</strong><p>Isku-darka shaandhooyinka la doortay ma hayo xaashi natiijo. Nadiifi shaandhooyinka ama dooro scope kale.</p><a class="re-button quiet" href="{{ url_for('teacher_portal.result_entry') }}"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i>Nadiifi shaandhooyinka</a></section>
+      {% endif %}
     {% else %}
-      <section class="no-assignments glass-card"><span><i class="fa-solid fa-filter-circle-xmark"></i></span><h2>Xilsaaris ku habboon lama helin</h2><p>Isku-darka filters-ka la doortay ma hayo xaashi natiijo. Nadiifi filters-ka ama dooro scope kale.</p></section>
+      <section class="re-empty"><span><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i></span><strong>Weli xilsaaris gelinta natiijo ma lihid</strong><p>Maamulka ayaa kuu qoondeynaya sannad-dugsiyeedka, imtixaanka, heerka, fasalka iyo maaddada.</p></section>
     {% endif %}
-  {% else %}
-    <section class="no-assignments glass-card"><span><i class="fa-solid fa-clipboard-check"></i></span><h2>Weli xilsaaris gelinta natiijo ma lihid</h2><p>Maamulka ayaa kuu qoondeynaya sannad-dugsiyeedka, imtixaanka, heerka, fasalka, maaddada iyo waqtiga gudbinta.</p></section>
+  </div>
+
+  {% if assignment and rows %}
+    <footer class="re-dock" id="resultDock">
+      <button type="button" class="re-button primary" id="openReview"><i class="fa-solid fa-list-check" aria-hidden="true"></i>Dib u eeg &amp; gudbi</button>
+      <div class="re-save-status ok" id="saveStatus" role="status" aria-live="polite"><span class="re-pulse"></span><span class="re-save-copy"><b data-status-title>Waa la keydiyay</b><small data-status-detail>Wax isbeddel ma jiro</small></span></div>
+    </footer>
+
+    <div class="re-modal" id="reviewModal" aria-hidden="true">
+      <div class="re-sheet" role="dialog" aria-modal="true" aria-labelledby="reviewTitle" tabindex="-1">
+        <div class="re-modal-head"><div><h2 id="reviewTitle">Dib u eeg kahor gudbinta</h2><p>Hubi dhibcaha ka hor intaadan maamulka u gudbin.</p></div><button type="button" class="re-close" id="closeReview" aria-label="Xir dib-u-eegista"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
+        <div class="re-modal-body">
+          <div class="re-summary"><div><b data-review-entered>0</b><small>La geliyey</small></div><div><b data-review-flagged>0</b><small>La hubiyo</small></div><div><b data-review-average>0%</b><small>Celcelis</small></div></div>
+          <div class="re-grade-distribution" data-grade-distribution></div>
+          <div class="re-submit-block" data-submit-block hidden><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Dhibco khaldan ayaa jira. Sax ka hor gudbinta.</span></div>
+          <p class="re-partial-note" data-partial-note>Dhibcaha bannaan waad u sii buuxin kartaa mar dambe; kuwa hadda la geliyey ayaa la gudbin karaa.</p>
+          <section class="re-review-section" data-flag-section><h3 data-flag-title>Waa in la hubiyo · taabo si aad u saxdo</h3><div class="re-review-list" data-flag-list></div></section>
+          <section class="re-review-section"><h3>Dhammaan ardayda</h3><div class="re-review-list" data-all-list></div></section>
+        </div>
+        <div class="re-modal-footer"><label class="re-confirm"><input type="checkbox" id="reviewConfirm"><span>Waxaan hubiyey in dhibcaha ay sax yihiin.</span></label><div class="re-modal-actions"><button type="button" class="re-button quiet" id="backToEditing">Wax ka beddel</button><button type="button" class="re-button primary" id="confirmSubmit" disabled><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Gudbi</button></div></div>
+        <div class="re-success" aria-hidden="true"><span><i class="fa-solid fa-check" aria-hidden="true"></i></span><h2>Waa la gudbiyey</h2><p>Natiijooyinka waa la xareeyey.</p></div>
+      </div>
+    </div>
   {% endif %}
-  <footer class="result-entry-footer">SULTAAN EMS <span>Nidaamka Maaraynta Imtixaannada</span></footer>
 </section>
-<script>
-(() => {
-  const form = document.getElementById('teacherResultForm');
-  if (!form) return;
-  const inputs = [...form.querySelectorAll('.score-input')];
-  const counter = document.getElementById('entry-completion');
-  const update = () => {
-    const count = inputs.filter(input => input.value.trim() !== '').length;
-    counter.textContent = `${count} / ${inputs.length} la geliyey · ${counter.dataset.approved} la ansixiyey · ${counter.dataset.pending} sugaya`;
-  };
-  inputs.forEach((input, index) => {
-    input.addEventListener('input', update);
-    input.addEventListener('keydown', event => {
-      if (event.key === 'Enter') { event.preventDefault(); inputs[index + 1]?.focus(); }
-    });
-  });
-  update();
-  const search = document.getElementById('entry-student-search');
-  search?.addEventListener('input', () => {
-    const needle = search.value.trim().toLocaleLowerCase();
-    form.querySelectorAll('tbody tr[data-student-search]').forEach(row => {
-      row.hidden = !row.dataset.studentSearch.includes(needle);
-    });
-  });
-})();
-</script>
+<script src="{{ url_for('static', filename='js/teacher-result-entry.js', v='teacher-result-entry-20261021-5') }}" defer></script>
 {% endblock %}

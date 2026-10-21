@@ -16,9 +16,10 @@ from sqlalchemy.orm import joinedload
 from . import db
 from .models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, ClubTeamLeaderAssignment,
-    ClubTeamMembership, Exam, Result, Student, Subject, TeacherResultAssignment,
+    ClubTeamMembership, Exam, ExamMarkingConfiguration, Result, Student, Subject, TeacherResultAssignment,
     TeacherResultMark, TeacherResultSubmission,
 )
+from .teacher_result_history import record_teacher_result_event
 from .teacher_analytics import (
     classes_cards,
     comparison_data,
@@ -63,7 +64,7 @@ from .teacher_services import (
     teacher_activity_summary,
     validate_teacher_password,
 )
-from .services import resolve_subject_max_score
+from .services import load_grade_scale_cache, resolve_subject_max_score
 from .routes_advanced_results import students_for_scope_query, _year_scope_ids_from_legacy
 
 teacher_portal_bp = Blueprint("teacher_portal", __name__)
@@ -71,6 +72,37 @@ teacher_portal_bp = Blueprint("teacher_portal", __name__)
 RESULT_ENTRY_FILTER_KEYS = (
     "academic_year_id", "exam_id", "academic_level_id", "class_id", "subject_id", "status",
 )
+
+
+def _parse_result_entry_score(raw_value):
+    try:
+        score = Decimal(str(raw_value).strip().replace(",", "."))
+    except (InvalidOperation, ValueError):
+        return None, "invalid"
+    if not score.is_finite() or score < 0:
+        return None, "invalid"
+    try:
+        normalized = score.quantize(Decimal("0.01"))
+    except InvalidOperation:
+        return None, "invalid"
+    if score != normalized:
+        return None, "precision"
+    return normalized, None
+
+
+def _set_result_mark_action(mark, previous_score, next_score, occurred_at):
+    if previous_score is None and next_score is not None:
+        action = "entered"
+    elif previous_score is not None and next_score is None:
+        action = "cleared"
+    elif previous_score != next_score:
+        action = "edited"
+    else:
+        return None
+    mark.last_action = action
+    mark.last_action_at = occurred_at
+    mark.last_action_by_id = current_user.id if current_user.is_authenticated else None
+    return action
 
 
 def _unique_assignments(items, key):
@@ -132,6 +164,7 @@ def _result_entry_scope(teacher):
     subjects = _unique_assignments(scoped, "subject_id")
     if raw_filters["subject_id"] in {item.id for item in subjects}:
         filters["subject_id"] = raw_filters["subject_id"]
+    scoped = [item for item in scoped if not filters["subject_id"] or item.subject_id == filters["subject_id"]]
     status_options = [
         ("all", "Dhammaan xaaladaha"),
         ("not_started", "Aan la bilaabin"),
@@ -295,6 +328,7 @@ def result_entry():
     submission = None
     max_score = None
     locked = False
+    grade_scales = {"exam": [], "global": [], "fallback": []}
     if assignment:
         year_level, year_class = _year_scope_ids_from_legacy(
             assignment.academic_year_id,
@@ -321,10 +355,14 @@ def result_entry():
             existing = official_marks.get(student.id)
             rows.append({
                 "student": student,
-                "score": draft.score if draft and draft.score is not None else (existing.score if existing else None),
+                "score": draft.score if draft else (existing.score if existing else None),
+                "previous_score": draft.score if draft and draft.score is not None else (existing.score if existing else None),
                 "is_existing": bool(existing),
+                "has_draft_mark": bool(draft),
                 "mark_status": draft.status if draft else "draft",
                 "is_locked": bool(draft and draft.status in {"submitted", "approved"}),
+                "action_type": (draft.last_action if draft and draft.last_action else None)
+                or ("legacy" if (draft.score if draft else (existing.score if existing else None)) is not None else None),
             })
         max_score = resolve_subject_max_score(
             assignment.subject,
@@ -332,6 +370,26 @@ def result_entry():
             academic_year_level_id=year_level.id if year_level else None,
             academic_level_id=assignment.school_class.academic_level_id,
         )
+        marking_configuration = ExamMarkingConfiguration.query.filter_by(
+            academic_year_id=assignment.academic_year_id,
+            academic_year_level_id=year_level.id,
+            exam_id=assignment.exam_id,
+        ).first() if year_level else None
+        grade_scale_cache = load_grade_scale_cache(
+            assignment.exam_id,
+            full_marks=marking_configuration.default_full_marks if marking_configuration else None,
+        )
+        grade_scales = {
+            bucket: [
+                {
+                    "min_score": float(row["min_score"]),
+                    "max_score": float(row["max_score"]),
+                    **row["payload"],
+                }
+                for row in grade_scale_cache.get(bucket, [])
+            ]
+            for bucket in ("exam", "global", "fallback")
+        }
         deadline_passed = bool(assignment.deadline_at and datetime.utcnow() > assignment.deadline_at)
         reopened = bool(submission and submission.status == "reopened")
         locked = (deadline_passed and not reopened) or bool(submission and submission.status == "approved")
@@ -339,7 +397,7 @@ def result_entry():
     approved_mark_count = sum(mark.status == "approved" for mark in submission.marks) if submission else 0
     pending_mark_count = sum(mark.status == "submitted" for mark in submission.marks) if submission else 0
 
-    return render_template(
+    response = make_response(render_template(
         "teacher/result_entry.html",
         teacher=teacher,
         page_title="Gelinta natiijooyinka",
@@ -357,10 +415,125 @@ def result_entry():
         submission=submission,
         rows=rows,
         max_score=max_score,
+        grade_scales=grade_scales,
         locked=locked,
         approved_mark_count=approved_mark_count,
         pending_mark_count=pending_mark_count,
+        remaining_submissions=max(0, (assignment.max_submissions or 0) - (submission.submission_count if submission else 0)) if assignment else 0,
         now=datetime.utcnow(),
+    ))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@teacher_portal_bp.route("/result-entry/autosave", methods=["POST"])
+@teacher_login_required
+def result_entry_autosave():
+    teacher = get_current_teacher()
+    payload = request.get_json(silent=True) or {}
+    assignment = TeacherResultAssignment.query.filter_by(
+        id=payload.get("assignment_id"), teacher_id=teacher.id, is_active=True
+    ).first_or_404()
+    now = datetime.utcnow()
+    submission = TeacherResultSubmission.query.filter_by(assignment_id=assignment.id).first()
+
+    def failure(message, status=400):
+        return jsonify(success=False, message=message), status
+
+    if submission and submission.status == "approved":
+        return failure("Xaashida oo dhan waa la ansixiyey oo way xiran tahay. Maamulka ayaa dib u furi kara.", 409)
+    if assignment.deadline_at and now > assignment.deadline_at and not (submission and submission.status == "reopened"):
+        return failure("Waqtigii gudbinta natiijadan wuu dhammaaday.", 409)
+
+    year_level, year_class = _year_scope_ids_from_legacy(
+        assignment.academic_year_id,
+        assignment.school_class.academic_level_id,
+        assignment.class_id,
+    )
+    if not year_level or not year_class or assignment.exam.academic_year_id != assignment.academic_year_id:
+        return failure("Xilsaarista natiijadu hadda ma shaqaynayso. Dib u cusboonaysii bogga.", 409)
+    try:
+        student_id = int(payload.get("student_id"))
+    except (TypeError, ValueError):
+        return failure("Ardayga lama aqoonsan. Dib u cusboonaysii bogga.", 400)
+    student = students_for_scope_query(
+        assignment.academic_year_id,
+        level_id=assignment.school_class.academic_level_id,
+        class_id=assignment.class_id,
+        exam=assignment.exam,
+    ).filter(Student.id == student_id).first()
+    if not student:
+        return failure("Ardaygani kuma jiro fasalka xilsaaran.", 403)
+
+    marks = {mark.student_id: mark for mark in submission.marks} if submission else {}
+    mark = marks.get(student.id)
+    if mark and mark.status in {"submitted", "approved"}:
+        return failure("Dhibcahan hore ayaa maamulka loogu gudbiyey, mana la beddeli karo.", 409)
+
+    raw_score = payload.get("score", "")
+    raw_score = "" if raw_score is None else str(raw_score).strip()
+    score = None
+    if raw_score:
+        configured_maximum = resolve_subject_max_score(
+            assignment.subject,
+            exam=assignment.exam,
+            academic_year_level_id=year_level.id,
+            academic_level_id=assignment.school_class.academic_level_id,
+        )
+        if configured_maximum is None:
+            return failure("Xadka dhibcaha maaddadan lama dejin. La xiriir maamulka.", 409)
+        score, score_error = _parse_result_entry_score(raw_score)
+        if score_error == "precision":
+            return failure("Geli dhibcaha ugu badnaan laba meelood oo jajab ah.", 422)
+        if score_error:
+            return failure("Darajada ma saxna. Geli nambar sax ah.", 422)
+        maximum = Decimal(str(configured_maximum))
+        if score > maximum:
+            return failure("Darajadu waxay dhaaftay %s. Hubi nambarka." % maximum, 422)
+
+    official = Result.query.filter_by(
+        exam_id=assignment.exam_id, subject_id=assignment.subject_id, student_id=student.id
+    ).first()
+    if not raw_score:
+        if mark and mark.status == "draft":
+            _set_result_mark_action(mark, mark.score, None, now)
+            mark.score = None
+            db.session.commit()
+        display_score = mark.score if mark else (official.score if official else None)
+        return jsonify(
+            success=True,
+            student_id=student.id,
+            score=str(display_score) if display_score is not None else None,
+            mark_status=mark.status if mark else "draft",
+            has_draft=bool(mark),
+            action_type=(mark.last_action if mark and mark.last_action else None)
+            or ("legacy" if display_score is not None else None),
+            saved_at=now.isoformat(),
+        )
+
+    if not submission:
+        submission = TeacherResultSubmission(assignment=assignment)
+        db.session.add(submission)
+        db.session.flush()
+    previous_score = mark.score if mark and mark.score is not None else (official.score if official else None)
+    if not mark:
+        mark = TeacherResultMark(submission=submission, student_id=student.id)
+        db.session.add(mark)
+    _set_result_mark_action(mark, previous_score, score, now)
+    mark.score = score
+    mark.status = "draft"
+    if submission.status not in {"submitted", "reopened"}:
+        submission.status = "draft"
+    db.session.commit()
+    return jsonify(
+        success=True,
+        student_id=student.id,
+        score=str(score),
+        mark_status=mark.status,
+        has_draft=True,
+        action_type=mark.last_action or "legacy",
+        saved_at=now.isoformat(),
     )
 
 
@@ -368,6 +541,14 @@ def result_entry():
 @teacher_login_required
 def result_entry_save():
     teacher = get_current_teacher()
+    wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.accept_mimetypes.best == "application/json"
+
+    def failure(message, category="danger", status=422):
+        if wants_json:
+            return jsonify(success=False, message=message), status
+        flash(message, category)
+        return _redirect_result_entry(assignment.id)
+
     assignment = TeacherResultAssignment.query.filter_by(
         id=request.form.get("assignment_id", type=int), teacher_id=teacher.id, is_active=True
     ).first_or_404()
@@ -375,14 +556,11 @@ def result_entry_save():
     submission = TeacherResultSubmission.query.filter_by(assignment_id=assignment.id).first()
     action = request.form.get("action")
     if submission and submission.status == "approved":
-        flash("Xaashida oo dhan waa la ansixiyey oo way xiran tahay. Maamulka ayaa dib u furi kara.", "warning")
-        return _redirect_result_entry(assignment.id)
+        return failure("Xaashida oo dhan waa la ansixiyey oo way xiran tahay. Maamulka ayaa dib u furi kara.", "warning", 409)
     if assignment.deadline_at and now > assignment.deadline_at and not (submission and submission.status == "reopened"):
-        flash("Waqtigii gudbinta natiijadan wuu dhammaaday.", "danger")
-        return _redirect_result_entry(assignment.id)
+        return failure("Waqtigii gudbinta natiijadan wuu dhammaaday.", "danger", 409)
     if action == "submit" and submission and submission.status == "reopened" and submission.submission_count >= assignment.max_submissions:
-        flash("Tirada gudbinta ee laguu oggolaaday way dhammaatay. La xiriir maamulka.", "danger")
-        return _redirect_result_entry(assignment.id)
+        return failure("Tirada gudbinta ee laguu oggolaaday way dhammaatay. La xiriir maamulka.", "danger", 409)
 
     year_level, year_class = _year_scope_ids_from_legacy(
         assignment.academic_year_id,
@@ -397,6 +575,11 @@ def result_entry_save():
         class_id=assignment.class_id,
         exam=assignment.exam,
     ).order_by(Student.full_name).all()
+    official_scores = {
+        result.student_id: result.score
+        for result in Result.query.filter_by(exam_id=assignment.exam_id, subject_id=assignment.subject_id)
+        .filter(Result.student_id.in_([student.id for student in students])).all()
+    } if students else {}
     max_score = Decimal(str(resolve_subject_max_score(
         assignment.subject,
         exam=assignment.exam,
@@ -404,10 +587,12 @@ def result_entry_save():
         academic_level_id=assignment.school_class.academic_level_id,
     )))
     errors = []
+    precision_errors = []
     submit_now = action == "submit"
     existing_marks = {
         mark.student_id: mark for mark in submission.marks
     } if submission else {}
+    previous_submission_status = submission.status if submission else None
     score_by_student = {}
     for student in students:
         mark = existing_marks.get(student.id)
@@ -416,18 +601,21 @@ def result_entry_save():
         raw = (request.form.get(f"score_{student.id}") or "").strip()
         if not raw:
             continue
-        try:
-            score = Decimal(raw)
-        except InvalidOperation:
+        score, score_error = _parse_result_entry_score(raw)
+        if score_error == "precision":
+            precision_errors.append(student.full_name)
+            continue
+        if score_error:
             errors.append(student.full_name)
             continue
-        if not score.is_finite() or score < 0 or score > max_score:
+        if score > max_score:
             errors.append(student.full_name)
             continue
         score_by_student[student.id] = score
+    if precision_errors:
+        return failure("Geli ugu badnaan laba meelood oo jajab ah: %s" % ", ".join(precision_errors[:6]))
     if errors:
-        flash("Dhibcaha ardaydan kama dhex jiraan 0 iyo %s: %s" % (max_score, ", ".join(errors[:6])), "danger")
-        return _redirect_result_entry(assignment.id)
+        return failure("Dhibcaha ardaydan kama dhex jiraan 0 iyo %s: %s" % (max_score, ", ".join(errors[:6])))
 
     if not submission:
         submission = TeacherResultSubmission(assignment=assignment)
@@ -438,37 +626,65 @@ def result_entry_save():
         for student in students:
             existing_mark = mark_by_student.get(student.id)
             if existing_mark and existing_mark.status == "draft" and not (request.form.get(f"score_{student.id}") or "").strip():
+                _set_result_mark_action(existing_mark, existing_mark.score, None, now)
                 existing_mark.score = None
     for student_id, score in score_by_student.items():
         mark = mark_by_student.get(student_id)
+        previous_score = mark.score if mark and mark.score is not None else official_scores.get(student_id)
         if not mark:
             mark = TeacherResultMark(submission=submission, student_id=student_id)
             db.session.add(mark)
+        _set_result_mark_action(mark, previous_score, score, now)
         mark.score = score
         mark.status = "submitted" if submit_now else "draft"
+    submit_message = None
     if submit_now:
         pending_marks = [mark for mark in submission.marks if mark.status == "submitted" and mark.score is not None]
         if not pending_marks:
             db.session.rollback()
-            flash("Geli ugu yaraan hal dhibcood oo cusub ka hor intaadan maamulka u gudbin.", "warning")
-            return _redirect_result_entry(assignment.id)
+            return failure("Geli ugu yaraan hal dhibcood oo cusub ka hor intaadan maamulka u gudbin.", "warning", 422)
         reopened = submission.status == "reopened"
         if reopened:
             if submission.submission_count >= assignment.max_submissions:
                 db.session.rollback()
-                flash("Tirada gudbinta ee laguu oggolaaday way dhammaatay.", "danger")
-                return _redirect_result_entry(assignment.id)
+                return failure("Tirada gudbinta ee laguu oggolaaday way dhammaatay.", "danger", 409)
             submission.submission_count += 1
         elif submission.submission_count == 0:
             submission.submission_count = 1
         submission.status = "submitted"
         submission.submitted_at = now
-        flash("Dhibcaha %s arday ayaa maamulka loo gudbiyey si dib loogu eego." % len(score_by_student), "success")
+        record_teacher_result_event(
+            assignment,
+            "resubmitted" if reopened else "submitted",
+            submission=submission,
+            status_from="reopened" if reopened else previous_submission_status or "draft",
+            status_to="submitted",
+            marks_count=len(pending_marks),
+            note=f"{len(pending_marks)} arday ayaa lagu gudbiyey isku-dayga {submission.submission_count}.",
+        )
+        submit_message = "Dhibcaha %s arday ayaa maamulka loo gudbiyey si dib loogu eego." % len(score_by_student)
     else:
         if submission.status not in {"submitted", "reopened"}:
             submission.status = "draft"
-        flash("Qabyada natiijada waa la kaydiyey.", "success")
+        record_teacher_result_event(
+            assignment,
+            "draft_saved",
+            submission=submission,
+            status_from=previous_submission_status,
+            status_to=submission.status,
+            marks_count=sum(mark.score is not None and mark.status == "draft" for mark in submission.marks),
+            note="Qabyada dhibcaha waa la kaydiyey.",
+        )
+        submit_message = "Qabyada natiijada waa la kaydiyey."
     db.session.commit()
+    if wants_json:
+        response = _redirect_result_entry(assignment.id, preserve_status=False)
+        return jsonify(
+            success=True,
+            message=submit_message,
+            redirect_url=response.headers.get("Location"),
+        )
+    flash(submit_message, "success")
     return _redirect_result_entry(assignment.id, preserve_status=False)
 
 

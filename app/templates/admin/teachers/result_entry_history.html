@@ -1,0 +1,71 @@
+{% extends "admin/base.html" %}
+{% block title %}Taariikhda Natiijo-gelinta{% endblock %}
+{% block page_title %}Taariikhda Natiijo-gelinta{% endblock %}
+{% block admin_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-admin.css', v='teacher-result-delete-20261021-1') }}">
+<main class="teacher-result-admin trh-page">
+  <header class="trh-header">
+    <div>
+      <span class="tra-kicker"><i class="fa-solid fa-chart-line"></i> MAAMULKA NATIIJOOYINKA</span>
+      <h1>Taariikhda Gelinta Natiijooyinka</h1>
+      <p>La soco qabyooyinka, gudbinta, dib-u-eegista iyo ansixinta macallimiinta.</p>
+    </div>
+    <div class="trh-actions">
+      <a class="tra-back" href="{{ url_for('admin_teachers.result_entry_setup') }}"><i class="fa-solid fa-arrow-left"></i> Xilsaarista natiijooyinka</a>
+      <a class="trh-export" href="{{ url_for('admin_teachers.export_result_entry_history', q=filters.q, teacher=filters.teacher, year=filters.year, exam=filters.exam, event_type=filters.event_type, from_date=filters.from_date, to_date=filters.to_date) }}"><i class="fa-solid fa-file-excel"></i> Soo dejiso Excel</a>
+    </div>
+  </header>
+
+  <section class="trh-summary" aria-label="Soo koobidda dhacdooyinka">
+    <article class="trh-metric"><span><i class="fa-solid fa-clock-rotate-left"></i> Dhammaan dhacdooyinka</span><strong>{{ summary.total }}</strong></article>
+    <article class="trh-metric submitted"><span><i class="fa-solid fa-paper-plane"></i> Gudbinno</span><strong>{{ summary.submitted }}</strong></article>
+    <article class="trh-metric approved"><span><i class="fa-solid fa-circle-check"></i> Ansixinno</span><strong>{{ summary.approved }}</strong></article>
+    <article class="trh-metric returned"><span><i class="fa-solid fa-rotate-left"></i> Sixitaan loo celiyey</span><strong>{{ summary.returned }}</strong></article>
+  </section>
+
+  <section class="trh-filter-panel" aria-label="Shaandhaynta taariikhda">
+    <form method="get" class="trh-filters">
+      <label class="trh-search"><span><i class="fa-solid fa-magnifying-glass"></i> Raadi</span><input type="search" name="q" value="{{ filters.q }}" placeholder="Macallin, maaddo, fasal ama faahfaahin"></label>
+      <label><span><i class="fa-solid fa-user-tie"></i> Macallin</span><select name="teacher"><option value="">Dhammaan macallimiinta</option>{% for item in filter_options.teachers %}<option value="{{ item }}" {{ 'selected' if filters.teacher == item else '' }}>{{ item }}</option>{% endfor %}</select></label>
+      <label><span><i class="fa-regular fa-calendar"></i> Sannad-dugsiyeedka</span><select name="year"><option value="">Dhammaan sannadaha</option>{% for item in filter_options.years %}<option value="{{ item }}" {{ 'selected' if filters.year == item else '' }}>{{ item }}</option>{% endfor %}</select></label>
+      <label><span><i class="fa-solid fa-file-lines"></i> Imtixaanka</span><select name="exam"><option value="">Dhammaan imtixaannada</option>{% for item in filter_options.exams %}<option value="{{ item }}" {{ 'selected' if filters.exam == item else '' }}>{{ item }}</option>{% endfor %}</select></label>
+      <label><span><i class="fa-solid fa-list-check"></i> Dhacdada</span><select name="event_type"><option value="">Dhammaan dhacdooyinka</option>{% for key, label in event_labels.items() %}<option value="{{ key }}" {{ 'selected' if filters.event_type == key else '' }}>{{ label }}</option>{% endfor %}</select></label>
+      <label><span><i class="fa-regular fa-calendar"></i> Laga bilaabo</span><input type="date" name="from_date" value="{{ filters.from_date }}"></label>
+      <label><span><i class="fa-regular fa-calendar-check"></i> Ilaa</span><input type="date" name="to_date" value="{{ filters.to_date }}"></label>
+      <div class="trh-filter-actions"><button type="submit" class="trh-apply"><i class="fa-solid fa-filter"></i> Shaandhee</button><a class="trh-clear" href="{{ url_for('admin_teachers.result_entry_history') }}"><i class="fa-solid fa-rotate-left"></i> Nadiifi</a></div>
+    </form>
+    {% if date_error %}<p class="trh-error" role="alert"><i class="fa-solid fa-circle-exclamation"></i> {{ date_error }}</p>{% endif %}
+  </section>
+
+  <section class="trh-events-panel">
+    <div class="trh-events-heading"><div><h2><i class="fa-solid fa-list-ul"></i> Diiwaanka dhacdooyinka</h2><p>{{ summary.total }} dhacdo ayaa ku habboon shaandhaynta · Bogga {{ page }} / {{ page_count }}</p></div>{% if summary.total > 20000 %}<small>Excel-ku wuxuu soo dejinayaa 20,000-ka dhacdo ee ugu dambeeya.</small>{% endif %}</div>
+    {% if events %}
+      <ol class="trh-events">
+        {% for event in events %}
+          <li class="trh-event {{ event.event_type }}">
+            <time class="trh-time" datetime="{{ event.created_at.isoformat() }}"><i class="fa-regular fa-clock"></i><span>{{ event_times[event.id].strftime('%d %b %Y') }}<strong>{{ event_times[event.id].strftime('%I:%M %p') }} EAT</strong></span></time>
+            <div class="trh-event-main">
+              <div class="trh-event-title"><span class="trh-event-icon"><i class="fa-solid {{ event_icons.get(event.event_type, 'fa-circle-info') }}"></i></span><strong>{{ event_labels.get(event.event_type, event.event_type) }}</strong>{% if event.status_to %}<span class="trh-state {{ event.status_to }}">{{ status_labels.get(event.status_to, event.status_to) }}</span>{% endif %}</div>
+              <p class="trh-teacher"><i class="fa-solid fa-user-tie"></i> {{ event.teacher_name }}{% if event.teacher_code %}<span>{{ event.teacher_code }}</span>{% endif %}</p>
+              <div class="trh-scope"><span><i class="fa-regular fa-calendar"></i> {{ event.academic_year_name }}</span><span><i class="fa-solid fa-file-lines"></i> {{ event.exam_name }}</span><span><i class="fa-solid fa-layer-group"></i> {{ event.level_name }} · {{ event.class_name }}</span><span><i class="fa-solid fa-book-open"></i> {{ event.subject_name }}</span></div>
+              {% if event.status_from %}<p class="trh-transition"><i class="fa-solid fa-arrow-right-arrow-left"></i> {{ status_labels.get(event.status_from, event.status_from) }} <i class="fa-solid fa-arrow-right"></i> {{ status_labels.get(event.status_to, event.status_to) }}</p>{% endif %}
+              {% if event.note %}<p class="trh-note"><i class="fa-regular fa-message"></i> {{ event.note }}</p>{% endif %}
+            </div>
+            <div class="trh-event-meta"><span class="trh-marks"><i class="fa-solid fa-list-ol"></i> {{ event.marks_count }} dhibco</span><span><i class="fa-solid fa-user-shield"></i> {{ event.actor_name or 'Nidaam' }}</span></div>
+          </li>
+        {% endfor %}
+      </ol>
+      {% if page_count > 1 %}
+        <nav class="trh-pagination" aria-label="Bogagga taariikhda">
+          {% if page > 1 %}<a href="{{ url_for('admin_teachers.result_entry_history', q=filters.q, teacher=filters.teacher, year=filters.year, exam=filters.exam, event_type=filters.event_type, from_date=filters.from_date, to_date=filters.to_date, page=page-1) }}"><i class="fa-solid fa-arrow-left"></i> Hore</a>{% else %}<span class="disabled"><i class="fa-solid fa-arrow-left"></i> Hore</span>{% endif %}
+          <strong>Bog {{ page }} / {{ page_count }}</strong>
+          {% if page < page_count %}<a href="{{ url_for('admin_teachers.result_entry_history', q=filters.q, teacher=filters.teacher, year=filters.year, exam=filters.exam, event_type=filters.event_type, from_date=filters.from_date, to_date=filters.to_date, page=page+1) }}">Xiga <i class="fa-solid fa-arrow-right"></i></a>{% else %}<span class="disabled">Xiga <i class="fa-solid fa-arrow-right"></i></span>{% endif %}
+        </nav>
+      {% endif %}
+    {% else %}
+      <div class="trh-empty"><span><i class="fa-solid fa-inbox"></i></span><strong>Taariikh lama helin</strong><p>Marka macallimiintu qabyo kaydiyaan ama natiijo gudbiyaan, dhacdooyinku halkan ayay ka muuqanayaan. Waxaad beddeli kartaa shaandhooyinka si aad u ballaadhiso raadinta.</p></div>
+    {% endif %}
+    {% if summary.total and events and events|selectattr('event_type', 'equalto', 'baseline')|list %}<p class="trh-legacy-note"><i class="fa-solid fa-circle-info"></i> “Xaaladdii hore” waxay muujinaysaa xaaladdii jirtay markii taariikhda la hirgeliyey; tallaabooyinkii ka horreeyey lama kaydin jirin.</p>{% endif %}
+  </section>
+</main>
+{% endblock %}

@@ -1,17 +1,27 @@
 """Teacher result-entry isolation, validation, review, and publishing tests."""
 
 import unittest
+import html
+import json
+import re
+from datetime import datetime
+from io import BytesIO
+from decimal import Decimal
 from unittest.mock import patch
+from openpyxl import load_workbook
 
 from app import create_app, db
 from app.models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel,
-    AcademicSection, AcademicYearSubject, Exam, Result, Student, StudentEnrollment, Subject, Teacher,
-    TeacherResultAssignment, TeacherResultSubmission, User,
+    AcademicSection, AcademicYearSubject, Exam, ExamMarkingConfiguration, GradeScale, Result, Student, StudentEnrollment, Subject, Teacher,
+    TeacherResultAssignment, TeacherResultEvent, TeacherResultSubmission, User,
     TeacherResultMark,
 )
 from migrations import phase_14_teacher_result_entry
 from migrations import phase_19_teacher_result_partial
+from migrations import phase_20_teacher_result_history
+from migrations import phase_21_teacher_result_assignment_archive
+from migrations import phase_22_teacher_result_mark_activity
 
 
 class TestTeacherResultEntry(unittest.TestCase):
@@ -103,6 +113,50 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertNotIn(b"Exam Analytics", response.data)
         self.assertNotIn(b"Naadigayga", response.data)
 
+    def test_result_entry_uses_exam_grade_management_and_displays_student_identity(self):
+        self.assignment.deadline_at = datetime(2026, 10, 25, 10, 0)
+        db.session.commit()
+        db.session.add_all([
+            ExamMarkingConfiguration(
+                academic_year_id=self.year.id,
+                academic_year_level_id=self.year_level.id,
+                exam_id=self.exam.id,
+                default_full_marks=50,
+            ),
+            GradeScale(
+                exam_id=self.exam.id, grade="Exam A", min_score=45, max_score=50,
+                comment="Excellent", grade_point=4, is_pass=True,
+                badge_color="#ffffff", text_color="#16324f", background_color="#dceeff",
+                border_color="#2563eb", sort_order=1, is_active=True,
+            ),
+            GradeScale(
+                exam_id=None, grade="Global fallback", min_score=0, max_score=100,
+                comment="Global", grade_point=0, is_pass=False, sort_order=99, is_active=True,
+            ),
+        ])
+        db.session.commit()
+        self._teacher_login()
+
+        response = self.client.get("/teacher/result-entry")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"fa-person-dress", response.data)
+        self.assertIn(b"Fasalka: Form 1", response.data)
+        self.assertIn(b"fa-calendar-day", response.data)
+        self.assertIn(b"fa-clock", response.data)
+        self.assertIn(b"fa-hourglass-half", response.data)
+        self.assertIn(b"fa-stopwatch", response.data)
+        self.assertNotIn(b"boqolkiiba ka mid ah 100", response.data)
+        markup = response.get_data(as_text=True)
+        encoded_scales = re.search(r'data-grade-scales="([^"]*)"', markup)
+        self.assertIsNotNone(encoded_scales)
+        scales = json.loads(html.unescape(encoded_scales.group(1)))
+        self.assertEqual(scales["exam"][0]["grade"], "Exam A")
+        self.assertEqual(scales["exam"][0]["min_score"], 90)
+        self.assertEqual(scales["exam"][0]["max_score"], 100)
+        self.assertEqual(scales["exam"][0]["background_color"], "#dceeff")
+        self.assertEqual(scales["exam"][0]["badge_color"], "#ffffff")
+
     def test_teacher_home_redirects_to_the_real_assigned_result_workspace(self):
         self._teacher_login()
         response = self.client.get("/teacher/?academic_level_id=1")
@@ -164,6 +218,52 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertNotIn(b"Student 1", response.data)
         self.assertNotIn(b"Mathematics", response.data)
 
+    def test_switching_subject_uses_its_own_submission_not_the_previous_sheet(self):
+        other_subject = Subject(name="Arabic", academic_level=self.level, max_score=50, is_active=True)
+        db.session.add(other_subject)
+        db.session.flush()
+        db.session.add(AcademicYearSubject(
+            academic_year=self.year, academic_year_level=self.year_level,
+            legacy_subject=other_subject, name=other_subject.name, subject_kind="exam", max_score=50,
+        ))
+        other_assignment = TeacherResultAssignment(
+            teacher=self.teacher, academic_year=self.year, exam=self.exam,
+            school_class=self.school_class, subject=other_subject,
+        )
+        db.session.add(other_assignment)
+        db.session.flush()
+        math_submission = TeacherResultSubmission(assignment=self.assignment, status="draft")
+        arabic_submission = TeacherResultSubmission(assignment=other_assignment, status="draft")
+        db.session.add_all([math_submission, arabic_submission])
+        db.session.flush()
+        db.session.add_all([
+            TeacherResultMark(
+                submission=math_submission, student=self.students[0], score=Decimal("42"), status="draft"
+            ),
+            TeacherResultMark(
+                submission=arabic_submission, student=self.students[0], score=Decimal("17"), status="draft"
+            ),
+        ])
+        db.session.commit()
+        self._teacher_login()
+
+        response = self.client.get("/teacher/result-entry", query_string={
+            "assignment_id": self.assignment.id,
+            "academic_year_id": self.year.id,
+            "exam_id": self.exam.id,
+            "academic_level_id": self.level.id,
+            "class_id": self.school_class.id,
+            "subject_id": other_subject.id,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("no-store", response.headers["Cache-Control"])
+        self.assertIn(f'data-assignment-id="{other_assignment.id}"'.encode(), response.data)
+        self.assertIn(b"Xaashida hadda furan", response.data)
+        self.assertIn(b"<strong>Arabic</strong>", response.data)
+        self.assertIn(f'name="score_{self.students[0].id}" value="17.00"'.encode(), response.data)
+        self.assertNotIn(f'name="score_{self.students[0].id}" value="42.00"'.encode(), response.data)
+
     def test_saving_result_keeps_scope_filters_without_sticking_to_stale_status(self):
         self._teacher_login()
         response = self.client.post("/teacher/result-entry/save", data={
@@ -182,6 +282,126 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn(f"subject_id={self.subject.id}", response.headers["Location"])
         self.assertNotIn("status=not_started", response.headers["Location"])
         self.assertEqual(TeacherResultSubmission.query.one().status, "draft")
+
+    def test_result_entry_autosave_persists_only_the_selected_assigned_student(self):
+        self._teacher_login()
+        response = self.client.post("/teacher/result-entry/autosave", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "score": "41,5",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["success"])
+        submission = TeacherResultSubmission.query.one()
+        mark = TeacherResultMark.query.one()
+        self.assertEqual(submission.status, "draft")
+        self.assertEqual(mark.student_id, self.students[0].id)
+        self.assertEqual(float(mark.score), 41.5)
+        self.assertEqual(response.json["score"], "41.50")
+
+    def test_student_card_and_autosave_track_entry_edit_and_clear_actions(self):
+        self._teacher_login()
+        payload = {"assignment_id": self.assignment.id, "student_id": self.students[0].id}
+
+        first = self.client.post("/teacher/result-entry/autosave", json={**payload, "score": "31"})
+        mark = TeacherResultMark.query.one()
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json["action_type"], "entered")
+        self.assertEqual(mark.last_action, "entered")
+        self.assertEqual(mark.last_action_by_id, self.teacher_user.id)
+
+        edited = self.client.post("/teacher/result-entry/autosave", json={**payload, "score": "34"})
+        self.assertEqual(edited.json["action_type"], "edited")
+        self.assertEqual(mark.last_action, "edited")
+
+        cleared = self.client.post("/teacher/result-entry/autosave", json={**payload, "score": ""})
+        self.assertEqual(cleared.json["action_type"], "cleared")
+        self.assertEqual(mark.last_action, "cleared")
+
+        page = self.client.get(f"/teacher/result-entry?assignment_id={self.assignment.id}")
+        self.assertIn(b"data-action-type=\"cleared\"", page.data)
+        self.assertIn("Natiijo waa la tirtiray".encode(), page.data)
+
+    def test_form_save_records_per_student_entry_and_edit(self):
+        self._teacher_login()
+        first = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "save",
+            f"score_{self.students[0].id}": "27",
+        }, headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"})
+        self.assertEqual(first.status_code, 200)
+        mark = TeacherResultMark.query.one()
+        self.assertEqual(mark.last_action, "entered")
+
+        edited = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "save",
+            f"score_{self.students[0].id}": "29",
+        }, headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"})
+        self.assertEqual(edited.status_code, 200)
+        self.assertEqual(mark.last_action, "edited")
+        self.assertEqual(float(mark.score), 29)
+
+    def test_result_entry_autosave_rejects_out_of_range_and_unassigned_students(self):
+        self._teacher_login()
+        invalid_score = self.client.post("/teacher/result-entry/autosave", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "score": "51",
+        })
+        too_precise_score = self.client.post("/teacher/result-entry/autosave", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "score": "41.555",
+        })
+        unassigned_student = Student(student_code="ST-OUT", full_name="Outside Student", is_active=True)
+        db.session.add(unassigned_student)
+        db.session.commit()
+        invalid_student = self.client.post("/teacher/result-entry/autosave", json={
+            "assignment_id": self.assignment.id,
+            "student_id": unassigned_student.id,
+            "score": "20",
+        })
+
+        self.assertEqual(invalid_score.status_code, 422)
+        self.assertFalse(invalid_score.json["success"])
+        self.assertEqual(too_precise_score.status_code, 422)
+        self.assertIn("laba meelood", too_precise_score.json["message"])
+        self.assertEqual(invalid_student.status_code, 403)
+        self.assertEqual(TeacherResultMark.query.count(), 0)
+
+    def test_result_entry_displays_saved_scores_with_two_decimal_places(self):
+        submission = TeacherResultSubmission(assignment=self.assignment)
+        db.session.add(submission)
+        db.session.flush()
+        db.session.add(TeacherResultMark(
+            submission=submission, student_id=self.students[0].id,
+            score=Decimal("41.236"), status="draft",
+        ))
+        db.session.commit()
+        self._teacher_login()
+
+        response = self.client.get("/teacher/result-entry")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'value="41.24" data-score-input', response.data)
+        self.assertNotIn(b'value="41.236" data-score-input', response.data)
+
+    def test_result_entry_json_submit_keeps_partial_submission_behavior(self):
+        self._teacher_login()
+        response = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": str(self.assignment.id),
+            "action": "submit",
+            f"score_{self.students[0].id}": "39",
+        }, headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["success"])
+        submission = TeacherResultSubmission.query.one()
+        self.assertEqual(submission.status, "submitted")
+        self.assertEqual(TeacherResultMark.query.count(), 1)
+        self.assertEqual(TeacherResultMark.query.one().student_id, self.students[0].id)
 
     def test_admin_teacher_form_saves_multi_level_subjects_classes_and_sections(self):
         middle_level = AcademicLevel(name="Middle", sort_order=2, is_active=True)
@@ -307,6 +527,15 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(invalid.status_code, 200)
         self.assertIsNone(TeacherResultSubmission.query.first())
 
+        too_precise = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "draft",
+            f"score_{self.students[0].id}": "41.555",
+        }, headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"})
+        self.assertEqual(too_precise.status_code, 422)
+        self.assertIn("laba meelood", too_precise.json["message"])
+        self.assertIsNone(TeacherResultSubmission.query.first())
+
         response = self.client.post("/teacher/result-entry/save", data={
             "assignment_id": self.assignment.id,
             "action": "submit",
@@ -380,6 +609,82 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(TeacherResultAssignment.query.count(), 1)
         self.assertEqual(TeacherResultAssignment.query.one().max_submissions, 2)
 
+    def test_admin_can_save_multiple_teacher_scopes_across_levels_in_one_request(self):
+        middle_level = AcademicLevel(name="Middle", sort_order=2, is_active=True)
+        db.session.add(middle_level)
+        db.session.flush()
+        middle_year_level = AcademicYearLevel(
+            academic_year=self.year, legacy_level=middle_level, name="Middle"
+        )
+        middle_class = AcademicClass(academic_level=middle_level, name="Grade 7", is_active=True)
+        middle_subject = Subject(name="Arabic", academic_level=middle_level, max_score=50, is_active=True)
+        db.session.add_all([middle_year_level, middle_class, middle_subject])
+        db.session.flush()
+        middle_year_class = AcademicYearClass(
+            academic_year_level=middle_year_level, legacy_class=middle_class, name="Grade 7"
+        )
+        middle_year_subject = AcademicYearSubject(
+            academic_year=self.year, academic_year_level=middle_year_level,
+            legacy_subject=middle_subject, name=middle_subject.name, subject_kind="exam", max_score=50,
+        )
+        db.session.add_all([middle_year_class, middle_year_subject])
+        db.session.commit()
+        math_year_subject = AcademicYearSubject.query.filter_by(legacy_subject_id=self.subject.id).one()
+
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        response = self.client.post("/admin/teachers/result-entry", data={
+            "action": "create", "teacher_id": str(self.teacher.id),
+            "academic_year_id": [str(self.year.id), str(self.year.id)],
+            "exam_id": [str(self.exam.id), str(self.exam.id)],
+            "academic_year_level_id": [str(self.year_level.id), str(middle_year_level.id)],
+            "academic_year_class_id": [str(self.year_class.id), str(middle_year_class.id)],
+            "academic_year_subject_id": [str(math_year_subject.id), str(middle_year_subject.id)],
+            "deadline_at": ["", ""],
+            "max_submissions": ["2", "1"],
+        }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        assignments = TeacherResultAssignment.query.filter_by(teacher_id=self.teacher.id).all()
+        self.assertEqual(len(assignments), 2)
+        by_class = {assignment.class_id: assignment for assignment in assignments}
+        self.assertEqual(by_class[self.school_class.id].max_submissions, 2)
+        self.assertEqual(by_class[middle_class.id].subject_id, middle_subject.id)
+        self.assertIn(b"1 xilsaaris cusub iyo 1 xilsaaris oo la cusboonaysiiyey", response.data)
+
+    def test_admin_multi_scope_creation_is_atomic_when_any_scope_is_invalid(self):
+        middle_level = AcademicLevel(name="Middle", is_active=True)
+        db.session.add(middle_level)
+        db.session.flush()
+        middle_year_level = AcademicYearLevel(academic_year=self.year, legacy_level=middle_level, name="Middle")
+        middle_class = AcademicClass(academic_level=middle_level, name="Grade 7", is_active=True)
+        middle_subject = Subject(name="Arabic", academic_level=middle_level, is_active=True)
+        db.session.add_all([middle_year_level, middle_class, middle_subject])
+        db.session.flush()
+        middle_year_class = AcademicYearClass(academic_year_level=middle_year_level, legacy_class=middle_class, name="Grade 7")
+        middle_year_subject = AcademicYearSubject(
+            academic_year=self.year, academic_year_level=middle_year_level,
+            legacy_subject=middle_subject, name=middle_subject.name, subject_kind="exam",
+        )
+        db.session.add_all([middle_year_class, middle_year_subject])
+        db.session.commit()
+        math_year_subject = AcademicYearSubject.query.filter_by(legacy_subject_id=self.subject.id).one()
+
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        response = self.client.post("/admin/teachers/result-entry", data={
+            "action": "create", "teacher_id": str(self.teacher.id),
+            "academic_year_id": [str(self.year.id), str(self.year.id)],
+            "exam_id": [str(self.exam.id), str(self.exam.id)],
+            "academic_year_level_id": [str(self.year_level.id), str(middle_year_level.id)],
+            "academic_year_class_id": [str(self.year_class.id), str(self.year_class.id)],
+            "academic_year_subject_id": [str(math_year_subject.id), str(middle_year_subject.id)],
+            "max_submissions": ["3", "1"],
+        }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Scope kasta waa inuu si sax ah".encode(), response.data)
+        self.assertEqual(TeacherResultAssignment.query.count(), 1)
+        self.assertEqual(self.assignment.max_submissions, 1)
+
     def test_admin_can_assign_result_scope_without_legacy_teacher_class_subject_links(self):
         unscoped_teacher = Teacher(
             teacher_id="RT-3", teacher_code="RT-C3", full_name="Unscoped Teacher",
@@ -418,8 +723,99 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn(b"name=\"academic_year_subject_id\"", response.data)
         self.assertIn(f'data-level-id="{self.year_level.id}"'.encode(), response.data)
         self.assertIn(b"Mathematics", response.data)
+        self.assertIn(b"tra-add-scope", response.data)
+        self.assertIn(b"data-scope-row", response.data)
         self.assertNotIn(b"Unmapped legacy class", response.data)
         self.assertNotIn(b"Unoffered legacy subject", response.data)
+
+    def test_admin_can_edit_assignment_scope_and_policy_before_submission(self):
+        other_subject = Subject(
+            name="Arabic", academic_level=self.level, max_score=50, is_active=True
+        )
+        db.session.add(other_subject)
+        db.session.flush()
+        other_year_subject = AcademicYearSubject(
+            academic_year=self.year,
+            academic_year_level=self.year_level,
+            legacy_subject=other_subject,
+            name=other_subject.name,
+            subject_kind="exam",
+            max_score=50,
+        )
+        db.session.add(other_year_subject)
+        db.session.commit()
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        page = self.client.get("/admin/teachers/result-entry")
+        self.assertIn(b'class="tra-edit-trigger"', page.data)
+        self.assertIn(f'data-assignment-id="{self.assignment.id}"'.encode(), page.data)
+
+        response = self.client.post("/admin/teachers/result-entry", data={
+            "action": "update",
+            "assignment_id": str(self.assignment.id),
+            "teacher_id": str(self.teacher.id),
+            "academic_year_id": str(self.year.id),
+            "exam_id": str(self.exam.id),
+            "academic_year_level_id": str(self.year_level.id),
+            "academic_year_class_id": str(self.year_class.id),
+            "academic_year_subject_id": str(other_year_subject.id),
+            "deadline_at": "2026-10-22T10:00",
+            "max_submissions": "3",
+        }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(self.assignment)
+        self.assertEqual(self.assignment.subject_id, other_subject.id)
+        self.assertEqual(self.assignment.max_submissions, 3)
+        self.assertEqual(self.assignment.deadline_at.strftime("%Y-%m-%d %H:%M"), "2026-10-22 07:00")
+        self.assertEqual(TeacherResultAssignment.query.count(), 1)
+        self.assertEqual(TeacherResultEvent.query.filter_by(
+            assignment_id=self.assignment.id, event_type="assignment_updated"
+        ).count(), 1)
+        self.assertIn("Xilsaarista waa la tafatiray".encode(), response.data)
+
+    def test_admin_cannot_change_assignment_scope_after_submission_exists(self):
+        other_subject = Subject(
+            name="Arabic", academic_level=self.level, max_score=50, is_active=True
+        )
+        db.session.add(other_subject)
+        db.session.flush()
+        other_year_subject = AcademicYearSubject(
+            academic_year=self.year,
+            academic_year_level=self.year_level,
+            legacy_subject=other_subject,
+            name=other_subject.name,
+            subject_kind="exam",
+            max_score=50,
+        )
+        submission = TeacherResultSubmission(assignment=self.assignment, status="draft")
+        db.session.add_all([other_year_subject, submission])
+        db.session.flush()
+        db.session.add(TeacherResultMark(
+            submission=submission, student=self.students[0], score=Decimal("42"), status="draft"
+        ))
+        db.session.commit()
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        response = self.client.post("/admin/teachers/result-entry", data={
+            "action": "update",
+            "assignment_id": str(self.assignment.id),
+            "teacher_id": str(self.teacher.id),
+            "academic_year_id": str(self.year.id),
+            "exam_id": str(self.exam.id),
+            "academic_year_level_id": str(self.year_level.id),
+            "academic_year_class_id": str(self.year_class.id),
+            "academic_year_subject_id": str(other_year_subject.id),
+            "deadline_at": "",
+            "max_submissions": "2",
+        }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(self.assignment)
+        self.assertEqual(self.assignment.subject_id, self.subject.id)
+        self.assertIn("xaashida natiijadu way jirtaa".encode(), response.data.lower())
+        db.session.refresh(submission)
+        self.assertEqual(submission.marks[0].score, Decimal("42.000"))
 
     def test_unlinked_staff_account_can_be_linked_and_then_used_for_result_assignment(self):
         portal_user = User(
@@ -521,7 +917,7 @@ class TestTeacherResultEntry(unittest.TestCase):
         }, follow_redirects=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Xilsaaristan isma waafaqsana".encode(), response.data)
+        self.assertIn("Scope kasta waa inuu si sax ah".encode(), response.data)
         self.assertEqual(TeacherResultAssignment.query.count(), 1)
 
     def test_admin_teacher_home_opens_result_entry_control_without_dashboard_mockups(self):
@@ -557,9 +953,12 @@ class TestTeacherResultEntry(unittest.TestCase):
         submission = TeacherResultSubmission.query.one()
         self.assertEqual(submission.status, "approved")
 
-        self.client.post("/admin/teachers/result-entry", data={
+        missing_reason = self.client.post("/admin/teachers/result-entry", data={
             "action": "reopen", "assignment_id": str(self.assignment.id),
         }, follow_redirects=True)
+        self.assertEqual(missing_reason.status_code, 200)
+        self.assertIn(b'tra-reason-error', missing_reason.data)
+        self.assertIn("Fadlan qor sababta dib loogu furayo ka hor intaadan kaydin.".encode(), missing_reason.data)
         self.assertEqual(submission.status, "approved")
         reopened = self.client.post("/admin/teachers/result-entry", data={
             "action": "reopen", "assignment_id": str(self.assignment.id),
@@ -573,6 +972,16 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.client.post("/teacher/login", data={
             "username": "result-teacher", "password": "TeacherPass123"
         })
+        cleared = self.client.post("/teacher/result-entry/autosave", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "score": "",
+        })
+        self.assertEqual(cleared.status_code, 200)
+        self.assertIsNone(cleared.get_json()["score"])
+        reopened_page = self.client.get(f"/teacher/result-entry?assignment_id={self.assignment.id}")
+        self.assertIn(f'name="score_{self.students[0].id}" value=""'.encode(), reopened_page.data)
+        self.assertEqual(float(Result.query.filter_by(student_id=self.students[0].id).one().score), 44)
         second_submit = self.client.post("/teacher/result-entry/save", data={
             "assignment_id": self.assignment.id,
             "action": "submit",
@@ -594,6 +1003,56 @@ class TestTeacherResultEntry(unittest.TestCase):
         }, follow_redirects=True)
         self.assertEqual(submission.status, "approved")
         self.assertEqual(float(Result.query.filter_by(student_id=self.students[0].id).one().score), 46)
+
+    def test_admin_can_return_submitted_marks_for_correction_then_approve_resubmission(self):
+        self._teacher_login()
+        self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "44",
+            f"score_{self.students[1].id}": "39",
+        }, follow_redirects=True)
+        submission = TeacherResultSubmission.query.one()
+        self.assertEqual(submission.status, "submitted")
+
+        self.client.post("/teacher/logout")
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        missing_reason = self.client.post("/admin/teachers/result-entry", data={
+            "action": "reopen", "assignment_id": str(self.assignment.id),
+        }, follow_redirects=True)
+        self.assertIn("Qor sababta dib loogu furayo".encode(), missing_reason.data)
+        self.assertIn(b'tra-reason-error', missing_reason.data)
+        self.assertIn("Fadlan qor sababta dib loogu furayo ka hor intaadan kaydin.".encode(), missing_reason.data)
+        self.assertEqual(submission.status, "submitted")
+
+        reopened = self.client.post("/admin/teachers/result-entry", data={
+            "action": "reopen", "assignment_id": str(self.assignment.id),
+            "reviewer_note": "Corrected against the signed source sheet",
+        }, follow_redirects=True)
+        self.assertEqual(reopened.status_code, 200)
+        self.assertEqual(submission.status, "reopened")
+        self.assertTrue(all(mark.status == "draft" for mark in submission.marks))
+
+        self.client.post("/admin/logout")
+        self._teacher_login()
+        correction = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "46.25",
+            f"score_{self.students[1].id}": "39",
+        }, follow_redirects=True)
+        self.assertEqual(correction.status_code, 200)
+        self.assertEqual(submission.status, "submitted")
+        self.assertEqual(submission.submission_count, 2)
+
+        self.client.post("/teacher/logout")
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        approved = self.client.post("/admin/teachers/result-entry", data={
+            "action": "approve", "assignment_id": str(self.assignment.id),
+        }, follow_redirects=True)
+        self.assertEqual(approved.status_code, 200)
+        self.assertEqual(submission.status, "approved")
+        self.assertEqual(float(Result.query.filter_by(student_id=self.students[0].id).one().score), 46.25)
 
     def test_partial_submission_approval_publishes_only_entered_students_and_allows_continuation(self):
         self._teacher_login()
@@ -634,7 +1093,7 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn(b"Qaybo la ansixiyey", workspace.data)
         self.assertIn(f'name="score_{self.students[0].id}"'.encode(), workspace.data)
         self.assertIn(f'name="score_{self.students[1].id}"'.encode(), workspace.data)
-        self.assertIn(f'name="score_{self.students[0].id}" value="44.000"'.encode(), workspace.data)
+        self.assertIn(f'name="score_{self.students[0].id}" value="44.00"'.encode(), workspace.data)
         self.assertIn(f'name="score_{self.students[1].id}" value=""'.encode(), workspace.data)
         self.assertRegex(workspace.data, f'name="score_{self.students[0].id}"[^>]*disabled'.encode())
         self.assertNotRegex(workspace.data, f'name="score_{self.students[1].id}"[^>]*disabled'.encode())
@@ -661,6 +1120,127 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(Result.query.count(), 2)
         self.assertEqual(submission.submission_count, 1)
 
+    def test_result_entry_history_tracks_review_events_filters_and_exports(self):
+        self._teacher_login()
+        submitted = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "42",
+        }, follow_redirects=True)
+        self.assertEqual(submitted.status_code, 200)
+        first_event = TeacherResultEvent.query.filter_by(event_type="submitted").one()
+        self.assertEqual(first_event.marks_count, 1)
+        self.assertEqual(first_event.teacher_name, "Results Teacher")
+
+        self.client.post("/teacher/logout")
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        approved = self.client.post("/admin/teachers/result-entry", data={
+            "action": "approve", "assignment_id": str(self.assignment.id),
+        }, follow_redirects=True)
+        self.assertEqual(approved.status_code, 200)
+        approval_event = TeacherResultEvent.query.filter_by(event_type="partially_approved").one()
+        self.assertEqual(approval_event.marks_count, 1)
+
+        history = self.client.get("/admin/teachers/result-entry/history")
+        self.assertEqual(history.status_code, 200)
+        self.assertIn("Taariikhda Gelinta Natiijooyinka".encode(), history.data)
+        self.assertIn("Natiijo loo gudbiyey maamulka".encode(), history.data)
+        self.assertIn("Qayb ahaan la ansixiyey".encode(), history.data)
+
+        filtered = self.client.get("/admin/teachers/result-entry/history?event_type=partially_approved&teacher=Results%20Teacher")
+        self.assertEqual(filtered.status_code, 200)
+        self.assertIn("Qayb ahaan la ansixiyey".encode(), filtered.data)
+        self.assertNotIn(b'class="trh-event submitted"', filtered.data)
+
+        report = self.client.get("/admin/teachers/result-entry/history/export.xlsx?event_type=partially_approved")
+        self.assertEqual(report.status_code, 200)
+        sheet = load_workbook(BytesIO(report.data), read_only=True).active
+        self.assertEqual(sheet.max_row, 2)
+        self.assertEqual(sheet.cell(2, 2).value, "Qayb ahaan la ansixiyey")
+
+    def test_admin_can_archive_restore_assignment_and_history_keeps_scope_and_marks(self):
+        submission = TeacherResultSubmission(assignment=self.assignment, status="draft")
+        db.session.add(submission)
+        db.session.flush()
+        mark = TeacherResultMark(
+            submission=submission, student=self.students[0], score=Decimal("42"), status="draft"
+        )
+        db.session.add(mark)
+        db.session.commit()
+
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        archived = self.client.post("/admin/teachers/result-entry", data={
+            "action": "delete", "assignment_id": str(self.assignment.id),
+            "deletion_note": "Xilsaaris khaldan ayaa la saxayaa.",
+        }, follow_redirects=True)
+        self.assertEqual(archived.status_code, 200)
+        self.assertIn("La tirtiray".encode(), archived.data)
+        self.assertIsNotNone(self.assignment.deleted_at)
+        self.assertFalse(self.assignment.is_active)
+        self.assertEqual(TeacherResultSubmission.query.count(), 1)
+        self.assertEqual(TeacherResultMark.query.one().score, Decimal("42"))
+
+        deleted_event = TeacherResultEvent.query.filter_by(event_type="assignment_deleted").one()
+        self.assertEqual(deleted_event.teacher_name, "Results Teacher")
+        self.assertEqual(deleted_event.class_name, "Form 1")
+        self.assertEqual(deleted_event.subject_name, "Mathematics")
+        self.assertEqual(deleted_event.status_from, "active")
+        self.assertEqual(deleted_event.status_to, "deleted")
+        self.assertEqual(deleted_event.note, "Xilsaaris khaldan ayaa la saxayaa.")
+
+        deleted_list = self.client.get("/admin/teachers/result-entry?status=deleted")
+        self.assertEqual(deleted_list.status_code, 200)
+        self.assertIn("Dib u soo celi".encode(), deleted_list.data)
+        self.assertIn("xogta iyo dhibcihii hore waa la hayaa".encode(), deleted_list.data)
+
+        self.client.post("/admin/logout")
+        self._teacher_login()
+        blocked = self.client.post("/teacher/result-entry/autosave", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "score": "49",
+        })
+        self.assertEqual(blocked.status_code, 404)
+
+        self.client.post("/teacher/logout")
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        history = self.client.get("/admin/teachers/result-entry/history?event_type=assignment_deleted")
+        self.assertEqual(history.status_code, 200)
+        self.assertIn("Xilsaaris kayd ahaan loo tirtiray".encode(), history.data)
+        self.assertIn("Xilsaaris khaldan ayaa la saxayaa.".encode(), history.data)
+
+        restored = self.client.post("/admin/teachers/result-entry", data={
+            "action": "restore", "assignment_id": str(self.assignment.id),
+        }, follow_redirects=True)
+        self.assertEqual(restored.status_code, 200)
+        self.assertIsNone(self.assignment.deleted_at)
+        self.assertTrue(self.assignment.is_active)
+        self.assertEqual(TeacherResultSubmission.query.count(), 1)
+        self.assertEqual(TeacherResultMark.query.one().score, Decimal("42"))
+        self.assertEqual(TeacherResultEvent.query.filter_by(event_type="assignment_restored").count(), 1)
+
+    def test_admin_can_archive_unstarted_assignment_and_restore_its_paused_state(self):
+        self.assignment.is_active = False
+        db.session.commit()
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        archived = self.client.post("/admin/teachers/result-entry", data={
+            "action": "delete", "assignment_id": str(self.assignment.id),
+        }, follow_redirects=True)
+        self.assertEqual(archived.status_code, 200)
+        self.assertEqual(TeacherResultSubmission.query.count(), 0)
+        self.assertIsNone(TeacherResultEvent.query.filter_by(event_type="assignment_deleted").one().submission_id)
+
+        restored = self.client.post("/admin/teachers/result-entry", data={
+            "action": "restore", "assignment_id": str(self.assignment.id),
+        }, follow_redirects=True)
+        self.assertEqual(restored.status_code, 200)
+        self.assertIsNone(self.assignment.deleted_at)
+        self.assertFalse(self.assignment.is_active)
+        event = TeacherResultEvent.query.filter_by(event_type="assignment_restored").one()
+        self.assertEqual(event.status_from, "deleted")
+        self.assertEqual(event.status_to, "paused")
+
     def test_migration_is_repeatable(self):
         with patch.object(phase_14_teacher_result_entry, "create_app", return_value=self.app):
             self.assertEqual(phase_14_teacher_result_entry.upgrade(), {"status": "applied", "tables": 3})
@@ -668,6 +1248,20 @@ class TestTeacherResultEntry(unittest.TestCase):
         with patch.object(phase_19_teacher_result_partial, "create_app", return_value=self.app):
             self.assertEqual(phase_19_teacher_result_partial.upgrade(), {"status": "applied", "columns": 1})
             self.assertEqual(phase_19_teacher_result_partial.upgrade(), {"status": "applied", "columns": 1})
+        db.session.add(TeacherResultSubmission(assignment=self.assignment, status="draft"))
+        db.session.commit()
+        with patch.object(phase_20_teacher_result_history, "create_app", return_value=self.app):
+            self.assertEqual(phase_20_teacher_result_history.upgrade(), {"status": "applied", "table": "teacher_result_events"})
+            baseline_count = TeacherResultEvent.query.filter_by(event_type="baseline").count()
+            self.assertEqual(baseline_count, 1)
+            self.assertEqual(phase_20_teacher_result_history.upgrade(), {"status": "applied", "table": "teacher_result_events"})
+            self.assertEqual(TeacherResultEvent.query.filter_by(event_type="baseline").count(), baseline_count)
+        with patch.object(phase_21_teacher_result_assignment_archive, "create_app", return_value=self.app):
+            self.assertEqual(phase_21_teacher_result_assignment_archive.upgrade(), {"status": "applied", "columns": 2})
+            self.assertEqual(phase_21_teacher_result_assignment_archive.upgrade(), {"status": "applied", "columns": 2})
+        with patch.object(phase_22_teacher_result_mark_activity, "create_app", return_value=self.app):
+            self.assertEqual(phase_22_teacher_result_mark_activity.upgrade(), {"status": "applied", "columns": 3})
+            self.assertEqual(phase_22_teacher_result_mark_activity.upgrade(), {"status": "applied", "columns": 3})
 
 
 if __name__ == "__main__":

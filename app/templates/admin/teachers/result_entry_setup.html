@@ -2,7 +2,7 @@
 {% block title %}Result Entry Control{% endblock %}
 {% block page_title %}Result Entry Control{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-admin.css', v='teacher-result-edit-20261021-1') }}">
 <main class="teacher-result-admin">
   <header class="tra-header">
     <div>
@@ -10,7 +10,7 @@
       <h1>Result Entry Control</h1>
       <p>Manage real teacher assignments and review marks before they are published.</p>
     </div>
-    <a class="tra-back" href="{{ url_for('admin_teachers.teacher_list') }}"><i class="fa-solid fa-chalkboard-user"></i> Teacher accounts</a>
+    <div class="tra-header-actions"><a class="tra-back tra-history-link" href="{{ url_for('admin_teachers.result_entry_history') }}"><i class="fa-solid fa-clock-rotate-left"></i> History &amp; reports</a><a class="tra-back" href="{{ url_for('admin_teachers.teacher_list') }}"><i class="fa-solid fa-chalkboard-user"></i> Teacher accounts</a></div>
   </header>
 
   <section class="tra-summary" aria-label="Assignment overview">
@@ -19,12 +19,13 @@
     <a href="{{ url_for('admin_teachers.result_entry_setup', status='draft') }}" class="tra-metric draft"><span>Draft / correction</span><strong>{{ summary.draft }}</strong><i class="fa-solid fa-pen-to-square"></i></a>
     <a href="{{ url_for('admin_teachers.result_entry_setup', status='approved') }}" class="tra-metric approved"><span>Approved</span><strong>{{ summary.approved }}</strong><i class="fa-solid fa-circle-check"></i></a>
     <a href="{{ url_for('admin_teachers.result_entry_setup', status='paused') }}" class="tra-metric paused"><span>Paused</span><strong>{{ summary.paused }}</strong><i class="fa-solid fa-pause"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='deleted') }}" class="tra-metric deleted"><span>La tirtiray</span><strong>{{ summary.deleted }}</strong><i class="fa-solid fa-trash-can"></i></a>
   </section>
 
   <section class="tra-panel tra-setup">
     <div class="tra-panel-heading">
       <span class="tra-icon"><i class="fa-solid fa-user-plus"></i></span>
-      <div><h2>Assign a result sheet</h2><p>Assignments use the active academic-year, level, class, subject and exam records.</p></div>
+      <div><h2 id="tra-form-title">Assign a result sheet</h2><p id="tra-form-description">Assignments use the active academic-year, level, class, subject and exam records.</p></div>
     </div>
     {% if unlinked_staff_users %}
       <aside class="tra-unlinked-users" aria-label="Akoonnada aan weli profile macallin lahayn">
@@ -32,25 +33,43 @@
         <ul>{% for account in unlinked_staff_users %}<li><span>{{ account.full_name }} · @{{ account.username }}{% if not account.is_active %}<small>Aan firfircoonayn</small>{% endif %}</span><a href="{{ url_for('admin_teachers.teacher_form', user_id=account.id) }}"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Samee profile macallin</a></li>{% endfor %}</ul>
       </aside>
     {% endif %}
-    <form method="post" class="tra-form">
+    <form method="post" class="tra-form" id="tra-assignment-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="create">
-      <label>Teacher<select id="tra-setup-teacher" name="teacher_id" required><option value="">Select active teacher</option>{% for item in teachers %}<option value="{{ item.id }}">{{ item.full_name }} · {{ item.teacher_code }}</option>{% endfor %}</select></label>
-      <label>Academic year<select id="tra-setup-year" name="academic_year_id" required><option value="">Select year</option>{% for item in years %}<option value="{{ item.id }}" {{ 'selected' if item.id == selected_year_id else '' }}>{{ item.name }}{% if item.is_current %} · Current{% endif %}</option>{% endfor %}</select></label>
-      <label>Level<select id="tra-setup-level" name="academic_year_level_id" required><option value="">Select level</option>{% for item in year_levels %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-legacy-level-id="{{ item.legacy_level_id }}" {{ 'selected' if item.id == selected_year_level_id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
-      <label>Class<select id="tra-setup-class" name="academic_year_class_id" required><option value="">Select class</option>{% for item in year_classes %}<option value="{{ item.id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-id="{{ item.legacy_class_id }}">{{ item.academic_year_level.name }} · {{ item.name }}</option>{% endfor %}</select></label>
-      <label>Subject<select id="tra-setup-subject" name="academic_year_subject_id" required><option value="">Select subject</option>{% for item in year_subjects %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-level-id="{{ item.academic_year_level.legacy_level_id }}" data-legacy-id="{{ item.legacy_subject_id }}">{{ item.name }}</option>{% endfor %}</select></label>
-      <label>Exam type<select id="tra-setup-exam" name="exam_id" required><option value="">Select exam</option>{% for item in exams %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_level_id or '' }}" data-class-id="{{ item.academic_class_id or '' }}">{{ item.name }} · {{ item.academic_year.name }}</option>{% endfor %}</select></label>
-      <label>Deadline <span class="tra-optional">Optional</span><input type="datetime-local" name="deadline_at"><small>Local school time (EAT). Leave blank for no deadline.</small></label>
-      <label>Allowed submissions<input type="number" name="max_submissions" min="1" max="10" value="1" required><small>Reopening for correction grants an additional attempt.</small></label>
-      <div class="tra-form-action"><button type="submit"><i class="fa-solid fa-plus"></i> Save assignment</button></div>
+      <input type="hidden" name="assignment_id" value="">
+      <label class="tra-teacher-field">Teacher<select id="tra-setup-teacher" name="teacher_id" required><option value="">Select active teacher</option>{% for item in teachers %}<option value="{{ item.id }}">{{ item.full_name }} · {{ item.teacher_code }}</option>{% endfor %}</select></label>
+      <div class="tra-scope-list" id="tra-scope-list" aria-label="Teacher assignment scopes">
+        <div class="tra-scope-row" data-scope-row>
+          <div class="tra-scope-row-head"><strong>Scope <span data-scope-number>1</span></strong><button type="button" data-remove-scope aria-label="Remove scope" disabled><i class="fa-solid fa-trash-can"></i></button></div>
+          <label>Academic year<select name="academic_year_id" data-year required><option value="">Select year</option>{% for item in years %}<option value="{{ item.id }}" {{ 'selected' if item.id == selected_year_id else '' }}>{{ item.name }}{% if item.is_current %} · Current{% endif %}</option>{% endfor %}</select></label>
+          <label>Level<select name="academic_year_level_id" data-level required><option value="">Select level</option>{% for item in year_levels %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-legacy-level-id="{{ item.legacy_level_id }}" {{ 'selected' if item.id == selected_year_level_id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Class<select name="academic_year_class_id" data-class required><option value="">Select class</option>{% for item in year_classes %}<option value="{{ item.id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-id="{{ item.legacy_class_id }}">{{ item.academic_year_level.name }} · {{ item.name }}</option>{% endfor %}</select></label>
+          <label>Subject<select name="academic_year_subject_id" data-subject required><option value="">Select subject</option>{% for item in year_subjects %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-level-id="{{ item.academic_year_level.legacy_level_id }}" data-legacy-id="{{ item.legacy_subject_id }}">{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Exam type<select name="exam_id" data-exam required><option value="">Select exam</option>{% for item in exams %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_level_id or '' }}" data-class-id="{{ item.academic_class_id or '' }}">{{ item.name }} · {{ item.academic_year.name }}</option>{% endfor %}</select></label>
+          <label>Deadline <span class="tra-optional">Optional</span><input type="datetime-local" name="deadline_at"><small>Leave blank for no deadline.</small></label>
+          <label>Allowed submissions<input type="number" name="max_submissions" min="1" max="10" value="1" required><small>Reopening grants another attempt.</small></label>
+        </div>
+      </div>
+      <template id="tra-scope-template">
+        <div class="tra-scope-row" data-scope-row>
+          <div class="tra-scope-row-head"><strong>Scope <span data-scope-number></span></strong><button type="button" data-remove-scope aria-label="Remove scope"><i class="fa-solid fa-trash-can"></i></button></div>
+          <label>Academic year<select name="academic_year_id" data-year required><option value="">Select year</option>{% for item in years %}<option value="{{ item.id }}">{{ item.name }}{% if item.is_current %} · Current{% endif %}</option>{% endfor %}</select></label>
+          <label>Level<select name="academic_year_level_id" data-level required><option value="">Select level</option>{% for item in year_levels %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-legacy-level-id="{{ item.legacy_level_id }}">{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Class<select name="academic_year_class_id" data-class required><option value="">Select class</option>{% for item in year_classes %}<option value="{{ item.id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-id="{{ item.legacy_class_id }}">{{ item.academic_year_level.name }} · {{ item.name }}</option>{% endfor %}</select></label>
+          <label>Subject<select name="academic_year_subject_id" data-subject required><option value="">Select subject</option>{% for item in year_subjects %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-level-id="{{ item.academic_year_level.legacy_level_id }}" data-legacy-id="{{ item.legacy_subject_id }}">{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Exam type<select name="exam_id" data-exam required><option value="">Select exam</option>{% for item in exams %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_level_id or '' }}" data-class-id="{{ item.academic_class_id or '' }}">{{ item.name }} · {{ item.academic_year.name }}</option>{% endfor %}</select></label>
+          <label>Deadline <span class="tra-optional">Optional</span><input type="datetime-local" name="deadline_at"><small>Leave blank for no deadline.</small></label>
+          <label>Allowed submissions<input type="number" name="max_submissions" min="1" max="10" value="1" required><small>Reopening grants another attempt.</small></label>
+        </div>
+      </template>
+      <div class="tra-form-action"><button type="button" class="tra-add-scope" id="tra-add-scope"><i class="fa-solid fa-layer-group"></i> Add another scope</button><button type="button" class="tra-cancel-edit" id="tra-cancel-edit" hidden><i class="fa-solid fa-xmark"></i> Cancel edit</button><button type="submit" id="tra-save-assignment"><i class="fa-solid fa-floppy-disk"></i> Save assignments</button></div>
     </form>
   </section>
 
   <section class="tra-panel">
     <div class="tra-panel-heading tra-list-heading">
       <span class="tra-icon review"><i class="fa-solid fa-list-check"></i></span>
-      <div><h2>Assignments &amp; submissions</h2><p>Showing {{ assignments|length }} of {{ summary.total }} saved assignment{{ '' if summary.total == 1 else 's' }}.</p></div>
+      <div><h2>Assignments &amp; submissions</h2><p>Showing {{ assignments|length }} saved assignment{{ '' if assignments|length == 1 else 's' }}.</p></div>
       <form method="get" class="tra-filters">
         <label class="sr-only" for="tra-status">Submission status</label>
         <select id="tra-status" name="status">
@@ -59,6 +78,7 @@
           <option value="draft" {{ 'selected' if status_filter == 'draft' else '' }}>Draft / correction</option>
           <option value="approved" {{ 'selected' if status_filter == 'approved' else '' }}>Approved</option>
           <option value="paused" {{ 'selected' if status_filter == 'paused' else '' }}>Paused</option>
+          <option value="deleted" {{ 'selected' if status_filter == 'deleted' else '' }}>La tirtiray</option>
         </select>
         <label class="sr-only" for="tra-teacher">Teacher</label>
         <select id="tra-teacher" name="teacher_id"><option value="">All teachers</option>{% for item in teachers %}<option value="{{ item.id }}" {{ 'selected' if teacher_filter == item.id else '' }}>{{ item.full_name }}</option>{% endfor %}</select>
@@ -77,35 +97,111 @@
               <p><i class="fa-solid fa-user-tie"></i> {{ assignment.teacher.full_name }} <span>·</span> <i class="fa-regular fa-clock"></i> {{ deadline_labels[assignment.id].strftime('%b %d, %Y · %I:%M %p') ~ ' EAT' if assignment.deadline_at else 'No deadline' }} <span>·</span> Max {{ assignment.max_submissions }} attempt{{ '' if assignment.max_submissions == 1 else 's' }}</p>
             </div>
             {% set progress = assignment_progress.get(assignment.id, {}) %}{% set partially_approved = submission and submission.status == 'draft' and progress.get('approved', 0) > 0 %}
-            <div class="tra-badges"><span class="tra-status {{ 'active' if assignment.is_active else 'inactive' }}">{{ 'Active' if assignment.is_active else 'Paused' }}</span><span class="tra-status {{ 'partial' if partially_approved else (submission.status if submission else 'not-started') }}">{{ 'Partially approved' if partially_approved else (submission.status|replace('_', ' ')|title if submission else 'Not started') }}</span></div>
+            <div class="tra-badges"><span class="tra-status {{ 'deleted' if assignment.deleted_at else ('active' if assignment.is_active else 'inactive') }}">{{ 'La tirtiray' if assignment.deleted_at else ('Active' if assignment.is_active else 'Paused') }}</span><span class="tra-status {{ 'partial' if partially_approved else (submission.status if submission else 'not-started') }}">{{ 'Partially approved' if partially_approved else (submission.status|replace('_', ' ')|title if submission else 'Not started') }}</span></div>
             {% if partially_approved %}<p class="tra-approved-note"><i class="fa-solid fa-circle-check"></i> {{ progress.approved }} student marks approved · remaining entries are open</p>{% endif %}
           </div>
 
-          {% if submission and submission.status == 'submitted' %}
+          {% if assignment.deleted_at %}
+            <p class="tra-archived-note"><i class="fa-solid fa-box-archive"></i> Xilsaaristan waa laga saaray portalka macallinka; xogta iyo dhibcihii hore waa la hayaa.</p>
+          {% elif submission and submission.status == 'submitted' %}
             {% set rows = review_rows.get(assignment.id, []) %}{% set has_existing = assignment.id in assignments_with_existing_results %}
             <details class="tra-review"><summary><i class="fa-solid fa-eye"></i> Review {{ rows|length }} submitted student marks</summary>
               <div class="tra-marks-table"><table><thead><tr><th>Student</th><th>Student ID</th><th>Submitted</th><th>Current official</th></tr></thead><tbody>{% for item in rows %}{% set mark = item.mark %}<tr><td>{{ mark.student.full_name }}</td><td>{{ mark.student.student_code }}</td><td>{{ mark.score|academic_number(ui_settings) if mark.score is not none else '—' }}</td><td>{{ item.official_score|academic_number(ui_settings) if item.official_score is not none else 'No result' }}</td></tr>{% endfor %}</tbody></table></div>
-              <form method="post" class="tra-review-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><label>Review note <input name="reviewer_note" maxlength="500" placeholder="Optional audit note"></label>{% if has_existing %}<label class="tra-confirm"><input type="checkbox" name="confirm_replace" value="yes" required> I reviewed the existing official marks and approve replacing them.</label>{% endif %}<button name="action" value="approve" class="approve"><i class="fa-solid fa-check"></i> Approve &amp; publish</button><button name="action" value="reopen" class="reopen"><i class="fa-solid fa-rotate-left"></i> Return for correction</button></form>
+              <form method="post" class="tra-review-form tra-reason-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><label>Review note <input name="reviewer_note" maxlength="500" placeholder="Required for correction; optional for approval" aria-describedby="review-note-error-{{ assignment.id }}"></label><small class="tra-reason-error" id="review-note-error-{{ assignment.id }}" role="alert" hidden>Fadlan qor sababta dib loogu furayo ka hor intaadan kaydin.</small>{% if has_existing %}<label class="tra-confirm"><input type="checkbox" name="confirm_replace" value="yes" required> I reviewed the existing official marks and approve replacing them.</label>{% endif %}<button name="action" value="approve" class="approve"><i class="fa-solid fa-check"></i> Approve &amp; publish</button><button name="action" value="reopen" class="reopen"><i class="fa-solid fa-rotate-left"></i> Return for correction</button></form>
             </details>
           {% elif submission and submission.status == 'approved' %}
             <p class="tra-approved-note"><i class="fa-solid fa-circle-check"></i> Approved by {{ submission.reviewed_by.username if submission.reviewed_by else 'admin' }}{% if submission.reviewed_at %} · {{ submission.reviewed_at.strftime('%b %d, %Y · %I:%M %p') }}{% endif %}</p>
-            <form method="post" class="tra-reopen-approved"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><label class="sr-only" for="reopen-note-{{ assignment.id }}">Reason for reopening</label><input id="reopen-note-{{ assignment.id }}" name="reviewer_note" maxlength="500" required placeholder="Reason for reopening this approved result sheet"><button name="action" value="reopen" class="reopen"><i class="fa-solid fa-rotate-left"></i> Reopen for correction</button></form>
+            <form method="post" class="tra-reopen-approved tra-reason-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><label class="sr-only" for="reopen-note-{{ assignment.id }}">Reason for reopening</label><input id="reopen-note-{{ assignment.id }}" name="reviewer_note" maxlength="500" aria-describedby="reopen-note-error-{{ assignment.id }}" placeholder="Reason for reopening this approved result sheet"><small class="tra-reason-error" id="reopen-note-error-{{ assignment.id }}" role="alert" hidden>Fadlan qor sababta dib loogu furayo ka hor intaadan kaydin.</small><button name="action" value="reopen" class="reopen"><i class="fa-solid fa-rotate-left"></i> Reopen for correction</button></form>
           {% endif %}
-          <div class="tra-assignment-actions"><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><button name="action" value="toggle" class="quiet"><i class="fa-solid fa-{{ 'pause' if assignment.is_active else 'play' }}"></i> {{ 'Pause assignment' if assignment.is_active else 'Activate assignment' }}</button></form></div>
+          <div class="tra-assignment-actions">
+            {% if assignment.deleted_at %}
+              <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><button name="action" value="restore" class="tra-restore-assignment"><i class="fa-solid fa-trash-arrow-up"></i> Dib u soo celi</button></form>
+            {% else %}
+              {% if scope.editable %}<button type="button" class="tra-edit-trigger" data-assignment-id="{{ assignment.id }}" data-teacher-id="{{ assignment.teacher_id }}" data-year-id="{{ assignment.academic_year_id }}" data-level-id="{{ scope.academic_year_level_id }}" data-class-id="{{ scope.academic_year_class_id }}" data-subject-id="{{ scope.academic_year_subject_id }}" data-exam-id="{{ assignment.exam_id }}" data-deadline="{{ deadline_labels[assignment.id].strftime('%Y-%m-%dT%H:%M') if assignment.deadline_at else '' }}" data-max-submissions="{{ assignment.max_submissions }}" data-has-submission="{{ 'true' if submission else 'false' }}"><i class="fa-solid fa-pen-to-square"></i> Edit assignment</button>{% endif %}
+              <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><button name="action" value="toggle" class="quiet"><i class="fa-solid fa-{{ 'pause' if assignment.is_active else 'play' }}"></i> {{ 'Pause assignment' if assignment.is_active else 'Activate assignment' }}</button></form>
+              <button type="button" class="tra-delete-trigger" data-assignment-id="{{ assignment.id }}" data-assignment-label="{{ scope.level_name }} · {{ scope.class_name }} · {{ scope.subject_name }} · {{ assignment.teacher.full_name }}"><i class="fa-solid fa-trash-can"></i> Tirtir</button>
+            {% endif %}
+          </div>
         </article>
       {% else %}<div class="tra-empty"><span class="tra-empty-icon"><i class="fa-solid fa-inbox"></i></span><strong>{{ 'No assignments match these filters' if summary.total else 'No assignments yet' }}</strong><span>{% if summary.total %}Clear the filters to see the saved assignments.{% else %}Create an assignment above using the school's real teacher, year, exam, class and subject records.{% endif %}</span></div>{% endfor %}
     </div>
   </section>
 </main>
+<dialog class="tra-delete-dialog" id="tra-delete-dialog" aria-labelledby="tra-delete-title">
+  <form method="post" id="tra-delete-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="delete">
+    <input type="hidden" name="assignment_id" value="">
+    <span class="tra-delete-icon"><i class="fa-solid fa-box-archive"></i></span>
+    <h2 id="tra-delete-title">Xilsaarista ka saar shaqada firfircoon?</h2>
+    <p>Lagama tirtirayo database-ka: xaashida, dhibcaha iyo history-ga waa la ilaalinayaa. Macallinku mar dambe kama geli doono ilaa dib loo soo celiyo.</p>
+    <strong id="tra-delete-scope"></strong>
+    <label>Sababta (ikhtiyaari)<textarea name="deletion_note" maxlength="500" rows="3" placeholder="Qor sababta xilsaarista loo rarayo diiwaanka tirtiridda"></textarea></label>
+    <div class="tra-delete-actions"><button type="button" class="tra-delete-cancel">Ka laabo</button><button type="submit" class="tra-delete-confirm"><i class="fa-solid fa-trash-can"></i> U rar diiwaanka</button></div>
+  </form>
+</dialog>
 <script>
 (() => {
-  const teacher = document.getElementById('tra-setup-teacher');
-  const year = document.getElementById('tra-setup-year');
-  const level = document.getElementById('tra-setup-level');
-  const schoolClass = document.getElementById('tra-setup-class');
-  const subject = document.getElementById('tra-setup-subject');
-  const exam = document.getElementById('tra-setup-exam');
-  if (!teacher || !year || !level || !schoolClass || !subject || !exam) return;
+  const reasonMessage = 'Fadlan qor sababta dib loogu furayo ka hor intaadan kaydin.';
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('.tra-reason-form button[name="action"]');
+    if (button) button.form.dataset.lastAction = button.value;
+  });
+  document.addEventListener('submit', (event) => {
+    const form = event.target.closest('.tra-reason-form');
+    if (!form) return;
+    const action = event.submitter?.value || form.dataset.lastAction;
+    if (!form.classList.contains('tra-reopen-approved') && action !== 'reopen') return;
+
+    const note = form.querySelector('[name="reviewer_note"]');
+    const error = form.querySelector('.tra-reason-error');
+    if (note.value.trim()) {
+      note.removeAttribute('aria-invalid');
+      error.hidden = true;
+      return;
+    }
+    event.preventDefault();
+    note.setAttribute('aria-invalid', 'true');
+    error.textContent = reasonMessage;
+    error.hidden = false;
+    note.focus();
+  });
+  document.addEventListener('input', (event) => {
+    if (!event.target.matches('.tra-reason-form [name="reviewer_note"]')) return;
+    const note = event.target;
+    if (!note.value.trim()) return;
+    note.removeAttribute('aria-invalid');
+    const error = note.form.querySelector('.tra-reason-error');
+    if (error) error.hidden = true;
+  });
+
+  const deleteDialog = document.getElementById('tra-delete-dialog');
+  if (deleteDialog) {
+    const deleteForm = document.getElementById('tra-delete-form');
+    const deleteScope = document.getElementById('tra-delete-scope');
+    document.addEventListener('click', (event) => {
+      const trigger = event.target.closest('.tra-delete-trigger');
+      if (trigger) {
+        deleteForm.elements.assignment_id.value = trigger.dataset.assignmentId;
+        deleteScope.textContent = trigger.dataset.assignmentLabel;
+        deleteDialog.showModal();
+      }
+      if (event.target.closest('.tra-delete-cancel')) deleteDialog.close();
+    });
+    deleteDialog.addEventListener('click', (event) => {
+      if (event.target === deleteDialog) deleteDialog.close();
+    });
+  }
+
+  const form = document.getElementById('tra-assignment-form');
+  const scopeList = document.getElementById('tra-scope-list');
+  const scopeTemplate = document.getElementById('tra-scope-template');
+  const addScope = document.getElementById('tra-add-scope');
+  const cancelEdit = document.getElementById('tra-cancel-edit');
+  const formTitle = document.getElementById('tra-form-title');
+  const formDescription = document.getElementById('tra-form-description');
+  const saveAssignment = document.getElementById('tra-save-assignment');
+  if (!form || !scopeList || !scopeTemplate || !addScope) return;
 
   const filterOptions = (select, predicate, selectFirst = false) => {
     const visible = [];
@@ -121,7 +217,12 @@
     }
   };
 
-  const refresh = () => {
+  const refresh = (row) => {
+    const year = row.querySelector('[data-year]');
+    const level = row.querySelector('[data-level]');
+    const schoolClass = row.querySelector('[data-class]');
+    const subject = row.querySelector('[data-subject]');
+    const exam = row.querySelector('[data-exam]');
     const yearId = year.value;
     filterOptions(level, option => option.dataset.yearId === yearId, true);
     const levelId = level.value;
@@ -141,8 +242,91 @@
       (!option.dataset.classId || option.dataset.classId === classId));
   };
 
-  [teacher, year, level, schoolClass].forEach(select => select.addEventListener('change', refresh));
-  refresh();
+  const updateRows = () => {
+    const rows = [...scopeList.querySelectorAll('[data-scope-row]')];
+    rows.forEach((row, index) => {
+      row.querySelector('[data-scope-number]').textContent = String(index + 1);
+      row.querySelector('[data-remove-scope]').disabled = rows.length === 1;
+      refresh(row);
+    });
+    addScope.disabled = rows.length >= 30;
+  };
+
+  const setEditMode = (enabled) => {
+    const action = form.querySelector('[name="action"]');
+    const assignmentId = form.querySelector('[name="assignment_id"]');
+    action.value = enabled ? 'update' : 'create';
+    if (!enabled) assignmentId.value = '';
+    formTitle.textContent = enabled ? 'Edit result assignment' : 'Assign a result sheet';
+    formDescription.textContent = enabled
+      ? 'Update the selected assignment. Existing submissions keep their current teacher and scope.'
+      : 'Assignments use the active academic-year, level, class, subject and exam records.';
+    addScope.hidden = enabled;
+    cancelEdit.hidden = !enabled;
+    saveAssignment.innerHTML = enabled
+      ? '<i class="fa-solid fa-floppy-disk"></i> Save changes'
+      : '<i class="fa-solid fa-floppy-disk"></i> Save assignments';
+  };
+
+  document.addEventListener('click', (event) => {
+    const edit = event.target.closest('.tra-edit-trigger');
+    if (edit) {
+      const rows = [...scopeList.querySelectorAll('[data-scope-row]')];
+      rows.slice(1).forEach(row => row.remove());
+      const row = scopeList.querySelector('[data-scope-row]');
+      const values = {
+        year: edit.dataset.yearId,
+        level: edit.dataset.levelId,
+        schoolClass: edit.dataset.classId,
+        subject: edit.dataset.subjectId,
+        exam: edit.dataset.examId,
+      };
+
+      form.querySelector('[name="assignment_id"]').value = edit.dataset.assignmentId;
+      form.querySelector('[name="teacher_id"]').value = edit.dataset.teacherId;
+      row.querySelector('[data-year]').value = values.year;
+      refresh(row);
+      row.querySelector('[data-level]').value = values.level;
+      refresh(row);
+      row.querySelector('[data-class]').value = values.schoolClass;
+      refresh(row);
+      row.querySelector('[data-subject]').value = values.subject;
+      row.querySelector('[data-exam]').value = values.exam;
+      row.querySelector('[name="deadline_at"]').value = edit.dataset.deadline;
+      row.querySelector('[name="max_submissions"]').value = edit.dataset.maxSubmissions;
+      setEditMode(true);
+      formDescription.textContent = edit.dataset.hasSubmission === 'true'
+        ? 'A submission exists. You can change the deadline and allowed submissions; the teacher and assignment scope remain protected.'
+        : 'Update the teacher, scope, deadline or allowed submissions for this assignment.';
+      updateRows();
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      form.querySelector('[name="teacher_id"]').focus({ preventScroll: true });
+    }
+
+    if (event.target.closest('#tra-cancel-edit')) {
+      form.reset();
+      setEditMode(false);
+      updateRows();
+    }
+  });
+
+  scopeList.addEventListener('change', (event) => {
+    if (event.target.matches('select')) refresh(event.target.closest('[data-scope-row]'));
+  });
+  scopeList.addEventListener('click', (event) => {
+    const remove = event.target.closest('[data-remove-scope]');
+    if (remove && scopeList.querySelectorAll('[data-scope-row]').length > 1) {
+      remove.closest('[data-scope-row]').remove();
+      updateRows();
+    }
+  });
+  addScope.addEventListener('click', () => {
+    if (scopeList.querySelectorAll('[data-scope-row]').length >= 30) return;
+    scopeList.append(scopeTemplate.content.firstElementChild.cloneNode(true));
+    updateRows();
+    scopeList.lastElementChild.querySelector('[data-year]').focus();
+  });
+  updateRows();
 })();
 </script>
 {% endblock %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block body_class %}teacher-body {{ 'theme-dark' if teacher_theme == 'dark' else 'theme-light' }}{% endblock %}
+{% block body_class %}teacher-body {{ 'teacher-results-body' if active_endpoint == 'teacher_portal.result_entry' else '' }} {{ 'theme-dark' if active_endpoint != 'teacher_portal.result_entry' and teacher_theme == 'dark' else 'theme-light' }}{% endblock %}
 {% block title %}{% block teacher_title %}{{ page_title }}{% endblock %} | SULTAAN EMS{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-dashboard.css') }}">
@@ -39,8 +39,8 @@
     </span>
   </div>
 </header>
-<main class="teacher-main">
-  <header class="teacher-top glass-card{% if active_endpoint == 'teacher_portal.result_entry' %} teacher-top-results{% endif %}">
+<main class="teacher-main{% if active_endpoint == 'teacher_portal.result_entry' %} teacher-main-results{% endif %}">
+  {% if active_endpoint != 'teacher_portal.result_entry' %}<header class="teacher-top glass-card">
     <div class="teacher-top-main">
       {% if active_endpoint == 'teacher_portal.result_entry' %}
         <span class="teacher-top-mark" aria-hidden="true"><i class="fa-solid fa-pen-to-square"></i></span>
@@ -59,7 +59,7 @@
         <button type="submit" class="icon-btn" title="Ka bax" aria-label="Ka bax"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i></button>
       </form>
     </div>
-  </header>
+  </header>{% endif %}
   {% block teacher_filters %}{% include "teacher/_filters.html" %}{% endblock %}
   {% block teacher_content %}{% endblock %}
 </main>

@@ -2246,6 +2246,8 @@ class TeacherResultAssignment(TimestampMixin, db.Model):
     deadline_at = db.Column(db.DateTime, nullable=True, index=True)
     max_submissions = db.Column(db.Integer, nullable=False, default=1)
     is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
+    deleted_previous_is_active = db.Column(db.Boolean, nullable=True)
 
     teacher = db.relationship("Teacher")
     academic_year = db.relationship("AcademicYear")
@@ -2296,6 +2298,9 @@ class TeacherResultMark(TimestampMixin, db.Model):
     score = db.Column(db.Numeric(8, 3), nullable=True)
     comment = db.Column(db.String(255), nullable=True)
     status = db.Column(db.String(16), nullable=False, default="draft")
+    last_action = db.Column(db.String(16), nullable=True)
+    last_action_at = db.Column(db.DateTime, nullable=True)
+    last_action_by_id = db.Column(db.Integer, nullable=True)
 
     submission = db.relationship("TeacherResultSubmission", back_populates="marks")
     student = db.relationship("Student")
@@ -2305,6 +2310,37 @@ class TeacherResultMark(TimestampMixin, db.Model):
         db.CheckConstraint("score IS NULL OR score >= 0", name="ck_teacher_result_mark_nonnegative"),
         db.CheckConstraint("status IN ('draft', 'submitted', 'approved')", name="ck_teacher_result_mark_status"),
     )
+
+
+class TeacherResultEvent(db.Model):
+    """Append-only audit event for teacher result-entry and review workflows."""
+
+    __tablename__ = "teacher_result_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey("teacher_result_assignments.id", ondelete="SET NULL"), nullable=True, index=True)
+    submission_id = db.Column(db.Integer, db.ForeignKey("teacher_result_submissions.id", ondelete="SET NULL"), nullable=True, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True, index=True)
+    actor_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    event_type = db.Column(db.String(40), nullable=False, index=True)
+    status_from = db.Column(db.String(20))
+    status_to = db.Column(db.String(20))
+    marks_count = db.Column(db.Integer, nullable=False, default=0)
+    note = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    teacher_name = db.Column(db.String(150), nullable=False)
+    teacher_code = db.Column(db.String(40))
+    actor_name = db.Column(db.String(150))
+    academic_year_name = db.Column(db.String(40), nullable=False)
+    exam_name = db.Column(db.String(150), nullable=False)
+    level_name = db.Column(db.String(100))
+    class_name = db.Column(db.String(100), nullable=False)
+    subject_name = db.Column(db.String(150), nullable=False)
+
+    assignment = db.relationship("TeacherResultAssignment")
+    submission = db.relationship("TeacherResultSubmission")
+    teacher = db.relationship("Teacher")
+    actor = db.relationship("User")
 
 
 class StudentClub(TimestampMixin, db.Model):

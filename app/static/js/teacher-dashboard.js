@@ -85,6 +85,36 @@
     const body = document.body;
     if (!toggle || !body) return;
 
+    if (body.classList.contains("teacher-results-body")) {
+      let storedTheme = "light";
+      try {
+        storedTheme = localStorage.getItem("teacher-result-entry-theme") === "dark" ? "dark" : "light";
+      } catch (error) {
+        storedTheme = "light";
+      }
+      const applyTheme = (theme) => {
+        const isDark = theme === "dark";
+        body.classList.toggle("theme-dark", isDark);
+        body.classList.toggle("theme-light", !isDark);
+        document.documentElement.dataset.theme = isDark ? "dark" : "light";
+        toggle.innerHTML = isDark
+          ? '<i class="fa-solid fa-sun" aria-hidden="true"></i>'
+          : '<i class="fa-regular fa-moon" aria-hidden="true"></i>';
+        toggle.setAttribute("aria-label", isDark ? "U beddel muuqaalka iftiinka" : "U beddel muuqaalka madow");
+      };
+      applyTheme(storedTheme);
+      toggle.addEventListener("click", () => {
+        const nextTheme = body.classList.contains("theme-dark") ? "light" : "dark";
+        applyTheme(nextTheme);
+        try {
+          localStorage.setItem("teacher-result-entry-theme", nextTheme);
+        } catch (error) {
+          // Keep the selected theme for this page even if storage is unavailable.
+        }
+      });
+      return;
+    }
+
     toggle.addEventListener("click", () => {
       const isDark = body.classList.contains("theme-dark");
       body.classList.toggle("theme-dark", !isDark);

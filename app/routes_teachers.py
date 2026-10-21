@@ -1,16 +1,18 @@
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
+from io import BytesIO
 from tempfile import NamedTemporaryFile
 from zoneinfo import ZoneInfo
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from openpyxl import Workbook
+from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
 
 from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
-from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, ClubTeam, ClubTeamLeaderAssignment, ClubTeamMembership, Exam, Result, Setting, Student, StudentClub, StudentEnrollment, Subject, Teacher, TeacherActivity, TeacherResultAssignment, TeacherResultMark, TeacherResultSubmission, User
+from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, ClubTeam, ClubTeamLeaderAssignment, ClubTeamMembership, Exam, Result, Setting, Student, StudentClub, StudentEnrollment, Subject, Teacher, TeacherActivity, TeacherResultAssignment, TeacherResultEvent, TeacherResultMark, TeacherResultSubmission, User
 from .permissions import enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, allowed_file
 from .teacher_services import (
@@ -31,8 +33,110 @@ from .teacher_services import (
 )
 from .routes_advanced_results import students_for_scope_query, _year_scope_ids_from_legacy
 from .services import resolve_subject_max_score
+from .teacher_result_history import record_teacher_result_event
 
 teachers_bp = Blueprint("admin_teachers", __name__)
+
+
+def _safe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+RESULT_EVENT_LABELS = {
+    "assignment_created": "Xilsaaris la sameeyey",
+    "assignment_updated": "Xilsaaris la cusboonaysiiyey",
+    "assignment_paused": "Xilsaaris la hakiyey",
+    "assignment_activated": "Xilsaaris dib loo hawlgeliyey",
+    "assignment_deleted": "Xilsaaris kayd ahaan loo tirtiray",
+    "assignment_restored": "Xilsaaris dib loo soo celiyey",
+    "draft_saved": "Qabyo la kaydiyey",
+    "submitted": "Natiijo loo gudbiyey maamulka",
+    "resubmitted": "Natiijo dib loo gudbiyey",
+    "approved": "La ansixiyey oo la daabacay",
+    "partially_approved": "Qayb ahaan la ansixiyey",
+    "returned_for_correction": "Sixitaan loo celiyey",
+    "baseline": "Xaaladdii hore ee la diiwaangeliyey",
+}
+RESULT_STATUS_LABELS = {
+    "draft": "Qabyo",
+    "submitted": "Sugaysa dib-u-eegis",
+    "approved": "La ansixiyey",
+    "reopened": "Sixitaan loo furay",
+    "active": "Firfircoon",
+    "paused": "La hakiyey",
+    "deleted": "La tirtiray (kayd ah)",
+}
+RESULT_EVENT_ICONS = {
+    "assignment_created": "fa-circle-plus",
+    "assignment_updated": "fa-sliders",
+    "assignment_paused": "fa-pause",
+    "assignment_activated": "fa-play",
+    "assignment_deleted": "fa-trash-can",
+    "assignment_restored": "fa-trash-arrow-up",
+    "draft_saved": "fa-floppy-disk",
+    "submitted": "fa-paper-plane",
+    "resubmitted": "fa-rotate",
+    "approved": "fa-circle-check",
+    "partially_approved": "fa-circle-half-stroke",
+    "returned_for_correction": "fa-rotate-left",
+    "baseline": "fa-clock-rotate-left",
+}
+
+
+def _teacher_result_history_query():
+    filters = {
+        "q": request.args.get("q", "").strip()[:120],
+        "teacher": request.args.get("teacher", "").strip()[:150],
+        "year": request.args.get("year", "").strip()[:40],
+        "exam": request.args.get("exam", "").strip()[:150],
+        "event_type": request.args.get("event_type", "").strip(),
+        "from_date": request.args.get("from_date", "").strip(),
+        "to_date": request.args.get("to_date", "").strip(),
+    }
+    if filters["event_type"] not in RESULT_EVENT_LABELS:
+        filters["event_type"] = ""
+
+    query = TeacherResultEvent.query
+    if filters["teacher"]:
+        query = query.filter(TeacherResultEvent.teacher_name == filters["teacher"])
+    if filters["year"]:
+        query = query.filter(TeacherResultEvent.academic_year_name == filters["year"])
+    if filters["exam"]:
+        query = query.filter(TeacherResultEvent.exam_name == filters["exam"])
+    if filters["event_type"]:
+        query = query.filter(TeacherResultEvent.event_type == filters["event_type"])
+    if filters["q"]:
+        pattern = f"%{filters['q']}%"
+        query = query.filter(or_(
+            TeacherResultEvent.teacher_name.ilike(pattern),
+            TeacherResultEvent.teacher_code.ilike(pattern),
+            TeacherResultEvent.actor_name.ilike(pattern),
+            TeacherResultEvent.exam_name.ilike(pattern),
+            TeacherResultEvent.class_name.ilike(pattern),
+            TeacherResultEvent.subject_name.ilike(pattern),
+            TeacherResultEvent.note.ilike(pattern),
+        ))
+
+    date_error = None
+    timezone = ZoneInfo("Africa/Mogadishu")
+    for key, is_end in (("from_date", False), ("to_date", True)):
+        raw_value = filters[key]
+        if not raw_value:
+            continue
+        try:
+            parsed = date.fromisoformat(raw_value)
+        except ValueError:
+            date_error = "Taariikhda shaandhaynta sax ma aha."
+            continue
+        boundary_date = parsed + timedelta(days=1) if is_end else parsed
+        boundary = datetime.combine(boundary_date, time.min, tzinfo=timezone).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+        query = query.filter(
+            TeacherResultEvent.created_at < boundary if is_end else TeacherResultEvent.created_at >= boundary
+        )
+    return query, filters, date_error
 
 
 def _teacher_profile_scopes(teacher):
@@ -238,84 +342,251 @@ def result_entry_setup():
     """Assign exam/class/subject scopes, set deadlines, and review submissions."""
     if request.method == "POST":
         action = request.form.get("action")
-        if action == "create":
-            teacher = db.session.get(Teacher, request.form.get("teacher_id", type=int))
-            year = db.session.get(AcademicYear, request.form.get("academic_year_id", type=int))
-            exam = db.session.get(Exam, request.form.get("exam_id", type=int))
-            year_level = db.session.get(AcademicYearLevel, request.form.get("academic_year_level_id", type=int))
-            year_class = db.session.get(AcademicYearClass, request.form.get("academic_year_class_id", type=int))
-            year_subject = db.session.get(AcademicYearSubject, request.form.get("academic_year_subject_id", type=int))
-            school_class = year_class.legacy_class if year_class else None
-            subject = year_subject.legacy_subject if year_subject else None
-            deadline_raw = (request.form.get("deadline_at") or "").strip()
-            try:
-                deadline = (
-                    datetime.fromisoformat(deadline_raw)
-                    .replace(tzinfo=ZoneInfo("Africa/Mogadishu"))
-                    .astimezone(ZoneInfo("UTC"))
-                    .replace(tzinfo=None)
-                    if deadline_raw else None
+        if action in {"create", "update"}:
+            edit_assignment = None
+            if action == "update":
+                edit_assignment = db.session.get(
+                    TeacherResultAssignment, request.form.get("assignment_id", type=int)
                 )
-                max_submissions = max(1, min(10, int(request.form.get("max_submissions", "1"))))
-            except (TypeError, ValueError):
-                flash("Fadlan hubi deadline-ka iyo tirada gudbinta.", "danger")
+                if not edit_assignment:
+                    abort(404)
+                if edit_assignment.deleted_at:
+                    flash("Xilsaaristan waa la tirtiray. Marka hore dib uga soo celi diiwaanka tirtiridda.", "warning")
+                    return redirect(url_for("admin_teachers.result_entry_setup", status="deleted"))
+
+            teacher = db.session.get(Teacher, request.form.get("teacher_id", type=int))
+            row_fields = (
+                "academic_year_id", "exam_id", "academic_year_level_id",
+                "academic_year_class_id", "academic_year_subject_id",
+            )
+            row_values = {field: request.form.getlist(field) for field in row_fields}
+            row_count = max((len(values) for values in row_values.values()), default=0)
+            deadline_values = request.form.getlist("deadline_at") or [""] * row_count
+            max_values = request.form.getlist("max_submissions") or ["1"] * row_count
+            if not teacher or not teacher.is_active or teacher.employment_status != "Active":
+                flash("Dooro macallin firfircoon oo sax ah.", "danger")
+                return redirect(url_for("admin_teachers.result_entry_setup"))
+            if (
+                not 1 <= row_count <= 30
+                or (action == "update" and row_count != 1)
+                or any(len(values) != row_count for values in row_values.values())
+            ):
+                flash("Ku dar ugu yaraan hal scope oo dhammeystiran; ugu badnaan 30 ayaa hal mar la kaydin karaa.", "danger")
+                return redirect(url_for("admin_teachers.result_entry_setup"))
+            if len(deadline_values) != row_count or len(max_values) != row_count:
+                flash("Hubi in deadline-ka iyo tirada gudbintu scope kasta la socdaan.", "danger")
                 return redirect(url_for("admin_teachers.result_entry_setup"))
 
-            year_scope_matches = bool(
-                year and year_level and year_level.is_active
-                and year_level.academic_year_id == year.id
-                and year_level.legacy_level and year_level.legacy_level.is_active
-                and year_class and year_class.is_active
-                and year_class.academic_year_level_id == year_level.id
-                and school_class and school_class.is_active
-                and school_class.academic_level_id == year_level.legacy_level_id
-            )
-            subject_is_offered = bool(
-                year_scope_matches and year_subject and year_subject.is_active
-                and year_subject.subject_kind == "exam"
-                and year_subject.academic_year_id == year.id
-                and year_subject.academic_year_level_id == year_level.id
-                and subject and subject.is_active
-                and (subject.academic_level_id is None or subject.academic_level_id == year_level.legacy_level_id)
-            )
-            exam_matches = bool(
-                exam and exam.is_active and year_scope_matches
-                and exam.academic_year_id == year.id
-                and (exam.academic_level_id is None or exam.academic_level_id == year_level.legacy_level_id)
-                and (exam.academic_class_id is None or exam.academic_class_id == school_class.id)
-            )
-            teacher_is_active = bool(teacher and teacher.is_active and teacher.employment_status == "Active")
-            if not all((teacher_is_active, year_class, subject_is_offered, exam_matches)):
-                flash("Xilsaaristan isma waafaqsana teacher-ka, sanadkan, imtixaanka, fasalka ama maaddada.", "danger")
+            prepared = []
+            seen_scopes = set()
+            for index in range(row_count):
+                year = db.session.get(AcademicYear, _safe_int(row_values["academic_year_id"][index]))
+                exam = db.session.get(Exam, _safe_int(row_values["exam_id"][index]))
+                year_level = db.session.get(AcademicYearLevel, _safe_int(row_values["academic_year_level_id"][index]))
+                year_class = db.session.get(AcademicYearClass, _safe_int(row_values["academic_year_class_id"][index]))
+                year_subject = db.session.get(AcademicYearSubject, _safe_int(row_values["academic_year_subject_id"][index]))
+                school_class = year_class.legacy_class if year_class else None
+                subject = year_subject.legacy_subject if year_subject else None
+                deadline_raw = (deadline_values[index] or "").strip()
+                try:
+                    deadline = (
+                        datetime.fromisoformat(deadline_raw)
+                        .replace(tzinfo=ZoneInfo("Africa/Mogadishu"))
+                        .astimezone(ZoneInfo("UTC"))
+                        .replace(tzinfo=None)
+                        if deadline_raw else None
+                    )
+                    max_submissions = max(1, min(10, int(max_values[index] or "1")))
+                except (TypeError, ValueError):
+                    flash("Fadlan hubi deadline-ka iyo tirada gudbinta scope kasta.", "danger")
+                    return redirect(url_for("admin_teachers.result_entry_setup"))
+
+                year_scope_matches = bool(
+                    year and year_level and year_level.is_active
+                    and year_level.academic_year_id == year.id
+                    and year_level.legacy_level and year_level.legacy_level.is_active
+                    and year_class and year_class.is_active
+                    and year_class.academic_year_level_id == year_level.id
+                    and school_class and school_class.is_active
+                    and school_class.academic_level_id == year_level.legacy_level_id
+                )
+                subject_is_offered = bool(
+                    year_scope_matches and year_subject and year_subject.is_active
+                    and year_subject.subject_kind == "exam"
+                    and year_subject.academic_year_id == year.id
+                    and year_subject.academic_year_level_id == year_level.id
+                    and subject and subject.is_active
+                    and (subject.academic_level_id is None or subject.academic_level_id == year_level.legacy_level_id)
+                )
+                exam_matches = bool(
+                    exam and exam.is_active and year_scope_matches
+                    and exam.academic_year_id == year.id
+                    and (exam.academic_level_id is None or exam.academic_level_id == year_level.legacy_level_id)
+                    and (exam.academic_class_id is None or exam.academic_class_id == school_class.id)
+                )
+                if not all((year_scope_matches, subject_is_offered, exam_matches)):
+                    flash("Scope kasta waa inuu si sax ah isugu waafaqaa sannadka, heerka, fasalka, maaddada iyo imtixaanka.", "danger")
+                    return redirect(url_for("admin_teachers.result_entry_setup"))
+
+                scope_key = (year.id, exam.id, school_class.id, subject.id)
+                if scope_key in seen_scopes:
+                    flash("Scope isku mid ah laba jeer ayaa lagu daray. Ka saar nuqulka ka hor kaydinta.", "warning")
+                    return redirect(url_for("admin_teachers.result_entry_setup"))
+                seen_scopes.add(scope_key)
+                prepared.append((year, exam, school_class, subject, deadline, max_submissions))
+
+            if action == "update":
+                year, exam, school_class, subject, deadline, max_submissions = prepared[0]
+                old_scope = (
+                    edit_assignment.teacher_id,
+                    edit_assignment.academic_year_id,
+                    edit_assignment.exam_id,
+                    edit_assignment.class_id,
+                    edit_assignment.subject_id,
+                )
+                new_scope = (teacher.id, year.id, exam.id, school_class.id, subject.id)
+                scope_changed = old_scope != new_scope
+                submission = edit_assignment.submissions[0] if edit_assignment.submissions else None
+
+                duplicate = TeacherResultAssignment.query.filter_by(
+                    teacher_id=teacher.id,
+                    academic_year_id=year.id,
+                    exam_id=exam.id,
+                    class_id=school_class.id,
+                    subject_id=subject.id,
+                ).filter(TeacherResultAssignment.id != edit_assignment.id).first()
+                if duplicate:
+                    if duplicate.deleted_at:
+                        flash("Scope-kan hore ayaa ugu jiray diiwaanka tirtiridda. Ka soo celi xilsaaristaas ka hor intaadan sii wadin.", "warning")
+                        return redirect(url_for("admin_teachers.result_entry_setup", status="deleted"))
+                    flash("Macallinkan scope-kan hore ayaa loogu xilsaaray. Dooro scope kale ama tafatir xilsaaristii jirtay.", "warning")
+                    return redirect(url_for("admin_teachers.result_entry_setup"))
+
+                if scope_changed and submission:
+                    flash("Xaashida natiijadu way jirtaa; macallinka, sannadka, imtixaanka, fasalka iyo maaddada lama beddeli karo si dhibcaha iyo history-gu u sii ahaadaan kuwo sax ku xidhan. Deadline-ka iyo tirada gudbinta waad beddeli kartaa.", "warning")
+                    return redirect(url_for("admin_teachers.result_entry_setup"))
+
+                previous_state = "active" if edit_assignment.is_active else "paused"
+                edit_assignment.teacher = teacher
+                edit_assignment.academic_year = year
+                edit_assignment.exam = exam
+                edit_assignment.school_class = school_class
+                edit_assignment.subject = subject
+                edit_assignment.deadline_at = deadline
+                edit_assignment.max_submissions = max(
+                    max_submissions, submission.submission_count if submission else 1
+                )
+                record_teacher_result_event(
+                    edit_assignment,
+                    "assignment_updated",
+                    submission=submission,
+                    status_from=previous_state,
+                    status_to=previous_state,
+                    note="Admin-ku wuxuu tafatiray scope-ka iyo xeerarka xilsaarista.",
+                )
+                audit(
+                    "Teacher Result Assignment Updated",
+                    f"Updated {teacher.full_name}: {exam.name} / {school_class.name} / {subject.name}",
+                )
+                db.session.commit()
+                flash("Xilsaarista waa la tafatiray, xogta xaashida natiijadana waa la ilaaliyey.", "success")
                 return redirect(url_for("admin_teachers.result_entry_setup"))
-            duplicate = TeacherResultAssignment.query.filter_by(
-                teacher_id=teacher.id, academic_year_id=year.id, exam_id=exam.id,
-                class_id=school_class.id, subject_id=subject.id,
-            ).first()
-            if duplicate:
-                duplicate.deadline_at = deadline
-                duplicate.max_submissions = max_submissions
-                duplicate.is_active = True
-                flash("Xilsaaristii hore ayaa la cusboonaysiiyey.", "success")
-            else:
-                db.session.add(TeacherResultAssignment(
-                    teacher=teacher, academic_year=year, exam=exam,
-                    school_class=school_class, subject=subject,
-                    deadline_at=deadline, max_submissions=max_submissions,
-                ))
-                flash("Xilsaarista Result Entry waa la sameeyey.", "success")
-            audit("Teacher Result Assignment", f"Configured {teacher.full_name} / {exam.name} / {school_class.name} / {subject.name}")
+
+            created_count = 0
+            updated_count = 0
+            audit_scopes = []
+            for year, exam, school_class, subject, deadline, max_submissions in prepared:
+                duplicate = TeacherResultAssignment.query.filter_by(
+                    teacher_id=teacher.id, academic_year_id=year.id, exam_id=exam.id,
+                    class_id=school_class.id, subject_id=subject.id,
+                ).first()
+                if duplicate and duplicate.deleted_at:
+                    flash("Xilsaaristan hore ayaa loo tirtiray. Ka soo celi liiska 'La tirtiray' ka hor intaadan dib u qoondayn.", "warning")
+                    return redirect(url_for("admin_teachers.result_entry_setup", status="deleted"))
+                if duplicate:
+                    previous_state = "active" if duplicate.is_active else "paused"
+                    duplicate.deadline_at = deadline
+                    duplicate.max_submissions = max(max_submissions, duplicate.submissions[0].submission_count if duplicate.submissions else 1)
+                    duplicate.is_active = True
+                    updated_count += 1
+                    record_teacher_result_event(
+                        duplicate, "assignment_updated", status_from=previous_state,
+                        status_to="active", note="Scope-ka iyo xeerarkiisa waa la cusboonaysiiyey.",
+                    )
+                else:
+                    assignment = TeacherResultAssignment(
+                        teacher=teacher, academic_year=year, exam=exam,
+                        school_class=school_class, subject=subject,
+                        deadline_at=deadline, max_submissions=max_submissions,
+                    )
+                    db.session.add(assignment)
+                    created_count += 1
+                    record_teacher_result_event(
+                        assignment, "assignment_created", status_to="active",
+                        note="Xilsaarista gelinta natiijada waa la sameeyey.",
+                    )
+                audit_scopes.append(f"{exam.name} / {school_class.name} / {subject.name}")
+            audit("Teacher Result Assignment", f"Configured {teacher.full_name}: {', '.join(audit_scopes)}")
             db.session.commit()
+            flash(f"{created_count} xilsaaris cusub iyo {updated_count} xilsaaris oo la cusboonaysiiyey ayaa la kaydiyey.", "success")
             return redirect(url_for("admin_teachers.result_entry_setup"))
 
         assignment = db.session.get(TeacherResultAssignment, request.form.get("assignment_id", type=int))
         submission = TeacherResultSubmission.query.filter_by(assignment_id=assignment.id).first() if assignment else None
-        if not assignment or not submission:
+        if not assignment:
             abort(404)
+        if action == "delete":
+            if assignment.deleted_at:
+                flash("Xilsaaristan hore ayaa loo tirtiray.", "warning")
+                return redirect(url_for("admin_teachers.result_entry_setup", status="deleted"))
+            previous_state = "active" if assignment.is_active else "paused"
+            assignment.deleted_previous_is_active = assignment.is_active
+            assignment.deleted_at = datetime.utcnow()
+            assignment.is_active = False
+            note = (request.form.get("deletion_note") or "").strip()[:500]
+            record_teacher_result_event(
+                assignment, "assignment_deleted", submission=submission,
+                status_from=previous_state, status_to="deleted",
+                note=note or "Xilsaarista waa laga saaray shaqada firfircoon; xaashida iyo dhibcaha waa la hayey.",
+            )
+            audit("Teacher Result Assignment Archived", f"Archived {assignment.teacher.full_name}: {assignment.exam.name} / {assignment.school_class.name} / {assignment.subject.name}")
+            db.session.commit()
+            flash("Xilsaarista waa laga saaray shaqada firfircoon; xaashida iyo dhibcihii hore waa la ilaaliyey. Tallaabada waxaa lagu daray history-ga.", "success")
+            return redirect(url_for("admin_teachers.result_entry_setup"))
+        if action == "restore":
+            if not assignment.deleted_at:
+                flash("Xilsaaristan kuma jirto diiwaanka tirtiridda.", "warning")
+                return redirect(url_for("admin_teachers.result_entry_setup"))
+            assignment.is_active = bool(assignment.deleted_previous_is_active)
+            restored_state = "active" if assignment.is_active else "paused"
+            assignment.deleted_at = None
+            assignment.deleted_previous_is_active = None
+            record_teacher_result_event(
+                assignment, "assignment_restored", submission=submission,
+                status_from="deleted", status_to=restored_state,
+                note="Xilsaarista iyo xogteedii waa dib loo soo celiyey.",
+            )
+            audit("Teacher Result Assignment Restored", f"Restored {assignment.teacher.full_name}: {assignment.exam.name} / {assignment.school_class.name} / {assignment.subject.name}")
+            db.session.commit()
+            flash("Xilsaarista iyo xaashideedii waa la soo celiyey.", "success")
+            return redirect(url_for("admin_teachers.result_entry_setup"))
+        if assignment.deleted_at:
+            flash("Xilsaaristan waa la tirtiray. Marka hore dib uga soo celi diiwaanka tirtiridda.", "warning")
+            return redirect(url_for("admin_teachers.result_entry_setup", status="deleted"))
         if action == "toggle":
+            previous_state = "active" if assignment.is_active else "paused"
             assignment.is_active = not assignment.is_active
+            next_state = "active" if assignment.is_active else "paused"
+            record_teacher_result_event(
+                assignment,
+                "assignment_activated" if assignment.is_active else "assignment_paused",
+                submission=submission,
+                status_from=previous_state,
+                status_to=next_state,
+                note="Xilsaarista gelinta natiijada waa la hawlgeliyey." if assignment.is_active else "Xilsaarista gelinta natiijada waa la hakiyey.",
+            )
         elif action == "reopen":
-            if submission.status not in {"submitted", "approved"}:
+            if not submission or submission.status not in {"submitted", "approved"}:
                 flash("Kaliya submission la gudbiyey ama la ansixiyey ayaa dib loo furi karaa.", "warning")
                 return redirect(url_for("admin_teachers.result_entry_setup"))
             reviewer_note = (request.form.get("reviewer_note") or "").strip()
@@ -323,14 +594,21 @@ def result_entry_setup():
                 flash("Qor sababta dib loogu furayo xaashida natiijada.", "warning")
                 return redirect(url_for("admin_teachers.result_entry_setup"))
             reopen_status = "submitted" if submission.status == "submitted" else "approved"
+            previous_status = submission.status
+            reopened_mark_count = sum(mark.status == reopen_status for mark in submission.marks)
             submission.status = "reopened"
             for mark in submission.marks:
                 if mark.status == reopen_status:
                     mark.status = "draft"
             assignment.max_submissions = max(assignment.max_submissions, submission.submission_count + 1)
             submission.reviewer_note = reviewer_note[:500]
+            record_teacher_result_event(
+                assignment, "returned_for_correction", submission=submission,
+                status_from=previous_status, status_to="reopened",
+                marks_count=reopened_mark_count, note=reviewer_note,
+            )
         elif action == "approve":
-            if submission.status != "submitted":
+            if not submission or submission.status != "submitted":
                 flash("Submission-ku waa inuu ku jiraa xaaladda dib-u-eegis.", "warning")
                 return redirect(url_for("admin_teachers.result_entry_setup"))
             pending_marks = [
@@ -402,6 +680,15 @@ def result_entry_setup():
             submission.reviewed_at = datetime.utcnow()
             submission.reviewed_by_id = current_user.id
             submission.reviewer_note = (request.form.get("reviewer_note") or "Approved and published.").strip()[:500]
+            record_teacher_result_event(
+                assignment,
+                "approved" if complete_roster else "partially_approved",
+                submission=submission,
+                status_from="submitted",
+                status_to=submission.status,
+                marks_count=len(pending_marks),
+                note=submission.reviewer_note,
+            )
             audit("Teacher Result Approval", f"Approved submission {submission.id} ({len(pending_marks)} submitted marks; {existing_result_count} existing scores replaced): {assignment.exam.name} / {assignment.school_class.name} / {assignment.subject.name}")
             if complete_roster:
                 flash("Dhammaan dhibcaha xaashidan waa la ansixiyey oo la daabacay.", "success")
@@ -414,7 +701,9 @@ def result_entry_setup():
             flash("Isbeddelka xilsaarista/submission-ka waa la kaydiyey.", "success")
         return redirect(url_for("admin_teachers.result_entry_setup"))
 
-    all_assignments = TeacherResultAssignment.query.order_by(TeacherResultAssignment.updated_at.desc()).all()
+    all_records = TeacherResultAssignment.query.order_by(TeacherResultAssignment.updated_at.desc()).all()
+    all_assignments = [item for item in all_records if not item.deleted_at]
+    deleted_assignments = [item for item in all_records if item.deleted_at]
     submission_by_assignment = {
         assignment.id: next(iter(assignment.submissions), None)
         for assignment in all_assignments
@@ -425,10 +714,11 @@ def result_entry_setup():
         "approved": sum(item is not None and item.status == "approved" for item in submission_by_assignment.values()),
         "draft": sum(item is not None and item.status in {"draft", "reopened"} for item in submission_by_assignment.values()),
         "paused": sum(not assignment.is_active for assignment in all_assignments),
+        "deleted": len(deleted_assignments),
     }
     status_filter = request.args.get("status", "all")
     teacher_filter = request.args.get("teacher_id", type=int)
-    assignments = all_assignments
+    assignments = deleted_assignments if status_filter == "deleted" else all_assignments
     if teacher_filter:
         assignments = [item for item in assignments if item.teacher_id == teacher_filter]
     if status_filter == "review":
@@ -529,6 +819,10 @@ def result_entry_setup():
     selected_year_level_id = request.args.get("setup_level_id", type=int)
     if selected_year_level_id not in {item.id for item in available_levels}:
         selected_year_level_id = available_levels[0].id if available_levels else None
+    available_year_ids = {item.id for item in years}
+    active_exam_ids = {item.id for item in exams}
+    active_class_ids = {item.id for item in year_classes}
+    active_subject_ids = {item.id for item in year_subjects}
     assignment_scope_details = {}
     for assignment in assignments:
         year_level, year_class = _year_scope_ids_from_legacy(
@@ -547,6 +841,18 @@ def result_entry_setup():
             "level_name": year_level.name if year_level else (assignment.school_class.academic_level.name if assignment.school_class.academic_level else ""),
             "class_name": year_class.name if year_class else assignment.school_class.name,
             "subject_name": year_subject.name if year_subject else assignment.subject.name,
+            "academic_year_level_id": year_level.id if year_level else None,
+            "academic_year_class_id": year_class.id if year_class else None,
+            "academic_year_subject_id": year_subject.id if year_subject else None,
+            "editable": bool(
+                assignment.teacher.is_active
+                and assignment.teacher.employment_status == "Active"
+                and assignment.academic_year_id in available_year_ids
+                and assignment.exam_id in active_exam_ids
+                and year_level and year_level.id in year_level_ids
+                and year_class and year_class.id in active_class_ids
+                and year_subject and year_subject.id in active_subject_ids
+            ),
         }
     return render_template(
         "admin/teachers/result_entry_setup.html",
@@ -560,6 +866,88 @@ def result_entry_setup():
         assignment_progress=assignment_progress,
         assignments_with_existing_results=assignments_with_existing_results,
         summary=summary, status_filter=status_filter, teacher_filter=teacher_filter,
+    )
+
+
+@teachers_bp.route("/result-entry/history")
+def result_entry_history():
+    query, filters, date_error = _teacher_result_history_query()
+    total = query.count()
+    page_size = 40
+    page_count = max(1, (total + page_size - 1) // page_size)
+    page = min(max(1, request.args.get("page", 1, type=int) or 1), page_count)
+    events = query.order_by(TeacherResultEvent.created_at.desc(), TeacherResultEvent.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    event_counts = dict(query.with_entities(
+        TeacherResultEvent.event_type, func.count(TeacherResultEvent.id)
+    ).group_by(TeacherResultEvent.event_type).all())
+    mogadishu = ZoneInfo("Africa/Mogadishu")
+    event_times = {
+        item.id: item.created_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(mogadishu)
+        for item in events
+    }
+    filter_options = {
+        "teachers": [row[0] for row in db.session.query(TeacherResultEvent.teacher_name).distinct().order_by(TeacherResultEvent.teacher_name).all() if row[0]],
+        "years": [row[0] for row in db.session.query(TeacherResultEvent.academic_year_name).distinct().order_by(TeacherResultEvent.academic_year_name.desc()).all() if row[0]],
+        "exams": [row[0] for row in db.session.query(TeacherResultEvent.exam_name).distinct().order_by(TeacherResultEvent.exam_name).all() if row[0]],
+    }
+    summary = {
+        "total": total,
+        "submitted": event_counts.get("submitted", 0) + event_counts.get("resubmitted", 0),
+        "approved": event_counts.get("approved", 0) + event_counts.get("partially_approved", 0),
+        "returned": event_counts.get("returned_for_correction", 0),
+    }
+    return render_template(
+        "admin/teachers/result_entry_history.html",
+        events=events,
+        event_times=event_times,
+        event_labels=RESULT_EVENT_LABELS,
+        event_icons=RESULT_EVENT_ICONS,
+        status_labels=RESULT_STATUS_LABELS,
+        filters=filters,
+        filter_options=filter_options,
+        summary=summary,
+        page=page,
+        page_count=page_count,
+        date_error=date_error,
+    )
+
+
+@teachers_bp.route("/result-entry/history/export.xlsx")
+def export_result_entry_history():
+    query, filters, _ = _teacher_result_history_query()
+    events = query.order_by(TeacherResultEvent.created_at.desc(), TeacherResultEvent.id.desc()).limit(20000).all()
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Taariikhda Natiijooyinka"
+    sheet.append([
+        "Waqtiga (EAT)", "Dhacdada", "Macallinka", "Koodhka", "Sannad-dugsiyeedka",
+        "Imtixaanka", "Heerka", "Fasalka", "Maaddada", "Xaaladdii hore",
+        "Xaaladda cusub", "Tirada dhibcaha", "Maamulaha", "Faahfaahin",
+    ])
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = f"A1:N{len(events) + 1}"
+    mogadishu = ZoneInfo("Africa/Mogadishu")
+    for event in events:
+        local_time = event.created_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(mogadishu)
+        sheet.append([
+            local_time.strftime("%Y-%m-%d %I:%M %p"),
+            RESULT_EVENT_LABELS.get(event.event_type, event.event_type),
+            event.teacher_name, event.teacher_code or "", event.academic_year_name,
+            event.exam_name, event.level_name or "", event.class_name, event.subject_name,
+            RESULT_STATUS_LABELS.get(event.status_from, event.status_from or ""),
+            RESULT_STATUS_LABELS.get(event.status_to, event.status_to or ""),
+            event.marks_count, event.actor_name or "", event.note or "",
+        ])
+    for column, width in {"A": 22, "B": 30, "C": 28, "D": 14, "E": 18, "F": 25, "G": 18, "H": 18, "I": 22, "J": 20, "K": 20, "L": 16, "M": 24, "N": 52}.items():
+        sheet.column_dimensions[column].width = width
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name="teacher-result-entry-history.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 
