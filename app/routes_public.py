@@ -1544,6 +1544,54 @@ def _scan_issue_choices(student):
     return active_issues or issues[:1]
 
 
+def _preferred_student_scan_issue(student, issues, requested_exam_id=None):
+    """Choose the exam card matching a live seat plan, or the general card."""
+    if not issues:
+        return None, None
+
+    issues_by_scope = {
+        (issue.academic_year_id, issue.exam_id): issue
+        for issue in issues
+    }
+    year_ids = {issue.academic_year_id for issue in issues}
+    seat_assignments = (
+        SeatMixerAssignment.query
+        .join(ExamHallVersion, SeatMixerAssignment.version_id == ExamHallVersion.id)
+        .join(ExamHall, ExamHallVersion.exam_hall_id == ExamHall.id)
+        .join(Exam, ExamHall.exam_id == Exam.id)
+        .options(joinedload(SeatMixerAssignment.version).joinedload(ExamHallVersion.hall))
+        .filter(
+            SeatMixerAssignment.student_id == student.id,
+            ExamHall.is_active.is_(True),
+            Exam.is_active.is_(True),
+            Exam.academic_year_id.in_(year_ids),
+        )
+        .order_by(SeatMixerAssignment.updated_at.desc(), SeatMixerAssignment.id.desc())
+        .all()
+    )
+    if requested_exam_id:
+        seat_assignments.sort(
+            key=lambda assignment: assignment.version.hall.exam_id != requested_exam_id
+        )
+
+    for assignment in seat_assignments:
+        hall = assignment.version.hall if assignment.version else None
+        if not hall or not hall.exam_id:
+            continue
+        year_id = hall.exam.academic_year_id if hall.exam else None
+        matching_exam_issue = issues_by_scope.get((year_id, hall.exam_id))
+        if matching_exam_issue:
+            return matching_exam_issue, None
+        general_issue = issues_by_scope.get((year_id, None))
+        if general_issue:
+            return general_issue, hall.exam_id
+
+    general_issues = [issue for issue in issues if issue.exam_id is None]
+    if general_issues:
+        return general_issues[0], None
+    return issues[0], None
+
+
 def _student_scan_verify_redirect(issue, requested_exam_id=None):
     verify_args = {"token": issue.token, "action": "verify", "from_scan": "student"}
     exam_id = issue.exam_id
@@ -1606,13 +1654,16 @@ def scan_student_entry():
                     flash("Ardayga leh tira-taxanahan lama helin.", "student_scan_error")
                 else:
                     issue_choices = _scan_issue_choices(student)
-                    if not issue_choices:
+                    issue, seating_exam_id = _preferred_student_scan_issue(
+                        student,
+                        issue_choices,
+                        request.args.get("exam_id", type=int),
+                    )
+                    if not issue:
                         flash("Ardaygan Kaadh Aqoonsi oo looma diiwaangelin.", "student_scan_error")
-                    elif len(issue_choices) == 1:
-                        session.pop("public_scan_student_id", None)
-                        return _student_scan_verify_redirect(issue_choices[0])
                     else:
-                        session["public_scan_student_id"] = student.id
+                        session.pop("public_scan_student_id", None)
+                        return _student_scan_verify_redirect(issue, seating_exam_id)
 
         return redirect(url_for("public.scan_student_entry"), code=303)
 
@@ -1625,26 +1676,23 @@ def scan_student_entry():
         student = db.session.get(Student, selected_student_id)
         if student:
             issue_choices = _scan_issue_choices(student)
-            if len(issue_choices) == 1:
+            issue, seating_exam_id = _preferred_student_scan_issue(
+                student,
+                issue_choices,
+                request.args.get("exam_id", type=int),
+            )
+            if issue:
                 session.pop("public_scan_student_id", None)
-                return _student_scan_verify_redirect(issue_choices[0])
+                return _student_scan_verify_redirect(issue, seating_exam_id)
         if not student or not issue_choices:
             session.pop("public_scan_student_id", None)
             student = None
             scan_error = scan_error or "Kaadh aqoonsi oo ardaygan u diiwaangashan lama helin."
 
-    from .routes_id_cards import effective_issue_status
-
-    issue_choice_data = [
-        {"issue": issue, "status": effective_issue_status(issue)}
-        for issue in issue_choices
-    ]
     return render_template(
         "scan_student.html",
         settings=get_settings(),
-        student=student,
         student_code=student_code,
-        issue_choices=issue_choice_data,
         scan_error=scan_error,
         qr_scanner_version="1.4.2",
     )

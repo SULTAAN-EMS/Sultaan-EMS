@@ -10,12 +10,14 @@ from app.models import (
     AcademicYear,
     Exam,
     ExamHall,
+    ExamHallVersion,
     ExamInvigilator,
     IdCardIssue,
     IncidentCategory,
     IncidentReport,
     IncidentReportCategory,
     IncidentReportSettings,
+    SeatMixerAssignment,
     SeverityLevel,
     Student,
     StudentCodeAlias,
@@ -172,6 +174,7 @@ class TestInvigilatorScan(unittest.TestCase):
         self.assertNotIn("Scan-garee kaadhka", html)
         self.assertNotIn("Kaamirada ku akhri QR code-ka aqoonsiga ardayga.", html)
         self.assertNotIn("Geli lambarka aqoonsiga ee ku qoran kaadhka ardayga.", html)
+        self.assertNotIn("Dooro kaadhka", html)
         self.assertIn("qr-scanner.umd.min.js", html)
 
     def test_student_id_lookup_leads_only_to_public_verification(self):
@@ -188,6 +191,56 @@ class TestInvigilatorScan(unittest.TestCase):
         verify_html = verify_response.get_data(as_text=True)
         self.assertIn('const scanReturnUrl = "/scan/student?new=1"', verify_html)
         self.assertNotIn("Gudbi Warbixin Dhacdo", verify_html)
+
+    def test_student_lookup_uses_general_card_when_no_seating_plan_exists(self):
+        general_issue = self.add_issue("scan-general-no-seat", None)
+
+        response = self.client.post("/scan/student", data={"student_code": self.student.student_code})
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIn(f"/verify-id/{general_issue.token}?", response.headers["Location"])
+        self.assertNotIn("exam_id=", response.headers["Location"])
+
+    def test_student_lookup_uses_exam_card_matching_seating_plan(self):
+        self.add_issue("scan-general-with-seat", None)
+        version = ExamHallVersion(exam_hall_id=self.hall.id, version_number=1, label="Version 1")
+        db.session.add(version)
+        db.session.flush()
+        db.session.add(SeatMixerAssignment(
+            version_id=version.id,
+            student_id=self.student.id,
+            row_number=0,
+            table_number=0,
+            seat_number=0,
+        ))
+        db.session.commit()
+
+        response = self.client.post("/scan/student", data={"student_code": self.student.student_code})
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIn(f"/verify-id/{self.issue.token}?", response.headers["Location"])
+        self.assertIn(f"exam_id={self.exam.id}", response.headers["Location"])
+
+    def test_student_lookup_uses_general_card_with_seating_exam_when_exam_card_is_unavailable(self):
+        general_issue = self.add_issue("scan-general-seat-scope", None)
+        self.issue.status = "Inactive"
+        version = ExamHallVersion(exam_hall_id=self.hall.id, version_number=1, label="Version 1")
+        db.session.add(version)
+        db.session.flush()
+        db.session.add(SeatMixerAssignment(
+            version_id=version.id,
+            student_id=self.student.id,
+            row_number=0,
+            table_number=0,
+            seat_number=0,
+        ))
+        db.session.commit()
+
+        response = self.client.post("/scan/student", data={"student_code": self.student.student_code})
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIn(f"/verify-id/{general_issue.token}?", response.headers["Location"])
+        self.assertIn(f"exam_id={self.exam.id}", response.headers["Location"])
 
     def test_student_qr_scan_preserves_exam_scope_and_does_not_require_login(self):
         qr_value = f"https://www.sultaan-ems.com/qr/{self.issue.token}?exam_id={self.exam.id}"
