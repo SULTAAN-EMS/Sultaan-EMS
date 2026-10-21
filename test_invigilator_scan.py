@@ -1,10 +1,27 @@
 import unittest
 from datetime import date, datetime, timedelta, timezone
-from sqlalchemy import event
+from unittest.mock import patch
+
+from sqlalchemy import event, inspect, text
 
 from app import create_app, db
 from app.cloudinary_service import cloudinary_thumbnail_url
-from app.models import AcademicYear, Exam, ExamHall, ExamInvigilator, IdCardIssue, IncidentReportSettings, Student, StudentCodeAlias, User
+from app.models import (
+    AcademicYear,
+    Exam,
+    ExamHall,
+    ExamInvigilator,
+    IdCardIssue,
+    IncidentCategory,
+    IncidentReport,
+    IncidentReportCategory,
+    IncidentReportSettings,
+    SeverityLevel,
+    Student,
+    StudentCodeAlias,
+    User,
+)
+from migrations import phase_23_incident_report_submission_schema
 
 
 class TestInvigilatorScan(unittest.TestCase):
@@ -250,6 +267,54 @@ class TestInvigilatorScan(unittest.TestCase):
         html = response.get_data(as_text=True)
         self.assertIn('href="/scan"', html)
         self.assertIn('name="from_scan" value="1"', html)
+
+    def test_incident_submission_migration_repairs_legacy_schema_and_post_succeeds(self):
+        category = IncidentCategory(name="Test Category", sort_order=1)
+        severity = SeverityLevel(name="Test Low", color="#22c55e", sort_order=1)
+        db.session.add_all([category, severity])
+        db.session.commit()
+
+        with db.engine.begin() as connection:
+            connection.execute(text("DROP TABLE incident_report_categories"))
+            for column in (
+                "signature_data",
+                "other_description",
+                "category_description",
+                "action_description",
+            ):
+                connection.execute(text(f"ALTER TABLE incident_reports DROP COLUMN {column}"))
+
+        with patch.object(phase_23_incident_report_submission_schema, "create_app", return_value=self.app):
+            first_run = phase_23_incident_report_submission_schema.upgrade()
+            second_run = phase_23_incident_report_submission_schema.upgrade()
+
+        self.assertEqual(set(first_run["added_columns"]), {
+            "signature_data", "other_description", "category_description", "action_description",
+        })
+        self.assertTrue(first_run["created_category_table"])
+        self.assertEqual(second_run["added_columns"], [])
+        self.assertFalse(second_run["created_category_table"])
+        self.assertIn("incident_report_categories", inspect(db.engine).get_table_names())
+
+        self.authenticate_invigilator()
+        response = self.client.post(
+            f"/incident-report/{self.issue.token}?exam_id={self.exam.id}",
+            data={
+                "category_ids": [str(category.id)],
+                "severity_id": str(severity.id),
+                "description": "Test-only incident report; not a real event.",
+                "incident_date": date.today().isoformat(),
+                "incident_time": "10:30",
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        payload = response.get_json()
+        self.assertTrue(payload["success"])
+        report = IncidentReport.query.filter_by(report_number=payload["report_number"]).one()
+        links = IncidentReportCategory.query.filter_by(report_id=report.id).all()
+        self.assertEqual([link.category_id for link in links], [category.id])
 
     def test_incident_form_uses_current_photo_and_loads_saved_signature_on_demand(self):
         self.student.photo_path = "https://res.cloudinary.com/sultaan/image/upload/v123/students/student.jpg"
