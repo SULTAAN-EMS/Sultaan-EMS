@@ -167,6 +167,7 @@ class TestInvigilatorScan(unittest.TestCase):
         self.assertIn("Fur Kamarada", html)
         self.assertIn("Raadi aqoonsiga", html)
         self.assertIn('class="student-lookup-button"', html)
+        self.assertLess(html.index("Geli Tira-taxanaha Ardayga"), html.index("Fur Kamarada"))
         self.assertNotIn('<label for="student-code">Tira-taxanaha ardayga</label>', html)
         self.assertNotIn("Scan-garee kaadhka", html)
         self.assertNotIn("Kaamirada ku akhri QR code-ka aqoonsiga ardayga.", html)
