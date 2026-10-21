@@ -1,10 +1,25 @@
 <!doctype html>
 <html lang="so">
+{% set scan_school_name = settings.get('school_name') or 'TAYSIIR INTERNATIONAL SCHOOL' %}
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b1437">
-  <title>Dooro adeegga | SULTAAN EMS</title>
+  <meta name="description" content="Xaqiiji aqoonsiga ardayga ama gal adeegga howl-wadeennada imtixaanka. Geli tira-taxanaha ardayga ama scan-garee QR code-ka kaadhka.">
+  <link rel="canonical" href="{{ url_for('public.scan_landing', _external=True, _scheme='https') }}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="SULTAAN EMS">
+  <meta property="og:title" content="{{ scan_school_name }} | Xaqiijinta Ardayga">
+  <meta property="og:description" content="Xaqiiji aqoonsiga ardayga ama gal adeegga howl-wadeennada imtixaanka. Geli tira-taxanaha ardayga ama scan-garee QR code-ka kaadhka.">
+  <meta property="og:url" content="{{ url_for('public.scan_landing', _external=True, _scheme='https') }}">
+  <meta property="og:image" content="{{ url_for('static', filename='images/qr-landing-school-logo.jpg', _external=True, _scheme='https') }}">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:alt" content="Astaanta {{ scan_school_name }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ scan_school_name }} | Xaqiijinta Ardayga">
+  <meta name="twitter:description" content="Xaqiiji aqoonsiga ardayga ama scan-garee QR code-ka kaadhka.">
+  <meta name="twitter:image" content="{{ url_for('static', filename='images/qr-landing-school-logo.jpg', _external=True, _scheme='https') }}">
+  <title>{{ scan_school_name }} | Xaqiijinta Ardayga | SULTAAN EMS</title>
   <link rel="icon" href="data:,">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -33,7 +48,7 @@
         <div class="logo"><img src="{{ url_for('static', filename='images/qr-landing-school-logo.jpg') }}" alt=""></div>
         <div class="beam"></div>
       </div>
-      <h1>{{ settings.get('school_name') or 'TAYSIIR INTERNATIONAL SCHOOL' }}</h1>
+      <h1>{{ scan_school_name }}</h1>
     </header>
 
     <section class="scan-choice-heading" aria-label="Xulo habka hubinta">

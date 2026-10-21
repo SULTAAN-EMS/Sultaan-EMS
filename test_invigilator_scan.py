@@ -144,6 +144,11 @@ class TestInvigilatorScan(unittest.TestCase):
         self.assertIn("XULO HABKA HUBINTA", html)
         self.assertIn("/scan/student", html)
         self.assertIn("/scan/staff", html)
+        self.assertIn('property="og:title"', html)
+        self.assertIn('property="og:description"', html)
+        self.assertIn('property="og:image"', html)
+        self.assertIn('name="twitter:card" content="summary_large_image"', html)
+        self.assertIn("qr-landing-school-logo.jpg", html)
 
     def test_staff_scan_page_requires_invigilator_login_and_preserves_return_path(self):
         response = self.client.get("/scan/staff")
