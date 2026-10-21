@@ -23,8 +23,10 @@ from .models import (
     AcademicClass,
     AcademicLevel,
     AcademicYear,
+    AttendanceRecord,
     Exam,
     ExamHall,
+    ExamHallEnrollment,
     ExamHallVersion,
     IdCardIssue,
     SeatAssignment,
@@ -853,6 +855,28 @@ def api_manage_hall(hall_id):
         # the API from accidental destructive calls.
         if not (request.get_json(silent=True) or {}).get("confirm"):
             return jsonify({"error": "Deletion must be explicitly confirmed"}), 400
+
+        # Exam halls are shared by Seat Mixer and Attendance. A hard delete
+        # cascades into the roster, attendance history, and saved seat plans.
+        has_linked_data = any((
+            ExamHallEnrollment.query.filter_by(exam_hall_id=hall.id).first(),
+            AttendanceRecord.query.filter_by(exam_hall_id=hall.id).first(),
+            SeatAssignment.query.filter_by(exam_hall_id=hall.id).first(),
+            SeatMixerAssignment.query.join(ExamHallVersion).filter(
+                ExamHallVersion.exam_hall_id == hall.id
+            ).first(),
+            SeatMixerSaveSnapshot.query.join(ExamHallVersion).filter(
+                ExamHallVersion.exam_hall_id == hall.id
+            ).first(),
+        ))
+        if has_linked_data:
+            return jsonify({
+                "error": (
+                    "Hall-kan lama tirtirin karo: wuxuu leeyahay diiwaan arday, "
+                    "xaadirin ama qorshe fadhi oo weli muhiim ah. Xogta waa la ilaaliyey."
+                )
+            }), 409
+
         name = hall.name
         for version in hall.versions:
             for key in (seat_mixer_class_color_key(version.id), seat_mixer_current_snapshot_key(version.id)):

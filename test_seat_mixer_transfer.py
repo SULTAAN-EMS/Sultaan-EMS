@@ -8,8 +8,10 @@ from app.models import (
     AcademicYear,
     AcademicYearClass,
     AcademicYearLevel,
+    AttendanceRecord,
     Exam,
     ExamHall,
+    ExamHallEnrollment,
     ExamHallVersion,
     SeatMixerAssignment,
     SeatMixerSaveSnapshot,
@@ -241,6 +243,68 @@ class SeatMixerTransferTests(unittest.TestCase):
         self.assertIn(b'id="smSaveProgress"', response.data)
         self.assertIn("Fadhiga waa la kaydinayaa".encode(), response.data)
         self.assertIn(b"seat_mixer.js?v=seat-row-sides-20261016-1", response.data)
+
+    def test_hall_delete_preserves_roster_attendance_and_saved_seating(self):
+        db.session.add(ExamHallEnrollment(
+            exam_hall_id=self.source_hall.id,
+            student_id=self.student.id,
+        ))
+        attendance = AttendanceRecord(
+            student_id=self.student.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=self.source_hall.id,
+            exam_id=self.exam.id,
+        )
+        db.session.add(attendance)
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        response = client.delete(
+            f"/admin/seat-mixer/api/hall/{self.source_hall.id}",
+            json={"confirm": True},
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("xaadirin", response.get_json()["error"])
+        self.assertIsNotNone(db.session.get(ExamHall, self.source_hall.id))
+        self.assertEqual(
+            ExamHallEnrollment.query.filter_by(exam_hall_id=self.source_hall.id).count(),
+            1,
+        )
+        self.assertEqual(
+            AttendanceRecord.query.filter_by(exam_hall_id=self.source_hall.id).count(),
+            1,
+        )
+        self.assertEqual(
+            SeatMixerAssignment.query.filter_by(version_id=self.source_version.id).count(),
+            1,
+        )
+
+    def test_hall_delete_allows_an_empty_hall(self):
+        empty_hall = ExamHall(
+            name="Hall Madhan",
+            code="SM-EMPTY",
+            academic_year=self.year,
+            exam=self.exam,
+        )
+        db.session.add(empty_hall)
+        db.session.flush()
+        empty_hall_id = empty_hall.id
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        response = client.delete(
+            f"/admin/seat-mixer/api/hall/{empty_hall_id}",
+            json={"confirm": True},
+        )
+
+        self.assertEqual(response.status_code, 200, response.get_json())
+        self.assertIsNone(db.session.get(ExamHall, empty_hall_id))
 
     def test_school_name_prefers_somali_setting_over_dashboard_title(self):
         db.session.add_all([

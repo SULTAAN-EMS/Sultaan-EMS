@@ -835,7 +835,7 @@
     if (action === 'delete') {
       openManage({
         title: 'Delete ' + hall.name + '?', icon: 'fa-triangle-exclamation', danger: true,
-        copy: 'This permanently removes the hall, every saved layout version, and its seat assignments. This cannot be undone.',
+        copy: 'Hall leh arday, xaadirin ama qorshe kuraas la kaydiyey lama tirtiri karo. Xogtaas waa la ilaalinayaa.',
         confirmText: 'Delete hall',
         onConfirm: function () {
           requestJson('/admin/seat-mixer/api/hall/' + hallId, 'DELETE', { confirm: true })
