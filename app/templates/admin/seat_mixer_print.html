@@ -74,7 +74,9 @@
     .qr-missing { grid-column: 3; display: grid; place-items: center; width: 18mm; height: 18mm; border: 1px dashed #b9c5d4; border-radius: 4px; color: #95a3b6; font-size: 6px; text-align: center; }
     .empty-seat { display: grid; place-items: center; min-height: 0; padding: 7px 4px; border-bottom: 1px dashed #dce4ef; color: #99a7b9; font-size: 8px; }
     .empty-seat:last-child { border-bottom: 0; }
-    .doc-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8px; }
+    .doc-foot { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8px; }
+    .doc-date { display: inline-flex; align-items: center; gap: 6px; color: var(--navy); font-size: 9px; font-weight: 700; }
+    .doc-date svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
     .actions { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 7px; }
     .actions button { padding: 9px 12px; border: 0; border-radius: 7px; background: var(--navy); color: #fff; font-size: 11px; font-weight: 800; cursor: pointer; }
     .actions button:last-child { background: #65748a; }
@@ -195,7 +197,7 @@
       {% endfor %}
     </section>
 
-    <footer class="doc-foot"><span>Exam Officer Signature<br><br>________________________</span><span style="text-align:center">Official seating plan<br><br>________________</span><span style="text-align:right">Date<br><br>________________________</span></footer>
+    <footer class="doc-foot"><span class="doc-date"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg><strong>Taariikh la dejiyey:</strong> {{ plan_date_label }}</span></footer>
   </main>
   <div class="actions"><button type="button" onclick="window.print()">Print / Save PDF</button><button type="button" onclick="window.close()">Close</button></div>
 </body>

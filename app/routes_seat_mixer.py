@@ -11,6 +11,7 @@ seat assignments.
 from datetime import datetime, timezone
 import json
 import re
+from zoneinfo import ZoneInfo
 
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -275,6 +276,19 @@ def parse_optional_datetime(value, field_name):
         return datetime.fromisoformat(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid {field_name} datetime") from exc
+
+
+def format_seat_plan_date(value=None):
+    timezone_mogadishu = ZoneInfo("Africa/Mogadishu")
+    value = value or datetime.now(timezone_mogadishu)
+    if value.tzinfo is not None:
+        value = value.astimezone(timezone_mogadishu)
+    weekdays = ("Isniin", "Talaado", "Arbaca", "Khamiis", "Jimco", "Sabti", "Axad")
+    months = (
+        "Janaayo", "Febraayo", "Maarso", "Abriil", "Maajo", "Juun",
+        "Luulyo", "Ogosto", "Sebteembar", "Oktoober", "Nofeembar", "Diseembar",
+    )
+    return f"{weekdays[value.weekday()]}, {months[value.month - 1]} {value.day}, {value.year}"
 
 
 SEAT_MIXER_APPEARANCE_KEY = "seat_mixer_appearance_v1"
@@ -1904,6 +1918,7 @@ def print_arrangement():
         academic_year_name=academic_year_name,
         exam_name=exam_name,
         hall_start_time=hall.start_time,
+        plan_date_label=format_seat_plan_date(hall.start_time),
         orientation=orientation,
         compact_portrait=compact_portrait,
     )
