@@ -5,7 +5,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-entry-20261021-6') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-entry-20261021-12') }}">
 {% set initials = teacher.full_name.split() %}
 <section class="result-entry-page" id="resultEntryPage"
   data-max-score="{{ max_score if max_score is not none else '' }}"
@@ -33,11 +33,6 @@
           <span class="re-account-copy"><strong>{{ teacher.full_name }}</strong><small>{{ teacher.teacher_code }}</small></span>
         </div>
         <button type="button" class="re-theme-toggle" id="themeToggle" title="Beddel muuqaalka" aria-label="U beddel muuqaalka madow"><i class="fa-regular fa-moon" aria-hidden="true"></i></button>
-      </div>
-      <div class="re-heading">
-        <span class="re-eyebrow"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> NIDAAMKA NATIIJOOYINKA</span>
-        <h1>Gelinta natiijooyinka</h1>
-        <p>Geli darajada ardayga, hubi, kadibna u gudbi.</p>
       </div>
     </div>
   </header>

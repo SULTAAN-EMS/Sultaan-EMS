@@ -58,7 +58,7 @@ body.teacher-results-body .teacher-main.teacher-main-results { display: block; p
 .re-hero {
   position: relative;
   overflow: hidden;
-  padding: 16px 16px 80px;
+  padding: 16px 16px 64px;
   color: #fff;
   background: linear-gradient(130deg, #1e1b6b 0%, #4f46e5 58%, #0ea5e9 125%);
 }
@@ -82,10 +82,6 @@ body.teacher-results-body .teacher-main.teacher-main-results { display: block; p
 .re-account-copy small { margin-top: 2px; color: rgba(255,255,255,.8); font-size: 10px; }
 .re-theme-toggle { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border: 1px solid rgba(255,255,255,.24); border-radius: 14px; background: rgba(255,255,255,.14); color: #fff; font-size: 17px; }
 .re-theme-toggle:hover { background: rgba(255,255,255,.24); }
-.re-heading { margin-top: 20px; }
-.re-eyebrow { display: inline-flex; align-items: center; gap: 7px; color: rgba(255,255,255,.82); font-size: 11px; font-weight: 800; letter-spacing: .08em; }
-.re-heading h1 { margin: 5px 0 0; color: #fff; font-size: 28px; font-weight: 800; line-height: 1.15; letter-spacing: 0; }
-.re-heading p { max-width: 46ch; margin: 5px 0 0; color: rgba(255,255,255,.84); font-size: 14px; }
 
 .re-main { position: relative; z-index: 2; width: min(1120px, 100%); margin: -54px auto 0; padding: 0 14px; }
 .re-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -234,7 +230,7 @@ body.teacher-results-body .teacher-main.teacher-main-results { display: block; p
 .re-mark-action.is-legacy { border-color: var(--re-line); background: var(--re-bg); color: var(--re-muted); }
 .re-mark-action i { flex: none; }
 .re-active-label { display: none; color: var(--re-primary); font-size: 10px; font-weight: 800; }
-.re-score-area { display: grid; grid-template-columns: minmax(44px, 1fr) 42px minmax(98px, auto); align-items: center; gap: 8px; min-width: 0; padding: 8px; border-radius: 17px; background: var(--re-bg); }
+.re-score-area { display: grid; grid-template-columns: 42px minmax(44px, 1fr) minmax(98px, auto) 40px; align-items: center; gap: 8px; min-width: 0; padding: 8px; border-radius: 17px; background: var(--re-bg); }
 .re-grade { display: grid; place-items: center; flex: none; min-width: 42px; height: 42px; padding: 0 6px; border-radius: 12px; background: var(--re-line); color: var(--re-muted); font-size: 14px; font-weight: 800; transition: transform .2s; }
 .re-grade.configured { border: 1px solid var(--grade-border, transparent); background: var(--grade-bg, var(--re-line)); color: var(--grade-text, var(--re-ink)); }
 .re-grade.bump { animation: re-bump .32s ease; }
@@ -244,12 +240,13 @@ body.teacher-results-body .teacher-main.teacher-main-results { display: block; p
 :root[data-theme="dark"] .re-grade.g-b { background: #12334b; color: #7dd3fc; }
 .re-grade.g-c { background: var(--re-warn-bg); color: var(--re-warn); }
 .re-grade.g-f { background: var(--re-bad-bg); color: var(--re-bad); }
-.re-score-input-wrap { grid-column: 3; min-width: 0; }
-.re-grade { grid-column: 2; }
-.re-performance { grid-column: 1; }
+.re-score-input-wrap { grid-column: 3; grid-row: 1; min-width: 0; }
+.re-grade { grid-column: 1; grid-row: 1; }
+.re-performance { grid-column: 2; grid-row: 1; }
 .re-score-box { display: flex; align-items: center; gap: 3px; height: 48px; padding: 0 8px; border: 2px solid var(--re-line); border-radius: 13px; background: var(--re-surface); transition: border-color .18s, background .18s, box-shadow .18s; }
 .re-score-box:focus-within { border-color: var(--re-primary); box-shadow: 0 0 0 3px var(--re-primary-bg); }
 .re-score-box input { width: 66px; min-width: 38px; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: var(--re-ink); text-align: right; font-size: 21px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.result-entry-page .re-score-box input:focus-visible { outline: none; }
 .re-score-box input:disabled { opacity: .65; }
 body.teacher-results-body .re-score-box input { background-color: transparent; color: var(--re-ink); }
 .re-score-box > span { flex: none; color: var(--re-muted); font-size: 10px; font-weight: 800; }
@@ -258,7 +255,11 @@ body.teacher-results-body .re-score-box input { background-color: transparent; c
 .re-performance-line b { display: block; color: var(--re-ink); font-size: 16px; font-variant-numeric: tabular-nums; }
 .re-progress { display: block; height: 6px; margin-top: 5px; overflow: hidden; border-radius: 9px; background: var(--re-line); }
 .re-progress i { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--re-muted); transition: width .25s, background .2s; }
-.re-next { display: none; place-items: center; flex: none; width: 40px; height: 40px; border: 0; border-radius: 12px; background: var(--re-primary); color: #fff; }
+.re-next { display: grid; grid-column: 4; grid-row: 1; place-items: center; flex: none; width: 40px; height: 40px; border: 0; border-radius: 12px; background: linear-gradient(135deg, #4f46e5, #2563eb 48%, #0d9488); background-size: 200% 200%; color: #fff; box-shadow: 0 5px 13px rgba(37,99,235,.24), inset 0 1px 0 rgba(255,255,255,.22); animation: re-next-gradient 4.5s ease-in-out infinite; transition: transform .18s ease, box-shadow .18s ease; }
+.re-next:hover { transform: translateX(2px); box-shadow: 0 7px 17px rgba(37,99,235,.32), inset 0 1px 0 rgba(255,255,255,.28); }
+.re-next:active { transform: scale(.94); }
+.result-entry-page button.re-next, .result-entry-page button.re-next i { color: #fff; }
+@keyframes re-next-gradient { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 .re-next i { transform: rotate(-90deg); }
 .re-message { display: none; grid-column: 1/-1; align-items: center; gap: 7px; padding: 8px 10px; border-radius: 11px; font-size: 12px; font-weight: 800; }
 .re-student-card.warn { border-color: #f59e0b; }
@@ -372,11 +373,10 @@ body.teacher-results-body .re-score-box input { background-color: transparent; c
   .re-segments { width: 460px; }
   .re-student-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .re-student-card { align-content: start; }
-  .re-score-area { grid-template-columns: minmax(48px, 1fr) 40px 42px minmax(105px, auto); gap: 8px; }
-  .re-next { grid-column: 2; }
-  .re-grade { grid-column: 3; }
-  .re-score-input-wrap { grid-column: 4; }
-  .re-next { display: grid; }
+  .re-score-area { grid-template-columns: 42px minmax(48px, 1fr) minmax(105px, auto) 40px; gap: 8px; }
+  .re-next { grid-column: 4; }
+  .re-grade { grid-column: 1; }
+  .re-score-input-wrap { grid-column: 3; }
   .re-student-card.active::before { position: absolute; top: -12px; left: 18px; padding: 3px 11px; border-radius: 99px; background: linear-gradient(120deg,#4f46e5,#0ea5e9); color: #fff; content: "Hadda waad geliysaa"; font-size: 10px; font-weight: 800; }
   .re-student-card.active .re-active-label { display: none; }
   .re-modal { align-items: center; }
@@ -395,7 +395,6 @@ body.teacher-results-body .re-score-box input { background-color: transparent; c
   .re-school-copy strong { font-size: 11px; }
   .re-school-copy small { font-size: 9px; }
   .re-theme-toggle { width: 40px; height: 40px; }
-  .re-heading h1 { font-size: 25px; }
   .re-policy { gap: 7px; }
   .re-policy-item { gap: 7px; padding: 9px 8px; }
   .re-policy-icon { width: 31px; height: 31px; border-radius: 10px; font-size: 12px; }
@@ -410,7 +409,7 @@ body.teacher-results-body .re-score-box input { background-color: transparent; c
   .re-filter-grid label > span { font-size: 10px; }
   .re-filter-grid select { font-size: 13px; }
   .re-student-card { padding: 11px; }
-  .re-score-area { gap: 5px; padding: 6px; }
+  .re-score-area { grid-template-columns: 36px minmax(34px, 1fr) minmax(91px, auto) 34px; gap: 5px; padding: 6px; }
   .re-grade { min-width: 36px; height: 40px; font-size: 12px; }
   .re-score-box { height: 45px; padding: 0 5px; }
   .re-score-box input { width: 52px; font-size: 19px; }
@@ -425,13 +424,12 @@ body.teacher-results-body .re-score-box input { background-color: transparent; c
   .re-save-copy small { font-size: 8.5px; }
 }
 @media (max-width: 340px) {
-  .re-heading h1 { font-size: 23px; }
   .re-policy-item { display: block; }
   .re-deadline-card { display: grid; }
   .re-policy-icon { margin-bottom: 5px; }
   .re-filter-actions { flex-wrap: wrap; }
   .re-filter-actions > span { width: 100%; margin-left: 0; }
-  .re-score-area { grid-template-columns: minmax(34px, 1fr) 36px minmax(91px, auto); gap: 5px; }
+  .re-score-area { grid-template-columns: 36px minmax(28px, 1fr) minmax(82px, auto) 30px; gap: 5px; }
   .re-grade { min-width: 36px; }
   .re-score-box input { width: 48px; }
   .re-dock .re-button { max-width: 58%; font-size: 10.5px; }
