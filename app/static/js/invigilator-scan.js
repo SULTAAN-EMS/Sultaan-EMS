@@ -9,8 +9,9 @@
   const studentCodeInput = document.getElementById('student-code');
   if (!startButton || !video || !scanForm) return;
 
-  const methodKey = 'invigilatorScanMethod';
-  const codeKey = 'invigilatorStudentCodeDraft';
+  const storagePrefix = location.pathname === '/scan/student' ? 'publicStudent' : 'invigilator';
+  const methodKey = storagePrefix + 'ScanMethod';
+  const codeKey = storagePrefix + 'StudentCodeDraft';
   function readStored(key) {
     try { return window.sessionStorage.getItem(key) || ''; } catch (error) { return ''; }
   }
@@ -21,6 +22,11 @@
     } catch (error) {}
   }
 
+  if (location.pathname === '/scan/student' && new URLSearchParams(location.search).get('new') === '1') {
+    storeValue(codeKey, '');
+    storeValue(methodKey, '');
+  }
+
   const signoutLink = document.querySelector('.signout-link');
   if (signoutLink) {
     signoutLink.addEventListener('click', function () {
@@ -28,6 +34,13 @@
       storeValue(methodKey, '');
     });
   }
+
+  document.querySelectorAll('[data-clear-scan]').forEach(function (link) {
+    link.addEventListener('click', function () {
+      storeValue(codeKey, '');
+      storeValue(methodKey, '');
+    });
+  });
 
   if (studentCodeInput) {
     const serverValue = studentCodeInput.value.trim();
@@ -41,7 +54,7 @@
 
   if (readStored(methodKey) === 'camera') {
     const buttonLabel = startButton.querySelector('span');
-    if (buttonLabel) buttonLabel.textContent = 'Dib u fur kamarada';
+    if (buttonLabel) buttonLabel.textContent = 'Fur Kamarada';
     if (status) status.textContent = 'Kamaraddii hore ayaad adeegsatay. Taabo si aad mar kale u furto.';
   }
 

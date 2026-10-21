@@ -1332,7 +1332,13 @@ def verify_id_card(token):
             "verify_id.html",
             settings=settings,
             verified=False,
-            scan_return_url=url_for("public.scan_entry") if request.args.get("from_scan") == "1" else None,
+            scan_return_url=(
+                url_for("public.scan_student_entry", new=1)
+                if request.args.get("from_scan") == "student"
+                else url_for("public.scan_entry")
+                if request.args.get("from_scan") == "1"
+                else None
+            ),
         ), 404
     # Printed QR codes from older cards point here directly. Route those scans
     # through the action chooser while keeping its verification action direct.
@@ -1455,7 +1461,13 @@ def verify_id_card(token):
         status_details=status_details,
         exam=exam,
         seating=seating,
-        scan_return_url=url_for("public.scan_entry") if request.args.get("from_scan") == "1" else None,
+        scan_return_url=(
+            url_for("public.scan_student_entry", new=1)
+            if request.args.get("from_scan") == "student"
+            else url_for("public.scan_entry")
+            if request.args.get("from_scan") == "1"
+            else None
+        ),
     )
 
 
@@ -1532,7 +1544,113 @@ def _scan_issue_choices(student):
     return active_issues or issues[:1]
 
 
-@public_bp.route("/scan", methods=["GET", "POST"])
+def _student_scan_verify_redirect(issue, requested_exam_id=None):
+    verify_args = {"token": issue.token, "action": "verify", "from_scan": "student"}
+    exam_id = issue.exam_id
+    if requested_exam_id and not exam_id:
+        valid_exam_id = Exam.query.filter_by(
+            id=requested_exam_id,
+            academic_year_id=issue.academic_year_id,
+        ).with_entities(Exam.id).scalar()
+        if valid_exam_id:
+            exam_id = valid_exam_id
+    if exam_id:
+        verify_args["exam_id"] = exam_id
+    return redirect(url_for("public.verify_id_card", **verify_args), code=303)
+
+
+@public_bp.route("/scan", methods=["GET"])
+def scan_landing():
+    return render_template("scan_landing.html", settings=get_settings())
+
+
+@public_bp.route("/scan/student", methods=["GET", "POST"])
+def scan_student_entry():
+    student_code = (session.get("public_scan_student_code") or "").strip()
+    scan_error = None
+
+    if request.args.get("new") == "1":
+        session.pop("public_scan_student_id", None)
+        session.pop("public_scan_student_code", None)
+        student_code = ""
+
+    if request.method == "POST":
+        selected_issue_id = request.form.get("issue_choice_id", type=int)
+        selected_student_id = request.form.get("selected_student_id", type=int)
+        scan_value = request.form.get("scan_value", "").strip()
+
+        if scan_value:
+            token, requested_exam_id = _parse_scan_payload(scan_value)
+            issue = IdCardIssue.query.filter_by(token=token).first() if token else None
+            if not issue:
+                flash("QR code-kan laguma helin kaadh arday oo sax ah.", "student_scan_error")
+            else:
+                return _student_scan_verify_redirect(issue, requested_exam_id)
+        elif selected_issue_id and selected_student_id:
+            issue = IdCardIssue.query.filter_by(
+                id=selected_issue_id,
+                student_id=selected_student_id,
+            ).first()
+            if issue:
+                session.pop("public_scan_student_id", None)
+                return _student_scan_verify_redirect(issue)
+            flash("Kaadhka la doortay lama helin. Fadlan mar kale raadi ardayga.", "student_scan_error")
+        else:
+            student_code = request.form.get("student_code", "").strip()
+            session["public_scan_student_code"] = student_code
+            if not student_code:
+                flash("Geli tira-taxanaha ardayga.", "student_scan_error")
+            else:
+                student = find_student_by_code(student_code)
+                if not student:
+                    flash("Ardayga leh tira-taxanahan lama helin.", "student_scan_error")
+                else:
+                    issue_choices = _scan_issue_choices(student)
+                    if not issue_choices:
+                        flash("Ardaygan Kaadh Aqoonsi oo looma diiwaangelin.", "student_scan_error")
+                    elif len(issue_choices) == 1:
+                        session.pop("public_scan_student_id", None)
+                        return _student_scan_verify_redirect(issue_choices[0])
+                    else:
+                        session["public_scan_student_id"] = student.id
+
+        return redirect(url_for("public.scan_student_entry"), code=303)
+
+    scan_errors = get_flashed_messages(category_filter=["student_scan_error"])
+    scan_error = scan_errors[-1] if scan_errors else None
+    student = None
+    issue_choices = []
+    selected_student_id = session.get("public_scan_student_id")
+    if selected_student_id:
+        student = db.session.get(Student, selected_student_id)
+        if student:
+            issue_choices = _scan_issue_choices(student)
+            if len(issue_choices) == 1:
+                session.pop("public_scan_student_id", None)
+                return _student_scan_verify_redirect(issue_choices[0])
+        if not student or not issue_choices:
+            session.pop("public_scan_student_id", None)
+            student = None
+            scan_error = scan_error or "Kaadh aqoonsi oo ardaygan u diiwaangashan lama helin."
+
+    from .routes_id_cards import effective_issue_status
+
+    issue_choice_data = [
+        {"issue": issue, "status": effective_issue_status(issue)}
+        for issue in issue_choices
+    ]
+    return render_template(
+        "scan_student.html",
+        settings=get_settings(),
+        student=student,
+        student_code=student_code,
+        issue_choices=issue_choice_data,
+        scan_error=scan_error,
+        qr_scanner_version="1.4.2",
+    )
+
+
+@public_bp.route("/scan/staff", methods=["GET", "POST"])
 @invigilator_login_required
 def scan_entry():
     """Staff-only QR or student-code entry point for exam verification."""

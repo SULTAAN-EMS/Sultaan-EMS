@@ -134,18 +134,67 @@ class TestInvigilatorScan(unittest.TestCase):
             "year_name": self.year.name,
         }])
 
-    def test_scan_page_requires_invigilator_login_and_preserves_return_path(self):
+    def test_scan_landing_offers_student_and_staff_choices_without_login(self):
         response = self.client.get("/scan")
+        html = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Arday", html)
+        self.assertIn("Howl-wadeen", html)
+        self.assertIn("/scan/student", html)
+        self.assertIn("/scan/staff", html)
+
+    def test_staff_scan_page_requires_invigilator_login_and_preserves_return_path(self):
+        response = self.client.get("/scan/staff")
 
         self.assertEqual(response.status_code, 302)
         self.assertIn("/invigilator/login", response.headers["Location"])
         with self.client.session_transaction() as session:
-            self.assertTrue(session["invigilator_next"].endswith("/scan"))
+            self.assertTrue(session["invigilator_next"].endswith("/scan/staff"))
+
+    def test_student_scan_offers_id_and_camera_without_invigilator_login(self):
+        response = self.client.get("/scan/student")
+        html = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Geli Tira-taxanaha Ardayga", html)
+        self.assertIn("Fur kamarada", html)
+        self.assertIn("Raadi aqoonsiga", html)
+        self.assertIn('class="student-lookup-button"', html)
+        self.assertNotIn('<label for="student-code">Tira-taxanaha ardayga</label>', html)
+        self.assertNotIn("Scan-garee kaadhka", html)
+        self.assertNotIn("Kaamirada ku akhri QR code-ka aqoonsiga ardayga.", html)
+        self.assertNotIn("Geli lambarka aqoonsiga ee ku qoran kaadhka ardayga.", html)
+        self.assertIn("qr-scanner.umd.min.js", html)
+
+    def test_student_id_lookup_leads_only_to_public_verification(self):
+        post_response = self.client.post("/scan/student", data={
+            "student_code": self.student.student_code,
+        })
+
+        self.assertEqual(post_response.status_code, 303)
+        self.assertIn("/verify-id/scan-token-001", post_response.headers["Location"])
+        self.assertIn("action=verify", post_response.headers["Location"])
+        self.assertIn("from_scan=student", post_response.headers["Location"])
+        verify_response = self.client.get(post_response.headers["Location"])
+        self.assertEqual(verify_response.status_code, 200)
+        verify_html = verify_response.get_data(as_text=True)
+        self.assertIn('const scanReturnUrl = "/scan/student?new=1"', verify_html)
+        self.assertNotIn("Gudbi Warbixin Dhacdo", verify_html)
+
+    def test_student_qr_scan_preserves_exam_scope_and_does_not_require_login(self):
+        qr_value = f"https://www.sultaan-ems.com/qr/{self.issue.token}?exam_id={self.exam.id}"
+        post_response = self.client.post("/scan/student", data={"scan_value": qr_value})
+
+        self.assertEqual(post_response.status_code, 303)
+        self.assertIn(f"exam_id={self.exam.id}", post_response.headers["Location"])
+        self.assertIn("from_scan=student", post_response.headers["Location"])
+        self.assertEqual(self.client.get(post_response.headers["Location"]).status_code, 200)
 
     def test_authenticated_scan_page_offers_both_entry_methods(self):
         self.authenticate_invigilator()
 
-        response = self.client.get("/scan")
+        response = self.client.get("/scan/staff")
         html = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
@@ -166,7 +215,7 @@ class TestInvigilatorScan(unittest.TestCase):
         })
 
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(response.headers["Location"].endswith("/scan"))
+        self.assertTrue(response.headers["Location"].endswith("/scan/staff"))
         scan_page = self.client.get(response.headers["Location"])
         refreshed_page = self.client.get(response.headers["Location"])
         self.assertEqual(scan_page.status_code, 200)
@@ -186,7 +235,7 @@ class TestInvigilatorScan(unittest.TestCase):
     def test_manual_student_code_displays_verification_and_report_actions(self):
         self.authenticate_invigilator()
 
-        post_response = self.client.post("/scan", data={"student_code": "  tis138  "})
+        post_response = self.client.post("/scan/staff", data={"student_code": "  tis138  "})
         self.assertEqual(post_response.status_code, 303)
         response = self.client.get(post_response.headers["Location"])
         html = response.get_data(as_text=True)
@@ -210,7 +259,7 @@ class TestInvigilatorScan(unittest.TestCase):
         self.assertIn("from_scan=1", html)
         self.assertEqual(self.client.get("/scan").status_code, 200)
 
-        new_search = self.client.get("/scan?new=1")
+        new_search = self.client.get("/scan/staff?new=1")
         self.assertEqual(new_search.status_code, 303)
         entry_page = self.client.get(new_search.headers["Location"])
         self.assertIn('id="student-code" name="student_code" value="tis138"', entry_page.get_data(as_text=True))
@@ -226,17 +275,17 @@ class TestInvigilatorScan(unittest.TestCase):
             {"scan_value": f"https://www.sultaan-ems.com/qr/{self.issue.token}?exam_id={self.exam.id}"},
         )
         for lookup in lookups:
-            post_response = self.client.post("/scan", data=lookup)
+            post_response = self.client.post("/scan/staff", data=lookup)
             response = self.client.get(post_response.headers["Location"])
 
             self.assertEqual(response.status_code, 200)
             self.assertIn(f'data-photo-url="{photo_url}"', response.get_data(as_text=True))
-            self.client.get("/scan?new=1")
+            self.client.get("/scan/staff?new=1")
 
     def test_manual_student_code_is_remembered_after_failed_lookup(self):
         self.authenticate_invigilator()
 
-        post_response = self.client.post("/scan", data={"student_code": "TIS-MISSING"})
+        post_response = self.client.post("/scan/staff", data={"student_code": "TIS-MISSING"})
         self.assertEqual(post_response.status_code, 303)
         entry_page = self.client.get(post_response.headers["Location"])
 
@@ -245,7 +294,7 @@ class TestInvigilatorScan(unittest.TestCase):
 
     def test_verify_back_target_returns_to_the_staff_action_page(self):
         self.authenticate_invigilator()
-        self.client.post("/scan", data={"student_code": self.student.student_code})
+        self.client.post("/scan/staff", data={"student_code": self.student.student_code})
 
         response = self.client.get(
             f"/verify-id/{self.issue.token}?action=verify&from_scan=1"
@@ -253,11 +302,11 @@ class TestInvigilatorScan(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
-        self.assertIn('const scanReturnUrl = "/scan"', html)
+        self.assertIn('const scanReturnUrl = "/scan/staff"', html)
 
     def test_incident_form_back_target_returns_to_the_staff_action_page(self):
         self.authenticate_invigilator()
-        self.client.post("/scan", data={"student_code": self.student.student_code})
+        self.client.post("/scan/staff", data={"student_code": self.student.student_code})
 
         response = self.client.get(
             f"/incident-report/{self.issue.token}?from_scan=1"
@@ -265,7 +314,7 @@ class TestInvigilatorScan(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
-        self.assertIn('href="/scan"', html)
+        self.assertIn('href="/scan/staff"', html)
         self.assertIn('name="from_scan" value="1"', html)
 
     def test_incident_submission_migration_repairs_legacy_schema_and_post_succeeds(self):
@@ -393,7 +442,7 @@ class TestInvigilatorScan(unittest.TestCase):
         db.session.commit()
         self.authenticate_invigilator()
 
-        post_response = self.client.post("/scan", data={"student_code": "tis-old-138"})
+        post_response = self.client.post("/scan/staff", data={"student_code": "tis-old-138"})
         response = self.client.get(post_response.headers["Location"])
 
         self.assertEqual(response.status_code, 200)
@@ -403,7 +452,7 @@ class TestInvigilatorScan(unittest.TestCase):
         self.authenticate_invigilator()
         qr_value = f"https://www.sultaan-ems.com/qr/{self.issue.token}?exam_id={self.exam.id}"
 
-        post_response = self.client.post("/scan", data={"scan_value": qr_value})
+        post_response = self.client.post("/scan/staff", data={"scan_value": qr_value})
         response = self.client.get(post_response.headers["Location"])
         html = response.get_data(as_text=True)
 
@@ -419,7 +468,7 @@ class TestInvigilatorScan(unittest.TestCase):
         db.session.commit()
         self.authenticate_invigilator()
 
-        choice_post = self.client.post("/scan", data={"student_code": self.student.student_code})
+        choice_post = self.client.post("/scan/staff", data={"student_code": self.student.student_code})
         choice_response = self.client.get(choice_post.headers["Location"])
         choice_html = choice_response.get_data(as_text=True)
         self.assertEqual(choice_response.status_code, 200)
@@ -427,7 +476,7 @@ class TestInvigilatorScan(unittest.TestCase):
         self.assertIn("Imtixaan Bileedka 1aad", choice_html)
         self.assertIn("Imtixaan Bileedka 2aad", choice_html)
 
-        selected_post = self.client.post("/scan", data={
+        selected_post = self.client.post("/scan/staff", data={
             "selected_student_id": self.student.id,
             "issue_choice_id": second_issue.id,
         })
@@ -439,7 +488,7 @@ class TestInvigilatorScan(unittest.TestCase):
     def test_unknown_student_code_is_reported_without_exposing_student_data(self):
         self.authenticate_invigilator()
 
-        post_response = self.client.post("/scan", data={"student_code": "TIS-UNKNOWN"})
+        post_response = self.client.post("/scan/staff", data={"student_code": "TIS-UNKNOWN"})
         self.assertEqual(post_response.status_code, 303)
         response = self.client.get(post_response.headers["Location"])
 

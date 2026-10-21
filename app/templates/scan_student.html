@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="so">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1437">
+  <title>Raadi aqoonsiga ardayga | SULTAAN EMS</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/qr-landing.css', v='qr-student-photo-20261016-1') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/invigilator-scan.css', v='scan-20261016-4') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/scan-entry.css', v='scan-role-20261021-2') }}">
+</head>
+<body data-theme="qrcode">
+  <div class="aurora" aria-hidden="true">
+    <div class="grid"></div><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+    <div class="fx rays"></div><div class="fx stars" id="stars"><span class="shoot"></span></div>
+    <div class="fx neongrid"></div>
+    <div class="fx waves">
+      <svg class="w1" viewBox="0 0 2880 160" preserveAspectRatio="none"><path d="M0 80q180-60 360 0t360 0 360 0 360 0 360 0 360 0 360 0 360 0V160H0z"/></svg>
+      <svg class="w2" viewBox="0 0 2880 160" preserveAspectRatio="none"><path d="M0 90q180 60 360 0t360 0 360 0 360 0 360 0 360 0 360 0 360 0V160H0z"/></svg>
+      <svg class="w3" viewBox="0 0 2880 160" preserveAspectRatio="none"><path d="M0 100q180-50 360 0t360 0 360 0 360 0 360 0 360 0 360 0 360 0V160H0z"/></svg>
+    </div>
+    <div class="fx bubbles" id="bubbles"></div><div class="fx scanline"></div><div class="fx barcode"></div>
+    <div class="fx radar"><i></i><i></i><i></i></div><div class="fx rings"></div>
+    <div class="fx bars" id="bars"></div><div class="fx floaters" id="floaters" aria-hidden="true"></div>
+  </div>
+
+  <main class="scan-page">
+    <header class="topbar"><a class="scan-back" href="{{ url_for('public.scan_landing') }}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6M9 12h12"/></svg><span>Doorashooyinka</span>
+    </a></header>
+    <header class="hero">
+      <div class="scanner" aria-hidden="true">
+        <span class="corner c-tl"></span><span class="corner c-tr"></span><span class="corner c-bl"></span><span class="corner c-br"></span>
+        <div class="logo"><img src="{{ url_for('static', filename='images/qr-landing-school-logo.jpg') }}" alt=""></div>
+        <div class="beam"></div>
+      </div>
+      <h1>{{ settings.get('school_name') or 'TAYSIIR INTERNATIONAL SCHOOL' }}</h1>
+    </header>
+
+    {% if scan_error %}
+      <div class="notice notice-error" role="alert">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5m0 3h.01"/></svg>
+        <span>{{ scan_error }}</span>
+      </div>
+    {% endif %}
+
+    {% if student and issue_choices %}
+      <section class="choice-panel student-issue-panel" aria-labelledby="choice-title">
+        <div class="choice-heading">
+          <span class="choice-count">{{ issue_choices|length }}</span>
+          <div><h2 id="choice-title">Dooro kaadhka</h2><p>{{ student.full_name }} · {{ student.student_code }}</p></div>
+        </div>
+        <div class="issue-list">
+          {% for choice in issue_choices %}
+            <form method="post" class="issue-choice">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="selected_student_id" value="{{ student.id }}">
+              <input type="hidden" name="issue_choice_id" value="{{ choice.issue.id }}">
+              <button type="submit">
+                <span class="choice-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg></span>
+                <span class="choice-copy"><strong>{{ choice.issue.exam.name if choice.issue.exam else 'Kaadh guud' }}</strong><small>{{ choice.issue.academic_year.name if choice.issue.academic_year else '' }}</small></span>
+                <span class="status-pill {{ 'status-active' if choice.status == 'Active' else 'status-inactive' }}">{{ 'Firfircoon' if choice.status == 'Active' else 'Aan firfircoonayn' }}</span>
+                <svg class="choice-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+              </button>
+            </form>
+          {% endfor %}
+        </div>
+        <a class="back-link" data-clear-scan href="{{ url_for('public.scan_student_entry', new=1) }}">Raadi aqoonsi kale</a>
+      </section>
+    {% else %}
+      <section class="page-heading student-scan-heading">
+        <span class="eyebrow"><i></i> AQOONSIGA ARDAYGA</span>
+        <h1>XULO HABKA HUBINTA</h1>
+      </section>
+      <section class="entry-grid student-entry-grid" aria-label="Raadi aqoonsiga ardayga">
+        <article class="entry-card camera-card">
+          <div class="student-entry-top">
+            <span class="card-icon camera-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v11H3V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="4"/></svg></span>
+            <span class="entry-method-tag camera-tag">QR CODE</span>
+          </div>
+          <button class="primary-button" id="start-scanner" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v11H3V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="4"/></svg>
+            <span>Fur kamarada</span>
+          </button>
+          <div class="camera-box" id="camera-box" hidden>
+            <video id="qr-video" muted playsinline></video>
+            <button class="camera-close" id="stop-scanner" type="button" aria-label="Xir kamarada"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+            <span class="scan-frame" aria-hidden="true"></span>
+          </div>
+          <p class="scan-status" id="scan-status" role="status" aria-live="polite"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg><span>Kaamirada dambe ayaa la adeegsan doonaa.</span></p>
+          <form method="post" id="scan-submit" hidden>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="scan_value" id="scan-value">
+          </form>
+        </article>
+
+        <article class="entry-card manual-card">
+          <div class="student-entry-top">
+            <span class="card-icon manual-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h.01M11 9h.01M15 9h.01M7 13h.01M11 13h.01M15 13h.01M7 17h10"/></svg></span>
+            <span class="entry-method-tag manual-tag">TIRA-TAXANAHA</span>
+          </div>
+          <div class="entry-title"><h2>Geli Tira-taxanaha Ardayga</h2></div>
+          <form method="post" class="student-code-form" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="input-wrap">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h.01M11 9h.01M15 9h.01M7 13h.01M11 13h.01M15 13h.01M7 17h10"/></svg>
+              <input id="student-code" name="student_code" aria-label="Tira-taxanaha ardayga" value="{{ student_code }}" placeholder="Tusaale: TIS138" autocapitalize="characters" required>
+            </div>
+            <button class="student-lookup-button" type="submit">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+              <span>Raadi aqoonsiga</span>
+            </button>
+          </form>
+        </article>
+      </section>
+    {% endif %}
+  </main>
+
+  <button class="pick-btn" id="pickBtn" aria-label="Dooro qaabka" aria-expanded="false" hidden></button>
+  <div class="panel" id="panel" role="dialog" aria-label="Dooro qaabka" hidden><h3>Dooro qaabka bogga</h3><div class="sw-grid" id="swGrid"></div></div>
+  <script src="{{ url_for('static', filename='js/qr-landing.js', v='qr-student-photo-20261016-1') }}"></script>
+  <script src="{{ url_for('static', filename='vendor/qr-scanner.umd.min.js', v=qr_scanner_version) }}"></script>
+  <script src="{{ url_for('static', filename='js/invigilator-scan.js', v='scan-20261021-1', worker=url_for('static', filename='vendor/qr-scanner-worker.min.js', v=qr_scanner_version)) }}"></script>
+</body>
+</html>
