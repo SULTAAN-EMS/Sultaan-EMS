@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% set school_name = ui_settings.school_name or 'Taysiir International Schools' %}
 {% set school_name_so = ui_settings.school_name_so or 'Dugsiyada Caalamiga ah ee Taysiir' %}
+{% set school_logo_path = ui_settings.logo_path or ui_settings.admin_logo_path %}
 {% set campus_src = asset_url(ui_settings.login_background_path) if ui_settings.login_background_path else url_for('static', filename='images/taysiir-campus-banner-preview.png', v='login-background-campus-preview-20261001') %}
 {% block title %}Gelitaanka Macallinka | {{ school_name }}{% endblock %}
 {% block body_class %}teacher-login-body{% endblock %}
@@ -17,11 +18,10 @@
     <div class="tl-showcase-shade" aria-hidden="true"></div>
     <div class="tl-brand">
       <span class="tl-brand-mark">
-        {% if ui_settings.admin_logo_path or ui_settings.logo_path %}
-          <img src="{{ asset_url(ui_settings.admin_logo_path or ui_settings.logo_path) }}" alt="Logo-ga {{ school_name }}">
-        {% else %}
-          <i class="fa-solid fa-school" aria-hidden="true"></i>
+        {% if school_logo_path %}
+          <img src="{{ asset_url(school_logo_path) }}" alt="Logo-ga {{ school_name }}" decoding="async" fetchpriority="high" data-fallback-src="{{ asset_url(ui_settings.admin_logo_path) if ui_settings.admin_logo_path and ui_settings.admin_logo_path != school_logo_path else '' }}" onerror="if(this.dataset.fallbackSrc&&!this.dataset.fallbackTried){this.dataset.fallbackTried='1';this.src=this.dataset.fallbackSrc;}else{this.hidden=true;this.nextElementSibling.hidden=false;}">
         {% endif %}
+        <i class="fa-solid fa-school" aria-hidden="true" {% if school_logo_path %}hidden{% endif %}></i>
       </span>
       <span class="tl-brand-copy"><strong>{{ school_name }}</strong><small>{{ school_name_so }}</small></span>
     </div>

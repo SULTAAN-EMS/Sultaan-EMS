@@ -16,7 +16,7 @@ from app.models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel,
     AcademicSection, AcademicYearSubject, Exam, ExamMarkingConfiguration, GradeScale, Result, Student, StudentEnrollment, Subject, Teacher,
     TeacherActivity, TeacherResultAssignment, TeacherResultEvent, TeacherResultMarkRevision, TeacherResultSubmission, User,
-    TeacherResultMark,
+    TeacherResultMark, Setting,
 )
 from migrations import phase_14_teacher_result_entry
 from app.teacher_services import validate_teacher_password
@@ -107,6 +107,20 @@ class TestTeacherResultEntry(unittest.TestCase):
         return self.client.post("/teacher/login", data={
             "username": "result-teacher", "password": "TeacherPass123"
         }, follow_redirects=True)
+
+    def test_teacher_login_prefers_official_school_logo(self):
+        db.session.add_all([
+            Setting(key="logo_path", value="https://assets.example/school-logo.png"),
+            Setting(key="admin_logo_path", value="https://assets.example/admin-logo.png"),
+        ])
+        db.session.commit()
+
+        response = self.client.get("/teacher/login")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn('src="https://assets.example/school-logo.png"', body)
+        self.assertIn('data-fallback-src="https://assets.example/admin-logo.png"', body)
 
     def test_teacher_password_policy_accepts_letters_or_digits_at_four_characters(self):
         self.assertIsNone(validate_teacher_password("abcd"))
