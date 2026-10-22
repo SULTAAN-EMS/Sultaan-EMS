@@ -122,6 +122,17 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn('src="https://assets.example/school-logo.png"', body)
         self.assertIn('data-fallback-src="https://assets.example/admin-logo.png"', body)
 
+    def test_result_entry_uses_gendered_student_position_label(self):
+        self.students[0].gender = "Male"
+        self.students[1].gender = "Female"
+        db.session.commit()
+
+        response = self._teacher_login()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Ardeyga 1aad".encode(), response.data)
+        self.assertIn("Ardeyadda 2aad".encode(), response.data)
+
     def test_teacher_password_policy_accepts_letters_or_digits_at_four_characters(self):
         self.assertIsNone(validate_teacher_password("abcd"))
         self.assertIsNone(validate_teacher_password("1234"))
