@@ -226,6 +226,103 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(b'<main class="admin-main"', response.data)
         self.assertIn(b'class="attendance-history"', response.data)
 
+    def test_multi_hall_attendance_summary_reports_range_and_absent_students(self):
+        self.login()
+        second_hall = ExamHall(
+            name='Summary Report Hall B',
+            code='SUMMARY_REPORT_HALL_B',
+            exam_type_id=self.exam_type.id,
+            academic_class_id=self.class_form1.id,
+            is_active=True,
+        )
+        second_subject = Subject(
+            name='Summary Report Second Subject',
+            academic_level_id=self.level_sec.id,
+        )
+        db.session.add_all([second_hall, second_subject])
+        db.session.flush()
+        db.session.add_all([
+            ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student1.id),
+            ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student2.id),
+            ExamHallEnrollment(exam_hall_id=second_hall.id, student_id=self.student2.id),
+        ])
+        db.session.commit()
+
+        first_session = self._create_schedule_session(
+            [{'level_id': self.level_sec.id, 'subject_id': self.subject.id}],
+            when=date(2026, 8, 12),
+        )
+        second_session = self._create_schedule_session(
+            [{'level_id': self.level_sec.id, 'subject_id': second_subject.id}],
+            when=date(2026, 8, 13),
+        )
+        db.session.add_all([
+            AttendanceRecord(
+                student_id=self.student1.id,
+                academic_year_id=self.year.id,
+                exam_hall_id=self.hall.id,
+                subject_id=self.subject.id,
+                exam_session_id=first_session,
+                exam_type_id=self.exam_type.id,
+                status='present',
+            ),
+            AttendanceRecord(
+                student_id=self.student2.id,
+                academic_year_id=self.year.id,
+                exam_hall_id=self.hall.id,
+                subject_id=self.subject.id,
+                exam_session_id=first_session,
+                exam_type_id=self.exam_type.id,
+                status='absent',
+            ),
+            AttendanceRecord(
+                student_id=self.student1.id,
+                academic_year_id=self.year.id,
+                exam_hall_id=self.hall.id,
+                subject_id=second_subject.id,
+                exam_session_id=second_session,
+                exam_type_id=self.exam_type.id,
+                status='absent',
+            ),
+        ])
+        db.session.commit()
+
+        query = (
+            f'academic_year_id={self.year.id}&exam_scope=legacy:{self.exam_type.id}'
+            '&date_from=2026-08-12&date_to=2026-08-13&all_halls=1&generate=1'
+        )
+        response = self.client.get(f'/admin/attendance/summary-report?{query}')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Warbixinta Guud ee Xaadirinta', response.data)
+        self.assertIn(b'Summary Report Hall B', response.data)
+        self.assertIn(b'Ardayda maqnaanshaha loo diiwaangeliyey', response.data)
+        self.assertIn(self.student1.student_code.encode(), response.data)
+        self.assertIn(self.student2.student_code.encode(), response.data)
+        self.assertIn(b'12/08/2026', response.data)
+        self.assertIn(b'13/08/2026', response.data)
+
+        hall_only_query = query.replace('&all_halls=1', f'&hall_ids={self.hall.id}')
+        hall_only = self.client.get(f'/admin/attendance/summary-report?{hall_only_query}')
+        self.assertEqual(hall_only.status_code, 200)
+        self.assertIn(self.hall.name.encode(), hall_only.data)
+        self.assertIn(b'1 hall', hall_only.data)
+
+        rendered = {}
+
+        def capture_pdf(html, base_url):
+            rendered['html'] = html
+            rendered['base_url'] = base_url
+            return b'%PDF-1.4 summary report'
+
+        with patch('app.routes_attendance.html_report_to_pdf', side_effect=capture_pdf):
+            downloaded = self.client.get(f'/admin/attendance/summary-report.pdf?{query}')
+
+        self.assertEqual(downloaded.status_code, 200)
+        self.assertEqual(downloaded.mimetype, 'application/pdf')
+        self.assertIn('Warqadda 1aad'.encode(), rendered['html'].encode())
+        self.assertIn('Warqadda 2aad'.encode(), rendered['html'].encode())
+        self.assertIn(self.student2.student_code, rendered['html'])
+
     def test_attendance_print_and_pdf_share_year_exam_sitting_report(self):
         self.login()
         self.student1.mother_name = 'Hodan Maxamed'

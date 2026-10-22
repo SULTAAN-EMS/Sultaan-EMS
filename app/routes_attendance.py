@@ -3,7 +3,7 @@ from io import BytesIO
 from tempfile import NamedTemporaryFile
 from types import SimpleNamespace
 
-from flask import Blueprint, current_app, jsonify, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, jsonify, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from openpyxl import Workbook
 from sqlalchemy import and_, or_
@@ -1170,6 +1170,263 @@ def hall_roster():
         "admin/hall_roster.html",
         years=years,
     )
+
+
+@attendance_bp.route("/summary-report")
+def summary_report():
+    return render_template(
+        "admin/attendance_summary_report.html",
+        **_attendance_summary_page_context(request.args),
+    )
+
+
+@attendance_bp.route("/summary-report.pdf")
+def summary_report_pdf():
+    context = _attendance_summary_page_context(request.args, force_generate=True)
+    if context["filter_errors"] or not context["report"]:
+        abort(400, description="Buuxi filtarrada warbixinta ka hor dhoofinta PDF-ka.")
+    html = render_template("admin/attendance_summary_print.html", **context)
+    pdf = html_report_to_pdf(html, request.url_root)
+    return send_file(
+        BytesIO(pdf),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name="Warbixinta-Guud-Xaadirinta.pdf",
+    )
+
+
+def _attendance_summary_page_context(args, force_generate=False):
+    years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
+    current_year = AcademicYear.query.filter_by(is_current=True).first()
+    year_id = args.get("academic_year_id", type=int)
+    if year_id not in {year.id for year in years}:
+        year_id = current_year.id if current_year else (years[0].id if years else None)
+
+    exam_options = []
+    selected_exam_scope = (args.get("exam_scope") or "").strip()
+    exam = None
+    legacy_exam_type = None
+    if year_id:
+        for item in get_exam_types(year_id):
+            source = "legacy" if isinstance(item, ExamType) else "exam"
+            exam_options.append({
+                "value": f"{source}:{item.id}",
+                "label": item.name,
+                "name": item.name,
+                "id": item.id,
+                "source": source,
+            })
+        if selected_exam_scope.startswith("exam:"):
+            exam = db.session.get(Exam, parse_int(selected_exam_scope.split(":", 1)[1]))
+            if not exam or exam.academic_year_id != year_id or not exam.is_active:
+                exam = None
+                selected_exam_scope = ""
+            else:
+                legacy_exam_type = ExamType.query.filter_by(
+                    academic_year_id=year_id,
+                    name=exam.name,
+                ).first()
+        elif selected_exam_scope.startswith("legacy:"):
+            legacy_exam_type = db.session.get(
+                ExamType, parse_int(selected_exam_scope.split(":", 1)[1])
+            )
+            if (
+                not legacy_exam_type
+                or legacy_exam_type.academic_year_id != year_id
+                or not legacy_exam_type.is_active
+            ):
+                legacy_exam_type = None
+                selected_exam_scope = ""
+        else:
+            selected_exam_scope = ""
+
+    halls = attendance_halls_in_scope(year_id, exam, legacy_exam_type) if (exam or legacy_exam_type) else []
+    valid_hall_ids = {hall.id for hall in halls}
+    requested_hall_ids = {
+        hall_id for value in args.getlist("hall_ids")
+        if (hall_id := parse_int(value)) in valid_hall_ids
+    }
+    generate = force_generate or args.get("generate") == "1"
+    selected_all_halls = args.get("all_halls") == "1" or (
+        not generate and "all_halls" not in args
+    )
+    selected_hall_ids = (
+        valid_hall_ids if selected_all_halls else requested_hall_ids
+    )
+
+    filter_errors = []
+    start_date_value = (args.get("date_from") or "").strip()
+    end_date_value = (args.get("date_to") or "").strip()
+    start_date = end_date = None
+    for field, value, label in (
+        ("date_from", start_date_value, "bilowga"),
+        ("date_to", end_date_value, "dhammaadka"),
+    ):
+        if not value:
+            if generate:
+                filter_errors.append(f"Geli taariikhda {label}.")
+            continue
+        try:
+            parsed = date.fromisoformat(value)
+        except ValueError:
+            filter_errors.append(f"Taariikhda {label} sax ma aha.")
+            continue
+        if field == "date_from":
+            start_date = parsed
+        else:
+            end_date = parsed
+
+    if start_date and end_date and start_date > end_date:
+        filter_errors.append("Taariikhda bilowgu kama dambayn karto taariikhda dhammaadka.")
+    if generate and not (exam or legacy_exam_type):
+        filter_errors.append("Dooro nooca imtixaanka.")
+    if generate and not selected_hall_ids:
+        filter_errors.append("Dooro ugu yaraan hal hall ama calaamadee dhammaan halls-ka.")
+    if generate and not halls:
+        filter_errors.append("Imtixaankan kuma jiro hall firfircoon.")
+
+    report = None
+    if generate and not filter_errors:
+        report = _attendance_summary_report_data(
+            year_id=year_id,
+            exam=exam,
+            legacy_exam_type=legacy_exam_type,
+            halls=[hall for hall in halls if hall.id in selected_hall_ids],
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+    return {
+        "active_area": "report",
+        "years": years,
+        "selected_year_id": year_id,
+        "exam_options": exam_options,
+        "selected_exam_scope": selected_exam_scope,
+        "halls": halls,
+        "selected_hall_ids": selected_hall_ids,
+        "selected_all_halls": selected_all_halls,
+        "date_from": start_date_value,
+        "date_to": end_date_value,
+        "filter_errors": filter_errors,
+        "report": report,
+        "settings": get_settings(),
+        "today": date.today(),
+    }
+
+
+def _attendance_summary_report_data(*, year_id, exam, legacy_exam_type, halls, start_date, end_date):
+    sessions = [
+        session for session in sessions_in_scope(year_id, exam, legacy_exam_type)
+        if start_date <= session.session_date <= end_date
+    ]
+    _, allowed_pairs = timetable_level_scope(year_id, exam=exam)
+    hall_session_ids = {
+        hall.id: {
+            session.id for session in sessions_for_attendance_hall(
+                year_id, exam, legacy_exam_type, hall
+            )
+        }
+        for hall in halls
+    }
+    status_keys = [item["key"] for item in ATTENDANCE_STATUSES]
+    totals = {
+        "students": 0,
+        "slots": 0,
+        "marked": 0,
+        "sessions": 0,
+        "absent_students": 0,
+        **{key: 0 for key in status_keys},
+    }
+    rows = []
+    absent_students = []
+    hall_totals = {
+        hall.id: {"hall": hall.name, "sessions": 0, "unmarked": 0, **{
+            key: 0 for key in ("students", "slots", "marked", "absent_students", *status_keys)
+        }}
+        for hall in halls
+    }
+    day_totals = {}
+
+    for session in sessions:
+        for hall in halls:
+            if session.id not in hall_session_ids[hall.id]:
+                continue
+            groups, tallies = session_attendance_payload(hall, session, allowed_pairs)
+            students = [student for group in groups for student in group["students"]]
+            slot_count = sum(len(student["slots"]) for student in students)
+            marked_count = sum(
+                1 for student in students for slot in student["slots"]
+                if slot.get("status")
+            )
+            absent_count = 0
+            for group in groups:
+                for student in group["students"]:
+                    absent_subjects = [
+                        slot["subject_name"] for slot in student["slots"]
+                        if slot.get("status") == "absent"
+                    ]
+                    if not absent_subjects:
+                        continue
+                    absent_count += 1
+                    absent_students.append({
+                        "date": session.session_date,
+                        "session": session.sitting_label,
+                        "time": session.session_time,
+                        "hall": hall.name,
+                        "student_code": student.get("student_code") or "—",
+                        "full_name": student.get("full_name") or "Arday aan la aqoon",
+                        "level_name": group.get("level_name") or "—",
+                        "class_name": student.get("class_name") or group.get("class_name") or "—",
+                        "subjects": absent_subjects,
+                    })
+
+            row = {
+                "session_id": session.id,
+                "date": session.session_date,
+                "session": session.sitting_label,
+                "time": session.session_time,
+                "hall": hall.name,
+                "students": len(students),
+                "slots": slot_count,
+                "marked": marked_count,
+                "unmarked": slot_count - marked_count,
+                "absent_students": absent_count,
+                **{key: tallies.get(key, 0) for key in status_keys},
+            }
+            rows.append(row)
+            aggregate_keys = ("students", "slots", "marked", "absent_students", *status_keys)
+            for key in aggregate_keys:
+                totals[key] += row[key]
+            totals["sessions"] += 1
+            for aggregate in (
+                hall_totals.setdefault(hall.id, {"hall": hall.name, "sessions": 0, **{key: 0 for key in aggregate_keys}}),
+                day_totals.setdefault(session.session_date, {"date": session.session_date, "sessions": 0, **{key: 0 for key in aggregate_keys}}),
+            ):
+                aggregate["sessions"] += 1
+                for key in aggregate_keys:
+                    aggregate[key] += row[key]
+
+    absent_students.sort(key=lambda row: (
+        row["date"], row["hall"].casefold(), row["class_name"].casefold(),
+        row["full_name"].casefold(),
+    ))
+    totals["unmarked"] = totals["slots"] - totals["marked"]
+    for aggregate in [*hall_totals.values(), *day_totals.values()]:
+        aggregate["unmarked"] = aggregate["slots"] - aggregate["marked"]
+    return {
+        "rows": rows,
+        "totals": totals,
+        "hall_totals": list(hall_totals.values()),
+        "day_totals": [day_totals[key] for key in sorted(day_totals)],
+        "absent_students": absent_students,
+        "session_count": len({row["session_id"] for row in rows}),
+        "hall_count": len(halls),
+        "start_date": start_date,
+        "end_date": end_date,
+        "year": db.session.get(AcademicYear, year_id),
+        "exam_name": exam.name if exam else legacy_exam_type.name,
+        "hall_names": sorted({hall.name for hall in halls}, key=str.casefold),
+    }
 
 
 @attendance_bp.route("/timetable")
