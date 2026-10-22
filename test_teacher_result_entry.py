@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timedelta
 from io import BytesIO
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import patch
 from openpyxl import load_workbook
 from flask_login import login_required
@@ -19,7 +20,7 @@ from app.models import (
     TeacherResultMark, Setting,
 )
 from migrations import phase_14_teacher_result_entry
-from app.teacher_services import validate_teacher_password
+from app.teacher_services import default_teacher_username, validate_teacher_password
 from migrations import phase_19_teacher_result_partial
 from migrations import phase_20_teacher_result_history
 from migrations import phase_21_teacher_result_assignment_archive
@@ -138,6 +139,14 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIsNone(validate_teacher_password("1234"))
         self.assertIsNone(validate_teacher_password("a1b2"))
         self.assertIsNotNone(validate_teacher_password("abc"))
+
+    def test_default_teacher_username_handles_missing_optional_values(self):
+        teacher = SimpleNamespace(teacher_id="TIS-9", teacher_code=None, email=None)
+        with patch(
+            "app.teacher_services.get_teacher_settings",
+            return_value={"teacher_default_username_format": "{teacher_id}.{teacher_code}.{email}"},
+        ):
+            self.assertEqual(default_teacher_username(teacher), "tis-9..")
 
     def test_teacher_portal_exposes_only_result_entry_and_limits_roster_to_assignment(self):
         response = self._teacher_login()

@@ -197,11 +197,14 @@ def generate_teacher_code(manual_code=None):
 
 def default_teacher_username(teacher):
     settings = get_teacher_settings()
-    pattern = settings.get("teacher_default_username_format") or "{teacher_id}"
+    pattern = str(settings.get("teacher_default_username_format") or "{teacher_id}")
+    teacher_id = str(getattr(teacher, "teacher_id", None) or "")
+    teacher_code = str(getattr(teacher, "teacher_code", None) or "")
+    email_username = (getattr(teacher, "email", None) or "").split("@")[0]
     return (
-        pattern.replace("{teacher_id}", teacher.teacher_id)
-        .replace("{teacher_code}", teacher.teacher_code)
-        .replace("{email}", (teacher.email or "").split("@")[0])
+        pattern.replace("{teacher_id}", teacher_id)
+        .replace("{teacher_code}", teacher_code)
+        .replace("{email}", email_username)
         .strip()
         .lower()
     )
