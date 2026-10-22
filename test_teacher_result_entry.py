@@ -132,8 +132,16 @@ class TestTeacherResultEntry(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn('property="og:title" content="Waaxda Macallimiinta |', body)
         self.assertIn('property="og:url" content="https://portal.example/teacher/login"', body)
-        self.assertIn('property="og:image" content="https://portal.example/static/images/taysiir-campus-banner-preview.png"', body)
+        self.assertIn('property="og:image" content="https://portal.example/static/images/teacher-portal-share-20261022.jpg"', body)
+        self.assertIn('property="og:image:type" content="image/jpeg"', body)
+        self.assertIn('property="og:image:width" content="1200"', body)
+        self.assertIn('property="og:image:height" content="630"', body)
         self.assertIn('name="twitter:card" content="summary_large_image"', body)
+
+        image_response = self.client.get("/static/images/teacher-portal-share-20261022.jpg")
+        self.assertEqual(image_response.status_code, 200)
+        self.assertEqual(image_response.mimetype, "image/jpeg")
+        self.assertGreater(len(image_response.data), 0)
 
     def test_result_entry_uses_gendered_student_position_label(self):
         self.students[0].gender = "Male"
