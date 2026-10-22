@@ -26,7 +26,7 @@
             {% endif %}
             <b {% if ui_settings.admin_logo_path or ui_settings.logo_path %}hidden{% endif %}>T</b>
           </span>
-          <span class="re-school-copy"><strong>{{ (ui_settings.school_name or 'TAYSIIR INTERNATIONAL SCHOOLS')|upper }}</strong><small>SULTAAN EMS <i aria-hidden="true">·</i> PORTALKA MACALLINKA</small></span>
+          <span class="re-school-copy"><strong>{{ (ui_settings.school_name or 'TAYSIIR INTERNATIONAL SCHOOLS')|upper }}</strong></span>
         </a>
         <div class="re-account">
           <span class="re-teacher-avatar" aria-hidden="true">{{ (initials[0][0] ~ (initials[1][0] if initials|length > 1 else ''))|upper }}</span>

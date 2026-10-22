@@ -13,18 +13,8 @@
     </span>
     <span class="teacher-brand-copy">
       <strong>{{ ui_settings.school_name or 'Taysiir International Schools' }}</strong>
-      <small>SULTAAN EMS <span aria-hidden="true">·</span> PORTALKA MACALLINKA</small>
     </span>
   </a>
-  <nav class="teacher-nav" aria-label="Hagidda portalka macallinka">
-    {% for endpoint, label, icon, permission in nav_items %}
-      {% if not permission or teacher_can(permission) %}
-        <a href="{{ url_for(endpoint) }}" class="{% if active_endpoint == endpoint %}active{% endif %}" {% if active_endpoint == endpoint %}aria-current="page"{% endif %}>
-          <i class="fa-solid {{ icon }}"></i><span>{{ label }}</span>
-        </a>
-      {% endif %}
-    {% endfor %}
-  </nav>
   <div class="teacher-profile" title="{{ teacher.full_name }}">
     <span class="teacher-avatar">
       {% if teacher.photo_path %}
@@ -48,7 +38,6 @@
       <div class="teacher-top-copy">
         <span class="eyebrow"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> NIDAAMKA NATIIJOOYINKA</span>
         <h1>{{ page_title }}</h1>
-        <p>{% if active_endpoint == 'teacher_portal.result_entry' %}Geli oo gudbi dhibcaha imtixaannada laguu xilsaaray.{% else %}SULTAAN EMS · Portalka Macallinka{% endif %}</p>
       </div>
     </div>
     <div class="top-actions" aria-label="Ficillada akoonka">

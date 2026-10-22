@@ -396,7 +396,7 @@
   .teacher-portal-bar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "brand profile" "nav nav";
+    grid-template-areas: "brand profile";
     gap: 8px 14px;
     padding: 10px 14px 8px;
   }
@@ -404,11 +404,6 @@
   .teacher-brand {
     grid-area: brand;
     flex-basis: auto;
-  }
-
-  .teacher-nav {
-    grid-area: nav;
-    justify-content: flex-start;
   }
 
   .teacher-profile {

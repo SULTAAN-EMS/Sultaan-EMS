@@ -110,6 +110,9 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Gelinta natiijooyinka", response.data)
         self.assertIn(b"Student 1", response.data)
+        self.assertNotIn(b"class=\"teacher-nav\"", response.data)
+        self.assertIn(b"href=\"/teacher/result-entry\"", response.data)
+        self.assertNotIn(b"PORTALKA MACALLINKA", response.data)
         self.assertNotIn(b"Exam Analytics", response.data)
         self.assertNotIn(b"Naadigayga", response.data)
 

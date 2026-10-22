@@ -49,7 +49,6 @@ from .teacher_portal import (
     safe_teacher_next_url,
     teacher_can,
     teacher_login_required,
-    teacher_nav_items,
     teacher_permission_required,
     teacher_requires_password_change,
     teacher_theme,
@@ -222,14 +221,12 @@ def _ctx(teacher, filters, page_title, active_endpoint):
         ClubTeamLeaderAssignment.start_date <= today,
         db.or_(ClubTeamLeaderAssignment.end_date.is_(None), ClubTeamLeaderAssignment.end_date > today),
     ).first() is not None
-    nav_items = teacher_nav_items()
     return {
         "teacher": teacher,
         "filters": filters,
         "filter_options": options,
         "page_title": page_title,
         "active_endpoint": active_endpoint,
-        "nav_items": nav_items,
         "teacher_can": teacher_can,
         "teacher_theme": teacher_theme(),
         "teacher_settings": get_teacher_settings(),
@@ -402,7 +399,6 @@ def result_entry():
         teacher=teacher,
         page_title="Gelinta natiijooyinka",
         active_endpoint="teacher_portal.result_entry",
-        nav_items=teacher_nav_items(),
         teacher_can=teacher_can,
         teacher_theme=teacher_theme(),
         teacher_settings=get_teacher_settings(),
