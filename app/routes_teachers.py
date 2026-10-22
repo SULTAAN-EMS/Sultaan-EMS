@@ -12,11 +12,10 @@ from sqlalchemy.orm import selectinload
 from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
-from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, ClubTeam, ClubTeamLeaderAssignment, ClubTeamMembership, Exam, Result, Setting, Student, StudentClub, StudentEnrollment, Subject, Teacher, TeacherActivity, TeacherResultAssignment, TeacherResultEvent, TeacherResultMark, TeacherResultSubmission, User
+from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, ClubTeam, ClubTeamLeaderAssignment, ClubTeamMembership, Exam, Result, Setting, Student, StudentClub, StudentEnrollment, Subject, Teacher, TeacherActivity, TeacherResultAssignment, TeacherResultEvent, TeacherResultMark, TeacherResultMarkRevision, TeacherResultSubmission, User
 from .permissions import enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, allowed_file
 from .teacher_services import (
-    EMPLOYMENT_TYPES,
     TEACHER_PERMISSIONS,
     create_or_update_teacher_user,
     default_teacher_username,
@@ -730,6 +729,7 @@ def result_entry_setup():
     elif status_filter == "paused":
         assignments = [item for item in assignments if not item.is_active]
     review_rows = {}
+    history_rows = {}
     assignments_with_existing_results = set()
     assignment_progress = {}
     for assignment in assignments:
@@ -741,10 +741,8 @@ def result_entry_setup():
             "pending": sum(mark.status == "submitted" for mark in submission.marks),
             "draft": sum(mark.status == "draft" and mark.score is not None for mark in submission.marks),
         }
-        if submission.status != "submitted":
-            continue
-        submitted_marks = [mark for mark in submission.marks if mark.status == "submitted" and mark.score is not None]
-        student_ids = [mark.student_id for mark in submitted_marks]
+        history_marks = [mark for mark in submission.marks if mark.score is not None or mark.last_action]
+        student_ids = [mark.student_id for mark in history_marks]
         official_scores = {
             result.student_id: result.score
             for result in Result.query.filter(
@@ -753,12 +751,41 @@ def result_entry_setup():
                 Result.student_id.in_(student_ids),
             ).all()
         } if student_ids else {}
-        if official_scores:
-            assignments_with_existing_results.add(assignment.id)
-        review_rows[assignment.id] = [
+        history_rows[assignment.id] = [
             {"mark": mark, "official_score": official_scores.get(mark.student_id)}
-            for mark in submitted_marks
+            for mark in history_marks
         ]
+        if submission.status != "submitted":
+            continue
+        submitted_marks = [mark for mark in submission.marks if mark.status == "submitted" and mark.score is not None]
+        if any(official_scores.get(mark.student_id) is not None for mark in submitted_marks):
+            assignments_with_existing_results.add(assignment.id)
+        history_items_by_mark = {item["mark"].id: item for item in history_rows[assignment.id]}
+        review_rows[assignment.id] = [history_items_by_mark[mark.id] for mark in submitted_marks]
+    history_mark_ids = [
+        item["mark"].id
+        for rows in history_rows.values()
+        for item in rows
+    ]
+    revisions_by_mark = {}
+    if history_mark_ids:
+        revisions = TeacherResultMarkRevision.query.filter(
+            TeacherResultMarkRevision.mark_id.in_(history_mark_ids)
+        ).order_by(TeacherResultMarkRevision.created_at, TeacherResultMarkRevision.id).all()
+        for revision in revisions:
+            occurred_at = revision.created_at
+            if occurred_at.tzinfo is None:
+                occurred_at = occurred_at.replace(tzinfo=ZoneInfo("UTC"))
+            revisions_by_mark.setdefault(revision.mark_id, []).append({
+                "record": revision,
+                "time_label": occurred_at.astimezone(ZoneInfo("Africa/Mogadishu")).strftime("%d/%m/%Y · %I:%M %p"),
+            })
+    for rows in history_rows.values():
+        for item in rows:
+            item["revisions"] = revisions_by_mark.get(item["mark"].id, [])
+            item["edit_count"] = sum(
+                revision["record"].is_change for revision in item["revisions"]
+            )
     deadline_labels = {
         item.id: item.deadline_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Africa/Mogadishu"))
         for item in assignments if item.deadline_at
@@ -863,6 +890,7 @@ def result_entry_setup():
         assignment_scope_details=assignment_scope_details,
         deadline_labels=deadline_labels,
         review_rows=review_rows,
+        history_rows=history_rows,
         assignment_progress=assignment_progress,
         assignments_with_existing_results=assignments_with_existing_results,
         summary=summary, status_filter=status_filter, teacher_filter=teacher_filter,
@@ -1059,15 +1087,18 @@ def teacher_form(teacher_id=None):
             teacher.gender = request.form.get("gender") or None
             teacher.phone = request.form.get("phone", "").strip()
             teacher.email = request.form.get("email", "").strip()
-            teacher.address = request.form.get("address", "").strip()
-            teacher.emergency_contact = request.form.get("emergency_contact", "").strip()
-            teacher.employment_date = parse_teacher_form_dates(request.form.get("employment_date"))
-            teacher.employment_type = request.form.get("employment_type") or "Full Time"
-            teacher.qualification = request.form.get("qualification", "").strip()
-            teacher.years_experience = int(request.form.get("years_experience") or 0)
-            teacher.department = request.form.get("department", "").strip()
-            teacher.employment_status = request.form.get("employment_status") or settings.get("teacher_default_status") or "Active"
-            teacher.is_active = teacher.employment_status == "Active"
+            if "address" in request.form:
+                teacher.address = request.form.get("address", "").strip()
+            if "emergency_contact" in request.form:
+                teacher.emergency_contact = request.form.get("emergency_contact", "").strip()
+            if "employment_status" in request.form:
+                teacher.employment_date = parse_teacher_form_dates(request.form.get("employment_date"))
+                teacher.employment_type = request.form.get("employment_type") or "Full Time"
+                teacher.qualification = request.form.get("qualification", "").strip()
+                teacher.years_experience = int(request.form.get("years_experience") or 0)
+                teacher.department = request.form.get("department", "").strip()
+                teacher.employment_status = request.form.get("employment_status") or settings.get("teacher_default_status") or "Active"
+                teacher.is_active = teacher.employment_status == "Active"
 
             photo = request.files.get("photo")
             if photo and photo.filename:
@@ -1133,6 +1164,7 @@ def teacher_form(teacher_id=None):
             if selected_portal_user_id or create_account or teacher.user_id:
                 if password and password != confirm:
                     raise ValueError("Passwords do not match.")
+                had_portal_account = bool(teacher.user_id)
                 create_or_update_teacher_user(
                     teacher,
                     username=username,
@@ -1140,6 +1172,14 @@ def teacher_form(teacher_id=None):
                     account_active=request.form.get("account_active") == "on",
                     force_change=bool(request.form.get("force_password_change")),
                 )
+                if password:
+                    actor = current_user.username if current_user.is_authenticated else "maamulka"
+                    action = "Password Reset by Admin" if had_portal_account else "Password Set by Admin"
+                    log_teacher_activity(
+                        teacher,
+                        action,
+                        f"Maamulaha @{actor} ayaa dejiyey furaha gelitaanka. Qiimaha furaha lama kaydin.",
+                    )
 
             log_teacher_activity(teacher, "Profile Updated", f"Saved teacher {teacher.teacher_id} / {teacher.teacher_code}")
             audit("Teacher Updates", f"Saved teacher {teacher.teacher_id} ({teacher.teacher_code})")
@@ -1158,7 +1198,6 @@ def teacher_form(teacher_id=None):
         shared_subjects=scope_data["shared_subjects"],
         linked_level_ids=scope_data["linked_level_ids"],
         settings=settings,
-        employment_types=EMPLOYMENT_TYPES,
         default_username=default_teacher_username(teacher) if teacher.teacher_id else "",
         linkable_staff_users=linkable_staff_users,
         selected_portal_user=selected_portal_user,
@@ -1171,11 +1210,22 @@ def teacher_view(teacher_id):
     teacher = db.session.get(Teacher, teacher_id) or abort(404)
     performance = teacher_performance_data(teacher)[0]
     activity = teacher_activity_summary(teacher)
+    password_events = TeacherActivity.query.filter_by(teacher_id=teacher.id).filter(
+        TeacherActivity.action.in_((
+            "Password Set by Admin",
+            "Password Reset by Admin",
+            "Password Changed by Teacher",
+            "Password Change",
+            "Password Reset Requested",
+            "Password Reset Request",
+        ))
+    ).order_by(TeacherActivity.created_at.desc(), TeacherActivity.id.desc()).limit(20).all()
     return render_template(
         "admin/teachers/view.html",
         teacher=teacher,
         performance=performance,
         activity=activity,
+        password_events=password_events,
         permissions=teacher_permission_set(teacher),
     )
 
@@ -1256,8 +1306,6 @@ def teacher_settings():
             "teacher_code_auto_generate",
             "teacher_code_format",
             "teacher_default_username_format",
-            "teacher_password_min_length",
-            "teacher_default_password_policy",
             "teacher_theme",
             "teacher_profile_photo_size",
             "teacher_max_upload_size",

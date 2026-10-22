@@ -1,19 +1,81 @@
 {% extends "base.html" %}
-{% block body_class %}login-body{% endblock %}
+{% set school_name = ui_settings.school_name or 'Taysiir International Schools' %}
+{% set school_name_so = ui_settings.school_name_so or 'Dugsiyada Caalamiga ah ee Taysiir' %}
+{% set campus_src = asset_url(ui_settings.login_background_path) if ui_settings.login_background_path else url_for('static', filename='images/taysiir-campus-banner-preview.png', v='login-background-campus-preview-20261001') %}
+{% block title %}Gelitaanka Macallinka | {{ school_name }}{% endblock %}
+{% block body_class %}teacher-login-body{% endblock %}
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-login.css') }}">
+{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-dashboard.css') }}">
-<main class="login-page">
-  <form method="post" class="login-card glass-card">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="login-mark"><i class="fa-solid fa-chalkboard-user"></i></div>
-    <span class="eyebrow"><i class="fa-solid fa-lock"></i> Teacher Portal</span>
-    <h1>{{ ui_settings.school_name or 'School' }}</h1>
-    <p>Sign in to view your classes, students, and examination results.</p>
-    <label><i class="fa-solid fa-user"></i> Username<input name="username" required autofocus></label>
-    <label><i class="fa-solid fa-key"></i> Password<input name="password" type="password" required></label>
-    <button type="submit" class="premium"><i class="fa-solid fa-right-to-bracket"></i> Sign In</button>
-    <p style="margin:0;text-align:center;"><a href="{{ url_for('teacher_portal.forgot_password') }}">Forgot password?</a></p>
-    <p style="margin:0;text-align:center;color:var(--muted);font-size:.9rem;">Administrators should use the <a href="{{ url_for('auth.login') }}">admin login</a>.</p>
-  </form>
+<main class="tl-shell">
+  <section class="tl-showcase" aria-label="{{ school_name }}">
+    <img class="tl-campus" src="{{ campus_src }}" alt="" aria-hidden="true">
+    <div class="tl-showcase-shade" aria-hidden="true"></div>
+    <div class="tl-brand">
+      <span class="tl-brand-mark">
+        {% if ui_settings.admin_logo_path or ui_settings.logo_path %}
+          <img src="{{ asset_url(ui_settings.admin_logo_path or ui_settings.logo_path) }}" alt="Logo-ga {{ school_name }}">
+        {% else %}
+          <i class="fa-solid fa-school" aria-hidden="true"></i>
+        {% endif %}
+      </span>
+      <span class="tl-brand-copy"><strong>{{ school_name }}</strong><small>{{ school_name_so }}</small></span>
+    </div>
+    <div class="tl-showcase-copy">
+      <h1>WAAXDA<br><span>MACALLIMIINTA</span></h1>
+    </div>
+    <div class="tl-showcase-foot"><span class="tl-live-dot" aria-hidden="true"></span> SULTAAN EMS <i aria-hidden="true"></i> Nidaamka Maareynta Imtixaannada</div>
+  </section>
+
+  <section class="tl-access" aria-labelledby="tl-title">
+    <div class="tl-access-inner">
+      <div class="tl-access-heading">
+        <span class="tl-access-icon" aria-hidden="true"><i class="fa-solid fa-arrow-right-to-bracket"></i></span>
+        <span class="tl-access-label">BOGGA MACALLINKA</span>
+        <h2 id="tl-title">Ku soo dhawoow</h2>
+      </div>
+
+      <form class="tl-form" method="post" action="{{ url_for('teacher_portal.login', next=request.args.get('next')) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="tl-field" for="tl-username">
+          <span>Magaca isticmaalaha</span>
+          <span class="tl-input-wrap"><i class="fa-regular fa-user" aria-hidden="true"></i><input id="tl-username" name="username" type="text" autocomplete="username" placeholder="Geli magaca isticmaalaha" required autofocus></span>
+        </label>
+        <label class="tl-field" for="tl-password">
+          <span>Erayga sirta ah</span>
+          <span class="tl-input-wrap"><i class="fa-solid fa-key" aria-hidden="true"></i><input id="tl-password" name="password" type="password" autocomplete="current-password" placeholder="Geli erayga sirta ah" required><button class="tl-reveal" type="button" id="tl-password-toggle" aria-label="Muuji erayga sirta ah" aria-pressed="false"><i class="fa-regular fa-eye" aria-hidden="true"></i></button></span>
+        </label>
+
+        <button class="tl-submit" type="submit" id="tl-submit"><span class="tl-submit-icon"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i></span><span id="tl-submit-text">Soo gal</span><i class="fa-solid fa-arrow-right tl-submit-arrow" aria-hidden="true"></i></button>
+        <div class="tl-form-meta"><a href="{{ url_for('teacher_portal.forgot_password') }}">Ma illowday erayga sirta ah?</a></div>
+      </form>
+
+    </div>
+  </section>
 </main>
+<script>
+(() => {
+  const password = document.getElementById('tl-password');
+  const toggle = document.getElementById('tl-password-toggle');
+  const form = document.querySelector('.tl-form');
+  const submit = document.getElementById('tl-submit');
+  toggle.addEventListener('click', () => {
+    const show = password.type === 'password';
+    password.type = show ? 'text' : 'password';
+    toggle.setAttribute('aria-pressed', String(show));
+    toggle.setAttribute('aria-label', show ? 'Qari erayga sirta ah' : 'Muuji erayga sirta ah');
+    toggle.innerHTML = `<i class="fa-regular ${show ? 'fa-eye-slash' : 'fa-eye'}" aria-hidden="true"></i>`;
+    password.focus();
+  });
+  form.addEventListener('submit', () => {
+    submit.disabled = true;
+    submit.classList.add('is-loading');
+    document.getElementById('tl-submit-text').textContent = 'Waa la xaqiijinayaa…';
+  });
+})();
+</script>
 {% endblock %}

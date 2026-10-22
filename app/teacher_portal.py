@@ -100,8 +100,6 @@ def teacher_login_required(view):
             return redirect(url_for("teacher_portal.login", next=request.url))
         if not is_teacher_account():
             flash("This area is only available to teacher accounts.", "danger")
-            if current_user.role in ("super_admin", "admin"):
-                return redirect(url_for("admin.dashboard"))
             return redirect(url_for("teacher_portal.login"))
         if teacher_requires_password_change() and request.endpoint != "teacher_portal.change_password":
             flash("Please change your password before continuing.", "warning")

@@ -5,8 +5,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-entry-20261021-12') }}">
-{% set initials = teacher.full_name.split() %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-entry-20261022-14') }}">
 <section class="result-entry-page" id="resultEntryPage"
   data-max-score="{{ max_score if max_score is not none else '' }}"
   data-assignment-id="{{ assignment.id if assignment else '' }}"
@@ -19,19 +18,16 @@
   <header class="re-hero">
     <div class="re-hero-inner">
       <div class="re-topline">
-        <a class="re-school" href="{{ url_for('teacher_portal.result_entry') }}" aria-label="Portalka macallinka">
-          <span class="re-logo">
-            {% if ui_settings.admin_logo_path or ui_settings.logo_path %}
-              <img src="{{ asset_url(ui_settings.admin_logo_path or ui_settings.logo_path) }}" alt="" onerror="this.hidden=true;this.nextElementSibling.hidden=false">
-            {% endif %}
-            <b {% if ui_settings.admin_logo_path or ui_settings.logo_path %}hidden{% endif %}>T</b>
+        <div class="re-teacher-profile" title="{{ teacher.full_name }}">
+          <span class="re-teacher-avatar" aria-hidden="true">
+            {% if teacher.photo_path %}<img src="{{ asset_url(teacher.photo_path) }}" alt="" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><i class="fa-solid fa-chalkboard-user" aria-hidden="true" hidden></i>
+            {% else %}<i class="fa-solid fa-chalkboard-user" aria-hidden="true"></i>{% endif %}
           </span>
-          <span class="re-school-copy"><strong>{{ (ui_settings.school_name or 'TAYSIIR INTERNATIONAL SCHOOLS')|upper }}</strong></span>
-        </a>
-        <div class="re-account">
-          <span class="re-teacher-avatar" aria-hidden="true">{{ (initials[0][0] ~ (initials[1][0] if initials|length > 1 else ''))|upper }}</span>
-          <span class="re-account-copy"><strong>{{ teacher.full_name }}</strong><small>{{ teacher.teacher_code }}</small></span>
+          <span class="re-teacher-copy"><strong>{{ teacher.full_name }}</strong><small><i class="fa-regular fa-id-card" aria-hidden="true"></i>@{{ teacher.user.username if teacher.user else '—' }}</small></span>
         </div>
+        <a class="re-password-link" href="{{ url_for('teacher_portal.change_password') }}" title="Beddel password-kaaga">
+          <i class="fa-solid fa-key" aria-hidden="true"></i><span>Beddel password-ka</span>
+        </a>
         <button type="button" class="re-theme-toggle" id="themeToggle" title="Beddel muuqaalka" aria-label="U beddel muuqaalka madow"><i class="fa-regular fa-moon" aria-hidden="true"></i></button>
       </div>
     </div>
@@ -80,7 +76,7 @@
           </article>
           <article class="re-policy-item"><span class="re-policy-icon {{ submission_status_tone }}"><i class="fa-solid {{ submission_status_icon }}" aria-hidden="true"></i></span><div><small>Xaaladda gudbinta</small><b>{{ submission_status_label }}</b><span>{{ remaining_submissions }} gudbin oo hadhay</span></div></article>
         </section>
-        {% if locked %}<div class="re-lock-note" role="status"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Xaashidan hadda waa xiran tahay. Maamulka ayaa dib u furi kara haddii wax laga beddelayo.</span></div>{% endif %}
+        {% if locked %}<div class="re-lock-note" role="status"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Gelinta Natiijooyinka wuu xidhmay. Fadlan faafaahin la xidhiidh xafiiska imtixaannada TIS.</span></div>{% endif %}
 
         <form method="get" class="re-filter-card" id="resultScopeFilters" data-filter-assignment-id="{{ assignment.id }}">
           <button type="button" class="re-filter-toggle" id="filterToggle" aria-expanded="false" aria-controls="filterBody">
@@ -125,7 +121,7 @@
               <article class="re-student-card" data-student-card data-student-id="{{ row.student.id }}" data-search="{{ (row.student.full_name ~ ' ' ~ (row.student.mother_name or '') ~ ' ' ~ (row.student.student_code or '') ~ ' ' ~ assignment.school_class.name)|lower }}" data-saved="{{ current_value }}" data-previous="{{ previous_value }}" data-mark-status="{{ row.mark_status }}" data-has-draft="{{ 'true' if row.has_draft_mark else 'false' }}" data-locked="{{ 'true' if locked or row.is_locked else 'false' }}" style="--avatar-hue:{{ (loop.index * 47) % 360 }}deg">
                 <div class="re-student-main">
                   <div class="re-avatar-wrap"><span class="re-avatar">{% if row.student.photo_path %}<img src="{{ asset_url(row.student.photo_path) }}" alt="" loading="lazy">{% else %}<b>{{ (row.student.full_name.split()[0][0] ~ (row.student.full_name.split()[1][0] if row.student.full_name.split()|length > 1 else ''))|upper }}</b>{% endif %}</span><span class="re-state-badge" data-state-icon><i class="fa-solid fa-user" aria-hidden="true"></i></span></div>
-                  <div class="re-student-info"><span class="re-student-number">Arday #{{ loop.index }}</span><span class="re-active-label">Hadda waad geliysaa</span><h2>{{ row.student.full_name }}</h2><p><i class="fa-solid fa-person-dress" aria-hidden="true"></i><span>Hooyo: {{ row.student.mother_name or '—' }}</span></p><div class="re-student-meta"><span class="re-student-id"><i class="fa-regular fa-id-card" aria-hidden="true"></i>ID: {{ row.student.student_code or '—' }}</span><span class="re-student-class"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i>Fasalka: {{ assignment.school_class.name }}</span></div><span class="re-mark-action{% if row.action_type %} is-{{ row.action_type }}{% endif %}" data-mark-action data-action-type="{{ row.action_type or '' }}" role="status" aria-live="polite" {% if not row.action_type %}hidden{% endif %}><i class="fa-solid {% if row.action_type == 'entered' %}fa-circle-plus{% elif row.action_type == 'edited' %}fa-pen-to-square{% elif row.action_type == 'cleared' %}fa-trash-can{% else %}fa-clock-rotate-left{% endif %}" aria-hidden="true"></i><span data-action-label>{% if row.action_type == 'entered' %}Natiijo cusub la geliyey{% elif row.action_type == 'edited' %}Natiijo waa la beddelay{% elif row.action_type == 'cleared' %}Natiijo waa la tirtiray{% elif row.action_type == 'legacy' %}Taariikh ficil hore lama hayo{% endif %}</span></span></div>
+                  <div class="re-student-info"><span class="re-student-number">Ardeyga {{ loop.index }}aad</span><span class="re-active-label">Ardeygan ayaad maraysaa</span><h2>{{ row.student.full_name }}</h2><p><i class="fa-solid fa-person-dress" aria-hidden="true"></i><span>Hooyo: {{ row.student.mother_name or '—' }}</span></p><div class="re-student-meta"><span class="re-student-id"><i class="fa-regular fa-id-card" aria-hidden="true"></i>ID: {{ row.student.student_code or '—' }}</span><span class="re-student-class"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i>Fasalka: {{ assignment.school_class.name }}</span></div><span class="re-mark-action{% if row.action_type %} is-{{ row.action_type }}{% endif %}" data-mark-action data-action-type="{{ row.action_type or '' }}" role="status" aria-live="polite" {% if not row.action_type %}hidden{% endif %}><i class="fa-solid {% if row.action_type == 'entered' %}fa-circle-plus{% elif row.action_type == 'edited' %}fa-pen-to-square{% elif row.action_type == 'cleared' %}fa-trash-can{% else %}fa-clock-rotate-left{% endif %}" aria-hidden="true"></i><span data-action-label>{% if row.action_type == 'entered' %}Natiijo cusub la geliyey{% elif row.action_type == 'edited' %}Natiijo waa la beddelay{% elif row.action_type == 'cleared' %}Natiijo waa la tirtiray{% elif row.action_type == 'legacy' %}Taariikh ficil hore lama hayo{% endif %}</span></span></div>
                 </div>
                 <div class="re-score-area">
                   <div class="re-performance"><div class="re-performance-line"><b data-percent>—</b></div><span class="re-progress"><i data-progress></i></span></div>

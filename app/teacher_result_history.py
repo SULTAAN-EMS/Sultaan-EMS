@@ -1,7 +1,46 @@
 from flask_login import current_user
 
 from . import db
-from .models import AcademicYearClass, AcademicYearLevel, AcademicYearSubject, TeacherResultEvent
+from .models import (
+    AcademicYearClass, AcademicYearLevel, AcademicYearSubject,
+    Student, TeacherResultEvent, TeacherResultMarkRevision,
+)
+
+
+def record_teacher_result_mark_revision(
+    mark,
+    previous_score,
+    next_score,
+    action,
+    *,
+    is_change,
+    entry_status,
+    submission_attempt=None,
+):
+    """Append a point-in-time score transition to the caller's transaction."""
+    if not action:
+        return None
+    actor = current_user if current_user.is_authenticated else None
+    student = mark.student or db.session.get(Student, mark.student_id)
+    if student is None:
+        raise ValueError("Cannot record a teacher mark revision without its student.")
+    submission = mark.submission
+    db.session.add(TeacherResultMarkRevision(
+        mark=mark,
+        submission=submission,
+        assignment=submission.assignment,
+        student=student,
+        actor=actor,
+        student_name=student.full_name,
+        student_code=student.student_code,
+        actor_name=(actor.full_name or actor.username) if actor else "N/A",
+        previous_score=previous_score,
+        next_score=next_score,
+        action=action,
+        is_change=bool(is_change),
+        entry_status=entry_status,
+        submission_attempt=submission_attempt,
+    ))
 
 
 def record_teacher_result_event(

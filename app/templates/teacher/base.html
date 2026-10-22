@@ -3,7 +3,7 @@
 {% block title %}{% block teacher_title %}{{ page_title }}{% endblock %} | SULTAAN EMS{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-dashboard.css') }}">
-<header class="teacher-portal-bar">
+<header class="teacher-portal-bar{% if active_endpoint == 'teacher_portal.result_entry' %} teacher-portal-bar--result-entry{% endif %}">
   <a class="teacher-brand" href="{{ url_for('teacher_portal.result_entry') }}" aria-label="{{ ui_settings.school_name or 'Taysiir International Schools' }} - Portalka Macallinka">
     <span class="brand-logo" aria-hidden="true">
       {% if ui_settings.admin_logo_path or ui_settings.logo_path %}
@@ -12,10 +12,12 @@
       <i class="fa-solid fa-school" {% if ui_settings.admin_logo_path or ui_settings.logo_path %}hidden{% endif %}></i>
     </span>
     <span class="teacher-brand-copy">
-      <strong>{{ ui_settings.school_name or 'Taysiir International Schools' }}</strong>
+      <strong lang="so">{{ ui_settings.school_name_so or 'Dugsiyada Caalamiga ah ee Taysiir' }}</strong>
+      <small class="teacher-brand-ar" lang="ar" dir="rtl">{{ ui_settings.school_name_ar or 'مدارس تيسير العالمية' }}</small>
+      <small class="teacher-brand-en" lang="en">{{ ui_settings.school_name or 'Taysiir International Schools' }}</small>
     </span>
   </a>
-  <div class="teacher-profile" title="{{ teacher.full_name }}">
+  {% if active_endpoint != 'teacher_portal.result_entry' %}<div class="teacher-profile" title="{{ teacher.full_name }}">
     <span class="teacher-avatar">
       {% if teacher.photo_path %}
         <img src="{{ asset_url(teacher.photo_path) }}" alt="">
@@ -27,7 +29,7 @@
       <strong>{{ teacher.full_name }}</strong>
       <small><i class="fa-regular fa-id-card" aria-hidden="true"></i> {{ teacher.teacher_code }}</small>
     </span>
-  </div>
+  </div>{% endif %}
 </header>
 <main class="teacher-main{% if active_endpoint == 'teacher_portal.result_entry' %} teacher-main-results{% endif %}">
   {% if active_endpoint != 'teacher_portal.result_entry' %}<header class="teacher-top glass-card">
@@ -42,7 +44,7 @@
     </div>
     <div class="top-actions" aria-label="Ficillada akoonka">
       <button type="button" class="icon-btn" id="themeToggle" title="Beddel muuqaalka" aria-label="Beddel muuqaalka"><i class="fa-solid fa-moon" aria-hidden="true"></i></button>
-      <a class="icon-btn" href="{{ url_for('teacher_portal.change_password') }}" title="Beddel furaha sirta" aria-label="Beddel furaha sirta"><i class="fa-solid fa-key" aria-hidden="true"></i></a>
+      <a class="icon-btn teacher-password-link" href="{{ url_for('teacher_portal.change_password') }}" title="Beddel password-kaaga" aria-label="Beddel password-kaaga"><i class="fa-solid fa-key" aria-hidden="true"></i><span>Beddel password-ka</span></a>
       <form method="post" action="{{ url_for('teacher_portal.logout') }}" class="teacher-logout top-logout">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="icon-btn" title="Ka bax" aria-label="Ka bax"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i></button>

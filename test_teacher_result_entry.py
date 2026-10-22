@@ -4,24 +4,27 @@ import unittest
 import html
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from decimal import Decimal
 from unittest.mock import patch
 from openpyxl import load_workbook
+from flask_login import login_required
 
 from app import create_app, db
 from app.models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel,
     AcademicSection, AcademicYearSubject, Exam, ExamMarkingConfiguration, GradeScale, Result, Student, StudentEnrollment, Subject, Teacher,
-    TeacherResultAssignment, TeacherResultEvent, TeacherResultSubmission, User,
+    TeacherActivity, TeacherResultAssignment, TeacherResultEvent, TeacherResultMarkRevision, TeacherResultSubmission, User,
     TeacherResultMark,
 )
 from migrations import phase_14_teacher_result_entry
+from app.teacher_services import validate_teacher_password
 from migrations import phase_19_teacher_result_partial
 from migrations import phase_20_teacher_result_history
 from migrations import phase_21_teacher_result_assignment_archive
 from migrations import phase_22_teacher_result_mark_activity
+from migrations import phase_24_teacher_result_mark_revisions
 
 
 class TestTeacherResultEntry(unittest.TestCase):
@@ -105,6 +108,12 @@ class TestTeacherResultEntry(unittest.TestCase):
             "username": "result-teacher", "password": "TeacherPass123"
         }, follow_redirects=True)
 
+    def test_teacher_password_policy_accepts_letters_or_digits_at_four_characters(self):
+        self.assertIsNone(validate_teacher_password("abcd"))
+        self.assertIsNone(validate_teacher_password("1234"))
+        self.assertIsNone(validate_teacher_password("a1b2"))
+        self.assertIsNotNone(validate_teacher_password("abc"))
+
     def test_teacher_portal_exposes_only_result_entry_and_limits_roster_to_assignment(self):
         response = self._teacher_login()
         self.assertEqual(response.status_code, 200)
@@ -112,9 +121,56 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn(b"Student 1", response.data)
         self.assertNotIn(b"class=\"teacher-nav\"", response.data)
         self.assertIn(b"href=\"/teacher/result-entry\"", response.data)
+        self.assertIn(b"href=\"/teacher/change-password\"", response.data)
+        self.assertIn(b"Beddel password-ka", response.data)
         self.assertNotIn(b"PORTALKA MACALLINKA", response.data)
         self.assertNotIn(b"Exam Analytics", response.data)
         self.assertNotIn(b"Naadigayga", response.data)
+
+    def test_expired_admin_timestamp_does_not_send_teacher_to_admin_login(self):
+        with self.client.session_transaction() as session:
+            session["admin_last_activity"] = (datetime.utcnow() - timedelta(hours=2)).isoformat()
+
+        response = self._teacher_login()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Gelinta natiijooyinka", response.data)
+        with self.client.session_transaction() as session:
+            self.assertNotIn("admin_last_activity", session)
+
+    def test_admin_user_entering_teacher_route_is_sent_to_teacher_login(self):
+        self.client.post("/admin/login", data={
+            "username": "result-admin", "password": "AdminPass123"
+        })
+
+        response = self.client.get("/teacher/result-entry")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/teacher/login", response.headers["Location"])
+        self.assertNotIn("/admin", response.headers["Location"])
+
+    def test_anonymous_teacher_page_uses_teacher_login(self):
+        response = self.client.get("/teacher/result-entry")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/teacher/login", response.headers["Location"])
+        self.assertNotIn("/admin/login", response.headers["Location"])
+
+    def test_flask_login_protected_teacher_route_uses_teacher_login(self):
+        def protected_probe():
+            return "ok"
+
+        self.app.add_url_rule(
+            "/teacher/login-manager-probe",
+            endpoint="teacher_login_manager_probe",
+            view_func=login_required(protected_probe),
+        )
+
+        response = self.client.get("/teacher/login-manager-probe")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/teacher/login", response.headers["Location"])
+        self.assertNotIn("/admin/login", response.headers["Location"])
 
     def test_result_entry_uses_exam_grade_management_and_displays_student_identity(self):
         self.assignment.deadline_at = datetime(2026, 10, 25, 10, 0)
@@ -430,6 +486,14 @@ class TestTeacherResultEntry(unittest.TestCase):
         middle_section = AcademicSection(academic_class=middle_class, name="A", is_active=True)
         db.session.add_all([middle_year_class, middle_year_subject, middle_section])
         self.teacher.photo_path = "https://images.example.test/teacher-photo.jpg"
+        self.teacher.address = "Teacher address retained"
+        self.teacher.emergency_contact = "Emergency contact retained"
+        self.teacher.employment_type = "Part Time"
+        self.teacher.qualification = "Bachelor degree"
+        self.teacher.years_experience = 6
+        self.teacher.department = "Science"
+        self.teacher.employment_status = "Inactive"
+        self.teacher.is_active = False
         db.session.commit()
         self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
 
@@ -438,25 +502,26 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn(b'id="teacher-photo-preview" src="https://images.example.test/teacher-photo.jpg"', form.data)
         self.assertIn(b'data-password-target="teacher-password"', form.data)
         self.assertIn(b'data-password-target="teacher-password-confirm"', form.data)
+        self.assertIn(b"data-generate-teacher-password", form.data)
+        self.assertIn(b"data-copy-teacher-password", form.data)
+        self.assertIn(b"teacher-username-control", form.data)
+        self.assertNotIn(b'name="teacher_code"', form.data)
+        self.assertNotIn(b'name="address"', form.data)
+        self.assertNotIn(b'name="emergency_contact"', form.data)
         self.assertIn(b"Dugsi Dhexe", form.data)
         self.assertIn(b"Arabic", form.data)
+        self.assertNotIn(b"Xogta shaqada", form.data)
+        self.assertNotIn(b"Taariikhda shaqaalaysiinta", form.data)
         self.assertNotIn(b"Legacy Primary", form.data)
         self.assertNotIn(b"Old Arts", form.data)
         self.assertNotIn(b"Legacy Class Assignments", form.data)
 
         response = self.client.post(f"/admin/teachers/{self.teacher.id}/edit", data={
             "teacher_id": self.teacher.teacher_id,
-            "teacher_code": self.teacher.teacher_code,
             "full_name": self.teacher.full_name,
             "gender": "",
             "phone": "",
             "email": "",
-            "address": "",
-            "emergency_contact": "",
-            "employment_type": "Full Time",
-            "years_experience": "0",
-            "department": "",
-            "employment_status": "Active",
             "academic_level_ids": [str(self.level.id), str(middle_level.id)],
             "academic_class_ids": [str(self.school_class.id), str(middle_class.id)],
             "academic_section_ids": [str(middle_section.id)],
@@ -472,6 +537,14 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual({item.id for item in self.teacher.sections}, {middle_section.id})
         self.assertEqual({item.id for item in self.teacher.academic_levels}, {self.level.id, middle_level.id})
         self.assertEqual(self.teacher.photo_path, "https://images.example.test/teacher-photo.jpg")
+        self.assertEqual(self.teacher.address, "Teacher address retained")
+        self.assertEqual(self.teacher.emergency_contact, "Emergency contact retained")
+        self.assertEqual(self.teacher.employment_type, "Part Time")
+        self.assertEqual(self.teacher.qualification, "Bachelor degree")
+        self.assertEqual(self.teacher.years_experience, 6)
+        self.assertEqual(self.teacher.department, "Science")
+        self.assertEqual(self.teacher.employment_status, "Inactive")
+        self.assertFalse(self.teacher.is_active)
 
     def test_admin_teacher_form_rejects_active_legacy_scope_not_configured_this_year(self):
         legacy_level = AcademicLevel(name="Unconfigured Level", is_active=True)
@@ -508,6 +581,99 @@ class TestTeacherResultEntry(unittest.TestCase):
         db.session.refresh(self.teacher)
         self.assertNotIn(legacy_class, self.teacher.classes)
         self.assertNotIn(legacy_subject, self.teacher.subjects)
+
+    def test_admin_password_reset_is_audited_without_exposing_password(self):
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        secret = "NewTeacherPass456"
+
+        response = self.client.post(f"/admin/teachers/{self.teacher.id}/edit", data={
+            "teacher_id": self.teacher.teacher_id,
+            "teacher_code": self.teacher.teacher_code,
+            "full_name": self.teacher.full_name,
+            "gender": "",
+            "phone": "",
+            "email": "",
+            "address": "",
+            "emergency_contact": "",
+            "academic_level_ids": [str(self.level.id)],
+            "academic_class_ids": [str(self.school_class.id)],
+            "subject_ids": [str(self.subject.id)],
+            "username": self.teacher_user.username,
+            "password": secret,
+            "confirm_password": secret,
+            "account_active": "on",
+        }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(self.teacher_user)
+        self.assertTrue(self.teacher_user.check_password(secret))
+        event = TeacherActivity.query.filter_by(
+            teacher_id=self.teacher.id,
+            action="Password Reset by Admin",
+        ).one()
+        self.assertIn("@result-admin", event.details)
+        self.assertNotIn(secret, event.details)
+        db.session.add(TeacherActivity(
+            teacher_id=self.teacher.id,
+            action="Password Changed by Teacher",
+            details="Macallinku wuxuu beddelay furaha gelitaanka.",
+        ))
+        db.session.commit()
+
+        profile = self.client.get(f"/admin/teachers/{self.teacher.id}")
+        self.assertEqual(profile.status_code, 200)
+        self.assertIn(b"Amniga akoonka", profile.data)
+        self.assertIn(b"Maamulka ayaa password-ka dib u dejiyey", profile.data)
+        self.assertIn(b"Macallinku password-kiisa ayuu beddelay", profile.data)
+        self.assertNotIn(secret.encode(), profile.data)
+
+    def test_teacher_changes_password_and_admin_can_review_event(self):
+        teacher_client = self.app.test_client()
+        response = teacher_client.post("/teacher/login", data={
+            "username": self.teacher_user.username,
+            "password": "TeacherPass123",
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+
+        response = teacher_client.post("/teacher/change-password", data={
+            "current_password": "TeacherPass123",
+            "new_password": "TeacherNew456",
+            "confirm_password": "TeacherNew456",
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(self.teacher_user)
+        self.assertTrue(self.teacher_user.check_password("TeacherNew456"))
+        self.assertEqual(
+            TeacherActivity.query.filter_by(
+                teacher_id=self.teacher.id,
+                action="Password Changed by Teacher",
+            ).count(),
+            1,
+        )
+
+
+    def test_password_reset_request_requires_matching_teacher_id_and_does_not_change_password(self):
+        public_client = self.app.test_client()
+        response = public_client.post("/teacher/forgot-password", data={
+            "username": self.teacher_user.username,
+            "teacher_id": "WRONG-ID",
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(TeacherActivity.query.filter_by(
+            teacher_id=self.teacher.id,
+            action="Password Reset Requested",
+        ).count(), 0)
+
+        response = public_client.post("/teacher/forgot-password", data={
+            "username": self.teacher_user.username,
+            "teacher_id": self.teacher.teacher_id,
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(TeacherActivity.query.filter_by(
+            teacher_id=self.teacher.id,
+            action="Password Reset Requested",
+        ).count(), 1)
+        self.assertTrue(self.teacher_user.check_password("TeacherPass123"))
 
     def test_admin_teacher_directory_filters_academic_class_and_real_portal_access(self):
         self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
@@ -1022,9 +1188,18 @@ class TestTeacherResultEntry(unittest.TestCase):
         }, follow_redirects=True)
         submission = TeacherResultSubmission.query.one()
         self.assertEqual(submission.status, "submitted")
+        first_revisions = TeacherResultMarkRevision.query.order_by(TeacherResultMarkRevision.id).all()
+        self.assertEqual(len(first_revisions), 2)
+        self.assertTrue(all(not revision.is_change for revision in first_revisions))
+        self.assertTrue(all(revision.entry_status == "submitted" for revision in first_revisions))
+        self.assertTrue(all(revision.submission_attempt == 1 for revision in first_revisions))
 
         self.client.post("/teacher/logout")
         self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        first_review = self.client.get("/admin/teachers/result-entry?status=review")
+        self.assertEqual(first_review.status_code, 200)
+        self.assertIn(b"Gelintii bilowga", first_review.data)
+        self.assertIn(b"Gudbin 1", first_review.data)
         missing_reason = self.client.post("/admin/teachers/result-entry", data={
             "action": "reopen", "assignment_id": str(self.assignment.id),
         }, follow_redirects=True)
@@ -1052,17 +1227,42 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(correction.status_code, 200)
         self.assertEqual(submission.status, "submitted")
         self.assertEqual(submission.submission_count, 2)
+        first_mark = TeacherResultMark.query.filter_by(student_id=self.students[0].id).one()
+        first_student_revisions = TeacherResultMarkRevision.query.filter_by(mark_id=first_mark.id).order_by(
+            TeacherResultMarkRevision.id
+        ).all()
+        self.assertEqual(len(first_student_revisions), 2)
+        self.assertEqual(first_student_revisions[1].previous_score, Decimal("44.00"))
+        self.assertEqual(first_student_revisions[1].next_score, Decimal("46.25"))
+        self.assertEqual(first_student_revisions[1].action, "edited")
+        self.assertTrue(first_student_revisions[1].is_change)
+        self.assertEqual(first_student_revisions[1].submission_attempt, 2)
+        second_mark = TeacherResultMark.query.filter_by(student_id=self.students[1].id).one()
+        self.assertEqual(TeacherResultMarkRevision.query.filter_by(mark_id=second_mark.id).count(), 1)
 
         self.client.post("/teacher/logout")
         self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        second_review = self.client.get("/admin/teachers/result-entry?status=review")
+        self.assertEqual(second_review.status_code, 200)
+        self.assertIn(b"1 isbeddel", second_review.data)
+        self.assertIn(b"Isbeddelka 1aad", second_review.data)
+        self.assertIn(b"Gudbin 2", second_review.data)
         approved = self.client.post("/admin/teachers/result-entry", data={
             "action": "approve", "assignment_id": str(self.assignment.id),
         }, follow_redirects=True)
         self.assertEqual(approved.status_code, 200)
         self.assertEqual(submission.status, "approved")
         self.assertEqual(float(Result.query.filter_by(student_id=self.students[0].id).one().score), 46.25)
+        approved_history = self.client.get("/admin/teachers/result-entry?status=approved")
+        self.assertEqual(approved_history.status_code, 200)
+        self.assertIn(b"Taariikhda dhibcaha", approved_history.data)
+        self.assertIn(b"46.25", approved_history.data)
+        self.assertIn(b"44.00", approved_history.data)
 
     def test_partial_submission_approval_publishes_only_entered_students_and_allows_continuation(self):
+        self.students[0].photo_path = "uploads/students/student-1.jpg"
+        self.students[0].mother_name = "Sahra Said"
+        db.session.commit()
         self._teacher_login()
         first = self.client.post("/teacher/result-entry/save", data={
             "assignment_id": self.assignment.id,
@@ -1084,6 +1284,12 @@ class TestTeacherResultEntry(unittest.TestCase):
         review = self.client.get("/admin/teachers/result-entry?status=review")
         self.assertEqual(review.status_code, 200)
         self.assertIn(b"Review 1 submitted student marks", review.data)
+        self.assertIn(b"/static/uploads/students/student-1.jpg", review.data)
+        self.assertIn(b"Student 1", review.data)
+        self.assertIn(b"ST-1", review.data)
+        self.assertIn(b"Sahra Said", review.data)
+        self.assertIn(b"fa-person-dress", review.data)
+        self.assertIn(b"Natiijada rasmiga ah", review.data)
         self.assertNotIn(b"Student 2</td>", review.data)
         approved_first = self.client.post("/admin/teachers/result-entry", data={
             "action": "approve", "assignment_id": str(self.assignment.id),
@@ -1270,6 +1476,10 @@ class TestTeacherResultEntry(unittest.TestCase):
         with patch.object(phase_22_teacher_result_mark_activity, "create_app", return_value=self.app):
             self.assertEqual(phase_22_teacher_result_mark_activity.upgrade(), {"status": "applied", "columns": 3})
             self.assertEqual(phase_22_teacher_result_mark_activity.upgrade(), {"status": "applied", "columns": 3})
+        with patch.object(phase_24_teacher_result_mark_revisions, "create_app", return_value=self.app):
+            expected = {"status": "applied", "table": "teacher_result_mark_revisions"}
+            self.assertEqual(phase_24_teacher_result_mark_revisions.upgrade(), expected)
+            self.assertEqual(phase_24_teacher_result_mark_revisions.upgrade(), expected)
 
 
 if __name__ == "__main__":

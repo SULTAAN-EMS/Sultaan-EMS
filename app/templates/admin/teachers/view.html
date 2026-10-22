@@ -50,4 +50,24 @@
     <div class="wide"><span>Permissions</span><strong>{{ permissions|join(', ') or 'No permissions assigned' }}</strong></div>
   </div>
 </section>
+
+<section class="panel">
+  <div class="section-heading"><span><i class="fa-solid fa-shield-halved"></i></span><div><h2>Amniga akoonka</h2><p>Furaha waxaa loo kaydiyaa qaab hash ah; qiimihiisii mar dambe lama akhrin karo.</p></div></div>
+  <div class="result-info-grid">
+    <div><span>Username</span><strong>{{ teacher.user.username if teacher.user else 'Akoon ma jiro' }}</strong></div>
+    <div><span>Xaaladda gelitaanka</span><strong>{{ 'Firfircoon' if teacher.user and teacher.user.is_active else 'Aan firfircoonayn' if teacher.user else 'Akoon ma jiro' }}</strong></div>
+    <div class="wide"><span>Maamul password-ka</span><strong><a class="btn ghost" href="{{ url_for('admin_teachers.teacher_form', teacher_id=teacher.id) }}"><i class="fa-solid fa-key" aria-hidden="true"></i> Dejiso ama dib u deji</a></strong></div>
+  </div>
+  <div class="timeline" style="margin-top:16px">
+    {% for event in password_events %}
+      <div>
+        <i class="fa-solid {{ 'fa-user-shield' if 'Admin' in event.action else 'fa-user-lock' if 'Teacher' in event.action or event.action == 'Password Change' else 'fa-bell' }}" aria-hidden="true"></i>
+        <p><strong>{{ {'Password Set by Admin': 'Password-kii ugu horreeyey ayaa maamulka dejiyey', 'Password Reset by Admin': 'Maamulka ayaa password-ka dib u dejiyey', 'Password Changed by Teacher': 'Macallinku password-kiisa ayuu beddelay', 'Password Change': 'Macallinku password-kiisa ayuu beddelay', 'Password Reset Requested': 'Codsi dib-u-dejin ayaa la diray', 'Password Reset Request': 'Codsi dib-u-dejin ayaa la diray'}.get(event.action, event.action) }}</strong>{% if event.details %}<br><span>{{ event.details }}</span>{% endif %}</p>
+        <span>{{ event.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      </div>
+    {% else %}
+      <div><i class="fa-solid fa-circle-info" aria-hidden="true"></i><p>Weli ma jiro dhacdo password oo la diiwaangeliyey.</p></div>
+    {% endfor %}
+  </div>
+</section>
 {% endblock %}

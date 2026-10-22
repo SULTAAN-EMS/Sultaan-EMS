@@ -2312,6 +2312,41 @@ class TeacherResultMark(TimestampMixin, db.Model):
     )
 
 
+class TeacherResultMarkRevision(db.Model):
+    """Immutable snapshot of a score change made in teacher result entry."""
+
+    __tablename__ = "teacher_result_mark_revisions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    mark_id = db.Column(db.Integer, db.ForeignKey("teacher_result_marks.id", ondelete="SET NULL"), nullable=True, index=True)
+    submission_id = db.Column(db.Integer, db.ForeignKey("teacher_result_submissions.id", ondelete="SET NULL"), nullable=True, index=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey("teacher_result_assignments.id", ondelete="SET NULL"), nullable=True, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="SET NULL"), nullable=True, index=True)
+    actor_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    student_name = db.Column(db.String(180), nullable=False)
+    student_code = db.Column(db.String(50), nullable=False)
+    actor_name = db.Column(db.String(150), nullable=False)
+    previous_score = db.Column(db.Numeric(8, 3), nullable=True)
+    next_score = db.Column(db.Numeric(8, 3), nullable=True)
+    action = db.Column(db.String(16), nullable=False)
+    is_change = db.Column(db.Boolean, nullable=False, default=False)
+    entry_status = db.Column(db.String(16), nullable=False)
+    submission_attempt = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    mark = db.relationship("TeacherResultMark")
+    submission = db.relationship("TeacherResultSubmission")
+    assignment = db.relationship("TeacherResultAssignment")
+    student = db.relationship("Student")
+    actor = db.relationship("User")
+
+    __table_args__ = (
+        db.CheckConstraint("action IN ('entered', 'edited', 'cleared')", name="ck_teacher_result_mark_revision_action"),
+        db.CheckConstraint("entry_status IN ('draft', 'submitted')", name="ck_teacher_result_mark_revision_status"),
+        db.CheckConstraint("submission_attempt IS NULL OR submission_attempt >= 1", name="ck_teacher_result_mark_revision_attempt"),
+    )
+
+
 class TeacherResultEvent(db.Model):
     """Append-only audit event for teacher result-entry and review workflows."""
 

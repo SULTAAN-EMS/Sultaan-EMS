@@ -87,6 +87,12 @@
   letter-spacing: .04em;
 }
 
+.teacher-brand .teacher-brand-ar {
+  font-size: .72rem;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
 .teacher-profile {
   display: flex;
   flex: 0 1 250px;
@@ -243,6 +249,20 @@
   max-width: 740px;
 }
 
+.teacher-top .teacher-password-link {
+  display: inline-flex;
+  width: auto;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  font-size: .78rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 .teacher-top-results {
   position: relative;
   min-width: 0;
@@ -323,6 +343,21 @@
   transition: background-color .16s ease, border-color .16s ease, color .16s ease;
 }
 
+.teacher-top-results .teacher-password-link {
+  display: inline-flex;
+  width: auto;
+  min-width: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  color: #08775d;
+  font-size: .78rem;
+  font-weight: 750;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 .teacher-top-results .icon-btn:hover {
   transform: none;
   border-color: #92cbbb;
@@ -373,6 +408,10 @@
     border-top: 1px solid #dce9e5;
     border-left: 0;
   }
+
+  .teacher-top-results .teacher-password-link {
+    flex: 0 0 auto;
+  }
 }
 
 @media (max-width: 380px) {
@@ -410,6 +449,11 @@
     grid-area: profile;
     width: min(250px, 38vw);
   }
+
+  .teacher-portal-bar--result-entry {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "brand";
+  }
 }
 
 @media (max-width: 560px) {
@@ -434,6 +478,10 @@
 
   .teacher-brand small {
     font-size: .54rem;
+  }
+
+  .teacher-brand .teacher-brand-ar {
+    font-size: .61rem;
   }
 
   .teacher-profile {

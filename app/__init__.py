@@ -52,6 +52,18 @@ def create_app(config_class=Config):
     csrf.init_app(app)
     login_manager.init_app(app)
 
+    @login_manager.unauthorized_handler
+    def route_unauthorized_users():
+        is_teacher_route = (
+            request.blueprint == "teacher_portal"
+            or request.path == "/teacher"
+            or request.path.startswith("/teacher/")
+        )
+        endpoint = "teacher_portal.login" if is_teacher_route else "auth.login"
+        if login_manager.login_message:
+            flash(login_manager.login_message, login_manager.login_message_category)
+        return redirect(url_for(endpoint, next=request.url))
+
     @app.teardown_appcontext
     def cleanup_database_session(exception=None):
         try:
@@ -149,6 +161,11 @@ def create_app(config_class=Config):
         """Enforce the owner-configured idle timeout for authenticated admin sessions."""
         if request.endpoint in {"static", "auth.login", "auth.logout"} or not current_user.is_authenticated:
             return None
+        # Teacher portal sessions must not inherit stale administrator activity timestamps.
+        if getattr(current_user, "teacher_profile", None) is not None:
+            session.pop("admin_last_activity", None)
+            session.pop("admin_session_timeout_minutes", None)
+            return None
         # Reuse the request-local settings snapshot instead of issuing a
         # second settings query on every authenticated admin request.
         timeout_value = get_settings().get("admin_session_timeout_minutes", "60")
@@ -168,7 +185,12 @@ def create_app(config_class=Config):
             session.clear()
             flash("Your security session expired. Please sign in again.", "warning")
             app.logger.info("Admin session expired for %s", username)
-            return redirect(url_for("auth.login", next=request.url))
+            login_endpoint = (
+                "teacher_portal.login"
+                if request.blueprint == "teacher_portal" or request.path.startswith("/teacher/")
+                else "auth.login"
+            )
+            return redirect(url_for(login_endpoint, next=request.url))
         session["admin_last_activity"] = now.isoformat()
         return None
 

@@ -3,6 +3,29 @@
 {% block page_title %}Result Entry Control{% endblock %}
 {% block admin_content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-admin.css', v='teacher-result-edit-20261021-1') }}">
+{% macro score_history(item, settings) %}
+  <details class="tra-score-history">
+    <summary><span class="tra-change-count {{ 'has-changes' if item.edit_count else '' }}"><i class="fa-solid fa-pen-ruler" aria-hidden="true"></i>{{ item.edit_count }} isbeddel</span><i class="fa-solid fa-chevron-down tra-history-chevron" aria-hidden="true"></i></summary>
+    <div class="tra-history-popover">
+      {% if item.revisions %}
+        {% set change_index = namespace(value=0) %}
+        <ol class="tra-revision-list">
+          {% for revision_item in item.revisions %}
+            {% set revision = revision_item.record %}
+            {% if revision.is_change %}{% set change_index.value = change_index.value + 1 %}{% set revision_title = 'Isbeddelka ' ~ change_index.value ~ 'aad' %}{% else %}{% set revision_title = 'Gelintii bilowga' %}{% endif %}
+            <li class="tra-revision-item {{ 'is-change' if revision.is_change else 'is-entry' }}">
+              <div class="tra-revision-heading"><strong>{{ revision_title }}</strong><span>{% if revision.entry_status == 'submitted' %}<i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Gudbin {{ revision.submission_attempt or '' }}{% elif revision.submission_attempt %}<i class="fa-solid fa-pen-to-square" aria-hidden="true"></i> Qabyo · Gudbin {{ revision.submission_attempt }}{% else %}<i class="fa-regular fa-file-lines" aria-hidden="true"></i> Qabyo{% endif %}</span></div>
+              <div class="tra-revision-transition"><span>{{ revision.previous_score|academic_number(settings) if revision.previous_score is not none else '—' }}</span><i class="fa-solid fa-arrow-right" aria-hidden="true"></i><span>{{ revision.next_score|academic_number(settings) if revision.next_score is not none else 'La nadiifiyey' }}</span></div>
+              <small><i class="fa-solid fa-user-pen" aria-hidden="true"></i> {{ revision.actor_name }} <span>·</span> {{ revision_item.time_label }}{% if revision.action == 'cleared' %}<span class="tra-revision-action">Dhibcaha waa la nadiifiyey</span>{% endif %}</small>
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        <p class="tra-no-revisions"><i class="fa-regular fa-clock" aria-hidden="true"></i> Weli wax isbeddel dhibco ah lama diiwaangelin.</p>
+      {% endif %}
+    </div>
+  </details>
+{% endmacro %}
 <main class="teacher-result-admin">
   <header class="tra-header">
     <div>
@@ -106,12 +129,33 @@
           {% elif submission and submission.status == 'submitted' %}
             {% set rows = review_rows.get(assignment.id, []) %}{% set has_existing = assignment.id in assignments_with_existing_results %}
             <details class="tra-review"><summary><i class="fa-solid fa-eye"></i> Review {{ rows|length }} submitted student marks</summary>
-              <div class="tra-marks-table"><table><thead><tr><th>Student</th><th>Student ID</th><th>Submitted</th><th>Current official</th></tr></thead><tbody>{% for item in rows %}{% set mark = item.mark %}<tr><td>{{ mark.student.full_name }}</td><td>{{ mark.student.student_code }}</td><td>{{ mark.score|academic_number(ui_settings) if mark.score is not none else '—' }}</td><td>{{ item.official_score|academic_number(ui_settings) if item.official_score is not none else 'No result' }}</td></tr>{% endfor %}</tbody></table></div>
+              <div class="tra-marks-table"><table><thead><tr><th scope="col"><i class="fa-solid fa-user-graduate" aria-hidden="true"></i> Ardayga</th><th scope="col"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> La gudbiyey</th><th scope="col"><i class="fa-solid fa-award" aria-hidden="true"></i> Natiijada rasmiga ah</th><th scope="col"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Isbeddellada</th></tr></thead><tbody>
+                {% for item in rows %}{% set mark = item.mark %}<tr>
+                  <td class="tra-student-cell"><div class="tra-student-identity">{% if mark.student.photo_path %}<img class="tra-student-photo" src="{{ asset_url(mark.student.photo_path) }}" alt="Sawirka {{ mark.student.full_name }}" loading="lazy" decoding="async">{% else %}<span class="tra-student-photo tra-student-photo--empty" aria-label="Sawir lama diiwaangelin"><i class="fa-solid fa-user" aria-hidden="true"></i></span>{% endif %}<span class="tra-student-meta"><strong class="tra-student-name">{{ mark.student.full_name }}</strong><span class="tra-student-details"><span class="tra-student-id"><i class="fa-solid fa-id-card" aria-hidden="true"></i> {{ mark.student.student_code }}</span><span class="tra-student-mother"><i class="fa-solid fa-person-dress" aria-hidden="true"></i> {{ mark.student.mother_name or 'Hooyo lama diiwaangelin' }}</span></span></span></div></td>
+                  <td data-label="La gudbiyey"><span class="tra-mark-value tra-mark-value--submitted"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>{{ mark.score|academic_number(ui_settings) if mark.score is not none else '—' }}</span></td>
+                  <td data-label="Natiijada rasmiga ah">{% if item.official_score is not none %}<span class="tra-mark-value tra-mark-value--official"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>{{ item.official_score|academic_number(ui_settings) }}</span>{% else %}<span class="tra-mark-no-result"><i class="fa-regular fa-circle-minus" aria-hidden="true"></i> Weli lama daabicin</span>{% endif %}</td>
+                  <td class="tra-revision-cell" data-label="Isbeddellada">{{ score_history(item, ui_settings) }}</td>
+                </tr>{% endfor %}
+              </tbody></table></div>
               <form method="post" class="tra-review-form tra-reason-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><label>Review note <input name="reviewer_note" maxlength="500" placeholder="Required for correction; optional for approval" aria-describedby="review-note-error-{{ assignment.id }}"></label><small class="tra-reason-error" id="review-note-error-{{ assignment.id }}" role="alert" hidden>Fadlan qor sababta dib loogu furayo ka hor intaadan kaydin.</small>{% if has_existing %}<label class="tra-confirm"><input type="checkbox" name="confirm_replace" value="yes" required> I reviewed the existing official marks and approve replacing them.</label>{% endif %}<button name="action" value="approve" class="approve"><i class="fa-solid fa-check"></i> Approve &amp; publish</button><button name="action" value="reopen" class="reopen"><i class="fa-solid fa-rotate-left"></i> Return for correction</button></form>
             </details>
-          {% elif submission and submission.status == 'approved' %}
-            <p class="tra-approved-note"><i class="fa-solid fa-circle-check"></i> Approved by {{ submission.reviewed_by.username if submission.reviewed_by else 'admin' }}{% if submission.reviewed_at %} · {{ submission.reviewed_at.strftime('%b %d, %Y · %I:%M %p') }}{% endif %}</p>
-            <form method="post" class="tra-reopen-approved tra-reason-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><label class="sr-only" for="reopen-note-{{ assignment.id }}">Reason for reopening</label><input id="reopen-note-{{ assignment.id }}" name="reviewer_note" maxlength="500" aria-describedby="reopen-note-error-{{ assignment.id }}" placeholder="Reason for reopening this approved result sheet"><small class="tra-reason-error" id="reopen-note-error-{{ assignment.id }}" role="alert" hidden>Fadlan qor sababta dib loogu furayo ka hor intaadan kaydin.</small><button name="action" value="reopen" class="reopen"><i class="fa-solid fa-rotate-left"></i> Reopen for correction</button></form>
+          {% elif submission and submission.status in ('approved', 'draft', 'reopened') %}
+            {% if submission.status == 'approved' %}
+              <p class="tra-approved-note"><i class="fa-solid fa-circle-check"></i> Approved by {{ submission.reviewed_by.username if submission.reviewed_by else 'admin' }}{% if submission.reviewed_at %} · {{ submission.reviewed_at.strftime('%b %d, %Y · %I:%M %p') }}{% endif %}</p>
+              <form method="post" class="tra-reopen-approved tra-reason-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><label class="sr-only" for="reopen-note-{{ assignment.id }}">Reason for reopening</label><input id="reopen-note-{{ assignment.id }}" name="reviewer_note" maxlength="500" aria-describedby="reopen-note-error-{{ assignment.id }}" placeholder="Reason for reopening this approved result sheet"><small class="tra-reason-error" id="reopen-note-error-{{ assignment.id }}" role="alert" hidden>Fadlan qor sababta dib loogu furayo ka hor intaadan kaydin.</small><button name="action" value="reopen" class="reopen"><i class="fa-solid fa-rotate-left"></i> Reopen for correction</button></form>
+            {% endif %}
+            {% set rows = history_rows.get(assignment.id, []) %}
+            {% if rows %}
+              <details class="tra-review tra-approved-history"><summary><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Taariikhda dhibcaha · {{ rows|length }} arday</summary>
+                <div class="tra-marks-table"><table><thead><tr><th scope="col">Ardayga</th><th scope="col">Dhibcaha hadda</th><th scope="col">Isbeddellada</th></tr></thead><tbody>
+                  {% for item in rows %}{% set mark = item.mark %}<tr>
+                    <td class="tra-student-cell"><div class="tra-student-identity">{% if mark.student.photo_path %}<img class="tra-student-photo" src="{{ asset_url(mark.student.photo_path) }}" alt="Sawirka {{ mark.student.full_name }}" loading="lazy" decoding="async">{% else %}<span class="tra-student-photo tra-student-photo--empty" aria-label="Sawir lama diiwaangelin"><i class="fa-solid fa-user" aria-hidden="true"></i></span>{% endif %}<span class="tra-student-meta"><strong class="tra-student-name">{{ mark.student.full_name }}</strong><span class="tra-student-details"><span class="tra-student-id"><i class="fa-solid fa-id-card" aria-hidden="true"></i> {{ mark.student.student_code }}</span><span class="tra-student-mother"><i class="fa-solid fa-person-dress" aria-hidden="true"></i> {{ mark.student.mother_name or 'Hooyo lama diiwaangelin' }}</span></span></span></div></td>
+                    <td data-label="Dhibcaha hadda">{% if item.official_score is not none %}<span class="tra-mark-value tra-mark-value--official"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>{{ item.official_score|academic_number(ui_settings) }}</span>{% elif mark.score is not none %}<span class="tra-mark-value tra-mark-value--submitted"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>{{ mark.score|academic_number(ui_settings) }}</span>{% else %}<span class="tra-mark-no-result"><i class="fa-regular fa-circle-minus" aria-hidden="true"></i> Natiijo ma jirto</span>{% endif %}</td>
+                    <td class="tra-revision-cell tra-revision-cell--archive" data-label="Isbeddellada">{{ score_history(item, ui_settings) }}</td>
+                  </tr>{% endfor %}
+                </tbody></table></div>
+              </details>
+            {% endif %}
           {% endif %}
           <div class="tra-assignment-actions">
             {% if assignment.deleted_at %}

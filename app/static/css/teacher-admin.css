@@ -58,22 +58,46 @@
 .teacher-form-heading p{margin:0;color:#6b7c8c;font-size:.8rem;line-height:1.4}
 .teacher-form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 .teacher-form-grid>label:not(.teacher-check-row){display:grid;align-content:start;gap:6px;min-width:0;color:#455a70;font-size:.78rem;font-weight:700}
+.teacher-identity-layout{display:grid;grid-column:1/-1;grid-template-columns:minmax(205px,250px) minmax(0,1fr);align-items:stretch;gap:16px;min-width:0}
+.teacher-identity-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-content:start;gap:13px;min-width:0}
+.teacher-identity-fields>label{display:grid;align-content:start;gap:7px;min-width:0;color:#455a70;font-size:.78rem;font-weight:700}
+.teacher-identity-fields .teacher-name-field{grid-column:span 2}
+.teacher-field-label{display:flex;align-items:center;gap:7px;min-height:18px;color:#435a70;font-size:.76rem;font-weight:750}
+.teacher-field-label i{width:15px;color:#3975b9;text-align:center}
+.teacher-identity-fields input,.teacher-identity-fields select{width:100%;min-width:0}
+.teacher-account-credentials{display:grid;grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:14px;min-width:0}
+.teacher-account-credentials>label{display:grid;align-content:start;gap:6px;min-width:0;color:#455a70;font-size:.78rem;font-weight:700}
+.theme-dark .teacher-account-credentials>label{color:#d4e0e5}
 .teacher-form-grid input[type=file]{max-width:100%;font:inherit;font-size:.8rem}
 .teacher-form-grid small{font-weight:500}
 .teacher-form-grid textarea{min-height:76px;resize:vertical}
 .teacher-form-grid .span-2{grid-column:span 2}
-.teacher-photo-control{display:grid;align-content:start;gap:6px;min-width:0;color:#455a70;font-size:.78rem;font-weight:700}
-.teacher-photo-picker{display:flex;align-items:center;gap:14px;min-width:0;padding:12px;border:1px solid #dce5ec;border-radius:7px;background:#f8fafb}
+.teacher-username-control{display:grid;gap:8px;align-content:start;min-width:0;padding:13px 14px;border:1px solid #cbdaf3;border-left:4px solid #4263eb;border-radius:8px;background:linear-gradient(110deg,#f5f8ff,#f2fbf8);color:#263f62!important}
+.teacher-username-title{display:flex;align-items:center;gap:8px;font-size:.8rem;font-weight:800}
+.teacher-username-title i{color:#4263eb}
+.teacher-username-input{position:relative;display:block;min-width:0}
+.teacher-username-input>i{position:absolute;top:50%;left:13px;z-index:1;transform:translateY(-50%);color:#4263eb}
+.teacher-username-input input{min-height:46px!important;padding-left:39px!important;border-color:#b8caeb!important;font-size:.92rem!important;font-weight:750!important;letter-spacing:.02em}
+.teacher-username-control small{color:#60738d;font-size:.72rem;line-height:1.4}
+.teacher-password-control{border-color:#bde7d4;border-left-color:#0b9b78;background:linear-gradient(110deg,#f1fbf6,#f3f8ff);color:#265246!important}
+.teacher-password-control .teacher-username-title i,.teacher-password-control .teacher-username-input>i{color:#0b9b78}
+.teacher-password-input{display:flex;align-items:center;gap:6px}
+.teacher-password-input input{flex:1;min-width:0;padding-right:8px!important;border-color:#b7dfce!important}
+.teacher-photo-control{display:grid;align-content:start;gap:8px;min-width:0;padding:13px;border:1px solid #d7e3ed;border-left:3px solid #3975b9;border-radius:8px;background:linear-gradient(145deg,#f7faff,#f3f8f7);color:#455a70;font-size:.78rem;font-weight:700}
+.teacher-photo-picker{display:flex;flex-direction:column;align-items:center;gap:12px;min-width:0;padding:12px;border:1px dashed #cbd9e5;border-radius:7px;background:rgba(255,255,255,.72);text-align:center}
 .teacher-photo-preview{display:grid;place-items:center;flex:0 0 88px;width:88px;height:88px;overflow:hidden;border:1px solid #d6e1e7;border-radius:7px;background:#eaf2f2;color:#6a8490}
 .teacher-photo-preview img{display:block;width:100%;height:100%;object-fit:cover}
 .teacher-photo-preview>span{display:grid;place-items:center;width:100%;height:100%;font-size:1.8rem}
-.teacher-photo-picker-content{display:grid;gap:7px;min-width:0}
+.teacher-photo-picker-content{display:grid;gap:7px;width:100%;min-width:0;text-align:left}
+.teacher-photo-picker-content input{width:100%;min-width:0}
 .teacher-photo-picker-content small{color:#687c8c;overflow-wrap:anywhere}
 .teacher-password-field{display:flex;align-items:center;gap:6px;min-width:0}
 .teacher-password-field input{flex:1;min-width:0}
 .teacher-password-toggle{display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;border:1px solid #cfdbe4;border-radius:6px;background:#fff;color:#425a70;cursor:pointer}
-.teacher-password-toggle:hover{border-color:#13816d;color:#087f6b}
-.teacher-password-toggle:focus-visible{outline:3px solid #d7f0e7;outline-offset:2px}
+.teacher-password-action{display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;border:1px solid #cfdbe4;border-radius:6px;background:#f4faf7;color:#087f6b;cursor:pointer}
+.teacher-password-toggle:hover,.teacher-password-action:hover{border-color:#13816d;color:#087f6b}
+.teacher-password-toggle:focus-visible,.teacher-password-action:focus-visible{outline:3px solid #d7f0e7;outline-offset:2px}
+.teacher-password-feedback{display:block;min-height:1.25em;color:#087f6b;font-weight:700!important}
 .teacher-scope-section{display:grid;gap:14px}
 .teacher-scope-section>.teacher-form-heading{margin-bottom:0}
 .teacher-scope-group,.teacher-shared-subjects{min-width:0;margin:0;padding:14px;border:1px solid #dce5ec;border-radius:7px}
@@ -99,18 +123,32 @@
 .teacher-form-actions .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px}
 .teacher-directory .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:1000px){.teacher-filter-bar{grid-template-columns:repeat(3,minmax(0,1fr))}.teacher-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.teacher-identity-layout{grid-template-columns:minmax(0,1fr)}.teacher-identity-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.teacher-identity-fields .teacher-name-field{grid-column:1/-1}}
 @media(max-width:700px){.teacher-directory-head{align-items:flex-start;flex-direction:column}.teacher-directory-actions{width:100%}.teacher-directory-actions .btn{flex:1}.teacher-stat-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.teacher-stat-strip>div:nth-child(2){border-right:0}.teacher-stat-strip>div:nth-child(-n+2){border-bottom:1px solid #e7edf1}.teacher-filter-bar{grid-template-columns:repeat(2,minmax(0,1fr));padding:12px}.teacher-filter-bar .teacher-search{grid-column:1/-1}.teacher-filter-actions{grid-column:1/-1}.teacher-filter-actions .btn:first-child{flex:1}.teacher-scope-columns{grid-template-columns:1fr;gap:12px}.teacher-table-heading{align-items:flex-start}.teacher-result-count{display:none}}
-@media(max-width:480px){.teacher-directory-head h1{font-size:1.35rem}.teacher-filter-bar{grid-template-columns:1fr}.teacher-filter-bar .teacher-search,.teacher-filter-actions{grid-column:auto}.teacher-form-section{padding:13px}.teacher-form-grid{grid-template-columns:1fr}.teacher-form-grid .span-2{grid-column:auto}.teacher-subject-options{grid-template-columns:1fr}.teacher-form-actions{justify-content:stretch}.teacher-form-actions .btn{flex:1}}
+@media(max-width:700px){.teacher-account-credentials{grid-template-columns:1fr;gap:12px}}
+@media(max-width:480px){.teacher-directory-head h1{font-size:1.35rem}.teacher-filter-bar{grid-template-columns:1fr}.teacher-filter-bar .teacher-search,.teacher-filter-actions{grid-column:auto}.teacher-form-section{padding:13px}.teacher-form-grid{grid-template-columns:1fr}.teacher-form-grid .span-2{grid-column:auto}.teacher-identity-fields{grid-template-columns:1fr;gap:11px}.teacher-identity-fields .teacher-name-field{grid-column:auto}.teacher-subject-options{grid-template-columns:1fr}.teacher-form-actions{justify-content:stretch}.teacher-form-actions .btn{flex:1}}
 .theme-dark .teacher-directory,.theme-dark .teacher-form-page{color:#e7eff4}
+.theme-dark .teacher-identity-fields>label,.theme-dark .teacher-field-label{color:#d4e0e5}
+.theme-dark .teacher-field-label i{color:#a9b7ff}
+.theme-dark .teacher-photo-control{border-color:#40525b;border-left-color:#8298ff;background:linear-gradient(145deg,#1a263d,#172b2a);color:#e4edf2}
+.theme-dark .teacher-photo-picker{border-color:#40525b;background:rgba(16,26,31,.72)}
 .theme-dark .teacher-stat-strip,.theme-dark .teacher-filter-bar,.theme-dark .teacher-table-panel,.theme-dark .teacher-form-section{background:#172329;border-color:#34444b}
 .theme-dark .teacher-stat-strip>div,.theme-dark .teacher-table-heading,.theme-dark .teacher-directory-table td,.theme-dark .teacher-form-heading{border-color:#34444b}
 .theme-dark .teacher-directory-head p,.theme-dark .teacher-stat-strip span,.theme-dark .teacher-table-heading p,.theme-dark .teacher-directory-table td,.theme-dark .teacher-form-heading p,.theme-dark .teacher-scope-empty{color:#a5b5bc}
 .theme-dark .teacher-stat-strip strong,.theme-dark .teacher-identity strong,.theme-dark .teacher-table-heading h2,.theme-dark .teacher-scope-level,.theme-dark .teacher-check-row{color:#e4edf2}
 .theme-dark .teacher-filter-bar input,.theme-dark .teacher-filter-bar select,.theme-dark .teacher-form-grid input:not([type=checkbox]):not([type=file]),.theme-dark .teacher-form-grid select,.theme-dark .teacher-form-grid textarea{background:#101a1f;border-color:#40525b;color:#e4edf2}
+.theme-dark .teacher-username-control{border-color:#405a80;border-left-color:#8298ff;background:linear-gradient(110deg,#1a263d,#172b2a);color:#e4edf2!important}
+.theme-dark .teacher-username-title i,.theme-dark .teacher-username-input>i{color:#a9b7ff}
+.theme-dark .teacher-username-input input{border-color:#50638b!important}
+.theme-dark .teacher-username-control small{color:#a6b6c8}
+.theme-dark .teacher-password-control{border-color:#315a49;border-left-color:#4bc99b;background:linear-gradient(110deg,#172a25,#172638);color:#d8eee5!important}
+.theme-dark .teacher-password-control .teacher-username-title i,.theme-dark .teacher-password-control .teacher-username-input>i{color:#71d6b0}
+.theme-dark .teacher-password-input input{border-color:#426c5b!important}
 .theme-dark .teacher-photo-picker{background:#101a1f;border-color:#40525b}
 .theme-dark .teacher-photo-preview{background:#202f35;border-color:#40525b;color:#a5b5bc}
 .theme-dark .teacher-photo-picker-content small{color:#a5b5bc}
 .theme-dark .teacher-password-toggle{background:#101a1f;border-color:#40525b;color:#c1cdd2}
+.theme-dark .teacher-password-action{background:#101a1f;border-color:#40525b;color:#71d6b0}
 .theme-dark .teacher-directory-table th{background:#202f35;color:#c1cdd2}
 .theme-dark .teacher-directory-table tbody tr:hover{background:#1b2b31}
 .theme-dark .teacher-scope-group,.theme-dark .teacher-shared-subjects{border-color:#40525b}

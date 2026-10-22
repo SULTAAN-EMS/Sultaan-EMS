@@ -89,8 +89,8 @@ DEFAULT_TEACHER_SETTINGS = {
     "teacher_code_auto_generate": "on",
     "teacher_code_format": "TC-{seq:04d}",
     "teacher_default_username_format": "{teacher_id}",
-    "teacher_password_min_length": "8",
-    "teacher_default_password_policy": "alphanumeric",
+    "teacher_password_min_length": "4",
+    "teacher_default_password_policy": "any",
     "teacher_theme": "light",
     "teacher_profile_photo_size": "medium",
     "teacher_max_upload_size": "5242880",
@@ -106,6 +106,8 @@ def get_teacher_settings():
     settings = dict(get_settings())
     for key, value in DEFAULT_TEACHER_SETTINGS.items():
         settings.setdefault(key, value)
+    settings["teacher_password_min_length"] = "4"
+    settings["teacher_default_password_policy"] = "any"
     return settings
 
 
@@ -206,13 +208,8 @@ def default_teacher_username(teacher):
 
 
 def validate_teacher_password(password):
-    settings = get_teacher_settings()
-    min_length = int(settings.get("teacher_password_min_length") or 8)
-    if len(password) < min_length:
-        return f"Password must be at least {min_length} characters."
-    policy = settings.get("teacher_default_password_policy") or "alphanumeric"
-    if policy == "alphanumeric" and not (re.search(r"[A-Za-z]", password) and re.search(r"\d", password)):
-        return "Password must include letters and numbers."
+    if len(password or "") < 4:
+        return "Password must be at least 4 characters."
     return None
 
 
@@ -404,10 +401,22 @@ def record_teacher_logout(teacher):
     log_teacher_activity(teacher, "Logout", "Teacher signed out of the portal")
 
 
-def request_teacher_password_reset(username):
-    user = User.query.filter_by(username=username.strip()).first()
+def request_teacher_password_reset(username, teacher_id):
+    username = (username or "").strip()
+    teacher_id = (teacher_id or "").strip()
+    if not username or not teacher_id:
+        return None
+    user = User.query.filter_by(username=username).first()
     teacher = getattr(user, "teacher_profile", None) if user else None
-    if teacher and teacher.user_id == user.id:
-        log_teacher_activity(teacher, "Password Reset Request", f"Reset requested for {username}")
+    if (
+        teacher
+        and teacher.user_id == user.id
+        and teacher.teacher_id.casefold() == teacher_id.casefold()
+    ):
+        log_teacher_activity(
+            teacher,
+            "Password Reset Requested",
+            "Macallinku wuxuu codsaday in maamulka dib uga dejiyo furaha gelitaanka.",
+        )
         return teacher
     return None

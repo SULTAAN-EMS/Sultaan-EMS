@@ -15,7 +15,7 @@ from config import Config
 from app.models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord,
     Exam, ExamHall, ExamHallEnrollment, ExamHallSubject, ExamSession,
-    ExamSessionSubject, ExamType, SchoolClass, Student, StudentEnrollment, Subject, User
+    ExamSessionSubject, ExamType, SchoolClass, Setting, Student, StudentEnrollment, Subject, User
 )
 from app.attendance_rules import scheduled_subject_scope_key
 from app.routes_attendance import attendance_class_color
@@ -231,6 +231,8 @@ class TestHallRosterAndAttendance(unittest.TestCase):
 
     def test_multi_hall_attendance_summary_reports_range_and_absent_students(self):
         self.login()
+        db.session.merge(Setting(key='logo_path', value='images/qr-landing-school-logo.jpg'))
+        db.session.commit()
         second_hall = ExamHall(
             name='Summary Report Hall B',
             code='SUMMARY_REPORT_HALL_B',
@@ -318,6 +320,12 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertEqual(len(pdf.pages), 2)
         self.assertAlmostEqual(float(pdf.pages[0].mediabox.width), 841.89, delta=0.2)
         self.assertAlmostEqual(float(pdf.pages[0].mediabox.height), 595.28, delta=0.2)
+        logo_xobjects = pdf.pages[0]['/Resources'].get('/XObject')
+        self.assertIsNotNone(logo_xobjects)
+        self.assertTrue(any(
+            xobject.get_object().get('/Subtype') == '/Image'
+            for xobject in logo_xobjects.get_object().values()
+        ))
         extracted = '\n'.join(page.extract_text() or '' for page in pdf.pages)
         self.assertIn(self.student2.student_code, extracted)
         self.assertNotIn('\u25a0', extracted)

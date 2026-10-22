@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
-from flask import Blueprint, abort, flash, jsonify, make_response, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, jsonify, make_response, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_user, logout_user
 from openpyxl import Workbook
 from reportlab.lib import colors
@@ -19,7 +19,7 @@ from .models import (
     ClubTeamMembership, Exam, ExamMarkingConfiguration, Result, Student, Subject, TeacherResultAssignment,
     TeacherResultMark, TeacherResultSubmission,
 )
-from .teacher_result_history import record_teacher_result_event
+from .teacher_result_history import record_teacher_result_event, record_teacher_result_mark_revision
 from .teacher_analytics import (
     classes_cards,
     comparison_data,
@@ -102,6 +102,12 @@ def _set_result_mark_action(mark, previous_score, next_score, occurred_at):
     mark.last_action_at = occurred_at
     mark.last_action_by_id = current_user.id if current_user.is_authenticated else None
     return action
+
+
+def _next_result_submission_attempt(submission):
+    if submission.status == "reopened":
+        return submission.submission_count + 1
+    return submission.submission_count or None
 
 
 def _unique_assignments(items, key):
@@ -245,6 +251,8 @@ def login():
             flash(error, "danger")
         else:
             login_user(user)
+            session.pop("admin_last_activity", None)
+            session.pop("admin_session_timeout_minutes", None)
             record_teacher_login(teacher)
             db.session.commit()
             return redirect(safe_teacher_next_url(request.args.get("next")))
@@ -268,9 +276,10 @@ def forgot_password():
         return redirect(url_for("teacher_portal.dashboard"))
     if request.method == "POST":
         username = request.form.get("username", "").strip()
-        request_teacher_password_reset(username)
+        teacher_id = request.form.get("teacher_id", "").strip()
+        request_teacher_password_reset(username, teacher_id)
         db.session.commit()
-        flash("If the account exists, your request has been logged. Please contact your school administrator.", "success")
+        flash("Haddii xogtu sax tahay, codsiga dib-u-dejinta waa la diiwaangeliyey. La xiriir maamulka dugsiga.", "success")
         return redirect(url_for("teacher_portal.login"))
     return render_template("teacher/forgot_password.html")
 
@@ -294,7 +303,7 @@ def change_password():
             else:
                 current_user.set_password(new_password)
                 teacher.force_password_change = False
-                log_teacher_activity(teacher, "Password Change", "Updated account password")
+                log_teacher_activity(teacher, "Password Changed by Teacher", "Macallinku wuxuu beddelay furaha gelitaanka.")
                 db.session.commit()
                 flash("Password changed successfully.", "success")
                 return redirect(safe_teacher_next_url(None))
@@ -493,7 +502,16 @@ def result_entry_autosave():
     ).first()
     if not raw_score:
         if mark and mark.status == "draft":
-            _set_result_mark_action(mark, mark.score, None, now)
+            previous_score = mark.score
+            had_previous_action = bool(mark.last_action)
+            action_type = _set_result_mark_action(mark, previous_score, None, now)
+            if action_type:
+                record_teacher_result_mark_revision(
+                    mark, previous_score, None, action_type,
+                    is_change=previous_score is not None or had_previous_action,
+                    entry_status="draft",
+                    submission_attempt=_next_result_submission_attempt(submission),
+                )
             mark.score = None
             db.session.commit()
         display_score = mark.score if mark else (official.score if official else None)
@@ -512,15 +530,23 @@ def result_entry_autosave():
         submission = TeacherResultSubmission(assignment=assignment)
         db.session.add(submission)
         db.session.flush()
-    previous_score = mark.score if mark and mark.score is not None else (official.score if official else None)
+    previous_score = mark.score if mark else (official.score if official else None)
+    had_previous_action = bool(mark and mark.last_action)
     if not mark:
         mark = TeacherResultMark(submission=submission, student_id=student.id)
         db.session.add(mark)
-    _set_result_mark_action(mark, previous_score, score, now)
+    action_type = _set_result_mark_action(mark, previous_score, score, now)
     mark.score = score
     mark.status = "draft"
     if submission.status not in {"submitted", "reopened"}:
         submission.status = "draft"
+    if action_type:
+        record_teacher_result_mark_revision(
+            mark, previous_score, score, action_type,
+            is_change=previous_score is not None or had_previous_action,
+            entry_status="draft",
+            submission_attempt=_next_result_submission_attempt(submission),
+        )
     db.session.commit()
     return jsonify(
         success=True,
@@ -589,6 +615,7 @@ def result_entry_save():
         mark.student_id: mark for mark in submission.marks
     } if submission else {}
     previous_submission_status = submission.status if submission else None
+    revision_changes = []
     score_by_student = {}
     for student in students:
         mark = existing_marks.get(student.id)
@@ -622,15 +649,28 @@ def result_entry_save():
         for student in students:
             existing_mark = mark_by_student.get(student.id)
             if existing_mark and existing_mark.status == "draft" and not (request.form.get(f"score_{student.id}") or "").strip():
-                _set_result_mark_action(existing_mark, existing_mark.score, None, now)
+                previous_score = existing_mark.score
+                had_previous_action = bool(existing_mark.last_action)
+                action_type = _set_result_mark_action(existing_mark, previous_score, None, now)
+                if action_type:
+                    revision_changes.append((
+                        existing_mark, previous_score, None, action_type,
+                        previous_score is not None or had_previous_action,
+                    ))
                 existing_mark.score = None
     for student_id, score in score_by_student.items():
         mark = mark_by_student.get(student_id)
-        previous_score = mark.score if mark and mark.score is not None else official_scores.get(student_id)
+        previous_score = mark.score if mark else official_scores.get(student_id)
+        had_previous_action = bool(mark and mark.last_action)
         if not mark:
             mark = TeacherResultMark(submission=submission, student_id=student_id)
             db.session.add(mark)
-        _set_result_mark_action(mark, previous_score, score, now)
+        action_type = _set_result_mark_action(mark, previous_score, score, now)
+        if action_type:
+            revision_changes.append((
+                mark, previous_score, score, action_type,
+                previous_score is not None or had_previous_action,
+            ))
         mark.score = score
         mark.status = "submitted" if submit_now else "draft"
     submit_message = None
@@ -672,6 +712,16 @@ def result_entry_save():
             note="Qabyada dhibcaha waa la kaydiyey.",
         )
         submit_message = "Qabyada natiijada waa la kaydiyey."
+    for mark, previous_score, next_score, action_type, is_change in revision_changes:
+        record_teacher_result_mark_revision(
+            mark, previous_score, next_score, action_type,
+            is_change=is_change,
+            entry_status="submitted" if submit_now else "draft",
+            submission_attempt=(
+                submission.submission_count
+                if submit_now else _next_result_submission_attempt(submission)
+            ),
+        )
     db.session.commit()
     if wants_json:
         response = _redirect_result_entry(assignment.id, preserve_status=False)

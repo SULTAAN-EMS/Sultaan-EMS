@@ -2,45 +2,34 @@
 {% block title %}{{ 'Wax ka beddel macallinka' if teacher.id else 'Macallin cusub' }}{% endblock %}
 {% block page_title %}{{ 'Wax ka beddel macallinka' if teacher.id else 'Macallin cusub' }}{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-admin.css', v='teacher-identity-layout-20261022-5') }}">
 <form method="post" enctype="multipart/form-data" class="teacher-form-page">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <section class="teacher-form-section">
     <header class="teacher-form-heading"><span><i class="fa-solid fa-address-card" aria-hidden="true"></i></span><div><h2>Xogta iyo xiriirka</h2><p>Aqoonsiga macallinka iyo xogta lagula xiriirayo.</p></div></header>
     <div class="teacher-form-grid">
-      <div class="teacher-photo-control span-2">
-        <label for="teacher-photo-input">Sawirka macallinka</label>
-        <div class="teacher-photo-picker">
-          <div class="teacher-photo-preview">
-            <img id="teacher-photo-preview" src="{{ asset_url(teacher.photo_path) if teacher.photo_path else '' }}" alt="Sawirka macallinka" {% if not teacher.photo_path %}hidden{% endif %}>
-            <span id="teacher-photo-placeholder" {% if teacher.photo_path %}hidden{% endif %}><i class="fa-solid fa-user" aria-hidden="true"></i></span>
-          </div>
-          <div class="teacher-photo-picker-content">
-            <input id="teacher-photo-input" type="file" name="photo" accept="image/jpeg,image/png,image/webp">
-            <small id="teacher-photo-status">{% if teacher.photo_path %}Sawirka kaydsan ayaa muuqda; dooro sawir kale si aad u beddesho.{% else %}Dooro sawirka macallinka (JPG, PNG ama WEBP).{% endif %}</small>
+      <div class="teacher-identity-layout">
+        <div class="teacher-photo-control">
+          <label class="teacher-field-label" for="teacher-photo-input"><i class="fa-regular fa-image" aria-hidden="true"></i> Sawirka macallinka</label>
+          <div class="teacher-photo-picker">
+            <div class="teacher-photo-preview">
+              <img id="teacher-photo-preview" src="{{ asset_url(teacher.photo_path) if teacher.photo_path else '' }}" alt="Sawirka macallinka" {% if not teacher.photo_path %}hidden{% endif %}>
+              <span id="teacher-photo-placeholder" {% if teacher.photo_path %}hidden{% endif %}><i class="fa-solid fa-user" aria-hidden="true"></i></span>
+            </div>
+            <div class="teacher-photo-picker-content">
+              <input id="teacher-photo-input" type="file" name="photo" accept="image/jpeg,image/png,image/webp">
+              <small id="teacher-photo-status">{% if teacher.photo_path %}Sawirka kaydsan ayaa muuqda; dooro sawir kale si aad u beddesho.{% else %}Dooro sawirka macallinka (JPG, PNG ama WEBP).{% endif %}</small>
+            </div>
           </div>
         </div>
+        <div class="teacher-identity-fields">
+          <label class="teacher-id-field"><span class="teacher-field-label"><i class="fa-regular fa-id-card" aria-hidden="true"></i> Aqoonsiga macallinka</span><input name="teacher_id" value="{{ teacher.teacher_id or '' }}" required></label>
+          <label class="teacher-name-field"><span class="teacher-field-label"><i class="fa-solid fa-user" aria-hidden="true"></i> Magaca oo buuxa</span><input name="full_name" value="{{ teacher.full_name or '' }}" required></label>
+          <label><span class="teacher-field-label"><i class="fa-solid fa-venus-mars" aria-hidden="true"></i> Jinsiga</span><select name="gender"><option value="">Dooro</option><option value="Male" {{ 'selected' if teacher.gender == 'Male' else '' }}>Lab</option><option value="Female" {{ 'selected' if teacher.gender == 'Female' else '' }}>Dhedig</option><option value="Other" {{ 'selected' if teacher.gender == 'Other' else '' }}>Kale</option></select></label>
+          <label><span class="teacher-field-label"><i class="fa-solid fa-phone" aria-hidden="true"></i> Taleefanka</span><input name="phone" value="{{ teacher.phone or '' }}" inputmode="tel"></label>
+          <label><span class="teacher-field-label"><i class="fa-regular fa-envelope" aria-hidden="true"></i> Iimaylka</span><input name="email" type="email" value="{{ teacher.email or '' }}"></label>
+        </div>
       </div>
-      <label>Aqoonsiga macallinka<input name="teacher_id" value="{{ teacher.teacher_id or '' }}" required></label>
-      <label>Koodhka nidaamka<input name="teacher_code" value="{{ teacher.teacher_code or '' }}" placeholder="{{ 'Si toos ah ayaa loo abuuri doonaa' if settings.teacher_code_auto_generate == 'on' and not teacher.id else 'Koodhka nidaamka' }}"></label>
-      <label class="span-2">Magaca oo buuxa<input name="full_name" value="{{ teacher.full_name or '' }}" required></label>
-      <label>Jinsiga<select name="gender"><option value="">Dooro</option><option value="Male" {{ 'selected' if teacher.gender == 'Male' else '' }}>Lab</option><option value="Female" {{ 'selected' if teacher.gender == 'Female' else '' }}>Dhedig</option><option value="Other" {{ 'selected' if teacher.gender == 'Other' else '' }}>Kale</option></select></label>
-      <label>Taleefanka<input name="phone" value="{{ teacher.phone or '' }}" inputmode="tel"></label>
-      <label>Iimaylka<input name="email" type="email" value="{{ teacher.email or '' }}"></label>
-      <label>Cinwaanka<input name="address" value="{{ teacher.address or '' }}"></label>
-      <label class="span-2">Xiriirka degdegga ah<input name="emergency_contact" value="{{ teacher.emergency_contact or '' }}"></label>
-    </div>
-  </section>
-
-  <section class="teacher-form-section">
-    <header class="teacher-form-heading"><span><i class="fa-solid fa-briefcase" aria-hidden="true"></i></span><div><h2>Xogta shaqada</h2><p>Xaaladda shaqaalaysiinta iyo waayo-aragnimada.</p></div></header>
-    <div class="teacher-form-grid">
-      <label>Taariikhda shaqaalaysiinta<input type="date" name="employment_date" value="{{ teacher.employment_date.isoformat() if teacher.employment_date else '' }}"></label>
-      <label>Nooca shaqada<select name="employment_type">{% for item in employment_types %}<option value="{{ item }}" {{ 'selected' if teacher.employment_type == item else '' }}>{{ {'Full Time':'Waqti buuxa','Part Time':'Waqti-dhiman','Contract':'Heshiis'}[item] }}</option>{% endfor %}</select></label>
-      <label>Shahaado / aqoon<input name="qualification" value="{{ teacher.qualification or '' }}"></label>
-      <label>Sannadaha waayo-aragnimada<input type="number" min="0" name="years_experience" value="{{ teacher.years_experience or 0 }}"></label>
-      <label>Waaxda<input name="department" value="{{ teacher.department or '' }}"></label>
-      <label>Xaaladda shaqada<select name="employment_status"><option value="Active" {{ 'selected' if teacher.employment_status == 'Active' or not teacher.id else '' }}>Firfircoon</option><option value="Inactive" {{ 'selected' if teacher.employment_status == 'Inactive' else '' }}>Aan firfircoonayn</option></select></label>
     </div>
   </section>
 
@@ -74,9 +63,11 @@
     <div class="teacher-form-grid">
       {% if linkable_staff_users %}<label class="span-2">Ku xidh akoon staff oo hore loo sameeyey<select id="teacher-existing-user" name="existing_user_id"><option value="">Akoon cusub samee</option>{% for account in linkable_staff_users %}<option value="{{ account.id }}" data-username="{{ account.username }}" data-full-name="{{ account.full_name }}" data-active="{{ 'true' if account.is_active else 'false' }}" {{ 'selected' if selected_portal_user_id == account.id else '' }}>{{ account.full_name }} · @{{ account.username }} · {{ 'Firfircoon' if account.is_active else 'Aan firfircoonayn' }}</option>{% endfor %}</select><small>Akoonka la doorto ayaa lagu xiriirinayaa profile-kan; lama abuuri doono akoon kale.</small></label>{% endif %}
       {% if not teacher.user_id %}<label class="teacher-check-row teacher-account-toggle span-2"><input type="checkbox" name="create_account" checked><span>U samee macallinka akoonka portalka</span></label>{% else %}<div class="teacher-account-current span-2"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Akoon jira: <strong>{{ teacher.user.username }}</strong></span></div>{% endif %}
-      <label>Magaca gelitaanka<input id="teacher-account-username" name="username" value="{{ selected_portal_user.username if selected_portal_user else (teacher.user.username if teacher.user else default_username) }}" placeholder="{{ settings.teacher_default_username_format }}" autocomplete="username"></label>
-      <label>Furaha sirta ah<div class="teacher-password-field"><input id="teacher-password" type="password" name="password" autocomplete="new-password" placeholder="{{ 'Ka tag madhan si uusan isu beddelin' if teacher.user_id or selected_portal_user else 'Waajib marka akoon cusub la samaynayo' }}"><button class="teacher-password-toggle" type="button" data-password-target="teacher-password" aria-label="Muuji furaha sirta ah" aria-pressed="false" title="Muuji furaha sirta ah"><i class="fa-regular fa-eye" aria-hidden="true"></i></button></div><small>Furaha cusub waad muujin kartaa markaad gelinayso. Furihii hore dib looma akhrin karo; haddii loo baahdo geli mid cusub.</small></label>
-      <label>Xaqiiji furaha sirta ah<div class="teacher-password-field"><input id="teacher-password-confirm" type="password" name="confirm_password" autocomplete="new-password"><button class="teacher-password-toggle" type="button" data-password-target="teacher-password-confirm" aria-label="Muuji xaqiijinta furaha sirta ah" aria-pressed="false" title="Muuji xaqiijinta furaha sirta ah"><i class="fa-regular fa-eye" aria-hidden="true"></i></button></div></label>
+      <div class="teacher-account-credentials">
+        <label class="teacher-username-control"><span class="teacher-username-title"><i class="fa-solid fa-user-tag" aria-hidden="true"></i> Username-ka gelitaanka</span><span class="teacher-username-input"><i class="fa-solid fa-at" aria-hidden="true"></i><input id="teacher-account-username" name="username" value="{{ selected_portal_user.username if selected_portal_user else (teacher.user.username if teacher.user else default_username) }}" placeholder="{{ settings.teacher_default_username_format }}" autocomplete="username"></span></label>
+        <label class="teacher-username-control teacher-password-control"><span class="teacher-username-title"><i class="fa-solid fa-lock" aria-hidden="true"></i> Furaha sirta ah</span><span class="teacher-username-input teacher-password-input"><i class="fa-solid fa-key" aria-hidden="true"></i><input id="teacher-password" type="password" name="password" autocomplete="new-password" minlength="4" data-min-length="4" placeholder="{{ 'Ka tag madhan si uusan isu beddelin' if teacher.user_id or selected_portal_user else 'Waajib marka akoon cusub la samaynayo' }}"><button class="teacher-password-toggle" type="button" data-password-target="teacher-password" aria-label="Muuji furaha sirta ah" aria-pressed="false" title="Muuji furaha sirta ah"><i class="fa-regular fa-eye" aria-hidden="true"></i></button><button class="teacher-password-action" type="button" data-generate-teacher-password aria-label="Samee password cusub" title="Samee password cusub"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i></button><button class="teacher-password-action" type="button" data-copy-teacher-password aria-label="Koobiyee password-ka cusub" title="Koobiyee password-ka cusub"><i class="fa-regular fa-copy" aria-hidden="true"></i></button></span><small class="teacher-password-feedback" id="teacher-password-feedback" aria-live="polite"></small></label>
+        <label class="teacher-username-control teacher-password-control"><span class="teacher-username-title"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Xaqiiji furaha sirta ah</span><span class="teacher-username-input teacher-password-input"><i class="fa-solid fa-check" aria-hidden="true"></i><input id="teacher-password-confirm" type="password" name="confirm_password" autocomplete="new-password" minlength="4"><button class="teacher-password-toggle" type="button" data-password-target="teacher-password-confirm" aria-label="Muuji xaqiijinta furaha sirta ah" aria-pressed="false" title="Muuji xaqiijinta furaha sirta ah"><i class="fa-regular fa-eye" aria-hidden="true"></i></button></span></label>
+      </div>
       <label class="teacher-check-row"><input type="checkbox" name="force_password_change" {{ 'checked' if teacher.force_password_change else '' }}><span>Ku khasab beddelka furaha gelitaanka koowaad</span></label>
       <label class="teacher-check-row"><input id="teacher-account-active" type="checkbox" name="account_active" {{ 'checked' if (selected_portal_user.is_active if selected_portal_user else (not teacher.user or teacher.user.is_active)) else '' }}><span>Gelitaanka portalka ha shaqeeyo</span></label>
     </div>
@@ -122,6 +113,68 @@
       button.title = visible ? 'Qari furaha sirta ah' : 'Muuji furaha sirta ah';
       if (icon) icon.className = visible ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye';
     });
+  });
+
+  const passwordInput = document.getElementById('teacher-password');
+  const confirmInput = document.getElementById('teacher-password-confirm');
+  const passwordFeedback = document.getElementById('teacher-password-feedback');
+  const passwordStatus = (message) => {
+    if (passwordFeedback) passwordFeedback.textContent = message;
+  };
+
+  document.querySelector('[data-generate-teacher-password]')?.addEventListener('click', () => {
+    if (!passwordInput || !confirmInput || !window.crypto?.getRandomValues) {
+      passwordStatus('Abuurista password-ka ammaan ahi kuma shaqaynayso browser-kan. Geli password cusub gacanta.');
+      return;
+    }
+    const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    const digits = '23456789';
+    const alphabet = letters + digits;
+    const randomIndex = (max) => {
+      const limit = 0x100000000 - (0x100000000 % max);
+      const value = new Uint32Array(1);
+      do { window.crypto.getRandomValues(value); } while (value[0] >= limit);
+      return value[0] % max;
+    };
+    const length = Math.max(16, Number(passwordInput.dataset.minLength) || 8);
+    const chars = [letters[randomIndex(letters.length)], digits[randomIndex(digits.length)]];
+    while (chars.length < length) chars.push(alphabet[randomIndex(alphabet.length)]);
+    for (let i = chars.length - 1; i > 0; i -= 1) {
+      const j = randomIndex(i + 1);
+      [chars[i], chars[j]] = [chars[j], chars[i]];
+    }
+    passwordInput.value = chars.join('');
+    confirmInput.value = passwordInput.value;
+    passwordInput.type = 'text';
+    const revealButton = document.querySelector('[data-password-target="teacher-password"]');
+    if (revealButton) {
+      revealButton.setAttribute('aria-pressed', 'true');
+      revealButton.setAttribute('aria-label', 'Qari furaha sirta ah');
+      revealButton.title = 'Qari furaha sirta ah';
+      const icon = revealButton.querySelector('i');
+      if (icon) icon.className = 'fa-regular fa-eye-slash';
+    }
+    const forceChange = document.querySelector('input[name="force_password_change"]');
+    if (forceChange) forceChange.checked = true;
+    passwordStatus('Password cusub ayaa diyaar ah. Koobiyee oo kaydi ka hor intaadan bogga ka bixin.');
+  });
+
+  document.querySelector('[data-copy-teacher-password]')?.addEventListener('click', async () => {
+    if (!passwordInput || !passwordInput.value) {
+      passwordStatus('Marka hore geli ama samee password cusub.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(passwordInput.value);
+    } catch (error) {
+      passwordInput.focus();
+      passwordInput.select();
+      if (!document.execCommand('copy')) {
+        passwordStatus('Nuqulku ma suurtagelin; password-ka dooro oo gacanta ku koobiyee.');
+        return;
+      }
+    }
+    passwordStatus('Password-ka cusub waa la koobiyeeyey.');
   });
 
   const select = document.getElementById('teacher-existing-user');
