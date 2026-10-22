@@ -817,6 +817,48 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(TeacherResultAssignment.query.count(), 1)
         self.assertEqual(TeacherResultAssignment.query.one().max_submissions, 2)
 
+    def test_admin_cannot_assign_same_class_subject_exam_to_another_teacher(self):
+        other_teacher = Teacher(
+            teacher_id="RT-2", teacher_code="RT-C2", full_name="Second Teacher",
+            employment_status="Active", is_active=True,
+        )
+        db.session.add(other_teacher)
+        db.session.commit()
+        year_subject = AcademicYearSubject.query.filter_by(legacy_subject_id=self.subject.id).one()
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        response = self.client.post("/admin/teachers/result-entry", data={
+            "action": "create", "teacher_id": str(other_teacher.id),
+            "academic_year_id": str(self.year.id), "exam_id": str(self.exam.id),
+            "academic_year_level_id": str(self.year_level.id),
+            "academic_year_class_id": str(self.year_class.id),
+            "academic_year_subject_id": str(year_subject.id),
+            "max_submissions": "1",
+        }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Maaddadan fasalkan iyo imtixaankan macallin kale".encode(), response.data)
+        self.assertEqual(TeacherResultAssignment.query.count(), 1)
+
+    def test_admin_scope_picker_receives_existing_class_subject_assignments(self):
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        response = self.client.get("/admin/teachers/result-entry")
+        body = response.get_data(as_text=True)
+        match = re.search(r'data-reserved-scopes="([^"]*)"', body)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(match)
+        reservations = json.loads(html.unescape(match.group(1)))
+        self.assertEqual(reservations, [{
+            "assignment_id": self.assignment.id,
+            "academic_year_id": self.year.id,
+            "exam_id": self.exam.id,
+            "class_id": self.school_class.id,
+            "subject_id": self.subject.id,
+        }])
+        self.assertIn("reservedBySavedAssignment".encode(), response.data)
+
     def test_admin_can_save_multiple_teacher_scopes_across_levels_in_one_request(self):
         middle_level = AcademicLevel(name="Middle", sort_order=2, is_active=True)
         db.session.add(middle_level)
@@ -894,11 +936,21 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(self.assignment.max_submissions, 1)
 
     def test_admin_can_assign_result_scope_without_legacy_teacher_class_subject_links(self):
+        unscoped_subject = Subject(
+            name="Science", academic_level=self.level, max_score=50, is_active=True,
+        )
         unscoped_teacher = Teacher(
             teacher_id="RT-3", teacher_code="RT-C3", full_name="Unscoped Teacher",
             employment_status="Active", is_active=True,
         )
-        db.session.add(unscoped_teacher)
+        db.session.add_all([unscoped_teacher, unscoped_subject])
+        db.session.flush()
+        unscoped_year_subject = AcademicYearSubject(
+            academic_year=self.year, academic_year_level=self.year_level,
+            legacy_subject=unscoped_subject, name=unscoped_subject.name,
+            subject_kind="exam", max_score=50,
+        )
+        db.session.add(unscoped_year_subject)
         db.session.commit()
         self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
 
@@ -907,14 +959,14 @@ class TestTeacherResultEntry(unittest.TestCase):
             "academic_year_id": str(self.year.id), "exam_id": str(self.exam.id),
             "academic_year_level_id": str(self.year_level.id),
             "academic_year_class_id": str(self.year_class.id),
-            "academic_year_subject_id": str(AcademicYearSubject.query.one().id),
+            "academic_year_subject_id": str(unscoped_year_subject.id),
             "max_submissions": "1",
         }, follow_redirects=True)
 
         self.assertEqual(response.status_code, 200)
         assignment = TeacherResultAssignment.query.filter_by(teacher_id=unscoped_teacher.id).one()
         self.assertEqual(assignment.class_id, self.school_class.id)
-        self.assertEqual(assignment.subject_id, self.subject.id)
+        self.assertEqual(assignment.subject_id, unscoped_subject.id)
 
     def test_admin_assignment_form_uses_year_scoped_records(self):
         orphan_class = AcademicClass(academic_level=self.level, name="Unmapped legacy class", is_active=True)
@@ -981,6 +1033,35 @@ class TestTeacherResultEntry(unittest.TestCase):
             assignment_id=self.assignment.id, event_type="assignment_updated"
         ).count(), 1)
         self.assertIn("Xilsaarista waa la tafatiray".encode(), response.data)
+
+    def test_admin_can_update_policy_on_legacy_duplicate_scope(self):
+        other_teacher = Teacher(
+            teacher_id="RT-4", teacher_code="RT-C4", full_name="Legacy Duplicate Teacher",
+            employment_status="Active", is_active=True,
+        )
+        db.session.add(other_teacher)
+        db.session.flush()
+        db.session.add(TeacherResultAssignment(
+            teacher=other_teacher, academic_year=self.year, exam=self.exam,
+            school_class=self.school_class, subject=self.subject,
+        ))
+        db.session.commit()
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        response = self.client.post("/admin/teachers/result-entry", data={
+            "action": "update", "assignment_id": str(self.assignment.id),
+            "teacher_id": str(self.teacher.id),
+            "academic_year_id": str(self.year.id), "exam_id": str(self.exam.id),
+            "academic_year_level_id": str(self.year_level.id),
+            "academic_year_class_id": str(self.year_class.id),
+            "academic_year_subject_id": str(AcademicYearSubject.query.one().id),
+            "deadline_at": "2026-10-23T10:00", "max_submissions": "2",
+        }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(self.assignment)
+        self.assertEqual(self.assignment.max_submissions, 2)
+        self.assertEqual(self.assignment.deadline_at.strftime("%Y-%m-%d %H:%M"), "2026-10-23 07:00")
 
     def test_admin_cannot_change_assignment_scope_after_submission_exists(self):
         other_subject = Subject(

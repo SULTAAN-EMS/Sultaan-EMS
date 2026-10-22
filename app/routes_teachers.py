@@ -427,6 +427,16 @@ def result_entry_setup():
                     flash("Scope kasta waa inuu si sax ah isugu waafaqaa sannadka, heerka, fasalka, maaddada iyo imtixaanka.", "danger")
                     return redirect(url_for("admin_teachers.result_entry_setup"))
 
+                old_scope = (
+                    edit_assignment.teacher_id,
+                    edit_assignment.academic_year_id,
+                    edit_assignment.exam_id,
+                    edit_assignment.class_id,
+                    edit_assignment.subject_id,
+                ) if edit_assignment else None
+                new_scope = (teacher.id, year.id, exam.id, school_class.id, subject.id)
+                scope_changed = old_scope != new_scope
+
                 scope_key = (year.id, exam.id, school_class.id, subject.id)
                 if scope_key in seen_scopes:
                     flash("Scope isku mid ah laba jeer ayaa lagu daray. Ka saar nuqulka ka hor kaydinta.", "warning")
@@ -436,15 +446,6 @@ def result_entry_setup():
 
             if action == "update":
                 year, exam, school_class, subject, deadline, max_submissions = prepared[0]
-                old_scope = (
-                    edit_assignment.teacher_id,
-                    edit_assignment.academic_year_id,
-                    edit_assignment.exam_id,
-                    edit_assignment.class_id,
-                    edit_assignment.subject_id,
-                )
-                new_scope = (teacher.id, year.id, exam.id, school_class.id, subject.id)
-                scope_changed = old_scope != new_scope
                 submission = edit_assignment.submissions[0] if edit_assignment.submissions else None
 
                 duplicate = TeacherResultAssignment.query.filter_by(
@@ -459,6 +460,20 @@ def result_entry_setup():
                         flash("Scope-kan hore ayaa ugu jiray diiwaanka tirtiridda. Ka soo celi xilsaaristaas ka hor intaadan sii wadin.", "warning")
                         return redirect(url_for("admin_teachers.result_entry_setup", status="deleted"))
                     flash("Macallinkan scope-kan hore ayaa loogu xilsaaray. Dooro scope kale ama tafatir xilsaaristii jirtay.", "warning")
+                    return redirect(url_for("admin_teachers.result_entry_setup"))
+
+                assigned_to_other_teacher = TeacherResultAssignment.query.filter_by(
+                    academic_year_id=year.id,
+                    exam_id=exam.id,
+                    class_id=school_class.id,
+                    subject_id=subject.id,
+                ).filter(
+                    TeacherResultAssignment.id != edit_assignment.id,
+                    TeacherResultAssignment.teacher_id != teacher.id,
+                    TeacherResultAssignment.deleted_at.is_(None),
+                ).first()
+                if scope_changed and assigned_to_other_teacher:
+                    flash("Maaddadan fasalkan iyo imtixaankan macallin kale ayaa hore loogu xilsaaray.", "warning")
                     return redirect(url_for("admin_teachers.result_entry_setup"))
 
                 if scope_changed and submission:
@@ -513,6 +528,17 @@ def result_entry_setup():
                         status_to="active", note="Scope-ka iyo xeerarkiisa waa la cusboonaysiiyey.",
                     )
                 else:
+                    assigned_scope = TeacherResultAssignment.query.filter_by(
+                        academic_year_id=year.id,
+                        exam_id=exam.id,
+                        class_id=school_class.id,
+                        subject_id=subject.id,
+                    ).filter(
+                        TeacherResultAssignment.deleted_at.is_(None),
+                    ).first()
+                    if assigned_scope:
+                        flash("Maaddadan fasalkan iyo imtixaankan macallin kale ayaa hore loogu xilsaaray.", "warning")
+                        return redirect(url_for("admin_teachers.result_entry_setup"))
                     assignment = TeacherResultAssignment(
                         teacher=teacher, academic_year=year, exam=exam,
                         school_class=school_class, subject=subject,
@@ -850,6 +876,16 @@ def result_entry_setup():
     active_exam_ids = {item.id for item in exams}
     active_class_ids = {item.id for item in year_classes}
     active_subject_ids = {item.id for item in year_subjects}
+    assignment_scope_reservations = [
+        {
+            "assignment_id": item.id,
+            "academic_year_id": item.academic_year_id,
+            "exam_id": item.exam_id,
+            "class_id": item.class_id,
+            "subject_id": item.subject_id,
+        }
+        for item in all_assignments
+    ]
     assignment_scope_details = {}
     for assignment in assignments:
         year_level, year_class = _year_scope_ids_from_legacy(
@@ -887,6 +923,7 @@ def result_entry_setup():
         years=years, exams=exams,
         year_levels=year_levels, year_classes=year_classes, year_subjects=year_subjects,
         selected_year_id=selected_year_id, selected_year_level_id=selected_year_level_id,
+        assignment_scope_reservations=assignment_scope_reservations,
         assignment_scope_details=assignment_scope_details,
         deadline_labels=deadline_labels,
         review_rows=review_rows,

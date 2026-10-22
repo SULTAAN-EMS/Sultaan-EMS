@@ -390,36 +390,65 @@
   }
 
   const scopeFilterForm = document.getElementById("resultScopeFilters");
-  scopeFilterForm?.querySelector('[name="subject_id"]')?.addEventListener("change", async (event) => {
-    const currentAssignment = scopeFilterForm.querySelector('[name="assignment_id"]');
-    if (currentAssignment) currentAssignment.value = "";
+  if (scopeFilterForm) {
     const applyButton = scopeFilterForm.querySelector('button[type="submit"]');
-    const subjectFilter = event.currentTarget;
-    const activeInputs = inputs.filter((input) => !input.disabled);
-    activeInputs.forEach((input) => { input.disabled = true; });
-    if (applyButton) {
-      applyButton.disabled = true;
-      applyButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Dhibcaha waa la keydinayaa';
-    }
-    setSaveStatus("saving", "Maaddada waa la beddelayaa", "Dhibcaha sugaya waa la keydinayaa");
-    try {
-      for (const input of inputs) clearTimer(input);
-      await autosaveQueue;
-      for (const input of inputs) {
-        if (!inspect(input.closest("[data-student-card]")).changed) continue;
-        if (!await saveInput(input)) throw new Error("Dhibco sugaya lama keydin. Mar kale isku day ka hor maaddo beddelka.");
-      }
-      scopeFilterForm.requestSubmit();
-    } catch (error) {
-      subjectFilter.value = page.dataset.currentSubjectId;
-      activeInputs.forEach((input) => { input.disabled = false; });
+    const scopeSelects = [...scopeFilterForm.querySelectorAll("select")];
+    const initialFilterValues = Object.fromEntries(scopeSelects.map(select => [select.name, select.value]));
+    const originalApplyButton = applyButton?.innerHTML || "";
+    let applyingFilters = false;
+    let allowFilterSubmit = false;
+
+    const savePendingScoresAndApplyFilters = async (changedFilter = null) => {
+      if (applyingFilters) return;
+      applyingFilters = true;
+      const currentAssignment = scopeFilterForm.querySelector('[name="assignment_id"]');
+      if (changedFilter && currentAssignment) currentAssignment.value = "";
+      const activeInputs = inputs.filter((input) => !input.disabled);
+      activeInputs.forEach((input) => { input.disabled = true; });
+      scopeSelects.forEach((select) => { select.disabled = true; });
+      scopeFilterForm.setAttribute("aria-busy", "true");
       if (applyButton) {
-        applyButton.disabled = false;
-        applyButton.innerHTML = '<i class="fa-solid fa-filter" aria-hidden="true"></i> Shaandhee';
+        applyButton.disabled = true;
+        applyButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Waa la keydinayaa';
       }
-      setSaveStatus("error", "Maaddada lama beddelin", error.message);
-    }
-  });
+      setSaveStatus("saving", "Shaandhaynta waa la beddelayaa", "Dhibcaha sugaya waa la keydinayaa");
+      try {
+        for (const input of inputs) clearTimer(input);
+        await autosaveQueue;
+        for (const input of inputs) {
+          if (!inspect(input.closest("[data-student-card]")).changed) continue;
+          if (!await saveInput(input)) throw new Error("Dhibco sugaya lama keydin. Mar kale isku day ka hor shaandhaynta.");
+        }
+        scopeSelects.forEach((select) => { select.disabled = false; });
+        scopeFilterForm.removeAttribute("aria-busy");
+        allowFilterSubmit = true;
+        scopeFilterForm.requestSubmit();
+      } catch (error) {
+        if (changedFilter) changedFilter.value = initialFilterValues[changedFilter.name] || "";
+        scopeSelects.forEach((select) => { select.disabled = false; });
+        activeInputs.forEach((input) => { input.disabled = false; });
+        scopeFilterForm.removeAttribute("aria-busy");
+        if (applyButton) {
+          applyButton.disabled = false;
+          applyButton.innerHTML = originalApplyButton;
+        }
+        applyingFilters = false;
+        setSaveStatus("error", "Shaandhaynta lama adeegsan", error.message);
+      }
+    };
+
+    scopeFilterForm.addEventListener("change", (event) => {
+      if (event.target.matches("select")) savePendingScoresAndApplyFilters(event.target);
+    });
+    scopeFilterForm.addEventListener("submit", (event) => {
+      if (allowFilterSubmit) {
+        allowFilterSubmit = false;
+        return;
+      }
+      event.preventDefault();
+      savePendingScoresAndApplyFilters();
+    });
+  }
 
   function setUnsavedStatus() {
     const count = cards.reduce((total, card) => total + (inspect(card).changed ? 1 : 0), 0);

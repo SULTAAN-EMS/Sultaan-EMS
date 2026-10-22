@@ -56,7 +56,7 @@
         <ul>{% for account in unlinked_staff_users %}<li><span>{{ account.full_name }} · @{{ account.username }}{% if not account.is_active %}<small>Aan firfircoonayn</small>{% endif %}</span><a href="{{ url_for('admin_teachers.teacher_form', user_id=account.id) }}"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Samee profile macallin</a></li>{% endfor %}</ul>
       </aside>
     {% endif %}
-    <form method="post" class="tra-form" id="tra-assignment-form">
+    <form method="post" class="tra-form" id="tra-assignment-form" data-reserved-scopes="{{ assignment_scope_reservations|tojson|forceescape }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="create">
       <input type="hidden" name="assignment_id" value="">
@@ -247,6 +247,13 @@
   const saveAssignment = document.getElementById('tra-save-assignment');
   if (!form || !scopeList || !scopeTemplate || !addScope) return;
 
+  let reservedScopes = [];
+  try {
+    reservedScopes = JSON.parse(form.dataset.reservedScopes || '[]');
+  } catch (_) {
+    reservedScopes = [];
+  }
+
   const filterOptions = (select, predicate, selectFirst = false) => {
     const visible = [];
     Array.from(select.options).forEach((option, index) => {
@@ -274,16 +281,45 @@
 
     filterOptions(schoolClass, option => option.dataset.levelId === levelId);
     const classId = schoolClass.selectedOptions[0]?.dataset.legacyId || '';
-
-    filterOptions(subject, option =>
-      option.dataset.yearId === yearId &&
-      option.dataset.levelId === levelId &&
-      (!option.dataset.legacyLevelId || option.dataset.legacyLevelId === legacyLevelId));
-
     filterOptions(exam, option =>
       option.dataset.yearId === yearId &&
       (!option.dataset.levelId || option.dataset.levelId === legacyLevelId) &&
       (!option.dataset.classId || option.dataset.classId === classId));
+    const examId = exam.value;
+
+    const matchesCurrentScope = (scope) =>
+      String(scope.academic_year_id) === yearId &&
+      String(scope.exam_id) === examId &&
+      String(scope.class_id) === classId;
+    const currentAssignmentId = Number(form.querySelector('[name="assignment_id"]')?.value || 0);
+    const isCurrentAssignmentScope = (subjectId) => reservedScopes.some(scope =>
+      Number(scope.assignment_id) === currentAssignmentId &&
+      matchesCurrentScope(scope) && String(scope.subject_id) === subjectId);
+    const reservedBySavedAssignment = (subjectId) =>
+      !isCurrentAssignmentScope(subjectId) && reservedScopes.some(scope =>
+        Number(scope.assignment_id) !== currentAssignmentId &&
+        matchesCurrentScope(scope) && String(scope.subject_id) === subjectId);
+    const reservedByAnotherFormRow = (subjectId) =>
+      [...scopeList.querySelectorAll('[data-scope-row]')].some(otherRow => {
+        if (otherRow === row) return false;
+        const otherYear = otherRow.querySelector('[data-year]').value;
+        const otherExam = otherRow.querySelector('[data-exam]').value;
+        const otherClass = otherRow.querySelector('[data-class]').selectedOptions[0]?.dataset.legacyId || '';
+        const otherSubject = otherRow.querySelector('[data-subject]').selectedOptions[0]?.dataset.legacyId || '';
+        return otherSubject === subjectId && matchesCurrentScope({
+          academic_year_id: otherYear, exam_id: otherExam, class_id: otherClass,
+        });
+      });
+
+    filterOptions(subject, option =>
+      option.dataset.yearId === yearId &&
+      option.dataset.levelId === levelId &&
+      (!option.dataset.legacyLevelId || option.dataset.legacyLevelId === legacyLevelId) &&
+      (!classId || !examId || (
+        !reservedBySavedAssignment(option.dataset.legacyId || '') &&
+        !reservedByAnotherFormRow(option.dataset.legacyId || '')
+      )));
+
   };
 
   const updateRows = () => {
@@ -355,7 +391,7 @@
   });
 
   scopeList.addEventListener('change', (event) => {
-    if (event.target.matches('select')) refresh(event.target.closest('[data-scope-row]'));
+    if (event.target.matches('select')) updateRows();
   });
   scopeList.addEventListener('click', (event) => {
     const remove = event.target.closest('[data-remove-scope]');
