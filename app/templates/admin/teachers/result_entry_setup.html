@@ -67,7 +67,7 @@
           <label>Academic year<select name="academic_year_id" data-year required><option value="">Select year</option>{% for item in years %}<option value="{{ item.id }}" {{ 'selected' if item.id == selected_year_id else '' }}>{{ item.name }}{% if item.is_current %} · Current{% endif %}</option>{% endfor %}</select></label>
           <label>Level<select name="academic_year_level_id" data-level required><option value="">Select level</option>{% for item in year_levels %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-legacy-level-id="{{ item.legacy_level_id }}" {{ 'selected' if item.id == selected_year_level_id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
           <label>Class<select name="academic_year_class_id" data-class required><option value="">Select class</option>{% for item in year_classes %}<option value="{{ item.id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-id="{{ item.legacy_class_id }}">{{ item.academic_year_level.name }} · {{ item.name }}</option>{% endfor %}</select></label>
-          <label>Subject<select name="academic_year_subject_id" data-subject required><option value="">Select subject</option>{% for item in year_subjects %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-level-id="{{ item.academic_year_level.legacy_level_id }}" data-legacy-id="{{ item.legacy_subject_id }}">{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Subject<select name="academic_year_subject_id" data-subject required><option value="">Select year, level, class and exam first</option>{% for item in year_subjects %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-level-id="{{ item.academic_year_level.legacy_level_id }}" data-legacy-id="{{ item.legacy_subject_id }}">{{ item.name }}</option>{% endfor %}</select><small data-subject-hint>Choose the year, level, class and exam to see subjects available in that exact scope.</small></label>
           <label>Exam type<select name="exam_id" data-exam required><option value="">Select exam</option>{% for item in exams %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_level_id or '' }}" data-class-id="{{ item.academic_class_id or '' }}">{{ item.name }} · {{ item.academic_year.name }}</option>{% endfor %}</select></label>
           <label>Deadline <span class="tra-optional">Optional</span><input type="datetime-local" name="deadline_at"><small>Leave blank for no deadline.</small></label>
           <label>Allowed submissions<input type="number" name="max_submissions" min="1" max="10" value="1" required><small>Reopening grants another attempt.</small></label>
@@ -79,7 +79,7 @@
           <label>Academic year<select name="academic_year_id" data-year required><option value="">Select year</option>{% for item in years %}<option value="{{ item.id }}">{{ item.name }}{% if item.is_current %} · Current{% endif %}</option>{% endfor %}</select></label>
           <label>Level<select name="academic_year_level_id" data-level required><option value="">Select level</option>{% for item in year_levels %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-legacy-level-id="{{ item.legacy_level_id }}">{{ item.name }}</option>{% endfor %}</select></label>
           <label>Class<select name="academic_year_class_id" data-class required><option value="">Select class</option>{% for item in year_classes %}<option value="{{ item.id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-id="{{ item.legacy_class_id }}">{{ item.academic_year_level.name }} · {{ item.name }}</option>{% endfor %}</select></label>
-          <label>Subject<select name="academic_year_subject_id" data-subject required><option value="">Select subject</option>{% for item in year_subjects %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-level-id="{{ item.academic_year_level.legacy_level_id }}" data-legacy-id="{{ item.legacy_subject_id }}">{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Subject<select name="academic_year_subject_id" data-subject required><option value="">Select year, level, class and exam first</option>{% for item in year_subjects %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-level-id="{{ item.academic_year_level.legacy_level_id }}" data-legacy-id="{{ item.legacy_subject_id }}">{{ item.name }}</option>{% endfor %}</select><small data-subject-hint>Choose the year, level, class and exam to see subjects available in that exact scope.</small></label>
           <label>Exam type<select name="exam_id" data-exam required><option value="">Select exam</option>{% for item in exams %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_level_id or '' }}" data-class-id="{{ item.academic_class_id or '' }}">{{ item.name }} · {{ item.academic_year.name }}</option>{% endfor %}</select></label>
           <label>Deadline <span class="tra-optional">Optional</span><input type="datetime-local" name="deadline_at"><small>Leave blank for no deadline.</small></label>
           <label>Allowed submissions<input type="number" name="max_submissions" min="1" max="10" value="1" required><small>Reopening grants another attempt.</small></label>
@@ -248,6 +248,7 @@
   if (!form || !scopeList || !scopeTemplate || !addScope) return;
 
   let reservedScopes = [];
+  const subjectOptions = new WeakMap();
   try {
     reservedScopes = JSON.parse(form.dataset.reservedScopes || '[]');
   } catch (_) {
@@ -265,6 +266,36 @@
     });
     if (!select.selectedOptions[0]?.value || select.selectedOptions[0].hidden) {
       select.value = selectFirst && visible.length ? visible[0].value : '';
+    }
+  };
+
+  const refreshSubjectOptions = (select, predicate, scopeReady) => {
+    let cached = subjectOptions.get(select);
+    if (!cached) {
+      cached = {
+        placeholder: select.options[0].cloneNode(true),
+        options: Array.from(select.options).slice(1).map(option => option.cloneNode(true)),
+      };
+      subjectOptions.set(select, cached);
+    }
+
+    const selectedValue = select.value;
+    const visibleOptions = scopeReady ? cached.options.filter(predicate) : [];
+    const placeholder = cached.placeholder.cloneNode(true);
+    placeholder.textContent = !scopeReady
+      ? 'Select year, level, class and exam first'
+      : visibleOptions.length ? 'Select subject' : 'No unassigned subjects for this scope';
+    select.replaceChildren(placeholder, ...visibleOptions.map(option => option.cloneNode(true)));
+    select.disabled = !scopeReady || visibleOptions.length === 0;
+    select.value = visibleOptions.some(option => option.value === selectedValue) ? selectedValue : '';
+
+    const hint = select.closest('label')?.querySelector('[data-subject-hint]');
+    if (hint) {
+      hint.textContent = !scopeReady
+        ? 'Choose the year, level, class and exam to see subjects available in that exact scope.'
+        : visibleOptions.length
+          ? 'Subjects already assigned to this exact scope are excluded.'
+          : 'All subjects in this scope are already assigned, or none are configured.';
     }
   };
 
@@ -292,11 +323,8 @@
       String(scope.exam_id) === examId &&
       String(scope.class_id) === classId;
     const currentAssignmentId = Number(form.querySelector('[name="assignment_id"]')?.value || 0);
-    const isCurrentAssignmentScope = (subjectId) => reservedScopes.some(scope =>
-      Number(scope.assignment_id) === currentAssignmentId &&
-      matchesCurrentScope(scope) && String(scope.subject_id) === subjectId);
     const reservedBySavedAssignment = (subjectId) =>
-      !isCurrentAssignmentScope(subjectId) && reservedScopes.some(scope =>
+      reservedScopes.some(scope =>
         Number(scope.assignment_id) !== currentAssignmentId &&
         matchesCurrentScope(scope) && String(scope.subject_id) === subjectId);
     const reservedByAnotherFormRow = (subjectId) =>
@@ -311,14 +339,14 @@
         });
       });
 
-    filterOptions(subject, option =>
+    const scopeReady = Boolean(yearId && levelId && classId && examId);
+    refreshSubjectOptions(subject, option =>
       option.dataset.yearId === yearId &&
       option.dataset.levelId === levelId &&
       (!option.dataset.legacyLevelId || option.dataset.legacyLevelId === legacyLevelId) &&
-      (!classId || !examId || (
-        !reservedBySavedAssignment(option.dataset.legacyId || '') &&
-        !reservedByAnotherFormRow(option.dataset.legacyId || '')
-      )));
+      !reservedBySavedAssignment(option.dataset.legacyId || '') &&
+      !reservedByAnotherFormRow(option.dataset.legacyId || ''),
+      scopeReady);
 
   };
 
@@ -370,8 +398,9 @@
       refresh(row);
       row.querySelector('[data-class]').value = values.schoolClass;
       refresh(row);
-      row.querySelector('[data-subject]').value = values.subject;
       row.querySelector('[data-exam]').value = values.exam;
+      refresh(row);
+      row.querySelector('[data-subject]').value = values.subject;
       row.querySelector('[name="deadline_at"]').value = edit.dataset.deadline;
       row.querySelector('[name="max_submissions"]').value = edit.dataset.maxSubmissions;
       setEditMode(true);

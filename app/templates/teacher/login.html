@@ -8,24 +8,24 @@
 {% block extra_head %}
 {% set share_origin = config.get('PUBLIC_SITE_URL', 'https://www.sultaan-ems.com').rstrip('/') %}
 {% set share_url = share_origin ~ '/teacher/login' %}
-{% set share_image = share_origin ~ '/static/images/teacher-portal-share-20261022.jpg' %}
-<meta name="description" content="Bogga rasmiga ah ee Waaxda Macallimiinta Taysiir International Schools. Ka gal SULTAAN EMS si aad u maamusho shaqadaada iyo natiijooyinka imtixaanka.">
+{% set share_image = share_origin ~ '/static/images/teacher-portal-share-20261022-v2.jpg' %}
+<meta name="description" content="Bogga rasmiga ah ee Waaxda Macallimiinta Taysiir International Schools. Maamul shaqadaada iyo natiijooyinka imtixaanka.">
 <link rel="canonical" href="{{ share_url }}">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="SULTAAN EMS">
+<meta property="og:site_name" content="{{ school_name }}">
 <meta property="og:title" content="Waaxda Macallimiinta | {{ school_name }}">
-<meta property="og:description" content="Bogga rasmiga ah ee macallimiinta Taysiir International Schools. SULTAAN EMS · Nidaamka Maareynta Imtixaannada.">
+<meta property="og:description" content="Bogga rasmiga ah ee macallimiinta Taysiir International Schools. Maamulka iyo gelinta natiijooyinka imtixaanka.">
 <meta property="og:url" content="{{ share_url }}">
 <meta property="og:image" content="{{ share_image }}">
 <meta property="og:image:secure_url" content="{{ share_image }}">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Waaxda Macallimiinta ee Taysiir International Schools iyo SULTAAN EMS">
+<meta property="og:image:alt" content="Waaxda Macallimiinta ee Taysiir International Schools">
 <meta property="og:locale" content="so_SO">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Waaxda Macallimiinta | {{ school_name }}">
-<meta name="twitter:description" content="Bogga rasmiga ah ee macallimiinta Taysiir International Schools ee SULTAAN EMS.">
+<meta name="twitter:description" content="Bogga rasmiga ah ee macallimiinta Taysiir International Schools. Maamulka iyo gelinta natiijooyinka imtixaanka.">
 <meta name="twitter:image" content="{{ share_image }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
