@@ -123,6 +123,18 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn('src="https://assets.example/school-logo.png"', body)
         self.assertIn('data-fallback-src="https://assets.example/admin-logo.png"', body)
 
+    def test_teacher_login_includes_social_share_metadata(self):
+        self.app.config["PUBLIC_SITE_URL"] = "https://portal.example/"
+
+        response = self.client.get("/teacher/login")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn('property="og:title" content="Waaxda Macallimiinta |', body)
+        self.assertIn('property="og:url" content="https://portal.example/teacher/login"', body)
+        self.assertIn('property="og:image" content="https://portal.example/static/images/taysiir-campus-banner-preview.png"', body)
+        self.assertIn('name="twitter:card" content="summary_large_image"', body)
+
     def test_result_entry_uses_gendered_student_position_label(self):
         self.students[0].gender = "Male"
         self.students[1].gender = "Female"
