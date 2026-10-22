@@ -8,6 +8,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from app import create_app, db
+from app.pdf_rendering import html_report_to_pdf
 from config import Config
 from app.models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord,
@@ -322,6 +323,13 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn('Warqadda 1aad'.encode(), rendered['html'].encode())
         self.assertIn('Warqadda 2aad'.encode(), rendered['html'].encode())
         self.assertIn(self.student2.student_code, rendered['html'])
+        self.assertNotIn('cdnjs.cloudflare.com', rendered['html'])
+
+        with patch('app.routes_attendance.html_report_to_pdf', wraps=html_report_to_pdf):
+            actual_pdf = self.client.get(f'/admin/attendance/summary-report.pdf?{query}')
+        self.assertEqual(actual_pdf.status_code, 200)
+        self.assertEqual(actual_pdf.mimetype, 'application/pdf')
+        self.assertTrue(actual_pdf.data.startswith(b'%PDF-'))
 
     def test_attendance_print_and_pdf_share_year_exam_sitting_report(self):
         self.login()
