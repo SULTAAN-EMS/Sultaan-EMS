@@ -429,11 +429,15 @@ class TestTeacherResultEntry(unittest.TestCase):
         )
         middle_section = AcademicSection(academic_class=middle_class, name="A", is_active=True)
         db.session.add_all([middle_year_class, middle_year_subject, middle_section])
+        self.teacher.photo_path = "https://images.example.test/teacher-photo.jpg"
         db.session.commit()
         self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
 
         form = self.client.get(f"/admin/teachers/{self.teacher.id}/edit")
         self.assertEqual(form.status_code, 200)
+        self.assertIn(b'id="teacher-photo-preview" src="https://images.example.test/teacher-photo.jpg"', form.data)
+        self.assertIn(b'data-password-target="teacher-password"', form.data)
+        self.assertIn(b'data-password-target="teacher-password-confirm"', form.data)
         self.assertIn(b"Dugsi Dhexe", form.data)
         self.assertIn(b"Arabic", form.data)
         self.assertNotIn(b"Legacy Primary", form.data)
@@ -467,6 +471,7 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual({item.id for item in self.teacher.subjects}, {self.subject.id, middle_subject.id})
         self.assertEqual({item.id for item in self.teacher.sections}, {middle_section.id})
         self.assertEqual({item.id for item in self.teacher.academic_levels}, {self.level.id, middle_level.id})
+        self.assertEqual(self.teacher.photo_path, "https://images.example.test/teacher-photo.jpg")
 
     def test_admin_teacher_form_rejects_active_legacy_scope_not_configured_this_year(self):
         legacy_level = AcademicLevel(name="Unconfigured Level", is_active=True)
