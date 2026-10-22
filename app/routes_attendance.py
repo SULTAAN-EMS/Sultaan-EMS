@@ -21,6 +21,7 @@ from .models import (
 from .permissions import enforce_endpoint_permission
 from .services import get_settings
 from .pdf_rendering import html_report_to_pdf
+from .attendance_summary_pdf import build_attendance_summary_pdf
 from .attendance_rules import NON_SAT_STATUSES, SAT_STATUSES, normalize_attendance_status, scheduled_subject_scope_key
 from .academic_hierarchy import year_classes, year_levels
 from .enrollment_service import (
@@ -1185,8 +1186,7 @@ def summary_report_pdf():
     context = _attendance_summary_page_context(request.args, force_generate=True)
     if context["filter_errors"] or not context["report"]:
         abort(400, description="Buuxi filtarrada warbixinta ka hor dhoofinta PDF-ka.")
-    html = render_template("admin/attendance_summary_print.html", **context)
-    pdf = html_report_to_pdf(html, request.url_root)
+    pdf = build_attendance_summary_pdf(context)
     return send_file(
         BytesIO(pdf),
         mimetype="application/pdf",

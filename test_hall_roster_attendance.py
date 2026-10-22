@@ -2,6 +2,7 @@ import os
 import sys
 import unittest
 from datetime import date, datetime
+from io import BytesIO
 from unittest.mock import patch
 
 # Add root directory to sys.path
@@ -9,6 +10,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from app import create_app, db
 from app.pdf_rendering import html_report_to_pdf
+from pypdf import PdfReader
 from config import Config
 from app.models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord,
@@ -237,7 +239,7 @@ class TestHallRosterAndAttendance(unittest.TestCase):
             is_active=True,
         )
         second_subject = Subject(
-            name='Summary Report Second Subject',
+            name='اَلتَّرْبِيَةُ الإِسْلَامِيَّةُ',
             academic_level_id=self.level_sec.id,
         )
         db.session.add_all([second_hall, second_subject])
@@ -308,28 +310,18 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(self.hall.name.encode(), hall_only.data)
         self.assertIn(b'1 hall', hall_only.data)
 
-        rendered = {}
-
-        def capture_pdf(html, base_url):
-            rendered['html'] = html
-            rendered['base_url'] = base_url
-            return b'%PDF-1.4 summary report'
-
-        with patch('app.routes_attendance.html_report_to_pdf', side_effect=capture_pdf):
-            downloaded = self.client.get(f'/admin/attendance/summary-report.pdf?{query}')
-
+        downloaded = self.client.get(f'/admin/attendance/summary-report.pdf?{query}')
         self.assertEqual(downloaded.status_code, 200)
         self.assertEqual(downloaded.mimetype, 'application/pdf')
-        self.assertIn('Warqadda 1aad'.encode(), rendered['html'].encode())
-        self.assertIn('Warqadda 2aad'.encode(), rendered['html'].encode())
-        self.assertIn(self.student2.student_code, rendered['html'])
-        self.assertNotIn('cdnjs.cloudflare.com', rendered['html'])
-
-        with patch('app.routes_attendance.html_report_to_pdf', wraps=html_report_to_pdf):
-            actual_pdf = self.client.get(f'/admin/attendance/summary-report.pdf?{query}')
-        self.assertEqual(actual_pdf.status_code, 200)
-        self.assertEqual(actual_pdf.mimetype, 'application/pdf')
-        self.assertTrue(actual_pdf.data.startswith(b'%PDF-'))
+        self.assertTrue(downloaded.data.startswith(b'%PDF-'))
+        pdf = PdfReader(BytesIO(downloaded.data))
+        self.assertEqual(len(pdf.pages), 2)
+        self.assertAlmostEqual(float(pdf.pages[0].mediabox.width), 841.89, delta=0.2)
+        self.assertAlmostEqual(float(pdf.pages[0].mediabox.height), 595.28, delta=0.2)
+        extracted = '\n'.join(page.extract_text() or '' for page in pdf.pages)
+        self.assertIn(self.student2.student_code, extracted)
+        self.assertNotIn('\u25a0', extracted)
+        self.assertTrue(any(0xFE70 <= ord(char) <= 0xFEFF for char in extracted))
 
     def test_attendance_print_and_pdf_share_year_exam_sitting_report(self):
         self.login()
