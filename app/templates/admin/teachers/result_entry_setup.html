@@ -437,7 +437,14 @@
   });
   addScope.addEventListener('click', () => {
     if (scopeList.querySelectorAll('[data-scope-row]').length >= 30) return;
-    scopeList.append(scopeTemplate.content.firstElementChild.cloneNode(true));
+    const rows = [...scopeList.querySelectorAll('[data-scope-row]')];
+    const inheritedDeadline = rows
+      .map(row => row.querySelector('[name="deadline_at"]').value)
+      .reverse()
+      .find(Boolean) || '';
+    const newRow = scopeTemplate.content.firstElementChild.cloneNode(true);
+    newRow.querySelector('[name="deadline_at"]').value = inheritedDeadline;
+    scopeList.append(newRow);
     updateRows();
     scopeList.lastElementChild.querySelector('[data-year]').focus();
   });

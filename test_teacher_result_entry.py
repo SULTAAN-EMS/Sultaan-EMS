@@ -931,6 +931,20 @@ class TestTeacherResultEntry(unittest.TestCase):
         }])
         self.assertIn("reservedBySavedAssignment".encode(), response.data)
 
+    def test_admin_new_scope_inherits_last_selected_deadline(self):
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        response = self.client.get("/admin/teachers/result-entry")
+        body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("const inheritedDeadline = rows", body)
+        self.assertIn(".find(Boolean) || ''", body)
+        self.assertIn(
+            'newRow.querySelector(\'[name="deadline_at"]\').value = inheritedDeadline;',
+            body,
+        )
+
     def test_admin_scope_picker_orders_exam_before_subject_and_loads_subjects_by_year_level(self):
         self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
 
