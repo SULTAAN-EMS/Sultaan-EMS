@@ -1,4 +1,5 @@
 from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 from io import BytesIO
 from tempfile import NamedTemporaryFile
 from zoneinfo import ZoneInfo
@@ -657,6 +658,27 @@ def result_entry_setup():
                 assignment.school_class.academic_level_id,
                 assignment.class_id,
             )
+            year_subject = AcademicYearSubject.query.filter_by(
+                academic_year_id=assignment.academic_year_id,
+                academic_year_level_id=year_level.id if year_level else None,
+                legacy_subject_id=assignment.subject_id,
+                subject_kind="exam",
+                is_active=True,
+            ).first() if year_level else None
+            assignment_scope_valid = bool(
+                year_level and year_class
+                and assignment.exam
+                and assignment.exam.academic_year_id == assignment.academic_year_id
+                and year_class.legacy_class_id == assignment.class_id
+                and year_class.academic_year_level_id == year_level.id
+                and year_subject
+                and assignment.subject
+                and assignment.subject.is_active
+                and (
+                    assignment.subject.academic_level_id is None
+                    or assignment.subject.academic_level_id == assignment.school_class.academic_level_id
+                )
+            )
             students = students_for_scope_query(
                 assignment.academic_year_id,
                 level_id=assignment.school_class.academic_level_id,
@@ -664,20 +686,29 @@ def result_entry_setup():
                 exam=assignment.exam,
             ).all()
             roster_ids = {student.id for student in students}
-            if not year_level or not year_class or any(student_id not in roster_ids for student_id in marks):
+            if not assignment_scope_valid or any(student_id not in roster_ids for student_id in marks):
                 flash("Xogta ardayda ama fasalka/sanadku sax ma aha; lama ansixin.", "danger")
                 return redirect(url_for("admin_teachers.result_entry_setup"))
             pending_students = [student for student in students if student.id in marks]
             if any(student.is_result_locked for student in pending_students):
                 flash("Fasalka waxaa ku jira arday natiijadoodu xiran tahay. Furitaanka natiijooyinkaas ayaa loo baahan yahay ka hor ansixinta.", "danger")
                 return redirect(url_for("admin_teachers.result_entry_setup"))
-            maximum = resolve_subject_max_score(
+            maximum = Decimal(str(resolve_subject_max_score(
                 assignment.subject,
                 exam=assignment.exam,
                 academic_year_level_id=year_level.id,
                 academic_level_id=assignment.school_class.academic_level_id,
-            )
-            if any(mark.score < 0 or mark.score > maximum for mark in pending_marks):
+            )))
+            if (
+                not maximum.is_finite()
+                or maximum <= 0
+                or any(
+                    not Decimal(str(mark.score)).is_finite()
+                    or mark.score < 0
+                    or mark.score > maximum
+                    for mark in pending_marks
+                )
+            ):
                 flash("Dhibco ka baxsan xadka maaddada ayaa jira; submission-ka lama ansixin.", "danger")
                 return redirect(url_for("admin_teachers.result_entry_setup"))
             pending_ids = [student.id for student in pending_students]

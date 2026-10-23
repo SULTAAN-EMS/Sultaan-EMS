@@ -7,7 +7,7 @@ from flask import g, has_request_context
 
 from . import db
 from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AttendanceRecord, Exam, Result, SchoolClass, Student, Subject
-from .services import grade_for
+from .services import grade_for, resolve_subject_max_score
 from .enrollment_service import EnrollmentValidationError, enrollment_placement_for_student, student_enrollment_legacy_scope_query, student_enrollment_scope_query
 
 
@@ -27,9 +27,54 @@ def _filter_cache_key(filters):
 
 
 def _pct(result):
-    if not result.subject.max_score:
+    max_score = _result_max_score(result)
+    if not max_score:
         return 0.0
-    return round(float(Decimal(result.score) / Decimal(result.subject.max_score) * 100), 2)
+    return round(float(Decimal(result.score) / max_score * 100), 2)
+
+
+def _result_max_score(result):
+    """Resolve the denominator in the result's exact exam and student scope."""
+    exam = result.exam
+    subject = result.subject
+    if not exam or not subject:
+        return Decimal(str(getattr(subject, "max_score", 0) or 0))
+
+    placement = None
+    placement_key = (result.student_id, exam.academic_year_id)
+    placement_cache = _request_cache("_teacher_result_placements_cache")
+    if placement_cache is not None and placement_key in placement_cache:
+        placement = placement_cache[placement_key]
+    else:
+        student = result.student
+        if student:
+            placement = enrollment_placement_for_student(student, exam.academic_year_id)
+        if placement_cache is not None:
+            placement_cache[placement_key] = placement
+
+    academic_level_id = (
+        (placement or {}).get("academic_level_id")
+        or exam.academic_level_id
+    )
+    academic_year_level_id = (placement or {}).get("academic_year_level_id")
+    cache_key = (exam.id, academic_year_level_id, academic_level_id, subject.id)
+    maxima_cache = _request_cache("_teacher_result_maxima_cache")
+    if maxima_cache is not None and cache_key in maxima_cache:
+        return maxima_cache[cache_key]
+
+    maximum = resolve_subject_max_score(
+        subject,
+        exam=exam,
+        academic_year_level_id=academic_year_level_id,
+        academic_level_id=academic_level_id,
+    )
+    try:
+        maximum = Decimal(str(maximum))
+    except Exception:
+        maximum = Decimal("0")
+    if maxima_cache is not None:
+        maxima_cache[cache_key] = maximum
+    return maximum
 
 
 def _safe_mean(values):
@@ -1100,9 +1145,9 @@ def results_list_data(teacher, filters):
                 "exam": result.exam,
                 "subject": result.subject,
                 "score": float(result.score),
-                "max_score": float(result.subject.max_score or 0),
+                "max_score": float(_result_max_score(result)),
                 "percentage": round(percentage, 2),
-                "grade": grade_for(percentage).get("grade", "-"),
+                "grade": grade_for(percentage, exam_id=result.exam_id).get("grade", "-"),
                 "is_published": result.is_published,
             }
         )

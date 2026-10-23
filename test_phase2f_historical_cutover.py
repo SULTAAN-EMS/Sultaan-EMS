@@ -1,4 +1,5 @@
 import unittest
+from decimal import Decimal
 
 from app import create_app, db
 from app.academic_hierarchy import students_for_year_scope_query
@@ -19,13 +20,18 @@ from app.models import (
     AcademicYearClass,
     AcademicYearLevel,
     AcademicYearSubject,
+    AuditLog,
+    ExamMarkingConfiguration,
     Exam,
+    GradeScale,
     Result,
     Student,
     Subject,
+    Teacher,
     User,
 )
 from app.services import result_payload
+from app.teacher_analytics import results_list_data
 
 
 class TestPhase2FHistoricalCutover(unittest.TestCase):
@@ -270,6 +276,185 @@ class TestPhase2FHistoricalCutover(unittest.TestCase):
         self.assertTrue(saved.is_published)
         payload = result_payload(student, exam=exam, public_only=True)
         self.assertEqual([row["subject_id"] for row in payload["subjects"]], [self.subject_a.id])
+        audit_entry = AuditLog.query.filter_by(action="Result Entry").order_by(AuditLog.id.desc()).first()
+        self.assertIn(student.student_code, audit_entry.details)
+        self.assertIn('"after": "81"', audit_entry.details)
+
+    def _logged_in_results_admin(self, username):
+        admin = User(username=username, full_name="Results Audit Admin", role="super_admin")
+        admin.set_password("test-password")
+        db.session.add(admin)
+        db.session.commit()
+        client = self.app.test_client()
+        response = client.post("/admin/login", data={
+            "username": username,
+            "password": "test-password",
+        })
+        self.assertIn(response.status_code, (302, 303))
+        return client
+
+    def _entry_student_and_exam(self, exam_year=None):
+        student = Student(
+            student_code=f"ENTRY-{Student.query.count() + 1}",
+            full_name="Entry Scope Student",
+            academic_year_id=self.year_a.id,
+            academic_level_id=self.level_a.id,
+            academic_class_id=self.class_a.id,
+        )
+        exam = Exam(
+            name=f"Entry Scope Exam {Exam.query.count() + 1}",
+            academic_year=exam_year or self.year_a,
+            academic_level_id=self.level_a.id,
+            is_active=True,
+        )
+        db.session.add_all([student, exam])
+        db.session.flush()
+        create_enrollment(student.id, self.year_a.id, self.year_level_a.id, self.year_class_a.id)
+        db.session.commit()
+        return student, exam
+
+    def test_admin_result_autosave_rejects_an_exam_from_another_year(self):
+        client = self._logged_in_results_admin("phase2f-cross-year-save-admin")
+        student, exam = self._entry_student_and_exam(self.year_b)
+
+        response = client.post("/admin/advanced-results/result-entry/autosave", data={
+            "year_id": self.year_a.id,
+            "exam_id": exam.id,
+            "level_id": self.level_a.id,
+            "class_id": self.class_a.id,
+            "student_id": student.id,
+            "subject_id": self.subject_a.id,
+            "score": "75",
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Result.query.filter_by(exam_id=exam.id).count(), 0)
+
+    def test_admin_result_autosave_rejects_a_subject_outside_the_year_level(self):
+        client = self._logged_in_results_admin("phase2f-wrong-subject-admin")
+        student, exam = self._entry_student_and_exam()
+
+        response = client.post("/admin/advanced-results/result-entry/autosave", data={
+            "year_id": self.year_a.id,
+            "exam_id": exam.id,
+            "level_id": self.level_a.id,
+            "class_id": self.class_a.id,
+            "student_id": student.id,
+            "subject_id": self.subject_b.id,
+            "score": "75",
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Result.query.filter_by(student_id=student.id).count(), 0)
+
+    def test_bulk_result_save_rejects_nan_without_partially_publishing_scores(self):
+        client = self._logged_in_results_admin("phase2f-nan-save-admin")
+        student, exam = self._entry_student_and_exam()
+        original = Result(
+            student_id=student.id, exam_id=exam.id, subject_id=self.subject_a.id,
+            score=Decimal("42"), is_published=True,
+        )
+        db.session.add(original)
+        db.session.commit()
+
+        response = client.post("/admin/advanced-results/result-entry/save", data={
+            "year_id": self.year_a.id,
+            "exam_id": exam.id,
+            "level_id": self.level_a.id,
+            "class_id": self.class_a.id,
+            "section_id": "",
+            f"score_{student.id}_{self.subject_a.id}": "NaN",
+        })
+
+        self.assertIn(response.status_code, (302, 303))
+        db.session.refresh(original)
+        self.assertEqual(Decimal(original.score), Decimal("42"))
+        self.assertTrue(original.is_published)
+
+    def test_bulk_result_save_does_not_delete_a_score_for_an_omitted_field(self):
+        client = self._logged_in_results_admin("phase2f-omitted-score-admin")
+        student, exam = self._entry_student_and_exam()
+        original = Result(
+            student_id=student.id, exam_id=exam.id, subject_id=self.subject_a.id,
+            score=Decimal("56"), is_published=True,
+        )
+        db.session.add(original)
+        db.session.commit()
+
+        response = client.post("/admin/advanced-results/result-entry/save", data={
+            "year_id": self.year_a.id,
+            "exam_id": exam.id,
+            "level_id": self.level_a.id,
+            "class_id": self.class_a.id,
+            "section_id": "",
+        })
+
+        self.assertIn(response.status_code, (302, 303))
+        db.session.refresh(original)
+        self.assertEqual(Decimal(original.score), Decimal("56"))
+
+    def test_teacher_results_use_exam_specific_maximum_and_grade_scale(self):
+        student, exam = self._entry_student_and_exam()
+        exam.academic_level_id = self.level_a.id
+        teacher = Teacher(
+            teacher_id="PHASE2F-TEACHER",
+            teacher_code="PHASE2F-TEACHER",
+            full_name="Scope Test Teacher",
+        )
+        db.session.add(teacher)
+        teacher.classes.append(self.class_a)
+        teacher.subjects.append(self.subject_a)
+        db.session.add_all([
+            ExamMarkingConfiguration(
+                academic_year_id=self.year_a.id,
+                academic_year_level_id=self.year_level_a.id,
+                exam_id=exam.id,
+                default_full_marks=50,
+            ),
+            GradeScale(
+                grade="Global",
+                min_score=0,
+                max_score=100,
+                comment="Global scale",
+                grade_point=0,
+                is_pass=True,
+                is_active=True,
+            ),
+            GradeScale(
+                grade="Exam A",
+                min_score=80,
+                max_score=100,
+                comment="Exam-specific scale",
+                grade_point=4,
+                is_pass=True,
+                is_active=True,
+                exam_id=exam.id,
+            ),
+            Result(
+                student_id=student.id,
+                exam_id=exam.id,
+                subject_id=self.subject_a.id,
+                score=40,
+                is_published=True,
+            ),
+        ])
+        db.session.commit()
+
+        rows = results_list_data(teacher, {
+            "academic_year_id": self.year_a.id,
+            "exam_id": exam.id,
+            "class_id": self.class_a.id,
+            "subject_id": self.subject_a.id,
+        })
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["max_score"], 50)
+        self.assertEqual(rows[0]["percentage"], 80)
+        self.assertEqual(rows[0]["grade"], "Exam A")
+        student_payload = result_payload(student, exam=exam, public_only=True)
+        self.assertEqual(student_payload["subjects"][0]["max_score"], 50)
+        self.assertEqual(student_payload["subjects"][0]["percentage"], 80)
+        self.assertEqual(student_payload["subjects"][0]["grade"]["grade"], "Exam A")
 
     def test_results_dashboard_handles_an_exam_with_a_cross_year_level(self):
         admin = User(username="phase2f-dashboard-admin", full_name="Phase 2F Dashboard Admin", role="super_admin")

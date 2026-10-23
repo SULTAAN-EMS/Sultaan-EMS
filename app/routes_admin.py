@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, date, timedelta
+from decimal import Decimal, InvalidOperation
 from functools import wraps
 from types import SimpleNamespace
 
@@ -60,6 +61,17 @@ from .promotion_service import (
 )
 
 admin_bp = Blueprint("admin", __name__)
+
+
+def _validated_result_score(raw_value, maximum):
+    try:
+        score = Decimal(str(raw_value).strip().replace(",", "."))
+        maximum = Decimal(str(maximum))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    if not score.is_finite() or not maximum.is_finite() or maximum <= 0:
+        return None
+    return score if Decimal("0") <= score <= maximum else None
 
 
 @admin_bp.after_request
@@ -610,12 +622,17 @@ def save_results():
         level_id=placement.get("academic_level_id"),
         class_id=placement.get("academic_class_id"),
     )
+    changes = []
+    errors = []
     for subject in subjects:
-        raw = request.form.get(f"subject_{subject.id}", "").strip()
+        field_name = f"subject_{subject.id}"
+        if field_name not in request.form:
+            continue
+        raw = request.form.get(field_name, "").strip()
+        result = Result.query.filter_by(student_id=student.id, exam_id=exam.id, subject_id=subject.id).first()
         if raw == "":
-            result = Result.query.filter_by(student_id=student.id, exam_id=exam.id, subject_id=subject.id).first()
             if result:
-                db.session.delete(result)
+                changes.append((subject, result, None))
             continue
         max_score = resolve_subject_max_score(
             subject,
@@ -623,14 +640,46 @@ def save_results():
             academic_year_level_id=placement.get("academic_year_level_id"),
             academic_level_id=placement.get("academic_level_id"),
         )
-        score = max(0, min(float(raw), float(max_score)))
-        result = Result.query.filter_by(student_id=student.id, exam_id=exam.id, subject_id=subject.id).first() or Result(
-            student=student, exam=exam, subject_id=subject.id
-        )
+        score = _validated_result_score(raw, max_score)
+        if score is None:
+            errors.append(subject.name)
+            continue
+        changes.append((subject, result, score))
+
+    if errors:
+        flash("Waxba lama kaydin. Hubi dhibcaha maaddooyinkan: %s" % ", ".join(errors[:6]), "danger")
+        return redirect(url_for("admin_advanced_results.new_dashboard"))
+
+    transitions = []
+    for subject, result, score in changes:
+        previous_score = result.score if result else None
+        if score is None:
+            db.session.delete(result)
+            transitions.append({
+                "student_code": student.student_code,
+                "student_name": student.full_name,
+                "subject": subject.name,
+                "before": str(previous_score),
+                "after": None,
+            })
+            continue
+        if result is None:
+            result = Result(student=student, exam=exam, subject=subject)
         result.score = score
         result.is_published = bool(request.form.get("is_published"))
         db.session.add(result)
-    audit("Result Publishing", f"Saved results for student {student.student_code} exam {exam.name}")
+        transitions.append({
+            "student_code": student.student_code,
+            "student_name": student.full_name,
+            "subject": subject.name,
+            "before": str(previous_score) if previous_score is not None else None,
+            "after": str(score),
+        })
+    audit(
+        "Result Publishing",
+        f"Saved results for student {student.student_code} exam {exam.name}; "
+        f"transitions={json.dumps(transitions, ensure_ascii=False)}",
+    )
     db.session.commit()
     flash("Results saved.", "success")
     return redirect(url_for("admin_advanced_results.new_dashboard"))
@@ -660,13 +709,18 @@ def edit_result_set(student_id, exam_id):
         class_id=placement.get("academic_class_id"),
     )
     if request.method == "POST":
-        changes = []
+        change_log = []
+        planned_changes = []
+        validation_errors = []
         for subject in subjects:
-            raw = request.form.get(f"score_{subject.id}", "").strip()
+            score_key = f"score_{subject.id}"
+            if score_key not in request.form:
+                continue
+            raw = request.form.get(score_key, "").strip()
             result = existing.get(subject.id)
             if raw == "":
                 if result:
-                    db.session.delete(result)
+                    planned_changes.append((subject, result, None))
                 continue
             max_score = resolve_subject_max_score(
                 subject,
@@ -674,20 +728,38 @@ def edit_result_set(student_id, exam_id):
                 academic_year_level_id=placement.get("academic_year_level_id"),
                 academic_level_id=placement.get("academic_level_id"),
             )
-            score = max(0, min(float(raw), float(max_score)))
+            score = _validated_result_score(raw, max_score)
+            if score is None:
+                validation_errors.append(subject.name)
+                continue
+            planned_changes.append((subject, result, score))
+
+        if validation_errors:
+            flash("Waxba lama kaydin. Hubi dhibcaha maaddooyinkan: %s" % ", ".join(validation_errors[:6]), "danger")
+            return redirect(url_for("admin.edit_result_set", student_id=student.id, exam_id=exam.id))
+
+        for subject, result, score in planned_changes:
+            if score is None:
+                db.session.delete(result)
+                change_log.append(f"{subject.name}: result deleted")
+                continue
             if not result:
                 result = Result(student=student, exam=exam, subject_id=subject.id)
             old_score = float(result.score) if result.id and result.score is not None else None
             old_grade = result.grade_override or ""
             old_comment = result.comment or ""
             result.score = score
-            result.grade_override = request.form.get(f"grade_{subject.id}", "").strip() or None
-            result.comment = request.form.get(f"comment_{subject.id}", "").strip() or None
+            grade_key = f"grade_{subject.id}"
+            comment_key = f"comment_{subject.id}"
+            if grade_key in request.form:
+                result.grade_override = request.form.get(grade_key, "").strip() or None
+            if comment_key in request.form:
+                result.comment = request.form.get(comment_key, "").strip() or None
             result.is_published = bool(request.form.get(f"published_{subject.id}"))
             db.session.add(result)
             if old_score != score or old_grade != (result.grade_override or "") or old_comment != (result.comment or ""):
-                changes.append(f"{subject.name}: {old_score} -> {score}")
-        audit("Result Publishing", f"Edited result set for {student.student_code} / {exam.name}: {', '.join(changes) or 'no score changes'}")
+                change_log.append(f"{subject.name}: {old_score} -> {score}")
+        audit("Result Publishing", f"Edited result set for {student.student_code} / {exam.name}: {', '.join(change_log) or 'no score changes'}")
         db.session.commit()
         flash("Result changes saved. Totals, averages, grades, and status recalculated automatically.", "success")
         return redirect(url_for("admin.edit_result_set", student_id=student.id, exam_id=exam.id))

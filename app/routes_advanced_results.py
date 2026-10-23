@@ -347,6 +347,45 @@ def _year_scope_ids_from_legacy(academic_year_id, level_id=None, class_id=None):
     return year_level, year_class
 
 
+def _validate_result_entry_scope(academic_year, exam, level_id, class_id, section_id):
+    """Resolve and validate the exact year/level/class/section result scope."""
+    if not academic_year or not exam or exam.academic_year_id != academic_year.id:
+        return None
+
+    academic_class = db.session.get(AcademicClass, class_id) if class_id else None
+    if class_id and (not academic_class or not academic_class.is_active):
+        return None
+    effective_level_id = level_id or (academic_class.academic_level_id if academic_class else None)
+    if not effective_level_id:
+        return None
+    academic_level = db.session.get(AcademicLevel, effective_level_id)
+    if not academic_level or not academic_level.is_active:
+        return None
+    if academic_class and academic_class.academic_level_id != effective_level_id:
+        return None
+
+    year_level, year_class = _year_scope_ids_from_legacy(
+        academic_year.id, effective_level_id, class_id
+    )
+    if (
+        not year_level
+        or not year_level.is_active
+        or (class_id and (not year_class or not year_class.is_active))
+    ):
+        return None
+
+    if section_id:
+        section = db.session.get(AcademicSection, section_id)
+        if not section or not section.is_active or not class_id or section.academic_class_id != class_id:
+            return None
+
+    return {
+        "level_id": effective_level_id,
+        "year_level": year_level,
+        "year_class": year_class,
+    }
+
+
 def students_for_scope_query(academic_year_id, level_id=None, class_id=None, section_id=None, exam=None):
     """Return enrollment-first students for a Results Hub historical scope."""
     effective_level_id = level_id or (exam.academic_level_id if exam else None)
@@ -2048,24 +2087,39 @@ def autosave_result_entry():
     if not selected_year or not selected_exam or not student or not subject:
         return jsonify({"ok": False, "message": "Invalid result context."}), 400
 
+    scope = _validate_result_entry_scope(
+        selected_year, selected_exam, level_id, class_id, section_id
+    )
+    if not scope:
+        return jsonify({"ok": False, "message": "The selected year, exam, class, or section does not match."}), 400
+
+    allowed_subject_ids = {
+        item.id for item in subjects_for_scope(
+            selected_exam, level_id=scope["level_id"], class_id=class_id
+        )
+    }
+    if subject.id not in allowed_subject_ids:
+        return jsonify({"ok": False, "message": "Subject is not assigned to the selected exam scope."}), 400
+
     in_scope = students_for_scope_query(
         selected_year.id,
-        level_id=level_id,
+        level_id=scope["level_id"],
         class_id=class_id,
         section_id=section_id,
     ).filter(Student.id == student.id).first()
     if not in_scope:
         return jsonify({"ok": False, "message": "Student is outside the selected scope."}), 400
 
-    year_level, _year_class = _year_scope_ids_from_legacy(selected_year.id, level_id, class_id)
+    year_level = scope["year_level"]
     result = Result.query.filter_by(student_id=student.id, exam_id=selected_exam.id, subject_id=subject.id).first()
 
     # Clearing a score is an explicit delete. Keeping the old row here would
     # make the subject reappear in the portal, totals, reports, and exports.
     if not raw_score:
         if result:
+            previous_score = result.score
             db.session.delete(result)
-            audit("Result Entry", f"Deleted {student.student_code} - {subject.name} result")
+            audit("Result Entry", f"Deleted {student.student_code} - {subject.name}: {previous_score} -> deleted")
             db.session.commit()
             return jsonify({
                 "ok": True,
@@ -2082,32 +2136,33 @@ def autosave_result_entry():
         })
 
     try:
-        score = float(raw_score)
-    except ValueError:
+        score = Decimal(raw_score.replace(",", "."))
+    except (InvalidOperation, ValueError):
         return jsonify({"ok": False, "message": "Invalid score."}), 400
 
-    max_score = float(resolve_subject_max_score(
+    max_score = Decimal(str(resolve_subject_max_score(
         subject,
         exam=selected_exam,
         academic_year_level_id=year_level.id if year_level else None,
-        academic_level_id=level_id,
-    ))
-    if score < 0 or score > max_score:
+        academic_level_id=scope["level_id"],
+    )))
+    if not score.is_finite() or not max_score.is_finite() or max_score <= 0 or score < 0 or score > max_score:
         return jsonify({"ok": False, "message": f"Score must be between 0 and {max_score:g}."}), 400
 
+    previous_score = result.score if result else None
     if not result:
         result = Result(student=student, exam=selected_exam, subject=subject)
         db.session.add(result)
 
     result.score = score
     result.is_published = True
-    audit("Result Entry", f"Autosaved {student.student_code} - {subject.name}: {score:g}")
+    audit("Result Entry", f"Autosaved {student.student_code} - {subject.name}: {previous_score if previous_score is not None else 'empty'} -> {score:g}")
     db.session.commit()
 
     return jsonify({
         "ok": True,
         "status": "saved",
-        "score": score,
+        "score": float(score),
         "student_id": student.id,
         "subject_id": subject.id,
     })
@@ -2128,22 +2183,30 @@ def save_result_entry():
     if not selected_year or not selected_exam:
         flash("Invalid selection.", "danger")
         return redirect(url_for("admin_advanced_results.new_dashboard"))
+
+    scope = _validate_result_entry_scope(
+        selected_year, selected_exam, level_id, class_id, section_id
+    )
+    if not scope:
+        flash("Sannadka, imtixaanka, fasalka ama qaybta la doortay isma waafaqaan.", "danger")
+        return redirect(url_for("admin_advanced_results.result_entry"))
     
-    subjects = subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
-    year_level, _year_class = _year_scope_ids_from_legacy(selected_year.id, level_id, class_id)
+    subjects = subjects_for_scope(selected_exam, level_id=scope["level_id"], class_id=class_id)
+    year_level = scope["year_level"]
     subject_maxima = resolved_subject_maxima(
         subjects,
         exam=selected_exam,
         academic_year_level_id=year_level.id if year_level else None,
-        academic_level_id=level_id,
+        academic_level_id=scope["level_id"],
     )
     students = students_for_scope_query(
         selected_year.id,
-        level_id=level_id,
+        level_id=scope["level_id"],
         class_id=class_id,
         section_id=section_id,
     ).all()
     student_ids = [s.id for s in students]
+    students_by_id = {student.id: student for student in students}
     
     # Get existing results
     existing_results = Result.query.filter(Result.student_id.in_(student_ids), Result.exam_id == selected_exam.id).all()
@@ -2153,11 +2216,16 @@ def save_result_entry():
     saved_count = 0
     deleted_count = 0
     validation_errors = []
+    planned_changes = []
+    planned_audit_changes = []
     
     for student in students:
         for subject in subjects:
             score_key = f"score_{student.id}_{subject.id}"
             override_key = f"override_{student.id}_{subject.id}"
+
+            if score_key not in request.form:
+                continue
             
             raw_score = request.form.get(score_key, "").strip()
             grade_override = request.form.get(override_key, "").strip()
@@ -2165,46 +2233,82 @@ def save_result_entry():
             if not raw_score:
                 result = results_dict.get((student.id, subject.id))
                 if result:
-                    db.session.delete(result)
-                    deleted_count += 1
+                    planned_changes.append((student.id, result, subject, None, None))
                 continue
             
             # Validate score against max_score
             try:
-                score = float(raw_score)
-                max_score = float(subject_maxima.get(subject.id, subject.max_score))
-                if score < 0 or score > max_score:
-                    validation_errors.append(f"{student.student_code} - {subject.name}: Score {score} exceeds max {max_score:g}")
+                score = Decimal(raw_score.replace(",", "."))
+                max_score = Decimal(str(subject_maxima.get(subject.id, subject.max_score)))
+                if not score.is_finite() or not max_score.is_finite() or max_score <= 0 or score < 0 or score > max_score:
+                    validation_errors.append(f"{student.student_code} - {subject.name}: Dhibcuhu waa inay u dhexeeyaan 0 iyo {max_score:g}.")
                     continue
-            except ValueError:
+            except (InvalidOperation, TypeError, ValueError):
                 validation_errors.append(f"{student.student_code} - {subject.name}: Invalid score '{raw_score}'")
                 continue
-            
-            # Get or create result
-            result = results_dict.get((student.id, subject.id))
-            if not result:
-                result = Result(student=student, exam=selected_exam, subject_id=subject.id)
-                db.session.add(result)
-            
-            result.score = score
-            result.grade_override = grade_override if grade_override else None
-            # Result Entry is the portal-facing entry workflow.  The current
-            # grid has no per-cell publication control, so treating a saved
-            # score as unpublished makes it visible in Result Entry but
-            # silently removes it from the student portal.  Keep this aligned
-            # with the autosave route; explicit unpublishing remains available
-            # through the publishing controls.
-            result.is_published = True
-            saved_count += 1
-    
+
+            planned_changes.append((
+                student.id, results_dict.get((student.id, subject.id)), subject, score,
+                grade_override if override_key in request.form and grade_override else
+                (None if override_key in request.form else ...),
+            ))
+
     if validation_errors:
-        flash(f"Saved {saved_count} results and deleted {deleted_count} results with {len(validation_errors)} validation errors.", "warning")
-        for error in validation_errors[:5]:  # Show first 5 errors
+        db.session.rollback()
+        flash(f"Waxba lama kaydin. {len(validation_errors)} dhibcood ayaa u baahan sixid.", "danger")
+        for error in validation_errors[:5]:
             flash(error, "warning")
-    else:
-        flash(f"Successfully saved {saved_count} results and deleted {deleted_count} results.", "success")
+        return redirect(url_for(
+            "admin_advanced_results.result_entry", year_id=year_id,
+            exam_id=exam_id, level_id=level_id, class_id=class_id,
+            section_id=section_id,
+        ))
+
+    for student_id, result, subject, score, grade_override in planned_changes:
+        student = students_by_id[student_id]
+        previous_score = result.score if result else None
+        previous_grade_override = result.grade_override if result else None
+        if score is None:
+            db.session.delete(result)
+            deleted_count += 1
+            planned_audit_changes.append({
+                "student_code": student.student_code,
+                "student_name": student.full_name,
+                "subject": subject.name,
+                "before": str(previous_score),
+                "after": None,
+                "grade_override_before": previous_grade_override,
+                "grade_override_after": None,
+            })
+            continue
+        if not result:
+            result = Result(student_id=student_id, exam=selected_exam, subject_id=subject.id, score=score)
+            db.session.add(result)
+        else:
+            result.score = score
+        if grade_override is not ...:
+            result.grade_override = grade_override
+        # The grid has no per-cell publication control; saved marks are
+        # therefore immediately visible to the student portal.
+        result.is_published = True
+        saved_count += 1
+        planned_audit_changes.append({
+            "student_code": student.student_code,
+            "student_name": student.full_name,
+            "subject": subject.name,
+            "before": str(previous_score) if previous_score is not None else None,
+            "after": str(score),
+            "grade_override_before": previous_grade_override,
+            "grade_override_after": result.grade_override,
+        })
+
+    flash(f"Successfully saved {saved_count} results and deleted {deleted_count} results.", "success")
     
-    audit("Result Entry", f"Bulk saved {saved_count} and deleted {deleted_count} results for exam {selected_exam.name}")
+    audit(
+        "Result Entry",
+        f"Bulk saved {saved_count} and deleted {deleted_count} results for {selected_exam.name}; "
+        f"transitions={json.dumps(planned_audit_changes, ensure_ascii=False)}",
+    )
     db.session.commit()
     
     # Redirect back to entry grid with same scope

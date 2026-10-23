@@ -823,6 +823,38 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertTrue(all(result.is_published for result in Result.query.all()))
         self.assertEqual(float(Result.query.filter_by(student_id=self.students[0].id).one().score), 49.5)
 
+    def test_admin_approval_rejects_a_scope_removed_after_teacher_submission(self):
+        self._teacher_login()
+        submitted = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "42",
+        }, follow_redirects=True)
+        self.assertEqual(submitted.status_code, 200)
+        submission = TeacherResultSubmission.query.one()
+        self.assertEqual(submission.status, "submitted")
+
+        self.client.post("/teacher/logout")
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        year_subject = AcademicYearSubject.query.filter_by(
+            academic_year_id=self.year.id,
+            academic_year_level_id=self.year_level.id,
+            legacy_subject_id=self.subject.id,
+            subject_kind="exam",
+        ).one()
+        year_subject.is_active = False
+        db.session.commit()
+
+        response = self.client.post("/admin/teachers/result-entry", data={
+            "action": "approve",
+            "assignment_id": str(self.assignment.id),
+        }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(submission.status, "submitted")
+        self.assertEqual(Result.query.count(), 0)
+        self.assertEqual(TeacherResultMark.query.one().status, "submitted")
+
     def test_teacher_cannot_submit_another_teachers_assignment(self):
         self._teacher_login()
         other_teacher = Teacher(
