@@ -13,6 +13,7 @@ from app.models import (
     User,
 )
 from app.routes_admin import config_create_subject, config_update_subject
+from app.routes_admin import _get_or_create_legacy_subject
 from app.services import scoped_legacy_subjects
 
 
@@ -149,6 +150,42 @@ class TestPhase2ABehaviorSubjects(unittest.TestCase):
         db.session.refresh(item)
         self.assertEqual(item.subject_kind, "exam")
         self.assertIsNotNone(item.legacy_subject_id)
+
+    def test_referenced_same_name_subject_becomes_shared_for_another_level(self):
+        other_level = AcademicLevel(name="Middle School", sort_order=2)
+        db.session.add(other_level)
+        db.session.flush()
+        other_year_level = AcademicYearLevel(
+            academic_year_id=self.year.id,
+            legacy_level_id=other_level.id,
+            name="Middle School",
+            sort_order=2,
+        )
+        subject = Subject(
+            name="Tarbiyo",
+            academic_level_id=other_level.id,
+            max_score=100,
+        )
+        db.session.add_all([other_year_level, subject])
+        db.session.flush()
+        db.session.add(AcademicYearSubject(
+            academic_year_id=self.year.id,
+            academic_year_level_id=other_year_level.id,
+            legacy_subject_id=subject.id,
+            name=subject.name,
+        ))
+        db.session.commit()
+
+        resolved = _get_or_create_legacy_subject(
+            "Tarbiyo",
+            self.legacy_level.id,
+            100,
+            1,
+        )
+
+        self.assertEqual(resolved.id, subject.id)
+        self.assertIsNone(resolved.academic_level_id)
+        self.assertEqual(Subject.query.filter_by(name="Tarbiyo").count(), 1)
 
 
 if __name__ == "__main__":

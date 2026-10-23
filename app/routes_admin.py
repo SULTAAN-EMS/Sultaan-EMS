@@ -2849,16 +2849,44 @@ def _get_or_create_legacy_class(name, academic_level_id, sort_order):
     return legacy_class
 
 
-def _get_or_create_legacy_subject(name, academic_level_id, max_score, sort_order):
-    """Resolve the legacy Subject bridge without violating older schemas.
+def _repair_legacy_class_scope(year_class, name, academic_level_id, sort_order):
+    """Keep an existing class bridge's level aligned without splitting its ID."""
+    if not academic_level_id:
+        return year_class.legacy_class, None
 
-    Some deployed databases still enforce ``UNIQUE(subjects.name)`` even
-    though the current model scopes the unique key by academic level. Reuse
-    an exact level match, reuse a referenced same-name subject as a shared
-    identity across year-level mappings, remove an unreferenced stale
-    conflict, and never remove a Subject that is still referenced by live
-    application data.
-    """
+    legacy_class = year_class.legacy_class
+    if legacy_class is None:
+        return _get_or_create_legacy_class(name, academic_level_id, sort_order), None
+    if legacy_class.academic_level_id == academic_level_id:
+        return legacy_class, None
+
+    other_scopes = AcademicYearClass.query.filter(
+        AcademicYearClass.legacy_class_id == legacy_class.id,
+        AcademicYearClass.id != year_class.id,
+    ).all()
+    if any(
+        not scope.academic_year_level
+        or scope.academic_year_level.legacy_level_id != academic_level_id
+        for scope in other_scopes
+    ):
+        return None, "Fasalkan wuxuu la wadaagaa xiriir heer kale. Kala saar fasallada ka hor beddelidda heerka."
+
+    duplicate = AcademicClass.query.filter_by(
+        name=name,
+        academic_level_id=academic_level_id,
+    ).filter(AcademicClass.id != legacy_class.id).first()
+    if duplicate:
+        return None, "Fasalkan waxaa jira xiriir kale oo heerkan saxda ah ku jira; xiriirrada xogta dib ha loo eego ka hor isku-xiridda."
+
+    legacy_class.academic_level_id = academic_level_id
+    if not other_scopes:
+        legacy_class.name = name
+    legacy_class.sort_order = sort_order
+    return legacy_class, None
+
+
+def _get_or_create_legacy_subject(name, academic_level_id, max_score, sort_order):
+    """Resolve the legacy Subject bridge while preserving existing result IDs."""
     legacy_subject = Subject.query.filter_by(
         name=name,
         academic_level_id=academic_level_id,
@@ -2866,19 +2894,34 @@ def _get_or_create_legacy_subject(name, academic_level_id, max_score, sort_order
     if legacy_subject:
         return legacy_subject
 
-    conflicting_subject = Subject.query.filter_by(name=name).first()
-    if conflicting_subject:
+    conflicts = Subject.query.filter_by(name=name).order_by(Subject.id).all()
+    shared_subject = next(
+        (item for item in conflicts if item.academic_level_id is None),
+        None,
+    )
+    if shared_subject:
+        return shared_subject
+
+    referenced_conflicts = []
+    for conflicting_subject in conflicts:
         references = _foreign_key_references(
             "subjects.id",
             conflicting_subject.id,
         )
         if references:
-            # A legacy Subject is the canonical identity used by results and
-            # other historical records. Reusing it lets the same subject be
-            # mapped to multiple academic-year levels without duplicating or
-            # rewriting those records.
-            return conflicting_subject
-        db.session.delete(conflicting_subject)
+            referenced_conflicts.append(conflicting_subject)
+        else:
+            db.session.delete(conflicting_subject)
+
+    if len(referenced_conflicts) == 1:
+        # Older schemas have a global unique key on Subject.name. Mark this
+        # referenced identity as shared instead of linking a new level to a
+        # subject that the teacher portal will correctly reject as wrong-level.
+        referenced_conflicts[0].academic_level_id = None
+        db.session.flush()
+        return referenced_conflicts[0]
+
+    if conflicts:
         db.session.flush()
 
     legacy_subject = Subject(
@@ -4480,22 +4523,22 @@ def config_update_class(class_id):
                 'success': False,
                 'message': 'Fasalkan gelinkiisa lama beddeli karo; wuxuu leeyahay xog Behavior/Attendance oo session gelin gaar ah ku xiran.',
             }), 409
+    sort_order = _parse_int(data.get('sort_order'), academic_class.sort_order)
+    legacy_class, bridge_error = _repair_legacy_class_scope(
+        academic_class,
+        name,
+        year_level.legacy_level_id,
+        sort_order,
+    )
+    if bridge_error:
+        return jsonify({'success': False, 'message': bridge_error}), 409
+
     old_value = {'name': academic_class.name, 'academic_year_level_id': academic_class.academic_year_level_id, 'school_shift': academic_class.school_shift, 'sort_order': academic_class.sort_order, 'is_active': academic_class.is_active}
     academic_class.name = name
     academic_class.academic_year_level_id = year_level.id
     academic_class.school_shift = school_shift
-    if academic_class.legacy_class_id is None:
-        legacy_class = _get_or_create_legacy_class(
-            name,
-            year_level.legacy_level_id,
-            _parse_int(data.get('sort_order'), academic_class.sort_order),
-        )
-        academic_class.legacy_class_id = legacy_class.id if legacy_class else None
-    if academic_class.legacy_class_id:
-        legacy_class = db.session.get(AcademicClass, academic_class.legacy_class_id)
-        if legacy_class and legacy_class.name == academic_class.name:
-            legacy_class.sort_order = _parse_int(data.get('sort_order'), legacy_class.sort_order)
-    academic_class.sort_order = _parse_int(data.get('sort_order'), academic_class.sort_order)
+    academic_class.legacy_class_id = legacy_class.id if legacy_class else None
+    academic_class.sort_order = sort_order
     if 'is_active' in data:
         academic_class.is_active = bool(data.get('is_active'))
 

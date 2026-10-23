@@ -356,3 +356,105 @@ def repair_unlinked_year_scope_bridges():
 
     db.session.commit()
     return report
+
+
+def repair_wrong_level_year_scope_bridges():
+    """Repair unambiguous legacy links whose level no longer matches the year scope.
+
+    Class IDs are kept in place so student, result-entry, hall, and attendance
+    references remain intact. Subject IDs are also preserved; a conflicting
+    subject becomes a shared legacy identity while the year-scoped offering
+    remains the authority for which level can use it.
+    """
+    def name_key(value):
+        return " ".join(str(value or "").strip().casefold().split())
+
+    report = {
+        "repaired_classes": [],
+        "ambiguous_classes": [],
+        "repaired_subjects": [],
+        "unmatched_subjects": [],
+    }
+
+    class_ids = {
+        row[0]
+        for row in db.session.query(AcademicYearClass.legacy_class_id)
+        .filter(AcademicYearClass.legacy_class_id.isnot(None))
+        .distinct()
+    }
+    for legacy_class_id in sorted(class_ids):
+        legacy_class = db.session.get(AcademicClass, legacy_class_id)
+        if not legacy_class:
+            continue
+        scopes = AcademicYearClass.query.filter_by(legacy_class_id=legacy_class_id).all()
+        target_level_ids = {
+            scope.academic_year_level.legacy_level_id
+            for scope in scopes
+            if scope.academic_year_level and scope.academic_year_level.legacy_level_id
+        }
+        if len(target_level_ids) != 1 or any(
+            not scope.academic_year_level
+            or not scope.academic_year_level.legacy_level_id
+            or name_key(scope.name) != name_key(legacy_class.name)
+            for scope in scopes
+        ):
+            if any(
+                scope.academic_year_level
+                and scope.academic_year_level.legacy_level_id
+                and scope.academic_year_level.legacy_level_id != legacy_class.academic_level_id
+                for scope in scopes
+            ):
+                report["ambiguous_classes"].append({"legacy_class_id": legacy_class_id})
+            continue
+
+        target_level_id = next(iter(target_level_ids))
+        if legacy_class.academic_level_id == target_level_id:
+            continue
+        duplicate = AcademicClass.query.filter_by(
+            academic_level_id=target_level_id,
+            name=legacy_class.name,
+        ).filter(AcademicClass.id != legacy_class_id).first()
+        if duplicate:
+            report["ambiguous_classes"].append({"legacy_class_id": legacy_class_id})
+            continue
+        legacy_class.academic_level_id = target_level_id
+        report["repaired_classes"].append({"legacy_class_id": legacy_class_id})
+
+    subject_ids = {
+        row[0]
+        for row in db.session.query(AcademicYearSubject.legacy_subject_id)
+        .filter(
+            AcademicYearSubject.subject_kind == "exam",
+            AcademicYearSubject.legacy_subject_id.isnot(None),
+        )
+        .distinct()
+    }
+    for legacy_subject_id in sorted(subject_ids):
+        legacy_subject = db.session.get(Subject, legacy_subject_id)
+        if not legacy_subject or legacy_subject.academic_level_id is None:
+            continue
+        offerings = AcademicYearSubject.query.filter_by(
+            legacy_subject_id=legacy_subject_id,
+            subject_kind="exam",
+        ).all()
+        mismatched = [
+            offering for offering in offerings
+            if offering.academic_year_level
+            and offering.academic_year_level.legacy_level_id
+            and offering.academic_year_level.legacy_level_id != legacy_subject.academic_level_id
+        ]
+        if not mismatched:
+            continue
+        if any(
+            not offering.academic_year_level
+            or not offering.academic_year_level.legacy_level_id
+            or name_key(offering.name) != name_key(legacy_subject.name)
+            for offering in offerings
+        ):
+            report["unmatched_subjects"].append({"legacy_subject_id": legacy_subject_id})
+            continue
+        legacy_subject.academic_level_id = None
+        report["repaired_subjects"].append({"legacy_subject_id": legacy_subject_id})
+
+    db.session.commit()
+    return report

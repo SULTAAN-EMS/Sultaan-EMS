@@ -5,6 +5,7 @@ from app import create_app, db
 from app.academic_hierarchy import (
     backfill_year_hierarchy,
     repair_unlinked_year_scope_bridges,
+    repair_wrong_level_year_scope_bridges,
     students_for_year_scope_query,
     validate_year_level,
     year_classes,
@@ -13,6 +14,8 @@ from app.academic_hierarchy import (
 )
 from app.routes_advanced_results import subjects_for_year_level
 from app.services import result_payload, scoped_legacy_subjects
+from app.routes_admin import _repair_legacy_class_scope
+from app.routes_teachers import _teacher_profile_scopes
 from app.models import (
     AcademicClass,
     AcademicLevel,
@@ -24,6 +27,7 @@ from app.models import (
     Result,
     Student,
     Subject,
+    Teacher,
 )
 
 
@@ -141,6 +145,144 @@ class TestPhase1DHierarchy(unittest.TestCase):
         self.assertEqual(len(report["unmatched_classes"]), 1)
         self.assertEqual(len(report["ambiguous_classes"]), 1)
         self.assertEqual(len(report["ambiguous_subjects"]), 1)
+
+    def test_wrong_level_bridges_repair_without_rewriting_result_identity(self):
+        middle_level = AcademicLevel(name="Middle School", sort_order=2)
+        db.session.add(middle_level)
+        db.session.flush()
+        year_middle = AcademicYearLevel(
+            academic_year_id=self.year_a.id,
+            legacy_level_id=middle_level.id,
+            name="Dugsi Dhexe",
+            sort_order=2,
+        )
+        legacy_class = AcademicClass(
+            academic_level_id=self.legacy_level.id,
+            name="8aad A",
+        )
+        legacy_subject = Subject(
+            academic_level_id=self.legacy_level.id,
+            name="Tarbiyo",
+        )
+        student = Student(
+            student_code="BRG001",
+            full_name="Bridge Test Student",
+            academic_year_id=self.year_a.id,
+            academic_level_id=self.legacy_level.id,
+        )
+        exam = Exam(name="Bridge Test Exam", academic_year_id=self.year_a.id)
+        db.session.add_all([year_middle, legacy_class, legacy_subject, student, exam])
+        db.session.flush()
+        year_class = AcademicYearClass(
+            academic_year_level_id=year_middle.id,
+            legacy_class_id=legacy_class.id,
+            name="8aad A",
+        )
+        year_subject = AcademicYearSubject(
+            academic_year_id=self.year_a.id,
+            academic_year_level_id=year_middle.id,
+            legacy_subject_id=legacy_subject.id,
+            name="Tarbiyo",
+        )
+        result = Result(
+            student_id=student.id,
+            exam_id=exam.id,
+            subject_id=legacy_subject.id,
+            score=76,
+        )
+        db.session.add_all([year_class, year_subject, result])
+        db.session.commit()
+
+        report = repair_wrong_level_year_scope_bridges()
+
+        self.assertEqual(legacy_class.academic_level_id, middle_level.id)
+        self.assertEqual(year_class.legacy_class_id, legacy_class.id)
+        self.assertIsNone(legacy_subject.academic_level_id)
+        self.assertEqual(year_subject.legacy_subject_id, legacy_subject.id)
+        self.assertEqual(db.session.get(Result, result.id).subject_id, legacy_subject.id)
+        self.assertEqual(len(report["repaired_classes"]), 1)
+        self.assertEqual(len(report["repaired_subjects"]), 1)
+        self.assertFalse(repair_wrong_level_year_scope_bridges()["repaired_classes"])
+        self.assertFalse(repair_wrong_level_year_scope_bridges()["repaired_subjects"])
+
+        profile = _teacher_profile_scopes(Teacher(
+            teacher_id="BRG-T01",
+            teacher_code="BRG-T01",
+            full_name="Bridge Test Teacher",
+        ))
+        middle_group = next(group for group in profile["groups"] if group["level"].id == middle_level.id)
+        self.assertTrue(next(item for item in middle_group["classes"] if item["label"] == "8aad A")["assignable"])
+        self.assertTrue(next(item for item in middle_group["subjects"] if item["label"] == "Tarbiyo")["assignable"])
+
+    def test_wrong_level_class_shared_by_multiple_levels_is_not_rewritten(self):
+        middle_level = AcademicLevel(name="Middle School", sort_order=2)
+        db.session.add(middle_level)
+        db.session.flush()
+        year_middle = AcademicYearLevel(
+            academic_year_id=self.year_a.id,
+            legacy_level_id=middle_level.id,
+            name="Dugsi Dhexe",
+            sort_order=2,
+        )
+        legacy_class = AcademicClass(
+            academic_level_id=self.legacy_level.id,
+            name="8aad A",
+        )
+        db.session.add_all([year_middle, legacy_class])
+        db.session.flush()
+        db.session.add_all([
+            AcademicYearClass(
+                academic_year_level_id=year_middle.id,
+                legacy_class_id=legacy_class.id,
+                name="8aad A",
+            ),
+            AcademicYearClass(
+                academic_year_level_id=self.level_a.id,
+                legacy_class_id=legacy_class.id,
+                name="8aad A",
+            ),
+        ])
+        db.session.commit()
+
+        report = repair_wrong_level_year_scope_bridges()
+
+        self.assertEqual(legacy_class.academic_level_id, self.legacy_level.id)
+        self.assertEqual(len(report["ambiguous_classes"]), 1)
+
+    def test_class_edit_repairs_a_safe_legacy_level_mismatch_in_place(self):
+        middle_level = AcademicLevel(name="Middle School", sort_order=2)
+        db.session.add(middle_level)
+        db.session.flush()
+        year_middle = AcademicYearLevel(
+            academic_year_id=self.year_a.id,
+            legacy_level_id=middle_level.id,
+            name="Dugsi Dhexe",
+            sort_order=2,
+        )
+        legacy_class = AcademicClass(
+            academic_level_id=self.legacy_level.id,
+            name="8aad A",
+        )
+        db.session.add_all([year_middle, legacy_class])
+        db.session.flush()
+        year_class = AcademicYearClass(
+            academic_year_level_id=year_middle.id,
+            legacy_class_id=legacy_class.id,
+            name="8aad A",
+        )
+        db.session.add(year_class)
+        db.session.commit()
+
+        resolved, error = _repair_legacy_class_scope(
+            year_class,
+            "8aad A",
+            middle_level.id,
+            1,
+        )
+
+        self.assertIsNone(error)
+        self.assertEqual(resolved.id, legacy_class.id)
+        self.assertEqual(legacy_class.academic_level_id, middle_level.id)
 
     def test_class_isolation(self):
         class_a = AcademicYearClass(academic_year_level_id=self.level_a.id, name="Form Four", sort_order=1)
