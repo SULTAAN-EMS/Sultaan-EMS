@@ -4,6 +4,7 @@ from datetime import datetime
 from app import create_app, db
 from app.academic_hierarchy import (
     backfill_year_hierarchy,
+    repair_unlinked_year_scope_bridges,
     students_for_year_scope_query,
     validate_year_level,
     year_classes,
@@ -73,6 +74,73 @@ class TestPhase1DHierarchy(unittest.TestCase):
     def test_setup_isolation(self):
         self.assertEqual([item.id for item in year_levels(self.year_a.id)], [self.level_a.id])
         self.assertEqual([item.id for item in year_levels(self.year_b.id)], [self.level_b.id])
+
+    def test_unlinked_teacher_scope_bridges_repair_on_unique_level_name(self):
+        legacy_class = AcademicClass(
+            academic_level_id=self.legacy_level.id,
+            name="8aad A",
+        )
+        legacy_subject = Subject(
+            academic_level_id=self.legacy_level.id,
+            name="اللغة العربية",
+        )
+        db.session.add_all([legacy_class, legacy_subject])
+        db.session.flush()
+        year_class = AcademicYearClass(
+            academic_year_level_id=self.level_a.id,
+            name=" 8aad   A ",
+        )
+        year_subject = AcademicYearSubject(
+            academic_year_id=self.year_a.id,
+            academic_year_level_id=self.level_a.id,
+            name="اللغة العربية",
+        )
+        db.session.add_all([year_class, year_subject])
+        db.session.commit()
+
+        report = repair_unlinked_year_scope_bridges()
+
+        self.assertEqual(year_class.legacy_class_id, legacy_class.id)
+        self.assertEqual(year_subject.legacy_subject_id, legacy_subject.id)
+        self.assertEqual(len(report["mapped_classes"]), 1)
+        self.assertEqual(len(report["mapped_subjects"]), 1)
+
+    def test_unlinked_teacher_scope_bridges_skip_ambiguous_and_cross_level_matches(self):
+        other_level = AcademicLevel(name="Different legacy level")
+        db.session.add(other_level)
+        db.session.flush()
+        db.session.add_all([
+            AcademicClass(academic_level_id=other_level.id, name="8aad A"),
+            AcademicClass(academic_level_id=self.legacy_level.id, name="Form 2"),
+            AcademicClass(academic_level_id=self.legacy_level.id, name=" form   2 "),
+            Subject(academic_level_id=self.legacy_level.id, name="Arabic"),
+            Subject(academic_level_id=self.legacy_level.id, name=" arabic "),
+        ])
+        db.session.flush()
+        unmatched_class = AcademicYearClass(
+            academic_year_level_id=self.level_a.id,
+            name="8aad A",
+        )
+        ambiguous_class = AcademicYearClass(
+            academic_year_level_id=self.level_a.id,
+            name="Form 2",
+        )
+        ambiguous_subject = AcademicYearSubject(
+            academic_year_id=self.year_a.id,
+            academic_year_level_id=self.level_a.id,
+            name="Arabic",
+        )
+        db.session.add_all([unmatched_class, ambiguous_class, ambiguous_subject])
+        db.session.commit()
+
+        report = repair_unlinked_year_scope_bridges()
+
+        self.assertIsNone(unmatched_class.legacy_class_id)
+        self.assertIsNone(ambiguous_class.legacy_class_id)
+        self.assertIsNone(ambiguous_subject.legacy_subject_id)
+        self.assertEqual(len(report["unmatched_classes"]), 1)
+        self.assertEqual(len(report["ambiguous_classes"]), 1)
+        self.assertEqual(len(report["ambiguous_subjects"]), 1)
 
     def test_class_isolation(self):
         class_a = AcademicYearClass(academic_year_level_id=self.level_a.id, name="Form Four", sort_order=1)

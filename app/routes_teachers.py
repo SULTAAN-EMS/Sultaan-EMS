@@ -210,6 +210,9 @@ def _teacher_profile_scopes(teacher):
                 "sections": sections,
                 "assignable": assignable,
                 "is_legacy": False,
+                "missing_bridge": school_class is None,
+                "inactive_bridge": bool(school_class and not school_class.is_active),
+                "wrong_level_bridge": bool(school_class and school_class.academic_level_id != level_id),
             })
 
         year_subjects = (
@@ -236,6 +239,11 @@ def _teacher_profile_scopes(teacher):
                 "label": year_subject.name,
                 "assignable": assignable,
                 "is_legacy": False,
+                "missing_bridge": subject is None,
+                "inactive_bridge": bool(subject and not subject.is_active),
+                "wrong_level_bridge": bool(
+                    subject and subject.academic_level_id not in (None, level_id)
+                ),
             })
 
     linked_level_ids = {item.id for item in teacher.academic_levels}

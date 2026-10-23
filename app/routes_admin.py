@@ -2828,6 +2828,27 @@ def _remove_orphaned_legacy_record(model, target_fullname, record_id, excluded_t
     return True, []
 
 
+def _get_or_create_legacy_class(name, academic_level_id, sort_order):
+    """Resolve the same-level legacy class bridge for an academic-year class."""
+    if not academic_level_id:
+        return None
+    legacy_class = AcademicClass.query.filter_by(
+        name=name,
+        academic_level_id=academic_level_id,
+    ).first()
+    if legacy_class:
+        return legacy_class
+    legacy_class = AcademicClass(
+        name=name,
+        academic_level_id=academic_level_id,
+        sort_order=sort_order,
+        is_active=True,
+    )
+    db.session.add(legacy_class)
+    db.session.flush()
+    return legacy_class
+
+
 def _get_or_create_legacy_subject(name, academic_level_id, max_score, sort_order):
     """Resolve the legacy Subject bridge without violating older schemas.
 
@@ -4391,11 +4412,11 @@ def config_create_class():
             return jsonify({'success': False, 'message': 'Class already exists in this academic year level'})
         from sqlalchemy import func
         max_sort = db.session.query(func.max(AcademicYearClass.sort_order)).filter_by(academic_year_level_id=year_level.id).scalar() or 0
-        legacy_class = AcademicClass.query.filter_by(academic_level_id=year_level.legacy_level_id, name=name).first() if year_level.legacy_level_id else None
-        if not legacy_class and year_level.legacy_level_id:
-            legacy_class = AcademicClass(name=name, academic_level_id=year_level.legacy_level_id, sort_order=sort_order if sort_order is not None else max_sort + 1, is_active=True)
-            db.session.add(legacy_class)
-            db.session.flush()
+        legacy_class = _get_or_create_legacy_class(
+            name,
+            year_level.legacy_level_id,
+            sort_order if sort_order is not None else max_sort + 1,
+        )
         academic_class = AcademicYearClass(
             name=name,
             academic_year_level_id=year_level.id,
@@ -4463,6 +4484,13 @@ def config_update_class(class_id):
     academic_class.name = name
     academic_class.academic_year_level_id = year_level.id
     academic_class.school_shift = school_shift
+    if academic_class.legacy_class_id is None:
+        legacy_class = _get_or_create_legacy_class(
+            name,
+            year_level.legacy_level_id,
+            _parse_int(data.get('sort_order'), academic_class.sort_order),
+        )
+        academic_class.legacy_class_id = legacy_class.id if legacy_class else None
     if academic_class.legacy_class_id:
         legacy_class = db.session.get(AcademicClass, academic_class.legacy_class_id)
         if legacy_class and legacy_class.name == academic_class.name:

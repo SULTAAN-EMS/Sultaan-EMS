@@ -285,3 +285,74 @@ def backfill_year_hierarchy(report_path=None):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     return report
+
+
+def repair_unlinked_year_scope_bridges():
+    """Repair only null class/subject bridges with one exact level-and-name match."""
+    def name_key(value):
+        return " ".join(str(value or "").strip().casefold().split())
+
+    report = {
+        "mapped_classes": [],
+        "ambiguous_classes": [],
+        "unmatched_classes": [],
+        "mapped_subjects": [],
+        "ambiguous_subjects": [],
+        "unmatched_subjects": [],
+    }
+
+    for year_class in AcademicYearClass.query.filter(
+        AcademicYearClass.legacy_class_id.is_(None)
+    ).all():
+        year_level = year_class.academic_year_level
+        if not year_level or not year_level.legacy_level_id:
+            continue
+        candidates = [
+            item for item in AcademicClass.query.filter_by(
+                academic_level_id=year_level.legacy_level_id
+            ).all()
+            if name_key(item.name) == name_key(year_class.name)
+        ]
+        if len(candidates) == 1:
+            year_class.legacy_class_id = candidates[0].id
+            report["mapped_classes"].append({
+                "year_class_id": year_class.id,
+                "legacy_class_id": candidates[0].id,
+            })
+        elif candidates:
+            report["ambiguous_classes"].append({"year_class_id": year_class.id})
+        else:
+            report["unmatched_classes"].append({"year_class_id": year_class.id})
+
+    for year_subject in AcademicYearSubject.query.filter(
+        AcademicYearSubject.legacy_subject_id.is_(None),
+        AcademicYearSubject.subject_kind == "exam",
+    ).all():
+        year_level = year_subject.academic_year_level
+        if not year_level or not year_level.legacy_level_id:
+            continue
+        exact_level = [
+            item for item in Subject.query.filter_by(
+                academic_level_id=year_level.legacy_level_id
+            ).all()
+            if name_key(item.name) == name_key(year_subject.name)
+        ]
+        candidates = exact_level
+        if not candidates:
+            candidates = [
+                item for item in Subject.query.filter_by(academic_level_id=None).all()
+                if name_key(item.name) == name_key(year_subject.name)
+            ]
+        if len(candidates) == 1:
+            year_subject.legacy_subject_id = candidates[0].id
+            report["mapped_subjects"].append({
+                "year_subject_id": year_subject.id,
+                "legacy_subject_id": candidates[0].id,
+            })
+        elif candidates:
+            report["ambiguous_subjects"].append({"year_subject_id": year_subject.id})
+        else:
+            report["unmatched_subjects"].append({"year_subject_id": year_subject.id})
+
+    db.session.commit()
+    return report

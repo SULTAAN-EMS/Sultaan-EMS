@@ -34,6 +34,8 @@ from app.behavior_service import (
     void_attendance_record,
 )
 from app.models import (
+    AcademicClass,
+    AcademicLevel,
     AcademicYear,
     AcademicYearClass,
     AcademicYearLevel,
@@ -321,6 +323,33 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertTrue(response.json["success"])
         db.session.refresh(item)
         self.assertEqual(item.school_shift, "afternoon")
+
+    def test_saving_unlinked_year_class_restores_its_legacy_class_bridge(self):
+        legacy_level = AcademicLevel(name="Middle Level")
+        db.session.add(legacy_level)
+        db.session.flush()
+        self.enrollment.academic_year_level.legacy_level_id = legacy_level.id
+        year_class = self.enrollment.academic_year_class
+        year_class.legacy_class_id = None
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["_user_id"] = str(self.admin.id)
+            browser_session["_fresh"] = True
+            browser_session["config_center_authenticated"] = True
+        response = client.put(
+            f"/admin/config-center/api/classes/{year_class.id}",
+            json={"name": year_class.name},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["success"])
+        db.session.refresh(year_class)
+        self.assertIsNotNone(year_class.legacy_class_id)
+        legacy_class = db.session.get(AcademicClass, year_class.legacy_class_id)
+        self.assertEqual(legacy_class.name, year_class.name)
+        self.assertEqual(legacy_class.academic_level_id, legacy_level.id)
 
     def test_status_polarity_update_survives_refresh_and_controls_new_records(self):
         ensure_attendance_defaults(self.config)
