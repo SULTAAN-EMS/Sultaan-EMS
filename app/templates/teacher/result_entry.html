@@ -76,6 +76,7 @@
           </article>
           <article class="re-policy-item"><span class="re-policy-icon {{ submission_status_tone }}"><i class="fa-solid {{ submission_status_icon }}" aria-hidden="true"></i></span><div><small>Xaaladda gudbinta</small><b>{{ submission_status_label }}</b><span>{{ remaining_submissions }} gudbin oo hadhay</span></div></article>
         </section>
+        {% if submission_status == 'reopened' and submission.reviewer_note %}<div class="re-lock-note" role="status"><i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i><span>Sixitaan ayaa loo celiyey ardaygan: {{ submission.reviewer_note }}</span></div>{% endif %}
         {% if locked %}<div class="re-lock-note" role="status"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Gelinta Natiijooyinka wuu xidhmay. Fadlan faafaahin la xidhiidh xafiiska imtixaannada TIS.</span></div>{% endif %}
 
         <form method="get" class="re-filter-card" id="resultScopeFilters" data-filter-assignment-id="{{ assignment.id }}">

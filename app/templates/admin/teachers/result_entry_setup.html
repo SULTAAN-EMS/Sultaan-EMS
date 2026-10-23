@@ -147,11 +147,12 @@
             {% set rows = history_rows.get(assignment.id, []) %}
             {% if rows %}
               <details class="tra-review tra-approved-history"><summary><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Taariikhda dhibcaha · {{ rows|length }} arday</summary>
-                <div class="tra-marks-table"><table><thead><tr><th scope="col">Ardayga</th><th scope="col">Dhibcaha hadda</th><th scope="col">Isbeddellada</th></tr></thead><tbody>
+                <div class="tra-marks-table"><table><thead><tr><th scope="col">Ardayga</th><th scope="col">Dhibcaha hadda</th><th scope="col">Isbeddellada</th><th scope="col">Tallaabo</th></tr></thead><tbody>
                   {% for item in rows %}{% set mark = item.mark %}<tr>
                     <td class="tra-student-cell"><div class="tra-student-identity">{% if mark.student.photo_path %}<img class="tra-student-photo" src="{{ asset_url(mark.student.photo_path) }}" alt="Sawirka {{ mark.student.full_name }}" loading="lazy" decoding="async">{% else %}<span class="tra-student-photo tra-student-photo--empty" aria-label="Sawir lama diiwaangelin"><i class="fa-solid fa-user" aria-hidden="true"></i></span>{% endif %}<span class="tra-student-meta"><strong class="tra-student-name">{{ mark.student.full_name }}</strong><span class="tra-student-details"><span class="tra-student-id"><i class="fa-solid fa-id-card" aria-hidden="true"></i> {{ mark.student.student_code }}</span><span class="tra-student-mother"><i class="fa-solid fa-person-dress" aria-hidden="true"></i> {{ mark.student.mother_name or 'Hooyo lama diiwaangelin' }}</span></span></span></div></td>
                     <td data-label="Dhibcaha hadda">{% if item.official_score is not none %}<span class="tra-mark-value tra-mark-value--official"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>{{ item.official_score|academic_number(ui_settings) }}</span>{% elif mark.score is not none %}<span class="tra-mark-value tra-mark-value--submitted"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>{{ mark.score|academic_number(ui_settings) }}</span>{% else %}<span class="tra-mark-no-result"><i class="fa-regular fa-circle-minus" aria-hidden="true"></i> Natiijo ma jirto</span>{% endif %}</td>
                     <td class="tra-revision-cell tra-revision-cell--archive" data-label="Isbeddellada">{{ score_history(item, ui_settings) }}</td>
+                    <td class="tra-mark-actions" data-label="Tallaabo">{% if item.can_return %}<details class="tra-mark-return"><summary><i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i> Macallinka ugu celi</summary><form method="post" class="tra-mark-return-form tra-reason-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><input type="hidden" name="mark_id" value="{{ mark.id }}"><label for="return-mark-note-{{ mark.id }}">Sababta sixitaanka</label><input id="return-mark-note-{{ mark.id }}" name="reviewer_note" maxlength="500" placeholder="Sababta ardaygan loogu celinayo" aria-describedby="return-mark-error-{{ mark.id }}"><small class="tra-reason-error" id="return-mark-error-{{ mark.id }}" role="alert" hidden>Qor sababta ka hor intaadan ardaygan celin.</small><button name="action" value="return_mark" class="reopen"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> U dir macallinka</button></form></details>{% else %}<span class="tra-mark-no-result">—</span>{% endif %}</td>
                   </tr>{% endfor %}
                 </tbody></table></div>
               </details>
@@ -195,20 +196,22 @@
     const form = event.target.closest('.tra-reason-form');
     if (!form) return;
     const action = event.submitter?.value || form.dataset.lastAction;
-    if (!form.classList.contains('tra-reopen-approved') && action !== 'reopen') return;
+    if (!form.classList.contains('tra-reopen-approved') && action !== 'reopen' && action !== 'return_mark') return;
 
     const note = form.querySelector('[name="reviewer_note"]');
     const error = form.querySelector('.tra-reason-error');
-    if (note.value.trim()) {
+    if (note?.value.trim()) {
       note.removeAttribute('aria-invalid');
       error.hidden = true;
       return;
     }
     event.preventDefault();
-    note.setAttribute('aria-invalid', 'true');
-    error.textContent = reasonMessage;
-    error.hidden = false;
-    note.focus();
+    note?.setAttribute('aria-invalid', 'true');
+    if (error) {
+      error.textContent = action === 'return_mark' ? 'Qor sababta ka hor intaadan ardaygan celin.' : reasonMessage;
+      error.hidden = false;
+    }
+    note?.focus();
   });
   document.addEventListener('input', (event) => {
     if (!event.target.matches('.tra-reason-form [name="reviewer_note"]')) return;

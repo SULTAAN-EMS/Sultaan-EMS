@@ -1601,6 +1601,120 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(Result.query.count(), 2)
         self.assertEqual(submission.submission_count, 1)
 
+    def test_admin_can_return_one_approved_student_without_reopening_other_marks(self):
+        third_student = Student(
+            student_code="ST-3", full_name="Student 3", is_active=True,
+        )
+        db.session.add(third_student)
+        db.session.flush()
+        db.session.add(StudentEnrollment(
+            student=third_student, academic_year=self.year, academic_year_level=self.year_level,
+            academic_year_class=self.year_class, status="active", academic_outcome="pending",
+            enrollment_source="manual",
+        ))
+        db.session.commit()
+
+        self._teacher_login()
+        self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "44",
+            f"score_{self.students[1].id}": "39",
+            f"score_{third_student.id}": "",
+        }, follow_redirects=True)
+        submission = TeacherResultSubmission.query.one()
+        first_mark = TeacherResultMark.query.filter_by(student_id=self.students[0].id).one()
+        second_mark = TeacherResultMark.query.filter_by(student_id=self.students[1].id).one()
+
+        self.client.post("/teacher/logout")
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        approved = self.client.post("/admin/teachers/result-entry", data={
+            "action": "approve", "assignment_id": str(self.assignment.id),
+        }, follow_redirects=True)
+        self.assertEqual(approved.status_code, 200)
+        self.assertEqual(submission.status, "draft")
+        self.assertEqual(first_mark.status, "approved")
+        self.assertEqual(second_mark.status, "approved")
+
+        original_first_result = Result.query.filter_by(student_id=self.students[0].id).one()
+        original_second_result = Result.query.filter_by(student_id=self.students[1].id).one()
+        self.assignment.deadline_at = datetime.utcnow() - timedelta(days=1)
+        db.session.commit()
+        missing_reason = self.client.post("/admin/teachers/result-entry", data={
+            "action": "return_mark", "assignment_id": str(self.assignment.id),
+            "mark_id": str(first_mark.id),
+        }, follow_redirects=True)
+        self.assertEqual(missing_reason.status_code, 200)
+        self.assertEqual(first_mark.status, "approved")
+        self.assertEqual(submission.status, "draft")
+
+        returned = self.client.post("/admin/teachers/result-entry", data={
+            "action": "return_mark", "assignment_id": str(self.assignment.id),
+            "mark_id": str(first_mark.id), "reviewer_note": "Hubi dhibcaha waraaqda asalka ah.",
+        }, follow_redirects=True)
+        self.assertEqual(returned.status_code, 200)
+        self.assertEqual(submission.status, "reopened")
+        self.assertEqual(first_mark.status, "draft")
+        self.assertEqual(second_mark.status, "approved")
+        self.assertEqual(self.assignment.max_submissions, 2)
+        self.assertEqual(float(original_first_result.score), 44)
+        self.assertTrue(original_first_result.is_published)
+        self.assertEqual(float(original_second_result.score), 39)
+        returned_event = TeacherResultEvent.query.filter_by(
+            event_type="student_mark_returned_for_correction",
+        ).one()
+        self.assertEqual(returned_event.marks_count, 1)
+        self.assertIn("ST-1", returned_event.note)
+        self.assertIn("Hubi dhibcaha waraaqda asalka ah.", returned_event.note)
+
+        self.client.post("/admin/logout")
+        self._teacher_login()
+        workspace = self.client.get(f"/teacher/result-entry?assignment_id={self.assignment.id}")
+        self.assertEqual(workspace.status_code, 200)
+        self.assertIn("Sixitaan ayaa loo celiyey ardaygan".encode(), workspace.data)
+        self.assertIn(f'name="score_{self.students[0].id}" value="44.00"'.encode(), workspace.data)
+        self.assertNotRegex(workspace.data, f'name="score_{self.students[0].id}"[^>]*disabled'.encode())
+        self.assertRegex(workspace.data, f'name="score_{self.students[1].id}"[^>]*disabled'.encode())
+        self.assertNotRegex(workspace.data, f'name="score_{third_student.id}"[^>]*disabled'.encode())
+
+        correction = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "46.5",
+            f"score_{self.students[1].id}": "39",
+            f"score_{third_student.id}": "",
+        }, follow_redirects=True)
+        self.assertEqual(correction.status_code, 200)
+        self.assertEqual(submission.status, "submitted")
+        self.assertEqual(submission.submission_count, 2)
+        self.assertEqual(first_mark.status, "submitted")
+        self.assertEqual(second_mark.status, "approved")
+        self.assertEqual(float(original_first_result.score), 44)
+
+        self.client.post("/teacher/logout")
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        review = self.client.get("/admin/teachers/result-entry?status=review")
+        self.assertEqual(review.status_code, 200)
+        self.assertIn(b"Review 1 submitted student marks", review.data)
+        needs_replace_confirmation = self.client.post("/admin/teachers/result-entry", data={
+            "action": "approve", "assignment_id": str(self.assignment.id),
+        }, follow_redirects=True)
+        self.assertEqual(needs_replace_confirmation.status_code, 200)
+        self.assertEqual(submission.status, "submitted")
+        self.assertEqual(float(original_first_result.score), 44)
+
+        reapproved = self.client.post("/admin/teachers/result-entry", data={
+            "action": "approve", "assignment_id": str(self.assignment.id),
+            "confirm_replace": "yes",
+        }, follow_redirects=True)
+        self.assertEqual(reapproved.status_code, 200)
+        self.assertEqual(submission.status, "draft")
+        self.assertEqual(first_mark.status, "approved")
+        self.assertEqual(second_mark.status, "approved")
+        self.assertEqual(float(original_first_result.score), 46.5)
+        self.assertEqual(float(original_second_result.score), 39)
+        self.assertIsNone(Result.query.filter_by(student_id=third_student.id).first())
+
     def test_result_entry_history_tracks_review_events_filters_and_exports(self):
         self._teacher_login()
         submitted = self.client.post("/teacher/result-entry/save", data={

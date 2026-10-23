@@ -58,6 +58,7 @@ RESULT_EVENT_LABELS = {
     "approved": "La ansixiyey oo la daabacay",
     "partially_approved": "Qayb ahaan la ansixiyey",
     "returned_for_correction": "Sixitaan loo celiyey",
+    "student_mark_returned_for_correction": "Hal arday sixitaan loo celiyey",
     "baseline": "Xaaladdii hore ee la diiwaangeliyey",
 }
 RESULT_STATUS_LABELS = {
@@ -82,6 +83,7 @@ RESULT_EVENT_ICONS = {
     "approved": "fa-circle-check",
     "partially_approved": "fa-circle-half-stroke",
     "returned_for_correction": "fa-rotate-left",
+    "student_mark_returned_for_correction": "fa-user-pen",
     "baseline": "fa-clock-rotate-left",
 }
 
@@ -619,6 +621,59 @@ def result_entry_setup():
                 status_to=next_state,
                 note="Xilsaarista gelinta natiijada waa la hawlgeliyey." if assignment.is_active else "Xilsaarista gelinta natiijada waa la hakiyey.",
             )
+        elif action == "return_mark":
+            if not submission or submission.status not in {"draft", "approved"}:
+                flash("Arday keliya dib ayaa loogu celin karaa marka xaashidu qayb ahaan ama si buuxda u ansaxday.", "warning")
+                return redirect(url_for("admin_teachers.result_entry_setup"))
+            reviewer_note = (request.form.get("reviewer_note") or "").strip()
+            if not reviewer_note:
+                flash("Qor sababta ardaygan keliya loogu celinayo macallinka.", "warning")
+                return redirect(url_for("admin_teachers.result_entry_setup"))
+            mark = TeacherResultMark.query.filter_by(
+                id=request.form.get("mark_id", type=int),
+                submission_id=submission.id,
+            ).first()
+            if not mark or mark.status != "approved":
+                flash("Dhibcaha ardaygan ma aha kuwo la ansixiyey ama xilsaaristan kuma jiraan.", "warning")
+                return redirect(url_for("admin_teachers.result_entry_setup"))
+            official_result = Result.query.filter_by(
+                student_id=mark.student_id,
+                exam_id=assignment.exam_id,
+                subject_id=assignment.subject_id,
+                is_published=True,
+            ).first()
+            if not official_result:
+                flash("Natiijo rasmi ah oo la daabacay looma helin ardaygan; waxba lama beddelin.", "warning")
+                return redirect(url_for("admin_teachers.result_entry_setup"))
+            if mark.student.is_result_locked:
+                flash("Natiijada ardaygan way xiran tahay. Marka hore ka fur ilaalinta natiijada.", "warning")
+                return redirect(url_for("admin_teachers.result_entry_setup"))
+
+            mark.status = "draft"
+            submission.status = "reopened"
+            submission.reviewed_at = datetime.utcnow()
+            submission.reviewed_by_id = current_user.id
+            assignment.max_submissions = max(
+                assignment.max_submissions or 0,
+                (submission.submission_count or 0) + 1,
+            )
+            student_label = f"{mark.student.student_code} · {mark.student.full_name}"
+            event_note = f"{student_label} — {reviewer_note}"[:500]
+            submission.reviewer_note = event_note
+            record_teacher_result_event(
+                assignment,
+                "student_mark_returned_for_correction",
+                submission=submission,
+                status_from="approved",
+                status_to="draft",
+                marks_count=1,
+                note=event_note,
+            )
+            audit(
+                "Teacher Result Mark Returned",
+                f"Returned approved mark for {student_label} to {assignment.teacher.full_name}: {reviewer_note}",
+            )
+            flash(f"Dhibcaha {student_label} oo keliya ayaa macallinka loogu celiyey sixitaan. Natiijada rasmiga ahi isma beddelin.", "success")
         elif action == "reopen":
             if not submission or submission.status not in {"submitted", "approved"}:
                 flash("Kaliya submission la gudbiyey ama la ansixiyey ayaa dib loo furi karaa.", "warning")
@@ -761,7 +816,7 @@ def result_entry_setup():
         else:
             abort(400)
         db.session.commit()
-        if action != "approve":
+        if action not in {"approve", "return_mark"}:
             flash("Isbeddelka xilsaarista/submission-ka waa la kaydiyey.", "success")
         return redirect(url_for("admin_teachers.result_entry_setup"))
 
@@ -808,16 +863,28 @@ def result_entry_setup():
         }
         history_marks = [mark for mark in submission.marks if mark.score is not None or mark.last_action]
         student_ids = [mark.student_id for mark in history_marks]
-        official_scores = {
-            result.student_id: result.score
-            for result in Result.query.filter(
+        official_results = (
+            Result.query.filter(
                 Result.exam_id == assignment.exam_id,
                 Result.subject_id == assignment.subject_id,
                 Result.student_id.in_(student_ids),
             ).all()
-        } if student_ids else {}
+            if student_ids else []
+        )
+        official_scores = {result.student_id: result.score for result in official_results}
+        published_student_ids = {
+            result.student_id for result in official_results if result.is_published
+        }
         history_rows[assignment.id] = [
-            {"mark": mark, "official_score": official_scores.get(mark.student_id)}
+            {
+                "mark": mark,
+                "official_score": official_scores.get(mark.student_id),
+                "can_return": (
+                    mark.status == "approved"
+                    and mark.student_id in published_student_ids
+                    and not mark.student.is_result_locked
+                ),
+            }
             for mark in history_marks
         ]
         if submission.status != "submitted":
