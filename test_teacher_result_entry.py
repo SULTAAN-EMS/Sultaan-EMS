@@ -141,7 +141,7 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
         self.assertIn('property="og:title" content="Waaxda Macallimiinta |', body)
-        self.assertIn('property="og:url" content="https://portal.example/teacher/login"', body)
+        self.assertIn('property="og:url" content="https://portal.example/teacher"', body)
         self.assertIn('property="og:image" content="https://portal.example/static/images/teacher-portal-share-20261022-v2.jpg"', body)
         self.assertIn('property="og:image:type" content="image/jpeg"', body)
         self.assertIn('property="og:image:width" content="1200"', body)
@@ -157,6 +157,27 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(image_response.status_code, 200)
         self.assertEqual(image_response.mimetype, "image/jpeg")
         self.assertGreater(len(image_response.data), 0)
+
+    def test_teacher_share_url_renders_preview_metadata_without_redirect(self):
+        self.app.config["PUBLIC_SITE_URL"] = "https://portal.example"
+
+        for path in ("/teacher", "/teacher/"):
+            with self.subTest(path=path):
+                response = self.client.get(path, follow_redirects=False)
+
+                self.assertEqual(response.status_code, 200)
+                body = response.get_data(as_text=True)
+                self.assertIn('property="og:url" content="https://portal.example/teacher"', body)
+                self.assertIn('property="og:image" content="https://portal.example/static/images/teacher-portal-share-20261022-v2.jpg"', body)
+                self.assertIn('action="/teacher/login"', body)
+
+    def test_authenticated_teacher_share_url_still_opens_result_entry(self):
+        self._teacher_login()
+
+        response = self.client.get("/teacher", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/teacher/result-entry")
 
     def test_teacher_back_button_returns_to_login_with_username_only(self):
         portal_response = self._teacher_login()

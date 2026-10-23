@@ -319,9 +319,12 @@ def change_password():
     )
 
 
-@teacher_portal_bp.route("/")
-@teacher_login_required
+@teacher_portal_bp.route("/", strict_slashes=False)
 def dashboard():
+    if not (current_user.is_authenticated and is_teacher_account()):
+        return render_template("teacher/login.html", login_username=session.pop("teacher_login_username", ""))
+    if teacher_requires_password_change():
+        return redirect(url_for("teacher_portal.change_password"))
     return redirect(url_for("teacher_portal.result_entry", **request.args))
 
 
