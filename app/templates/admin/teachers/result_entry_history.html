@@ -65,7 +65,6 @@
     {% else %}
       <div class="trh-empty"><span><i class="fa-solid fa-inbox"></i></span><strong>Taariikh lama helin</strong><p>Marka macallimiintu qabyo kaydiyaan ama natiijo gudbiyaan, dhacdooyinku halkan ayay ka muuqanayaan. Waxaad beddeli kartaa shaandhooyinka si aad u ballaadhiso raadinta.</p></div>
     {% endif %}
-    {% if summary.total and events and events|selectattr('event_type', 'equalto', 'baseline')|list %}<p class="trh-legacy-note"><i class="fa-solid fa-circle-info"></i> “Xaaladdii hore” waxay muujinaysaa xaaladdii jirtay markii taariikhda la hirgeliyey; tallaabooyinkii ka horreeyey lama kaydin jirin.</p>{% endif %}
   </section>
 </main>
 {% endblock %}

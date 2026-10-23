@@ -123,6 +123,16 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn('src="https://assets.example/school-logo.png"', body)
         self.assertIn('data-fallback-src="https://assets.example/admin-logo.png"', body)
 
+    def test_teacher_login_username_is_normalized_to_lowercase(self):
+        response = self.client.get("/teacher/login")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn('autocapitalize="none" autocorrect="off" spellcheck="false"', body)
+        self.assertIn("username.value.toLowerCase()", body)
+        self.assertIn("username.addEventListener('input', normalizeUsername)", body)
+        self.assertIn("normalizeUsername();", body)
+
     def test_teacher_login_includes_social_share_metadata(self):
         self.app.config["PUBLIC_SITE_URL"] = "https://portal.example/"
 

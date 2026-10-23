@@ -64,7 +64,7 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label class="tl-field" for="tl-username">
           <span>Magaca isticmaalaha</span>
-          <span class="tl-input-wrap"><i class="fa-regular fa-user" aria-hidden="true"></i><input id="tl-username" name="username" type="text" value="{{ login_username or '' }}" autocomplete="username" placeholder="Geli magaca isticmaalaha" required autofocus></span>
+          <span class="tl-input-wrap"><i class="fa-regular fa-user" aria-hidden="true"></i><input id="tl-username" name="username" type="text" value="{{ login_username or '' }}" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Geli magaca isticmaalaha" required autofocus></span>
         </label>
         <label class="tl-field" for="tl-password">
           <span>Erayga sirta ah</span>
@@ -80,10 +80,21 @@
 </main>
 <script>
 (() => {
+  const username = document.getElementById('tl-username');
   const password = document.getElementById('tl-password');
   const toggle = document.getElementById('tl-password-toggle');
   const form = document.querySelector('.tl-form');
   const submit = document.getElementById('tl-submit');
+  const normalizeUsername = () => {
+    const start = username.selectionStart;
+    const end = username.selectionEnd;
+    const normalized = username.value.toLowerCase();
+    if (normalized === username.value) return;
+    username.value = normalized;
+    if (start !== null && end !== null) username.setSelectionRange(start, end);
+  };
+  username.addEventListener('input', normalizeUsername);
+  normalizeUsername();
   toggle.addEventListener('click', () => {
     const show = password.type === 'password';
     password.type = show ? 'text' : 'password';
@@ -93,6 +104,7 @@
     password.focus();
   });
   form.addEventListener('submit', () => {
+    normalizeUsername();
     submit.disabled = true;
     submit.classList.add('is-loading');
     document.getElementById('tl-submit-text').textContent = 'Waa la xaqiijinayaa…';
