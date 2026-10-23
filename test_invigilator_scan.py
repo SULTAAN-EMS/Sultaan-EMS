@@ -151,6 +151,23 @@ class TestInvigilatorScan(unittest.TestCase):
         self.assertIn('property="og:image"', html)
         self.assertIn('name="twitter:card" content="summary_large_image"', html)
         self.assertIn("qr-landing-school-logo.jpg", html)
+        self.assertIn("favicon.ico?v=school-icon-20261023", html)
+        self.assertIn("site.webmanifest?v=school-icon-20261023", html)
+
+        manifest = self.client.get("/static/site.webmanifest")
+        favicon = self.client.get("/static/favicon.ico")
+        root_favicon = self.client.get("/favicon.ico")
+        app_icon = self.client.get("/static/images/taysiir-school-icon-192.png")
+        self.assertEqual(manifest.status_code, 200)
+        self.assertEqual(favicon.status_code, 200)
+        self.assertEqual(root_favicon.status_code, 200)
+        self.assertTrue(root_favicon.data.startswith(b"\x00\x00\x01\x00"))
+        self.assertEqual(app_icon.status_code, 200)
+        self.assertEqual(app_icon.mimetype, "image/png")
+        manifest.close()
+        favicon.close()
+        root_favicon.close()
+        app_icon.close()
 
     def test_staff_scan_page_requires_invigilator_login_and_preserves_return_path(self):
         response = self.client.get("/scan/staff")

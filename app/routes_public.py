@@ -37,7 +37,9 @@ def ping():
 
 @public_bp.route("/favicon.ico", methods=["GET", "HEAD"])
 def favicon():
-    return ("", 204)
+    response = current_app.send_static_file("favicon.ico")
+    response.cache_control.max_age = 3600
+    return response
 
 
 def incident_bool_setting(settings_dict, key, default=False):

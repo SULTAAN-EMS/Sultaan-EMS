@@ -124,6 +124,13 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn('src="https://assets.example/school-logo.png"', body)
         self.assertIn('data-fallback-src="https://assets.example/admin-logo.png"', body)
 
+    def test_teacher_login_uses_school_brand_as_browser_icon(self):
+        response = self.client.get("/teacher/login")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"favicon.ico?v=school-icon-20261023", response.data)
+        self.assertIn(b"taysiir-school-icon-192.png?v=school-icon-20261023", response.data)
+
     def test_teacher_login_username_is_normalized_to_lowercase(self):
         response = self.client.get("/teacher/login")
 
