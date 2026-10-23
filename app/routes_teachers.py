@@ -1040,6 +1040,141 @@ def result_entry_setup():
     )
 
 
+@teachers_bp.route("/result-entry/<int:assignment_id>/print")
+def print_result_entry_assignment(assignment_id):
+    """Render a printable, class-specific marks roster for an assignment."""
+    assignment = TeacherResultAssignment.query.filter_by(id=assignment_id).first_or_404()
+    if assignment.deleted_at:
+        abort(404)
+    if (
+        not assignment.teacher
+        or not assignment.academic_year
+        or not assignment.exam
+        or not assignment.school_class
+        or not assignment.subject
+        or assignment.exam.academic_year_id != assignment.academic_year_id
+    ):
+        abort(409, "The assignment no longer matches a valid academic scope.")
+
+    year_level, year_class = _year_scope_ids_from_legacy(
+        assignment.academic_year_id,
+        assignment.school_class.academic_level_id,
+        assignment.class_id,
+    )
+    if (
+        not year_level
+        or not year_class
+        or year_class.academic_year_level_id != year_level.id
+        or year_class.legacy_class_id != assignment.class_id
+    ):
+        abort(409, "The assignment's academic-year class scope is no longer valid.")
+
+    grouped_assignments = (
+        TeacherResultAssignment.query
+        .filter_by(
+            teacher_id=assignment.teacher_id,
+            academic_year_id=assignment.academic_year_id,
+            exam_id=assignment.exam_id,
+            class_id=assignment.class_id,
+        )
+        .filter(TeacherResultAssignment.deleted_at.is_(None))
+        .all()
+    )
+    subject_ids = {item.subject_id for item in grouped_assignments}
+    year_subjects = (
+        AcademicYearSubject.query
+        .filter_by(
+            academic_year_id=assignment.academic_year_id,
+            academic_year_level_id=year_level.id,
+            subject_kind="exam",
+        )
+        .filter(AcademicYearSubject.legacy_subject_id.in_(subject_ids))
+        .order_by(AcademicYearSubject.sort_order, AcademicYearSubject.name, AcademicYearSubject.id)
+        .all()
+    )
+    year_subject_by_legacy_id = {}
+    for item in year_subjects:
+        year_subject_by_legacy_id.setdefault(item.legacy_subject_id, item)
+
+    subject_rows = []
+    for item in grouped_assignments:
+        subject = item.subject
+        year_subject = year_subject_by_legacy_id.get(item.subject_id)
+        maximum = resolve_subject_max_score(
+            subject,
+            exam=assignment.exam,
+            academic_year_level_id=year_level.id,
+            academic_level_id=assignment.school_class.academic_level_id,
+        )
+        subject_rows.append({
+            "assignment": item,
+            "name": year_subject.name if year_subject else subject.name,
+            "sort_order": year_subject.sort_order if year_subject else 10**9,
+            "max_score": format(maximum.normalize(), "f") if maximum else "0",
+        })
+    subject_rows.sort(key=lambda row: (row["sort_order"], row["name"].casefold(), row["assignment"].id))
+
+    students = (
+        students_for_scope_query(
+            assignment.academic_year_id,
+            level_id=assignment.school_class.academic_level_id,
+            class_id=assignment.class_id,
+            exam=assignment.exam,
+        )
+        .order_by(Student.full_name)
+        .all()
+    )
+    male_count = sum(
+        str(student.gender or "").strip().casefold() in {"male", "m", "lab"}
+        for student in students
+    )
+    female_count = sum(
+        str(student.gender or "").strip().casefold() in {"female", "f", "dhedig"}
+        for student in students
+    )
+    student_pages = [students[index:index + 15] for index in range(0, len(students), 15)] or [[]]
+    subject_groups = [subject_rows[index:index + 3] for index in range(0, len(subject_rows), 3)]
+    pages = []
+    total_pages = len(student_pages) * len(subject_groups)
+    for subjects in subject_groups:
+        for student_index, student_page in enumerate(student_pages):
+            first_student_number = student_index * 15 + 1
+            pages.append({
+                "subjects": subjects,
+                "students": student_page,
+                "page_number": len(pages) + 1,
+                "total_pages": total_pages,
+                "student_range": (
+                    first_student_number,
+                    min((student_index + 1) * 15, len(students)),
+                ),
+            })
+
+    printed_at = datetime.now(ZoneInfo("Africa/Mogadishu"))
+    somali_weekdays = ("Isniin", "Talaado", "Arbaco", "Khamiis", "Jumca", "Sabti", "Axad")
+    english_months = (
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    )
+    printed_date = (
+        f"{somali_weekdays[printed_at.weekday()]}, "
+        f"{english_months[printed_at.month - 1]} {printed_at.day}, {printed_at.year}"
+    )
+
+    return render_template(
+        "admin/teachers/result_entry_print.html",
+        assignment=assignment,
+        year_level=year_level,
+        year_class=year_class,
+        pages=pages,
+        student_count=len(students),
+        male_count=male_count,
+        female_count=female_count,
+        printed_date=printed_date,
+        printed_time=printed_at.strftime("%I:%M %p"),
+    )
+
+
 @teachers_bp.route("/result-entry/history")
 def result_entry_history():
     query, filters, date_error = _teacher_result_history_query()

@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
-{% block title %}Result Entry Control{% endblock %}
-{% block page_title %}Result Entry Control{% endblock %}
+{% block title %}WAAXDA MAAMULKA SOO GUDBINTA NATIIJOOYINKA{% endblock %}
+{% block page_title %}WAAXDA MAAMULKA SOO GUDBINTA NATIIJOOYINKA{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-admin.css', v='teacher-result-edit-20261021-1') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-admin.css', v='teacher-result-print-20261023-1') }}">
 {% macro score_history(item, settings) %}
   <details class="tra-score-history">
     <summary><span class="tra-change-count {{ 'has-changes' if item.edit_count else '' }}"><i class="fa-solid fa-pen-ruler" aria-hidden="true"></i>{{ item.edit_count }} isbeddel</span><i class="fa-solid fa-chevron-down tra-history-chevron" aria-hidden="true"></i></summary>
@@ -27,28 +27,29 @@
   </details>
 {% endmacro %}
 <main class="teacher-result-admin">
-  <header class="tra-header">
-    <div>
-      <span class="tra-kicker"><i class="fa-solid fa-clipboard-check"></i> TEACHER WORKSPACE</span>
-      <h1>Result Entry Control</h1>
-      <p>Manage real teacher assignments and review marks before they are published.</p>
+  <header class="tra-header tra-header-card" aria-labelledby="tra-page-title">
+    <div class="tra-header-lead">
+      <span class="tra-header-mark" aria-hidden="true"><i class="fa-solid fa-clipboard-check"></i></span>
+      <div class="tra-header-copy">
+        <h1 id="tra-page-title">WAAXDA MAAMULKA SOO GUDBINTA NATIIJOOYINKA</h1>
+      </div>
     </div>
-    <div class="tra-header-actions"><a class="tra-back tra-history-link" href="{{ url_for('admin_teachers.result_entry_history') }}"><i class="fa-solid fa-clock-rotate-left"></i> History &amp; reports</a><a class="tra-back" href="{{ url_for('admin_teachers.teacher_list') }}"><i class="fa-solid fa-chalkboard-user"></i> Teacher accounts</a></div>
+    <div class="tra-header-actions"><a class="tra-back tra-history-link" href="{{ url_for('admin_teachers.result_entry_history') }}"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> History &amp; reports</a><a class="tra-back" href="{{ url_for('admin_teachers.teacher_list') }}"><i class="fa-solid fa-chalkboard-user" aria-hidden="true"></i> Teacher accounts</a></div>
   </header>
 
   <section class="tra-summary" aria-label="Assignment overview">
-    <a href="{{ url_for('admin_teachers.result_entry_setup') }}" class="tra-metric"><span>All assignments</span><strong>{{ summary.total }}</strong><i class="fa-solid fa-layer-group"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='review') }}" class="tra-metric review"><span>Awaiting review</span><strong>{{ summary.review }}</strong><i class="fa-solid fa-inbox"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='draft') }}" class="tra-metric draft"><span>Draft / correction</span><strong>{{ summary.draft }}</strong><i class="fa-solid fa-pen-to-square"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='approved') }}" class="tra-metric approved"><span>Approved</span><strong>{{ summary.approved }}</strong><i class="fa-solid fa-circle-check"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='paused') }}" class="tra-metric paused"><span>Paused</span><strong>{{ summary.paused }}</strong><i class="fa-solid fa-pause"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup') }}" class="tra-metric"><span>Dhammaan xilsaarisyada</span><strong>{{ summary.total }}</strong><i class="fa-solid fa-layer-group"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='review') }}" class="tra-metric review"><span>Dib-u-eegis sugaya</span><strong>{{ summary.review }}</strong><i class="fa-solid fa-inbox"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='draft') }}" class="tra-metric draft"><span>Qabyo / sixitaan</span><strong>{{ summary.draft }}</strong><i class="fa-solid fa-pen-to-square"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='approved') }}" class="tra-metric approved"><span>La ansixiyey</span><strong>{{ summary.approved }}</strong><i class="fa-solid fa-circle-check"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='paused') }}" class="tra-metric paused"><span>La hakiyey</span><strong>{{ summary.paused }}</strong><i class="fa-solid fa-pause"></i></a>
     <a href="{{ url_for('admin_teachers.result_entry_setup', status='deleted') }}" class="tra-metric deleted"><span>La tirtiray</span><strong>{{ summary.deleted }}</strong><i class="fa-solid fa-trash-can"></i></a>
   </section>
 
   <section class="tra-panel tra-setup">
     <div class="tra-panel-heading">
       <span class="tra-icon"><i class="fa-solid fa-user-plus"></i></span>
-      <div><h2 id="tra-form-title">Assign a result sheet</h2><p id="tra-form-description">Assignments use the active academic-year, level, class, subject and exam records.</p></div>
+      <div><h2 id="tra-form-title">Xilsaar xaashida natiijada</h2><p id="tra-form-description">Xilsaaristu waxay ku salaysan tahay diiwaannada firfircoon ee sannad-dugsiyeedka, heerka, fasalka, maaddada iyo imtixaanka.</p></div>
     </div>
     {% if unlinked_staff_users %}
       <aside class="tra-unlinked-users" aria-label="Akoonnada aan weli profile macallin lahayn">
@@ -60,32 +61,32 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="create">
       <input type="hidden" name="assignment_id" value="">
-      <label class="tra-teacher-field">Teacher<select id="tra-setup-teacher" name="teacher_id" required><option value="">Select active teacher</option>{% for item in teachers %}<option value="{{ item.id }}">{{ item.full_name }} · {{ item.teacher_code }}</option>{% endfor %}</select></label>
-      <div class="tra-scope-list" id="tra-scope-list" aria-label="Teacher assignment scopes">
+      <label class="tra-teacher-field">Macallinka<select id="tra-setup-teacher" name="teacher_id" required><option value="">Xulo macallin firfircoon</option>{% for item in teachers %}<option value="{{ item.id }}">{{ item.full_name }} · {{ item.teacher_code }}</option>{% endfor %}</select></label>
+      <div class="tra-scope-list" id="tra-scope-list" aria-label="Xilsaarisyada macallinka">
         <div class="tra-scope-row" data-scope-row>
-          <div class="tra-scope-row-head"><strong>Scope <span data-scope-number>1</span></strong><button type="button" data-remove-scope aria-label="Remove scope" disabled><i class="fa-solid fa-trash-can"></i></button></div>
-          <label>Academic year<select name="academic_year_id" data-year required><option value="">Select year</option>{% for item in years %}<option value="{{ item.id }}" {{ 'selected' if item.id == selected_year_id else '' }}>{{ item.name }}{% if item.is_current %} · Current{% endif %}</option>{% endfor %}</select></label>
-          <label>Level<select name="academic_year_level_id" data-level required><option value="">Select level</option>{% for item in year_levels %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-legacy-level-id="{{ item.legacy_level_id }}" {{ 'selected' if item.id == selected_year_level_id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
-          <label>Class<select name="academic_year_class_id" data-class required><option value="">Select class</option>{% for item in year_classes %}<option value="{{ item.id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-id="{{ item.legacy_class_id }}">{{ item.academic_year_level.name }} · {{ item.name }}</option>{% endfor %}</select></label>
-          <label>Exam type<select name="exam_id" data-exam required><option value="">Select exam</option>{% for item in exams %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_level_id or '' }}" data-class-id="{{ item.academic_class_id or '' }}">{{ item.name }} · {{ item.academic_year.name }}</option>{% endfor %}</select></label>
-          <label>Subject<select name="academic_year_subject_id" data-subject required><option value="">Select year and level first</option>{% for item in year_subjects %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-level-id="{{ item.academic_year_level.legacy_level_id }}" data-legacy-id="{{ item.legacy_subject_id }}">{{ item.name }}</option>{% endfor %}</select><small data-subject-hint>Choose the academic year and level to load matching subjects.</small></label>
-          <label>Deadline <span class="tra-optional">Optional</span><input type="datetime-local" name="deadline_at"><small>Leave blank for no deadline.</small></label>
-          <label>Allowed submissions<input type="number" name="max_submissions" min="1" max="10" value="1" required><small>Reopening grants another attempt.</small></label>
+          <div class="tra-scope-row-head"><strong>Xilsaaris <span data-scope-number>1</span></strong><button type="button" data-remove-scope aria-label="Ka saar xilsaaristan" disabled><i class="fa-solid fa-trash-can"></i></button></div>
+          <label>Sannad-dugsiyeedka<select name="academic_year_id" data-year required><option value="">Xulo sannad-dugsiyeedka</option>{% for item in years %}<option value="{{ item.id }}" {{ 'selected' if item.id == selected_year_id else '' }}>{{ item.name }}{% if item.is_current %} · Hadda socda{% endif %}</option>{% endfor %}</select></label>
+          <label>Heerka<select name="academic_year_level_id" data-level required><option value="">Xulo heer</option>{% for item in year_levels %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-legacy-level-id="{{ item.legacy_level_id }}" {{ 'selected' if item.id == selected_year_level_id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Fasalka<select name="academic_year_class_id" data-class required><option value="">Xulo fasal</option>{% for item in year_classes %}<option value="{{ item.id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-id="{{ item.legacy_class_id }}">{{ item.academic_year_level.name }} · {{ item.name }}</option>{% endfor %}</select></label>
+          <label>Nooca imtixaanka<select name="exam_id" data-exam required><option value="">Xulo imtixaan</option>{% for item in exams %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_level_id or '' }}" data-class-id="{{ item.academic_class_id or '' }}">{{ item.name }} · {{ item.academic_year.name }}</option>{% endfor %}</select></label>
+          <label>Maaddada<select name="academic_year_subject_id" data-subject required><option value="">Marka hore xulo sannad-dugsiyeedka iyo heerka</option>{% for item in year_subjects %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-level-id="{{ item.academic_year_level.legacy_level_id }}" data-legacy-id="{{ item.legacy_subject_id }}">{{ item.name }}</option>{% endfor %}</select><small data-subject-hint></small></label>
+          <label>Waqtiga kama dambaysta ah <span class="tra-optional">Ikhtiyaari</span><input type="datetime-local" name="deadline_at"><small>Meesha bannaan uga tag haddii aan waqti kama dambays ah jirin.</small></label>
+          <label>Tirada gudbinnada la oggol yahay<input type="number" name="max_submissions" min="1" max="10" value="1" required><small>Dib-u-furiddu waxay oggolaanaysaa gudbin dheeraad ah.</small></label>
         </div>
       </div>
       <template id="tra-scope-template">
         <div class="tra-scope-row" data-scope-row>
-          <div class="tra-scope-row-head"><strong>Scope <span data-scope-number></span></strong><button type="button" data-remove-scope aria-label="Remove scope"><i class="fa-solid fa-trash-can"></i></button></div>
-          <label>Academic year<select name="academic_year_id" data-year required><option value="">Select year</option>{% for item in years %}<option value="{{ item.id }}">{{ item.name }}{% if item.is_current %} · Current{% endif %}</option>{% endfor %}</select></label>
-          <label>Level<select name="academic_year_level_id" data-level required><option value="">Select level</option>{% for item in year_levels %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-legacy-level-id="{{ item.legacy_level_id }}">{{ item.name }}</option>{% endfor %}</select></label>
-          <label>Class<select name="academic_year_class_id" data-class required><option value="">Select class</option>{% for item in year_classes %}<option value="{{ item.id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-id="{{ item.legacy_class_id }}">{{ item.academic_year_level.name }} · {{ item.name }}</option>{% endfor %}</select></label>
-          <label>Exam type<select name="exam_id" data-exam required><option value="">Select exam</option>{% for item in exams %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_level_id or '' }}" data-class-id="{{ item.academic_class_id or '' }}">{{ item.name }} · {{ item.academic_year.name }}</option>{% endfor %}</select></label>
-          <label>Subject<select name="academic_year_subject_id" data-subject required><option value="">Select year and level first</option>{% for item in year_subjects %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-level-id="{{ item.academic_year_level.legacy_level_id }}" data-legacy-id="{{ item.legacy_subject_id }}">{{ item.name }}</option>{% endfor %}</select><small data-subject-hint>Choose the academic year and level to load matching subjects.</small></label>
-          <label>Deadline <span class="tra-optional">Optional</span><input type="datetime-local" name="deadline_at"><small>Leave blank for no deadline.</small></label>
-          <label>Allowed submissions<input type="number" name="max_submissions" min="1" max="10" value="1" required><small>Reopening grants another attempt.</small></label>
+          <div class="tra-scope-row-head"><strong>Xilsaaris <span data-scope-number></span></strong><button type="button" data-remove-scope aria-label="Ka saar xilsaaristan"><i class="fa-solid fa-trash-can"></i></button></div>
+          <label>Sannad-dugsiyeedka<select name="academic_year_id" data-year required><option value="">Xulo sannad-dugsiyeedka</option>{% for item in years %}<option value="{{ item.id }}">{{ item.name }}{% if item.is_current %} · Hadda socda{% endif %}</option>{% endfor %}</select></label>
+          <label>Heerka<select name="academic_year_level_id" data-level required><option value="">Xulo heer</option>{% for item in year_levels %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-legacy-level-id="{{ item.legacy_level_id }}">{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Fasalka<select name="academic_year_class_id" data-class required><option value="">Xulo fasal</option>{% for item in year_classes %}<option value="{{ item.id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-id="{{ item.legacy_class_id }}">{{ item.academic_year_level.name }} · {{ item.name }}</option>{% endfor %}</select></label>
+          <label>Nooca imtixaanka<select name="exam_id" data-exam required><option value="">Xulo imtixaan</option>{% for item in exams %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_level_id or '' }}" data-class-id="{{ item.academic_class_id or '' }}">{{ item.name }} · {{ item.academic_year.name }}</option>{% endfor %}</select></label>
+          <label>Maaddada<select name="academic_year_subject_id" data-subject required><option value="">Marka hore xulo sannad-dugsiyeedka iyo heerka</option>{% for item in year_subjects %}<option value="{{ item.id }}" data-year-id="{{ item.academic_year_id }}" data-level-id="{{ item.academic_year_level_id }}" data-legacy-level-id="{{ item.academic_year_level.legacy_level_id }}" data-legacy-id="{{ item.legacy_subject_id }}">{{ item.name }}</option>{% endfor %}</select><small data-subject-hint></small></label>
+          <label>Waqtiga kama dambaysta ah <span class="tra-optional">Ikhtiyaari</span><input type="datetime-local" name="deadline_at"><small>Meesha bannaan uga tag haddii aan waqti kama dambays ah jirin.</small></label>
+          <label>Tirada gudbinnada la oggol yahay<input type="number" name="max_submissions" min="1" max="10" value="1" required><small>Dib-u-furiddu waxay oggolaanaysaa gudbin dheeraad ah.</small></label>
         </div>
       </template>
-      <div class="tra-form-action"><button type="button" class="tra-add-scope" id="tra-add-scope"><i class="fa-solid fa-layer-group"></i> Add another scope</button><button type="button" class="tra-cancel-edit" id="tra-cancel-edit" hidden><i class="fa-solid fa-xmark"></i> Cancel edit</button><button type="submit" id="tra-save-assignment"><i class="fa-solid fa-floppy-disk"></i> Save assignments</button></div>
+      <div class="tra-form-action"><button type="button" class="tra-add-scope" id="tra-add-scope"><i class="fa-solid fa-layer-group"></i> Ku dar xilsaaris kale</button><button type="button" class="tra-cancel-edit" id="tra-cancel-edit" hidden><i class="fa-solid fa-xmark"></i> Ka noqo wax-ka-beddelka</button><button type="submit" id="tra-save-assignment"><i class="fa-solid fa-floppy-disk"></i> Kaydi xilsaarisyada</button></div>
     </form>
   </section>
 
@@ -116,8 +117,23 @@
           <div class="tra-assignment-main">
             <div class="tra-assignment-identity">
               <span class="tra-scope-label"><i class="fa-regular fa-calendar"></i> {{ assignment.academic_year.name }} <span>·</span> {{ assignment.exam.name }}</span>
-              {% set scope = assignment_scope_details[assignment.id] %}<h3>{{ scope.level_name }} {{ scope.class_name }} <span>/</span> {{ scope.subject_name }}</h3>
-              <p><i class="fa-solid fa-user-tie"></i> {{ assignment.teacher.full_name }} <span>·</span> <i class="fa-regular fa-clock"></i> {{ deadline_labels[assignment.id].strftime('%b %d, %Y · %I:%M %p') ~ ' EAT' if assignment.deadline_at else 'No deadline' }} <span>·</span> Max {{ assignment.max_submissions }} attempt{{ '' if assignment.max_submissions == 1 else 's' }}</p>
+              {% set scope = assignment_scope_details[assignment.id] %}
+              <div class="tra-scope-path" aria-label="Heerka, fasalka iyo maaddada">
+                <span class="tra-scope-item tra-scope-level"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><span><small>Heerka</small><strong dir="auto">{{ scope.level_name }}</strong></span></span>
+                <span class="tra-scope-item tra-scope-class"><i class="fa-solid fa-users" aria-hidden="true"></i><span><small>Fasalka</small><strong dir="auto">{{ scope.class_name }}</strong></span></span>
+                <span class="tra-scope-item tra-scope-subject"><i class="fa-solid fa-book-open" aria-hidden="true"></i><span><small>Maaddada</small><strong dir="auto">{{ scope.subject_name }}</strong></span></span>
+              </div>
+              <div class="tra-teacher-meta">
+                {% if assignment.teacher.photo_path %}<img class="tra-teacher-avatar" src="{{ asset_url(assignment.teacher.photo_path) }}" alt="Sawirka {{ assignment.teacher.full_name }}" loading="lazy" decoding="async">{% else %}<span class="tra-teacher-avatar tra-teacher-avatar--empty" aria-label="Sawir lama diiwaangelin"><i class="fa-solid fa-user-tie" aria-hidden="true"></i></span>{% endif %}
+                <div class="tra-teacher-details">
+                  <span class="tra-teacher-label">Macallinka</span>
+                  <strong class="tra-teacher-name">{{ assignment.teacher.full_name }}</strong>
+                  <div class="tra-teacher-facts">
+                    <span class="tra-teacher-fact"><i class="fa-regular fa-clock" aria-hidden="true"></i>{{ deadline_labels[assignment.id].strftime('%b %d, %Y · %I:%M %p') ~ ' EAT' if assignment.deadline_at else 'No deadline' }}</span>
+                    <span class="tra-teacher-fact tra-teacher-attempts"><i class="fa-solid fa-arrow-rotate-right" aria-hidden="true"></i>Max {{ assignment.max_submissions }} attempt{{ '' if assignment.max_submissions == 1 else 's' }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
             {% set progress = assignment_progress.get(assignment.id, {}) %}{% set partially_approved = submission and submission.status == 'draft' and progress.get('approved', 0) > 0 %}
             <div class="tra-badges"><span class="tra-status {{ 'deleted' if assignment.deleted_at else ('active' if assignment.is_active else 'inactive') }}">{{ 'La tirtiray' if assignment.deleted_at else ('Active' if assignment.is_active else 'Paused') }}</span><span class="tra-status {{ 'partial' if partially_approved else (submission.status if submission else 'not-started') }}">{{ 'Partially approved' if partially_approved else (submission.status|replace('_', ' ')|title if submission else 'Not started') }}</span></div>
@@ -162,6 +178,7 @@
             {% if assignment.deleted_at %}
               <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><button name="action" value="restore" class="tra-restore-assignment"><i class="fa-solid fa-trash-arrow-up"></i> Dib u soo celi</button></form>
             {% else %}
+              <a class="tra-print-trigger" href="{{ url_for('admin_teachers.print_result_entry_assignment', assignment_id=assignment.id) }}" target="_blank" rel="noopener" title="Daabac xaashida dhibcaha ee fasalkan"><i class="fa-solid fa-print" aria-hidden="true"></i> Daabac</a>
               {% if scope.editable %}<button type="button" class="tra-edit-trigger" data-assignment-id="{{ assignment.id }}" data-teacher-id="{{ assignment.teacher_id }}" data-year-id="{{ assignment.academic_year_id }}" data-level-id="{{ scope.academic_year_level_id }}" data-class-id="{{ scope.academic_year_class_id }}" data-subject-id="{{ scope.academic_year_subject_id }}" data-exam-id="{{ assignment.exam_id }}" data-deadline="{{ deadline_labels[assignment.id].strftime('%Y-%m-%dT%H:%M') if assignment.deadline_at else '' }}" data-max-submissions="{{ assignment.max_submissions }}" data-has-submission="{{ 'true' if submission else 'false' }}"><i class="fa-solid fa-pen-to-square"></i> Edit assignment</button>{% endif %}
               <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><button name="action" value="toggle" class="quiet"><i class="fa-solid fa-{{ 'pause' if assignment.is_active else 'play' }}"></i> {{ 'Pause assignment' if assignment.is_active else 'Activate assignment' }}</button></form>
               <button type="button" class="tra-delete-trigger" data-assignment-id="{{ assignment.id }}" data-assignment-label="{{ scope.level_name }} · {{ scope.class_name }} · {{ scope.subject_name }} · {{ assignment.teacher.full_name }}"><i class="fa-solid fa-trash-can"></i> Tirtir</button>
@@ -286,8 +303,8 @@
     const visibleOptions = subjectsReady ? cached.options.filter(predicate) : [];
     const placeholder = cached.placeholder.cloneNode(true);
     placeholder.textContent = !subjectsReady
-      ? 'Select year and level first'
-      : visibleOptions.length ? 'Select subject' : 'No subjects available for this year and level';
+      ? 'Marka hore xulo sannad-dugsiyeedka iyo heerka'
+      : visibleOptions.length ? 'Xulo maaddo' : 'Maaddo lagama helin sannad-dugsiyeedkan iyo heerkan';
     select.replaceChildren(placeholder, ...visibleOptions.map(option => option.cloneNode(true)));
     select.disabled = !subjectsReady || visibleOptions.length === 0;
     select.value = visibleOptions.some(option => option.value === selectedValue) ? selectedValue : '';
@@ -295,12 +312,12 @@
     const hint = select.closest('label')?.querySelector('[data-subject-hint]');
     if (hint) {
       hint.textContent = !subjectsReady
-        ? 'Choose the academic year and level to load matching subjects.'
+        ? ''
         : visibleOptions.length
           ? (scopeReady
-            ? 'Subjects already assigned to this exact class and exam are excluded.'
-            : 'Choose a class and exam to check which subjects remain available for that scope.')
-          : 'No exam subjects are configured for this year and level.';
+            ? 'Maaddooyinka hore loogu qoondeeyey fasalkan iyo imtixaankan lama soo bandhigayo.'
+            : 'Xulo fasal iyo imtixaan si loo hubiyo maaddooyinka u bannaan xilsaaristan.')
+          : 'Sannad-dugsiyeedkan iyo heerkan maaddooyin imtixaan laguma diiwaangelin.';
     }
   };
 
@@ -374,15 +391,15 @@
     const assignmentId = form.querySelector('[name="assignment_id"]');
     action.value = enabled ? 'update' : 'create';
     if (!enabled) assignmentId.value = '';
-    formTitle.textContent = enabled ? 'Edit result assignment' : 'Assign a result sheet';
+    formTitle.textContent = enabled ? 'Wax ka beddel xilsaarista' : 'Xilsaar xaashida natiijada';
     formDescription.textContent = enabled
-      ? 'Update the selected assignment. Existing submissions keep their current teacher and scope.'
-      : 'Assignments use the active academic-year, level, class, subject and exam records.';
+      ? 'Wax ka beddel xilsaarista la doortay. Gudbinnadii hore waxay sii haysanayaan macallinkooda iyo xogtooda xilsaarista.'
+      : 'Xilsaaristu waxay ku salaysan tahay diiwaannada firfircoon ee sannad-dugsiyeedka, heerka, fasalka, maaddada iyo imtixaanka.';
     addScope.hidden = enabled;
     cancelEdit.hidden = !enabled;
     saveAssignment.innerHTML = enabled
-      ? '<i class="fa-solid fa-floppy-disk"></i> Save changes'
-      : '<i class="fa-solid fa-floppy-disk"></i> Save assignments';
+      ? '<i class="fa-solid fa-floppy-disk"></i> Kaydi isbeddellada'
+      : '<i class="fa-solid fa-floppy-disk"></i> Kaydi xilsaarisyada';
   };
 
   document.addEventListener('click', (event) => {
@@ -414,8 +431,8 @@
       row.querySelector('[name="max_submissions"]').value = edit.dataset.maxSubmissions;
       setEditMode(true);
       formDescription.textContent = edit.dataset.hasSubmission === 'true'
-        ? 'A submission exists. You can change the deadline and allowed submissions; the teacher and assignment scope remain protected.'
-        : 'Update the teacher, scope, deadline or allowed submissions for this assignment.';
+        ? 'Xilsaaristani hore ayay u leedahay gudbin. Waxaad beddeli kartaa waqtiga kama dambaysta ah iyo tirada gudbinnada la oggol yahay; macallinka iyo xogta xilsaaristu isma beddelayaan.'
+        : 'Wax ka beddel macallinka, xilsaarista, waqtiga kama dambaysta ah ama tirada gudbinnada la oggol yahay.';
       updateRows();
       form.scrollIntoView({ behavior: 'smooth', block: 'start' });
       form.querySelector('[name="teacher_id"]').focus({ preventScroll: true });

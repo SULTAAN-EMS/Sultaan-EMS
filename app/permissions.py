@@ -113,6 +113,7 @@ ENDPOINT_PERMISSIONS = {
     "admin_advanced_results.export_excel": ("advanced_results", "export"),
     "admin_teachers.dashboard": "teachers",
     "admin_teachers.result_entry_setup": ("teachers", "results"),
+    "admin_teachers.print_result_entry_assignment": ("teachers", "results"),
     "admin_teachers.result_entry_history": ("teachers", "results"),
     "admin_teachers.export_result_entry_history": ("teachers", "results"),
     "admin_teachers.teacher_list": "teachers",

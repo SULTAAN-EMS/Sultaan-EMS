@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="so">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Xaashida dhibcaha · {{ year_class.name }} · {{ assignment.academic_year.name }}</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <style>
+    *{box-sizing:border-box}
+    :root{font-family:Arial,"Segoe UI",sans-serif;color:#182b42;background:#edf2f7;font-synthesis:none;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{margin:0;padding:18px 12px 30px}
+    .toolbar{display:flex;justify-content:flex-end;gap:8px;width:min(210mm,100%);margin:0 auto 12px}
+    .toolbar a,.toolbar button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:8px 14px;border:1px solid #d3e0e9;border-radius:6px;background:#fff;color:#36516b;text-decoration:none;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+    .toolbar .print-now{border-color:#087f70;background:#087f70;color:#fff}
+    .sheet{width:min(210mm,100%);min-height:297mm;margin:0 auto 16px;padding:6mm;background:#fff;border:1px solid #dce5ed;box-shadow:0 12px 32px rgba(23,54,84,.12);overflow:hidden}
+    .sheet-content{display:flex;min-height:285mm;flex-direction:column}
+    .masthead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 0 2mm;border-bottom:1px solid #dce5ed}
+    .brand{display:flex;align-items:center;gap:8px;min-width:0}
+    .school-logo{display:grid;width:13mm;height:13mm;flex:none;place-items:center;overflow:hidden;border:1px solid #d9e4ec;border-radius:5px;background:#f8fbfd;color:#087f70;font-size:17px;font-weight:900}
+    .school-logo img{width:100%;height:100%;padding:1mm;object-fit:contain}
+    .school-names{display:grid;gap:2px;min-width:0}
+    .school-names strong{color:#173c59;font-size:11pt;line-height:1.15;overflow-wrap:anywhere}
+    .document-title{text-align:right;flex:none}
+    .document-title small{display:block;margin-bottom:2px;color:#087f70;font-size:6.5pt;font-weight:800}
+    .document-title h1{margin:0;color:#183b58;font-size:10pt;line-height:1.15}
+    .document-title p{margin:3px 0 0;color:#627589;font-size:7pt}
+    .scope-meta{display:grid;grid-template-columns:1.05fr 1.35fr .8fr .8fr;gap:4px;margin:2mm 0}
+    .meta-item{min-width:0;padding:4px 6px;border:1px solid #e1e9ef;border-left:2px solid #2887a0;border-radius:4px;background:#f7fafc}
+    .meta-item:nth-child(2){border-left-color:#8b68ba}.meta-item:nth-child(3){border-left-color:#d29a39}.meta-item:nth-child(4){border-left-color:#208766}
+    .meta-item span{display:flex;align-items:center;gap:4px;margin-bottom:2px;color:#6a7f90;font-size:5.7pt;font-weight:800;text-transform:uppercase}
+    .meta-item span i{flex:none;color:#2887a0;font-size:6.3pt}
+    .meta-item:nth-child(2) span i{color:#8b68ba}.meta-item:nth-child(3) span i{color:#d29a39}.meta-item:nth-child(4) span i{color:#208766}
+    .meta-item strong{display:block;color:#203b55;font-size:7.4pt;line-height:1.15;overflow-wrap:anywhere}
+    .roster-stats{display:grid;grid-template-columns:repeat(3,minmax(0,.72fr)) minmax(0,1.84fr);gap:5px;margin:2mm 0 1.5mm}
+    .stat-card{display:flex;align-items:center;gap:6px;min-width:0;min-height:13mm;padding:4px 6px;border:1px solid var(--stat-border);border-radius:5px;background:var(--stat-bg)}
+    .stat-total{--stat-color:#2875c7;--stat-border:#cfe1f7;--stat-bg:#f1f7fe}
+    .stat-boys{--stat-color:#14836f;--stat-border:#c9e8dd;--stat-bg:#eff9f5}
+    .stat-girls{--stat-color:#bd5a75;--stat-border:#f1d5de;--stat-bg:#fff4f7}
+    .stat-teacher{--stat-color:#a8751c;--stat-border:#eedfb9;--stat-bg:#fffbef}
+    .stat-icon,.stat-avatar{display:grid;width:8mm;height:8mm;flex:none;place-items:center;overflow:hidden;border-radius:50%;background:var(--stat-color);color:#fff;font-size:9px}
+    .stat-avatar{width:10mm;height:10mm;background:#e6f2f0;color:#14836f}
+    .stat-avatar img{width:100%;height:100%;object-fit:cover}
+    .stat-copy{display:grid;gap:1px;min-width:0}
+    .stat-copy small{color:#647789;font-size:5.5pt;font-weight:800;line-height:1.1}
+    .stat-copy strong{color:#20394f;font-size:10pt;line-height:1.05;overflow-wrap:anywhere}
+    .stat-teacher .stat-copy strong{color:#604a20;font-size:7.1pt;line-height:1.05}
+    .stat-copy em{color:#728291;font-size:5.6pt;font-style:normal;line-height:1.05;overflow-wrap:anywhere}
+    .roster{min-width:0;flex:1}
+    table{width:100%;border-collapse:collapse;table-layout:fixed}
+    thead{display:table-header-group}
+    th{height:9mm;padding:3px 4px;border:1px solid #cbd9e2;background:#eaf2f6;color:#294a63;font-size:7pt;font-weight:800;line-height:1.1;text-align:left;vertical-align:middle}
+    th.subject-head{background:#e8f4f1;color:#176855;font-size:7.2pt;text-align:center;line-height:1.1;overflow-wrap:anywhere}
+    th.subject-head small{display:block;margin-top:2px;font-size:6pt;font-weight:700}
+    td{height:14mm;padding:2px 3px;border:1px solid #d5e0e7;background:#fff;color:#233b50;font-size:7pt;line-height:1.12;vertical-align:middle}
+    tbody tr:nth-child(even) td{background:#fafcfd}
+    th.subject-head.subject-color-0{background:#e2edff;color:#245b9b;border-color:#c5d9f3}
+    tbody td.subject-cell.subject-color-0{background:#f3f7ff;border-color:#d9e4f3}
+    th.subject-head.subject-color-1{background:#dff3e9;color:#236b4b;border-color:#c5e4d3}
+    tbody td.subject-cell.subject-color-1{background:#f2faf5;border-color:#d6eadf}
+    th.subject-head.subject-color-2{background:#eee5ff;color:#684b9a;border-color:#d9c9f4}
+    tbody td.subject-cell.subject-color-2{background:#f8f4ff;border-color:#e5daf6}
+    th.subject-head.subject-color-3{background:#ffebd6;color:#92571e;border-color:#f1d6b5}
+    tbody td.subject-cell.subject-color-3{background:#fff8ef;border-color:#f1e2cd}
+    th.subject-head.subject-color-4{background:#ffe3eb;color:#934c61;border-color:#f0cbd6}
+    tbody td.subject-cell.subject-color-4{background:#fff5f7;border-color:#f0dce2}
+    th.subject-head.subject-color-5{background:#dff3f5;color:#236b75;border-color:#c5e3e7}
+    tbody td.subject-cell.subject-color-5{background:#f1fafb;border-color:#d6e9eb}
+    th.subject-head.subject-color-6{background:#fff2c9;color:#806318;border-color:#efdfa9}
+    tbody td.subject-cell.subject-color-6{background:#fffbeb;border-color:#eee5c8}
+    th.subject-head.subject-color-7{background:#ffe5dc;color:#985341;border-color:#f0cfc4}
+    tbody td.subject-cell.subject-color-7{background:#fff6f2;border-color:#efdfd8}
+    th.subject-head.subject-color-8{background:#e3e9ff;color:#4b5594;border-color:#cdd5f2}
+    tbody td.subject-cell.subject-color-8{background:#f4f5ff;border-color:#dce0f2}
+    th.subject-head.subject-color-9{background:#dff2ef;color:#276c61;border-color:#c5e2dc}
+    tbody td.subject-cell.subject-color-9{background:#f1f9f7;border-color:#d5e8e3}
+    th.subject-head.subject-color-10{background:#f7e7d8;color:#845222;border-color:#e9d3bd}
+    tbody td.subject-cell.subject-color-10{background:#fcf7f1;border-color:#eadfd2}
+    th.subject-head.subject-color-11{background:#f5e3f2;color:#814c78;border-color:#e7cde1}
+    tbody td.subject-cell.subject-color-11{background:#fbf4fa;border-color:#eadce8}
+    th.subject-head.subject-color-12{background:#e7edf1;color:#4b6272;border-color:#d1dce3}
+    tbody td.subject-cell.subject-color-12{background:#f5f8fa;border-color:#dfe6eb}
+    .col-number{width:4%}.col-id-photo{width:13%}.col-student{width:48%}
+    .number{text-align:center;color:#708291;font-size:6.7pt;font-weight:750}
+    .identity-cell{text-align:center}
+    .student-id{display:inline-flex;align-items:center;justify-content:center;gap:3px;max-width:100%;margin-top:1.2mm;padding:1px 4px 1px 2px;border:1px solid #efdfb6;border-radius:999px;background:#fff9e9;color:#76551b;font-size:6.4pt;font-weight:800;line-height:1.1;text-align:center;white-space:nowrap}
+    .student-id-icon{display:grid;width:4mm;height:4mm;flex:none;place-items:center;border-radius:50%;background:#f7e8bf;color:#9a6910;font-size:5pt}
+    .student-photo{display:grid;width:10.5mm;height:10.5mm;margin:0 auto;place-items:center;overflow:hidden;border:1px solid #d0dde5;border-radius:50%;background:#eef3f7;color:#8295a3;font-size:9px}
+    .student-photo img{width:100%;height:100%;object-fit:cover}
+    .student-name{display:block;color:#1e3448;font-family:"HP Simplified",Arial,sans-serif;font-size:10pt;font-weight:800;line-height:1.12;overflow-wrap:anywhere;word-break:normal}
+    .mother-name{display:block;margin-top:3px;color:#536a7d;font-family:"HP Simplified",Arial,sans-serif;font-size:7.8pt;line-height:1.1;overflow-wrap:anywhere;word-break:normal}
+    .mother-name small{color:#7c8b99;font-size:6.5pt;font-weight:700}
+    .score-cell{position:relative}
+    .score-cell:after{position:absolute;right:4px;bottom:2mm;left:4px;height:1px;border-bottom:1px dotted #c9d6df;content:""}
+    .empty-roster{text-align:center;color:#718394;font-style:italic}
+    .signoff{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:2mm;padding-top:1.5mm;border-top:1px solid #dce5ed}
+    .signoff-card{min-width:0;min-height:16mm;padding:1.5mm 2mm;border:1px solid var(--sign-border);border-top:2px solid var(--sign-accent);border-radius:4px;background:var(--sign-bg)}
+    .signoff-teacher{--sign-accent:#2875a8;--sign-border:#d4e3ef;--sign-bg:#f5f9fd;--sign-icon-bg:#e2eff9;--sign-icon:#2875a8}
+    .signoff-office{--sign-accent:#13836f;--sign-border:#d0e8df;--sign-bg:#f3faf7;--sign-icon-bg:#def1e9;--sign-icon:#13836f}
+    .signoff-title{display:flex;align-items:center;gap:5px;min-width:0}
+    .signoff-icon{display:grid;width:5mm;height:5mm;flex:none;place-items:center;border-radius:50%;background:var(--sign-icon-bg);color:var(--sign-icon);font-size:7pt}
+    .signoff-title-copy{display:grid;gap:1px;min-width:0}
+    .signoff-title-copy strong{color:#29455b;font-size:6.3pt;line-height:1.1}
+    .signoff-title-copy small{color:#647b8c;font-size:5.6pt;line-height:1.1;overflow-wrap:anywhere}
+    .signoff-fields{display:grid;grid-template-columns:1.35fr .8fr;gap:8px;margin:2mm 1px 0}
+    .signoff-fields span{display:flex;align-items:flex-end;gap:3px;min-width:0;padding-bottom:1px;border-bottom:1px dotted #9aaebb;color:#536a7b;font-size:5.2pt;line-height:1.1;white-space:nowrap}
+    .signoff-fields b{display:block;flex:1;min-width:8px}
+    .sheet-footer{display:flex;justify-content:space-between;gap:10px;margin-top:1.5mm;padding-top:1mm;border-top:1px solid #dce5ed;color:#718394;font-size:5.8pt}
+    .sheet-footer strong{color:#486276}
+    @media(max-width:760px){
+      body{padding:10px 6px 20px}.sheet{min-height:0;padding:14px}.sheet-content{min-height:0}
+      .masthead{align-items:flex-start}.school-logo{width:38px;height:38px}.school-names strong{font-size:10px}.school-names span{font-size:8px}
+      .document-title h1{font-size:9px}.document-title p{font-size:8px}.scope-meta{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .roster-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.stat-teacher{grid-column:1/-1}.stat-card{min-height:48px;padding:6px}.stat-icon{width:30px;height:30px}.stat-avatar{width:34px;height:34px}.roster{overflow-x:auto}
+      table{min-width:0}.student-name{font-size:10.2pt}.mother-name{font-size:8pt}.toolbar{justify-content:stretch}.toolbar>*{flex:1}.signoff{grid-template-columns:1fr}.signoff-card{min-height:58px;padding:8px}.signoff-icon{width:28px;height:28px}.signoff-title-copy strong{font-size:11px}.signoff-title-copy small{font-size:10px}.signoff-fields{margin-top:10px}.signoff-fields span{font-size:9px}
+    }
+    @page{size:A4 portrait;margin:0}
+    @media print{
+      html,body{width:210mm;margin:0;padding:0;background:#fff}
+      .toolbar{display:none!important}
+      .sheet{width:210mm;height:297mm;min-height:297mm;margin:0;padding:6mm;border:0;box-shadow:none;overflow:hidden;break-after:page;page-break-after:always}
+      .sheet:last-child{break-after:auto;page-break-after:auto}
+      .sheet-content{height:285mm;min-height:285mm}
+      .signoff{grid-template-columns:1fr 1fr}
+      table{min-width:0}
+      tr{break-inside:avoid;page-break-inside:avoid}
+      img{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    }
+  </style>
+</head>
+<body>
+  <nav class="toolbar" aria-label="Tallaabooyinka warqadda">
+    <button class="print-now" type="button" onclick="window.print()"><i class="fa-solid fa-print" aria-hidden="true"></i> Daabac / PDF</button>
+    <a href="{{ url_for('admin_teachers.result_entry_setup') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Dib-u-noqo</a>
+  </nav>
+  {% set school_logo = ui_settings.logo_path or ui_settings.admin_logo_path %}
+  {% for page in pages %}
+    <main class="sheet">
+      <div class="sheet-content">
+        <header class="masthead">
+          <div class="brand">
+            <span class="school-logo">{% if school_logo %}<img src="{{ asset_url(school_logo) }}" alt="Logo-ga dugsiga">{% else %}<i class="fa-solid fa-school" aria-hidden="true"></i>{% endif %}</span>
+            <div class="school-names">
+              <strong lang="so">{{ ui_settings.school_name_so or ui_settings.school_name or 'Dugsiyada Caalamiga ah ee Taysiir' }}</strong>
+            </div>
+          </div>
+          <div class="document-title">
+            <small>WARQADDA RASMIGA AH EE DHIBCAHA</small>
+            <h1>LIISKA DIIWAANGELINTA NATIIJADA</h1>
+            <p><i class="fa-regular fa-file-lines" aria-hidden="true"></i> Bogga {{ page.page_number }} / {{ page.total_pages }}</p>
+          </div>
+        </header>
+
+        <section class="scope-meta" aria-label="Xogta imtixaanka">
+          <div class="meta-item"><span><i class="fa-solid fa-calendar-days" aria-hidden="true"></i> Sannad-dugsiyeedka</span><strong>{{ assignment.academic_year.name }}</strong></div>
+          <div class="meta-item"><span><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Nooca imtixaanka</span><strong>{{ assignment.exam.name }}</strong></div>
+          <div class="meta-item"><span><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Heerka</span><strong>{{ year_level.name }}</strong></div>
+          <div class="meta-item"><span><i class="fa-solid fa-door-open" aria-hidden="true"></i> Fasalka</span><strong>{{ year_class.name }}</strong></div>
+        </section>
+
+        <section class="roster-stats" aria-label="Tirokoobka fasalka iyo macallinka">
+          <div class="stat-card stat-total"><span class="stat-icon"><i class="fa-solid fa-users" aria-hidden="true"></i></span><span class="stat-copy"><small>Ardeyda guud</small><strong>{{ student_count }}</strong></span></div>
+          <div class="stat-card stat-boys"><span class="stat-icon"><i class="fa-solid fa-mars" aria-hidden="true"></i></span><span class="stat-copy"><small>Wiilasha</small><strong>{{ male_count }}</strong></span></div>
+          <div class="stat-card stat-girls"><span class="stat-icon"><i class="fa-solid fa-venus" aria-hidden="true"></i></span><span class="stat-copy"><small>Gabdhaha</small><strong>{{ female_count }}</strong></span></div>
+          <div class="stat-card stat-teacher"><span class="stat-avatar">{% if assignment.teacher.photo_path %}<img src="{{ asset_url(assignment.teacher.photo_path) }}" alt="Sawirka macallinka">{% else %}<i class="fa-solid fa-user-tie" aria-hidden="true"></i>{% endif %}</span><span class="stat-copy"><small>Macallinka</small><strong>{{ assignment.teacher.full_name }}</strong><em><i class="fa-solid fa-id-card" aria-hidden="true"></i> {{ assignment.teacher.teacher_code or assignment.teacher.teacher_id }}</em></span></div>
+        </section>
+
+        <div class="roster">
+          <table aria-label="Liiska ardeyda iyo meelaha dhibcaha lagu qoro">
+            <colgroup>
+              <col class="col-number"><col class="col-id-photo"><col class="col-student">
+              {% for subject in page.subjects %}<col style="width:{{ 35 / (page.subjects|length) }}%">{% endfor %}
+            </colgroup>
+            <thead><tr>
+              <th scope="col" class="number">#</th>
+              <th scope="col">Aqoonsi / sawir</th>
+              <th scope="col">Ardeyga / hooyada</th>
+              {% for subject in page.subjects %}<th scope="col" class="subject-head subject-color-{{ loop.index0 % 13 }}" dir="auto"><span dir="auto">{{ subject.name }}</span><small>Dhibcaha / {{ subject.max_score }}</small></th>{% endfor %}
+            </tr></thead>
+            <tbody>
+              {% for student in page.students %}
+                <tr>
+                  <td class="number">{{ page.student_range[0] + loop.index0 }}</td>
+                  <td class="identity-cell"><span class="student-photo">{% if student.photo_path %}<img src="{{ asset_url(student.photo_path) }}" alt="Sawirka {{ student.full_name }}">{% else %}<i class="fa-solid fa-user" aria-hidden="true"></i>{% endif %}</span><span class="student-id"><span class="student-id-icon"><i class="fa-solid fa-id-card" aria-hidden="true"></i></span>{{ student.student_code }}</span></td>
+                  <td><span class="student-name" dir="auto">{{ student.full_name }}</span><span class="mother-name" dir="auto"><small>Hooyo:</small> {{ student.mother_name or '—' }}</span></td>
+                  {% for subject in page.subjects %}<td class="score-cell subject-cell subject-color-{{ loop.index0 % 13 }}" aria-label="Meel bannaan oo dhibcaha {{ subject.name }} lagu qoro"></td>{% endfor %}
+                </tr>
+              {% else %}
+                <tr><td class="empty-roster" colspan="{{ 3 + page.subjects|length }}">Ardey fasalkan ku diiwaangashan lama helin.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% if page.page_number == page.total_pages %}
+          <section class="signoff" aria-label="Xaqiijinta iyo saxeexyada">
+            <div class="signoff-card signoff-teacher">
+              <div class="signoff-title">
+                <span class="signoff-icon"><i class="fa-solid fa-user-check" aria-hidden="true"></i></span>
+                <span class="signoff-title-copy"><strong>Xaqiijinta macallinka</strong><small>{{ assignment.teacher.full_name }}</small></span>
+              </div>
+              <div class="signoff-fields"><span>Saxeexa<b></b></span><span>Taariikh<b></b></span></div>
+            </div>
+            <div class="signoff-card signoff-office">
+              <div class="signoff-title">
+                <span class="signoff-icon"><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i></span>
+                <span class="signoff-title-copy"><strong>Hubinta xafiiska imtixaannada</strong><small>Hubin iyo diiwaangelin</small></span>
+              </div>
+              <div class="signoff-fields"><span>Saxeexa<b></b></span><span>Taariikh<b></b></span></div>
+            </div>
+          </section>
+        {% endif %}
+
+        <footer class="sheet-footer">
+          <span><strong>{{ assignment.academic_year.name }} · {{ assignment.exam.name }} · {{ year_class.name }}</strong></span>
+          <span>La diyaariyey {{ printed_date }} · {{ printed_time }} EAT</span>
+        </footer>
+      </div>
+    </main>
+  {% endfor %}
+</body>
+</html>

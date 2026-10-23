@@ -963,6 +963,13 @@ class TestTeacherResultEntry(unittest.TestCase):
             "subject_id": self.subject.id,
         }])
         self.assertIn("reservedBySavedAssignment".encode(), response.data)
+        self.assertIn('class="tra-scope-path"'.encode(), response.data)
+        self.assertIn('class="tra-scope-item tra-scope-level"'.encode(), response.data)
+        self.assertIn('class="tra-scope-item tra-scope-class"'.encode(), response.data)
+        self.assertIn('class="tra-scope-item tra-scope-subject"'.encode(), response.data)
+        self.assertIn("Heerka".encode(), response.data)
+        self.assertIn("Fasalka".encode(), response.data)
+        self.assertIn("Maaddada".encode(), response.data)
 
     def test_admin_new_scope_inherits_last_selected_deadline(self):
         self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
@@ -991,7 +998,7 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(filter_order, sorted(filter_order))
         self.assertIn("const subjectsReady = Boolean(yearId && levelId);", body)
-        self.assertIn("Choose a class and exam to check which subjects remain available for that scope.", body)
+        self.assertIn("Xulo fasal iyo imtixaan si loo hubiyo maaddooyinka u bannaan xilsaaristan.", body)
 
     def test_admin_scope_picker_does_not_guess_level_when_year_has_multiple_levels(self):
         another_level = AcademicLevel(name="Middle", sort_order=2, is_active=True)
@@ -1301,6 +1308,144 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn(f'value="{linked_teacher.id}">{linked_teacher.full_name}'.encode(), setup.data)
         self.assertNotIn(b"new-teacher-login", setup.data)
 
+    def test_admin_can_print_grouped_assignment_roster_with_portal_order(self):
+        self.students[0].mother_name = "Mother 01"
+        self.students[0].gender = "Male"
+        self.students[1].gender = "Female"
+        for index in range(2, 5):
+            subject = Subject(
+                name=f"Subject {index}", academic_level=self.level,
+                max_score=100, is_active=True,
+            )
+            db.session.add(subject)
+            db.session.flush()
+            db.session.add(AcademicYearSubject(
+                academic_year=self.year,
+                academic_year_level=self.year_level,
+                legacy_subject=subject,
+                name=subject.name,
+                subject_kind="exam",
+                max_score=100,
+                sort_order=index,
+            ))
+            db.session.add(TeacherResultAssignment(
+                teacher=self.teacher,
+                academic_year=self.year,
+                exam=self.exam,
+                school_class=self.school_class,
+                subject=subject,
+                max_submissions=1,
+            ))
+
+        for index in range(3, 31):
+            student = Student(
+                student_code=f"ST-{index}",
+                full_name=f"Student {index:02d}",
+                mother_name=f"Mother {index:02d}",
+                gender="Male" if index % 2 else "Female",
+                is_active=True,
+            )
+            db.session.add(student)
+            db.session.flush()
+            db.session.add(StudentEnrollment(
+                student=student,
+                academic_year=self.year,
+                academic_year_level=self.year_level,
+                academic_year_class=self.year_class,
+                status="active",
+                academic_outcome="pending",
+                enrollment_source="manual",
+            ))
+        db.session.commit()
+
+        self.client.post("/admin/login", data={
+            "username": "result-admin", "password": "AdminPass123",
+        })
+        setup = self.client.get("/admin/teachers/result-entry")
+        self.assertEqual(setup.status_code, 200)
+        self.assertIn(
+            f'href="/admin/teachers/result-entry/{self.assignment.id}/print"'.encode(),
+            setup.data,
+        )
+
+        response = self.client.get(
+            f"/admin/teachers/result-entry/{self.assignment.id}/print"
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertEqual(body.count('<main class="sheet">'), 4)
+        self.assertIn("Mathematics", body)
+        self.assertIn("Subject 4", body)
+        self.assertIn("WARQADDA RASMIGA AH EE DHIBCAHA", body)
+        self.assertNotIn("XAASHIDA RASMIGA AH EE DHIBCAHA", body)
+        self.assertIn("@page{size:A4 portrait;margin:0}", body)
+        self.assertIn('<strong lang="so">Dugsiyada Caalamiga ah ee Taysiir</strong>', body)
+        self.assertNotIn("مدارس تيسير العالمية", body)
+        self.assertNotIn("Taysiir International Schools", body)
+        self.assertIn("Aqoonsi / sawir", body)
+        self.assertIn("Ardeyga / hooyada", body)
+        self.assertNotIn("subject-strip", body)
+        self.assertIn("fa-calendar-days", body)
+        self.assertIn("fa-layer-group", body)
+        self.assertIn("fa-door-open", body)
+        self.assertIn(
+            'class="subject-head subject-color-0" dir="auto"><span dir="auto">Mathematics</span><small>Dhibcaha / 50</small>',
+            body,
+        )
+        self.assertIn("width:10.5mm;height:10.5mm", body)
+        self.assertIn(".col-student{width:48%}", body)
+        self.assertIn("font-size:10pt;font-weight:800", body)
+        self.assertIn("font-size:7pt;font-weight:800;line-height:1.1", body)
+        self.assertIn("font-size:7.8pt;line-height:1.1", body)
+        self.assertIn('font-family:"HP Simplified",Arial,sans-serif', body)
+        self.assertIn(".stat-teacher .stat-copy strong{color:#604a20;font-size:7.1pt;line-height:1.05}", body)
+        self.assertIn("Student 1", body)
+        self.assertIn("Mother 01", body)
+        self.assertNotIn("Ardeyda fasalka", body)
+        self.assertNotIn("Ardeyda 1–15", body)
+        self.assertIn('class="number">1</td>', body)
+        self.assertIn('class="number">15</td>', body)
+        self.assertIn('class="number">16</td>', body)
+        self.assertIn('class="number">30</td>', body)
+        self.assertIn("Ardeyda guud</small><strong>30", body)
+        self.assertIn("Wiilasha</small><strong>15", body)
+        self.assertIn("Gabdhaha</small><strong>15", body)
+        self.assertIn("fa-mars", body)
+        self.assertIn("fa-venus", body)
+        self.assertIn("grid-template-columns:repeat(3,minmax(0,.72fr)) minmax(0,1.84fr)", body)
+        self.assertRegex(
+            body,
+            r"La diyaariyey (Isniin|Talaado|Arbaco|Khamiis|Jumca|Sabti|Axad), "
+            r"(January|February|March|April|May|June|July|August|September|October|November|December) "
+            r"\d{1,2}, \d{4} · \d{2}:\d{2} (AM|PM) EAT",
+        )
+        self.assertIn("Macallinka</small><strong>Results Teacher", body)
+        self.assertEqual(body.count('class="signoff"'), 1)
+        self.assertIn("Xaqiijinta macallinka", body)
+        self.assertIn("Hubinta xafiiska imtixaannada", body)
+        self.assertEqual(len(re.findall(r'class="score-cell subject-cell subject-color-\d+"', body)), 120)
+        self.assertEqual(body.count('aria-label="Liiska ardeyda iyo meelaha dhibcaha lagu qoro"'), 4)
+        self.assertNotIn("student-columns", body)
+        self.assertLess(
+            body.index('<span class="student-photo">'),
+            body.index('<span class="student-id">'),
+        )
+        self.assertLess(body.index("Student 1"), body.index("Student 2"))
+        self.assertIn("window.print()", body)
+
+    def test_deleted_assignment_print_sheet_is_not_available(self):
+        self.assignment.deleted_at = datetime(2026, 10, 23, 18, 0)
+        db.session.commit()
+        self.client.post("/admin/login", data={
+            "username": "result-admin", "password": "AdminPass123",
+        })
+
+        response = self.client.get(
+            f"/admin/teachers/result-entry/{self.assignment.id}/print"
+        )
+
+        self.assertEqual(response.status_code, 404)
+
     def test_teacher_form_refuses_to_link_an_admin_login_as_a_teacher(self):
         self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
         response = self.client.post("/admin/teachers/new", data={
@@ -1369,8 +1514,8 @@ class TestTeacherResultEntry(unittest.TestCase):
 
         response = self.client.get("/admin/teachers/result-entry")
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Result Entry Control", response.data)
-        self.assertIn(b"All assignments", response.data)
+        self.assertIn("WAAXDA MAAMULKA SOO GUDBINTA NATIIJOOYINKA".encode(), response.data)
+        self.assertIn("Dhammaan xilsaarisyada".encode(), response.data)
         self.assertIn(b"Form 1", response.data)
         self.assertNotIn(b"Top Performance Snapshot", response.data)
 
