@@ -170,6 +170,8 @@ class TestTeacherResultEntry(unittest.TestCase):
                 self.assertIn('property="og:url" content="https://portal.example/teacher"', body)
                 self.assertIn('property="og:image" content="https://portal.example/static/images/teacher-portal-share-20261022-v2.jpg"', body)
                 self.assertIn('action="/teacher/login"', body)
+                self.assertNotIn("BOGGA MACALLINKA", body)
+                self.assertNotIn("tl-access-icon", body)
 
     def test_authenticated_teacher_share_url_still_opens_result_entry(self):
         self._teacher_login()

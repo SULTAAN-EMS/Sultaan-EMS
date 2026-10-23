@@ -93,10 +93,7 @@
 }
 .tl-access-inner { width: min(100%, 430px); margin: auto; }
 .tl-access-heading { margin-bottom: 30px; animation: tl-copy-enter .62s .14s ease both; }
-.tl-access-icon { display: grid; width: 46px; height: 46px; margin-bottom: 19px; place-items: center; color: #fff; background: linear-gradient(145deg, #1a9a7c, #087e75); border-radius: 9px; box-shadow: 0 9px 20px rgba(8, 126, 117, .2); }
-.tl-access-icon i { font-size: 17px; }
-.tl-access-label { color: var(--tl-teal); font-size: 10px; font-weight: 800; letter-spacing: .14em; }
-.tl-access-heading h2 { margin: 8px 0 7px; color: var(--tl-ink); font: 800 32px/1.2 Manrope, sans-serif; }
+.tl-access-heading h2 { margin: 0 0 7px; color: var(--tl-ink); font: 800 32px/1.2 Manrope, sans-serif; }
 .tl-access-heading p { margin: 0; color: var(--tl-muted); font-size: 14px; line-height: 1.55; }
 
 .tl-form { display: grid; gap: 19px; animation: tl-copy-enter .7s .2s ease both; }
@@ -203,7 +200,6 @@
   .tl-access { display: block; min-height: 0; padding: 32px 22px 25px; border: 0; border-radius: 0; }
   .tl-access-inner { width: min(100%, 450px); margin: 0 auto; }
   .tl-access-heading { margin-bottom: 24px; }
-  .tl-access-icon { width: 40px; height: 40px; margin-bottom: 14px; }
   .tl-access-heading h2 { font-size: 27px; }
   .tl-access-heading p { font-size: 13px; }
   .tl-form { gap: 16px; }
