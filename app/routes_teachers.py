@@ -871,7 +871,7 @@ def result_entry_setup():
     available_levels = [item for item in year_levels if item.academic_year_id == selected_year_id]
     selected_year_level_id = request.args.get("setup_level_id", type=int)
     if selected_year_level_id not in {item.id for item in available_levels}:
-        selected_year_level_id = available_levels[0].id if available_levels else None
+        selected_year_level_id = available_levels[0].id if len(available_levels) == 1 else None
     available_year_ids = {item.id for item in years}
     active_exam_ids = {item.id for item in exams}
     active_class_ids = {item.id for item in year_classes}

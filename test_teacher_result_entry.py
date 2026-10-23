@@ -148,6 +148,21 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(image_response.mimetype, "image/jpeg")
         self.assertGreater(len(image_response.data), 0)
 
+    def test_teacher_back_button_returns_to_login_with_username_only(self):
+        portal_response = self._teacher_login()
+
+        self.assertEqual(portal_response.status_code, 200)
+        self.assertIn(b'class="icon-btn teacher-back-login"', portal_response.data)
+        self.assertIn(b'aria-label="Dib-u-noqo, kuna noqo gelitaanka macallinka"', portal_response.data)
+
+        login_response = self.client.post("/teacher/logout", follow_redirects=True)
+        self.assertEqual(login_response.status_code, 200)
+        body = login_response.get_data(as_text=True)
+        self.assertIn('id="tl-username" name="username" type="text" value="result-teacher"', body)
+        password_input = re.search(r'<input id="tl-password"[^>]*>', body)
+        self.assertIsNotNone(password_input)
+        self.assertNotIn("value=", password_input.group(0))
+
     def test_result_entry_uses_gendered_student_position_label(self):
         self.students[0].gender = "Male"
         self.students[1].gender = "Female"
@@ -883,6 +898,39 @@ class TestTeacherResultEntry(unittest.TestCase):
             "subject_id": self.subject.id,
         }])
         self.assertIn("reservedBySavedAssignment".encode(), response.data)
+
+    def test_admin_scope_picker_orders_exam_before_subject_and_loads_subjects_by_year_level(self):
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        response = self.client.get("/admin/teachers/result-entry")
+        body = response.get_data(as_text=True)
+        scope_form = body[body.index('data-scope-row'):body.index('<template id="tra-scope-template">')]
+        filter_order = [scope_form.index(marker) for marker in (
+            "data-year", "data-level", "data-class", "data-exam", "data-subject",
+        )]
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(filter_order, sorted(filter_order))
+        self.assertIn("const subjectsReady = Boolean(yearId && levelId);", body)
+        self.assertIn("Choose a class and exam to check which subjects remain available for that scope.", body)
+
+    def test_admin_scope_picker_does_not_guess_level_when_year_has_multiple_levels(self):
+        another_level = AcademicLevel(name="Middle", sort_order=2, is_active=True)
+        db.session.add(another_level)
+        db.session.flush()
+        db.session.add(AcademicYearLevel(
+            academic_year=self.year, legacy_level=another_level, name="Middle",
+        ))
+        db.session.commit()
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        response = self.client.get("/admin/teachers/result-entry")
+        body = response.get_data(as_text=True)
+        level_select = re.search(r'<select name="academic_year_level_id" data-level required>(.*?)</select>', body)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(level_select)
+        self.assertNotRegex(level_select.group(1), r'<option[^>]*\sselected(?:\s|>)')
 
     def test_admin_can_save_multiple_teacher_scopes_across_levels_in_one_request(self):
         middle_level = AcademicLevel(name="Middle", sort_order=2, is_active=True)

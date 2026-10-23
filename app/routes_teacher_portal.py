@@ -244,11 +244,13 @@ def login():
     if current_user.is_authenticated and is_teacher_account():
         return redirect(safe_teacher_next_url(request.args.get("next")))
     if request.method == "POST":
+        session.pop("teacher_login_username", None)
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         user, teacher, error = authenticate_teacher_login(username, password)
         if error:
             flash(error, "danger")
+            return render_template("teacher/login.html", login_username=username)
         else:
             login_user(user)
             session.pop("admin_last_activity", None)
@@ -256,13 +258,16 @@ def login():
             record_teacher_login(teacher)
             db.session.commit()
             return redirect(safe_teacher_next_url(request.args.get("next")))
-    return render_template("teacher/login.html")
+    login_username = session.pop("teacher_login_username", "")
+    return render_template("teacher/login.html", login_username=login_username)
 
 
 @teacher_portal_bp.route("/logout", methods=["POST"])
 @teacher_login_required
 def logout():
     teacher = get_current_teacher()
+    if teacher and teacher.user:
+        session["teacher_login_username"] = teacher.user.username
     record_teacher_logout(teacher)
     db.session.commit()
     logout_user()

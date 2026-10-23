@@ -64,7 +64,7 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label class="tl-field" for="tl-username">
           <span>Magaca isticmaalaha</span>
-          <span class="tl-input-wrap"><i class="fa-regular fa-user" aria-hidden="true"></i><input id="tl-username" name="username" type="text" autocomplete="username" placeholder="Geli magaca isticmaalaha" required autofocus></span>
+          <span class="tl-input-wrap"><i class="fa-regular fa-user" aria-hidden="true"></i><input id="tl-username" name="username" type="text" value="{{ login_username or '' }}" autocomplete="username" placeholder="Geli magaca isticmaalaha" required autofocus></span>
         </label>
         <label class="tl-field" for="tl-password">
           <span>Erayga sirta ah</span>

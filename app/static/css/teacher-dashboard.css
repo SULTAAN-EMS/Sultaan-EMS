@@ -221,6 +221,37 @@
   margin-top: 0;
 }
 
+.teacher-logout.top-logout {
+  grid-area: back;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.teacher-back-login {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, .28);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .1);
+  color: #fff;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background-color .16s ease, border-color .16s ease, transform .16s ease;
+}
+
+.teacher-back-login:hover {
+  transform: translateX(-2px);
+  border-color: rgba(255, 255, 255, .55);
+  background: rgba(255, 255, 255, .2);
+  color: #fff;
+  box-shadow: none;
+}
+
+.teacher-back-login:focus-visible {
+  outline: 3px solid #f3d26f;
+  outline-offset: 3px;
+}
+
 .teacher-main {
   min-width: 0;
   padding: 20px clamp(14px, 2vw, 28px);
@@ -434,8 +465,8 @@
 @media (max-width: 900px) {
   .teacher-portal-bar {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "brand profile";
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "brand profile back";
     gap: 8px 14px;
     padding: 10px 14px 8px;
   }
@@ -451,8 +482,8 @@
   }
 
   .teacher-portal-bar--result-entry {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "brand";
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "brand back";
   }
 }
 
@@ -486,7 +517,7 @@
 
   .teacher-profile {
     width: auto;
-    max-width: 45vw;
+    max-width: 34vw;
     gap: 6px;
     padding: 4px 6px;
   }
