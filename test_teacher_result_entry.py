@@ -10,6 +10,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 from openpyxl import load_workbook
+from sqlalchemy import event
 from flask_login import login_required
 
 from app import create_app, db
@@ -970,6 +971,68 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn("Heerka".encode(), response.data)
         self.assertIn("Fasalka".encode(), response.data)
         self.assertIn("Maaddada".encode(), response.data)
+
+    def test_admin_result_entry_paginates_and_keeps_query_count_bounded(self):
+        for index in range(24):
+            subject = Subject(
+                name=f"Performance Subject {index}",
+                academic_level=self.level,
+                max_score=50,
+                is_active=True,
+            )
+            db.session.add(subject)
+            db.session.flush()
+            db.session.add(AcademicYearSubject(
+                academic_year=self.year,
+                academic_year_level=self.year_level,
+                legacy_subject=subject,
+                name=subject.name,
+                subject_kind="exam",
+                max_score=50,
+            ))
+            assignment = TeacherResultAssignment(
+                teacher=self.teacher,
+                academic_year=self.year,
+                exam=self.exam,
+                school_class=self.school_class,
+                subject=subject,
+                max_submissions=1,
+            )
+            submission = TeacherResultSubmission(assignment=assignment, status="draft")
+            db.session.add_all([
+                assignment,
+                submission,
+                TeacherResultMark(
+                    submission=submission,
+                    student=self.students[0],
+                    score=Decimal("42"),
+                    status="draft",
+                ),
+            ])
+        db.session.commit()
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        select_statements = []
+
+        def record_select(_conn, _cursor, statement, _parameters, _context, _executemany):
+            if statement.lstrip().upper().startswith("SELECT"):
+                select_statements.append(statement)
+
+        event.listen(db.engine, "before_cursor_execute", record_select)
+        try:
+            first_page = self.client.get("/admin/teachers/result-entry")
+        finally:
+            event.remove(db.engine, "before_cursor_execute", record_select)
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertIn("Showing 20 of 25 saved assignments".encode(), first_page.data)
+        self.assertIn("Bog 1 / 2".encode(), first_page.data)
+        self.assertLess(len(select_statements), 40, f"Unexpected per-assignment queries: {len(select_statements)}")
+
+        second_page = self.client.get("/admin/teachers/result-entry?page=2")
+        self.assertEqual(second_page.status_code, 200)
+        self.assertIn("Showing 5 of 25 saved assignments".encode(), second_page.data)
+        self.assertIn("Bog 2 / 2".encode(), second_page.data)
 
     def test_admin_new_scope_inherits_last_selected_deadline(self):
         self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})

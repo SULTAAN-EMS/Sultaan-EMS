@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from openpyxl import Workbook
-from sqlalchemy import func, or_
-from sqlalchemy.orm import selectinload
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import joinedload, selectinload
 
 from . import db
 from .audit import audit
@@ -820,38 +820,100 @@ def result_entry_setup():
             flash("Isbeddelka xilsaarista/submission-ka waa la kaydiyey.", "success")
         return redirect(url_for("admin_teachers.result_entry_setup"))
 
-    all_records = TeacherResultAssignment.query.order_by(TeacherResultAssignment.updated_at.desc()).all()
-    all_assignments = [item for item in all_records if not item.deleted_at]
-    deleted_assignments = [item for item in all_records if item.deleted_at]
-    submission_by_assignment = {
-        assignment.id: next(iter(assignment.submissions), None)
-        for assignment in all_assignments
-    }
-    summary = {
-        "total": len(all_assignments),
-        "review": sum(item is not None and item.status == "submitted" for item in submission_by_assignment.values()),
-        "approved": sum(item is not None and item.status == "approved" for item in submission_by_assignment.values()),
-        "draft": sum(item is not None and item.status in {"draft", "reopened"} for item in submission_by_assignment.values()),
-        "paused": sum(not assignment.is_active for assignment in all_assignments),
-        "deleted": len(deleted_assignments),
-    }
+    summary_rows = (
+        db.session.query(
+            TeacherResultAssignment.deleted_at.isnot(None),
+            TeacherResultAssignment.is_active,
+            TeacherResultSubmission.status,
+            func.count(TeacherResultAssignment.id),
+        )
+        .outerjoin(
+            TeacherResultSubmission,
+            TeacherResultSubmission.assignment_id == TeacherResultAssignment.id,
+        )
+        .group_by(
+            TeacherResultAssignment.deleted_at.isnot(None),
+            TeacherResultAssignment.is_active,
+            TeacherResultSubmission.status,
+        )
+        .all()
+    )
+    summary = {"total": 0, "review": 0, "approved": 0, "draft": 0, "paused": 0, "deleted": 0}
+    for is_deleted, is_active, submission_status, count in summary_rows:
+        if is_deleted:
+            summary["deleted"] += count
+            continue
+        summary["total"] += count
+        if not is_active:
+            summary["paused"] += count
+        if submission_status == "submitted":
+            summary["review"] += count
+        elif submission_status == "approved":
+            summary["approved"] += count
+        elif submission_status in {"draft", "reopened"}:
+            summary["draft"] += count
+
     status_filter = request.args.get("status", "all")
     teacher_filter = request.args.get("teacher_id", type=int)
-    assignments = deleted_assignments if status_filter == "deleted" else all_assignments
+    page = max(request.args.get("page", 1, type=int), 1)
+    assignment_query = TeacherResultAssignment.query.options(
+        joinedload(TeacherResultAssignment.teacher),
+        joinedload(TeacherResultAssignment.academic_year),
+        joinedload(TeacherResultAssignment.exam),
+        joinedload(TeacherResultAssignment.school_class).joinedload(AcademicClass.academic_level),
+        joinedload(TeacherResultAssignment.subject),
+        selectinload(TeacherResultAssignment.submissions).joinedload(TeacherResultSubmission.reviewed_by),
+        selectinload(TeacherResultAssignment.submissions)
+        .selectinload(TeacherResultSubmission.marks)
+        .joinedload(TeacherResultMark.student),
+    ).order_by(TeacherResultAssignment.updated_at.desc(), TeacherResultAssignment.id.desc())
+    if status_filter == "deleted":
+        assignment_query = assignment_query.filter(TeacherResultAssignment.deleted_at.isnot(None))
+    else:
+        assignment_query = assignment_query.filter(TeacherResultAssignment.deleted_at.is_(None))
     if teacher_filter:
-        assignments = [item for item in assignments if item.teacher_id == teacher_filter]
+        assignment_query = assignment_query.filter(TeacherResultAssignment.teacher_id == teacher_filter)
     if status_filter == "review":
-        assignments = [item for item in assignments if submission_by_assignment[item.id] and submission_by_assignment[item.id].status == "submitted"]
+        assignment_query = assignment_query.join(TeacherResultAssignment.submissions).filter(
+            TeacherResultSubmission.status == "submitted"
+        )
     elif status_filter == "approved":
-        assignments = [item for item in assignments if submission_by_assignment[item.id] and submission_by_assignment[item.id].status == "approved"]
+        assignment_query = assignment_query.join(TeacherResultAssignment.submissions).filter(
+            TeacherResultSubmission.status == "approved"
+        )
     elif status_filter == "draft":
-        assignments = [item for item in assignments if submission_by_assignment[item.id] and submission_by_assignment[item.id].status in {"draft", "reopened"}]
+        assignment_query = assignment_query.join(TeacherResultAssignment.submissions).filter(
+            TeacherResultSubmission.status.in_(("draft", "reopened"))
+        )
     elif status_filter == "paused":
-        assignments = [item for item in assignments if not item.is_active]
+        assignment_query = assignment_query.filter(TeacherResultAssignment.is_active.is_(False))
+    pagination = assignment_query.paginate(page=page, per_page=20, error_out=False)
+    assignments = pagination.items
+
+    reservation_rows = db.session.query(
+        TeacherResultAssignment.id,
+        TeacherResultAssignment.academic_year_id,
+        TeacherResultAssignment.exam_id,
+        TeacherResultAssignment.class_id,
+        TeacherResultAssignment.subject_id,
+    ).all()
+    assignment_scope_reservations = [
+        {
+            "assignment_id": row.id,
+            "academic_year_id": row.academic_year_id,
+            "exam_id": row.exam_id,
+            "class_id": row.class_id,
+            "subject_id": row.subject_id,
+        }
+        for row in reservation_rows
+    ]
+
     review_rows = {}
     history_rows = {}
     assignments_with_existing_results = set()
     assignment_progress = {}
+    history_marks_by_assignment = {}
+    result_lookup_keys = set()
     for assignment in assignments:
         submission = next(iter(assignment.submissions), None)
         if not submission:
@@ -862,35 +924,54 @@ def result_entry_setup():
             "draft": sum(mark.status == "draft" and mark.score is not None for mark in submission.marks),
         }
         history_marks = [mark for mark in submission.marks if mark.score is not None or mark.last_action]
-        student_ids = [mark.student_id for mark in history_marks]
-        official_results = (
-            Result.query.filter(
-                Result.exam_id == assignment.exam_id,
-                Result.subject_id == assignment.subject_id,
-                Result.student_id.in_(student_ids),
-            ).all()
-            if student_ids else []
+        history_marks_by_assignment[assignment.id] = history_marks
+        result_lookup_keys.update(
+            (assignment.exam_id, assignment.subject_id, mark.student_id)
+            for mark in history_marks
         )
-        official_scores = {result.student_id: result.score for result in official_results}
-        published_student_ids = {
-            result.student_id for result in official_results if result.is_published
-        }
-        history_rows[assignment.id] = [
-            {
+
+    official_results_by_key = {}
+    result_keys = sorted(result_lookup_keys)
+    for offset in range(0, len(result_keys), 150):
+        key_batch = result_keys[offset:offset + 150]
+        key_filters = [
+            and_(
+                Result.exam_id == exam_id,
+                Result.subject_id == subject_id,
+                Result.student_id == student_id,
+            )
+            for exam_id, subject_id, student_id in key_batch
+        ]
+        for result in Result.query.filter(or_(*key_filters)).all():
+            official_results_by_key[(result.exam_id, result.subject_id, result.student_id)] = result
+
+    for assignment in assignments:
+        submission = next(iter(assignment.submissions), None)
+        if not submission:
+            continue
+        history_marks = history_marks_by_assignment.get(assignment.id, [])
+        history_rows[assignment.id] = []
+        for mark in history_marks:
+            official_result = official_results_by_key.get(
+                (assignment.exam_id, assignment.subject_id, mark.student_id)
+            )
+            history_rows[assignment.id].append({
                 "mark": mark,
-                "official_score": official_scores.get(mark.student_id),
-                "can_return": (
+                "official_score": official_result.score if official_result else None,
+                "can_return": bool(
                     mark.status == "approved"
-                    and mark.student_id in published_student_ids
+                    and official_result
+                    and official_result.is_published
                     and not mark.student.is_result_locked
                 ),
-            }
-            for mark in history_marks
-        ]
+            })
         if submission.status != "submitted":
             continue
         submitted_marks = [mark for mark in submission.marks if mark.status == "submitted" and mark.score is not None]
-        if any(official_scores.get(mark.student_id) is not None for mark in submitted_marks):
+        if any(
+            (assignment.exam_id, assignment.subject_id, mark.student_id) in official_results_by_key
+            for mark in submitted_marks
+        ):
             assignments_with_existing_results.add(assignment.id)
         history_items_by_mark = {item["mark"].id: item for item in history_rows[assignment.id]}
         review_rows[assignment.id] = [history_items_by_mark[mark.id] for mark in submitted_marks]
@@ -933,6 +1014,7 @@ def result_entry_setup():
     year_levels = (
         AcademicYearLevel.query
         .join(AcademicYear, AcademicYear.id == AcademicYearLevel.academic_year_id)
+        .options(joinedload(AcademicYearLevel.legacy_level))
         .filter(AcademicYearLevel.is_active.is_(True), AcademicYearLevel.legacy_level_id.isnot(None))
         .order_by(AcademicYear.is_current.desc(), AcademicYear.name.desc(), AcademicYearLevel.sort_order, AcademicYearLevel.name)
         .all()
@@ -942,6 +1024,10 @@ def result_entry_setup():
     year_classes = (
         AcademicYearClass.query
         .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+        .options(
+            joinedload(AcademicYearClass.legacy_class),
+            joinedload(AcademicYearClass.academic_year_level),
+        )
         .filter(AcademicYearClass.is_active.is_(True), AcademicYearClass.legacy_class_id.isnot(None))
         .order_by(AcademicYearClass.sort_order, AcademicYearClass.name)
         .all()
@@ -955,6 +1041,10 @@ def result_entry_setup():
     ]
     year_subjects = (
         AcademicYearSubject.query
+        .options(
+            joinedload(AcademicYearSubject.legacy_subject),
+            joinedload(AcademicYearSubject.academic_year_level),
+        )
         .filter_by(is_active=True, subject_kind="exam")
         .filter(AcademicYearSubject.legacy_subject_id.isnot(None))
         .order_by(AcademicYearSubject.sort_order, AcademicYearSubject.name)
@@ -970,7 +1060,13 @@ def result_entry_setup():
         and (item.legacy_subject.academic_level_id is None
              or item.legacy_subject.academic_level_id == item.academic_year_level.legacy_level_id)
     ]
-    exams = Exam.query.filter_by(is_active=True).order_by(Exam.academic_year_id.desc(), Exam.sort_order, Exam.name).all()
+    exams = (
+        Exam.query
+        .options(joinedload(Exam.academic_year))
+        .filter_by(is_active=True)
+        .order_by(Exam.academic_year_id.desc(), Exam.sort_order, Exam.name)
+        .all()
+    )
     selected_year_id = request.args.get("setup_year_id", type=int)
     if selected_year_id not in {item.id for item in years}:
         selected_year_id = next((item.id for item in years if item.is_current), years[0].id if years else None)
@@ -982,30 +1078,78 @@ def result_entry_setup():
     active_exam_ids = {item.id for item in exams}
     active_class_ids = {item.id for item in year_classes}
     active_subject_ids = {item.id for item in year_subjects}
-    assignment_scope_reservations = [
-        {
-            "assignment_id": item.id,
-            "academic_year_id": item.academic_year_id,
-            "exam_id": item.exam_id,
-            "class_id": item.class_id,
-            "subject_id": item.subject_id,
-        }
-        for item in all_assignments
-    ]
+    assignment_year_ids = {assignment.academic_year_id for assignment in assignments}
+    assignment_level_ids = {assignment.school_class.academic_level_id for assignment in assignments}
+    assignment_class_ids = {assignment.class_id for assignment in assignments}
+    assignment_subject_ids = {assignment.subject_id for assignment in assignments}
+    scope_year_levels = []
+    scope_year_classes = []
+    scope_year_subjects = []
+    if assignment_year_ids and assignment_level_ids:
+        scope_year_levels = (
+            AcademicYearLevel.query
+            .filter(
+                AcademicYearLevel.academic_year_id.in_(assignment_year_ids),
+                AcademicYearLevel.legacy_level_id.in_(assignment_level_ids),
+            )
+            .order_by(AcademicYearLevel.id)
+            .all()
+        )
+    if assignment_year_ids and assignment_class_ids:
+        scope_year_classes = (
+            AcademicYearClass.query
+            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+            .options(joinedload(AcademicYearClass.academic_year_level))
+            .filter(
+                AcademicYearLevel.academic_year_id.in_(assignment_year_ids),
+                AcademicYearClass.legacy_class_id.in_(assignment_class_ids),
+            )
+            .order_by(AcademicYearClass.id)
+            .all()
+        )
+    scope_level_ids = {item.id for item in scope_year_levels}
+    if assignment_year_ids and scope_level_ids and assignment_subject_ids:
+        scope_year_subjects = (
+            AcademicYearSubject.query
+            .filter(
+                AcademicYearSubject.academic_year_id.in_(assignment_year_ids),
+                AcademicYearSubject.academic_year_level_id.in_(scope_level_ids),
+                AcademicYearSubject.legacy_subject_id.in_(assignment_subject_ids),
+                AcademicYearSubject.subject_kind == "exam",
+                AcademicYearSubject.is_active.is_(True),
+            )
+            .order_by(AcademicYearSubject.id)
+            .all()
+        )
+    year_level_by_scope = {}
+    for item in scope_year_levels:
+        year_level_by_scope.setdefault((item.academic_year_id, item.legacy_level_id), item)
+    year_class_by_scope = {}
+    year_class_by_year_scope = {}
+    for item in scope_year_classes:
+        year_class_by_scope.setdefault((item.academic_year_level_id, item.legacy_class_id), item)
+        year_class_by_year_scope.setdefault(
+            (item.academic_year_level.academic_year_id, item.legacy_class_id), item
+        )
+    year_subject_by_scope = {}
+    for item in scope_year_subjects:
+        year_subject_by_scope.setdefault(
+            (item.academic_year_id, item.academic_year_level_id, item.legacy_subject_id), item
+        )
     assignment_scope_details = {}
     for assignment in assignments:
-        year_level, year_class = _year_scope_ids_from_legacy(
-            assignment.academic_year_id,
-            assignment.school_class.academic_level_id,
-            assignment.class_id,
+        year_level = year_level_by_scope.get(
+            (assignment.academic_year_id, assignment.school_class.academic_level_id)
         )
-        year_subject = AcademicYearSubject.query.filter_by(
-            academic_year_id=assignment.academic_year_id,
-            academic_year_level_id=year_level.id if year_level else None,
-            legacy_subject_id=assignment.subject_id,
-            subject_kind="exam",
-            is_active=True,
-        ).first() if year_level else None
+        year_class = (
+            year_class_by_scope.get((year_level.id, assignment.class_id))
+            if year_level else year_class_by_year_scope.get((assignment.academic_year_id, assignment.class_id))
+        )
+        if year_level is None and year_class:
+            year_level = year_class.academic_year_level
+        year_subject = year_subject_by_scope.get(
+            (assignment.academic_year_id, year_level.id, assignment.subject_id)
+        ) if year_level else None
         assignment_scope_details[assignment.id] = {
             "level_name": year_level.name if year_level else (assignment.school_class.academic_level.name if assignment.school_class.academic_level else ""),
             "class_name": year_class.name if year_class else assignment.school_class.name,
@@ -1031,6 +1175,7 @@ def result_entry_setup():
         selected_year_id=selected_year_id, selected_year_level_id=selected_year_level_id,
         assignment_scope_reservations=assignment_scope_reservations,
         assignment_scope_details=assignment_scope_details,
+        pagination=pagination,
         deadline_labels=deadline_labels,
         review_rows=review_rows,
         history_rows=history_rows,

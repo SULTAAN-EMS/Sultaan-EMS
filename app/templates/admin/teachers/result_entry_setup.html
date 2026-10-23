@@ -93,7 +93,7 @@
   <section class="tra-panel">
     <div class="tra-panel-heading tra-list-heading">
       <span class="tra-icon review"><i class="fa-solid fa-list-check"></i></span>
-      <div><h2>Assignments &amp; submissions</h2><p>Showing {{ assignments|length }} saved assignment{{ '' if assignments|length == 1 else 's' }}.</p></div>
+      <div><h2>Assignments &amp; submissions</h2><p>Showing {{ assignments|length }} of {{ pagination.total }} saved assignment{{ '' if pagination.total == 1 else 's' }}.</p></div>
       <form method="get" class="tra-filters">
         <label class="sr-only" for="tra-status">Submission status</label>
         <select id="tra-status" name="status">
@@ -187,6 +187,13 @@
         </article>
       {% else %}<div class="tra-empty"><span class="tra-empty-icon"><i class="fa-solid fa-inbox"></i></span><strong>{{ 'No assignments match these filters' if summary.total else 'No assignments yet' }}</strong><span>{% if summary.total %}Clear the filters to see the saved assignments.{% else %}Create an assignment above using the school's real teacher, year, exam, class and subject records.{% endif %}</span></div>{% endfor %}
     </div>
+    {% if pagination.pages > 1 %}
+      <nav class="trh-pagination" aria-label="Bogagga xilsaarista natiijooyinka">
+        {% if pagination.has_prev %}<a href="{{ url_for('admin_teachers.result_entry_setup', status=status_filter, teacher_id=teacher_filter, page=pagination.prev_num) }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Hore</a>{% else %}<span class="disabled"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Hore</span>{% endif %}
+        <strong>Bog {{ pagination.page }} / {{ pagination.pages }}</strong>
+        {% if pagination.has_next %}<a href="{{ url_for('admin_teachers.result_entry_setup', status=status_filter, teacher_id=teacher_filter, page=pagination.next_num) }}">Xiga <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>{% else %}<span class="disabled">Xiga <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></span>{% endif %}
+      </nav>
+    {% endif %}
   </section>
 </main>
 <dialog class="tra-delete-dialog" id="tra-delete-dialog" aria-labelledby="tra-delete-title">
