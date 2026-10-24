@@ -2,7 +2,7 @@
 {% block title %}WAAXDA MAAMULKA SOO GUDBINTA NATIIJOOYINKA{% endblock %}
 {% block page_title %}WAAXDA MAAMULKA SOO GUDBINTA NATIIJOOYINKA{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-admin.css', v='teacher-result-review-roster-20261024-2') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-admin.css', v='teacher-result-review-roster-20261024-3') }}">
 {% macro score_history(item, settings) %}
   <details class="tra-score-history">
     <summary><span class="tra-change-count {{ 'has-changes' if item.edit_count else '' }}"><i class="fa-solid fa-pen-ruler" aria-hidden="true"></i>{{ item.edit_count }} isbeddel</span><i class="fa-solid fa-chevron-down tra-history-chevron" aria-hidden="true"></i></summary>
@@ -136,9 +136,11 @@
               </div>
             </div>
             {% set progress = assignment_progress.get(assignment.id, {}) %}{% set partially_approved = submission and submission.status == 'draft' and progress.get('approved', 0) > 0 %}
-            <div class="tra-badges"><span class="tra-status {{ 'deleted' if assignment.deleted_at else ('active' if assignment.is_active else 'inactive') }}">{{ 'La tirtiray' if assignment.deleted_at else ('Active' if assignment.is_active else 'Paused') }}</span><span class="tra-status {{ 'partial' if partially_approved else (submission.status if submission else 'not-started') }}">{{ 'Partially approved' if partially_approved else (submission.status|replace('_', ' ')|title if submission else 'Not started') }}</span></div>
-            {% if partially_approved %}<p class="tra-approved-note"><i class="fa-solid fa-circle-check"></i> {{ progress.approved }} student marks approved · remaining entries are open</p>{% endif %}
-            {% if submission and (submission.submitted_at or submission.status == 'submitted') %}{% set submitted_time = submission_time_labels.get(assignment.id) %}<div class="tra-submission-time {{ 'is-unavailable' if not submitted_time }}" aria-label="Waqtiga rasmiga ah ee gudbinta"><span class="tra-submission-time-icon" aria-hidden="true"><i class="fa-regular fa-calendar-check"></i></span><span class="tra-submission-time-copy"><small>Waqtiga rasmiga ah ee gudbinta</small><strong>{{ submitted_time or 'Waqtiga gudbinta lama hayo' }}</strong></span>{% if submitted_time %}<span class="tra-submission-time-zone"><i class="fa-regular fa-clock" aria-hidden="true"></i> EAT</span>{% endif %}</div>{% endif %}
+            <div class="tra-assignment-state">
+              <div class="tra-badges"><span class="tra-status {{ 'deleted' if assignment.deleted_at else ('active' if assignment.is_active else 'inactive') }}">{{ 'La tirtiray' if assignment.deleted_at else ('Active' if assignment.is_active else 'Paused') }}</span><span class="tra-status {{ 'partial' if partially_approved else (submission.status if submission else 'not-started') }}">{{ 'Partially approved' if partially_approved else (submission.status|replace('_', ' ')|title if submission else 'Not started') }}</span></div>
+              {% if partially_approved %}<p class="tra-approved-note"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>{{ progress.approved }} student marks approved · remaining entries are open</span></p>{% endif %}
+              {% if submission and (submission.submitted_at or submission.status == 'submitted') %}{% set submitted_time = submission_time_labels.get(assignment.id) %}<div class="tra-submission-time {{ 'is-unavailable' if not submitted_time }}" aria-label="Waqtiga rasmiga ah ee gudbinta"><span class="tra-submission-time-icon" aria-hidden="true"><i class="fa-regular fa-calendar-check"></i></span><span class="tra-submission-time-copy"><small>Waqtiga gudbinta</small><strong>{{ submitted_time or 'Waqtiga gudbinta lama hayo' }}</strong></span></div>{% endif %}
+            </div>
           </div>
 
           {% if assignment.deleted_at %}
