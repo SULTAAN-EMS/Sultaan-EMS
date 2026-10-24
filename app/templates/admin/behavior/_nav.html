@@ -35,7 +35,7 @@
     <a href="{{ behavior_url('behavior.students') }}" class="{% if request.endpoint in ['behavior.students', 'behavior.student_detail', 'behavior.student_report'] %}is-active{% endif %}"><i class="fa-solid fa-user-graduate"></i> Diiwaanka Hab-dhaqanka Ardeyga</a>
     <a href="{{ behavior_url('behavior.events') }}" class="{% if request.endpoint in ['behavior.events', 'behavior.edit', 'behavior.event_detail', 'behavior.void', 'behavior.restore'] %}is-active{% endif %}"><i class="fa-solid fa-clock-rotate-left"></i> Dhacdooyinka</a>
     <a href="{{ behavior_url('behavior.history') }}" class="{% if request.endpoint == 'behavior.history' %}is-active{% endif %}"><i class="fa-solid fa-timeline"></i> Taariikhda</a>
-    <a href="{{ behavior_url('behavior.audit_history') }}" class="{% if request.endpoint == 'behavior.audit_history' %}is-active{% endif %}"><i class="fa-solid fa-shield-halved"></i> Diiwaanka Dabagalka</a>
+    <a href="{{ behavior_url('behavior.audit_history') }}" class="{% if request.endpoint in ['behavior.audit_history', 'behavior.attendance_reports'] %}is-active{% endif %}"><i class="fa-solid fa-shield-halved"></i> Diiwaanka Dabagalka</a>
     </div>
     <button class="behavior-nav__scroll" type="button" data-behavior-nav-scroll="1" aria-label="Scroll behavior navigation right"><i class="fa-solid fa-chevron-right"></i></button>
   </nav>

@@ -193,6 +193,7 @@ ENDPOINT_PERMISSIONS = {
     "behavior.edit": "behavior.edit",
     "behavior.history": "behavior.view",
     "behavior.audit_history": "behavior.audit",
+    "behavior.attendance_reports": "behavior.audit",
 }
 
 

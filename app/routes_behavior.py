@@ -2,15 +2,19 @@
 
 import json
 import re
+from copy import deepcopy
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
+from io import BytesIO
 from secrets import token_urlsafe
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
+from xml.etree import ElementTree
 
-from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
+import html5lib
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -107,6 +111,7 @@ from .models import (
     StudentEnrollment,
 )
 from .permissions import enforce_endpoint_permission
+from .pdf_rendering import html_report_to_pdf
 from .services import get_settings
 
 
@@ -3719,15 +3724,14 @@ def delete_attendance(record_id):
     ))
 
 
-@behavior_bp.route("/attendance/students/<int:enrollment_id>/report")
-def attendance_report(enrollment_id):
+def _render_attendance_report(enrollment_id, args):
     """Render one A4 Attendance page for every month in the selected session."""
     context = _behavior_context(
-        request.args.get("year_id"),
-        request.args.get("level_id"),
-        request.args.get("config_id"),
-        request.args.get("class_id"),
-        request.args.get("session_id"),
+        args.get("year_id"),
+        args.get("level_id"),
+        args.get("config_id"),
+        args.get("class_id"),
+        args.get("session_id"),
     )
     config = context["config"]
     selected_session = context["selected_session"]
@@ -3752,7 +3756,7 @@ def attendance_report(enrollment_id):
     }.get(class_shift, "Lama cayimin")
     school_shift_key = class_shift if class_shift in {"morning", "afternoon"} else None
 
-    raw_date = request.args.get("attendance_date")
+    raw_date = args.get("attendance_date")
     try:
         report_date = date.fromisoformat(raw_date) if raw_date else date.today()
     except ValueError:
@@ -4020,11 +4024,125 @@ def attendance_report(enrollment_id):
         attendance_percentage=monthly_reports[0]["attendance_percentage"],
         counts=monthly_reports[0]["counts"],
         total_school_days=monthly_reports[0]["total_school_days"],
-        print_mode=request.args.get("print") == "1",
-        portal_read_only=request.args.get("portal_read_only") == "1",
-        portal_back_url=request.args.get("portal_back_url"),
-        portal_download_url=request.args.get("portal_download_url"),
-        portal_download_filename=request.args.get("portal_download_filename"),
+        print_mode=args.get("print") == "1",
+        portal_read_only=args.get("portal_read_only") == "1",
+        portal_back_url=args.get("portal_back_url"),
+        portal_download_url=args.get("portal_download_url"),
+        portal_download_filename=args.get("portal_download_filename"),
+    )
+
+
+@behavior_bp.route("/attendance/students/<int:enrollment_id>/report")
+def attendance_report(enrollment_id):
+    return _render_attendance_report(enrollment_id, request.args)
+
+
+def _combine_attendance_report_html(report_documents):
+    """Combine existing per-student A4 reports without changing their layout."""
+    documents = [
+        html5lib.parse(item, treebuilder="etree", namespaceHTMLElements=False)
+        for item in report_documents
+    ]
+    combined_head = deepcopy(documents[0].find("head"))
+    combined_body = ElementTree.Element("body")
+    scripts = []
+
+    for document_index, document in enumerate(documents):
+        for child in document.find("body"):
+            classes = set((child.get("class") or "").split())
+            if "report-toolbar" in classes:
+                continue
+            if child.tag == "script":
+                if document_index == 0 and "window.print" not in (child.text or ""):
+                    scripts.append(deepcopy(child))
+                continue
+            if "page" in classes and "last-page" in classes and document_index < len(documents) - 1:
+                classes.remove("last-page")
+                classes.add("bulk-student-last-page")
+                child.set("class", " ".join(sorted(classes)))
+            combined_body.append(deepcopy(child))
+
+    combined_head.insert(0, ElementTree.Element("base", href=request.url_root))
+    title = combined_head.find("title")
+    if title is not None:
+        title.text = "Warbixinnada Xaadirinta Ardeyda"
+    style = ElementTree.Element("style")
+    style.text = "@media print{.report-toolbar{display:none!important}.page.bulk-student-last-page{page-break-after:always;break-after:page}}"
+    combined_head.append(style)
+    for script in scripts:
+        combined_body.append(script)
+
+    root = ElementTree.Element("html", lang="so")
+    root.append(combined_head)
+    root.append(combined_body)
+    return "<!DOCTYPE html>" + html5lib.serialize(
+        root,
+        tree="etree",
+        quote_attr_values="always",
+        omit_optional_tags=False,
+    )
+
+
+@behavior_bp.route("/audit/attendance-reports")
+def attendance_reports():
+    context = _behavior_context(
+        request.args.get("year_id"),
+        request.args.get("level_id"),
+        request.args.get("config_id"),
+        request.args.get("class_id"),
+        request.args.get("session_id"),
+        auto_select_config=False,
+    )
+    config = context["config"]
+    selected_session = context["selected_session"]
+    selected_level = context["selected_level"]
+    scope_valid = bool(config and selected_session and selected_level and not context["scope_invalid"])
+    enrollments = (
+        _behavior_enrollments(
+            config,
+            context["selected_class"].id if context["selected_class"] else None,
+            selected_level.id,
+            selected_session,
+        )
+        if scope_valid else []
+    )
+
+    if request.args.get("download") == "1":
+        if not scope_valid:
+            flash("Xulo sannad-dugsiyeedka, heerka, diiwaanka iyo fadhi sax ah.", "warning")
+        elif not enrollments:
+            flash("Ardey firfircoon lagama helin baaxaddan.", "warning")
+        else:
+            try:
+                report_documents = [
+                    _render_attendance_report(enrollment.id, request.args)
+                    for enrollment in enrollments
+                ]
+                combined_html = _combine_attendance_report_html(report_documents)
+                pdf_data = html_report_to_pdf(combined_html, request.url_root)
+                scope_name = "-".join(
+                    value for value in (
+                        config.academic_year.name,
+                        selected_level.name,
+                        context["selected_class"].name if context["selected_class"] else "heer-dhan",
+                        selected_session.session_label,
+                    ) if value
+                )
+                filename = re.sub(r"[^A-Za-z0-9_-]+", "-", scope_name).strip("-") or "xaadirin"
+                return send_file(
+                    BytesIO(pdf_data),
+                    mimetype="application/pdf",
+                    as_attachment=True,
+                    download_name=f"Warbixinta-Xaadirinta-{filename}.pdf",
+                )
+            except Exception:
+                current_app.logger.exception("Could not build bulk Behavior attendance PDF")
+                flash("PDF-ga warbixinnada xaadirinta lama abuuri karin. Fadlan mar kale isku day.", "danger")
+
+    return render_template(
+        "admin/behavior/attendance_reports.html",
+        **context,
+        enrollments=enrollments,
     )
 
 

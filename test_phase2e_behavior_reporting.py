@@ -222,6 +222,49 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
             session["_fresh"] = True
         return client
 
+    def test_bulk_attendance_reports_create_one_pdf_with_a_page_for_each_student(self):
+        self.admin.set_permissions(["behavior.audit"])
+        second_student = Student(
+            student_code="PHASE2E002",
+            full_name="Second Attendance Report Student",
+            mother_name="Second Parent",
+            is_active=True,
+        )
+        second_enrollment = StudentEnrollment(
+            student=second_student,
+            academic_year=self.year_one,
+            academic_year_level=self.year_level_one,
+            academic_year_class=self.year_class_one,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source="manual",
+        )
+        db.session.add_all([second_student, second_enrollment])
+        db.session.commit()
+
+        client = self._client_as_admin()
+        query = {
+            "year_id": self.year_one.id,
+            "level_id": self.year_level_one.id,
+            "config_id": self.configuration.id,
+            "session_id": self.session_one.id,
+        }
+        page = client.get("/admin/behavior/audit/attendance-reports", query_string=query)
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Soo dejiso PDF-yada", page.get_data(as_text=True))
+
+        query["download"] = "1"
+        with patch("app.routes_behavior.html_report_to_pdf", return_value=b"%PDF-test") as render_pdf:
+            response = client.get("/admin/behavior/audit/attendance-reports", query_string=query)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "application/pdf")
+        self.assertEqual(response.data, b"%PDF-test")
+        combined_html = render_pdf.call_args.args[0]
+        self.assertIn("BEHAVIOR REPORT STUDENT", combined_html)
+        self.assertIn("SECOND ATTENDANCE REPORT STUDENT", combined_html)
+        self.assertIn("bulk-student-last-page", combined_html)
+
     def test_auto_attendance_notes_use_exact_gendered_templates_without_names(self):
         self.assertEqual(
             auto_attendance_note("Mahad Mohamed Adam", "present"),

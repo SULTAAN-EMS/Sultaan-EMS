@@ -136,9 +136,35 @@ table.abs tr.totals-row td{background:#eef4fb;border-top:2px solid #0d3b66;borde
   data-donut-absent="{{ report.donut_absent_angle }}"
   data-donut-excused="{{ report.donut_excused_angle }}"
   data-donut-official-leave="{{ report.donut_official_leave_angle }}"
+  data-donut-school-closure="{{ report.donut_school_closure_angle }}"
   data-normalized="{{ '1' if normalized_attendance else '0' }}"
   data-incomplete="{{ '1' if attendance_incomplete else '0' }}"></div>
 {% endfor %}
+<script>
+(() => {
+  const pages = document.querySelectorAll('.page');
+  const dataNodes = document.querySelectorAll('.attendance-summary-data');
+  pages.forEach((page, index) => {
+    const data = dataNodes[index];
+    const donut = page.querySelector('.bd-donut');
+    if (!data || !donut) return;
+    const segments = [
+      ['donutPresent', '#22c55e'], ['donutLate', '#f59e0b'],
+      ['donutAbsent', '#ef4444'], ['donutExcused', '#7c3aed'],
+      ['donutOfficialLeave', '#0891b2'], ['donutSchoolClosure', '#0f766e'],
+    ];
+    let cursor = 0;
+    const stops = [];
+    segments.forEach(([key, color]) => {
+      const next = cursor + (Number(data.dataset[key]) || 0);
+      stops.push(`${color} ${cursor}deg ${next}deg`);
+      cursor = next;
+    });
+    stops.push(`#e5e7eb ${cursor}deg 360deg`);
+    donut.style.background = `conic-gradient(${stops.join(',')})`;
+  });
+})();
+</script>
 <script>
 (() => {
   const format = (value) => {

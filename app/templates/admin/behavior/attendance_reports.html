@@ -1,0 +1,69 @@
+{% extends "admin/base.html" %}
+{% block page_title %}Warbixinnada Xaadirinta Ardeyda{% endblock %}
+{% block admin_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='behavior-config-levels-20260918c') }}">
+<div class="behavior-page view">
+  {% include "admin/behavior/_nav.html" %}
+  <section class="behavior-card card behavior-section">
+    <div class="behavior-section__head">
+      <div>
+        <span class="behavior-kicker"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Warbixinta Xaadirinta</span>
+        <h2>Warbixinnada Ardeyda</h2>
+      </div>
+      <a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.audit_history') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Dib-u-noqo</a>
+    </div>
+
+    <p class="behavior-muted">Xulo sannad-dugsiyeedka, heerka, diiwaanka iyo fadhiga. Fasal gaar ah dooro ama ka tag si loo soo saaro ardeyda heerka oo dhan.</p>
+
+    <form method="get" class="behavior-filter-panel" style="margin-top:16px">
+      <div class="behavior-field">
+        <label for="attendance-report-year">Sannad-dugsiyeedka</label>
+        <select id="attendance-report-year" name="year_id" onchange="this.form.submit()">
+          <option value="">Xulo sannad</option>
+          {% for year in years %}<option value="{{ year.id }}" {% if selected_year and year.id == selected_year.id %}selected{% endif %}>{{ year.name }}{% if year.is_current %} · Hadda socda{% endif %}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="behavior-field">
+        <label for="attendance-report-level">Heerka</label>
+        <select id="attendance-report-level" name="level_id" onchange="this.form.submit()" {% if not selected_year %}disabled{% endif %}>
+          <option value="">Xulo heer</option>
+          {% for level in levels %}<option value="{{ level.id }}" {% if selected_level and level.id == selected_level.id %}selected{% endif %}>{{ level.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="behavior-field">
+        <label for="attendance-report-config">Diiwaanka dabagalka</label>
+        <select id="attendance-report-config" name="config_id" onchange="this.form.submit()" {% if not selected_year or not selected_level %}disabled{% endif %}>
+          <option value="">Xulo diiwaan</option>
+          {% for option in configurations %}<option value="{{ option.id }}" {% if config and option.id == config.id %}selected{% endif %}>{{ option.behavior_subject.name if option.behavior_subject else 'Diiwaan' }}{% if option.status != 'active' %} · {{ option.status }}{% endif %}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="behavior-field">
+        <label for="attendance-report-session">Fadhiga</label>
+        <select id="attendance-report-session" name="session_id" {% if not config %}disabled{% endif %}>
+          <option value="">Xulo fadhi</option>
+          {% for option in sessions %}<option value="{{ option.id }}" {% if selected_session and option.id == selected_session.id %}selected{% endif %}>{{ option.session_label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="behavior-field">
+        <label for="attendance-report-class">Fasalka</label>
+        <select id="attendance-report-class" name="class_id" {% if not selected_level %}disabled{% endif %}>
+          <option value="">Dhammaan fasallada heerka</option>
+          {% for class in classes %}<option value="{{ class.id }}" {% if selected_class and class.id == selected_class.id %}selected{% endif %}>{{ class.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="behavior-form__actions">
+        <button class="behavior-btn behavior-btn--outline" type="submit"><i class="fa-solid fa-filter" aria-hidden="true"></i> Shaandhee</button>
+        <button class="behavior-btn behavior-btn--primary" type="submit" name="download" value="1" {% if not config or not selected_session or scope_invalid or not enrollments %}disabled{% endif %}><i class="fa-solid fa-download" aria-hidden="true"></i> Soo dejiso PDF-yada</button>
+      </div>
+    </form>
+
+    <div class="behavior-stat-grid" style="margin-top:18px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))">
+      <article class="behavior-stat-card"><span class="behavior-stat-card__icon"><i class="fa-solid fa-users" aria-hidden="true"></i></span><strong>{{ enrollments|length }}</strong><span>Ardeyda la heli karo</span></article>
+      <article class="behavior-stat-card"><span class="behavior-stat-card__icon"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></span><strong>{{ selected_class.name if selected_class else (selected_level.name if selected_level else 'Lama xulin') }}</strong><span>Baaxadda la doortay</span></article>
+      <article class="behavior-stat-card"><span class="behavior-stat-card__icon"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i></span><strong>{{ selected_session.session_label if selected_session else 'Lama xulin' }}</strong><span>Fadhiga</span></article>
+    </div>
+
+    {% if scope_invalid %}<p class="behavior-alert behavior-alert--warning" role="alert">Xulashada qaar isma waafaqaan. Fadlan dib u xulo heerka, diiwaanka, fasalka iyo fadhiga.</p>{% elif config and selected_session and not enrollments %}<p class="behavior-alert behavior-alert--warning" role="status">Ardey firfircoon lagama helin baaxaddan.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}
