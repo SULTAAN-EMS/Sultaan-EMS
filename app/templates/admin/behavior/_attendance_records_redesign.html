@@ -55,6 +55,10 @@
   recordsDialog.setAttribute('aria-labelledby', 'attRecordsTitle');
   if (recordsHead) { recordsHead.className = 'att-records-head'; recordsHead.innerHTML = `<div class="att-records-eyebrow">${icon('att-history')}Taariikhda la keydiyay</div><h2 id="attRecordsTitle">Diiwaanka Xaadirka</h2><p>Diiwaannada hore loo keydiyay ee sanadka, habaynta, heerka, fasalka iyo fadhiga la doortay.</p><button class="att-records-close" type="button" id="attRecordsClose" aria-label="Xir">${icon('att-x')}</button>`; }
   if (recordsBody) { recordsBody.className = 'att-records-body'; recordsBody.innerHTML = `<div class="att-records-filter-card"><div class="att-records-filter"><label>Sanad-dugsiyeedka</label><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--green">${icon('att-cal')}</span><select id="attRecordsYear">{% for item in years %}<option value="{{ item.id }}"{% if selected_year and item.id == selected_year.id %} selected{% endif %}>{{ item.name|e }}</option>{% endfor %}</select></div></div><div class="att-records-filter"><label>Heerka</label><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--blue">${icon('att-cap')}</span><select id="attRecordsLevel">{% for item in levels %}<option value="{{ item.id }}"{% if selected_level and item.id == selected_level.id %} selected{% endif %}>{{ item.name|e }}</option>{% endfor %}</select></div></div><div class="att-records-filter"><label>Fasalka</label><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--amber">${icon('att-users')}</span><select id="attRecordsClass"><option value="">Dhammaan</option>{% for item in classes %}<option value="{{ item.id }}"{% if selected_class and item.id == selected_class.id %} selected{% endif %}>{{ item.name|e }}</option>{% endfor %}</select></div></div><div class="att-records-filter"><label>Habaynta Anshaxa</label><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--purple">${icon('att-sliders')}</span><select id="attRecordsConfig">{% for item in configurations %}<option value="{{ item.id }}"{% if config and item.id == config.id %} selected{% endif %}>{{ item.behavior_subject.name|e if item.behavior_subject else 'Behavior' }}</option>{% endfor %}</select></div></div><div class="att-records-filter"><label>Fadhiga / Nooca imtixaanka</label><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--pink">${icon('att-check')}</span><select id="attRecordsSession">{% for item in sessions %}<option value="{{ item.id }}"{% if selected_session and item.id == selected_session.id %} selected{% endif %}>{{ item.session_label|e }} · {{ item.maximum_score|behavior_points }}</option>{% endfor %}</select></div></div><div class="att-records-filter att-records-context"><label>Taariikhda + Waqtiga</label><div class="att-records-two"><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--teal">${icon('att-cal')}</span><input type="date" value="{{ attendance_date.isoformat() }}"></div><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--green">${icon('att-clock')}</span><input type="time" value="{{ attendance_time.strftime('%H:%M') }}"></div></div></div></div><div class="att-records-range"><div class="att-records-filter"><label>Taariikhda (laga bilaabo)</label><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--teal">${icon('att-cal')}</span><input id="recordsFrom" type="date"></div></div><div class="att-records-filter"><label>Taariikhda (ilaa)</label><div class="att-records-filter-box"><span class="att-records-badge att-records-badge--teal">${icon('att-cal')}</span><input id="recordsTo" type="date"></div></div><div class="att-records-state"><span>Xaaladda diiwaanka</span><div class="seg3 att-records-segmented" id="attRecordStates"><button data-state="active" aria-pressed="true">${icon('att-user-check')}Firfircoon</button><button data-state="voided" aria-pressed="false">${icon('att-ban')}La kala noqday</button><button data-state="all" aria-pressed="false">Dhammaan</button><button data-state="deleted" aria-pressed="false">${icon('att-trash')}La Tirtiray</button></div><select id="recordsStatus" hidden><option value="active">active</option></select></div></div><div class="att-records-toolbar"><label class="att-records-search">${icon('att-search')}<input id="attRecordsSearch" type="search" placeholder="Raadi arday, hooyo ama ID"></label><span class="att-records-count" id="attRecordsCount"></span></div><div class="att-records-readonly" id="attRecordsReadonly" hidden>${icon('att-lock')}Aragti kaliya (read-only): diiwaannadan la tirtiray lama beddeli karo.</div><div class="att-records-table" id="recordsTable"><div class="att-records-grid att-records-grid--head"><span>Taariikhda</span><span>Arday / Hooyo / ID</span><span>Fasal</span><span>Xaaladda</span><span>La diiwaan geliyay</span><span>Imaatinka</span><span>Qoraal</span><span>Ficil</span></div><div id="recordsBody"></div></div><div id="recordsEmpty" class="att-record-empty" hidden>Diiwaan lama helin. Beddel shaandheynta.</div>`; }
+  const bulkbar = document.createElement('div');
+  bulkbar.className = 'att-records-bulkbar';
+  bulkbar.innerHTML = `<label><input type="checkbox" id="attBulkSelectVisible"><span>Dooro xaadirinta firfircoon ee muuqata</span></label><span class="att-records-bulk-count" id="attBulkSelectedCount">0 la doortay</span><button class="att-records-bulk-button" type="button" id="attBulkVoidButton" disabled>${icon('att-ban')} Kala-noqosho Bulk</button>`;
+  recordsBody.querySelector('.att-records-toolbar')?.after(bulkbar);
   actionDialog.classList.add('att-action-dialog');
   actionDialog.setAttribute('aria-labelledby', 'attActionTitle');
   actionDialog.setAttribute('aria-modal', 'true');
@@ -63,6 +67,19 @@
   if (actionHead) { actionHead.className = 'att-action-head'; actionHead.innerHTML = `<div class="att-records-eyebrow" id="attActionEyebrow">${icon('att-list')}Ficillada diiwaanka</div><h2 id="attActionTitle"></h2><p id="attActionSubtitle"></p><button class="att-records-close" type="button" id="attActionClose" aria-label="Xir">${icon('att-x')}</button>`; }
   if (actionBody) { actionBody.className = 'att-action-body'; actionBody.innerHTML = '<div id="attActionContent"></div>'; }
   const state = {value:'active'};
+  const selectedRecordIds = new Set();
+  let visibleRows = [];
+  const isBulkVoidEligible = (row) => row.record_status === 'active' && !row.is_school_closure;
+  const updateBulkControls = () => {
+    const selectable = visibleRows.filter(isBulkVoidEligible);
+    const selectedVisible = selectable.filter((row) => selectedRecordIds.has(String(row.record_id))).length;
+    const selectVisible = get('attBulkSelectVisible');
+    selectVisible.disabled = selectable.length === 0;
+    selectVisible.checked = selectable.length > 0 && selectedVisible === selectable.length;
+    selectVisible.indeterminate = selectedVisible > 0 && selectedVisible < selectable.length;
+    get('attBulkSelectedCount').textContent = `${selectedRecordIds.size} la doortay`;
+    get('attBulkVoidButton').disabled = selectedRecordIds.size < 2;
+  };
   const renderRecords = () => {
     const from = get('recordsFrom')?.value || '';
     const to = get('recordsTo')?.value || '';
@@ -75,6 +92,7 @@
       const text = `${displayValue(row.student)} ${displayValue(row.mother)} ${displayValue(row.student_code)}`.toLowerCase();
       return matchState && (!className || row.class_name === className) && (!from || row.date >= from) && (!to || row.date <= to) && (!query || text.includes(query));
     });
+    visibleRows = visible;
     get('attRecordsCount').innerHTML = `<b>${visible.length}</b> diiwaan`;
     get('attRecordsReadonly').hidden = state.value !== 'deleted';
     get('recordsEmpty').hidden = visible.length > 0;
@@ -97,6 +115,22 @@
         : `<button class="att-record-icon" data-att-action="edit" title="Wax ka beddel" aria-label="Wax ka beddel">${icon('att-pen')}</button><button class="att-record-icon att-record-icon--void" data-att-action="void" title="Kala-noqosho" aria-label="Kala-noqosho">${icon('att-ban')}</button><button class="att-record-icon att-record-icon--delete" data-att-action="delete" title="Tirtir" aria-label="Tirtir">${icon('att-trash')}</button>`;
       return `<div class="att-records-grid att-records-grid--row ${voided ? 'voided' : ''}" data-record-row="${row.record_id}" title="${deleted || schoolClosure ? 'Riix si aad u aragto faahfaahinta' : 'Riix si aad u aragto ficillada'}"><div class="att-record-cell" data-l="Taariikhda">${shortDate(row.date)}</div><div class="att-record-cell att-record-student"><span class="att-record-avatar" style="background:${classColor(className)}">${esc(student.slice(0,2).toUpperCase())}</span><div><strong>${esc(student)}</strong><small>Hooyo: ${esc(mother)} • ID ${esc(studentCode)}</small></div></div><div class="att-record-cell" data-l="Fasal"><span class="att-record-class" style="background:${classColor(className)}">${esc(className)}</span></div><div class="att-record-cell" data-l="Xaaladda">${statusPill(row)}<br>${stateBadge(row)}</div><div class="att-record-cell att-record-time ${recorded === '—' ? 'att-record-muted' : ''}" data-l="La diiwaan geliyay">${esc(recorded)}</div><div class="att-record-cell att-record-time ${arrival === '—' ? 'att-record-muted' : ''}" data-l="Imaatinka">${esc(arrival)}</div><div class="att-record-cell ${note === '—' ? 'att-record-muted' : ''}" data-l="Qoraal">${esc(note)}</div><div class="att-record-cell att-record-actions">${actionButtons}</div></div>`;
     }).join('');
+    visible.filter(isBulkVoidEligible).forEach((row) => {
+      const rowElement = get('recordsBody').querySelector(`[data-record-row="${row.record_id}"]`);
+      const studentCell = rowElement?.querySelector('.att-record-student');
+      if (!studentCell) return;
+      const label = document.createElement('label');
+      label.className = 'att-record-select';
+      label.title = `Dooro xaadirinta ${row.student} ee ${shortDate(row.date)}`;
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.dataset.bulkSelectRecord = String(row.record_id);
+      input.setAttribute('aria-label', label.title);
+      input.checked = selectedRecordIds.has(String(row.record_id));
+      label.append(input);
+      studentCell.prepend(label);
+    });
+    updateBulkControls();
   };
   const selectedScope = () => ({
     year_id: get('attRecordsYear')?.value || '',
@@ -128,6 +162,8 @@
   const loadRows = async () => {
     if (loadingRows) return;
     loadingRows = true;
+    selectedRecordIds.clear();
+    updateBulkControls();
     const params = new URLSearchParams(selectedScope());
     get('attRecordsCount').textContent = 'Loading...';
     try {
@@ -157,7 +193,72 @@
     else html = `<button class="att-action-back" data-action-mode="choose">${icon('att-back')}Dib u noqo</button><div class="att-action-warning" style="--warning-color:#dc2626">${icon('att-alert')}<span><b>Diiwaanka waa la tirtirayaa.</b><br>Wuxuu u wareegayaa qaybta La Tirtiray oo aragti kaliya ah. Lama beddeli karo lamana xisaabin doono.</span></div><label class="att-action-check"><input type="checkbox" id="attDeleteAck">Waan fahmay in diiwaanku noqon doono read-only</label><div class="att-action-buttons"><button class="att-action-button" data-action-close>Jooji</button><button class="att-action-button att-action-button--red" id="attDeleteConfirm" data-action-delete disabled>Tirtir</button></div>`;
     get('attActionContent').innerHTML = html;
   };
+  const actionBodyNode = actionBody;
   const post = async (url, data) => { data.append('csrf_token', csrf); const response = await fetch(url, {method:'POST', body:data, credentials:'same-origin', headers:{'X-Requested-With':'XMLHttpRequest','Accept':'application/json','X-CSRFToken':csrf}}); const payload = await response.json().catch(() => ({})); if (!response.ok || !payload.ok) throw new Error(payload.message || 'Ficilka lama fulin'); return payload; };
+  const bulkVoidUrl = {{ url_for('behavior.bulk_void_attendance')|tojson }};
+  const updateBulkVoidConfirmation = () => {
+    const confirmButton = get('attBulkVoidConfirm');
+    if (confirmButton) {
+      confirmButton.disabled = !get('attBulkVoidReason')?.value.trim() || !get('attBulkVoidAck')?.checked;
+    }
+  };
+  const openBulkVoidDialog = () => {
+    const count = selectedRecordIds.size;
+    if (count < 2) return;
+    get('attActionTitle').textContent = 'Xaqiiji Kala-noqosho Bulk';
+    get('attActionSubtitle').textContent = `${count} diiwaan oo xaadirin ah ayaa la doortay.`;
+    get('attActionEyebrow').innerHTML = `${icon('att-ban')}Kala-noqosho Bulk`;
+    actionDialog.dataset.recordId = '';
+    get('attActionContent').innerHTML = `<div class="att-action-warning" style="--warning-color:#d97706">${icon('att-alert')}<span><b>Xaadirinta la doortay dhibco ahaan dib looma xisaabin doono.</b><br>Diiwaannadu way sii jirayaan, mid kastaana dib ayaa gooni loogu soo celin karaa.</span></div><div class="att-action-field"><label for="attBulkVoidReason">Sababta kala-noqoshada (qasab)</label><textarea id="attBulkVoidReason" maxlength="255" placeholder="Sharax sababta diiwaannadan looga noqonayo"></textarea></div><label class="att-action-check att-action-check--bulk" for="attBulkVoidAck"><input type="checkbox" id="attBulkVoidAck"><span>Waxaan xaqiijinayaa in laga noqonayo <strong>${count}-ka diiwaan</strong> ee aan doortay oo keliya.</span></label><div class="att-action-buttons"><button class="att-action-button" data-action-close>Jooji</button><button class="att-action-button att-action-button--amber" id="attBulkVoidConfirm" data-action-bulk-void disabled>${icon('att-ban')} Xaqiiji kala-noqoshada</button></div>`;
+    if (window.__attOpenDialog) window.__attOpenDialog(actionDialog, {keepOpen:[recordsDialog]});
+    else if (!actionDialog.open) actionDialog.showModal();
+  };
+  get('recordsBody').addEventListener('change', (event) => {
+    const input = event.target.closest('[data-bulk-select-record]');
+    if (!input) return;
+    if (input.checked) selectedRecordIds.add(input.dataset.bulkSelectRecord);
+    else selectedRecordIds.delete(input.dataset.bulkSelectRecord);
+    updateBulkControls();
+  });
+  get('recordsBody').addEventListener('click', (event) => {
+    if (event.target.closest('.att-record-select')) event.stopImmediatePropagation();
+  }, true);
+  get('attBulkSelectVisible').addEventListener('change', (event) => {
+    visibleRows.filter(isBulkVoidEligible).forEach((row) => {
+      const id = String(row.record_id);
+      if (event.target.checked) selectedRecordIds.add(id);
+      else selectedRecordIds.delete(id);
+    });
+    renderRecords();
+  });
+  get('attBulkVoidButton').addEventListener('click', openBulkVoidDialog);
+  actionBodyNode.addEventListener('input', updateBulkVoidConfirmation);
+  actionBodyNode.addEventListener('change', updateBulkVoidConfirmation);
+  actionBodyNode.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-action-bulk-void]');
+    if (!button) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const reason = get('attBulkVoidReason')?.value.trim() || '';
+    if (!reason || !get('attBulkVoidAck')?.checked) return;
+    const data = new FormData();
+    const scope = selectedScope();
+    ['year_id', 'level_id', 'class_id', 'config_id', 'session_id', 'date_from', 'date_to'].forEach((key) => data.append(key, scope[key]));
+    selectedRecordIds.forEach((id) => data.append('record_ids', id));
+    data.append('reason', reason);
+    data.append('acknowledged', '1');
+    button.disabled = true;
+    try {
+      const result = await post(bulkVoidUrl, data);
+      selectedRecordIds.clear();
+      closeAction();
+      await loadRows();
+      toast(result.message);
+    } catch (error) {
+      toast(error.message, true);
+      updateBulkVoidConfirmation();
+    }
+  }, true);
   const updateRow = (row, key) => { const selected = statusOptions.find((item) => item.key === key); row.status_key = key; row.status = selected?.label || row.status; row.status_id = selected?.id || row.status_id; };
   get('recordsBody').addEventListener('click', (event) => { const rowEl = event.target.closest('[data-record-row]'); if (!rowEl) return; const row = rows.find((item) => String(item.record_id) === rowEl.dataset.recordRow); const button = event.target.closest('[data-att-action]'); if (button) { event.stopPropagation(); openAction(row, button.dataset.attAction); return; } openAction(row, row.record_status === 'deleted' || row.is_school_closure ? 'view' : 'choose'); });
   get('attRecordStates').addEventListener('click', (event) => { const button = event.target.closest('[data-state]'); if (!button) return; state.value = button.dataset.state; get('recordsStatus').value = state.value; get('attRecordStates').querySelectorAll('button').forEach((item) => item.setAttribute('aria-pressed', item === button)); loadRows(); });
@@ -172,7 +273,6 @@
     loadRows();
   }));
   let searchTimer = 0; get('attRecordsSearch').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadRows, 250); });
-  const actionBodyNode = actionBody;
   actionBodyNode.addEventListener('click', async (event) => { const modeButton = event.target.closest('[data-action-mode]'); if (modeButton) { const row = rows.find((item) => String(item.record_id) === actionDialog.dataset.recordId); renderAction(row, modeButton.dataset.actionMode); return; } if (event.target.closest('[data-action-close]')) { closeAction(); return; } const row = rows.find((item) => String(item.record_id) === actionDialog.dataset.recordId); if (!row) return; const statusButton = event.target.closest('[data-edit-status]'); if (statusButton) { actionBodyNode.querySelectorAll('[data-edit-status]').forEach((item) => item.setAttribute('aria-pressed', item === statusButton)); const late = statusButton.dataset.editStatus === 'late'; get('attEditTimeWrap').hidden = !late; if (late && !get('attEditTime').value) { const now = new Date(); get('attEditTime').value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`; get('attEditTime').focus(); } if (!late) get('attEditTime').value = ''; return; } try { if (event.target.closest('[data-action-restore]')) { await post(row.restore_url, new FormData()); row.record_status = 'active'; row.void_reason = ''; row.voided_at = ''; row.voided_by = ''; closeAction(); renderRecords(); toast('Xaadirka waa la soo celiyay'); } if (event.target.closest('[data-action-save-edit]')) { const selected = actionBodyNode.querySelector('[data-edit-status][aria-pressed="true"]'); const data = new FormData(); data.append('status_id', selected.dataset.statusId); data.append('arrival_time', get('attEditTime')?.value || ''); data.append('note', get('attEditNote')?.value || ''); await post(row.edit_url, data); updateRow(row, selected.dataset.editStatus); row.arrival_time = row.status_key === 'late' ? get('attEditTime').value : ''; row.note = get('attEditNote').value.trim(); closeAction(); renderRecords(); toast('Xaadirka waa la cusboonaysiiyay'); } if (event.target.closest('[data-action-void]')) { const data = new FormData(); data.append('reason', get('attVoidReason')?.value || ''); await post(row.void_url, data); row.record_status = 'voided'; row.void_reason = get('attVoidReason')?.value || ''; closeAction(); renderRecords(); toast('Diiwaanka waa la kala noqday'); } if (event.target.closest('[data-action-delete]')) { if (!get('attDeleteAck').checked) return; const data = new FormData(); data.append('acknowledged','1'); data.append('reason','Deleted from Attendance Records'); await post(row.delete_url, data); row.record_status = 'deleted'; row.deleted_at = new Date().toISOString(); row.deleted_by = 'Admin'; closeAction(); renderRecords(); toast('Diiwaanka waxaa loo wareejiyay La Tirtiray'); } } catch (error) { toast(error.message, true); } });
   actionBodyNode.addEventListener('change', (event) => { if (event.target.id === 'attDeleteAck') get('attDeleteConfirm').disabled = !event.target.checked; });
   get('attRecordsClose')?.addEventListener('click', () => recordsDialog.close()); get('attActionClose')?.addEventListener('click', closeAction); recordsDialog.addEventListener('click', (event) => { if (event.target === recordsDialog) recordsDialog.close(); }); actionDialog.addEventListener('click', (event) => { if (event.target === actionDialog) closeAction(); }); document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; if (actionDialog.open) closeAction(); else if (recordsDialog.open) recordsDialog.close(); });

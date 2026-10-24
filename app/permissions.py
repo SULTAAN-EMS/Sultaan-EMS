@@ -179,6 +179,7 @@ ENDPOINT_PERMISSIONS = {
     "behavior.delete_action_choice": "behavior.configure",
     "behavior.attendance": "behavior.record",
     "behavior.void_attendance": "behavior.void",
+    "behavior.bulk_void_attendance": "behavior.void",
     "behavior.restore_attendance": "behavior.void",
     "behavior.delete_attendance": "behavior.void",
     "behavior.update_attendance_status": "behavior.configure",

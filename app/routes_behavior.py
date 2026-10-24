@@ -3584,6 +3584,122 @@ def void_attendance(record_id):
     ))
 
 
+@behavior_bp.route("/attendance/records/bulk-void", methods=["POST"])
+def bulk_void_attendance():
+    """Void a selected set of active Attendance rows as one audited operation."""
+    try:
+        record_ids = []
+        for raw_id in request.form.getlist("record_ids"):
+            record_id = _int(raw_id)
+            if record_id is None or record_id <= 0:
+                raise BehaviorValidationError("Xulashada diiwaannada xaadirinta sax ma aha.")
+            if record_id not in record_ids:
+                record_ids.append(record_id)
+        if len(record_ids) < 2:
+            raise BehaviorValidationError("Ugu yaraan laba xaadirin dooro si bulk looga noqdo.")
+        if len(record_ids) > 500:
+            raise BehaviorValidationError("Hal mar ugu badnaan 500 diiwaan ayaa laga noqon karaa.")
+
+        reason = (request.form.get("reason") or "").strip()
+        if not reason:
+            raise BehaviorValidationError("Sababta kala-noqoshada waa qasab.")
+        if len(reason) > 255:
+            raise BehaviorValidationError("Sababtu kama badnaan karto 255 xaraf.")
+        if request.form.get("acknowledged") != "1":
+            raise BehaviorValidationError("Xaqiiji inaad hubisay diiwaannada la doortay.")
+
+        date_from_value = (request.form.get("date_from") or "").strip()
+        date_to_value = (request.form.get("date_to") or "").strip()
+        try:
+            date_from = date.fromisoformat(date_from_value) if date_from_value else None
+            date_to = date.fromisoformat(date_to_value) if date_to_value else None
+        except ValueError as exc:
+            raise BehaviorValidationError("Taariikhda shaandhayntu sax ma aha.") from exc
+        if date_from and date_to and date_from > date_to:
+            raise BehaviorValidationError("Taariikhda bilowgu kama dambayn karto taariikhda dhammaadka.")
+
+        year_id = request.form.get("year_id")
+        level_id = request.form.get("level_id")
+        config_id = request.form.get("config_id")
+        class_id = request.form.get("class_id")
+        session_id = request.form.get("session_id")
+        if not all((year_id, level_id, config_id, session_id)):
+            raise BehaviorValidationError("Xulo sannad, heer, habayn iyo fadhi sax ah.")
+        context = _behavior_context(
+            year_id,
+            level_id,
+            config_id,
+            class_id,
+            session_id,
+            auto_select_config=False,
+        )
+        if (
+            context["scope_invalid"]
+            or not context["selected_year"]
+            or not context["selected_level"]
+            or not context["config"]
+            or not context["selected_session"]
+        ):
+            raise BehaviorValidationError("Baaxadda xaadirintu sax ma aha; dib u shaandhee diiwaanka.")
+
+        enrollments = enrollments_for_class(
+            context["config"],
+            context["selected_class"].id if context["selected_class"] else None,
+            context["selected_level"].id,
+        )
+        scoped_enrollment_ids = {
+            item.id for item in enrollments
+            if session_applies_to_enrollment(context["selected_session"], item)
+        }
+        records = BehaviorAttendanceRecord.query.filter(
+            BehaviorAttendanceRecord.id.in_(record_ids)
+        ).order_by(BehaviorAttendanceRecord.id).with_for_update().all()
+        if len(records) != len(record_ids):
+            raise BehaviorValidationError("Qaar ka mid ah diiwaannada la doortay lama helin.")
+
+        for record in records:
+            in_scope = (
+                record.behavior_configuration_id == context["config"].id
+                and record.behavior_session_id == context["selected_session"].id
+                and record.academic_year_id == context["selected_year"].id
+                and record.academic_year_level_id == context["selected_level"].id
+                and record.student_enrollment_id in scoped_enrollment_ids
+                and (
+                    not context["selected_class"]
+                    or record.academic_year_class_id == context["selected_class"].id
+                )
+                and (not date_from or record.attendance_date >= date_from)
+                and (not date_to or record.attendance_date <= date_to)
+            )
+            if not in_scope:
+                raise BehaviorValidationError("Diiwaannada la doortay kuma wada jiraan baaxadda iyo taariikhda muuqata.")
+            if record.deleted_at or record.status != "active":
+                raise BehaviorValidationError("Dhammaan diiwaannada la doortay waa inay yihiin kuwo firfircoon oo aan hore looga noqon.")
+            if record.behavior_attendance_closure_id:
+                raise BehaviorValidationError("Diiwaanka fasaxa dugsiga laguma dari karo kala-noqoshada bulk.")
+
+        for record in records:
+            void_attendance_record(record, current_user.id, reason)
+        audit(
+            "Behavior Attendance",
+            f"Bulk voided {len(records)} Attendance records; "
+            f"configuration={context['config'].id}; session={context['selected_session'].id}; "
+            f"reason={reason!r}",
+        )
+        db.session.commit()
+        return jsonify({
+            "ok": True,
+            "count": len(records),
+            "message": f"{len(records)} diiwaan oo xaadirin ah ayaa laga noqday; waa la soo celin karaa.",
+        })
+    except BehaviorValidationError as exc:
+        db.session.rollback()
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"ok": False, "message": "Xaadirinta la doortay si wadajir ah loogama noqon karin."}), 400
+
+
 @behavior_bp.route("/attendance/records/<int:record_id>/edit", methods=["POST"])
 def edit_attendance(record_id):
     """Update one active Attendance record from the Records sheet."""

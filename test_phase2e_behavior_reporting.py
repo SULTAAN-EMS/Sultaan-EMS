@@ -43,6 +43,7 @@ from app.models import (
     BehaviorGradeScale,
     BehaviorSession,
     BehaviorSubCategory,
+    AuditLog,
     Exam,
     GradeScale,
     Result,
@@ -264,6 +265,170 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         self.assertIn("BEHAVIOR REPORT STUDENT", combined_html)
         self.assertIn("SECOND ATTENDANCE REPORT STUDENT", combined_html)
         self.assertIn("bulk-student-last-page", combined_html)
+
+    def test_bulk_attendance_void_is_atomic_audited_and_reversible(self):
+        self.admin.set_permissions(["behavior.void", "behavior.record"])
+        self.session_one.maximum_score = 50
+        self.session_one.behavior_allocation = 40
+        self.session_one.attendance_allocation = 10
+        second_student = Student(
+            student_code="PHASE2E-BULK-002",
+            full_name="Second Bulk Attendance Student",
+            mother_name="Second Parent",
+            is_active=True,
+        )
+        second_enrollment = StudentEnrollment(
+            student=second_student,
+            academic_year=self.year_one,
+            academic_year_level=self.year_level_one,
+            academic_year_class=self.year_class_one,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source="manual",
+        )
+        db.session.add(second_enrollment)
+        ensure_attendance_defaults(self.configuration)
+        db.session.flush()
+        present = next(item for item in self.configuration.attendance_statuses if item.key == "present")
+        attendance_date = date.today()
+        first_record = mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            present.id,
+            attendance_date,
+            attendance_time="07:30",
+        )
+        second_record = mark_attendance(
+            self.configuration,
+            self.session_one,
+            second_enrollment,
+            present.id,
+            attendance_date,
+            attendance_time="07:30",
+        )
+        db.session.commit()
+        score_before_void = calculate_session_score(
+            self.configuration, self.session_one, self.enrollment
+        )["attendance_score"]
+        self.assertEqual(score_before_void, Decimal("1.000"))
+
+        client = self._client_as_admin()
+        scope = {
+            "year_id": str(self.year_one.id),
+            "level_id": str(self.year_level_one.id),
+            "class_id": str(self.year_class_one.id),
+            "config_id": str(self.configuration.id),
+            "session_id": str(self.session_one.id),
+            "date_from": attendance_date.isoformat(),
+            "date_to": attendance_date.isoformat(),
+            "reason": "Tijaabo bulk oo la saxayo",
+            "record_ids": [str(first_record.id), str(second_record.id)],
+        }
+        headers = {"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"}
+        page = client.get(
+            "/admin/behavior/attendance",
+            query_string={
+                **{key: scope[key] for key in ("year_id", "level_id", "class_id", "config_id", "session_id")},
+                "attendance_view": "records",
+                "attendance_date": attendance_date.isoformat(),
+            },
+        )
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("/admin/behavior/attendance/records/bulk-void", page.get_data(as_text=True))
+        self.assertIn("Kala-noqosho Bulk", page.get_data(as_text=True))
+        scope["acknowledged"] = "1"
+        response = client.post("/admin/behavior/attendance/records/bulk-void", data=scope, headers=headers)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["count"], 2)
+        db.session.refresh(first_record)
+        db.session.refresh(second_record)
+        self.assertEqual((first_record.status, second_record.status), ("voided", "voided"))
+        self.assertEqual(first_record.void_reason, "Tijaabo bulk oo la saxayo")
+        self.assertEqual(second_record.void_reason, "Tijaabo bulk oo la saxayo")
+        score_while_voided = calculate_session_score(
+            self.configuration, self.session_one, self.enrollment
+        )["attendance_score"]
+        self.assertIsNone(score_while_voided)
+        self.assertEqual(AuditLog.query.filter_by(action="Behavior Attendance").count(), 1)
+
+        restore = client.post(
+            f"/admin/behavior/attendance/records/{first_record.id}/restore",
+            headers=headers,
+        )
+        self.assertEqual(restore.status_code, 200)
+        db.session.refresh(first_record)
+        self.assertEqual(first_record.status, "active")
+        score_after_restore = calculate_session_score(
+            self.configuration, self.session_one, self.enrollment
+        )["attendance_score"]
+        self.assertEqual(score_after_restore, score_before_void)
+
+    def test_bulk_attendance_void_rejects_mixed_active_and_voided_rows_without_partial_change(self):
+        self.admin.set_permissions(["behavior.void"])
+        ensure_attendance_defaults(self.configuration)
+        db.session.flush()
+        present = next(item for item in self.configuration.attendance_statuses if item.key == "present")
+        attendance_date = date.today()
+        first_record = mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            present.id,
+            attendance_date,
+            attendance_time="07:30",
+        )
+        second_student = Student(
+            student_code="PHASE2E-BULK-003",
+            full_name="Already Voided Bulk Attendance Student",
+            mother_name="Third Parent",
+            is_active=True,
+        )
+        second_enrollment = StudentEnrollment(
+            student=second_student,
+            academic_year=self.year_one,
+            academic_year_level=self.year_level_one,
+            academic_year_class=self.year_class_one,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source="manual",
+        )
+        db.session.add(second_enrollment)
+        db.session.flush()
+        second_record = mark_attendance(
+            self.configuration,
+            self.session_one,
+            second_enrollment,
+            present.id,
+            attendance_date,
+            attendance_time="07:30",
+        )
+        second_record.status = "voided"
+        db.session.commit()
+
+        client = self._client_as_admin()
+        response = client.post(
+            "/admin/behavior/attendance/records/bulk-void",
+            data={
+                "year_id": str(self.year_one.id),
+                "level_id": str(self.year_level_one.id),
+                "class_id": str(self.year_class_one.id),
+                "config_id": str(self.configuration.id),
+                "session_id": str(self.session_one.id),
+                "date_from": attendance_date.isoformat(),
+                "date_to": attendance_date.isoformat(),
+                "reason": "Waa in waxba isma beddelin",
+                "acknowledged": "1",
+                "record_ids": [str(first_record.id), str(second_record.id)],
+            },
+            headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        db.session.refresh(first_record)
+        self.assertEqual(first_record.status, "active")
+        self.assertEqual(AuditLog.query.filter_by(action="Behavior Attendance").count(), 0)
 
     def test_auto_attendance_notes_use_exact_gendered_templates_without_names(self):
         self.assertEqual(
