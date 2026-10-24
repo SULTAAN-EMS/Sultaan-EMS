@@ -784,6 +784,71 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertEqual(payload["profile"]["present"], 1)
         self.assertEqual(payload["profile"]["history"][0]["note"], "historical attendance")
 
+    def test_attendance_records_api_filters_and_paginates_on_the_server(self):
+        ensure_attendance_defaults(self.config)
+        db.session.commit()
+        present = next(item for item in attendance_statuses(self.config) if item.key == "present")
+        older = mark_attendance(
+            self.config, self.session, self.enrollment, present.id, date(2026, 8, 28),
+            marked_by_id=self.admin.id, note="older record",
+        )
+        second_student = Student(
+            student_code="BHV-P1-002", full_name="Second Phase One Student", is_active=True,
+        )
+        second_enrollment = StudentEnrollment(
+            student=second_student,
+            academic_year=self.enrollment.academic_year,
+            academic_year_level=self.enrollment.academic_year_level,
+            academic_year_class=self.enrollment.academic_year_class,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source="manual",
+        )
+        db.session.add(second_enrollment)
+        db.session.flush()
+        newer = mark_attendance(
+            self.config, self.session, second_enrollment, present.id, date(2026, 8, 29),
+            marked_by_id=self.admin.id, note="newer record",
+        )
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        scope = {
+            "year_id": self.config.academic_year_id,
+            "level_id": self.config.academic_year_level_id,
+            "class_id": self.enrollment.academic_year_class_id,
+            "config_id": self.config.id,
+            "session_id": self.session.id,
+            "state": "active",
+            "page_size": 1,
+        }
+
+        first_page = client.get("/admin/behavior/attendance/records", query_string=scope)
+        self.assertEqual(first_page.status_code, 200, first_page.get_data(as_text=True))
+        first_payload = first_page.get_json()
+        self.assertEqual(first_payload["count"], 2)
+        self.assertEqual(first_payload["page"], 1)
+        self.assertEqual(first_payload["total_pages"], 2)
+        self.assertEqual([row["record_id"] for row in first_payload["rows"]], [newer.id])
+
+        second_page = client.get(
+            "/admin/behavior/attendance/records", query_string={**scope, "page": 2}
+        )
+        self.assertEqual(second_page.status_code, 200, second_page.get_data(as_text=True))
+        second_payload = second_page.get_json()
+        self.assertEqual([row["record_id"] for row in second_payload["rows"]], [older.id])
+
+        searched = client.get(
+            "/admin/behavior/attendance/records", query_string={**scope, "q": "BHV-P1-001"}
+        )
+        self.assertEqual(searched.status_code, 200, searched.get_data(as_text=True))
+        searched_payload = searched.get_json()
+        self.assertEqual(searched_payload["count"], 1)
+        self.assertEqual([row["record_id"] for row in searched_payload["rows"]], [older.id])
+
     def test_void_is_auditable_excluded_from_scoring_and_duplicate_safe(self):
         ensure_attendance_defaults(self.config)
         db.session.commit()
@@ -876,7 +941,7 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         )
         self.assertEqual(records_page.status_code, 200)
         self.assertIn(b"Xaaladda diiwaanka", records_page.data)
-        self.assertIn(b"Baabi'i Xaadirka", records_page.data)
+        self.assertIn(b"Xaqiiji kala-noqoshada", records_page.data)
         self.assertIn(b"record_status", records_page.data)
         self.assertTrue(any(
             row.action == "Behavior Attendance"
@@ -1152,6 +1217,63 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertEqual(row.behavior_configuration_id, self.config.id)
         self.assertEqual(row.behavior_session_id, self.session.id)
         self.assertEqual(row.academic_year_id, self.config.academic_year_id)
+
+    def test_bulk_attendance_save_uses_batched_record_lookups(self):
+        ensure_attendance_defaults(self.config)
+        db.session.commit()
+        present = next(item for item in attendance_statuses(self.config) if item.key == "present")
+        enrollments = [self.enrollment]
+        for index in range(2, 8):
+            student = Student(
+                student_code=f"BHV-SAVE-{index:03d}",
+                full_name=f"Batch Attendance Student {index}",
+                is_active=True,
+            )
+            enrollment = StudentEnrollment(
+                student=student,
+                academic_year=self.enrollment.academic_year,
+                academic_year_level=self.enrollment.academic_year_level,
+                academic_year_class=self.enrollment.academic_year_class,
+                status="active",
+                academic_outcome="pending",
+                enrollment_source="manual",
+            )
+            db.session.add(enrollment)
+            enrollments.append(enrollment)
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        data = {
+            "action": "save_all",
+            "config_id": str(self.config.id),
+            "session_id": str(self.session.id),
+            "attendance_date": "2026-08-29",
+        }
+        for enrollment in enrollments:
+            data[f"status_{enrollment.id}"] = str(present.id)
+        statements = []
+
+        def capture_attendance_record_queries(conn, cursor, statement, parameters, context, executemany):
+            normalized = " ".join(statement.lower().split())
+            if "from behavior_attendance_records" in normalized:
+                statements.append(normalized)
+
+        event.listen(db.engine, "before_cursor_execute", capture_attendance_record_queries)
+        try:
+            response = client.post("/admin/behavior/attendance", data=data, follow_redirects=False)
+        finally:
+            event.remove(db.engine, "before_cursor_execute", capture_attendance_record_queries)
+
+        self.assertEqual(response.status_code, 302, response.data[-5000:])
+        self.assertEqual(BehaviorAttendanceRecord.query.count(), len(enrollments))
+        per_student_queries = [
+            statement for statement in statements
+            if "student_enrollment_id =" in statement
+        ]
+        self.assertEqual(per_student_queries, [])
 
     def test_action_builder_saves_all_choices_in_one_request(self):
         client = self.app.test_client()

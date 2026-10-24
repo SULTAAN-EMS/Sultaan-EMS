@@ -38,12 +38,12 @@
   </header>
 
   <section class="tra-summary" aria-label="Assignment overview">
-    <a href="{{ url_for('admin_teachers.result_entry_setup') }}" class="tra-metric"><span>Dhammaan xilsaarisyada</span><strong>{{ summary.total }}</strong><i class="fa-solid fa-layer-group"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='review') }}" class="tra-metric review"><span>Dib-u-eegis sugaya</span><strong>{{ summary.review }}</strong><i class="fa-solid fa-inbox"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='draft') }}" class="tra-metric draft"><span>Qabyo / sixitaan</span><strong>{{ summary.draft }}</strong><i class="fa-solid fa-pen-to-square"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='approved') }}" class="tra-metric approved"><span>La ansixiyey</span><strong>{{ summary.approved }}</strong><i class="fa-solid fa-circle-check"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='paused') }}" class="tra-metric paused"><span>La hakiyey</span><strong>{{ summary.paused }}</strong><i class="fa-solid fa-pause"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='deleted') }}" class="tra-metric deleted"><span>La tirtiray</span><strong>{{ summary.deleted }}</strong><i class="fa-solid fa-trash-can"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='all', teacher_id=teacher_filter) }}" class="tra-metric"><span>Dhammaan xilsaarisyada</span><strong>{{ summary.total }}</strong><i class="fa-solid fa-layer-group"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='review', teacher_id=teacher_filter) }}" class="tra-metric review"><span>Dib-u-eegis sugaya</span><strong>{{ summary.review }}</strong><i class="fa-solid fa-inbox"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='draft', teacher_id=teacher_filter) }}" class="tra-metric draft"><span>Qabyo / sixitaan</span><strong>{{ summary.draft }}</strong><i class="fa-solid fa-pen-to-square"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='approved', teacher_id=teacher_filter) }}" class="tra-metric approved"><span>La ansixiyey</span><strong>{{ summary.approved }}</strong><i class="fa-solid fa-circle-check"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='paused', teacher_id=teacher_filter) }}" class="tra-metric paused"><span>La hakiyey</span><strong>{{ summary.paused }}</strong><i class="fa-solid fa-pause"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='deleted', teacher_id=teacher_filter) }}" class="tra-metric deleted"><span>La tirtiray</span><strong>{{ summary.deleted }}</strong><i class="fa-solid fa-trash-can"></i></a>
   </section>
 
   <section class="tra-panel tra-setup">

@@ -538,6 +538,7 @@ def mark_attendance(
     late_by_minutes=None,
     note_is_auto_generated=False,
     existing_record=None,
+    effective_points=None,
     find_existing_record=True,
     capture_policy=True,
     flush=True,
@@ -576,11 +577,13 @@ def mark_attendance(
     # configured polarity: the admin choice must survive refreshes and be
     # captured in each saved record snapshot.
     new_polarity = (status.polarity or "neutral").strip().lower()
-    new_points = (
-        attendance_status_points(status, enrollment.academic_year_level_id)
-        if status.contributes_to_behavior
-        else Decimal("0")
-    )
+    new_points = Decimal("0")
+    if status.contributes_to_behavior:
+        new_points = (
+            decimal_value(effective_points, "Attendance points", minimum="0")
+            if effective_points is not None
+            else attendance_status_points(status, enrollment.academic_year_level_id)
+        )
     validate_attendance_ledger_capacity(
         configuration,
         session,

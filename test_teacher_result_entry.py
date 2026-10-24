@@ -1055,6 +1055,48 @@ class TestTeacherResultEntry(unittest.TestCase):
             body,
         )
 
+    def test_admin_assignment_teacher_filter_persists_across_status_views(self):
+        second_user = User(username="result-teacher-2", full_name="Second Results Teacher", role="staff", is_active=True)
+        second_user.set_password("TeacherPass123")
+        db.session.add(second_user)
+        db.session.flush()
+        second_teacher = Teacher(
+            teacher_id="RT-2", teacher_code="RT-C2", full_name="Second Results Teacher",
+            employment_status="Active", is_active=True, user_id=second_user.id,
+            classes=[self.school_class], subjects=[self.subject],
+        )
+        db.session.add(second_teacher)
+        db.session.flush()
+        db.session.add(TeacherResultAssignment(
+            teacher=second_teacher, academic_year=self.year, exam=self.exam,
+            school_class=self.school_class, subject=self.subject, max_submissions=1,
+        ))
+        db.session.add(TeacherResultSubmission(assignment=self.assignment, status="draft"))
+        db.session.commit()
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        response = self.client.get(
+            "/admin/teachers/result-entry",
+            query_string={"status": "all", "teacher_id": self.teacher.id},
+        )
+        body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Showing 1 of 1 saved assignment.", body)
+        self.assertIn(f'<option value="{self.teacher.id}" selected>', body)
+        self.assertIn(
+            f'href="/admin/teachers/result-entry?status=draft&amp;teacher_id={self.teacher.id}"',
+            body,
+        )
+
+        review = self.client.get(
+            "/admin/teachers/result-entry",
+            query_string={"status": "draft", "teacher_id": self.teacher.id},
+        )
+        self.assertEqual(review.status_code, 200)
+        self.assertIn("Showing 1 of 1 saved assignment.", review.get_data(as_text=True))
+        self.assertIn(f'<option value="{self.teacher.id}" selected>', review.get_data(as_text=True))
+
     def test_admin_scope_picker_orders_exam_before_subject_and_loads_subjects_by_year_level(self):
         self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
 

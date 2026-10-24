@@ -16,7 +16,7 @@ from xml.etree import ElementTree
 import html5lib
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import func
+from sqlalchemy import func, literal, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -2647,102 +2647,239 @@ def audit_history():
     )
 
 
-def _attendance_record_rows(config, selected_session, enrollments):
-    """Serialize complete Attendance history for the Records sheet."""
-    if not config or not selected_session or not enrollments:
-        return []
-    enrollment_ids = [item.id for item in enrollments]
-    rows = []
-    history_records = BehaviorAttendanceRecord.query.filter(
+def _serialize_attendance_record(item):
+    key = (item.status_key_snapshot or "").strip().lower() or "unknown"
+    record_note = (
+        auto_attendance_note(item.student.full_name, key, item.student.gender)
+        if item.note_is_auto_generated
+        else item.note or ""
+    )
+    return {
+        "date": item.attendance_date.isoformat(),
+        "date_display": item.attendance_date.strftime("%B %d, %Y"),
+        "student": item.student.full_name,
+        "mother": item.student.mother_name or "-",
+        "student_code": item.student.student_code,
+        "class_name": item.academic_year_class.name if item.academic_year_class else "-",
+        "photo_path": item.student.photo_path or "",
+        "photo_url": (
+            item.student.photo_path
+            if (item.student.photo_path or "").startswith(("http://", "https://", "data:"))
+            else url_for("static", filename=item.student.photo_path)
+            if item.student.photo_path
+            else ""
+        ),
+        "status": attendance_status_label(key, item.status_label_snapshot),
+        "status_key": key,
+        "record_id": item.id,
+        "closure_id": item.behavior_attendance_closure_id,
+        "is_school_closure": bool(item.behavior_attendance_closure_id),
+        "record_status": "deleted" if item.deleted_at else (item.status or "active"),
+        "void_reason": item.void_reason or "",
+        "voided_by": item.voider.username if item.voider else "",
+        "voided_at": item.voided_at.isoformat() if item.voided_at else "",
+        "deletion_reason": item.deletion_reason or "",
+        "deleted_by": item.deleter.username if item.deleter else "",
+        "deleted_at": item.deleted_at.isoformat() if item.deleted_at else "",
+        "edit_url": url_for("behavior.edit_attendance", record_id=item.id),
+        "status_id": item.status_id,
+        "void_url": url_for("behavior.void_attendance", record_id=item.id),
+        "restore_url": url_for("behavior.restore_attendance", record_id=item.id),
+        "delete_url": url_for("behavior.delete_attendance", record_id=item.id),
+        "arrival_time": item.arrival_time.strftime("%I:%M %p").lstrip("0") if item.arrival_time else "",
+        "attendance_time": item.attendance_time.strftime("%I:%M %p").lstrip("0") if item.attendance_time else "",
+        "late_by_minutes": item.late_by_minutes,
+        "points": str(item.points_applied or 0),
+        "polarity": item.polarity,
+        "note": record_note,
+    }
+
+
+def _serialize_attendance_deletion(item):
+    return {
+        "date": item.attendance_date.isoformat(),
+        "date_display": item.attendance_date.strftime("%B %d, %Y"),
+        "student": item.student_name,
+        "mother": item.mother_name or "-",
+        "student_code": item.student_code,
+        "class_name": item.class_name or "-",
+        "photo_path": "",
+        "photo_url": "",
+        "status": item.status_label,
+        "status_key": item.status_key,
+        "closure_id": None,
+        "is_school_closure": item.status_key == SCHOOL_CLOSURE_STATUS_KEY,
+        "record_id": item.original_record_id,
+        "record_status": "deleted",
+        "void_reason": item.void_reason or "",
+        "deletion_reason": item.deletion_reason,
+        "deleted_by": item.deleted_by_username,
+        "deleted_at": item.deleted_at.isoformat() if item.deleted_at else "",
+        "arrival_time": item.arrival_time.strftime("%I:%M %p").lstrip("0") if item.arrival_time else "",
+        "attendance_time": item.attendance_time.strftime("%I:%M %p").lstrip("0") if item.attendance_time else "",
+        "late_by_minutes": item.late_by_minutes,
+        "points": str(item.points_applied or 0),
+        "polarity": item.polarity,
+        "note": item.note or "",
+    }
+
+
+def _attendance_history_query(config, selected_session, selected_level, selected_class, state, query, date_from, date_to):
+    """Build database-filtered Attendance history queries for the selected scope."""
+    level_ids = configuration_level_ids(config)
+    enrollment_query = BehaviorAttendanceRecord.query.join(
+        StudentEnrollment,
+        StudentEnrollment.id == BehaviorAttendanceRecord.student_enrollment_id,
+    ).join(
+        AcademicYearClass,
+        AcademicYearClass.id == StudentEnrollment.academic_year_class_id,
+    ).join(
+        Student,
+        Student.id == BehaviorAttendanceRecord.student_id,
+    ).filter(
         BehaviorAttendanceRecord.behavior_configuration_id == config.id,
         BehaviorAttendanceRecord.behavior_session_id == selected_session.id,
-        BehaviorAttendanceRecord.student_enrollment_id.in_(enrollment_ids),
-    ).order_by(
-        BehaviorAttendanceRecord.attendance_date.desc(),
-        BehaviorAttendanceRecord.id.desc(),
-    ).all()
-    for item in history_records:
-        key = (item.status_key_snapshot or "").strip().lower() or "unknown"
-        record_note = (
-            auto_attendance_note(item.student.full_name, key, item.student.gender)
-            if item.note_is_auto_generated
-            else item.note or ""
+        StudentEnrollment.academic_year_id == config.academic_year_id,
+        StudentEnrollment.academic_year_level_id.in_(level_ids or {-1}),
+        StudentEnrollment.status.in_(("active", "completed")),
+    )
+    if selected_level:
+        enrollment_query = enrollment_query.filter(
+            StudentEnrollment.academic_year_level_id == selected_level.id
         )
-        rows.append({
-            "date": item.attendance_date.isoformat(),
-            "date_display": item.attendance_date.strftime("%B %d, %Y"),
-            "student": item.student.full_name,
-            "mother": item.student.mother_name or "-",
-            "student_code": item.student.student_code,
-            "class_name": item.academic_year_class.name if item.academic_year_class else "-",
-            "photo_path": item.student.photo_path or "",
-            "photo_url": (
-                item.student.photo_path
-                if (item.student.photo_path or "").startswith(("http://", "https://", "data:"))
-                else url_for("static", filename=item.student.photo_path)
-                if item.student.photo_path
-                else ""
-            ),
-            "status": attendance_status_label(key, item.status_label_snapshot),
-            "status_key": key,
-            "record_id": item.id,
-            "closure_id": item.behavior_attendance_closure_id,
-            "is_school_closure": bool(item.behavior_attendance_closure_id),
-            "record_status": "deleted" if item.deleted_at else (item.status or "active"),
-            "void_reason": item.void_reason or "",
-            "voided_by": item.voider.username if item.voider else "",
-            "voided_at": item.voided_at.isoformat() if item.voided_at else "",
-            "deletion_reason": item.deletion_reason or "",
-            "deleted_by": item.deleter.username if item.deleter else "",
-            "deleted_at": item.deleted_at.isoformat() if item.deleted_at else "",
-            "edit_url": url_for("behavior.edit_attendance", record_id=item.id),
-            "status_id": item.status_id,
-            "void_url": url_for("behavior.void_attendance", record_id=item.id),
-            "restore_url": url_for("behavior.restore_attendance", record_id=item.id),
-            "delete_url": url_for("behavior.delete_attendance", record_id=item.id),
-            "arrival_time": item.arrival_time.strftime("%I:%M %p").lstrip("0") if item.arrival_time else "",
-            "attendance_time": item.attendance_time.strftime("%I:%M %p").lstrip("0") if item.attendance_time else "",
-            "late_by_minutes": item.late_by_minutes,
-            "points": str(item.points_applied or 0),
-            "polarity": item.polarity,
-            "note": record_note,
-        })
-    deleted_records = BehaviorAttendanceDeletion.query.filter(
-        BehaviorAttendanceDeletion.behavior_configuration_id == config.id,
-        BehaviorAttendanceDeletion.behavior_session_id == selected_session.id,
-        BehaviorAttendanceDeletion.student_enrollment_id.in_(enrollment_ids),
-    ).order_by(
-        BehaviorAttendanceDeletion.attendance_date.desc(),
-        BehaviorAttendanceDeletion.deleted_at.desc(),
-    ).all()
-    for item in deleted_records:
-        rows.append({
-            "date": item.attendance_date.isoformat(),
-            "date_display": item.attendance_date.strftime("%B %d, %Y"),
-            "student": item.student_name,
-            "mother": item.mother_name or "-",
-            "student_code": item.student_code,
-            "class_name": item.class_name or "-",
-            "photo_path": "",
-            "photo_url": "",
-            "status": item.status_label,
-            "status_key": item.status_key,
-            "closure_id": None,
-            "is_school_closure": item.status_key == SCHOOL_CLOSURE_STATUS_KEY,
-            "record_id": item.original_record_id,
-            "record_status": "deleted",
-            "void_reason": item.void_reason or "",
-            "deletion_reason": item.deletion_reason,
-            "deleted_by": item.deleted_by_username,
-            "deleted_at": item.deleted_at.isoformat() if item.deleted_at else "",
-            "arrival_time": item.arrival_time.strftime("%I:%M %p").lstrip("0") if item.arrival_time else "",
-            "attendance_time": item.attendance_time.strftime("%I:%M %p").lstrip("0") if item.attendance_time else "",
-            "late_by_minutes": item.late_by_minutes,
-            "points": str(item.points_applied or 0),
-            "polarity": item.polarity,
-            "note": item.note or "",
-        })
-    return rows
+    if selected_class:
+        enrollment_query = enrollment_query.filter(
+            StudentEnrollment.academic_year_class_id == selected_class.id
+        )
+    shift = (getattr(selected_session, "applicable_shift", None) or "all").strip().lower()
+    if shift != "all":
+        enrollment_query = enrollment_query.filter(AcademicYearClass.school_shift == shift)
+    if query:
+        pattern = f"%{query}%"
+        enrollment_query = enrollment_query.filter(
+            or_(
+                Student.full_name.ilike(pattern),
+                Student.mother_name.ilike(pattern),
+                Student.student_code.ilike(pattern),
+            )
+        )
+    if date_from:
+        enrollment_query = enrollment_query.filter(BehaviorAttendanceRecord.attendance_date >= date_from)
+    if date_to:
+        enrollment_query = enrollment_query.filter(BehaviorAttendanceRecord.attendance_date <= date_to)
+
+    if state == "deleted":
+        records = enrollment_query.filter(BehaviorAttendanceRecord.deleted_at.isnot(None))
+    else:
+        records = enrollment_query.filter(BehaviorAttendanceRecord.deleted_at.is_(None))
+        if state in {"active", "voided"}:
+            records = records.filter(BehaviorAttendanceRecord.status == state)
+
+    deletions = None
+    if state == "deleted":
+        deletions = BehaviorAttendanceDeletion.query.join(
+            StudentEnrollment,
+            StudentEnrollment.id == BehaviorAttendanceDeletion.student_enrollment_id,
+        ).join(
+            AcademicYearClass,
+            AcademicYearClass.id == StudentEnrollment.academic_year_class_id,
+        ).filter(
+            BehaviorAttendanceDeletion.behavior_configuration_id == config.id,
+            BehaviorAttendanceDeletion.behavior_session_id == selected_session.id,
+            BehaviorAttendanceDeletion.academic_year_id == config.academic_year_id,
+            StudentEnrollment.academic_year_id == config.academic_year_id,
+            StudentEnrollment.academic_year_level_id.in_(level_ids or {-1}),
+            StudentEnrollment.status.in_(("active", "completed")),
+        )
+        if selected_level:
+            deletions = deletions.filter(
+                BehaviorAttendanceDeletion.academic_year_level_id == selected_level.id
+            )
+        if selected_class:
+            deletions = deletions.filter(
+                BehaviorAttendanceDeletion.academic_year_class_id == selected_class.id
+            )
+        if shift != "all":
+            deletions = deletions.filter(AcademicYearClass.school_shift == shift)
+        if query:
+            pattern = f"%{query}%"
+            deletions = deletions.filter(
+                or_(
+                    BehaviorAttendanceDeletion.student_name.ilike(pattern),
+                    BehaviorAttendanceDeletion.mother_name.ilike(pattern),
+                    BehaviorAttendanceDeletion.student_code.ilike(pattern),
+                )
+            )
+        if date_from:
+            deletions = deletions.filter(BehaviorAttendanceDeletion.attendance_date >= date_from)
+        if date_to:
+            deletions = deletions.filter(BehaviorAttendanceDeletion.attendance_date <= date_to)
+    return records, deletions
+
+
+def _attendance_record_rows(config, selected_session, selected_level, selected_class, state, query, date_from, date_to, page, page_size):
+    """Fetch one bounded, fully-filtered page of Attendance history."""
+    if not config or not selected_session:
+        return [], 0
+    record_query, deletion_query = _attendance_history_query(
+        config, selected_session, selected_level, selected_class, state, query, date_from, date_to
+    )
+    record_count = record_query.count()
+    deletion_count = deletion_query.count() if deletion_query is not None else 0
+    total = record_count + deletion_count
+
+    if deletion_query is None:
+        records = record_query.options(
+            joinedload(BehaviorAttendanceRecord.student),
+            joinedload(BehaviorAttendanceRecord.academic_year_class),
+            joinedload(BehaviorAttendanceRecord.voider),
+            joinedload(BehaviorAttendanceRecord.deleter),
+        ).order_by(
+            BehaviorAttendanceRecord.attendance_date.desc(),
+            BehaviorAttendanceRecord.id.desc(),
+        ).offset((page - 1) * page_size).limit(page_size).all()
+        return [_serialize_attendance_record(item) for item in records], total
+
+    record_keys = record_query.with_entities(
+        literal("record").label("source"),
+        BehaviorAttendanceRecord.id.label("row_id"),
+        BehaviorAttendanceRecord.attendance_date.label("row_date"),
+    )
+    deletion_keys = deletion_query.with_entities(
+        literal("deletion").label("source"),
+        BehaviorAttendanceDeletion.id.label("row_id"),
+        BehaviorAttendanceDeletion.attendance_date.label("row_date"),
+    )
+    keys = record_keys.union_all(deletion_keys).subquery()
+    page_keys = db.session.query(keys.c.source, keys.c.row_id).order_by(
+        keys.c.row_date.desc(), keys.c.row_id.desc(), keys.c.source.desc()
+    ).offset((page - 1) * page_size).limit(page_size).all()
+    record_ids = [item.row_id for item in page_keys if item.source == "record"]
+    deletion_ids = [item.row_id for item in page_keys if item.source == "deletion"]
+    records_by_id = {
+        item.id: item for item in BehaviorAttendanceRecord.query.filter(
+            BehaviorAttendanceRecord.id.in_(record_ids or {-1})
+        ).options(
+            joinedload(BehaviorAttendanceRecord.student),
+            joinedload(BehaviorAttendanceRecord.academic_year_class),
+            joinedload(BehaviorAttendanceRecord.voider),
+            joinedload(BehaviorAttendanceRecord.deleter),
+        ).all()
+    }
+    deletions_by_id = {
+        item.id: item for item in BehaviorAttendanceDeletion.query.filter(
+            BehaviorAttendanceDeletion.id.in_(deletion_ids or {-1})
+        ).all()
+    }
+    rows = []
+    for key in page_keys:
+        item = records_by_id.get(key.row_id) if key.source == "record" else deletions_by_id.get(key.row_id)
+        if item is not None:
+            rows.append(
+                _serialize_attendance_record(item)
+                if key.source == "record" else _serialize_attendance_deletion(item)
+            )
+    return rows, total
 
 
 def _attendance_scope_options(context):
@@ -2785,36 +2922,43 @@ def attendance_records_api():
         )
     if context["scope_invalid"] or not context["config"] or not context["selected_session"]:
         return jsonify({"ok": False, "message": "Dooro scope sax ah", "rows": []}), 400
-    enrollments = enrollments_for_class(
-        context["config"],
-        context["selected_class"].id if context["selected_class"] else None,
-        context["selected_level"].id if context["selected_level"] else None,
-    )
-    enrollments = [
-        item for item in enrollments
-        if session_applies_to_enrollment(context["selected_session"], item)
-    ]
-    rows = _attendance_record_rows(context["config"], context["selected_session"], enrollments)
     state = (request.args.get("state") or "active").strip().lower()
     if state not in {"active", "voided", "all", "deleted"}:
         state = "active"
     query = (request.args.get("q") or "").strip().lower()
-    date_from = request.args.get("date_from") or ""
-    date_to = request.args.get("date_to") or ""
-    filtered = []
-    for row in rows:
-        current = row.get("record_status") or "active"
-        state_match = current != "deleted" if state == "all" else current == state
-        text_match = not query or query in " ".join(
-            str(row.get(key) or "") for key in ("student", "mother", "student_code")
-        ).lower()
-        date_match = (not date_from or row["date"] >= date_from) and (not date_to or row["date"] <= date_to)
-        if state_match and text_match and date_match:
-            filtered.append(row)
+    try:
+        date_from = date.fromisoformat(request.args["date_from"]) if request.args.get("date_from") else None
+        date_to = date.fromisoformat(request.args["date_to"]) if request.args.get("date_to") else None
+    except ValueError:
+        return jsonify({"ok": False, "message": "Taariikhda shaandhaynta sax ma aha", "rows": []}), 400
+    page = max(1, min(_int(request.args.get("page"), 1) or 1, 100000))
+    page_size = max(1, min(_int(request.args.get("page_size"), 50) or 50, 100))
+    rows, total = _attendance_record_rows(
+        context["config"],
+        context["selected_session"],
+        context["selected_level"],
+        context["selected_class"],
+        state,
+        query,
+        date_from,
+        date_to,
+        page,
+        page_size,
+    )
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    if page > total_pages:
+        page = total_pages
+        rows, total = _attendance_record_rows(
+            context["config"], context["selected_session"], context["selected_level"],
+            context["selected_class"], state, query, date_from, date_to, page, page_size,
+        )
     return jsonify({
         "ok": True,
-        "rows": filtered,
-        "count": len(filtered),
+        "rows": rows,
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
         "options": _attendance_scope_options(context),
         "selected": {
             "year_id": context["selected_year"].id if context["selected_year"] else None,
@@ -3147,6 +3291,19 @@ def attendance():
                     if item.behavior_attendance_closure_id
                 }
                 capture_attendance_session_policy(config, selected_session)
+                effective_points_by_status_id = {
+                    item.id: item.points
+                    for item in BehaviorAttendanceStatus.query.filter_by(
+                        behavior_configuration_id=config.id,
+                    ).all()
+                }
+                effective_points_by_status_id.update({
+                    item.behavior_attendance_status_id: item.points
+                    for item in BehaviorAttendanceStatusLevel.query.filter_by(
+                        behavior_configuration_id=config.id,
+                        academic_year_level_id=context["selected_level"].id,
+                    ).all()
+                })
                 saved_count = 0
                 cleared_count = 0
                 unmarked_count = 0
@@ -3156,12 +3313,7 @@ def attendance():
                     if enrollment.id in existing_voided_ids or enrollment.id in existing_deleted_ids or enrollment.id in existing_closure_ids:
                         continue
                     status_id = _int(request.form.get(f"status_{enrollment.id}"))
-                    existing_record = BehaviorAttendanceRecord.query.filter_by(
-                        behavior_configuration_id=config.id,
-                        behavior_session_id=selected_session.id,
-                        student_enrollment_id=enrollment.id,
-                        attendance_date=attendance_date,
-                    ).first()
+                    existing_record = existing_records.get(enrollment.id)
                     if existing_record and existing_record.behavior_attendance_closure_id:
                         raise BehaviorValidationError(
                             "Maalintan waxaa maamula fasax dugsi oo rasmi ah; ka beddel ama kala noqo diiwaanka fasaxa, hana ku tirtirin xaadirinta ardayga."
@@ -3194,6 +3346,7 @@ def attendance():
                         arrival_time=arrival_time,
                         late_by_minutes=_late_by_minutes(arrival_time, school_start_time),
                         existing_record=existing_records.get(enrollment.id),
+                        effective_points=effective_points_by_status_id.get(status_id),
                         find_existing_record=False,
                         capture_policy=False,
                         flush=False,
@@ -3415,6 +3568,12 @@ def attendance():
         ).outerjoin(
             BehaviorAttendanceRecord,
             BehaviorAttendanceRecord.behavior_attendance_closure_id == BehaviorAttendanceClosure.id,
+        ).options(
+            joinedload(BehaviorAttendanceClosure.level),
+            joinedload(BehaviorAttendanceClosure.school_class),
+            joinedload(BehaviorAttendanceClosure.creator),
+            joinedload(BehaviorAttendanceClosure.updater),
+            joinedload(BehaviorAttendanceClosure.voider),
         ).filter(
             BehaviorAttendanceClosure.behavior_configuration_id == config.id,
             BehaviorAttendanceClosure.behavior_session_id == selected_session.id,
