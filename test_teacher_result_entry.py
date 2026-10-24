@@ -1449,6 +1449,9 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn("WARQADDA RASMIGA AH EE DHIBCAHA", body)
         self.assertNotIn("XAASHIDA RASMIGA AH EE DHIBCAHA", body)
         self.assertIn("@page{size:A4 portrait;margin:0}", body)
+        self.assertIn(".roster{min-height:0;overflow:visible}", body)
+        self.assertIn("tbody tr{height:12mm}", body)
+        self.assertIn("setAttribute('onclick', 'window.print()')", body)
         self.assertIn('<strong lang="so">Dugsiyada Caalamiga ah ee Taysiir</strong>', body)
         self.assertNotIn("مدارس تيسير العالمية", body)
         self.assertNotIn("Taysiir International Schools", body)
@@ -1462,7 +1465,7 @@ class TestTeacherResultEntry(unittest.TestCase):
             'class="subject-head subject-color-0" dir="auto"><span dir="auto">Mathematics</span><small>Dhibcaha / 50</small>',
             body,
         )
-        self.assertIn("width:10.5mm;height:10.5mm", body)
+        self.assertIn("width:7.2mm;height:7.2mm", body)
         self.assertIn(".col-student{width:48%}", body)
         self.assertIn("font-size:10pt;font-weight:800", body)
         self.assertIn("font-size:7pt;font-weight:800;line-height:1.1", body)
@@ -1477,6 +1480,8 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn('class="number">15</td>', body)
         self.assertIn('class="number">16</td>', body)
         self.assertIn('class="number">30</td>', body)
+        self.assertEqual(len(re.findall(r'class="number">(?:[1-9]|1[0-5])</td>', body)), 30)
+        self.assertEqual(len(re.findall(r'class="number">(?:1[6-9]|2[0-9]|30)</td>', body)), 30)
         self.assertIn("Ardeyda guud</small><strong>30", body)
         self.assertIn("Wiilasha</small><strong>15", body)
         self.assertIn("Gabdhaha</small><strong>15", body)

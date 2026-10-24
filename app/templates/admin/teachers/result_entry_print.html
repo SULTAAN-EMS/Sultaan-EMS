@@ -12,8 +12,9 @@
     body{margin:0;padding:18px 12px 30px}
     .toolbar{display:flex;justify-content:flex-end;gap:8px;width:min(210mm,100%);margin:0 auto 12px}
     .toolbar a,.toolbar button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:8px 14px;border:1px solid #d3e0e9;border-radius:6px;background:#fff;color:#36516b;text-decoration:none;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+    .toolbar button:disabled{opacity:.7;cursor:wait}
     .toolbar .print-now{border-color:#087f70;background:#087f70;color:#fff}
-    .sheet{width:min(210mm,100%);min-height:297mm;margin:0 auto 16px;padding:6mm;background:#fff;border:1px solid #dce5ed;box-shadow:0 12px 32px rgba(23,54,84,.12);overflow:hidden}
+    .sheet{width:min(210mm,100%);min-height:297mm;margin:0 auto 16px;padding:6mm;background:#fff;border:1px solid #dce5ed;box-shadow:0 12px 32px rgba(23,54,84,.12)}
     .sheet-content{display:flex;min-height:285mm;flex-direction:column}
     .masthead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 0 2mm;border-bottom:1px solid #dce5ed}
     .brand{display:flex;align-items:center;gap:8px;min-width:0}
@@ -46,13 +47,13 @@
     .stat-copy strong{color:#20394f;font-size:10pt;line-height:1.05;overflow-wrap:anywhere}
     .stat-teacher .stat-copy strong{color:#604a20;font-size:7.1pt;line-height:1.05}
     .stat-copy em{color:#728291;font-size:5.6pt;font-style:normal;line-height:1.05;overflow-wrap:anywhere}
-    .roster{min-width:0;flex:1}
+    .roster{min-width:0;min-height:0;flex:1}
     table{width:100%;border-collapse:collapse;table-layout:fixed}
     thead{display:table-header-group}
     th{height:9mm;padding:3px 4px;border:1px solid #cbd9e2;background:#eaf2f6;color:#294a63;font-size:7pt;font-weight:800;line-height:1.1;text-align:left;vertical-align:middle}
     th.subject-head{background:#e8f4f1;color:#176855;font-size:7.2pt;text-align:center;line-height:1.1;overflow-wrap:anywhere}
     th.subject-head small{display:block;margin-top:2px;font-size:6pt;font-weight:700}
-    td{height:14mm;padding:2px 3px;border:1px solid #d5e0e7;background:#fff;color:#233b50;font-size:7pt;line-height:1.12;vertical-align:middle}
+    td{height:12mm;padding:1px 3px;border:1px solid #d5e0e7;background:#fff;color:#233b50;font-size:7pt;line-height:1.12;vertical-align:middle}
     tbody tr:nth-child(even) td{background:#fafcfd}
     th.subject-head.subject-color-0{background:#e2edff;color:#245b9b;border-color:#c5d9f3}
     tbody td.subject-cell.subject-color-0{background:#f3f7ff;border-color:#d9e4f3}
@@ -83,9 +84,9 @@
     .col-number{width:4%}.col-id-photo{width:13%}.col-student{width:48%}
     .number{text-align:center;color:#708291;font-size:6.7pt;font-weight:750}
     .identity-cell{text-align:center}
-    .student-id{display:inline-flex;align-items:center;justify-content:center;gap:3px;max-width:100%;margin-top:1.2mm;padding:1px 4px 1px 2px;border:1px solid #efdfb6;border-radius:999px;background:#fff9e9;color:#76551b;font-size:6.4pt;font-weight:800;line-height:1.1;text-align:center;white-space:nowrap}
-    .student-id-icon{display:grid;width:4mm;height:4mm;flex:none;place-items:center;border-radius:50%;background:#f7e8bf;color:#9a6910;font-size:5pt}
-    .student-photo{display:grid;width:10.5mm;height:10.5mm;margin:0 auto;place-items:center;overflow:hidden;border:1px solid #d0dde5;border-radius:50%;background:#eef3f7;color:#8295a3;font-size:9px}
+    .student-id{display:inline-flex;align-items:center;justify-content:center;gap:2px;max-width:100%;margin-top:.5mm;padding:0 3px 0 1px;border:1px solid #efdfb6;border-radius:999px;background:#fff9e9;color:#76551b;font-size:5.7pt;font-weight:800;line-height:1.05;text-align:center;white-space:nowrap}
+    .student-id-icon{display:grid;width:2.7mm;height:2.7mm;flex:none;place-items:center;border-radius:50%;background:#f7e8bf;color:#9a6910;font-size:4pt}
+    .student-photo{display:grid;width:7.2mm;height:7.2mm;margin:0 auto;place-items:center;overflow:hidden;border:1px solid #d0dde5;border-radius:50%;background:#eef3f7;color:#8295a3;font-size:8px}
     .student-photo img{width:100%;height:100%;object-fit:cover}
     .student-name{display:block;color:#1e3448;font-family:"HP Simplified",Arial,sans-serif;font-size:10pt;font-weight:800;line-height:1.12;overflow-wrap:anywhere;word-break:normal}
     .mother-name{display:block;margin-top:3px;color:#536a7d;font-family:"HP Simplified",Arial,sans-serif;font-size:7.8pt;line-height:1.1;overflow-wrap:anywhere;word-break:normal}
@@ -118,11 +119,37 @@
     @media print{
       html,body{width:210mm;margin:0;padding:0;background:#fff}
       .toolbar{display:none!important}
-      .sheet{width:210mm;height:297mm;min-height:297mm;margin:0;padding:6mm;border:0;box-shadow:none;overflow:hidden;break-after:page;page-break-after:always}
+      .sheet{width:210mm;height:297mm;min-height:297mm;margin:0;padding:6mm;border:0;box-shadow:none;break-after:page;page-break-after:always}
       .sheet:last-child{break-after:auto;page-break-after:auto}
-      .sheet-content{height:285mm;min-height:285mm}
+      .sheet-content{height:285mm;min-height:0}
+      .masthead{align-items:center}
+      .school-logo{width:13mm;height:13mm}
+      .school-names strong{font-size:11pt}
+      .document-title h1{font-size:10pt}
+      .document-title p{font-size:7pt}
+      .scope-meta{grid-template-columns:1.05fr 1.35fr .8fr .8fr}
+      .roster-stats{grid-template-columns:repeat(3,minmax(0,.72fr)) minmax(0,1.84fr);gap:5px}
+      .stat-teacher{grid-column:auto}
+      .stat-card{min-height:13mm;padding:4px 6px}
+      .stat-icon{width:8mm;height:8mm}
+      .stat-avatar{width:10mm;height:10mm}
       .signoff{grid-template-columns:1fr 1fr}
+      .signoff-card{min-height:16mm;padding:1.5mm 2mm}
+      .signoff-icon{width:5mm;height:5mm}
+      .signoff-title-copy strong{font-size:6.3pt}
+      .signoff-title-copy small{font-size:5.6pt}
+      .signoff-fields{margin:2mm 1px 0}
+      .signoff-fields span{font-size:5.2pt}
+      .roster{min-height:0;overflow:visible}
       table{min-width:0}
+      thead th{height:8mm;padding:2px 3px;font-size:6.5pt}
+      th.subject-head{font-size:6.8pt}
+      th.subject-head small{font-size:5.7pt}
+      tbody tr{height:12mm}
+      tbody td{height:12mm;padding:1px 3px}
+      .student-name{font-size:9.5pt}
+      .mother-name{font-size:7.2pt}
+      .student-id{font-size:5.5pt}
       tr{break-inside:avoid;page-break-inside:avoid}
       img{-webkit-print-color-adjust:exact;print-color-adjust:exact}
     }
@@ -130,7 +157,7 @@
 </head>
 <body>
   <nav class="toolbar" aria-label="Tallaabooyinka warqadda">
-    <button class="print-now" type="button" onclick="window.print()"><i class="fa-solid fa-print" aria-hidden="true"></i> Daabac / PDF</button>
+    <button class="print-now" type="button" disabled aria-busy="true"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Diyaarinaya...</button>
     <a href="{{ url_for('admin_teachers.result_entry_setup') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Dib-u-noqo</a>
   </nav>
   {% set school_logo = ui_settings.logo_path or ui_settings.admin_logo_path %}
@@ -218,5 +245,31 @@
       </div>
     </main>
   {% endfor %}
+  <script>
+    const printButton = document.querySelector('.print-now');
+    const printLabel = '<i class="fa-solid fa-print" aria-hidden="true"></i> Daabac / PDF';
+    async function enablePrintWhenReady() {
+      const resourcesReady = Promise.all([
+        document.fonts ? document.fonts.ready : Promise.resolve(),
+        ...Array.from(document.images, (image) => {
+          if (image.complete) return Promise.resolve();
+          return new Promise((resolve) => {
+            image.addEventListener('load', resolve, { once: true });
+            image.addEventListener('error', resolve, { once: true });
+          });
+        }),
+      ]);
+      await Promise.race([resourcesReady, new Promise((resolve) => setTimeout(resolve, 5000))]);
+      printButton.innerHTML = printLabel;
+      printButton.disabled = false;
+      printButton.setAttribute('aria-busy', 'false');
+      printButton.setAttribute('onclick', 'window.print()');
+    }
+    if (document.readyState === 'complete') {
+      enablePrintWhenReady();
+    } else {
+      window.addEventListener('load', enablePrintWhenReady, { once: true });
+    }
+  </script>
 </body>
 </html>
