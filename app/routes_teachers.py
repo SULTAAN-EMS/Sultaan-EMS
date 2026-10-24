@@ -13,6 +13,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
+from .enrollment_service import EnrollmentValidationError
 from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, ClubTeam, ClubTeamLeaderAssignment, ClubTeamMembership, Exam, Result, Setting, Student, StudentClub, StudentEnrollment, Subject, Teacher, TeacherActivity, TeacherResultAssignment, TeacherResultEvent, TeacherResultMark, TeacherResultMarkRevision, TeacherResultSubmission, User
 from .permissions import enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, allowed_file
@@ -43,6 +44,23 @@ def _safe_int(value):
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _submission_time_label(submitted_at):
+    if submitted_at is None:
+        return None
+    if submitted_at.tzinfo is None:
+        submitted_at = submitted_at.replace(tzinfo=ZoneInfo("UTC"))
+    local_time = submitted_at.astimezone(ZoneInfo("Africa/Mogadishu"))
+    weekdays = ("Isniin", "Talaado", "Arbaca", "Khamiis", "Jimco", "Sabti", "Axad")
+    months = (
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    )
+    return (
+        f"{weekdays[local_time.weekday()]}, {months[local_time.month - 1]} "
+        f"{local_time.day}, {local_time.year} {local_time.strftime('%I:%M %p')} EAT"
+    )
 
 
 RESULT_EVENT_LABELS = {
@@ -909,15 +927,22 @@ def result_entry_setup():
     ]
 
     review_rows = {}
+    review_summaries = {}
     history_rows = {}
     assignments_with_existing_results = set()
     assignment_progress = {}
+    submission_time_labels = {}
     history_marks_by_assignment = {}
     result_lookup_keys = set()
+    review_rosters = {}
+    review_roster_cache = {}
+    review_roster_errors = set()
     for assignment in assignments:
         submission = next(iter(assignment.submissions), None)
         if not submission:
             continue
+        if submission.submitted_at is not None or submission.status == "submitted":
+            submission_time_labels[assignment.id] = _submission_time_label(submission.submitted_at)
         assignment_progress[assignment.id] = {
             "approved": sum(mark.status == "approved" for mark in submission.marks),
             "pending": sum(mark.status == "submitted" for mark in submission.marks),
@@ -929,6 +954,32 @@ def result_entry_setup():
             (assignment.exam_id, assignment.subject_id, mark.student_id)
             for mark in history_marks
         )
+        if submission.status == "submitted":
+            roster_key = (
+                assignment.academic_year_id,
+                assignment.school_class.academic_level_id,
+                assignment.class_id,
+                assignment.exam_id,
+            )
+            if roster_key not in review_roster_cache:
+                try:
+                    review_roster_cache[roster_key] = students_for_scope_query(
+                        assignment.academic_year_id,
+                        level_id=assignment.school_class.academic_level_id,
+                        class_id=assignment.class_id,
+                        exam=assignment.exam,
+                    ).order_by(Student.full_name, Student.id).all()
+                except EnrollmentValidationError:
+                    review_roster_cache[roster_key] = None
+            students = review_roster_cache[roster_key]
+            if students is None:
+                review_roster_errors.add(assignment.id)
+                students = []
+            review_rosters[assignment.id] = students
+            result_lookup_keys.update(
+                (assignment.exam_id, assignment.subject_id, student.id)
+                for student in students
+            )
 
     official_results_by_key = {}
     result_keys = sorted(result_lookup_keys)
@@ -973,8 +1024,36 @@ def result_entry_setup():
             for mark in submitted_marks
         ):
             assignments_with_existing_results.add(assignment.id)
-        history_items_by_mark = {item["mark"].id: item for item in history_rows[assignment.id]}
-        review_rows[assignment.id] = [history_items_by_mark[mark.id] for mark in submitted_marks]
+        marks_by_student = {mark.student_id: mark for mark in submission.marks}
+        review_items = []
+        for student in review_rosters.get(assignment.id, []):
+            mark = marks_by_student.get(student.id)
+            official_result = official_results_by_key.get(
+                (assignment.exam_id, assignment.subject_id, student.id)
+            )
+            if mark and mark.score is not None and mark.status in {"submitted", "approved"}:
+                review_state = mark.status
+            elif mark and mark.score is not None and mark.status == "draft":
+                review_state = "draft"
+            else:
+                review_state = "missing"
+            review_items.append({
+                "student": student,
+                "mark": mark,
+                "official_score": official_result.score if official_result else None,
+                "review_state": review_state,
+                "revisions": [],
+                "edit_count": 0,
+            })
+        review_rows[assignment.id] = review_items
+        review_summaries[assignment.id] = {
+            "total": len(review_items),
+            "submitted": sum(item["review_state"] == "submitted" for item in review_items),
+            "approved": sum(item["review_state"] == "approved" for item in review_items),
+            "draft": sum(item["review_state"] == "draft" for item in review_items),
+            "missing": sum(item["review_state"] == "missing" for item in review_items),
+            "roster_error": assignment.id in review_roster_errors,
+        }
     history_mark_ids = [
         item["mark"].id
         for rows in history_rows.values()
@@ -999,6 +1078,14 @@ def result_entry_setup():
             item["edit_count"] = sum(
                 revision["record"].is_change for revision in item["revisions"]
             )
+    for rows in review_rows.values():
+        for item in rows:
+            mark = item["mark"]
+            if mark:
+                item["revisions"] = revisions_by_mark.get(mark.id, [])
+                item["edit_count"] = sum(
+                    revision["record"].is_change for revision in item["revisions"]
+                )
     deadline_labels = {
         item.id: item.deadline_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Africa/Mogadishu"))
         for item in assignments if item.deadline_at
@@ -1178,6 +1265,8 @@ def result_entry_setup():
         pagination=pagination,
         deadline_labels=deadline_labels,
         review_rows=review_rows,
+        review_summaries=review_summaries,
+        submission_time_labels=submission_time_labels,
         history_rows=history_rows,
         assignment_progress=assignment_progress,
         assignments_with_existing_results=assignments_with_existing_results,

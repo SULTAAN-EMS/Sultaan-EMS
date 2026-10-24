@@ -89,6 +89,28 @@
 .tra-status.not-started,.tra-status.draft{background:#f3f6f5;color:#667772}
 .tra-review{margin-top:13px;border-top:1px solid #e7eeeb;padding-top:11px}
 .tra-review summary{width:max-content;max-width:100%;color:#176c5a;font-size:.77rem;font-weight:750;cursor:pointer}
+.tra-submission-time{display:flex;align-items:center;gap:10px;width:fit-content;max-width:100%;margin-top:11px;padding:9px 12px;border:1px solid #cfe6df;border-left:3px solid #12846d;border-radius:6px;background:linear-gradient(105deg,#f0faf7,#f7f9ff);color:#26483f}
+.tra-submission-time-icon{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;border-radius:6px;background:#dff3ec;color:#087d67;font-size:.95rem}
+.tra-submission-time-copy{display:grid;gap:2px;min-width:0}
+.tra-submission-time-copy small{color:#60776f;font-size:.65rem;font-weight:750}
+.tra-submission-time-copy strong{font-size:.79rem;font-weight:800;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.tra-submission-time-zone{display:inline-flex;align-items:center;gap:5px;margin-left:3px;padding:4px 7px;border:1px solid #d8e9e2;border-radius:4px;background:#fff;color:#25715f;font-size:.65rem;font-weight:800;white-space:nowrap}
+.tra-submission-time.is-unavailable{border-color:#e5e8e7;border-left-color:#87938f;background:#f7f8f8;color:#63706c}
+.tra-submission-time.is-unavailable .tra-submission-time-icon{background:#ecefee;color:#697670}
+.tra-review-overview{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.tra-review-count{display:inline-flex;align-items:center;gap:6px;min-height:29px;padding:5px 9px;border:1px solid #dce6e2;border-radius:5px;background:#f6f9f8;color:#526760;font-size:.7rem;font-weight:650}
+.tra-review-count b{font-variant-numeric:tabular-nums}
+.tra-review-count i{color:#66877c}
+.tra-review-count.is-submitted{border-color:#d6e4fb;background:#f0f5ff;color:#315fa2}
+.tra-review-count.is-submitted i{color:#5278cf}
+.tra-review-count.is-draft{border-color:#f0dda9;background:#fff8e9;color:#805800}
+.tra-review-count.is-draft i{color:#b77b19}
+.tra-review-count.is-missing{border-color:#f0d5c7;background:#fff5f0;color:#a24f2b}
+.tra-review-count.is-missing i{color:#c15d37}
+.tra-review-count.is-complete{border-color:#cce9d7;background:#eff9f2;color:#19724a}
+.tra-review-count.is-complete i{color:#218458}
+.tra-review-warning{display:flex;align-items:flex-start;gap:8px;margin:9px 0 0;padding:9px 11px;border:1px solid #f0d5c7;border-left:3px solid #c15d37;border-radius:5px;background:#fffaf7;color:#7d482d;font-size:.73rem;font-weight:650;line-height:1.45}
+.tra-review-warning i{margin-top:2px;color:#c15d37}
 .tra-marks-table{max-height:360px;overflow:auto;margin-top:12px;border:1px solid #dfe8e5;border-radius:7px;background:#fff}
 .tra-marks-table table{width:100%;min-width:760px;border-collapse:collapse;font-size:.78rem}
 .tra-marks-table th,.tra-marks-table td{padding:10px 12px;border-bottom:1px solid #edf1ef;text-align:left}
@@ -109,9 +131,18 @@
 .tra-mark-value{display:inline-flex;align-items:center;gap:7px;min-width:74px;padding:7px 10px;border:1px solid transparent;border-radius:6px;font-size:.82rem;font-weight:850;font-variant-numeric:tabular-nums}
 .tra-mark-value--submitted{border-color:#d6e4fb;background:#f0f5ff;color:#315fa2}
 .tra-mark-value--submitted i{color:#5278cf}
+.tra-mark-value--draft{border-color:#f0dda9;background:#fff8e9;color:#805800}
+.tra-mark-value--draft i{color:#b77b19}
 .tra-mark-value--official{border-color:#cce9d7;background:#eff9f2;color:#19724a}
 .tra-mark-value--official i{color:#218458}
 .tra-mark-no-result{display:inline-flex;align-items:center;gap:6px;color:#8a6b35;font-size:.71rem;font-weight:700}
+.tra-mark-no-result--missing{color:#a24f2b}
+.tra-review-state{display:block;margin-top:4px;font-size:.66rem;font-weight:750}
+.tra-review-state.is-submitted{color:#315fa2}
+.tra-review-state.is-complete{color:#19724a}
+.tra-review-state.is-draft{color:#805800}
+.tra-marks-table tbody tr.tra-review-row--missing{background:#fffaf7}
+.tra-marks-table tbody tr.tra-review-row--missing:hover{background:#fff4ee}
 .tra-revision-cell{min-width:145px}
 .tra-score-history{min-width:120px}
 .tra-score-history>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;width:max-content;max-width:100%;cursor:pointer;list-style:none}
