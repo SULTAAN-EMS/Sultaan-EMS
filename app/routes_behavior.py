@@ -70,6 +70,7 @@ from .behavior_grading import (
 )
 from .behavior_reporting import build_behavior_report_categories, get_behavior_report_data
 from .behavior_attendance import (
+    attendance_allocation_reached,
     attendance_days,
     attendance_weekday_label,
     auto_attendance_note,
@@ -445,6 +446,7 @@ def _behavior_context(
     class_id=None,
     session_id=None,
     auto_select_config=True,
+    latest_active_session=False,
 ):
     """Build one year-aware context shared by all Behavior admin screens."""
     years = AcademicYear.query.order_by(AcademicYear.name.desc(), AcademicYear.id.desc()).all()
@@ -539,6 +541,15 @@ def _behavior_context(
             if (getattr(item, "applicable_shift", "all") or "all") == "all"
             or getattr(item, "applicable_shift", "all") == selected_class.school_shift
         ]
+    if latest_active_session:
+        sessions.sort(
+            key=lambda item: (
+                bool(item.is_active),
+                item.created_at or datetime.min,
+                item.id,
+            ),
+            reverse=True,
+        )
     selected_session = (
         next((item for item in sessions if item.id == _int(session_id)), None)
         if has_session_selection else None
@@ -546,7 +557,15 @@ def _behavior_context(
     if has_session_selection and selected_session is None:
         invalid_scope = True
     if selected_session is None and not has_session_selection and sessions:
-        selected_session = sessions[0]
+        if latest_active_session:
+            active_sessions = [item for item in sessions if item.is_active]
+            selected_session = max(
+                active_sessions,
+                key=lambda item: (item.created_at or datetime.min, item.id),
+                default=None,
+            )
+        else:
+            selected_session = sessions[0]
     return {
         "years": years,
         "selected_year": selected_year,
@@ -2973,12 +2992,18 @@ def attendance_records_api():
 @behavior_bp.route("/attendance", methods=["GET", "POST"])
 def attendance():
     """Daily Behavior attendance, deliberately separate from exam-hall attendance."""
+    def scope_value(name):
+        if request.method == "POST" and name in request.form:
+            return request.form.get(name)
+        return request.args.get(name) or request.form.get(name)
+
     context = _behavior_context(
-        request.args.get("year_id") or request.form.get("year_id"),
-        request.args.get("level_id") or request.form.get("level_id"),
-        request.args.get("config_id") or request.form.get("config_id"),
-        request.args.get("class_id") or request.form.get("class_id"),
-        request.args.get("session_id") or request.form.get("session_id"),
+        scope_value("year_id"),
+        scope_value("level_id"),
+        scope_value("config_id"),
+        scope_value("class_id"),
+        scope_value("session_id"),
+        latest_active_session=True,
     )
     # A blank class means "all classes" within the selected academic level.
     # The level remains mandatory for the roster and its points/day settings,
@@ -3026,6 +3051,11 @@ def attendance():
 
     if request.method == "POST":
         try:
+            if (
+                request.form.get("action") in {"save_all", "generate", "closure_create"}
+                and not request.form.get("session_id")
+            ):
+                raise BehaviorValidationError("Dooro fadhiga xaadirinta si cad ka hor inta aan wax la kaydin.")
             if not config or scope_invalid:
                 raise BehaviorValidationError("Select a valid year-aware Behavior scope first")
             if not selected_session:
@@ -3078,11 +3108,30 @@ def attendance():
                         f"Fasaxa lama diiwaangelin: {conflicts} arday waxay taariikhdan hore ugu leeyihiin xaadirin. "
                         "Xogtii hore lama beddelin; sax/ka saar calaamadahaas marka hore."
                     )
+                prior_attendance_by_enrollment = defaultdict(list)
+                for item in BehaviorAttendanceRecord.query.filter(
+                    BehaviorAttendanceRecord.behavior_configuration_id == config.id,
+                    BehaviorAttendanceRecord.behavior_session_id == selected_session.id,
+                    BehaviorAttendanceRecord.student_enrollment_id.in_(enrollment_ids),
+                ).all():
+                    prior_attendance_by_enrollment[item.student_enrollment_id].append(item)
+                mark_eligible = []
+                capped_count = 0
+                for enrollment in eligible:
+                    if attendance_allocation_reached(
+                        config,
+                        selected_session,
+                        enrollment,
+                        prior_attendance_by_enrollment.get(enrollment.id, []),
+                    ):
+                        capped_count += 1
+                    else:
+                        mark_eligible.append(enrollment)
                 present_by_level = {}
                 present = BehaviorAttendanceStatus.query.filter_by(
                     behavior_configuration_id=config.id, key="present", is_active=True,
                 ).first()
-                for enrollment in eligible:
+                for enrollment in mark_eligible:
                     level_id_for_student = enrollment.academic_year_level_id
                     if level_id_for_student not in present_by_level:
                         ensure_status_level_points(config, level_id_for_student)
@@ -3111,7 +3160,7 @@ def attendance():
                 )
                 db.session.add(closure)
                 db.session.flush()
-                for enrollment in eligible:
+                for enrollment in mark_eligible:
                     present, points = present_by_level[enrollment.academic_year_level_id]
                     validate_attendance_ledger_capacity(config, selected_session, enrollment, "positive", points)
                     db.session.add(BehaviorAttendanceRecord(
@@ -3133,9 +3182,19 @@ def attendance():
                         note=reason,
                         marked_by_id=current_user.id,
                     ))
-                audit("Behavior Attendance Closure", f"Created closure {closure.id}; {closure_date}; scope={scope_type}; affected={len(eligible)}")
+                audit(
+                    "Behavior Attendance Closure",
+                    f"Created closure {closure.id}; {closure_date}; scope={scope_type}; "
+                    f"attendance_marks={len(mark_eligible)}; allocation_full={capped_count}",
+                )
                 db.session.commit()
-                flash(f"Fasaxa waa la keydiyey; {len(eligible)} arday ayaa helay dhibcaha Joogidda. Fasallada aan maanta shaqayn laguma darin.", "success")
+                message = (
+                    f"Fasaxa waa la keydiyey; {len(mark_eligible)} arday ayaa helay dhibcaha Joogidda. "
+                    "Fasallada aan maanta shaqayn laguma darin."
+                )
+                if capped_count:
+                    message += f" {capped_count} arday oo dhibcahoodu buuxsameen lagama darin session-kan."
+                flash(message, "success")
                 return _closure_redirect(closure, level_id=context["selected_level"].id if context["selected_level"] else None, class_id=context["selected_class"].id if context["selected_class"] else None)
             elif action in {"closure_edit", "closure_void", "closure_restore", "closure_delete"}:
                 closure = db.session.get(BehaviorAttendanceClosure, _int(request.form.get("closure_id")))
@@ -3278,6 +3337,19 @@ def attendance():
                         BehaviorAttendanceRecord.student_enrollment_id.in_(enrollment_ids),
                     ).all()
                 } if enrollment_ids else {}
+                capacity_enrollment_ids = [
+                    item.id for item in enrollments
+                    if _int(request.form.get(f"status_{item.id}"))
+                    and item.id not in existing_records
+                ]
+                capacity_records_by_enrollment = defaultdict(list)
+                if capacity_enrollment_ids:
+                    for item in BehaviorAttendanceRecord.query.filter(
+                        BehaviorAttendanceRecord.behavior_configuration_id == config.id,
+                        BehaviorAttendanceRecord.behavior_session_id == selected_session.id,
+                        BehaviorAttendanceRecord.student_enrollment_id.in_(capacity_enrollment_ids),
+                    ).all():
+                        capacity_records_by_enrollment[item.student_enrollment_id].append(item)
                 existing_voided_ids = {
                     enrollment_id for enrollment_id, item in existing_records.items()
                     if (item.status or "active") == "voided"
@@ -3347,6 +3419,7 @@ def attendance():
                         late_by_minutes=_late_by_minutes(arrival_time, school_start_time),
                         existing_record=existing_records.get(enrollment.id),
                         effective_points=effective_points_by_status_id.get(status_id),
+                        capacity_records=capacity_records_by_enrollment.get(enrollment.id, []),
                         find_existing_record=False,
                         capture_policy=False,
                         flush=False,

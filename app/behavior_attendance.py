@@ -15,6 +15,7 @@ from .behavior_service import (
     CANONICAL_ATTENDANCE_STATUS_KEYS,
     BehaviorValidationError,
     attendance_points_projection,
+    attendance_score_projection,
     configuration_level_ids,
     decimal_value,
     capture_attendance_session_policy,
@@ -403,14 +404,55 @@ def validate_attendance_context(configuration, session, enrollment):
 def validate_attendance_ledger_capacity(configuration, session, enrollment, polarity, points, exclude_record_id=None):
     """Validate a record without treating daily rows as score capacity.
 
-    Attendance allocation is a normalized total for the whole opportunity
-    period.  It must not reject valid daily records after an old ``allocation /
-    2`` positive/negative bucket fills; the canonical projection applies the
-    final cap after normalizing all applicable rows.
+    This validates the individual row's points and polarity only. The separate
+    session-total guard blocks a new date once the student's normalized
+    Attendance allocation is fully earned, while corrections to an existing
+    date remain possible.
     """
     if polarity not in {"positive", "negative", "neutral"}:
         raise BehaviorValidationError("Attendance status has an invalid polarity")
     decimal_value(points or 0, "Attendance points", minimum="0")
+
+
+def attendance_allocation_reached(configuration, session, enrollment, attendance_records=None):
+    """Return whether this student's exact session Attendance allocation is full."""
+    allocation_value = getattr(session, "attendance_allocation", None)
+    if allocation_value is None:
+        return False
+    allocation = decimal_value(allocation_value, "Attendance allocation", minimum="0")
+    if allocation <= 0:
+        return False
+    projection = attendance_score_projection(
+        configuration,
+        session,
+        enrollment,
+        _validated=True,
+        attendance_records=attendance_records,
+    )
+    score = projection.get("attendance_score")
+    return score is not None and score >= allocation
+
+
+def validate_new_attendance_capacity(configuration, session, enrollment, attendance_records=None):
+    """Reject new dates after the normalized Attendance allocation is earned."""
+    projection = attendance_score_projection(
+        configuration,
+        session,
+        enrollment,
+        _validated=True,
+        attendance_records=attendance_records,
+    )
+    allocation = projection.get("allocation")
+    score = projection.get("attendance_score")
+    if allocation is None or allocation <= 0 or score is None or score < allocation:
+        return
+    name = enrollment.student.full_name if enrollment.student else "Ardayga"
+    session_label = session.session_label or "fadhiga la doortay"
+    raise BehaviorValidationError(
+        f"Ardayga {name} wuxuu buuxiyey dhibcaha xaadirinta ee {session_label} "
+        f"({score.normalize():g}/{allocation.normalize():g}). Diiwaan cusub laguma dari karo; "
+        "sax diiwaan hore ama dooro fadhi kale."
+    )
 
 
 def _snapshot_status_points_for_new_session(configuration, session):
@@ -482,26 +524,45 @@ def generate_daily_roster(
     )
     if not present:
         raise BehaviorValidationError("A Present Attendance status is required")
-    created = 0
-    for enrollment in enrollments_for_class(
-        configuration,
-        academic_year_class_id,
-        academic_year_level_id,
-    ):
-        if not session_applies_to_enrollment(session, enrollment):
-            continue
+    enrollments = [
+        enrollment
+        for enrollment in enrollments_for_class(
+            configuration,
+            academic_year_class_id,
+            academic_year_level_id,
+        )
+        if session_applies_to_enrollment(session, enrollment)
+    ]
+    enrollment_ids = [item.id for item in enrollments]
+    existing_rows = BehaviorAttendanceRecord.query.filter(
+        BehaviorAttendanceRecord.behavior_configuration_id == configuration.id,
+        BehaviorAttendanceRecord.behavior_session_id == session.id,
+        BehaviorAttendanceRecord.student_enrollment_id.in_(enrollment_ids),
+    ).all() if enrollment_ids else []
+    rows_by_enrollment = {}
+    existing_by_date = {}
+    for row in existing_rows:
+        rows_by_enrollment.setdefault(row.student_enrollment_id, []).append(row)
+        if row.attendance_date == attendance_date:
+            existing_by_date[row.student_enrollment_id] = row
+
+    pending = []
+    for enrollment in enrollments:
         validate_enrollment_session_allocations(configuration, enrollment, session)
-        existing = BehaviorAttendanceRecord.query.filter_by(
-            student_enrollment_id=enrollment.id,
-            behavior_session_id=session.id,
-            attendance_date=attendance_date,
-        ).first()
-        if existing:
+        if enrollment.id in existing_by_date:
             continue
+        validate_new_attendance_capacity(
+            configuration, session, enrollment,
+            attendance_records=rows_by_enrollment.get(enrollment.id, []),
+        )
         validate_attendance_ledger_capacity(
             configuration, session, enrollment, present.polarity,
             present.effective_points if present.contributes_to_behavior else 0,
         )
+        pending.append(enrollment)
+
+    created = 0
+    for enrollment in pending:
         db.session.add(
             BehaviorAttendanceRecord(
                 student_id=enrollment.student_id,
@@ -539,6 +600,7 @@ def mark_attendance(
     note_is_auto_generated=False,
     existing_record=None,
     effective_points=None,
+    capacity_records=None,
     find_existing_record=True,
     capture_policy=True,
     flush=True,
@@ -569,6 +631,10 @@ def mark_attendance(
     if item and item.status == "voided":
         raise BehaviorValidationError(
             "This Attendance record is voided and immutable. Restore it before editing."
+        )
+    if not item:
+        validate_new_attendance_capacity(
+            configuration, session, enrollment, attendance_records=capacity_records
         )
     normalized_arrival_time = _coerce_time(arrival_time) if status_key == "late" else None
     if status_key == "late" and normalized_arrival_time is None:

@@ -1944,6 +1944,56 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
         self.assertIn("3.50 / 5.00", grand_card.group(0))
         self.assertNotIn("0.00 / 5.00", grand_card.group(0))
 
+    def test_attendance_report_months_are_limited_to_the_selected_session(self):
+        ensure_attendance_defaults(self.configuration)
+        present = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.configuration.id,
+            key="present",
+        ).one()
+        mark_attendance(
+            self.configuration,
+            self.session_one,
+            self.enrollment,
+            present.id,
+            date(2026, 9, 1),
+            note="September session mark",
+        )
+        mark_attendance(
+            self.configuration,
+            self.session_two,
+            self.enrollment,
+            present.id,
+            date(2026, 10, 1),
+            note="October session mark",
+        )
+        db.session.commit()
+
+        response = self._client_as_admin().get(
+            "/admin/behavior/attendance/students/%s/report"
+            "?year_id=%s&level_id=%s&config_id=%s&session_id=%s&attendance_date=2026-09-01"
+            % (
+                self.enrollment.id,
+                self.year_one.id,
+                self.year_level_one.id,
+                self.configuration.id,
+                self.session_one.id,
+            )
+        )
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True)[-3000:])
+        body = response.get_data(as_text=True)
+        self.assertIn("September 01 - September 30, 2026", body)
+        self.assertNotIn("October 01 - October 31, 2026", body)
+
+        portal_response = self.app.test_client().get(
+            f"/behavior/{self.student.student_code}/{self.exam_one.id}/"
+            f"{self.configuration.id}/{self.session_one.id}/attendance/read"
+        )
+        self.assertEqual(portal_response.status_code, 200, portal_response.get_data(as_text=True)[-3000:])
+        portal_body = portal_response.get_data(as_text=True)
+        self.assertIn("September 01 - September 30, 2026", portal_body)
+        self.assertNotIn("October 01 - October 31, 2026", portal_body)
+
     def test_late_polarity_is_configurable_for_new_and_legacy_rows(self):
         ensure_attendance_defaults(self.configuration)
         late = BehaviorAttendanceStatus.query.filter_by(

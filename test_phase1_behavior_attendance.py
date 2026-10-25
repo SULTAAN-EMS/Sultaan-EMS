@@ -1,7 +1,7 @@
 """Focused Phase 1 tests for Behavior taxonomy and daily attendance."""
 
 import unittest
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from werkzeug.datastructures import MultiDict
@@ -140,6 +140,94 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertEqual(generate_daily_roster(self.config, self.session, saturday), 0)
         self.assertEqual(BehaviorAttendanceRecord.query.count(), 1)
 
+    def test_attendance_session_defaults_to_newest_active_session_not_sort_order(self):
+        self.session.created_at = datetime(2026, 1, 1)
+        self.session.sort_order = 10
+        newer_exam = ExamType(
+            name="Newer Attendance Session",
+            academic_year=self.config.academic_year,
+            is_active=True,
+        )
+        inactive_exam = ExamType(
+            name="Newest Inactive Attendance Session",
+            academic_year=self.config.academic_year,
+            is_active=True,
+        )
+        newer = BehaviorSession(
+            configuration=self.config,
+            exam_type=newer_exam,
+            session_label="Newest active",
+            maximum_score=20,
+            sort_order=0,
+            is_active=True,
+            created_at=datetime(2026, 10, 1),
+        )
+        inactive = BehaviorSession(
+            configuration=self.config,
+            exam_type=inactive_exam,
+            session_label="Inactive and newer",
+            maximum_score=20,
+            sort_order=1,
+            is_active=False,
+            created_at=datetime(2026, 10, 2),
+        )
+        db.session.add_all([newer_exam, inactive_exam, newer, inactive])
+        db.session.commit()
+
+        context = _behavior_context(
+            self.config.academic_year_id,
+            self.config.academic_year_level_id,
+            self.config.id,
+            self.enrollment.academic_year_class_id,
+            latest_active_session=True,
+        )
+
+        self.assertEqual(context["selected_session"].id, newer.id)
+        self.assertIn(inactive.id, {item.id for item in context["sessions"]})
+
+    def test_new_attendance_is_blocked_at_full_session_allocation_but_existing_mark_can_be_corrected(self):
+        ensure_attendance_defaults(self.config)
+        self.session.maximum_score = Decimal("10.000")
+        self.session.behavior_allocation = Decimal("8.000")
+        self.session.attendance_allocation = Decimal("2.000")
+        db.session.commit()
+        statuses = {item.key: item for item in attendance_statuses(self.config)}
+
+        first = mark_attendance(
+            self.config, self.session, self.enrollment, statuses["present"].id,
+            date(2026, 8, 29),
+        )
+        second = mark_attendance(
+            self.config, self.session, self.enrollment, statuses["present"].id,
+            date(2026, 9, 5),
+        )
+        db.session.commit()
+        projection = attendance_score_projection(self.config, self.session, self.enrollment)
+        self.assertEqual(projection["attendance_score"], Decimal("2.000"))
+
+        with self.assertRaisesRegex(BehaviorValidationError, r"2/2"):
+            generate_daily_roster(
+                self.config, self.session, date(2026, 9, 12),
+                academic_year_level_id=self.enrollment.academic_year_level_id,
+            )
+        with self.assertRaisesRegex(BehaviorValidationError, r"2/2"):
+            mark_attendance(
+                self.config, self.session, self.enrollment, statuses["present"].id,
+                date(2026, 9, 12),
+            )
+
+        corrected = mark_attendance(
+            self.config, self.session, self.enrollment, statuses["absent"].id,
+            date(2026, 9, 5), existing_record=second,
+        )
+        self.assertEqual(corrected.id, second.id)
+        mark_attendance(
+            self.config, self.session, self.enrollment, statuses["present"].id,
+            date(2026, 9, 12),
+        )
+        db.session.commit()
+        self.assertEqual(BehaviorAttendanceRecord.query.count(), 3)
+
     def test_attendance_scoring_is_automatic_without_legacy_toggle_or_status_switch(self):
         ensure_attendance_defaults(self.config)
         self.config.behavior_attendance_scoring_enabled = False
@@ -247,6 +335,23 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
             {item.applicable_shift for item in afternoon_context["sessions"]},
             {"afternoon"},
         )
+
+        latest_morning = _behavior_context(
+            self.config.academic_year_id,
+            self.enrollment.academic_year_level_id,
+            self.config.id,
+            self.enrollment.academic_year_class_id,
+            latest_active_session=True,
+        )
+        latest_afternoon = _behavior_context(
+            self.config.academic_year_id,
+            afternoon_enrollment.academic_year_level_id,
+            self.config.id,
+            afternoon_enrollment.academic_year_class_id,
+            latest_active_session=True,
+        )
+        self.assertEqual(latest_morning["selected_session"].applicable_shift, "morning")
+        self.assertEqual(latest_afternoon["selected_session"].applicable_shift, "afternoon")
 
         ensure_attendance_defaults(self.config)
         present = next(item for item in attendance_statuses(self.config, academic_year_level_id=self.enrollment.academic_year_level_id) if item.key == "present")
@@ -1218,6 +1323,39 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertEqual(row.behavior_session_id, self.session.id)
         self.assertEqual(row.academic_year_id, self.config.academic_year_id)
 
+    def test_bulk_save_rejects_new_attendance_when_session_allocation_is_full(self):
+        ensure_attendance_defaults(self.config)
+        self.session.maximum_score = Decimal("10.000")
+        self.session.behavior_allocation = Decimal("8.000")
+        self.session.attendance_allocation = Decimal("2.000")
+        db.session.commit()
+        present = next(item for item in attendance_statuses(self.config) if item.key == "present")
+        for day in (date(2026, 8, 29), date(2026, 9, 5)):
+            mark_attendance(self.config, self.session, self.enrollment, present.id, day)
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        response = client.post(
+            "/admin/behavior/attendance",
+            data={
+                "action": "save_all",
+                "year_id": self.config.academic_year_id,
+                "level_id": self.enrollment.academic_year_level_id,
+                "class_id": self.enrollment.academic_year_class_id,
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+                "attendance_date": "2026-09-12",
+                f"status_{self.enrollment.id}": present.id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("2/2", response.get_data(as_text=True))
+        self.assertEqual(BehaviorAttendanceRecord.query.count(), 2)
+
     def test_bulk_attendance_save_uses_batched_record_lookups(self):
         ensure_attendance_defaults(self.config)
         db.session.commit()
@@ -1453,6 +1591,60 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertEqual(BehaviorAttendanceClosure.query.count(), 0)
         self.assertEqual(BehaviorAttendanceRecord.query.count(), 0)
         self.assertEqual(BehaviorAttendanceDeletion.query.count(), 1)
+
+    def test_school_closure_skips_students_whose_session_attendance_is_full(self):
+        ensure_attendance_defaults(self.config)
+        self.session.maximum_score = Decimal("10.000")
+        self.session.behavior_allocation = Decimal("8.000")
+        self.session.attendance_allocation = Decimal("2.000")
+        second_student = Student(
+            student_code="BHV-CLOSURE-002",
+            full_name="Closure Student Two",
+            is_active=True,
+        )
+        second_enrollment = StudentEnrollment(
+            student=second_student,
+            academic_year=self.enrollment.academic_year,
+            academic_year_level=self.enrollment.academic_year_level,
+            academic_year_class=self.enrollment.academic_year_class,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source="manual",
+        )
+        db.session.add(second_enrollment)
+        db.session.commit()
+        present = next(item for item in attendance_statuses(self.config) if item.key == "present")
+        for day in (date(2026, 8, 29), date(2026, 9, 5)):
+            mark_attendance(self.config, self.session, self.enrollment, present.id, day)
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["_user_id"] = str(self.admin.id)
+            browser_session["_fresh"] = True
+        response = client.post(
+            "/admin/behavior/attendance",
+            data={
+                "action": "closure_create",
+                "year_id": self.config.academic_year_id,
+                "level_id": self.enrollment.academic_year_level_id,
+                "config_id": self.config.id,
+                "session_id": self.session.id,
+                "closure_date": "2026-09-12",
+                "scope_type": "all",
+                "closure_kind": "holiday",
+                "closure_reason": "Maalin dugsi oo xiran",
+            },
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.data[-5000:])
+        self.assertIn("1 arday oo dhibcahoodu buuxsameen".encode(), response.data)
+        closure = BehaviorAttendanceClosure.query.one()
+        closure_rows = BehaviorAttendanceRecord.query.filter_by(
+            behavior_attendance_closure_id=closure.id,
+        ).all()
+        self.assertEqual([item.student_enrollment_id for item in closure_rows], [second_enrollment.id])
 
     def test_school_closure_refuses_to_replace_existing_attendance(self):
         ensure_attendance_defaults(self.config)
