@@ -286,7 +286,7 @@
 .sultan-login-body .sultan-login-control input {
   width: 100%;
   height: clamp(44px, 6.4vh, 52px);
-  padding: 0 46px 0 44px;
+  padding: 0 20px 0 44px;
   border: 1.5px solid var(--sl-line);
   border-radius: 12px;
   outline: none;
@@ -315,30 +315,6 @@
 .sultan-login-body .sultan-login-field.is-invalid input { border-color: var(--sl-danger); }
 .sultan-login-body .sultan-login-error { display: none; margin-top: 6px; color: var(--sl-danger); font-size: 13px; }
 .sultan-login-body .sultan-login-field.is-invalid .sultan-login-error { display: block; }
-.sultan-login-body .sultan-login-toggle {
-  position: absolute;
-  top: 50%;
-  right: 6px;
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  border: 0;
-  border-radius: 10px;
-  color: var(--sl-muted);
-  background: transparent;
-  box-shadow: none;
-  padding: 0;
-  cursor: pointer;
-  transform: translateY(-50%);
-}
-.sultan-login-body .sultan-login-toggle:hover,
-.sultan-login-body .sultan-login-toggle:active,
-.sultan-login-body .sultan-login-toggle:focus { color: var(--sl-ink); background: transparent; box-shadow: none; transform: translateY(-50%); }
-.sultan-login-body .sultan-login-toggle[aria-pressed="true"] { color: var(--sl-brand); }
-.sultan-login-body .sultan-login-toggle .is-hidden { display: none; }
-.sultan-login-body .sultan-login-toggle[aria-pressed="true"] .is-visible { display: none; }
-.sultan-login-body .sultan-login-toggle[aria-pressed="true"] .is-hidden { display: inline-block; }
 .sultan-login-body .sultan-login-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 2px 0 clamp(14px, 3vh, 26px); font-size: 14px; }
 .sultan-login-body .sultan-login-check { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
 .sultan-login-body .sultan-login-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--sl-brand); }
