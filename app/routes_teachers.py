@@ -2,6 +2,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from io import BytesIO
 from tempfile import NamedTemporaryFile
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
@@ -44,6 +45,19 @@ def _safe_int(value):
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _teacher_list_return_url(value):
+    fallback = url_for("admin_teachers.teacher_list")
+    if not value or "\\" in value or any(ord(char) < 32 for char in value):
+        return fallback
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return fallback
+    if parsed.scheme or parsed.netloc or parsed.path != fallback:
+        return fallback
+    return value
 
 
 def _submission_time_label(submitted_at):
@@ -1553,6 +1567,9 @@ def teacher_list():
 @teachers_bp.route("/<int:teacher_id>/edit", methods=["GET", "POST"])
 def teacher_form(teacher_id=None):
     teacher = (db.session.get(Teacher, teacher_id) or abort(404)) if teacher_id else Teacher()
+    return_to = _teacher_list_return_url(
+        request.form.get("return_to") if request.method == "POST" else request.args.get("return_to")
+    )
     settings = get_teacher_settings()
     scope_data = _teacher_profile_scopes(teacher)
     selected_portal_user_id = request.args.get("user_id", type=int)
@@ -1701,7 +1718,7 @@ def teacher_form(teacher_id=None):
             audit("Teacher Updates", f"Saved teacher {teacher.teacher_id} ({teacher.teacher_code})")
             db.session.commit()
             flash("Teacher saved successfully.", "success")
-            return redirect(url_for("admin_teachers.teacher_list"))
+            return redirect(return_to)
         except ValueError as exc:
             db.session.rollback()
             flash(str(exc), "danger")
@@ -1718,6 +1735,7 @@ def teacher_form(teacher_id=None):
         linkable_staff_users=linkable_staff_users,
         selected_portal_user=selected_portal_user,
         selected_portal_user_id=selected_portal_user_id,
+        return_to=return_to,
     )
 
 

@@ -5,6 +5,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-admin.css', v='teacher-identity-layout-20261022-5') }}">
 <form method="post" enctype="multipart/form-data" class="teacher-form-page">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="return_to" value="{{ return_to }}">
   <section class="teacher-form-section">
     <header class="teacher-form-heading"><span><i class="fa-solid fa-address-card" aria-hidden="true"></i></span><div><h2>Xogta iyo xiriirka</h2><p>Aqoonsiga macallinka iyo xogta lagula xiriirayo.</p></div></header>
     <div class="teacher-form-grid">
