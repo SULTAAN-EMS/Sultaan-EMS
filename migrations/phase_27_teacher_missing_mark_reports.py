@@ -27,6 +27,10 @@ def upgrade():
             )
 
         with db.engine.begin() as connection:
+            if connection.dialect.name == "postgresql":
+                connection.execute(text(
+                    "SELECT pg_advisory_xact_lock(hashtext(:lock_name)::bigint)"
+                ), {"lock_name": VERSION})
             TeacherResultMissingMarkReport.__table__.create(bind=connection, checkfirst=True)
             connection.execute(text(
                 "CREATE TABLE IF NOT EXISTS schema_migrations "

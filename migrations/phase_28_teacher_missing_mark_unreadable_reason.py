@@ -82,6 +82,10 @@ def upgrade():
             raise RuntimeError(f"Required table is missing before migration: {TABLE}")
 
         with db.engine.begin() as connection:
+            if connection.dialect.name == "postgresql":
+                connection.execute(text(
+                    "SELECT pg_advisory_xact_lock(hashtext(:lock_name)::bigint)"
+                ), {"lock_name": VERSION})
             connection.execute(text(
                 "CREATE TABLE IF NOT EXISTS schema_migrations "
                 "(version VARCHAR(120) PRIMARY KEY, applied_at TIMESTAMP NOT NULL)"

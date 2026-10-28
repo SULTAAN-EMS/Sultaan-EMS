@@ -4,6 +4,9 @@ from pathlib import Path
 os.environ.setdefault("SENDFILE", "0")
 
 from app import create_app
+from app.startup_migrations import apply_teacher_result_report_migrations
+
+apply_teacher_result_report_migrations(os.getenv("DATABASE_URL"))
 
 app = create_app()
 
