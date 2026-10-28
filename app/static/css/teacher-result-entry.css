@@ -338,7 +338,7 @@ body.teacher-results-body .re-score-box input { background-color: transparent; c
 .re-dock .re-button { flex: none; min-height: 44px; padding: 0 11px; border-radius: 13px; font-size: 12px; }
 .re-save-status { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; width: fit-content; max-width: 420px; min-width: 0; padding: 5px 8px; border: 1px solid var(--re-line); border-radius: 13px; background: var(--re-bg); }
 .re-save-status.ok { background: var(--re-ok-bg); }
-.re-save-status.ready { background: var(--re-bg); }
+.re-save-status.ready { flex: 0 0 auto; width: fit-content; max-width: 100%; margin-left: auto; background: var(--re-bg); }
 .re-save-status.submitted { background: var(--re-ok-bg); }
 .re-save-status.reopened { background: var(--re-warn-bg); }
 .re-save-status.unsaved { background: var(--re-warn-bg); }
@@ -456,6 +456,7 @@ body.teacher-results-body .re-score-box input { background-color: transparent; c
   .re-policy { grid-template-columns: minmax(0, 1fr); }
   .re-dock { justify-content: flex-start; }
   .re-save-status { flex: 1 1 0; width: auto; max-width: none; }
+  .re-save-status.ready { flex: 0 0 auto; width: fit-content; max-width: 100%; }
   .re-save-status.ready .re-save-copy small, .re-save-status.submitted .re-save-copy small, .re-save-status.reopened .re-save-copy small { display: none; }
 }
 @keyframes re-filter-marquee { to { transform: translateX(-50%); } }

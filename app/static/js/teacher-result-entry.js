@@ -485,7 +485,7 @@
     } else if (hasSavedScores) {
       setSaveStatus("ok", "La keydiyey", "");
     } else {
-      setSaveStatus("ready", "Diyaar", "Dhibco weli lama gelin");
+      setSaveStatus("ready", "Diyaar", "");
     }
   }
 
