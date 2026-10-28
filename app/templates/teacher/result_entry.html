@@ -5,7 +5,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-entry-20261028-26') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-entry-20261028-28') }}">
 <section class="result-entry-page" id="resultEntryPage"
   data-max-score="{{ max_score if max_score is not none else '' }}"
   data-assignment-id="{{ assignment.id if assignment else '' }}"
@@ -150,7 +150,14 @@
   {% if assignment and rows %}
     <footer class="re-dock" id="resultDock">
       <button type="button" class="re-button primary" id="openReview"><i class="fa-solid fa-list-check" aria-hidden="true"></i>Dib-u-eegis &amp; Gudbin</button>
-      <div class="re-save-status ok" id="saveStatus" role="status" aria-live="polite"><span class="re-pulse"></span><span class="re-save-copy"><b data-status-title>Waa la keydiyay</b><small data-status-detail>Wax isbeddel ma jiro</small></span></div>
+      {% set initial_status = submission.status if submission else 'draft' %}
+      {% set has_saved_scores = rows|selectattr('score', 'ne', none)|list|length > 0 %}
+      <div class="re-save-status{% if initial_status in ['submitted', 'approved'] or has_saved_scores %} ok{% elif initial_status == 'reopened' %} unsaved{% else %} ready{% endif %}" id="saveStatus" data-submission-status="{{ initial_status }}" role="status" aria-live="polite">
+        <span class="re-pulse"></span><span class="re-save-copy">
+          <b data-status-title>{% if initial_status in ['submitted', 'approved'] %}Hore ayaa loo gudbiyey{% elif initial_status == 'reopened' %}Dib ayaa loo furay{% elif has_saved_scores %}La keydiyey{% else %}Diyaar{% endif %}</b>
+          <small data-status-detail>{% if initial_status == 'reopened' %}Sixitaan ayaa loo baahan yahay{% elif initial_status not in ['submitted', 'approved'] and not has_saved_scores %}Dhibco weli lama gelin{% endif %}</small>
+        </span>
+      </div>
     </footer>
 
     <div class="re-modal" id="reviewModal" aria-hidden="true">
@@ -194,5 +201,5 @@
     </div>
   {% endif %}
 </section>
-<script src="{{ url_for('static', filename='js/teacher-result-entry.js', v='teacher-result-entry-20261028-10') }}" defer></script>
+<script src="{{ url_for('static', filename='js/teacher-result-entry.js', v='teacher-result-entry-20261028-15') }}" defer></script>
 {% endblock %}

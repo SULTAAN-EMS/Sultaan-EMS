@@ -91,6 +91,11 @@
   font-size: .72rem;
   letter-spacing: 0;
   line-height: 1.2;
+  text-align: center;
+}
+
+.teacher-brand .teacher-brand-en {
+  text-align: center;
 }
 
 .teacher-profile {

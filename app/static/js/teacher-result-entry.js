@@ -28,13 +28,14 @@
   let searchValue = "";
   let lastFocus = null;
   let submitInProgress = false;
+  let savedSinceLoad = false;
   let reviewHighlightTimer = null;
   let reviewHighlightedCard = null;
   let restoreFiltersOpen = false;
 
   function setSaveStatus(state, title, detail) {
     if (!statusPanel) return;
-    statusPanel.classList.remove("ok", "unsaved", "saving", "error");
+    statusPanel.classList.remove("ok", "unsaved", "saving", "error", "ready", "submitted", "reopened");
     statusPanel.classList.add(state);
     if (statusTitle) statusTitle.textContent = title;
     if (statusDetail) statusDetail.textContent = detail;
@@ -425,7 +426,7 @@
         applyButton.disabled = true;
         applyButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Waa la raadinayaa…';
       }
-      setSaveStatus("saving", "Waa la raadinayaa…", "Dhibcaha sugaya waa la keydinayaa ka hor raadinta");
+      setSaveStatus("saving", "Waa la raadinayaa…", "");
       try {
         for (const input of inputs) clearTimer(input);
         await autosaveQueue;
@@ -471,7 +472,21 @@
   function setUnsavedStatus() {
     const count = cards.reduce((total, card) => total + (inspect(card).changed ? 1 : 0), 0);
     if (count) setSaveStatus("unsaved", "Aan la keydin", `${count} isbeddel`);
-    else setSaveStatus("ok", "Waa la keydiyay", "Wax isbeddel ma jiro");
+    else setIdleStatus();
+  }
+
+  function setIdleStatus() {
+    const submissionStatus = statusPanel?.dataset.submissionStatus || "draft";
+    const hasSavedScores = cards.some((card) => String(card.dataset.saved || "").trim() !== "");
+    if (!savedSinceLoad && ["submitted", "approved"].includes(submissionStatus)) {
+      setSaveStatus("submitted", "Hore ayaa loo gudbiyey", "");
+    } else if (!savedSinceLoad && submissionStatus === "reopened") {
+      setSaveStatus("reopened", "Dib ayaa loo furay", "Sixitaan ayaa loo baahan yahay");
+    } else if (hasSavedScores) {
+      setSaveStatus("ok", "La keydiyey", "");
+    } else {
+      setSaveStatus("ready", "Diyaar", "Dhibco weli lama gelin");
+    }
   }
 
   function sanitizeScore(input) {
@@ -543,6 +558,7 @@
       if (!response.ok || !data.success) throw new Error(data.message || "Kaydintu ma suurtagelin.");
       const saved = data.score == null ? "" : String(data.score);
       card.dataset.saved = saved;
+      savedSinceLoad = true;
       card.dataset.hasDraft = data.has_draft ? "true" : "false";
       card.dataset.markStatus = data.mark_status || "draft";
       renderMarkAction(card, data.action_type || "");
@@ -551,9 +567,10 @@
       if (input.value.trim() !== saved) {
         setUnsavedStatus();
         queueAutosave(input, 500);
+      } else if (saved) {
+        setSaveStatus("ok", "La keydiyey", "");
       } else {
-        const time = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
-        setSaveStatus("ok", "Waa la keydiyay", `Keydin toos ah · ${time}`);
+        setIdleStatus();
       }
       updateView();
       return true;
@@ -878,6 +895,7 @@
     openModal();
   });
 
+  setIdleStatus();
   initDeadlineCountdown();
   updateView();
   animateInitialStats();

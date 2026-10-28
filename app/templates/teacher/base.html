@@ -2,7 +2,7 @@
 {% block body_class %}teacher-body {{ 'teacher-results-body' if active_endpoint == 'teacher_portal.result_entry' else '' }} {{ 'theme-dark' if active_endpoint != 'teacher_portal.result_entry' and teacher_theme == 'dark' else 'theme-light' }}{% endblock %}
 {% block title %}{% block teacher_title %}{{ page_title }}{% endblock %} | SULTAAN EMS{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-dashboard.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-dashboard.css', v='teacher-brand-center-20261028') }}">
 <header class="teacher-portal-bar{% if active_endpoint == 'teacher_portal.result_entry' %} teacher-portal-bar--result-entry{% endif %}">
   <a class="teacher-brand" href="{{ url_for('teacher_portal.result_entry') }}" aria-label="{{ ui_settings.school_name or 'Taysiir International Schools' }} - Portalka Macallinka">
     <span class="brand-logo" aria-hidden="true">
