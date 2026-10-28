@@ -28,6 +28,9 @@
   let searchValue = "";
   let lastFocus = null;
   let submitInProgress = false;
+  let reviewHighlightTimer = null;
+  let reviewHighlightedCard = null;
+  let restoreFiltersOpen = false;
 
   function setSaveStatus(state, title, detail) {
     if (!statusPanel) return;
@@ -64,14 +67,12 @@
     const hoursNode = card.querySelector("[data-countdown-hours]");
     const minutesNode = card.querySelector("[data-countdown-minutes]");
     const secondsNode = card.querySelector("[data-countdown-seconds]");
-    const statusNode = card.querySelector("[data-countdown-status]");
     const messageNode = card.querySelector("[data-deadline-message]");
     const liveLabel = card.querySelector("[data-deadline-live-label]");
     const alertIcon = card.querySelector("[data-deadline-alert-icon]");
 
     if (!Number.isFinite(deadline)) {
-      if (statusNode) statusNode.textContent = "Waqtiga lama akhrin karo";
-      if (messageNode) messageNode.textContent = "Dib u cusboonaysii bogga ama la xiriir maamulka.";
+      if (messageNode) messageNode.textContent = "Waqtiga lama akhrin karo. Dib u cusboonaysii bogga ama la xiriir maamulka.";
       if (liveLabel) liveLabel.textContent = "HUBI";
       return;
     }
@@ -97,13 +98,11 @@
       setUnit(secondsNode, seconds);
 
       let state = "normal";
-      let status = "Waqtigu wuu socdaa";
       let message = "Ku gudbi natiijooyinka ka hor waqtiga kama dambaysta ah.";
       let badge = "TOOS";
       let icon = "fa-bell";
       if (remaining <= 0) {
         state = "expired";
-        status = "Waqtigu wuu dhammaaday";
         badge = page.dataset.deadlineLocks === "true" ? "DHAMMAADAY" : "DIB LOO FURAY";
         message = page.dataset.deadlineLocks === "true"
           ? "Waqtigu wuu dhammaaday. La xiriir maamulka."
@@ -111,26 +110,22 @@
         icon = "fa-circle-exclamation";
       } else if (remaining <= 3600000) {
         state = "critical";
-        status = "Ka yar 1 saac ayaa hadhay";
-        message = "Ka yar 1 saac ayaa ka hadhay; gudbi hadda.";
+        message = "Wax ka yar 1 saac ayaa hadhay; gudbi hadda.";
         badge = "DEGDEG";
         icon = "fa-triangle-exclamation";
       } else if (remaining <= 86400000) {
         state = "urgent";
-        status = "Digniin: ka yar 24 saac";
-        message = "Ka yar 24 saac ayaa ka hadhay.";
+        message = "Wax ka yar 24 saac ayaa hadhay.";
         badge = "DIGNIIN";
         icon = "fa-triangle-exclamation";
       } else if (remaining <= 259200000) {
         state = "soon";
-        status = "Digniin: waqtigu wuu soo dhow yahay";
-        message = "Ka yar 3 maalmood ayaa ka hadhay; sii dhammee.";
+        message = "Wax ka yar 3 maalmood ayaa hadhay; sii dhammee.";
         badge = "DIGNIIN";
         icon = "fa-bell";
       }
 
       if (card.dataset.state !== state) card.dataset.state = state;
-      if (statusNode && statusNode.textContent !== status) statusNode.textContent = status;
       if (messageNode && messageNode.textContent !== message) messageNode.textContent = message;
       if (liveLabel && liveLabel.textContent !== badge) liveLabel.textContent = badge;
       if (alertIcon) alertIcon.className = `fa-solid ${icon}`;
@@ -387,6 +382,8 @@
     const expanded = window.matchMedia("(min-width: 760px)").matches || open;
     card.classList.toggle("open", expanded);
     toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    const stateLabel = toggle.querySelector("[data-filter-toggle-state]");
+    if (stateLabel) stateLabel.textContent = expanded ? "Qari" : "Fur";
   }
 
   const scopeFilterForm = document.getElementById("resultScopeFilters");
@@ -395,12 +392,29 @@
     const scopeSelects = [...scopeFilterForm.querySelectorAll("select")];
     const initialFilterValues = Object.fromEntries(scopeSelects.map(select => [select.name, select.value]));
     const originalApplyButton = applyButton?.innerHTML || "";
+    const filterStatePrefix = `teacher-result-entry:${window.location.pathname}`;
+    const filterOpenKey = `${filterStatePrefix}:open`;
+    const filterScrollKey = `${filterStatePrefix}:scroll`;
+    try {
+      restoreFiltersOpen = sessionStorage.getItem(filterOpenKey) === "1";
+      if (sessionStorage.getItem(filterScrollKey) !== null) {
+        window.addEventListener("pageshow", () => {
+          const savedScroll = Number(sessionStorage.getItem(filterScrollKey));
+          sessionStorage.removeItem(filterScrollKey);
+          sessionStorage.removeItem(filterOpenKey);
+          if (Number.isFinite(savedScroll)) requestAnimationFrame(() => window.scrollTo(0, savedScroll));
+        }, { once: true });
+      }
+    } catch (_) {
+      restoreFiltersOpen = false;
+    }
     let applyingFilters = false;
     let allowFilterSubmit = false;
 
     const savePendingScoresAndApplyFilters = async (changedFilter = null) => {
       if (applyingFilters) return;
       applyingFilters = true;
+      const savedScroll = window.scrollY;
       const currentAssignment = scopeFilterForm.querySelector('[name="assignment_id"]');
       if (changedFilter && currentAssignment) currentAssignment.value = "";
       const activeInputs = inputs.filter((input) => !input.disabled);
@@ -409,9 +423,9 @@
       scopeFilterForm.setAttribute("aria-busy", "true");
       if (applyButton) {
         applyButton.disabled = true;
-        applyButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Waa la keydinayaa';
+        applyButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Waa la raadinayaa…';
       }
-      setSaveStatus("saving", "Shaandhaynta waa la beddelayaa", "Dhibcaha sugaya waa la keydinayaa");
+      setSaveStatus("saving", "Waa la raadinayaa…", "Dhibcaha sugaya waa la keydinayaa ka hor raadinta");
       try {
         for (const input of inputs) clearTimer(input);
         await autosaveQueue;
@@ -421,6 +435,10 @@
         }
         scopeSelects.forEach((select) => { select.disabled = false; });
         scopeFilterForm.removeAttribute("aria-busy");
+        try {
+          sessionStorage.setItem(filterOpenKey, "1");
+          sessionStorage.setItem(filterScrollKey, String(savedScroll));
+        } catch (_) {}
         allowFilterSubmit = true;
         scopeFilterForm.requestSubmit();
       } catch (error) {
@@ -505,7 +523,7 @@
     const valueToSave = input.value.trim();
     const version = Number(input.dataset.requestVersion || "0") + 1;
     input.dataset.requestVersion = String(version);
-    setSaveStatus("saving", "Waa la keydinayaa…", "Sug yar");
+    setSaveStatus("saving", "Waa la keydinayaa…", "U yara kaadi.......");
     try {
       const response = await fetch(page.dataset.autosaveUrl, {
         method: "POST",
@@ -554,8 +572,8 @@
     const row = document.createElement("button");
     row.type = "button";
     row.className = "re-review-row";
-    if (result.state === "warn") row.classList.add("warn");
     if (result.state === "bad") row.classList.add("bad");
+    else if (asFlag || result.state === "warn") row.classList.add("warn");
     row.dataset.jumpStudent = card.dataset.studentId;
     const number = document.createElement("span");
     number.className = "re-review-number";
@@ -564,8 +582,40 @@
     copy.className = "re-review-copy";
     const name = document.createElement("b");
     name.textContent = card.querySelector(".re-student-info h2").textContent;
+    const avatar = document.createElement("span");
+    avatar.className = "re-review-avatar";
+    avatar.setAttribute("aria-hidden", "true");
+    const initials = name.textContent.trim().split(/\s+/).slice(0, 2).map((part) => part[0] || "").join("").toUpperCase();
+    const photoSource = card.querySelector(".re-avatar img");
+    if (photoSource?.src) {
+      const photo = document.createElement("img");
+      photo.src = photoSource.currentSrc || photoSource.src;
+      photo.alt = "";
+      photo.loading = "lazy";
+      photo.onerror = () => {
+        avatar.classList.add("fallback");
+        avatar.textContent = initials;
+      };
+      avatar.append(photo);
+    } else {
+      avatar.classList.add("fallback");
+      avatar.textContent = card.querySelector(".re-avatar b")?.textContent.trim() || initials;
+    }
     const detail = document.createElement("small");
-    detail.textContent = result.empty ? "Dhibco lama gelin" : (result.error || `ID: ${card.querySelector(".re-student-id").textContent.replace(/^ID:\s*/, "")}`);
+    const detailText = result.empty ? "Dhibco lama gelin" : (result.error || `ID: ${card.querySelector(".re-student-id").textContent.replace(/^ID:\s*/, "")}`);
+    if (asFlag) {
+      const detailIcon = document.createElement("i");
+      detailIcon.className = `re-review-detail-icon fa-solid ${result.empty ? "fa-circle-exclamation" : result.valid ? "fa-circle-info" : "fa-triangle-exclamation"}`;
+      detailIcon.setAttribute("aria-hidden", "true");
+      detail.append(detailIcon, document.createTextNode(detailText));
+    } else if (!result.empty && !result.error) {
+      const idIcon = document.createElement("i");
+      idIcon.className = "re-review-id-icon fa-solid fa-id-card";
+      idIcon.setAttribute("aria-hidden", "true");
+      detail.append(idIcon, document.createTextNode(detailText));
+    } else {
+      detail.textContent = detailText;
+    }
     const value = document.createElement("span");
     value.className = "re-review-value";
     value.textContent = result.valid ? input.value : (result.empty ? "—" : input.value);
@@ -573,7 +623,7 @@
     percent.textContent = percentFor(result);
     value.append(percent);
     copy.append(name, detail);
-    row.append(number, copy, value);
+    row.append(number, avatar, copy, value);
     if (!asFlag) row.setAttribute("aria-label", `${name.textContent}, ${result.empty ? "dhibco ma leh" : input.value}`);
     return row;
   }
@@ -590,8 +640,10 @@
     const partialNote = document.querySelector("[data-partial-note]");
     const flagSection = document.querySelector("[data-flag-section]");
     const flagTitle = document.querySelector("[data-flag-title]");
+    const flagCount = document.querySelector("[data-flag-count]");
     const flagList = document.querySelector("[data-flag-list]");
     const allList = document.querySelector("[data-all-list]");
+    const allCount = document.querySelector("[data-all-count]");
     const distribution = document.querySelector("[data-grade-distribution]");
     const confirm = document.getElementById("reviewConfirm");
     const submit = document.getElementById("confirmSubmit");
@@ -602,9 +654,11 @@
     partialNote.hidden = invalidCount > 0 || page.dataset.locked === "true";
     const flagged = allRows.filter(({ result }) => result.empty || !result.valid || result.state === "warn");
     flagSection.hidden = flagged.length === 0;
-    flagTitle.textContent = `Waa in la hubiyo (${flagged.length}) · taabo si aad u saxdo`;
+    flagTitle.textContent = "U baahan in la hubiyo";
+    flagCount.textContent = String(flagged.length);
     flagList.replaceChildren(...flagged.map((record, index) => makeReviewRow(record, index, true)));
     allList.replaceChildren(...allRows.map((record, index) => makeReviewRow(record, index)));
+    allCount.textContent = `${allRows.length} arday`;
     distribution.replaceChildren();
     const order = [...new Set(["exam", "global", "fallback"].flatMap((bucket) => (
       (gradeScales[bucket] || []).map((scale) => scale.grade).filter(Boolean)
@@ -650,6 +704,17 @@
     const card = cards.find((item) => item.dataset.studentId === studentId);
     const input = card?.querySelector("[data-score-input]");
     if (card && input) {
+      if (reviewHighlightTimer) window.clearTimeout(reviewHighlightTimer);
+      reviewHighlightedCard?.classList.remove("review-target-highlight");
+      reviewHighlightedCard = card;
+      card.classList.remove("review-target-highlight");
+      void card.offsetWidth;
+      card.classList.add("review-target-highlight");
+      reviewHighlightTimer = window.setTimeout(() => {
+        card.classList.remove("review-target-highlight");
+        if (reviewHighlightedCard === card) reviewHighlightedCard = null;
+        reviewHighlightTimer = null;
+      }, 60_000);
       card.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
       window.setTimeout(() => input.focus({ preventScroll: true }), 180);
     }
@@ -661,7 +726,7 @@
     if (submitInProgress || !confirm.checked || submitButton.disabled) return;
     submitInProgress = true;
     submitButton.disabled = true;
-    setSaveStatus("saving", "Waa la gudbinayaa…", "Sug yar");
+    setSaveStatus("saving", "Waa la gudbinayaa…", "U yara kaadi.......");
     try {
       await autosaveQueue;
       for (const input of inputs) {
@@ -726,7 +791,7 @@
     setFiltersOpen(filterToggle.getAttribute("aria-expanded") !== "true");
   });
   window.matchMedia("(min-width: 760px)").addEventListener?.("change", (event) => setFiltersOpen(event.matches));
-  setFiltersOpen(false);
+  setFiltersOpen(restoreFiltersOpen);
 
   document.getElementById("studentSearch")?.addEventListener("input", (event) => {
     searchValue = event.target.value.trim().toLocaleLowerCase();

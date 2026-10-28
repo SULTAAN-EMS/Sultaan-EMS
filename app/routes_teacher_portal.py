@@ -68,6 +68,19 @@ from .routes_advanced_results import students_for_scope_query, _year_scope_ids_f
 
 teacher_portal_bp = Blueprint("teacher_portal", __name__)
 
+_PORTAL_WEEKDAYS_SO = ("Isniin", "Talaada", "Arbaca", "Khamiis", "Jumca", "Sabti", "Axad")
+_PORTAL_MONTHS_EN = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
+
+
+def _format_teacher_deadline(value):
+    return (
+        f"{_PORTAL_WEEKDAYS_SO[value.weekday()]}, "
+        f"{_PORTAL_MONTHS_EN[value.month - 1]} {value.day}, {value.year} · {value.strftime('%I:%M %p')}"
+    )
+
 RESULT_ENTRY_FILTER_KEYS = (
     "academic_year_id", "exam_id", "academic_level_id", "class_id", "subject_id", "status",
 )
@@ -337,6 +350,10 @@ def result_entry():
         item.id: item.deadline_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Africa/Mogadishu"))
         for item in assignments if item.deadline_at
     }
+    deadline_display_labels = {
+        assignment_id: _format_teacher_deadline(deadline)
+        for assignment_id, deadline in deadline_labels.items()
+    }
 
     rows = []
     submission = None
@@ -424,6 +441,7 @@ def result_entry():
         entry_filter_options=entry_filter_options,
         entry_filters=filters,
         deadline_labels=deadline_labels,
+        deadline_display_labels=deadline_display_labels,
         assignment=assignment,
         submission=submission,
         rows=rows,

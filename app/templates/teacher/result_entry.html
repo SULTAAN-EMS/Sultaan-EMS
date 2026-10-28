@@ -5,7 +5,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-entry-20261022-14') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-entry-20261028-25') }}">
 <section class="result-entry-page" id="resultEntryPage"
   data-max-score="{{ max_score if max_score is not none else '' }}"
   data-assignment-id="{{ assignment.id if assignment else '' }}"
@@ -46,29 +46,31 @@
         {% endif %}
         {% set saved_values = rows|selectattr('score', 'ne', none)|list %}
         <section class="re-stats" aria-label="Soo koobidda natiijooyinka">
-          <article class="re-stat"><span class="re-stat-icon purple"><i class="fa-solid fa-users" aria-hidden="true"></i></span><span><b data-stat="total" data-target="{{ rows|length }}">{{ rows|length }}</b><small>Arday guud</small></span></article>
-          <article class="re-stat"><span class="re-stat-icon green"><i class="fa-solid fa-check" aria-hidden="true"></i></span><span><b data-stat="entered" data-target="0">0</b><small>La geliyey</small></span></article>
-          <article class="re-stat"><span class="re-stat-icon amber"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span><span><b data-stat="flagged" data-target="0">0</b><small>La hubiyo</small></span></article>
-          <article class="re-stat"><span class="re-stat-icon blue"><i class="fa-solid fa-arrow-trend-up" aria-hidden="true"></i></span><span><b data-stat="average" data-target="0">0%</b><small>Celcelis (%)</small></span></article>
+          <article class="re-stat re-stat-total"><span class="re-stat-icon"><i class="fa-solid fa-users" aria-hidden="true"></i></span><span class="re-stat-copy"><b data-stat="total" data-target="{{ rows|length }}">{{ rows|length }}</b><small>Arday guud</small></span></article>
+          <article class="re-stat re-stat-entered"><span class="re-stat-icon"><i class="fa-solid fa-user-check" aria-hidden="true"></i></span><span class="re-stat-copy"><b data-stat="entered" data-target="0">0</b><small>La geliyey</small></span></article>
+          <article class="re-stat re-stat-flagged"><span class="re-stat-icon"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span><span class="re-stat-copy"><b data-stat="flagged" data-target="0">0</b><small>La hubiyo</small></span></article>
+          <article class="re-stat re-stat-average"><span class="re-stat-icon"><i class="fa-solid fa-chart-line" aria-hidden="true"></i></span><span class="re-stat-copy"><b data-stat="average" data-target="0">0%</b><small>Celcelis (%)</small></span></article>
         </section>
 
         <section class="re-policy" aria-label="Xogta xaashida natiijada">
           <article class="re-policy-item re-deadline-card" data-deadline-card data-deadline-at="{{ deadline_labels[assignment.id].isoformat() if assignment.deadline_at else '' }}" data-state="normal">
             <span class="re-policy-icon blue re-deadline-calendar" aria-hidden="true"><i class="fa-solid fa-calendar-check"></i></span>
-            <div class="re-deadline-summary"><small>Waqtiga gelinta</small>
-              {% if assignment.deadline_at %}<b>{{ deadline_labels[assignment.id].strftime('%d/%m/%Y · %I:%M %p') }}</b><span>Kama dambaysiga natiijada</span>
+            <div class="re-deadline-summary"><small>Waqtiga kama dambeysta ah ee gelinta natiijooyinka</small>
+              {% if assignment.deadline_at %}<b>{{ deadline_display_labels[assignment.id] }}</b>
               {% else %}<b>Waqti lama cayimin</b><span>La xiriir maamulka haddii loo baahdo</span>{% endif %}</div>
             {% if assignment.deadline_at %}
               <span class="re-live-badge" data-deadline-live><i aria-hidden="true"></i><span data-deadline-live-label>TOOS</span></span>
               <div class="re-countdown-panel">
-                <div class="re-countdown-heading"><strong data-countdown-status>Waqtigu wuu socdaa</strong><span><i class="fa-solid fa-stopwatch" aria-hidden="true"></i> Waqtiga haray</span></div>
+                <div class="re-countdown-heading">
+                  <div class="re-countdown-alert" role="status"><span class="re-countdown-alert-icon"><i class="fa-solid fa-bell" data-deadline-alert-icon aria-hidden="true"></i></span><span data-deadline-message>Ku gudbi natiijooyinka ka hor waqtiga kama dambaysta ah.</span></div>
+                  <span><i class="fa-solid fa-stopwatch" aria-hidden="true"></i> Waqtiga haray</span>
+                </div>
                 <div class="re-countdown-units" role="timer" aria-label="Tirinta waqtiga kama dambaysta ah">
                   <div class="re-countdown-unit"><b data-countdown-days>00</b><span><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Maalin</span></div>
                   <div class="re-countdown-unit"><b data-countdown-hours>00</b><span><i class="fa-regular fa-clock" aria-hidden="true"></i> Saacad</span></div>
                   <div class="re-countdown-unit"><b data-countdown-minutes>00</b><span><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> Daqiiqo</span></div>
                   <div class="re-countdown-unit seconds"><b data-countdown-seconds>00</b><span><i class="fa-solid fa-stopwatch" aria-hidden="true"></i> Ilbidhiqsi</span></div>
                 </div>
-                <div class="re-countdown-alert" role="status"><span class="re-countdown-alert-icon"><i class="fa-solid fa-bell" data-deadline-alert-icon aria-hidden="true"></i></span><span data-deadline-message>Ku gudbi natiijooyinka ka hor waqtiga kama dambaysta ah.</span></div>
               </div>
             {% else %}
               <div class="re-no-deadline"><i class="fa-solid fa-infinity" aria-hidden="true"></i><span>Ma jiro waqti kama dambays ah oo loo cayimay xaashidan.</span></div>
@@ -82,17 +84,18 @@
         <form method="get" class="re-filter-card" id="resultScopeFilters" data-filter-assignment-id="{{ assignment.id }}">
           <button type="button" class="re-filter-toggle" id="filterToggle" aria-expanded="false" aria-controls="filterBody">
             <span class="re-filter-heading"><span class="re-filter-icon"><i class="fa-solid fa-sliders" aria-hidden="true"></i></span><span><strong>Shaandhaynta</strong><small>Dooro sannad-dugsiyeedka, nooca imtixaanka, heerka, fasalka iyo maaddada</small></span></span>
+            <span class="re-filter-toggle-hint" aria-hidden="true"><i class="fa-solid fa-hand-pointer"></i><span data-filter-toggle-state>Fur</span></span>
             <i class="fa-solid fa-chevron-down re-filter-chevron" aria-hidden="true"></i>
           </button>
           <div class="re-filter-body" id="filterBody">
             <input type="hidden" name="assignment_id" value="{{ assignment.id }}">
             <div class="re-filter-grid">
-              <label><span>Sannad-dugsiyeedka</span><select name="academic_year_id"><option value="">Dhammaan sannadaha</option>{% for item in entry_filter_options.academic_years %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.academic_year_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
-              <label><span>Imtixaanka</span><select name="exam_id"><option value="">Dhammaan imtixaannada</option>{% for item in entry_filter_options.exams %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.exam_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
-              <label><span>Heerka</span><select name="academic_level_id"><option value="">Dhammaan heerarka</option>{% for item in entry_filter_options.levels %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.academic_level_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
-              <label><span>Fasalka</span><select name="class_id"><option value="">Dhammaan fasallada</option>{% for item in entry_filter_options.classes %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.class_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
-              <label><span>Maaddada</span><select name="subject_id"><option value="">Dhammaan maaddooyinka</option>{% for item in entry_filter_options.subjects %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.subject_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
-              <label><span>Xaaladda</span><select name="status">{% for value, label in entry_filter_options.statuses %}<option value="{{ value }}" {{ 'selected' if entry_filters.status == value else '' }}>{{ label }}</option>{% endfor %}</select></label>
+              <label><span class="re-filter-label"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i>Sannad-dugsiyeedka</span><select name="academic_year_id"><option value="">Dhammaan sannadaha</option>{% for item in entry_filter_options.academic_years %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.academic_year_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
+              <label><span class="re-filter-label"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i>Imtixaanka</span><select name="exam_id"><option value="">Dhammaan imtixaannada</option>{% for item in entry_filter_options.exams %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.exam_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
+              <label><span class="re-filter-label"><i class="fa-solid fa-layer-group" aria-hidden="true"></i>Heerka</span><select name="academic_level_id"><option value="">Dhammaan heerarka</option>{% for item in entry_filter_options.levels %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.academic_level_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
+              <label><span class="re-filter-label"><i class="fa-solid fa-people-group" aria-hidden="true"></i>Fasalka</span><select name="class_id"><option value="">Dhammaan fasallada</option>{% for item in entry_filter_options.classes %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.class_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
+              <label><span class="re-filter-label"><i class="fa-solid fa-book-open" aria-hidden="true"></i>Maaddada</span><select name="subject_id"><option value="">Dhammaan maaddooyinka</option>{% for item in entry_filter_options.subjects %}<option value="{{ item.id }}" {{ 'selected' if entry_filters.subject_id == item.id else '' }}>{{ item.name }}</option>{% endfor %}</select></label>
+              <label><span class="re-filter-label"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Xaaladda</span><select name="status">{% for value, label in entry_filter_options.statuses %}<option value="{{ value }}" {{ 'selected' if entry_filters.status == value else '' }}>{{ label }}</option>{% endfor %}</select></label>
             </div>
             <div class="re-filter-actions"><button class="re-button primary" type="submit"><i class="fa-solid fa-filter" aria-hidden="true"></i>Shaandhee</button><a class="re-button quiet" id="filterReset" href="{{ url_for('teacher_portal.result_entry') }}"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i>Nadiifi</a><span>{{ visible_assignments|length }} xaashi natiijo</span></div>
           </div>
@@ -146,20 +149,44 @@
 
   {% if assignment and rows %}
     <footer class="re-dock" id="resultDock">
-      <button type="button" class="re-button primary" id="openReview"><i class="fa-solid fa-list-check" aria-hidden="true"></i>Dib u eeg &amp; gudbi</button>
+      <button type="button" class="re-button primary" id="openReview"><i class="fa-solid fa-list-check" aria-hidden="true"></i>Dib-u-eegis &amp; Gudbin</button>
       <div class="re-save-status ok" id="saveStatus" role="status" aria-live="polite"><span class="re-pulse"></span><span class="re-save-copy"><b data-status-title>Waa la keydiyay</b><small data-status-detail>Wax isbeddel ma jiro</small></span></div>
     </footer>
 
     <div class="re-modal" id="reviewModal" aria-hidden="true">
       <div class="re-sheet" role="dialog" aria-modal="true" aria-labelledby="reviewTitle" tabindex="-1">
-        <div class="re-modal-head"><div><h2 id="reviewTitle">Dib u eeg kahor gudbinta</h2><p>Hubi dhibcaha ka hor intaadan maamulka u gudbin.</p></div><button type="button" class="re-close" id="closeReview" aria-label="Xir dib-u-eegista"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
+        <div class="re-modal-head"><div><h2 id="reviewTitle">Dib u eeg kahor gudbinta</h2><p>Hubi dhibcaha ka hor intaadan Xafiiska Imtixaannada u gudbin.</p></div><button type="button" class="re-close" id="closeReview" aria-label="Xir dib-u-eegista"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
         <div class="re-modal-body">
-          <div class="re-summary"><div><b data-review-entered>0</b><small>La geliyey</small></div><div><b data-review-flagged>0</b><small>La hubiyo</small></div><div><b data-review-average>0%</b><small>Celcelis</small></div></div>
+          <div class="re-summary" aria-label="Soo-koobidda dhibcaha">
+            <div class="re-summary-entered"><span class="re-summary-icon"><i class="fa-solid fa-user-check" aria-hidden="true"></i></span><span class="re-summary-copy"><b data-review-entered>0</b><small>La geliyey</small></span></div>
+            <div class="re-summary-flagged"><span class="re-summary-icon"><i class="fa-solid fa-clipboard-question" aria-hidden="true"></i></span><span class="re-summary-copy"><b data-review-flagged>0</b><small>La hubiyo</small></span></div>
+            <div class="re-summary-average"><span class="re-summary-icon"><i class="fa-solid fa-chart-line" aria-hidden="true"></i></span><span class="re-summary-copy"><b data-review-average>0%</b><small>Celcelis</small></span></div>
+          </div>
           <div class="re-grade-distribution" data-grade-distribution></div>
           <div class="re-submit-block" data-submit-block hidden><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Dhibco khaldan ayaa jira. Sax ka hor gudbinta.</span></div>
-          <p class="re-partial-note" data-partial-note>Dhibcaha bannaan waad u sii buuxin kartaa mar dambe; kuwa hadda la geliyey ayaa la gudbin karaa.</p>
-          <section class="re-review-section" data-flag-section><h3 data-flag-title>Waa in la hubiyo · taabo si aad u saxdo</h3><div class="re-review-list" data-flag-list></div></section>
-          <section class="re-review-section"><h3>Dhammaan ardayda</h3><div class="re-review-list" data-all-list></div></section>
+          <p class="re-partial-note" data-partial-note>Dhibcaha bannaan waad u sii buuxin kadhaa mar dambe; kuwa hadda la geliyey ayaa la gudbin karaa.</p>
+          <section class="re-review-section re-review-warning" data-flag-section aria-labelledby="reviewFlagTitle">
+            <header class="re-review-warning-head">
+              <span class="re-review-warning-icon" aria-hidden="true"><i class="fa-solid fa-triangle-exclamation"></i></span>
+              <div class="re-review-warning-copy">
+                <h3 id="reviewFlagTitle" data-flag-title>U baahan in la hubiyo</h3>
+                <p>Taabo ardayga si aad dhibcaha u saxdo.</p>
+              </div>
+              <span class="re-review-count" data-flag-count aria-live="polite">0</span>
+            </header>
+            <div class="re-review-list" data-flag-list></div>
+          </section>
+          <section class="re-review-section re-review-all" aria-labelledby="reviewAllTitle">
+            <header class="re-review-all-head">
+              <span class="re-review-all-icon" aria-hidden="true"><i class="fa-solid fa-users"></i></span>
+              <div class="re-review-all-copy">
+                <h3 id="reviewAllTitle">Dhammaan ardayda</h3>
+                <p>Dhibcaha iyo aqoonsiga arday kasta.</p>
+              </div>
+              <span class="re-review-all-count" data-all-count aria-live="polite">0 arday</span>
+            </header>
+            <div class="re-review-list" data-all-list></div>
+          </section>
         </div>
         <div class="re-modal-footer"><label class="re-confirm"><input type="checkbox" id="reviewConfirm"><span>Waxaan hubiyey in dhibcaha ay sax yihiin.</span></label><div class="re-modal-actions"><button type="button" class="re-button quiet" id="backToEditing">Wax ka beddel</button><button type="button" class="re-button primary" id="confirmSubmit" disabled><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Gudbi</button></div></div>
         <div class="re-success" aria-hidden="true"><span><i class="fa-solid fa-check" aria-hidden="true"></i></span><h2>Waa la gudbiyey</h2><p>Natiijooyinka waa la xareeyey.</p></div>
@@ -167,5 +194,5 @@
     </div>
   {% endif %}
 </section>
-<script src="{{ url_for('static', filename='js/teacher-result-entry.js', v='teacher-result-entry-20261022-1') }}" defer></script>
+<script src="{{ url_for('static', filename='js/teacher-result-entry.js', v='teacher-result-entry-20261028-10') }}" defer></script>
 {% endblock %}
