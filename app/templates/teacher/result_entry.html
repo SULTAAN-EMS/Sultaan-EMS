@@ -5,16 +5,18 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-entry-20261028-30') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-missing-reports-20261028-11') }}">
 <section class="result-entry-page" id="resultEntryPage"
   data-max-score="{{ max_score if max_score is not none else '' }}"
   data-assignment-id="{{ assignment.id if assignment else '' }}"
   data-current-subject-id="{{ assignment.subject_id if assignment else '' }}"
   data-grade-scales="{{ grade_scales|tojson|forceescape }}"
   data-autosave-url="{{ url_for('teacher_portal.result_entry_autosave') }}"
+  data-missing-report-url="{{ url_for('teacher_portal.result_entry_missing_mark_report') }}"
   data-autosave-delay="1800"
   data-locked="{{ 'true' if locked else 'false' }}"
-  data-deadline-locks="{{ 'true' if assignment and assignment.deadline_at and not (submission and submission.status == 'reopened') else 'false' }}">
+  data-deadline-locks="{{ 'true' if assignment and assignment.deadline_at and not (submission and submission.status == 'reopened') else 'false' }}"
+  data-missing-reports-locked="{{ 'true' if submission and submission.status == 'approved' else 'false' }}">
   <header class="re-hero">
     <div class="re-hero-inner">
       <div class="re-topline">
@@ -122,11 +124,11 @@
             {% for row in rows %}
               {% set current_value = '%.2f'|format(row.score) if row.score is not none else '' %}
               {% set previous_value = row.previous_score|string if row.previous_score is not none else '' %}
-              <article class="re-student-card" data-student-card data-student-id="{{ row.student.id }}" data-search="{{ (row.student.full_name ~ ' ' ~ (row.student.mother_name or '') ~ ' ' ~ (row.student.student_code or '') ~ ' ' ~ assignment.school_class.name)|lower }}" data-saved="{{ current_value }}" data-previous="{{ previous_value }}" data-mark-status="{{ row.mark_status }}" data-has-draft="{{ 'true' if row.has_draft_mark else 'false' }}" data-locked="{{ 'true' if locked or row.is_locked else 'false' }}" style="--avatar-hue:{{ (loop.index * 47) % 360 }}deg">
+              <article class="re-student-card" data-student-card data-student-id="{{ row.student.id }}" data-student-gender="{{ (row.student.gender or '')|lower }}" data-search="{{ (row.student.full_name ~ ' ' ~ (row.student.mother_name or '') ~ ' ' ~ (row.student.student_code or '') ~ ' ' ~ assignment.school_class.name)|lower }}" data-saved="{{ current_value }}" data-previous="{{ previous_value }}" data-mark-status="{{ row.mark_status }}" data-has-draft="{{ 'true' if row.has_draft_mark else 'false' }}" data-locked="{{ 'true' if locked or row.is_locked else 'false' }}" data-missing-report-locked="{{ 'true' if row.is_locked else 'false' }}" data-missing-report-status="{{ row.missing_report.status if row.missing_report else '' }}" data-missing-report-reason="{{ row.missing_report.reason if row.missing_report else '' }}" data-missing-report-note="{{ row.missing_report.note or '' if row.missing_report else '' }}" style="--avatar-hue:{{ (loop.index * 47) % 360 }}deg">
                 <div class="re-student-main">
                   <div class="re-avatar-wrap"><span class="re-avatar">{% if row.student.photo_path %}<img src="{{ asset_url(row.student.photo_path) }}" alt="" loading="lazy">{% else %}<b>{{ (row.student.full_name.split()[0][0] ~ (row.student.full_name.split()[1][0] if row.student.full_name.split()|length > 1 else ''))|upper }}</b>{% endif %}</span><span class="re-state-badge" data-state-icon><i class="fa-solid fa-user" aria-hidden="true"></i></span></div>
                   {% set student_position_label = 'Ardeyadda' if (row.student.gender or '')|lower == 'female' else 'Ardeyga' %}
-                  <div class="re-student-info"><span class="re-student-number">{{ student_position_label }} {{ loop.index }}aad</span><span class="re-active-label">Ardeygan ayaad maraysaa</span><h2>{{ row.student.full_name }}</h2><p><i class="fa-solid fa-person-dress" aria-hidden="true"></i><span>Hooyo: {{ row.student.mother_name or '—' }}</span></p><div class="re-student-meta"><span class="re-student-id"><i class="fa-regular fa-id-card" aria-hidden="true"></i>ID: {{ row.student.student_code or '—' }}</span><span class="re-student-class"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i>Fasalka: {{ assignment.school_class.name }}</span></div><span class="re-mark-action{% if row.action_type %} is-{{ row.action_type }}{% endif %}" data-mark-action data-action-type="{{ row.action_type or '' }}" role="status" aria-live="polite" {% if not row.action_type %}hidden{% endif %}><i class="fa-solid {% if row.action_type == 'entered' %}fa-circle-plus{% elif row.action_type == 'edited' %}fa-pen-to-square{% elif row.action_type == 'cleared' %}fa-trash-can{% else %}fa-clock-rotate-left{% endif %}" aria-hidden="true"></i><span data-action-label>{% if row.action_type == 'entered' %}Natiijo cusub la geliyey{% elif row.action_type == 'edited' %}Natiijo waa la beddelay{% elif row.action_type == 'cleared' %}Natiijo waa la tirtiray{% elif row.action_type == 'legacy' %}Taariikh ficil hore lama hayo{% endif %}</span></span></div>
+                  <div class="re-student-info"><span class="re-student-number">{{ student_position_label }} {{ loop.index }}aad</span><span class="re-active-label">Ardeygan ayaad maraysaa</span><h2>{{ row.student.full_name }}</h2><p><i class="fa-solid fa-person-dress" aria-hidden="true"></i><span>Hooyo: {{ row.student.mother_name or '—' }}</span></p><div class="re-student-meta"><span class="re-student-id"><i class="fa-regular fa-id-card" aria-hidden="true"></i>ID: {{ row.student.student_code or '—' }}</span><span class="re-student-class"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i>Fasalka: {{ assignment.school_class.name }}</span></div><span class="re-mark-action{% if row.action_type %} is-{{ row.action_type }}{% endif %}" data-mark-action data-action-type="{{ row.action_type or '' }}" role="status" aria-live="polite" {% if not row.action_type %}hidden{% endif %}><i class="fa-solid {% if row.action_type == 'entered' %}fa-circle-plus{% elif row.action_type == 'edited' %}fa-pen-to-square{% elif row.action_type == 'cleared' %}fa-trash-can{% else %}fa-clock-rotate-left{% endif %}" aria-hidden="true"></i><span data-action-label>{% if row.action_type == 'entered' %}Natiijo cusub la geliyey{% elif row.action_type == 'edited' %}Natiijo waa la beddelay{% elif row.action_type == 'cleared' %}Natiijo waa la tirtiray{% elif row.action_type == 'legacy' %}Taariikh ficil hore lama hayo{% endif %}</span></span><div class="re-missing-report-control"><span class="re-missing-report-state" data-missing-report-state {% if not row.missing_report %}hidden{% endif %}><i class="fa-solid {{ 'fa-circle-check' if row.missing_report and row.missing_report.status == 'resolved' else 'fa-clipboard-question' }}" aria-hidden="true"></i><span data-missing-report-label>{% if row.missing_report and row.missing_report.status == 'resolved' %}Sababtii waa la xalliyey{% elif row.missing_report %}Asbaab waa la gudbiyey{% endif %}</span></span><button type="button" class="re-missing-report-button" data-missing-report-trigger {% if row.is_locked or row.score is not none or (submission and submission.status == 'approved') %}hidden{% endif %}><i class="fa-solid {{ 'fa-pen-to-square' if row.missing_report and row.missing_report.status == 'open' else 'fa-clipboard-question' }}" aria-hidden="true"></i><span data-missing-report-button-label>{{ 'Wax ka beddel asbaabta' if row.missing_report and row.missing_report.status == 'open' else ('Fadlan Bixi Sabab' if not row.missing_report else 'Sheeg sabab cusub') }}</span></button></div></div>
                 </div>
                 <div class="re-score-area">
                   <div class="re-performance"><div class="re-performance-line"><b data-percent>—</b></div><span class="re-progress"><i data-progress></i></span></div>
@@ -159,6 +161,33 @@
         </span>
       </div>
     </footer>
+
+    <dialog class="re-missing-dialog" id="missingMarkDialog" aria-labelledby="missingMarkTitle">
+      <form id="missingMarkForm">
+        <header class="re-missing-dialog-head"><span class="re-missing-dialog-icon" aria-hidden="true"><i class="fa-solid fa-clipboard-question"></i></span><div><h2 id="missingMarkTitle">Sababta dhibcuhu u maqan yihiin</h2><p data-missing-student-name></p></div><button type="button" class="re-close" data-missing-close aria-label="Xir"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
+        <input type="hidden" name="student_id">
+        <fieldset class="re-missing-reasons"><legend>Xulo sababta</legend>
+          <label data-reason="absent"><input type="radio" name="reason" value="absent" required><span><i class="fa-solid fa-user-clock" aria-hidden="true"></i><span data-reason-label>Ardeygan imtixaanka uma uusan fadhiisan.</span></span></label>
+          <label data-reason="paper_lost"><input type="radio" name="reason" value="paper_lost"><span><i class="fa-solid fa-file-circle-question" aria-hidden="true"></i><span data-reason-label>Warqadihii Imtixaanka/Jawaabaha way lumeen.</span></span></label>
+          <label data-reason="paper_damaged"><input type="radio" name="reason" value="paper_damaged"><span><i class="fa-solid fa-file-circle-exclamation" aria-hidden="true"></i><span data-reason-label>Warqadihii Imtixaanka/Jawaabaha way wax-yeelloobeen.</span></span></label>
+          <label data-reason="paper_unreadable"><input type="radio" name="reason" value="paper_unreadable"><span><i class="fa-solid fa-file-lines" aria-hidden="true"></i><span data-reason-label>Qoraalka warqaddaha Imtixaanka/Jawaabta lama akhrin karo.</span></span></label>
+          <label data-reason="other"><input type="radio" name="reason" value="other"><span><i class="fa-solid fa-ellipsis" aria-hidden="true"></i><span data-reason-label>Sabab kale</span></span></label>
+        </fieldset>
+        <label class="re-missing-note-label" for="missingMarkNote">Faallo kooban <small>Faallo ku dar markaad xulato “Sabab kale”.</small></label>
+        <textarea id="missingMarkNote" name="note" rows="3" maxlength="500" placeholder="Faahfaahin dheeraad ah (ugu badnaan 500 xaraf)"></textarea>
+        <p class="re-missing-error" data-missing-error role="alert" hidden></p>
+        <footer class="re-missing-dialog-actions"><button type="button" class="re-button quiet" data-missing-close>Ka noqo</button><button type="submit" class="re-button primary" data-missing-submit><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Gudbi sababta</button></footer>
+      </form>
+    </dialog>
+
+    <div class="re-report-success" id="missingReportSuccess" role="status" aria-live="polite" aria-hidden="true" hidden>
+      <div class="re-report-success-card">
+        <span class="re-report-success-icon" aria-hidden="true"><i class="fa-solid fa-check"></i></span>
+        <h2>Asbaabta waa la Gudbiyey</h2>
+        <p>Sababta dhibcaha maqan waa la diiwaangeliyey.</p>
+        <span class="re-report-success-progress" aria-hidden="true"><i></i></span>
+      </div>
+    </div>
 
     <div class="re-modal" id="reviewModal" aria-hidden="true">
       <div class="re-sheet" role="dialog" aria-modal="true" aria-labelledby="reviewTitle" tabindex="-1">
@@ -201,5 +230,5 @@
     </div>
   {% endif %}
 </section>
-<script src="{{ url_for('static', filename='js/teacher-result-entry.js', v='teacher-result-entry-20261028-16') }}" defer></script>
+<script src="{{ url_for('static', filename='js/teacher-result-entry.js', v='teacher-missing-reports-20261028-9') }}" defer></script>
 {% endblock %}

@@ -17,7 +17,7 @@ from . import db
 from .models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, ClubTeamLeaderAssignment,
     ClubTeamMembership, Exam, ExamMarkingConfiguration, Result, Student, Subject, TeacherResultAssignment,
-    TeacherResultMark, TeacherResultSubmission,
+    TeacherResultMark, TeacherResultMissingMarkReport, TeacherResultSubmission,
 )
 from .teacher_result_history import record_teacher_result_event, record_teacher_result_mark_revision
 from .teacher_analytics import (
@@ -121,6 +121,53 @@ def _next_result_submission_attempt(submission):
     if submission.status == "reopened":
         return submission.submission_count + 1
     return submission.submission_count or None
+
+
+MISSING_MARK_REASON_LABELS = {
+    "absent": "Ardeygan imtixaanka uma uusan fadhiisan.",
+    "paper_lost": "Warqadihii Imtixaanka/Jawaabaha way lumeen.",
+    "paper_damaged": "Warqadihii Imtixaanka/Jawaabaha way wax-yeelloobeen.",
+    "paper_unreadable": "Qoraalka warqaddaha Imtixaanka/Jawaabta lama akhrin karo.",
+    "other": "Sabab kale",
+}
+
+
+def _missing_mark_reason_label(reason, gender=None):
+    if reason == "absent" and str(gender or "").strip().lower() == "female":
+        return "Ardeyaddan imtixaanka uma aysan fadhiisan."
+    return MISSING_MARK_REASON_LABELS.get(reason, MISSING_MARK_REASON_LABELS["other"])
+
+
+def _sync_missing_mark_report(assignment, student_id, *, has_score, now, submission=None, mark=None, report=None):
+    if report is None:
+        report = TeacherResultMissingMarkReport.query.filter_by(
+            assignment_id=assignment.id, student_id=student_id
+        ).first()
+    if not report:
+        return None
+
+    next_status = "resolved" if has_score else "open"
+    if report.status == next_status:
+        return report
+
+    previous_status = report.status
+    report.status = next_status
+    report.resolved_at = now if has_score else None
+    report.resolved_by_id = current_user.id if has_score and current_user.is_authenticated else None
+    report.resolved_by_mark_id = mark.id if has_score and mark else None
+    action = "missing_mark_resolved" if has_score else "missing_mark_reopened"
+    reason_label = _missing_mark_reason_label(report.reason, report.student.gender)
+    note = f"{report.student.student_code or report.student.full_name}: {reason_label}"
+    record_teacher_result_event(
+        assignment,
+        action,
+        submission=submission,
+        status_from=previous_status,
+        status_to=next_status,
+        marks_count=1 if has_score else 0,
+        note=note,
+    )
+    return report
 
 
 def _unique_assignments(items, key):
@@ -375,6 +422,12 @@ def result_entry():
                 exam=assignment.exam,
             ).order_by(Student.full_name).all()
         submission = TeacherResultSubmission.query.filter_by(assignment_id=assignment.id).first()
+        missing_reports = {
+            report.student_id: report
+            for report in TeacherResultMissingMarkReport.query.filter_by(
+                assignment_id=assignment.id
+            ).all()
+        }
         saved_marks = {mark.student_id: mark for mark in submission.marks} if submission else {}
         official_marks = {
             result.student_id: result
@@ -392,6 +445,7 @@ def result_entry():
                 "has_draft_mark": bool(draft),
                 "mark_status": draft.status if draft else "draft",
                 "is_locked": bool(draft and draft.status in {"submitted", "approved"}),
+                "missing_report": missing_reports.get(student.id),
                 "action_type": (draft.last_action if draft and draft.last_action else None)
                 or ("legacy" if (draft.score if draft else (existing.score if existing else None)) is not None else None),
             })
@@ -445,6 +499,8 @@ def result_entry():
         assignment=assignment,
         submission=submission,
         rows=rows,
+        missing_mark_reason_labels=MISSING_MARK_REASON_LABELS,
+        missing_mark_reason_label=_missing_mark_reason_label,
         max_score=max_score,
         grade_scales=grade_scales,
         locked=locked,
@@ -456,6 +512,116 @@ def result_entry():
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
     response.headers["Pragma"] = "no-cache"
     return response
+
+
+@teacher_portal_bp.route("/result-entry/missing-mark-report", methods=["POST"])
+@teacher_login_required
+def result_entry_missing_mark_report():
+    teacher = get_current_teacher()
+    payload = request.get_json(silent=True) or {}
+    assignment = TeacherResultAssignment.query.filter_by(
+        id=payload.get("assignment_id"),
+        teacher_id=teacher.id,
+        is_active=True,
+        deleted_at=None,
+    ).first_or_404()
+    submission = TeacherResultSubmission.query.filter_by(assignment_id=assignment.id).first()
+
+    def failure(message, status=400):
+        return jsonify(success=False, message=message), status
+
+    if submission and submission.status == "approved":
+        return failure("Xaashidan waa la ansixiyey oo way xiran tahay.", 409)
+    year_level, year_class = _year_scope_ids_from_legacy(
+        assignment.academic_year_id,
+        assignment.school_class.academic_level_id,
+        assignment.class_id,
+    )
+    if not year_level or not year_class or assignment.exam.academic_year_id != assignment.academic_year_id:
+        return failure("Xilsaaristan hadda ma shaqaynayso. Dib u cusboonaysii bogga.", 409)
+    try:
+        student_id = int(payload.get("student_id"))
+    except (TypeError, ValueError):
+        return failure("Ardayga lama aqoonsan. Dib u cusboonaysii bogga.")
+    student = students_for_scope_query(
+        assignment.academic_year_id,
+        level_id=assignment.school_class.academic_level_id,
+        class_id=assignment.class_id,
+        exam=assignment.exam,
+    ).filter(Student.id == student_id).first()
+    if not student:
+        return failure("Ardaygani kuma jiro fasalka xilsaaran.", 403)
+
+    mark = TeacherResultMark.query.join(TeacherResultSubmission).filter(
+        TeacherResultSubmission.assignment_id == assignment.id,
+        TeacherResultMark.student_id == student.id,
+    ).first()
+    official = Result.query.filter_by(
+        exam_id=assignment.exam_id,
+        subject_id=assignment.subject_id,
+        student_id=student.id,
+    ).first()
+    if (mark and (mark.score is not None or mark.status in {"submitted", "approved"})) or (official and official.score is not None):
+        return failure("Ardaygan dhibic ayuu leeyahay; marka hore hubi dhibcaha ka hor warbixinta.", 409)
+
+    reason = str(payload.get("reason") or "").strip()
+    if reason not in MISSING_MARK_REASON_LABELS:
+        return failure("Xulo sababta saxda ah ee dhibcuhu u maqan yihiin.", 422)
+    note = str(payload.get("note") or "").strip()
+    if len(note) > 500:
+        return failure("Faalladu kama badnaan karto 500 xaraf.", 422)
+    if reason == "other" and not note:
+        return failure("Faallo ku dar markaad doorato sabab kale.", 422)
+
+    report = TeacherResultMissingMarkReport.query.filter_by(
+        assignment_id=assignment.id, student_id=student.id
+    ).first()
+    created = report is None
+    previous_status = report.status if report else None
+    changed = bool(
+        created
+        or report.reason != reason
+        or (report.note or "") != note
+        or report.status != "open"
+    )
+    if not report:
+        report = TeacherResultMissingMarkReport(
+            assignment_id=assignment.id,
+            student_id=student.id,
+            teacher_id=teacher.id,
+            reported_by_id=current_user.id,
+        )
+        db.session.add(report)
+    report.reason = reason
+    report.note = note or None
+    report.status = "open"
+    report.resolved_at = None
+    report.resolved_by_id = None
+    report.resolved_by_mark_id = None
+
+    if changed:
+        reason_text = _missing_mark_reason_label(reason, student.gender)
+        event_note = f"{student.student_code or student.full_name}: {reason_text}"
+        if note:
+            event_note = f"{event_note} · {note}"
+        record_teacher_result_event(
+            assignment,
+            "missing_mark_reported" if created or previous_status == "resolved" else "missing_mark_report_updated",
+            submission=submission,
+            status_from=previous_status,
+            status_to="open",
+            note=event_note,
+        )
+    db.session.commit()
+    return jsonify(
+        success=True,
+        student_id=student.id,
+        reason=report.reason,
+        reason_label=_missing_mark_reason_label(report.reason, student.gender),
+        note=report.note or "",
+        status=report.status,
+        message="Sababta dhibcaha maqan waa la gudbiyey.",
+    )
 
 
 @teacher_portal_bp.route("/result-entry/autosave", methods=["POST"])
@@ -539,7 +705,15 @@ def result_entry_autosave():
                     submission_attempt=_next_result_submission_attempt(submission),
                 )
             mark.score = None
-            db.session.commit()
+        report = _sync_missing_mark_report(
+            assignment,
+            student.id,
+            has_score=bool((mark.score if mark else None) is not None or (official and official.score is not None)),
+            now=now,
+            submission=submission,
+            mark=mark,
+        )
+        db.session.commit()
         display_score = mark.score if mark else (official.score if official else None)
         return jsonify(
             success=True,
@@ -547,6 +721,9 @@ def result_entry_autosave():
             score=str(display_score) if display_score is not None else None,
             mark_status=mark.status if mark else "draft",
             has_draft=bool(mark),
+            missing_report_status=report.status if report else None,
+            missing_report_reason=report.reason if report else None,
+            missing_report_note=(report.note or "") if report else "",
             action_type=(mark.last_action if mark and mark.last_action else None)
             or ("legacy" if display_score is not None else None),
             saved_at=now.isoformat(),
@@ -564,6 +741,14 @@ def result_entry_autosave():
     action_type = _set_result_mark_action(mark, previous_score, score, now)
     mark.score = score
     mark.status = "draft"
+    report = _sync_missing_mark_report(
+        assignment,
+        student.id,
+        has_score=True,
+        now=now,
+        submission=submission,
+        mark=mark,
+    )
     if submission.status not in {"submitted", "reopened"}:
         submission.status = "draft"
     if action_type:
@@ -580,6 +765,9 @@ def result_entry_autosave():
         score=str(score),
         mark_status=mark.status,
         has_draft=True,
+        missing_report_status=report.status if report else None,
+        missing_report_reason=report.reason if report else None,
+        missing_report_note=(report.note or "") if report else "",
         action_type=mark.last_action or "legacy",
         saved_at=now.isoformat(),
     )
@@ -640,6 +828,13 @@ def result_entry_save():
     existing_marks = {
         mark.student_id: mark for mark in submission.marks
     } if submission else {}
+    missing_reports_by_student = {
+        report.student_id: report
+        for report in TeacherResultMissingMarkReport.query.filter(
+            TeacherResultMissingMarkReport.assignment_id == assignment.id,
+            TeacherResultMissingMarkReport.student_id.in_([student.id for student in students]),
+        ).all()
+    } if students else {}
     previous_submission_status = submission.status if submission else None
     revision_changes = []
     score_by_student = {}
@@ -684,6 +879,15 @@ def result_entry_save():
                         previous_score is not None or had_previous_action,
                     ))
                 existing_mark.score = None
+                _sync_missing_mark_report(
+                    assignment,
+                    student.id,
+                    has_score=official_scores.get(student.id) is not None,
+                    now=now,
+                    submission=submission,
+                    mark=existing_mark,
+                    report=missing_reports_by_student.get(student.id),
+                )
     for student_id, score in score_by_student.items():
         mark = mark_by_student.get(student_id)
         previous_score = mark.score if mark else official_scores.get(student_id)
@@ -699,6 +903,15 @@ def result_entry_save():
             ))
         mark.score = score
         mark.status = "submitted" if submit_now else "draft"
+        _sync_missing_mark_report(
+            assignment,
+            student_id,
+            has_score=True,
+            now=now,
+            submission=submission,
+            mark=mark,
+            report=missing_reports_by_student.get(student_id),
+        )
     submit_message = None
     if submit_now:
         pending_marks = [mark for mark in submission.marks if mark.status == "submitted" and mark.score is not None]

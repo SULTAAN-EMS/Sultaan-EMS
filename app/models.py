@@ -2347,6 +2347,40 @@ class TeacherResultMarkRevision(db.Model):
     )
 
 
+class TeacherResultMissingMarkReport(TimestampMixin, db.Model):
+    """Teacher's documented reason for a student who has no score yet."""
+
+    __tablename__ = "teacher_result_missing_mark_reports"
+
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey("teacher_result_assignments.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False, index=True)
+    reported_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reason = db.Column(db.String(32), nullable=False)
+    note = db.Column(db.String(500), nullable=True)
+    status = db.Column(db.String(16), nullable=False, default="open", index=True)
+    resolved_at = db.Column(db.DateTime, nullable=True)
+    resolved_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved_by_mark_id = db.Column(db.Integer, db.ForeignKey("teacher_result_marks.id", ondelete="SET NULL"), nullable=True)
+
+    assignment = db.relationship("TeacherResultAssignment")
+    student = db.relationship("Student")
+    teacher = db.relationship("Teacher")
+    reported_by = db.relationship("User", foreign_keys=[reported_by_id])
+    resolved_by = db.relationship("User", foreign_keys=[resolved_by_id])
+    resolved_by_mark = db.relationship("TeacherResultMark")
+
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "student_id", name="uq_teacher_result_missing_report_student"),
+        db.CheckConstraint(
+            "reason IN ('absent', 'paper_lost', 'paper_damaged', 'paper_unreadable', 'other')",
+            name="ck_teacher_result_missing_report_reason",
+        ),
+        db.CheckConstraint("status IN ('open', 'resolved')", name="ck_teacher_result_missing_report_status"),
+    )
+
+
 class TeacherResultEvent(db.Model):
     """Append-only audit event for teacher result-entry and review workflows."""
 

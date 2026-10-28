@@ -10,7 +10,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 from openpyxl import load_workbook
-from sqlalchemy import event
+from sqlalchemy import event, inspect, text
 from flask_login import login_required
 
 from app import create_app, db
@@ -18,7 +18,7 @@ from app.models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel,
     AcademicSection, AcademicYearSubject, Exam, ExamMarkingConfiguration, GradeScale, Result, Student, StudentEnrollment, Subject, Teacher,
     TeacherActivity, TeacherResultAssignment, TeacherResultEvent, TeacherResultMarkRevision, TeacherResultSubmission, User,
-    TeacherResultMark, Setting,
+    TeacherResultMark, TeacherResultMissingMarkReport, Setting,
 )
 from migrations import phase_14_teacher_result_entry
 from app.teacher_services import default_teacher_username, validate_teacher_password
@@ -27,6 +27,8 @@ from migrations import phase_20_teacher_result_history
 from migrations import phase_21_teacher_result_assignment_archive
 from migrations import phase_22_teacher_result_mark_activity
 from migrations import phase_24_teacher_result_mark_revisions
+from migrations import phase_27_teacher_missing_mark_reports
+from migrations import phase_28_teacher_missing_mark_unreadable_reason
 
 
 class TestTeacherResultEntry(unittest.TestCase):
@@ -69,7 +71,7 @@ class TestTeacherResultEntry(unittest.TestCase):
         ))
         self.students = []
         for index in range(2):
-            student = Student(student_code=f"ST-{index + 1}", full_name=f"Student {index + 1}", is_active=True)
+            student = Student(student_code=f"ST-{index + 1}", full_name=f"Student {index + 1}", gender="Male" if index == 0 else "Female", is_active=True)
             db.session.add(student)
             db.session.flush()
             db.session.add(StudentEnrollment(
@@ -473,6 +475,300 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(mark.student_id, self.students[0].id)
         self.assertEqual(float(mark.score), 41.5)
         self.assertEqual(response.json["score"], "41.50")
+
+    def test_teacher_can_report_missing_mark_and_admin_can_review_it(self):
+        self._teacher_login()
+        initial_page = self.client.get(f"/teacher/result-entry?assignment_id={self.assignment.id}")
+        self.assertIn("Fadlan Bixi Sabab".encode(), initial_page.data)
+        self.assertIn("Faallo ku dar markaad xulato “Sabab kale”.".encode(), initial_page.data)
+        response = self.client.post("/teacher/result-entry/missing-mark-report", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "reason": "absent",
+            "note": "Ardaygu maalintaas ma uusan xaadirin.",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["success"])
+        report = TeacherResultMissingMarkReport.query.one()
+        self.assertEqual(report.status, "open")
+        self.assertEqual(report.reason, "absent")
+        self.assertEqual(report.note, "Ardaygu maalintaas ma uusan xaadirin.")
+        self.assertEqual(TeacherResultMark.query.count(), 0)
+
+        teacher_page = self.client.get(f"/teacher/result-entry?assignment_id={self.assignment.id}")
+        self.assertEqual(teacher_page.status_code, 200)
+        self.assertIn(b"Asbaab waa la gudbiyey", teacher_page.data)
+        self.assertIn(b"Wax ka beddel asbaabta", teacher_page.data)
+
+        self.client.post("/teacher/logout")
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        admin_page = self.client.get("/admin/teachers/result-entry?status=missing-reports")
+        self.assertEqual(admin_page.status_code, 200)
+        self.assertIn(b"Sababaha dhibcaha maqan", admin_page.data)
+        self.assertIn("Weli Darajo looma gelin".encode(), admin_page.data)
+        self.assertIn(b"Ardaygu maalintaas ma uusan xaadirin.", admin_page.data)
+        self.assertIn(b"Student 1", admin_page.data)
+        self.assertIn(b"ST-1", admin_page.data)
+
+    def test_missing_mark_reasons_show_gender_specific_absence_and_unreadable_paper(self):
+        self._teacher_login()
+        female_absence = self.client.post("/teacher/result-entry/missing-mark-report", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[1].id,
+            "reason": "absent",
+        })
+        self.assertEqual(female_absence.status_code, 200)
+        self.assertEqual(female_absence.json["reason_label"], "Ardeyaddan imtixaanka uma aysan fadhiisan.")
+
+        unreadable = self.client.post("/teacher/result-entry/missing-mark-report", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "reason": "paper_unreadable",
+        })
+        self.assertEqual(unreadable.status_code, 200)
+        self.assertEqual(
+            unreadable.json["reason_label"],
+            "Qoraalka warqaddaha Imtixaanka/Jawaabta lama akhrin karo.",
+        )
+        self.assertEqual(
+            {report.reason for report in TeacherResultMissingMarkReport.query.all()},
+            {"absent", "paper_unreadable"},
+        )
+        self.client.post("/teacher/logout")
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        admin_page = self.client.get("/admin/teachers/result-entry?status=missing-reports")
+        self.assertIn("Ardeyaddan imtixaanka uma aysan fadhiisan.".encode(), admin_page.data)
+        self.assertIn("Qoraalka warqaddaha Imtixaanka/Jawaabta lama akhrin karo.".encode(), admin_page.data)
+        self.assertIn(b"is-paper_unreadable", admin_page.data)
+        self.assertIn(b"fa-file-lines", admin_page.data)
+
+    def test_missing_mark_other_reason_saves_with_note(self):
+        self._teacher_login()
+        response = self.client.post("/teacher/result-entry/missing-mark-report", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "reason": "other",
+            "note": "Sabab kale oo la xaqiijiyey.",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        report = TeacherResultMissingMarkReport.query.one()
+        self.assertEqual(report.reason, "other")
+        self.assertEqual(report.note, "Sabab kale oo la xaqiijiyey.")
+
+    def test_unreadable_reason_migration_is_idempotent_and_preserves_reports(self):
+        assignment_id = self.assignment.id
+        student_id = self.students[0].id
+        second_student_id = self.students[1].id
+        teacher_id = self.teacher.id
+        db.session.remove()
+        TeacherResultMissingMarkReport.__table__.drop(db.engine, checkfirst=True)
+        with db.engine.begin() as connection:
+            connection.execute(text("""
+                CREATE TABLE teacher_result_missing_mark_reports (
+                    id INTEGER PRIMARY KEY,
+                    assignment_id INTEGER NOT NULL,
+                    student_id INTEGER NOT NULL,
+                    teacher_id INTEGER NOT NULL,
+                    reported_by_id INTEGER,
+                    reason VARCHAR(32) NOT NULL,
+                    note VARCHAR(500),
+                    status VARCHAR(16) NOT NULL DEFAULT 'open',
+                    resolved_at DATETIME,
+                    resolved_by_id INTEGER,
+                    resolved_by_mark_id INTEGER,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    CONSTRAINT ck_teacher_result_missing_report_reason
+                        CHECK (reason IN ('absent', 'paper_lost', 'paper_damaged', 'other')),
+                    CONSTRAINT ck_teacher_result_missing_report_status
+                        CHECK (status IN ('open', 'resolved')),
+                    CONSTRAINT uq_teacher_result_missing_report_student
+                        UNIQUE (assignment_id, student_id)
+                )
+            """))
+            connection.execute(text("""
+                INSERT INTO teacher_result_missing_mark_reports
+                    (id, assignment_id, student_id, teacher_id, reason, status, created_at, updated_at)
+                VALUES (1, :assignment_id, :student_id, :teacher_id, 'paper_lost', 'open', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """), {
+                "assignment_id": assignment_id,
+                "student_id": student_id,
+                "teacher_id": teacher_id,
+            })
+        with patch("migrations.phase_28_teacher_missing_mark_unreadable_reason.create_app", return_value=self.app):
+            first = phase_28_teacher_missing_mark_unreadable_reason.upgrade()
+            second = phase_28_teacher_missing_mark_unreadable_reason.upgrade()
+
+        self.assertEqual(first["status"], "applied")
+        self.assertEqual(second["status"], "already_applied")
+        report = db.session.get(TeacherResultMissingMarkReport, 1)
+        self.assertEqual(report.reason, "paper_lost")
+        with db.engine.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO teacher_result_missing_mark_reports
+                    (assignment_id, student_id, teacher_id, reason, status, created_at, updated_at)
+                VALUES (:assignment_id, :student_id, :teacher_id, 'paper_unreadable', 'open', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """), {
+                "assignment_id": assignment_id,
+                "student_id": second_student_id,
+                "teacher_id": teacher_id,
+            })
+        self.assertEqual(TeacherResultMissingMarkReport.query.count(), 2)
+
+    def test_missing_mark_report_remains_available_after_deadline_without_unlocking_scores(self):
+        self.assignment.deadline_at = datetime.utcnow() - timedelta(minutes=1)
+        db.session.commit()
+        self._teacher_login()
+
+        page = self.client.get(f"/teacher/result-entry?assignment_id={self.assignment.id}")
+        self.assertEqual(page.status_code, 200)
+        body = page.get_data(as_text=True)
+        self.assertIn('id="missingReportSuccess"', body)
+        self.assertIn("Asbaabta waa la Gudbiyey".encode(), page.data)
+        self.assertIn('data-locked="true"', body)
+        report_button = re.search(r'<button[^>]*data-missing-report-trigger[^>]*>', body)
+        self.assertIsNotNone(report_button)
+        self.assertNotIn("hidden", report_button.group(0))
+        self.assertRegex(body, r'name="score_\d+"[^>]*disabled')
+
+        response = self.client.post("/teacher/result-entry/missing-mark-report", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "reason": "absent",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(TeacherResultMissingMarkReport.query.one().status, "open")
+
+    def test_missing_mark_report_is_blocked_after_assignment_approval(self):
+        submission = TeacherResultSubmission(
+            assignment_id=self.assignment.id,
+            status="approved",
+        )
+        db.session.add(submission)
+        db.session.commit()
+        self._teacher_login()
+
+        page = self.client.get(f"/teacher/result-entry?assignment_id={self.assignment.id}")
+        body = page.get_data(as_text=True)
+        report_button = re.search(r'<button[^>]*data-missing-report-trigger[^>]*>', body)
+        self.assertIsNotNone(report_button)
+        self.assertIn("hidden", report_button.group(0))
+
+        response = self.client.post("/teacher/result-entry/missing-mark-report", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "reason": "absent",
+        })
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(TeacherResultMissingMarkReport.query.count(), 0)
+
+    def test_missing_mark_report_migration_is_idempotent(self):
+        db.session.remove()
+        TeacherResultMissingMarkReport.__table__.drop(db.engine, checkfirst=True)
+        with patch("migrations.phase_27_teacher_missing_mark_reports.create_app", return_value=self.app):
+            first = phase_27_teacher_missing_mark_reports.upgrade()
+            second = phase_27_teacher_missing_mark_reports.upgrade()
+
+        self.assertEqual(first["table"], "teacher_result_missing_mark_reports")
+        self.assertEqual(second["table"], "teacher_result_missing_mark_reports")
+        self.assertTrue(inspect(db.engine).has_table("teacher_result_missing_mark_reports"))
+        self.assertEqual(
+            db.session.execute(
+                text("SELECT COUNT(*) FROM schema_migrations WHERE version = 'phase_27_teacher_missing_mark_reports_v1'")
+            ).scalar_one(),
+            1,
+        )
+
+    def test_missing_mark_report_does_not_block_partial_score_submission(self):
+        self._teacher_login()
+        report_response = self.client.post("/teacher/result-entry/missing-mark-report", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "reason": "paper_lost",
+        })
+        self.assertEqual(report_response.status_code, 200)
+
+        submitted = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "",
+            f"score_{self.students[1].id}": "38",
+        }, headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"})
+
+        self.assertEqual(submitted.status_code, 200)
+        self.assertTrue(submitted.json["success"])
+        self.assertEqual(TeacherResultSubmission.query.one().status, "submitted")
+        self.assertEqual(TeacherResultMark.query.count(), 1)
+        self.assertEqual(TeacherResultMark.query.one().student_id, self.students[1].id)
+        self.assertEqual(TeacherResultMissingMarkReport.query.one().status, "open")
+
+    def test_missing_mark_report_resolves_when_score_is_saved_and_reopens_when_cleared(self):
+        self._teacher_login()
+        self.client.post("/teacher/result-entry/missing-mark-report", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "reason": "other",
+            "note": "Warqadda wali waa la baarayaa.",
+        })
+        payload = {"assignment_id": self.assignment.id, "student_id": self.students[0].id}
+
+        saved = self.client.post("/teacher/result-entry/autosave", json={**payload, "score": "41"})
+        report = TeacherResultMissingMarkReport.query.one()
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.json["missing_report_status"], "resolved")
+        self.assertEqual(report.status, "resolved")
+        self.assertIsNotNone(report.resolved_at)
+        self.assertEqual(report.resolved_by_mark_id, TeacherResultMark.query.one().id)
+
+        self.client.post("/teacher/logout")
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        admin_page = self.client.get("/admin/teachers/result-entry")
+        self.assertEqual(admin_page.status_code, 200)
+        self.assertIn(b"Dhibic ayaa qabyo ahaan loo geliyey", admin_page.data)
+        self.client.post("/admin/logout")
+        self._teacher_login()
+
+        cleared = self.client.post("/teacher/result-entry/autosave", json={**payload, "score": ""})
+        self.assertEqual(cleared.status_code, 200)
+        self.assertEqual(cleared.json["missing_report_status"], "open")
+        self.assertEqual(report.status, "open")
+        self.assertIsNone(report.resolved_at)
+
+    def test_missing_mark_report_validates_reason_and_rejects_students_with_scores(self):
+        self._teacher_login()
+        missing_other_note = self.client.post("/teacher/result-entry/missing-mark-report", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "reason": "other",
+        })
+        self.assertEqual(missing_other_note.status_code, 422)
+        self.assertEqual(TeacherResultMissingMarkReport.query.count(), 0)
+
+        outside_student = Student(student_code="ST-OUT", full_name="Outside Student", is_active=True)
+        db.session.add(outside_student)
+        db.session.commit()
+        outside_scope = self.client.post("/teacher/result-entry/missing-mark-report", json={
+            "assignment_id": self.assignment.id,
+            "student_id": outside_student.id,
+            "reason": "absent",
+        })
+        self.assertEqual(outside_scope.status_code, 403)
+        self.assertEqual(TeacherResultMissingMarkReport.query.count(), 0)
+
+        self.client.post("/teacher/result-entry/autosave", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "score": "40",
+        })
+        scored_student = self.client.post("/teacher/result-entry/missing-mark-report", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "reason": "absent",
+        })
+        self.assertEqual(scored_student.status_code, 409)
+        self.assertEqual(TeacherResultMissingMarkReport.query.count(), 0)
 
     def test_student_card_and_autosave_track_entry_edit_and_clear_actions(self):
         self._teacher_login()

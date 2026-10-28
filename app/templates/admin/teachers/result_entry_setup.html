@@ -2,7 +2,7 @@
 {% block title %}WAAXDA MAAMULKA SOO GUDBINTA NATIIJOOYINKA{% endblock %}
 {% block page_title %}WAAXDA MAAMULKA SOO GUDBINTA NATIIJOOYINKA{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-admin.css', v='teacher-result-review-roster-20261024-3') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-admin.css', v='teacher-result-missing-reports-20261028-4') }}">
 {% macro score_history(item, settings) %}
   <details class="tra-score-history">
     <summary><span class="tra-change-count {{ 'has-changes' if item.edit_count else '' }}"><i class="fa-solid fa-pen-ruler" aria-hidden="true"></i>{{ item.edit_count }} isbeddel</span><i class="fa-solid fa-chevron-down tra-history-chevron" aria-hidden="true"></i></summary>
@@ -43,6 +43,7 @@
     <a href="{{ url_for('admin_teachers.result_entry_setup', status='draft', teacher_id=teacher_filter) }}" class="tra-metric draft"><span>Qabyo / sixitaan</span><strong>{{ summary.draft }}</strong><i class="fa-solid fa-pen-to-square"></i></a>
     <a href="{{ url_for('admin_teachers.result_entry_setup', status='approved', teacher_id=teacher_filter) }}" class="tra-metric approved"><span>La ansixiyey</span><strong>{{ summary.approved }}</strong><i class="fa-solid fa-circle-check"></i></a>
     <a href="{{ url_for('admin_teachers.result_entry_setup', status='paused', teacher_id=teacher_filter) }}" class="tra-metric paused"><span>La hakiyey</span><strong>{{ summary.paused }}</strong><i class="fa-solid fa-pause"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='missing-reports', teacher_id=teacher_filter) }}" class="tra-metric missing-reports"><span>Sababaha dhibcaha maqan</span><strong>{{ summary.missing_reports }}</strong><i class="fa-solid fa-clipboard-question"></i></a>
     <a href="{{ url_for('admin_teachers.result_entry_setup', status='deleted', teacher_id=teacher_filter) }}" class="tra-metric deleted"><span>La tirtiray</span><strong>{{ summary.deleted }}</strong><i class="fa-solid fa-trash-can"></i></a>
   </section>
 
@@ -102,6 +103,7 @@
           <option value="draft" {{ 'selected' if status_filter == 'draft' else '' }}>Draft / correction</option>
           <option value="approved" {{ 'selected' if status_filter == 'approved' else '' }}>Approved</option>
           <option value="paused" {{ 'selected' if status_filter == 'paused' else '' }}>Paused</option>
+          <option value="missing-reports" {{ 'selected' if status_filter == 'missing-reports' else '' }}>Sababaha dhibcaha maqan</option>
           <option value="deleted" {{ 'selected' if status_filter == 'deleted' else '' }}>La tirtiray</option>
         </select>
         <label class="sr-only" for="tra-teacher">Teacher</label>
@@ -142,6 +144,27 @@
               {% if submission and (submission.submitted_at or submission.status == 'submitted') %}{% set submitted_time = submission_time_labels.get(assignment.id) %}<div class="tra-submission-time {{ 'is-unavailable' if not submitted_time }}" aria-label="Waqtiga rasmiga ah ee gudbinta"><span class="tra-submission-time-icon" aria-hidden="true"><i class="fa-regular fa-calendar-check"></i></span><span class="tra-submission-time-copy"><small>Waqtiga gudbinta</small><strong>{{ submitted_time or 'Waqtiga gudbinta lama hayo' }}</strong></span></div>{% endif %}
             </div>
           </div>
+
+          {% set missing_reports = missing_mark_reports.get(assignment.id, []) %}
+          {% if missing_reports %}
+            <details class="tra-missing-reports" {% if status_filter == 'missing-reports' %}open{% endif %}>
+              <summary><span><i class="fa-solid fa-clipboard-question" aria-hidden="true"></i> Sababaha dhibcaha maqan</span><b>{{ missing_reports|selectattr('status', 'equalto', 'open')|list|length }} furan · {{ missing_reports|length }} guud</b></summary>
+              <div class="tra-missing-report-list">
+                {% for report in missing_reports %}
+                  <article class="tra-missing-report {{ 'is-resolved' if report.status == 'resolved' else 'is-open' }}">
+                    {% if report.student.photo_path %}<img class="tra-missing-report-photo" src="{{ asset_url(report.student.photo_path) }}" alt="Sawirka {{ report.student.full_name }}" loading="lazy" decoding="async">{% else %}<span class="tra-missing-report-photo is-empty" aria-hidden="true"><i class="fa-solid fa-user"></i></span>{% endif %}
+                    <div class="tra-missing-report-copy">
+                      <strong>{{ report.student.full_name }} <small>{{ report.student.student_code or 'ID ma jiro' }}</small></strong>
+                      <span class="tra-missing-report-reason is-{{ report.reason }}"><i class="fa-solid {{ missing_mark_reason_icons.get(report.reason, 'fa-ellipsis') }}" aria-hidden="true"></i>{{ missing_mark_reason_label(report.reason, report.student.gender) }}</span>
+                      {% if report.note %}<p>{{ report.note }}</p>{% endif %}
+                      <small class="tra-missing-report-meta"><i class="fa-regular fa-clock" aria-hidden="true"></i>{{ missing_mark_report_times.get(report.id, 'Waqtiga lama hayo') }} · {{ report.reported_by.full_name if report.reported_by else assignment.teacher.full_name }}</small>
+                    </div>
+                    <span class="tra-missing-report-state">{% if report.status == 'resolved' %}<i class="fa-solid fa-circle-check" aria-hidden="true"></i>{% if report.resolved_by_mark and report.resolved_by_mark.status == 'approved' %}Dhibic waa la ansixiyey{% elif report.resolved_by_mark and report.resolved_by_mark.status == 'submitted' %}Dhibic ayaa dib-u-eegis sugaysa{% else %}Dhibic ayaa qabyo ahaan loo geliyey{% endif %}{% else %}<i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>Weli Darajo looma gelin{% endif %}</span>
+                  </article>
+                {% endfor %}
+              </div>
+            </details>
+          {% endif %}
 
           {% if assignment.deleted_at %}
             <p class="tra-archived-note"><i class="fa-solid fa-box-archive"></i> Xilsaaristan waa laga saaray portalka macallinka; xogta iyo dhibcihii hore waa la hayaa.</p>

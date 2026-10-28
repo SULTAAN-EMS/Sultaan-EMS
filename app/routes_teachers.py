@@ -15,7 +15,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .enrollment_service import EnrollmentValidationError
-from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, ClubTeam, ClubTeamLeaderAssignment, ClubTeamMembership, Exam, Result, Setting, Student, StudentClub, StudentEnrollment, Subject, Teacher, TeacherActivity, TeacherResultAssignment, TeacherResultEvent, TeacherResultMark, TeacherResultMarkRevision, TeacherResultSubmission, User
+from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, ClubTeam, ClubTeamLeaderAssignment, ClubTeamMembership, Exam, Result, Setting, Student, StudentClub, StudentEnrollment, Subject, Teacher, TeacherActivity, TeacherResultAssignment, TeacherResultEvent, TeacherResultMark, TeacherResultMarkRevision, TeacherResultMissingMarkReport, TeacherResultSubmission, User
 from .permissions import enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, allowed_file
 from .teacher_services import (
@@ -91,6 +91,10 @@ RESULT_EVENT_LABELS = {
     "partially_approved": "Qayb ahaan la ansixiyey",
     "returned_for_correction": "Sixitaan loo celiyey",
     "student_mark_returned_for_correction": "Hal arday sixitaan loo celiyey",
+    "missing_mark_reported": "Sababta dhibcaha maqan la gudbiyey",
+    "missing_mark_report_updated": "Sababta dhibcaha maqan la cusboonaysiiyey",
+    "missing_mark_resolved": "Dhibic ayaa lagu xalliyey warbixinta maqan",
+    "missing_mark_reopened": "Warbixinta dhibcaha maqan dib loo furay",
     "baseline": "Xaaladdii hore ee la diiwaangeliyey",
 }
 RESULT_STATUS_LABELS = {
@@ -116,6 +120,10 @@ RESULT_EVENT_ICONS = {
     "partially_approved": "fa-circle-half-stroke",
     "returned_for_correction": "fa-rotate-left",
     "student_mark_returned_for_correction": "fa-user-pen",
+    "missing_mark_reported": "fa-clipboard-question",
+    "missing_mark_report_updated": "fa-pen-to-square",
+    "missing_mark_resolved": "fa-circle-check",
+    "missing_mark_reopened": "fa-rotate-left",
     "baseline": "fa-clock-rotate-left",
 }
 
@@ -870,6 +878,7 @@ def result_entry_setup():
         )
         .all()
     )
+    teacher_filter = request.args.get("teacher_id", type=int)
     summary = {"total": 0, "review": 0, "approved": 0, "draft": 0, "paused": 0, "deleted": 0}
     for is_deleted, is_active, submission_status, count in summary_rows:
         if is_deleted:
@@ -885,8 +894,20 @@ def result_entry_setup():
         elif submission_status in {"draft", "reopened"}:
             summary["draft"] += count
 
+    open_report_count_query = TeacherResultMissingMarkReport.query.join(
+        TeacherResultAssignment,
+        TeacherResultAssignment.id == TeacherResultMissingMarkReport.assignment_id,
+    ).filter(
+        TeacherResultMissingMarkReport.status == "open",
+        TeacherResultAssignment.deleted_at.is_(None),
+    )
+    if teacher_filter:
+        open_report_count_query = open_report_count_query.filter(
+            TeacherResultAssignment.teacher_id == teacher_filter
+        )
+    summary["missing_reports"] = open_report_count_query.count()
+
     status_filter = request.args.get("status", "all")
-    teacher_filter = request.args.get("teacher_id", type=int)
     page = max(request.args.get("page", 1, type=int), 1)
     assignment_query = TeacherResultAssignment.query.options(
         joinedload(TeacherResultAssignment.teacher),
@@ -919,8 +940,48 @@ def result_entry_setup():
         )
     elif status_filter == "paused":
         assignment_query = assignment_query.filter(TeacherResultAssignment.is_active.is_(False))
+    elif status_filter == "missing-reports":
+        assignment_query = assignment_query.filter(TeacherResultAssignment.id.in_(
+            db.session.query(TeacherResultMissingMarkReport.assignment_id).filter(
+                TeacherResultMissingMarkReport.status == "open"
+            )
+        ))
     pagination = assignment_query.paginate(page=page, per_page=20, error_out=False)
     assignments = pagination.items
+    missing_mark_reports = {}
+    missing_mark_report_times = {}
+    missing_mark_reason_labels = {
+        "absent": "Ardeygan imtixaanka uma uusan fadhiisan.",
+        "paper_lost": "Warqadihii Imtixaanka/Jawaabaha way lumeen.",
+        "paper_damaged": "Warqadihii Imtixaanka/Jawaabaha way wax-yeelloobeen.",
+        "paper_unreadable": "Qoraalka warqaddaha Imtixaanka/Jawaabta lama akhrin karo.",
+        "other": "Sabab kale",
+    }
+    missing_mark_reason_icons = {
+        "absent": "fa-user-clock",
+        "paper_lost": "fa-file-circle-question",
+        "paper_damaged": "fa-file-circle-exclamation",
+        "paper_unreadable": "fa-file-lines",
+        "other": "fa-ellipsis",
+    }
+    assignment_ids = [item.id for item in assignments]
+    if assignment_ids:
+        reports = TeacherResultMissingMarkReport.query.options(
+            joinedload(TeacherResultMissingMarkReport.student),
+            joinedload(TeacherResultMissingMarkReport.teacher),
+            joinedload(TeacherResultMissingMarkReport.reported_by),
+            joinedload(TeacherResultMissingMarkReport.resolved_by),
+            joinedload(TeacherResultMissingMarkReport.resolved_by_mark),
+        ).filter(
+            TeacherResultMissingMarkReport.assignment_id.in_(assignment_ids)
+        ).order_by(
+            TeacherResultMissingMarkReport.status,
+            TeacherResultMissingMarkReport.created_at.desc(),
+            TeacherResultMissingMarkReport.id.desc(),
+        ).all()
+        for report in reports:
+            missing_mark_reports.setdefault(report.assignment_id, []).append(report)
+            missing_mark_report_times[report.id] = _submission_time_label(report.created_at)
 
     reservation_rows = db.session.query(
         TeacherResultAssignment.id,
@@ -1280,6 +1341,15 @@ def result_entry_setup():
         deadline_labels=deadline_labels,
         review_rows=review_rows,
         review_summaries=review_summaries,
+        missing_mark_reports=missing_mark_reports,
+        missing_mark_report_times=missing_mark_report_times,
+        missing_mark_reason_labels=missing_mark_reason_labels,
+        missing_mark_reason_icons=missing_mark_reason_icons,
+        missing_mark_reason_label=lambda reason, gender=None: (
+            "Ardeyaddan imtixaanka uma aysan fadhiisan."
+            if reason == "absent" and str(gender or "").strip().lower() == "female"
+            else missing_mark_reason_labels.get(reason, missing_mark_reason_labels["other"])
+        ),
         submission_time_labels=submission_time_labels,
         history_rows=history_rows,
         assignment_progress=assignment_progress,

@@ -3,6 +3,10 @@
   if (!page) return;
 
   const form = document.getElementById("teacherResultForm");
+  const missingDialog = document.getElementById("missingMarkDialog");
+  const missingForm = document.getElementById("missingMarkForm");
+  const missingError = missingDialog?.querySelector("[data-missing-error]");
+  const missingReportSuccess = document.getElementById("missingReportSuccess");
   const cards = [...page.querySelectorAll("[data-student-card]")];
   const inputs = cards.map((card) => card.querySelector("[data-score-input]")).filter(Boolean);
   const maxScore = Number(page.dataset.maxScore);
@@ -32,6 +36,25 @@
   let reviewHighlightTimer = null;
   let reviewHighlightedCard = null;
   let restoreFiltersOpen = false;
+  let missingReportCard = null;
+  let missingReportSuccessTimer = null;
+
+  function showMissingReportSuccess() {
+    if (!missingReportSuccess) return;
+    window.clearTimeout(missingReportSuccessTimer);
+    missingReportSuccess.hidden = false;
+    missingReportSuccess.setAttribute("aria-hidden", "false");
+    missingReportSuccess.classList.remove("show");
+    void missingReportSuccess.offsetWidth;
+    missingReportSuccess.classList.add("show");
+    missingReportSuccessTimer = window.setTimeout(() => {
+      missingReportSuccess.classList.remove("show");
+      missingReportSuccess.setAttribute("aria-hidden", "true");
+      window.setTimeout(() => {
+        missingReportSuccess.hidden = true;
+      }, 220);
+    }, 5_000);
+  }
 
   function setSaveStatus(state, title, detail) {
     if (!statusPanel) return;
@@ -40,6 +63,114 @@
     if (statusTitle) statusTitle.textContent = title;
     if (statusDetail) statusDetail.textContent = detail;
   }
+
+  function syncMissingReportControl(card) {
+    const input = card.querySelector("[data-score-input]");
+    const button = card.querySelector("[data-missing-report-trigger]");
+    const state = card.querySelector("[data-missing-report-state]");
+    const stateLabel = state?.querySelector("[data-missing-report-label]");
+    const buttonLabel = button?.querySelector("[data-missing-report-button-label]");
+    const icon = state?.querySelector("i");
+    const hasReport = Boolean(card.dataset.missingReportStatus);
+    const isResolved = card.dataset.missingReportStatus === "resolved";
+    const hasScore = Boolean(input?.value.trim());
+
+    if (state) state.hidden = !hasReport;
+    if (stateLabel) stateLabel.textContent = isResolved ? "Sababtii waa la xalliyey" : "Asbaab waa la gudbiyey";
+    if (icon) icon.className = `fa-solid ${isResolved ? "fa-circle-check" : "fa-clipboard-question"}`;
+    if (button) {
+      button.hidden = card.dataset.missingReportLocked === "true" || page.dataset.missingReportsLocked === "true" || hasScore;
+      if (buttonLabel) {
+        buttonLabel.textContent = card.dataset.missingReportStatus === "open"
+          ? "Wax ka beddel asbaabta"
+          : (isResolved ? "Sheeg sabab cusub" : "Fadlan Bixi Sabab");
+      }
+      const buttonIcon = button.querySelector("i");
+      if (buttonIcon) buttonIcon.className = `fa-solid ${card.dataset.missingReportStatus === "open" ? "fa-pen-to-square" : "fa-clipboard-question"}`;
+    }
+  }
+
+  function openMissingReportDialog(card) {
+    if (!missingDialog || !missingForm || card.dataset.missingReportLocked === "true" || page.dataset.missingReportsLocked === "true" || card.querySelector("[data-score-input]")?.value.trim()) return;
+    missingReportCard = card;
+    missingForm.reset();
+    missingForm.querySelector('[name="student_id"]').value = card.dataset.studentId;
+    missingDialog.querySelector("[data-missing-student-name]").textContent = card.querySelector(".re-student-info h2")?.textContent || "";
+    const absentLabel = missingForm.querySelector('[data-reason="absent"] [data-reason-label]');
+    if (absentLabel) {
+      absentLabel.textContent = card.dataset.studentGender === "female"
+        ? "Ardeyaddan imtixaanka uma aysan fadhiisan."
+        : "Ardeygan imtixaanka uma uusan fadhiisan.";
+    }
+    const reason = card.dataset.missingReportReason;
+    const reasonInput = reason ? missingForm.querySelector(`[name="reason"][value="${reason}"]`) : null;
+    if (reasonInput) reasonInput.checked = true;
+    missingForm.querySelector('[name="note"]').value = card.dataset.missingReportNote || "";
+    if (missingError) {
+      missingError.hidden = true;
+      missingError.textContent = "";
+    }
+    missingDialog.showModal();
+  }
+
+  function closeMissingReportDialog() {
+    if (!missingDialog?.open) return;
+    missingDialog.close();
+    missingReportCard?.querySelector("[data-missing-report-trigger]")?.focus();
+    missingReportCard = null;
+  }
+
+  missingForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!missingReportCard || !form) return;
+    const submitButton = missingForm.querySelector('[data-missing-submit]');
+    const originalButton = submitButton.innerHTML;
+    submitButton.disabled = true;
+    submitButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>Waa la gudbinayaa…';
+    if (missingError) {
+      missingError.hidden = true;
+      missingError.textContent = "";
+    }
+    try {
+      const response = await fetch(page.dataset.missingReportUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-CSRFToken": form.querySelector('[name="csrf_token"]').value,
+        },
+        body: JSON.stringify({
+          assignment_id: Number(page.dataset.assignmentId),
+          student_id: Number(missingForm.querySelector('[name="student_id"]').value),
+          reason: missingForm.querySelector('[name="reason"]:checked')?.value || "",
+          note: missingForm.querySelector('[name="note"]').value,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.message || "Warbixinta lama gudbin.");
+      missingReportCard.dataset.missingReportStatus = data.status;
+      missingReportCard.dataset.missingReportReason = data.reason;
+      missingReportCard.dataset.missingReportNote = data.note || "";
+      syncMissingReportControl(missingReportCard);
+      closeMissingReportDialog();
+      showMissingReportSuccess();
+    } catch (error) {
+      if (missingError) {
+        missingError.textContent = error.message || "Hubi isku-xirka, kadibna mar kale isku day.";
+        missingError.hidden = false;
+      }
+    } finally {
+      submitButton.disabled = false;
+      submitButton.innerHTML = originalButton;
+    }
+  });
+  missingDialog?.querySelectorAll("[data-missing-close]").forEach((button) => {
+    button.addEventListener("click", closeMissingReportDialog);
+  });
+  missingDialog?.addEventListener("click", (event) => {
+    if (event.target === missingDialog) closeMissingReportDialog();
+  });
 
   function renderMarkAction(card, action) {
     const badge = card.querySelector("[data-mark-action]");
@@ -141,6 +272,7 @@
             timers.delete(input);
             input.disabled = true;
           });
+          cards.forEach(syncMissingReportControl);
           ["openReview", "confirmSubmit"].forEach((id) => {
             const button = document.getElementById(id);
             if (button) button.disabled = true;
@@ -342,6 +474,7 @@
         || (activeFilter === "todo" && state.empty)
         || (activeFilter === "flag" && (state.state === "warn" || state.state === "bad"));
       card.hidden = !(matchesSearch && matchesFilter);
+      syncMissingReportControl(card);
       input.setAttribute("aria-label", `Dhibcaha ${card.querySelector(".re-student-info h2").textContent}`);
     }
     const statAverage = document.querySelector('[data-stat="average"]');
@@ -561,6 +694,11 @@
       savedSinceLoad = true;
       card.dataset.hasDraft = data.has_draft ? "true" : "false";
       card.dataset.markStatus = data.mark_status || "draft";
+      if (data.missing_report_status !== undefined) {
+        card.dataset.missingReportStatus = data.missing_report_status || "";
+        card.dataset.missingReportReason = data.missing_report_reason || "";
+        card.dataset.missingReportNote = data.missing_report_note || "";
+      }
       renderMarkAction(card, data.action_type || "");
       if (Number(input.dataset.requestVersion) === version && input.value.trim() === valueToSave) input.value = saved;
       renderCard(card, true);
@@ -819,6 +957,7 @@
   for (const [index, card] of cards.entries()) {
     const input = card.querySelector("[data-score-input]");
     const next = card.querySelector("[data-next]");
+    card.querySelector("[data-missing-report-trigger]")?.addEventListener("click", () => openMissingReportDialog(card));
     card.classList.add("enter");
     card.style.setProperty("--stagger", `${Math.min(index * 18, 360)}ms`);
     input.addEventListener("input", () => {
