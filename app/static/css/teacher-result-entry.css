@@ -186,11 +186,14 @@ body.teacher-results-body .teacher-main.teacher-main-results { display: block; p
 .re-filter-toggle:active { background: var(--re-primary-bg); }
 .re-filter-toggle:focus-visible { outline: 3px solid var(--re-primary); outline-offset: 2px; }
 .re-filter-card.open .re-filter-toggle { border-bottom: 1px solid var(--re-line); border-radius: 19px 19px 0 0; }
-.re-filter-heading { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.re-filter-heading { display: flex; align-items: center; flex: 1 1 auto; gap: 10px; min-width: 0; }
+.re-filter-heading-copy { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; }
 .re-filter-icon { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: 13px; background: var(--re-primary-bg); color: var(--re-primary); }
 .re-filter-heading strong, .re-filter-heading small { display: block; }
 .re-filter-heading strong { font-size: 14px; font-weight: 800; }
 .re-filter-heading small { overflow: hidden; margin-top: 2px; color: var(--re-muted); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.re-filter-marquee { display: inline-flex; width: max-content; }
+.re-filter-marquee > span { flex: none; padding-right: 30px; }
 .re-filter-toggle-hint { display: inline-flex; align-items: center; gap: 5px; flex: none; padding: 7px 9px; border: 1px solid #d8d5ff; border-radius: 10px; background: var(--re-primary-bg); color: var(--re-primary); font-size: 10px; font-weight: 900; }
 .re-filter-toggle-hint i { font-size: 11px; }
 .re-filter-chevron { color: var(--re-muted); transition: transform .2s ease; }
@@ -446,6 +449,12 @@ body.teacher-results-body .re-score-box input { background-color: transparent; c
   .re-policy { grid-template-columns: minmax(0, 1fr); }
   .re-save-status { max-width: 42%; }
 }
+@keyframes re-filter-marquee { to { transform: translateX(-50%); } }
+@media (max-width: 759px) {
+  .re-filter-heading-copy { flex: 1 1 0; }
+  .re-filter-heading small { text-overflow: clip; }
+  .re-filter-marquee { animation: re-filter-marquee 18s linear infinite; }
+}
 @media (min-width: 640px) {
   .re-hero { padding-right: 22px; padding-left: 22px; }
   .re-teacher-copy strong { font-size: 14px; }
@@ -578,4 +587,7 @@ body.teacher-results-body .re-score-box input { background-color: transparent; c
 }
 @media (prefers-reduced-motion: reduce) {
   .result-entry-page *, .result-entry-page *::before, .result-entry-page *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+  .result-entry-page .re-filter-marquee { animation: none !important; transform: none; }
+  .result-entry-page .re-filter-marquee > span[aria-hidden="true"] { display: none; }
+  .result-entry-page .re-filter-heading small { overflow: visible; white-space: normal; }
 }

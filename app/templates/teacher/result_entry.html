@@ -5,7 +5,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-entry-20261028-25') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-entry-20261028-26') }}">
 <section class="result-entry-page" id="resultEntryPage"
   data-max-score="{{ max_score if max_score is not none else '' }}"
   data-assignment-id="{{ assignment.id if assignment else '' }}"
@@ -83,7 +83,7 @@
 
         <form method="get" class="re-filter-card" id="resultScopeFilters" data-filter-assignment-id="{{ assignment.id }}">
           <button type="button" class="re-filter-toggle" id="filterToggle" aria-expanded="false" aria-controls="filterBody">
-            <span class="re-filter-heading"><span class="re-filter-icon"><i class="fa-solid fa-sliders" aria-hidden="true"></i></span><span><strong>Shaandhaynta</strong><small>Dooro sannad-dugsiyeedka, nooca imtixaanka, heerka, fasalka iyo maaddada</small></span></span>
+            <span class="re-filter-heading"><span class="re-filter-icon"><i class="fa-solid fa-sliders" aria-hidden="true"></i></span><span class="re-filter-heading-copy"><strong>Shaandhaynta</strong><small class="re-filter-description"><span class="re-filter-marquee"><span>Dooro sannad-dugsiyeedka, nooca imtixaanka, heerka, fasalka iyo maaddada</span><span aria-hidden="true">Dooro sannad-dugsiyeedka, nooca imtixaanka, heerka, fasalka iyo maaddada</span></span></small></span></span>
             <span class="re-filter-toggle-hint" aria-hidden="true"><i class="fa-solid fa-hand-pointer"></i><span data-filter-toggle-state>Fur</span></span>
             <i class="fa-solid fa-chevron-down re-filter-chevron" aria-hidden="true"></i>
           </button>
