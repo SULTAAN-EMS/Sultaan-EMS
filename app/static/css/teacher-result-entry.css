@@ -454,9 +454,9 @@ body.teacher-results-body .re-score-box input { background-color: transparent; c
 
 @media (max-width: 639px) {
   .re-policy { grid-template-columns: minmax(0, 1fr); }
-  .re-dock { justify-content: flex-start; }
-  .re-save-status { flex: 1 1 0; width: auto; max-width: none; }
-  .re-save-status.ready { flex: 0 0 auto; width: fit-content; max-width: 100%; }
+  .re-dock { justify-content: space-between; }
+  .re-save-status, .re-save-status.ready { flex: 0 1 auto; width: fit-content; max-width: 58%; margin-left: auto; }
+  .re-save-copy { flex: 0 1 auto; }
   .re-save-status.ready .re-save-copy small, .re-save-status.submitted .re-save-copy small, .re-save-status.reopened .re-save-copy small { display: none; }
 }
 @keyframes re-filter-marquee { to { transform: translateX(-50%); } }
