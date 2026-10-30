@@ -5,7 +5,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-missing-reports-20261028-11') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-entry.css', v='teacher-result-missing-reports-20261030-15') }}">
 <section class="result-entry-page" id="resultEntryPage"
   data-max-score="{{ max_score if max_score is not none else '' }}"
   data-assignment-id="{{ assignment.id if assignment else '' }}"
@@ -149,6 +149,42 @@
     {% endif %}
   </div>
 
+  {% macro re_breaking_group(hidden=false) %}
+    <div class="re-breaking-group"{% if hidden %} aria-hidden="true"{% endif %}>
+      <span class="re-breaking-item"><i class="fa-regular fa-copyright" aria-hidden="true"></i><span><span data-copyright-year>2026</span> SULTAAN EMS · Xuquuqda oo dhan way dhowran tahay</span></span>
+      <span class="re-breaking-item"><i class="fa-solid fa-filter" aria-hidden="true"></i>Shaandhaynta u xulo sidan: sannad-dugsiyeedka, imtixaanka, heerka, fasalka iyo maaddada.</span>
+      <span class="re-breaking-item"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i>Marka xil-saarid la xusho, hubi waqtiga kama dambaysta ah ee gelinta natiijooyinka.</span>
+      <span class="re-breaking-item"><i class="fa-regular fa-copyright" aria-hidden="true"></i><span><span data-copyright-year>2026</span> SULTAAN EMS · Xuquuqda oo dhan way dhowran tahay</span></span>
+      {% if assignment and assignment.deadline_at %}
+        <span class="re-breaking-item"><i class="fa-regular fa-clock" aria-hidden="true"></i>Waqtiga kama dambaysta ah: <b>{{ deadline_display_labels[assignment.id] }}</b></span>
+      {% elif assignment %}
+        <span class="re-breaking-item"><i class="fa-regular fa-clock" aria-hidden="true"></i>Xil-saaristani waqti kama dambays ah looma cayimin.</span>
+      {% else %}
+        <span class="re-breaking-item"><i class="fa-regular fa-clock" aria-hidden="true"></i>Marka xil-saarid la xusho, hubi waqtiga kama dambaysta ah.</span>
+      {% endif %}
+      <span class="re-breaking-item"><i class="fa-regular fa-copyright" aria-hidden="true"></i><span><span data-copyright-year>2026</span> SULTAAN EMS · Xuquuqda oo dhan way dhowran tahay</span></span>
+      <span class="re-breaking-item"><i class="fa-solid fa-book-open" aria-hidden="true"></i>Ka hor gelinta dhibcaha, hubi in fasalka iyo maaddada la xushay ay sax yihiin.</span>
+      <span class="re-breaking-item"><i class="fa-solid fa-id-card" aria-hidden="true"></i>Arday kasta dhibcihiisa ku geli kaadhkiisa, adigoo hubinaya tira-taxanaha iyo magaca.</span>
+      <span class="re-breaking-item"><i class="fa-regular fa-copyright" aria-hidden="true"></i><span><span data-copyright-year>2026</span> SULTAAN EMS · Xuquuqda oo dhan way dhowran tahay</span></span>
+      <span class="re-breaking-item"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>Dhibcaha cusub iyo isbeddellada si toos ah ayaa loo kaydiyaa.</span>
+      <span class="re-breaking-item"><i class="fa-solid fa-clipboard-question" aria-hidden="true"></i>Arday aan darajo loo gelin, sababta u gudbi Xafiiska Imtixaannada.</span>
+      <span class="re-breaking-item"><i class="fa-regular fa-copyright" aria-hidden="true"></i><span><span data-copyright-year>2026</span> SULTAAN EMS · Xuquuqda oo dhan way dhowran tahay</span></span>
+      <span class="re-breaking-item"><i class="fa-solid fa-list-check" aria-hidden="true"></i>Hubi aqoonsiga ardayga iyo dhibcaha ka hor gudbinta Xafiiska Imtixaannada.</span>
+      <span class="re-breaking-item"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>Markaad dhamayso, dib u eeg dhibcaha dabadeed guji “Dib-u-eegis &amp; Gudbin”.</span>
+      <span class="re-breaking-item"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Ka hor intaadan ka bixin, xaqiiji xaaladda kaydinta ama gudbinta.</span>
+      <span class="re-breaking-item"><i class="fa-regular fa-copyright" aria-hidden="true"></i><span><span data-copyright-year>2026</span> SULTAAN EMS · Xuquuqda oo dhan way dhowran tahay</span></span>
+    </div>
+  {% endmacro %}
+  <footer class="re-breaking-footer" role="contentinfo" aria-label="Xusuusin ku saabsan gelinta natiijooyinka">
+    <span class="re-breaking-label"><span class="re-breaking-pulse" aria-hidden="true"></span><span><span class="re-breaking-label-full">SULTAAN </span>EMS</span></span>
+    <div class="re-breaking-viewport">
+      <div class="re-breaking-track">
+        {{ re_breaking_group() }}
+        {{ re_breaking_group(true) }}
+      </div>
+    </div>
+  </footer>
+
   {% if assignment and rows %}
     <footer class="re-dock" id="resultDock">
       <button type="button" class="re-button primary" id="openReview"><i class="fa-solid fa-list-check" aria-hidden="true"></i>Dib-u-eegis &amp; Gudbin</button>
@@ -231,4 +267,5 @@
   {% endif %}
 </section>
 <script src="{{ url_for('static', filename='js/teacher-result-entry.js', v='teacher-missing-reports-20261028-9') }}" defer></script>
+<script>document.querySelectorAll('[data-copyright-year]').forEach(function (year) { year.textContent = new Date().getFullYear(); });</script>
 {% endblock %}
