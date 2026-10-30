@@ -1390,7 +1390,7 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn("Showing 1 of 1 saved assignment.", body)
         self.assertIn(f'<option value="{self.teacher.id}" selected>', body)
         self.assertIn(
-            f'href="/admin/teachers/result-entry?status=draft&amp;teacher_id={self.teacher.id}"',
+            f'href="/admin/teachers/result-entry?status=draft&amp;teacher_id={self.teacher.id}&amp;sort=newest"',
             body,
         )
 
@@ -1401,6 +1401,39 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(review.status_code, 200)
         self.assertIn("Showing 1 of 1 saved assignment.", review.get_data(as_text=True))
         self.assertIn(f'<option value="{self.teacher.id}" selected>', review.get_data(as_text=True))
+
+    def test_editing_assignment_preserves_teacher_filter_and_sort(self):
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        query = f"status=all&teacher_id={self.teacher.id}&sort=subject&page=1"
+        response = self.client.post(f"/admin/teachers/result-entry?{query}", data={
+            "action": "update",
+            "assignment_id": str(self.assignment.id),
+            "teacher_id": str(self.teacher.id),
+            "academic_year_id": str(self.year.id),
+            "exam_id": str(self.exam.id),
+            "academic_year_level_id": str(self.year_level.id),
+            "academic_year_class_id": str(self.year_class.id),
+            "academic_year_subject_id": str(AcademicYearSubject.query.one().id),
+            "deadline_at": "",
+            "max_submissions": "1",
+            "return_status": "all",
+            "return_teacher_id": str(self.teacher.id),
+            "return_sort": "subject",
+            "return_page": "1",
+        })
+
+        self.assertEqual(response.status_code, 302)
+        location = response.headers["Location"]
+        self.assertIn(f"teacher_id={self.teacher.id}", location)
+        self.assertIn("status=all", location)
+        self.assertIn("sort=subject", location)
+        self.assertIn("page=1", location)
+
+        page = self.client.get(location)
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(f'<option value="{self.teacher.id}" selected>'.encode(), page.data)
+        self.assertIn(b'<option value="subject" selected>', page.data)
+        self.assertIn(b"Showing 1 of 1 saved assignment.", page.data)
 
     def test_admin_scope_picker_orders_exam_before_subject_and_loads_subjects_by_year_level(self):
         self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
@@ -1949,6 +1982,78 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn("Dhammaan xilsaarisyada".encode(), response.data)
         self.assertIn(b"Form 1", response.data)
         self.assertNotIn(b"Top Performance Snapshot", response.data)
+
+    def test_admin_assignment_workflow_overview_and_sorting(self):
+        now = datetime.utcnow()
+        self.assignment.created_at = now - timedelta(days=3)
+        db.session.add(TeacherResultSubmission(
+            assignment=self.assignment, status="submitted", submitted_at=now,
+            submission_count=1,
+        ))
+
+        subjects = {
+            name: Subject(name=name, academic_level=self.level, max_score=50, is_active=True)
+            for name in ("Physics", "Biology", "Chemistry")
+        }
+        db.session.add_all(subjects.values())
+        db.session.flush()
+        for subject in subjects.values():
+            db.session.add(AcademicYearSubject(
+                academic_year=self.year, academic_year_level=self.year_level,
+                legacy_subject=subject, name=subject.name, subject_kind="exam", max_score=50,
+            ))
+        due_assignment = TeacherResultAssignment(
+            teacher=self.teacher, academic_year=self.year, exam=self.exam,
+            school_class=self.school_class, subject=subjects["Physics"],
+            deadline_at=now + timedelta(hours=24),
+        )
+        untouched_assignment = TeacherResultAssignment(
+            teacher=self.teacher, academic_year=self.year, exam=self.exam,
+            school_class=self.school_class, subject=subjects["Biology"],
+        )
+        draft_assignment = TeacherResultAssignment(
+            teacher=self.teacher, academic_year=self.year, exam=self.exam,
+            school_class=self.school_class, subject=subjects["Chemistry"],
+        )
+        db.session.add_all([due_assignment, untouched_assignment, draft_assignment])
+        db.session.flush()
+        draft_submission = TeacherResultSubmission(assignment=draft_assignment, status="draft")
+        db.session.add(draft_submission)
+        db.session.flush()
+        db.session.add(TeacherResultMark(
+            submission=draft_submission, student=self.students[0], score=Decimal("25"), status="draft",
+        ))
+        db.session.commit()
+
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        response = self.client.get("/admin/teachers/result-entry")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"La gudbiyey", response.data)
+        self.assertIn(b"Waqtigu dhow yahay", response.data)
+        self.assertIn(b"Weli waxba lagama gelin", response.data)
+        self.assertIn(b"Macallin \xc2\xb7 A\xe2\x80\x93Z", response.data)
+
+        completed = self.client.get("/admin/teachers/result-entry?status=completed")
+        self.assertEqual(completed.status_code, 200)
+        self.assertIn(b"Showing 1 of 1 saved assignment", completed.data)
+
+        due_soon = self.client.get("/admin/teachers/result-entry?status=due-soon")
+        self.assertEqual(due_soon.status_code, 200)
+        self.assertIn(b"Showing 1 of 1 saved assignment", due_soon.data)
+
+        not_started = self.client.get("/admin/teachers/result-entry?status=not-started")
+        self.assertEqual(not_started.status_code, 200)
+        self.assertIn(b"Showing 2 of 2 saved assignments", not_started.data)
+
+        sorted_page = self.client.get("/admin/teachers/result-entry?sort=subject")
+        self.assertEqual(sorted_page.status_code, 200)
+        list_html = sorted_page.get_data(as_text=True).split('<div class="tra-list">', 1)[1]
+        subject_positions = [
+            list_html.index(f'<strong dir="auto">{name}</strong>')
+            for name in ("Biology", "Chemistry", "Mathematics", "Physics")
+        ]
+        self.assertEqual(subject_positions, sorted(subject_positions))
 
     def test_reopened_approved_sheet_requires_reason_and_explicit_result_replacement(self):
         self.client.post("/teacher/login", data={

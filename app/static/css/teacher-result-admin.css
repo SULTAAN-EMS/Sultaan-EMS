@@ -51,6 +51,7 @@
 .tra-list-heading>div{min-width:180px;flex:1}
 .tra-filters{display:flex;align-items:center;gap:7px;margin-left:auto}
 .tra-filters select{width:auto;min-width:140px;height:36px;font-size:.74rem}
+.tra-filters select[name="sort"]{min-width:190px}
 .tra-filter-button{min-height:36px;padding:7px 11px;font-size:.75rem}
 .tra-reset{display:grid;place-items:center;width:36px;height:36px;border:1px solid #dbe5e1;border-radius:5px;color:#64766f;text-decoration:none}
 .tra-list{display:grid;gap:9px}
@@ -364,3 +365,25 @@
 .tra-missing-report.is-resolved .tra-missing-report-state{color:#21764b}
 @media(max-width:650px){.tra-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.tra-missing-report{align-items:flex-start;flex-wrap:wrap}.tra-missing-report-state{max-width:none;margin-left:50px;text-align:left}}
 @media(prefers-reduced-motion:reduce){.tra-missing-reports *{scroll-behavior:auto}}
+
+.tra-workflow-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:0 0 14px}
+.tra-workflow-card{display:flex;align-items:center;gap:10px;min-width:0;padding:11px 12px;border:1px solid #dce7e3;border-left:3px solid #14906f;border-radius:6px;background:#f8fbfa;color:#21423a;text-decoration:none;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+.tra-workflow-card:hover{transform:translateY(-1px);box-shadow:0 5px 14px #193c3014}
+.tra-workflow-card.is-due{border-left-color:#cc8516;background:#fffaf0;color:#554019}
+.tra-workflow-card.is-idle{border-left-color:#5878a6;background:#f5f8fc;color:#2d4059}
+.tra-workflow-icon{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;border-radius:6px;background:#e2f4ed;color:#087f62;font-size:1rem}
+.tra-workflow-card.is-due .tra-workflow-icon{background:#fff0d4;color:#a56600}
+.tra-workflow-card.is-idle .tra-workflow-icon{background:#e7eef9;color:#42628e}
+.tra-workflow-copy{display:grid;gap:2px;min-width:0}
+.tra-workflow-copy small{font-size:.68rem;font-weight:800}
+.tra-workflow-copy strong{font-size:1.25rem;line-height:1.15;font-variant-numeric:tabular-nums}
+.tra-workflow-copy span{color:#60736d;font-size:.67rem;line-height:1.3}
+.tra-workflow-card.is-due .tra-workflow-copy span{color:#786747}
+.tra-workflow-card.is-idle .tra-workflow-copy span{color:#63748b}
+.tra-workflow-link{margin-left:auto;align-self:flex-start;color:#729188;font-size:.68rem}
+.tra-workflow-card.is-due .tra-workflow-link{color:#b98938}
+.tra-workflow-card.is-idle .tra-workflow-link{color:#6d83a5}
+@media(max-width:1000px){.tra-filters{width:100%;flex-wrap:wrap;margin-left:0}.tra-filters select{flex:1 1 160px}.tra-filters select[name="sort"]{flex-basis:220px}}
+@media(max-width:900px){.tra-workflow-overview{grid-template-columns:repeat(2,minmax(0,1fr))}.tra-workflow-card:last-child{grid-column:1/-1}}
+@media(max-width:650px){.tra-filters{display:grid;grid-template-columns:1fr 1fr}.tra-filters select[name="sort"],.tra-filter-button{grid-column:1/-1}.tra-workflow-overview{grid-template-columns:1fr}.tra-workflow-card:last-child{grid-column:auto}.tra-workflow-card{padding:10px}.tra-workflow-copy span{font-size:.65rem}}
+@media(prefers-reduced-motion:reduce){.tra-workflow-card{transition:none}.tra-workflow-card:hover{transform:none}}

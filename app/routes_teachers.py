@@ -390,6 +390,26 @@ def dashboard():
 @teachers_bp.route("/result-entry", methods=["GET", "POST"])
 def result_entry_setup():
     """Assign exam/class/subject scopes, set deadlines, and review submissions."""
+    def redirect_to_assignment_list(**overrides):
+        status_value = request.form.get("return_status", request.args.get("status", "all"))
+        sort_value = request.form.get("return_sort", request.args.get("sort", "newest"))
+        teacher_value = request.form.get("return_teacher_id", request.args.get("teacher_id", ""))
+        page_value = request.form.get("return_page", request.args.get("page", 1))
+        allowed_statuses = {
+            "all", "review", "approved", "draft", "paused", "missing-reports",
+            "deleted", "completed", "due-soon", "not-started",
+        }
+        params = {
+            "status": status_value if status_value in allowed_statuses else "all",
+            "sort": sort_value if sort_value in {"newest", "teacher", "class", "subject", "deadline"} else "newest",
+            "page": max(_safe_int(page_value) or 1, 1),
+        }
+        teacher_id = _safe_int(teacher_value)
+        if teacher_id:
+            params["teacher_id"] = teacher_id
+        params.update(overrides)
+        return redirect(url_for("admin_teachers.result_entry_setup", **params))
+
     if request.method == "POST":
         action = request.form.get("action")
         if action in {"create", "update"}:
@@ -402,7 +422,7 @@ def result_entry_setup():
                     abort(404)
                 if edit_assignment.deleted_at:
                     flash("Xilsaaristan waa la tirtiray. Marka hore dib uga soo celi diiwaanka tirtiridda.", "warning")
-                    return redirect(url_for("admin_teachers.result_entry_setup", status="deleted"))
+                    return redirect_to_assignment_list(status="deleted")
 
             teacher = db.session.get(Teacher, request.form.get("teacher_id", type=int))
             row_fields = (
@@ -415,17 +435,17 @@ def result_entry_setup():
             max_values = request.form.getlist("max_submissions") or ["1"] * row_count
             if not teacher or not teacher.is_active or teacher.employment_status != "Active":
                 flash("Dooro macallin firfircoon oo sax ah.", "danger")
-                return redirect(url_for("admin_teachers.result_entry_setup"))
+                return redirect_to_assignment_list()
             if (
                 not 1 <= row_count <= 30
                 or (action == "update" and row_count != 1)
                 or any(len(values) != row_count for values in row_values.values())
             ):
                 flash("Ku dar ugu yaraan hal scope oo dhammeystiran; ugu badnaan 30 ayaa hal mar la kaydin karaa.", "danger")
-                return redirect(url_for("admin_teachers.result_entry_setup"))
+                return redirect_to_assignment_list()
             if len(deadline_values) != row_count or len(max_values) != row_count:
                 flash("Hubi in deadline-ka iyo tirada gudbintu scope kasta la socdaan.", "danger")
-                return redirect(url_for("admin_teachers.result_entry_setup"))
+                return redirect_to_assignment_list()
 
             prepared = []
             seen_scopes = set()
@@ -449,7 +469,7 @@ def result_entry_setup():
                     max_submissions = max(1, min(10, int(max_values[index] or "1")))
                 except (TypeError, ValueError):
                     flash("Fadlan hubi deadline-ka iyo tirada gudbinta scope kasta.", "danger")
-                    return redirect(url_for("admin_teachers.result_entry_setup"))
+                    return redirect_to_assignment_list()
 
                 year_scope_matches = bool(
                     year and year_level and year_level.is_active
@@ -476,7 +496,7 @@ def result_entry_setup():
                 )
                 if not all((year_scope_matches, subject_is_offered, exam_matches)):
                     flash("Scope kasta waa inuu si sax ah isugu waafaqaa sannadka, heerka, fasalka, maaddada iyo imtixaanka.", "danger")
-                    return redirect(url_for("admin_teachers.result_entry_setup"))
+                    return redirect_to_assignment_list()
 
                 old_scope = (
                     edit_assignment.teacher_id,
@@ -491,7 +511,7 @@ def result_entry_setup():
                 scope_key = (year.id, exam.id, school_class.id, subject.id)
                 if scope_key in seen_scopes:
                     flash("Scope isku mid ah laba jeer ayaa lagu daray. Ka saar nuqulka ka hor kaydinta.", "warning")
-                    return redirect(url_for("admin_teachers.result_entry_setup"))
+                    return redirect_to_assignment_list()
                 seen_scopes.add(scope_key)
                 prepared.append((year, exam, school_class, subject, deadline, max_submissions))
 
@@ -509,9 +529,9 @@ def result_entry_setup():
                 if duplicate:
                     if duplicate.deleted_at:
                         flash("Scope-kan hore ayaa ugu jiray diiwaanka tirtiridda. Ka soo celi xilsaaristaas ka hor intaadan sii wadin.", "warning")
-                        return redirect(url_for("admin_teachers.result_entry_setup", status="deleted"))
+                        return redirect_to_assignment_list(status="deleted")
                     flash("Macallinkan scope-kan hore ayaa loogu xilsaaray. Dooro scope kale ama tafatir xilsaaristii jirtay.", "warning")
-                    return redirect(url_for("admin_teachers.result_entry_setup"))
+                    return redirect_to_assignment_list()
 
                 assigned_to_other_teacher = TeacherResultAssignment.query.filter_by(
                     academic_year_id=year.id,
@@ -525,11 +545,11 @@ def result_entry_setup():
                 ).first()
                 if scope_changed and assigned_to_other_teacher:
                     flash("Maaddadan fasalkan iyo imtixaankan macallin kale ayaa hore loogu xilsaaray.", "warning")
-                    return redirect(url_for("admin_teachers.result_entry_setup"))
+                    return redirect_to_assignment_list()
 
                 if scope_changed and submission:
                     flash("Xaashida natiijadu way jirtaa; macallinka, sannadka, imtixaanka, fasalka iyo maaddada lama beddeli karo si dhibcaha iyo history-gu u sii ahaadaan kuwo sax ku xidhan. Deadline-ka iyo tirada gudbinta waad beddeli kartaa.", "warning")
-                    return redirect(url_for("admin_teachers.result_entry_setup"))
+                    return redirect_to_assignment_list()
 
                 previous_state = "active" if edit_assignment.is_active else "paused"
                 edit_assignment.teacher = teacher
@@ -555,7 +575,7 @@ def result_entry_setup():
                 )
                 db.session.commit()
                 flash("Xilsaarista waa la tafatiray, xogta xaashida natiijadana waa la ilaaliyey.", "success")
-                return redirect(url_for("admin_teachers.result_entry_setup"))
+                return redirect_to_assignment_list()
 
             created_count = 0
             updated_count = 0
@@ -879,6 +899,9 @@ def result_entry_setup():
         .all()
     )
     teacher_filter = request.args.get("teacher_id", type=int)
+    sort_filter = request.args.get("sort", "newest")
+    if sort_filter not in {"newest", "teacher", "class", "subject", "deadline"}:
+        sort_filter = "newest"
     summary = {"total": 0, "review": 0, "approved": 0, "draft": 0, "paused": 0, "deleted": 0}
     for is_deleted, is_active, submission_status, count in summary_rows:
         if is_deleted:
@@ -907,7 +930,47 @@ def result_entry_setup():
         )
     summary["missing_reports"] = open_report_count_query.count()
 
+    def operational_assignments_query():
+        query = TeacherResultAssignment.query.filter(
+            TeacherResultAssignment.deleted_at.is_(None)
+        )
+        if teacher_filter:
+            query = query.filter(TeacherResultAssignment.teacher_id == teacher_filter)
+        return query
+
+    completed_submission = TeacherResultAssignment.submissions.any(
+        TeacherResultSubmission.status.in_(("submitted", "approved"))
+    )
+    has_mark_activity = TeacherResultAssignment.submissions.any(
+        TeacherResultSubmission.marks.any(
+            or_(TeacherResultMark.score.isnot(None), TeacherResultMark.last_action.isnot(None))
+        )
+    )
+    has_missing_report = db.session.query(TeacherResultMissingMarkReport.id).filter(
+        TeacherResultMissingMarkReport.assignment_id == TeacherResultAssignment.id
+    ).exists()
+    now = datetime.utcnow()
+    soon = now + timedelta(hours=48)
+    summary["completed"] = operational_assignments_query().filter(completed_submission).count()
+    summary["due_soon"] = operational_assignments_query().filter(
+        TeacherResultAssignment.is_active.is_(True),
+        TeacherResultAssignment.deadline_at >= now,
+        TeacherResultAssignment.deadline_at <= soon,
+        ~completed_submission,
+    ).count()
+    summary["not_started"] = operational_assignments_query().filter(
+        TeacherResultAssignment.is_active.is_(True),
+        ~completed_submission,
+        ~has_mark_activity,
+        ~has_missing_report,
+    ).count()
+
     status_filter = request.args.get("status", "all")
+    if status_filter not in {
+        "all", "review", "approved", "draft", "paused", "missing-reports",
+        "deleted", "completed", "due-soon", "not-started",
+    }:
+        status_filter = "all"
     page = max(request.args.get("page", 1, type=int), 1)
     assignment_query = TeacherResultAssignment.query.options(
         joinedload(TeacherResultAssignment.teacher),
@@ -919,7 +982,7 @@ def result_entry_setup():
         selectinload(TeacherResultAssignment.submissions)
         .selectinload(TeacherResultSubmission.marks)
         .joinedload(TeacherResultMark.student),
-    ).order_by(TeacherResultAssignment.updated_at.desc(), TeacherResultAssignment.id.desc())
+    )
     if status_filter == "deleted":
         assignment_query = assignment_query.filter(TeacherResultAssignment.deleted_at.isnot(None))
     else:
@@ -946,6 +1009,45 @@ def result_entry_setup():
                 TeacherResultMissingMarkReport.status == "open"
             )
         ))
+    elif status_filter == "completed":
+        assignment_query = assignment_query.filter(completed_submission)
+    elif status_filter == "due-soon":
+        assignment_query = assignment_query.filter(
+            TeacherResultAssignment.is_active.is_(True),
+            TeacherResultAssignment.deadline_at >= now,
+            TeacherResultAssignment.deadline_at <= soon,
+            ~completed_submission,
+        )
+    elif status_filter == "not-started":
+        assignment_query = assignment_query.filter(
+            TeacherResultAssignment.is_active.is_(True),
+            ~completed_submission,
+            ~has_mark_activity,
+            ~has_missing_report,
+        )
+
+    if sort_filter == "teacher":
+        assignment_query = assignment_query.join(TeacherResultAssignment.teacher).order_by(
+            func.lower(Teacher.full_name), TeacherResultAssignment.id.desc()
+        )
+    elif sort_filter == "class":
+        assignment_query = assignment_query.join(TeacherResultAssignment.school_class).order_by(
+            func.lower(AcademicClass.name), TeacherResultAssignment.id.desc()
+        )
+    elif sort_filter == "subject":
+        assignment_query = assignment_query.join(TeacherResultAssignment.subject).order_by(
+            func.lower(Subject.name), TeacherResultAssignment.id.desc()
+        )
+    elif sort_filter == "deadline":
+        assignment_query = assignment_query.order_by(
+            TeacherResultAssignment.deadline_at.is_(None),
+            TeacherResultAssignment.deadline_at.asc(),
+            TeacherResultAssignment.id.desc(),
+        )
+    else:
+        assignment_query = assignment_query.order_by(
+            TeacherResultAssignment.created_at.desc(), TeacherResultAssignment.id.desc()
+        )
     pagination = assignment_query.paginate(page=page, per_page=20, error_out=False)
     assignments = pagination.items
     missing_mark_reports = {}
@@ -1355,6 +1457,7 @@ def result_entry_setup():
         assignment_progress=assignment_progress,
         assignments_with_existing_results=assignments_with_existing_results,
         summary=summary, status_filter=status_filter, teacher_filter=teacher_filter,
+        sort_filter=sort_filter,
     )
 
 
