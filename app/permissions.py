@@ -167,6 +167,7 @@ ENDPOINT_PERMISSIONS = {
     "behavior.configuration": "behavior.configure",
     "behavior.delete_configuration": "behavior.configure",
     "behavior.sessions": "behavior.configure",
+    "behavior.revise_session": "behavior.configure",
     "behavior.delete_session": "behavior.configure",
     "behavior.categories": "behavior.configure",
     "behavior.taxonomy": "behavior.configure",

@@ -205,6 +205,7 @@ def ensure_schema_compatibility():
     # Attendance scoring allocations and policy snapshots are additive. Legacy
     # sessions keep NULL here and remain on the legacy compatibility path.
     ensure_behavior_attendance_scoring()
+    ensure_behavior_session_revisions()
     # Protect the allocation invariant while preserving legacy rows whose two
     # allocation columns are both NULL.
     ensure_behavior_allocation_integrity()
@@ -430,6 +431,8 @@ def ensure_behavior_attendance_scoring():
         ("attendance_frequency_snapshot", "VARCHAR(20)"),
         ("attendance_weekdays_snapshot", "VARCHAR(32)"),
         ("scoring_policy_version", "VARCHAR(40)"),
+        ("period_start_date", "DATE"),
+        ("period_end_date", "DATE"),
     )
     for name, type_sql in columns:
         add_column_if_missing(
@@ -437,6 +440,16 @@ def ensure_behavior_attendance_scoring():
             name,
             column_sql(dialect, name, type_sql),
         )
+
+
+def ensure_behavior_session_revisions():
+    """Create the additive audit table once its referenced tables exist."""
+    table = db.metadata.tables.get("behavior_session_revisions")
+    if table is None:
+        return
+    existing = set(inspect(db.engine).get_table_names())
+    if {"behavior_sessions", "users"}.issubset(existing):
+        table.create(bind=db.engine, checkfirst=True)
 
 
 def ensure_behavior_attendance_history_snapshots():

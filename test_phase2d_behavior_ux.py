@@ -2,11 +2,22 @@
 
 import unittest
 import re
+import json
+from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import event
 
 from app import db
-from app.models import BehaviorEvent
+from app.behavior_attendance import attendance_statuses, ensure_attendance_defaults, mark_attendance, update_attendance_active_days
+from app.behavior_service import attendance_policy_for_session, record_event
+from app.models import (
+    BehaviorAttendanceRecord,
+    BehaviorAttendanceStatus,
+    BehaviorEvent,
+    BehaviorGradeScale,
+    BehaviorSessionRevision,
+)
 from test_phase2c_behavior_events import TestPhase2CBehaviorEvents
 
 
@@ -17,6 +28,262 @@ class TestPhase2DBehaviorUX(TestPhase2CBehaviorEvents):
             session["_user_id"] = str(self.admin.id)
             session["_fresh"] = True
         return client
+
+    def _prepare_session_revision(self):
+        self.admin.set_permissions(["behavior.view", "behavior.configure", "behavior.audit"])
+        self.session_a.maximum_score = Decimal("30.000")
+        self.session_a.behavior_allocation = Decimal("21.000")
+        self.session_a.attendance_allocation = Decimal("9.000")
+        self.session_a.attendance_present_weight = Decimal("0.150")
+        ensure_attendance_defaults(self.config_one)
+        update_attendance_active_days(
+            self.config_one,
+            {5, 6, 0, 1, 2},
+            academic_year_level_id=self.level_one.id,
+        )
+        present = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.config_one.id,
+            key="present",
+        ).one()
+        self.session_a.attendance_policy_snapshot = json.dumps({
+            "version": "test-v1",
+            "weights": {"present": "0.150", "late": "0.500", "absent": "1.000"},
+        })
+        self.session_a.period_start_date = None
+        self.session_a.period_end_date = None
+        grade_scale = BehaviorGradeScale(
+            behavior_configuration_id=self.config_one.id,
+            behavior_session_id=self.session_a.id,
+            grade="A",
+            min_score=Decimal("24.000"),
+            max_score=Decimal("30.000"),
+            grade_point=Decimal("4.000"),
+            sort_order=1,
+            is_active=True,
+            is_pass=True,
+        )
+        attendance = BehaviorAttendanceRecord(
+            student_id=self.student_one.id,
+            student_enrollment_id=self.enrollment_one.id,
+            behavior_configuration_id=self.config_one.id,
+            behavior_session_id=self.session_a.id,
+            academic_year_id=self.year_one.id,
+            academic_year_level_id=self.level_one.id,
+            academic_year_class_id=self.class_one.id,
+            attendance_date=date(2026, 9, 15),
+            status_id=present.id,
+            status_key_snapshot="present",
+            status_label_snapshot="Joogid",
+            polarity="positive",
+            points_applied=Decimal("0.150"),
+            status="active",
+            marked_by_id=self.admin.id,
+        )
+        db.session.add_all([grade_scale, attendance])
+        record_event(
+            self.config_one,
+            self.enrollment_one,
+            self.session_a,
+            self.positive,
+            self.positive_action,
+            occurred_at=datetime(2026, 9, 15, 10, 0),
+            idempotency_key="session-revision-audit-event",
+        )
+        db.session.commit()
+        return present
+
+    def _revision_payload(self, **overrides):
+        payload = {
+            "csrf_token": "",
+            "period_start_date": "2026-09-05",
+            "period_end_date": "2026-11-04",
+            "maximum_score": "20",
+            "behavior_allocation": "11",
+            "attendance_allocation": "9",
+            "attendance_present_weight": "0.2",
+            "closure_date": "2026-09-16",
+            "closure_reason": "Fasax guud oo la ansixiyey.",
+            "reason": "Goluhu wuxuu xilliga ku soo koobay 4 November.",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_session_revision_preview_and_apply_preserve_auditable_scores(self):
+        present = self._prepare_session_revision()
+        excused = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.config_one.id,
+            key="excused",
+        ).one()
+        official_leave = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.config_one.id,
+            key="official_leave",
+        ).one()
+        for status, marked_date in (
+            (excused, date(2026, 9, 19)),
+            (official_leave, date(2026, 9, 20)),
+        ):
+            db.session.add(BehaviorAttendanceRecord(
+                student_id=self.student_one.id,
+                student_enrollment_id=self.enrollment_one.id,
+                behavior_configuration_id=self.config_one.id,
+                behavior_session_id=self.session_a.id,
+                academic_year_id=self.year_one.id,
+                academic_year_level_id=self.level_one.id,
+                academic_year_class_id=self.class_one.id,
+                attendance_date=marked_date,
+                status_id=status.id,
+                status_key_snapshot=status.key,
+                status_label_snapshot=status.label,
+                polarity="neutral",
+                points_applied=Decimal("0.000"),
+                status="active",
+                marked_by_id=self.admin.id,
+            ))
+        db.session.commit()
+        client = self._client_as_admin()
+        path = f"/admin/behavior/sessions/{self.session_a.id}/revise"
+        response = client.post(path, data=self._revision_payload())
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("45", body)
+        self.assertIn("Cudurdaar, Fasaxid Rasmi ah iyo Maalin Dugsi Xiran", body)
+        self.assertIn("<td>9</td>", body)
+        self.assertIn('name="revision_action" value="apply"', body)
+        self.assertEqual(BehaviorSessionRevision.query.count(), 0)
+        self.assertEqual(self.session_a.maximum_score, Decimal("30.000"))
+
+        revision_form = self._revision_payload(
+            revision_action="apply",
+            expected_updated_at=self.session_a.updated_at.isoformat(),
+            expected_revision_count="0",
+            confirm_recalculation="yes",
+            confirm_closure="yes",
+            confirm_annual_total="yes",
+        )
+        response = client.post(path, data=revision_form, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.session_a.maximum_score, Decimal("20.000"))
+        self.assertEqual(self.session_a.behavior_allocation, Decimal("11.000"))
+        self.assertEqual(self.session_a.attendance_allocation, Decimal("9.000"))
+        self.assertEqual(self.session_a.attendance_present_weight, Decimal("0.200"))
+        self.assertEqual(self.session_a.period_start_date, date(2026, 9, 5))
+        self.assertEqual(self.session_a.period_end_date, date(2026, 11, 4))
+        for status_key in ("excused", "official_leave"):
+            revised_status_record = BehaviorAttendanceRecord.query.filter_by(
+                behavior_session_id=self.session_a.id,
+                student_enrollment_id=self.enrollment_one.id,
+                status_key_snapshot=status_key,
+            ).one()
+            self.assertEqual(revised_status_record.points_applied, Decimal("0.200"))
+            self.assertEqual(revised_status_record.polarity, "positive")
+        self.assertEqual(BehaviorAttendanceRecord.query.filter_by(
+            behavior_session_id=self.session_a.id,
+            attendance_date=date(2026, 9, 15),
+        ).one().points_applied, Decimal("0.200"))
+        closure_record = BehaviorAttendanceRecord.query.filter_by(
+            behavior_session_id=self.session_a.id,
+            student_enrollment_id=self.enrollment_one.id,
+            attendance_date=date(2026, 9, 16),
+        ).one()
+        self.assertEqual(closure_record.status_key_snapshot, "school_closure")
+        self.assertEqual(closure_record.points_applied, Decimal("0.200"))
+        self.assertEqual(BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.config_one.id,
+            key="present",
+        ).one().points, present.points)
+        effective_present = next(
+            status for status in attendance_statuses(
+                self.config_one,
+                academic_year_level_id=self.level_one.id,
+                session=self.session_a,
+            )
+            if status.key == "present"
+        )
+        self.assertEqual(effective_present.effective_points, Decimal("0.200"))
+        policy = attendance_policy_for_session(self.session_a)
+        for status_key in ("present", "excused", "official_leave"):
+            self.assertEqual(policy["weights"][status_key], Decimal("0.200"))
+
+        mark_attendance(
+            self.config_one,
+            self.session_a,
+            self.enrollment_two,
+            excused.id,
+            date(2026, 9, 19),
+            marked_by_id=self.admin.id,
+        )
+        mark_attendance(
+            self.config_one,
+            self.session_a,
+            self.enrollment_two,
+            official_leave.id,
+            date(2026, 9, 20),
+            marked_by_id=self.admin.id,
+        )
+        db.session.commit()
+        new_positive_marks = BehaviorAttendanceRecord.query.filter(
+            BehaviorAttendanceRecord.behavior_session_id == self.session_a.id,
+            BehaviorAttendanceRecord.student_enrollment_id == self.enrollment_two.id,
+            BehaviorAttendanceRecord.status_key_snapshot.in_({"excused", "official_leave"}),
+        ).all()
+        self.assertEqual(len(new_positive_marks), 2)
+        self.assertTrue(all(row.polarity == "positive" for row in new_positive_marks))
+        self.assertTrue(all(row.points_applied == Decimal("0.200") for row in new_positive_marks))
+
+        revision = BehaviorSessionRevision.query.one()
+        before = json.loads(revision.before_snapshot)
+        after = json.loads(revision.after_snapshot)
+        self.assertEqual(before["session"]["maximum_score"], "30.000")
+        self.assertEqual(after["session"]["maximum_score"], "20.000")
+        self.assertEqual(before["student_scores"][0]["final_score"], "12.650")
+        self.assertEqual(after["student_scores"][0]["final_score"], "8.300")
+        self.assertEqual(after["closures"][0]["date"], "2026-09-16")
+        self.assertEqual(BehaviorGradeScale.query.filter_by(
+            behavior_session_id=self.session_a.id,
+            grade="A",
+        ).one().max_score, Decimal("20.000"))
+
+    def test_session_revision_blocks_mismatched_calendar_and_outside_history(self):
+        self._prepare_session_revision()
+        client = self._client_as_admin()
+        path = f"/admin/behavior/sessions/{self.session_a.id}/revise"
+        payload = self._revision_payload(attendance_present_weight="0.21")
+        response = client.post(path, data=payload)
+        self.assertEqual(response.status_code, 200)
+        mismatch_body = response.get_data(as_text=True)
+        self.assertIn("Tirada maalmaha jadwalku", mismatch_body)
+        self.assertIn("disabled", mismatch_body)
+        self.assertEqual(BehaviorSessionRevision.query.count(), 0)
+
+        payload = self._revision_payload()
+        db.session.add(BehaviorAttendanceRecord(
+            student_id=self.student_one.id,
+            student_enrollment_id=self.enrollment_one.id,
+            behavior_configuration_id=self.config_one.id,
+            behavior_session_id=self.session_a.id,
+            academic_year_id=self.year_one.id,
+            academic_year_level_id=self.level_one.id,
+            academic_year_class_id=self.class_one.id,
+            attendance_date=date(2026, 9, 4),
+            status_id=BehaviorAttendanceStatus.query.filter_by(
+                behavior_configuration_id=self.config_one.id,
+                key="present",
+            ).one().id,
+            status_key_snapshot="present",
+            status_label_snapshot="Joogid",
+            polarity="positive",
+            points_applied=Decimal("0.150"),
+            status="active",
+            marked_by_id=self.admin.id,
+        ))
+        db.session.commit()
+        response = client.post(path, data=payload)
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("1 diiwaan xaadirin", body)
+        self.assertIn("disabled", body)
+        self.assertEqual(self.session_a.maximum_score, Decimal("30.000"))
+        self.assertEqual(BehaviorSessionRevision.query.count(), 0)
 
     def test_scoped_behavior_pages_render(self):
         client = self._client_as_admin()

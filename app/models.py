@@ -453,6 +453,8 @@ class BehaviorSession(TimestampMixin, db.Model):
     attendance_frequency_snapshot = db.Column(db.String(20), nullable=True)
     attendance_weekdays_snapshot = db.Column(db.String(32), nullable=True)
     scoring_policy_version = db.Column(db.String(40), nullable=True)
+    period_start_date = db.Column(db.Date, nullable=True)
+    period_end_date = db.Column(db.Date, nullable=True)
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
 
@@ -466,6 +468,11 @@ class BehaviorSession(TimestampMixin, db.Model):
         order_by="BehaviorGradeScale.sort_order, BehaviorGradeScale.min_score, BehaviorGradeScale.id",
     )
     events = db.relationship("BehaviorEvent", back_populates="session")
+    revisions = db.relationship(
+        "BehaviorSessionRevision",
+        back_populates="session",
+        order_by="BehaviorSessionRevision.revision_number.desc()",
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -488,6 +495,46 @@ class BehaviorSession(TimestampMixin, db.Model):
             "AND behavior_allocation + attendance_allocation = maximum_score)",
             name="ck_behavior_session_allocation_total",
         ),
+        db.CheckConstraint(
+            "period_start_date IS NULL OR period_end_date IS NULL OR period_start_date <= period_end_date",
+            name="ck_behavior_session_period_order",
+        ),
+    )
+
+
+class BehaviorSessionRevision(db.Model):
+    """Auditable before/after snapshot for an approved session scoring change."""
+
+    __tablename__ = "behavior_session_revisions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    behavior_session_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_sessions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    revision_number = db.Column(db.Integer, nullable=False)
+    changed_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    changed_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    reason = db.Column(db.String(500), nullable=False)
+    before_snapshot = db.Column(db.Text, nullable=False)
+    after_snapshot = db.Column(db.Text, nullable=False)
+    attendance_rows_updated = db.Column(db.Integer, nullable=False, default=0)
+    grade_scales_updated = db.Column(db.Integer, nullable=False, default=0)
+
+    session = db.relationship("BehaviorSession", back_populates="revisions")
+    changed_by = db.relationship("User", foreign_keys=[changed_by_id])
+
+    __table_args__ = (
+        UniqueConstraint(
+            "behavior_session_id",
+            "revision_number",
+            name="uq_behavior_session_revision_number",
+        ),
+        db.CheckConstraint("revision_number >= 1", name="ck_behavior_session_revision_positive"),
+        db.CheckConstraint("attendance_rows_updated >= 0", name="ck_behavior_session_revision_rows_nonnegative"),
+        db.CheckConstraint("grade_scales_updated >= 0", name="ck_behavior_session_revision_grades_nonnegative"),
     )
 
 

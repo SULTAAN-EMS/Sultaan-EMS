@@ -13,14 +13,17 @@ from sqlalchemy.orm import joinedload
 from . import db
 from .behavior_service import (
     CANONICAL_ATTENDANCE_STATUS_KEYS,
+    SESSION_DAILY_POSITIVE_ATTENDANCE_KEYS,
     BehaviorValidationError,
     attendance_points_projection,
     attendance_score_projection,
     configuration_level_ids,
     decimal_value,
     capture_attendance_session_policy,
+    session_has_date_window,
     session_applies_to_enrollment,
     validate_enrollment_session_allocations,
+    validate_session_date,
     validate_behavior_configuration,
     validate_enrollment_scope,
     validate_session_scope,
@@ -343,10 +346,21 @@ def ensure_status_level_points(configuration, academic_year_level_id=None):
     return statuses
 
 
-def attendance_status_points(status, academic_year_level_id=None):
-    """Return the effective status points for one Academic Year Level."""
+def attendance_status_points(status, academic_year_level_id=None, session=None):
+    """Return the session daily-positive override or configured status points."""
     if not status:
         return Decimal("0.000")
+    if (
+        session is not None
+        and session_has_date_window(session)
+        and (status.key or "").strip().lower() in SESSION_DAILY_POSITIVE_ATTENDANCE_KEYS
+        and session.attendance_present_weight is not None
+    ):
+        return decimal_value(
+            session.attendance_present_weight,
+            "Session daily positive Attendance points",
+            minimum="0",
+        )
     if academic_year_level_id is not None:
         override = BehaviorAttendanceStatusLevel.query.filter_by(
             behavior_attendance_status_id=status.id,
@@ -357,7 +371,20 @@ def attendance_status_points(status, academic_year_level_id=None):
     return decimal_value(status.points or 0, "Attendance points", minimum="0")
 
 
-def attendance_statuses(configuration, active_only=True, academic_year_level_id=None):
+def attendance_status_polarity(status, session=None):
+    """Treat excused statuses as positive only under an explicit session rule."""
+    key = (getattr(status, "key", None) or "").strip().lower()
+    if (
+        session is not None
+        and session_has_date_window(session)
+        and key in SESSION_DAILY_POSITIVE_ATTENDANCE_KEYS
+        and session.attendance_present_weight is not None
+    ):
+        return "positive"
+    return (getattr(status, "polarity", None) or "neutral").strip().lower()
+
+
+def attendance_statuses(configuration, active_only=True, academic_year_level_id=None, session=None):
     configuration = validate_behavior_configuration(configuration)
     if academic_year_level_id is not None:
         level_id = _attendance_level_id(configuration, academic_year_level_id)
@@ -369,7 +396,8 @@ def attendance_statuses(configuration, active_only=True, academic_year_level_id=
         query = query.filter_by(is_active=True)
     statuses = query.all()
     for status in statuses:
-        status.effective_points = attendance_status_points(status, academic_year_level_id)
+        status.effective_points = attendance_status_points(status, academic_year_level_id, session)
+        status.effective_polarity = attendance_status_polarity(status, session)
     return statuses
 
 
@@ -507,6 +535,7 @@ def generate_daily_roster(
     )
     if not isinstance(attendance_date, date):
         raise BehaviorValidationError("Attendance date is invalid")
+    validate_session_date(session, attendance_date)
     if attendance_date.weekday() not in {
         item.weekday for item in attendance_days(configuration, academic_year_level_id=academic_year_level_id)
     }:
@@ -517,6 +546,7 @@ def generate_daily_roster(
             for item in attendance_statuses(
                 configuration,
                 academic_year_level_id=academic_year_level_id,
+                session=session,
             )
             if item.key == "present"
         ),
@@ -557,7 +587,8 @@ def generate_daily_roster(
         )
         validate_attendance_ledger_capacity(
             configuration, session, enrollment, present.polarity,
-            present.effective_points if present.contributes_to_behavior else 0,
+            attendance_status_points(present, enrollment.academic_year_level_id, session)
+            if present.contributes_to_behavior else 0,
         )
         pending.append(enrollment)
 
@@ -578,7 +609,10 @@ def generate_daily_roster(
                 status_key_snapshot=present.key,
                 status_label_snapshot=attendance_status_label(present.key, present.label),
                 polarity=present.polarity,
-                points_applied=present.effective_points if present.contributes_to_behavior else 0,
+                points_applied=(
+                    attendance_status_points(present, enrollment.academic_year_level_id, session)
+                    if present.contributes_to_behavior else 0
+                ),
             )
         )
         created += 1
@@ -609,6 +643,7 @@ def mark_attendance(
     configuration, session, enrollment = validate_attendance_context(configuration, session, enrollment)
     if not isinstance(attendance_date, date):
         raise BehaviorValidationError("Attendance date is invalid")
+    validate_session_date(session, attendance_date)
     status = db.session.get(BehaviorAttendanceStatus, status_id)
     if not status or status.behavior_configuration_id != configuration.id or not status.is_active:
         raise BehaviorValidationError("Attendance status is outside the selected Behavior configuration")
@@ -642,13 +677,13 @@ def mark_attendance(
     # The selected status policy is authoritative. Do not silently rewrite a
     # configured polarity: the admin choice must survive refreshes and be
     # captured in each saved record snapshot.
-    new_polarity = (status.polarity or "neutral").strip().lower()
+    new_polarity = attendance_status_polarity(status, session)
     new_points = Decimal("0")
     if status.contributes_to_behavior:
         new_points = (
             decimal_value(effective_points, "Attendance points", minimum="0")
             if effective_points is not None
-            else attendance_status_points(status, enrollment.academic_year_level_id)
+            else attendance_status_points(status, enrollment.academic_year_level_id, session)
         )
     validate_attendance_ledger_capacity(
         configuration,

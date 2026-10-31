@@ -5,8 +5,8 @@ import re
 from copy import deepcopy
 from calendar import monthrange
 from collections import defaultdict
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import date, datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 from secrets import token_urlsafe
 from types import SimpleNamespace
@@ -27,6 +27,7 @@ from .behavior_service import (
     BEHAVIOR_RESPONSE_TYPES,
     BehaviorValidationError,
     CANONICAL_ATTENDANCE_STATUS_KEYS,
+    SESSION_DAILY_POSITIVE_ATTENDANCE_KEYS,
     allocation_total,
     allocation_by_shift,
     configuration_allocation_is_complete,
@@ -47,6 +48,7 @@ from .behavior_service import (
     restore_event,
     scoring_ledger_projection,
     session_applies_to_enrollment,
+    session_has_date_window,
     session_allocation_projection,
     storage_response_type,
     validate_session_allocation_limit,
@@ -55,6 +57,7 @@ from .behavior_service import (
     validate_enrollment_scope,
     validate_behavior_scope,
     validate_session_scope,
+    validate_session_date,
     void_event,
     void_attendance_record,
     restore_attendance_record,
@@ -105,6 +108,7 @@ from .models import (
     BehaviorAttendanceStatusLevel,
     BehaviorGradeScale,
     BehaviorSession,
+    BehaviorSessionRevision,
     BehaviorSubCategory,
     Exam,
     ExamType,
@@ -1586,6 +1590,714 @@ def sessions():
     )
 
 
+def _session_revision_snapshot(session, scales, attendance_rows):
+    return {
+        "session": {
+            "label": session.session_label,
+            "maximum_score": str(session.maximum_score),
+            "behavior_allocation": str(session.behavior_allocation) if session.behavior_allocation is not None else None,
+            "attendance_allocation": str(session.attendance_allocation) if session.attendance_allocation is not None else None,
+            "attendance_present_weight": str(session.attendance_present_weight) if session.attendance_present_weight is not None else None,
+            "period_start_date": session.period_start_date.isoformat() if session.period_start_date else None,
+            "period_end_date": session.period_end_date.isoformat() if session.period_end_date else None,
+        },
+        "grade_scales": [
+            {
+                "id": scale.id,
+                "grade": scale.grade,
+                "min_score": str(scale.min_score),
+                "max_score": str(scale.max_score),
+                "is_active": bool(scale.is_active),
+            }
+            for scale in scales
+        ],
+        "attendance_records": [
+            {
+                "id": row.id,
+                "date": row.attendance_date.isoformat(),
+                "status": row.status_key_snapshot,
+                "status_label": row.status_label_snapshot,
+                "points_applied": str(row.points_applied),
+                "polarity": row.polarity,
+                "status_id": row.status_id,
+                "closure_id": row.behavior_attendance_closure_id,
+                "note": row.note,
+                "note_is_auto_generated": bool(row.note_is_auto_generated),
+                "attendance_time": row.attendance_time.isoformat() if row.attendance_time else None,
+                "arrival_time": row.arrival_time.isoformat() if row.arrival_time else None,
+                "late_by_minutes": row.late_by_minutes,
+                "marked_by_id": row.marked_by_id,
+            }
+            for row in attendance_rows
+        ],
+    }
+
+
+def _session_revision_score_snapshots(config, session, enrollments, events, attendance_rows):
+    events_by_enrollment = defaultdict(list)
+    attendance_by_enrollment = defaultdict(list)
+    for event in events:
+        events_by_enrollment[event.student_enrollment_id].append(event)
+    for row in attendance_rows:
+        attendance_by_enrollment[row.student_enrollment_id].append(row)
+    snapshots = []
+    for enrollment in enrollments:
+        score = calculate_session_score(
+            config,
+            session,
+            enrollment,
+            behavior_events=events_by_enrollment.get(enrollment.id, []),
+            attendance_records=attendance_by_enrollment.get(enrollment.id, []),
+        )
+        snapshots.append({
+            "enrollment_id": enrollment.id,
+            "student_id": enrollment.student_id,
+            "student_code": enrollment.student.student_code if enrollment.student else None,
+            "student_name": enrollment.student.full_name if enrollment.student else None,
+            "maximum_score": str(score["maximum_score"]),
+            "behavior_score": str(score["behavior_score"]),
+            "attendance_score": (
+                str(score["attendance_score"])
+                if score["attendance_score"] is not None else None
+            ),
+            "final_score": str(score["final_score"]) if score["final_score"] is not None else None,
+            "percentage": str(score["percentage"]) if score["percentage"] is not None else None,
+            "status": score["scoring_status"],
+        })
+    return snapshots
+
+
+def _session_revision_annual_totals(config, session, proposed_maximum):
+    totals = {"morning": Decimal("0.000"), "afternoon": Decimal("0.000")}
+    for shift in totals:
+        for configured in config.sessions:
+            scope = (configured.applicable_shift or "all").strip().lower()
+            if scope not in {"all", shift}:
+                continue
+            value = proposed_maximum if configured.id == session.id else configured.maximum_score
+            totals[shift] += Decimal(str(value or 0))
+    return {key: value.quantize(Decimal("0.001")) for key, value in totals.items()}
+
+
+def _session_revision_level_days(config, session, start_date, end_date, attendance_points, allocation):
+    levels = []
+    level_ids = configuration_level_ids(config)
+    shift = (session.applicable_shift or "all").strip().lower()
+    if shift in {"morning", "afternoon"}:
+        scoped_classes = AcademicYearClass.query.join(AcademicYearLevel).filter(
+            AcademicYearLevel.id.in_(level_ids or {-1}),
+            AcademicYearLevel.academic_year_id == config.academic_year_id,
+            AcademicYearClass.school_shift == shift,
+            AcademicYearClass.is_active.is_(True),
+        ).all()
+        level_ids = {item.academic_year_level_id for item in scoped_classes}
+    for level_id in level_ids:
+        level_days = attendance_days(config, academic_year_level_id=level_id)
+        weekdays = {day.weekday for day in level_days if day.is_active}
+        day_count = sum(
+            1 for offset in range((end_date - start_date).days + 1)
+            if (start_date.weekday() + offset) % 7 in weekdays
+        )
+        level = db.session.get(AcademicYearLevel, level_id)
+        levels.append({
+            "level": level.name if level else str(level_id),
+            "school_days": day_count,
+            "attendance_total": (attendance_points * day_count).quantize(Decimal("0.001")),
+            "allocation": allocation,
+        })
+    return levels
+
+
+def _session_revision_form_values(form):
+    try:
+        start_date = date.fromisoformat((form.get("period_start_date") or "").strip())
+        end_date = date.fromisoformat((form.get("period_end_date") or "").strip())
+    except ValueError as exc:
+        raise BehaviorValidationError("Geli taariikhda bilowga iyo taariikhda dhammaadka xilliga.") from exc
+    if start_date > end_date:
+        raise BehaviorValidationError("Taariikhda bilowgu kama dambayn karto taariikhda dhammaadka.")
+    maximum = decimal_value(form.get("maximum_score"), "Ugu badnaanta xilliga", minimum="0.001")
+    behavior_allocation = decimal_value(form.get("behavior_allocation"), "Qoondada anshaxa", minimum="0")
+    attendance_allocation = decimal_value(form.get("attendance_allocation"), "Qoondada xaadirinta", minimum="0")
+    present_points = decimal_value(
+        form.get("attendance_present_weight"),
+        "Dhibcaha xaaladaha togan maalintii",
+        minimum="0",
+    )
+    if (behavior_allocation + attendance_allocation).quantize(Decimal("0.001")) != maximum:
+        raise BehaviorValidationError("Anshaxa iyo xaadirintu waa inay la mid noqdaan wadarta dhibcaha xilliga.")
+    if present_points > attendance_allocation:
+        raise BehaviorValidationError("Dhibcaha Joogidda maalintii kama badnaan karaan qoondada xaadirinta.")
+    reason = (form.get("reason") or "").strip()
+    if len(reason) < 10:
+        raise BehaviorValidationError("Faahfaahin sababta isbeddelka ugu yaraan 10 xaraf ku qor.")
+    return {
+        "period_start_date": start_date,
+        "period_end_date": end_date,
+        "maximum_score": maximum,
+        "behavior_allocation": behavior_allocation,
+        "attendance_allocation": attendance_allocation,
+        "attendance_present_weight": present_points,
+        "reason": reason,
+    }
+
+
+@behavior_bp.route("/sessions/<int:session_id>/revise", methods=["GET", "POST"])
+def revise_session(session_id):
+    if request.method == "POST":
+        item = (
+            BehaviorSession.query.filter_by(id=session_id)
+            .with_for_update()
+            .first()
+        )
+    else:
+        item = db.session.get(BehaviorSession, session_id)
+    if not item:
+        flash("Xilliga la codsaday lama helin.", "danger")
+        return redirect(url_for("behavior.sessions"))
+
+    config = validate_behavior_configuration(item.configuration)
+    preview = None
+    form_values = {
+        "period_start_date": request.form.get("period_start_date") or (
+            item.period_start_date.isoformat() if item.period_start_date else ""
+        ),
+        "period_end_date": request.form.get("period_end_date") or (
+            item.period_end_date.isoformat() if item.period_end_date else ""
+        ),
+        "maximum_score": request.form.get("maximum_score") or str(item.maximum_score),
+        "behavior_allocation": request.form.get("behavior_allocation") or str(item.behavior_allocation or ""),
+        "attendance_allocation": request.form.get("attendance_allocation") or str(item.attendance_allocation or ""),
+        "attendance_present_weight": request.form.get("attendance_present_weight") or str(item.attendance_present_weight or ""),
+        "closure_date": request.form.get("closure_date") or "2026-09-16",
+        "closure_reason": request.form.get("closure_reason") or "Fasax guud; ardaydu waxay helayaan dhibcaha Joogidda ee xilligan.",
+        "reason": request.form.get("reason") or "",
+    }
+    error = None
+
+    if request.method == "POST":
+        try:
+            values = _session_revision_form_values(request.form)
+            academic_year_bounds = _academic_year_bounds(config.academic_year.name)
+            if academic_year_bounds and any(
+                year < academic_year_bounds[0] or year > academic_year_bounds[1]
+                for year in (values["period_start_date"].year, values["period_end_date"].year)
+            ):
+                raise BehaviorValidationError("Muddada xilligu waa inay ku jirtaa sannad-dugsiyeedka la doortay.")
+            validate_session_allocation_limit(
+                config,
+                session=item,
+                maximum_score=values["maximum_score"],
+                applicable_shift=item.applicable_shift,
+            )
+            if request.form.get("revision_action") == "apply":
+                if request.form.get("confirm_recalculation") != "yes":
+                    raise BehaviorValidationError("Xaqiiji in dhibcaha muddadan dib loo xisaabiyo.")
+                expected_updated_at = request.form.get("expected_updated_at")
+                current_updated_at = item.updated_at.isoformat() if item.updated_at else ""
+                if expected_updated_at != current_updated_at:
+                    raise BehaviorValidationError("Xilliga meel kale ayaa laga beddelay. Dib u eeg xogta hadda jirta oo mar kale tijaabi.")
+                expected_revision_count = _int(request.form.get("expected_revision_count"), -1)
+                current_revision_count = BehaviorSessionRevision.query.filter_by(
+                    behavior_session_id=item.id,
+                ).count()
+                if expected_revision_count != current_revision_count:
+                    raise BehaviorValidationError("Dib-u-habayn kale ayaa la kaydiyey. Dib u eeg taariikhda xilliga ka hor xaqiijin.")
+
+                closure_date = date.fromisoformat(form_values["closure_date"])
+                if not values["period_start_date"] <= closure_date <= values["period_end_date"]:
+                    raise BehaviorValidationError("Taariikhda fasaxa waa inay ku jirtaa muddada xilliga.")
+                closure_reason = (form_values["closure_reason"] or "").strip()
+                if not closure_reason or len(closure_reason) > 255:
+                    raise BehaviorValidationError("Sababta fasaxa waa waajib, ugu badnaanna waa 255 xaraf.")
+                if request.form.get("confirm_closure") != "yes":
+                    raise BehaviorValidationError("Xaqiiji diiwaangelinta fasaxa guud iyo dhibcaha Joogidda.")
+                level_days = _session_revision_level_days(
+                    config,
+                    item,
+                    values["period_start_date"],
+                    values["period_end_date"],
+                    values["attendance_present_weight"],
+                    values["attendance_allocation"],
+                )
+                if any(row["attendance_total"] != row["allocation"] for row in level_days):
+                    raise BehaviorValidationError(
+                        "Jadwalka waa inuu si sax ah u waafaqaa qoondada xaadirinta. "
+                        "Hubi in 45 maalmood oo shaqo × 0.2 ay noqdaan 9 dhibcood heer kasta."
+                    )
+                annual_totals = _session_revision_annual_totals(config, item, values["maximum_score"])
+                if any(value != Decimal("100.000") for value in annual_totals.values()) and request.form.get("confirm_annual_total") != "yes":
+                    raise BehaviorValidationError(
+                        "Wadarta sannadlaha ah ee gelin hore ama dambe ma aha 100. Eeg digniinta, "
+                        "dabadeed xaqiiji haddii aad oggol tahay in qoondayntu si ku-meel-gaar ah u noqoto mid aan dhammaystirnayn."
+                    )
+
+                attendance_query = BehaviorAttendanceRecord.query.filter(
+                    BehaviorAttendanceRecord.behavior_session_id == item.id,
+                    BehaviorAttendanceRecord.attendance_date >= values["period_start_date"],
+                    BehaviorAttendanceRecord.attendance_date <= values["period_end_date"],
+                    BehaviorAttendanceRecord.status == "active",
+                    BehaviorAttendanceRecord.deleted_at.is_(None),
+                )
+                attendance_rows = attendance_query.order_by(BehaviorAttendanceRecord.id).all()
+                outside_attendance_count = BehaviorAttendanceRecord.query.filter(
+                    BehaviorAttendanceRecord.behavior_session_id == item.id,
+                    BehaviorAttendanceRecord.status == "active",
+                    BehaviorAttendanceRecord.deleted_at.is_(None),
+                    or_(
+                        BehaviorAttendanceRecord.attendance_date < values["period_start_date"],
+                        BehaviorAttendanceRecord.attendance_date > values["period_end_date"],
+                    ),
+                ).count()
+                event_start = datetime.combine(values["period_start_date"], datetime.min.time())
+                event_end = datetime.combine(
+                    values["period_end_date"] + timedelta(days=1),
+                    datetime.min.time(),
+                )
+                outside_event_count = BehaviorEvent.query.filter(
+                    BehaviorEvent.behavior_session_id == item.id,
+                    BehaviorEvent.status == "active",
+                    or_(BehaviorEvent.occurred_at < event_start, BehaviorEvent.occurred_at >= event_end),
+                ).count()
+                if outside_attendance_count or outside_event_count:
+                    raise BehaviorValidationError(
+                        f"Xilligan waxaa ka jira {outside_attendance_count} xaadirin iyo "
+                        f"{outside_event_count} dhacdo anshax oo ka baxsan muddada cusub. "
+                        "Marka hore dib u eeg diiwaannadaas si aan dhibco looga reebin si kama' ah."
+                    )
+
+                closure_scope = "shift" if (item.applicable_shift or "all") != "all" else "all"
+                closure_levels = _closure_target_enrollments(
+                    config,
+                    item,
+                    closure_scope,
+                    school_shift=item.applicable_shift if closure_scope == "shift" else None,
+                )
+                if not closure_levels:
+                    raise BehaviorValidationError("Fasaxa lama diiwaangelin karo: xilligan kuma jiraan arday firfircoon.")
+                level_ids = {enrollment.academic_year_level_id for enrollment in closure_levels}
+                for level_id in level_ids:
+                    active_weekdays = {
+                        row.weekday
+                        for row in attendance_days(config, academic_year_level_id=level_id)
+                        if row.is_active
+                    }
+                    if closure_date.weekday() not in active_weekdays:
+                        raise BehaviorValidationError(
+                            "Taariikhda fasaxa ee la doortay kuma jiro jadwalka maalmaha xaadirinta ee mid ka mid ah heerarka xilligan. "
+                            "Jadwalka hubi ka hor inta aan fasaxa loo qoondeyn dhibco."
+                        )
+                closure_enrollment_ids = [enrollment.id for enrollment in closure_levels]
+                closure_records = BehaviorAttendanceRecord.query.filter(
+                    BehaviorAttendanceRecord.behavior_session_id == item.id,
+                    BehaviorAttendanceRecord.attendance_date == closure_date,
+                    BehaviorAttendanceRecord.student_enrollment_id.in_(closure_enrollment_ids),
+                ).all()
+                if any(row.deleted_at or row.status == "voided" for row in closure_records):
+                    raise BehaviorValidationError(
+                        "Fasaxa waxaa saameeya xaadirin la tirtiray ama laga noqday. Soo celi ama dib u eeg diiwaannadaas marka hore."
+                    )
+                existing_closures = BehaviorAttendanceClosure.query.filter_by(
+                    behavior_session_id=item.id,
+                    attendance_date=closure_date,
+                    status="active",
+                ).all()
+                if len(existing_closures) > 1:
+                    raise BehaviorValidationError("Fasaxyo badan ayaa taariikhdan hore ugu jira xilligan; dib u eeg diiwaankooda marka hore.")
+                if existing_closures:
+                    existing_closure = existing_closures[0]
+                    if existing_closure.scope_type != closure_scope or (
+                        closure_scope == "shift" and existing_closure.school_shift != item.applicable_shift
+                    ):
+                        raise BehaviorValidationError("Fasax hore oo baaxad kale leh ayaa taariikhdan ku jira; ma beddelin xogtiisa.")
+                allowed_closure_ids = {row.id for row in existing_closures}
+                if any(
+                    row.behavior_attendance_closure_id
+                    and row.behavior_attendance_closure_id not in allowed_closure_ids
+                    for row in closure_records
+                ):
+                    raise BehaviorValidationError(
+                        "Diiwaanka taariikhdan wuxuu ku xidhan yahay fasax kale. Dib u eeg xiriirka fasaxa ka hor dib-u-habaynta."
+                    )
+                positive_statuses = {
+                    status.key: status
+                    for status in BehaviorAttendanceStatus.query.filter(
+                        BehaviorAttendanceStatus.behavior_configuration_id == config.id,
+                        BehaviorAttendanceStatus.key.in_(SESSION_DAILY_POSITIVE_ATTENDANCE_KEYS),
+                        BehaviorAttendanceStatus.is_active.is_(True),
+                    ).all()
+                }
+                if any(
+                    key not in positive_statuses or not positive_statuses[key].contributes_to_behavior
+                    for key in SESSION_DAILY_POSITIVE_ATTENDANCE_KEYS
+                ):
+                    raise BehaviorValidationError(
+                        "Joogid, Cudurdaar iyo Fasaxid Rasmi ah waa inay firfircoon yihiin oo dhibcaha Anshaxa ku jiraan."
+                    )
+                present_status = positive_statuses["present"]
+
+                old_maximum = Decimal(str(item.maximum_score))
+                new_maximum = values["maximum_score"]
+                scales = list(item.grade_scales)
+                scale_updates = [scale for scale in scales if scale.is_active]
+                ordered_scales = sorted(scale_updates, key=lambda row: (row.min_score, row.max_score, row.id))
+                rescaled_bands = []
+                for scale in ordered_scales:
+                    old_minimum = Decimal(str(scale.min_score))
+                    old_scale_maximum = Decimal(str(scale.max_score))
+                    if old_minimum < 0 or old_scale_maximum < old_minimum or old_scale_maximum > old_maximum:
+                        raise BehaviorValidationError(
+                            f"Xadka darajada {scale.grade} kama waafaqsana wadarta xilliga hadda jirta; sax miisaanka darajooyinka ka hor isbeddelka."
+                        )
+                    new_minimum = (old_minimum * new_maximum / old_maximum).quantize(
+                        Decimal("0.001"), rounding=ROUND_HALF_UP,
+                    )
+                    new_scale_maximum = (old_scale_maximum * new_maximum / old_maximum).quantize(
+                        Decimal("0.001"), rounding=ROUND_HALF_UP,
+                    )
+                    if new_minimum > new_scale_maximum or (
+                        rescaled_bands and new_minimum <= rescaled_bands[-1][1]
+                    ):
+                        raise BehaviorValidationError(
+                            "Miisaamiddu waxay is-dulsaaraysaa xuduudaha darajooyinka. Dib u habee darajooyinka ka hor intaadan beddelin xilliga."
+                        )
+                    rescaled_bands.append((new_minimum, new_scale_maximum))
+                before_annual_totals = _session_revision_annual_totals(config, item, old_maximum)
+                after_annual_totals = _session_revision_annual_totals(config, item, new_maximum)
+                all_active_attendance = BehaviorAttendanceRecord.query.filter(
+                    BehaviorAttendanceRecord.behavior_session_id == item.id,
+                    BehaviorAttendanceRecord.status == "active",
+                    BehaviorAttendanceRecord.deleted_at.is_(None),
+                ).order_by(BehaviorAttendanceRecord.id).all()
+                all_active_events = BehaviorEvent.query.filter_by(
+                    behavior_session_id=item.id,
+                    status="active",
+                ).order_by(BehaviorEvent.id).all()
+                before_scores = _session_revision_score_snapshots(
+                    config,
+                    item,
+                    closure_levels,
+                    all_active_events,
+                    all_active_attendance,
+                )
+                before = _session_revision_snapshot(item, scales, all_active_attendance)
+                before["student_scores"] = before_scores
+                before["annual_totals"] = {
+                    key: str(value) for key, value in before_annual_totals.items()
+                }
+                before["closures"] = [
+                    {
+                        "id": closure.id,
+                        "date": closure.attendance_date.isoformat(),
+                        "scope_type": closure.scope_type,
+                        "school_shift": closure.school_shift,
+                        "kind": closure.closure_kind,
+                        "reason": closure.reason,
+                        "status": closure.status,
+                    }
+                    for closure in existing_closures
+                ]
+                points_to_update = [
+                    row for row in attendance_rows
+                    if (row.status_key_snapshot or "").strip().lower()
+                    in SESSION_DAILY_POSITIVE_ATTENDANCE_KEYS | {SCHOOL_CLOSURE_STATUS_KEY}
+                ]
+                for row in points_to_update:
+                    row.points_applied = values["attendance_present_weight"]
+                    row.polarity = "positive"
+
+                for scale, (new_minimum, new_scale_maximum) in zip(ordered_scales, rescaled_bands):
+                    scale.min_score = new_minimum
+                    scale.max_score = new_scale_maximum
+
+                item.maximum_score = new_maximum
+                item.behavior_allocation = values["behavior_allocation"]
+                item.attendance_allocation = values["attendance_allocation"]
+                item.attendance_present_weight = values["attendance_present_weight"]
+                item.period_start_date = values["period_start_date"]
+                item.period_end_date = values["period_end_date"]
+                try:
+                    policy = json.loads(item.attendance_policy_snapshot or "{}")
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    policy = {}
+                policy_weights = policy.setdefault("weights", {})
+                for key in SESSION_DAILY_POSITIVE_ATTENDANCE_KEYS:
+                    policy_weights[key] = str(values["attendance_present_weight"])
+                item.attendance_policy_snapshot = json.dumps(policy, sort_keys=True)
+
+                closure = existing_closures[0] if existing_closures else BehaviorAttendanceClosure(
+                    academic_year_id=config.academic_year_id,
+                    behavior_configuration_id=config.id,
+                    behavior_session_id=item.id,
+                    attendance_date=closure_date,
+                    scope_type=closure_scope,
+                    school_shift=item.applicable_shift if closure_scope == "shift" else None,
+                    closure_kind="holiday",
+                    reason=closure_reason,
+                    created_by_id=current_user.id,
+                    updated_by_id=current_user.id,
+                )
+                if not existing_closures:
+                    db.session.add(closure)
+                    db.session.flush()
+                else:
+                    closure.closure_kind = "holiday"
+                    closure.reason = closure_reason
+                    closure.updated_by_id = current_user.id
+                closure_records_by_enrollment = {
+                    row.student_enrollment_id: row for row in closure_records
+                }
+                school_now = datetime.now(SCHOOL_TIMEZONE)
+                for enrollment in closure_levels:
+                    points = attendance_status_points(
+                        present_status,
+                        enrollment.academic_year_level_id,
+                        item,
+                    )
+                    record = closure_records_by_enrollment.get(enrollment.id)
+                    if record is None:
+                        record = BehaviorAttendanceRecord(
+                            student_id=enrollment.student_id,
+                            student_enrollment_id=enrollment.id,
+                            behavior_configuration_id=config.id,
+                            behavior_session_id=item.id,
+                            academic_year_id=config.academic_year_id,
+                            academic_year_level_id=enrollment.academic_year_level_id,
+                            academic_year_class_id=enrollment.academic_year_class_id,
+                            attendance_date=closure_date,
+                            attendance_time=school_now.time().replace(microsecond=0),
+                            status_id=present_status.id,
+                            marked_by_id=current_user.id,
+                        )
+                        db.session.add(record)
+                    record.status_id = present_status.id
+                    record.behavior_attendance_closure_id = closure.id
+                    record.status_key_snapshot = SCHOOL_CLOSURE_STATUS_KEY
+                    record.status_label_snapshot = SCHOOL_CLOSURE_STATUS_LABEL
+                    record.polarity = "positive"
+                    record.points_applied = points
+                    if record.note_is_auto_generated:
+                        record.note = None
+                        record.note_is_auto_generated = False
+                    record.arrival_time = None
+                    record.late_by_minutes = None
+                    record.marked_by_id = current_user.id
+                db.session.flush()
+                config.annual_allocation = allocation_total(config)
+                updated_attendance_rows = BehaviorAttendanceRecord.query.filter(
+                    BehaviorAttendanceRecord.behavior_session_id == item.id,
+                    BehaviorAttendanceRecord.attendance_date >= values["period_start_date"],
+                    BehaviorAttendanceRecord.attendance_date <= values["period_end_date"],
+                    BehaviorAttendanceRecord.status == "active",
+                    BehaviorAttendanceRecord.deleted_at.is_(None),
+                ).order_by(BehaviorAttendanceRecord.id).all()
+                after = _session_revision_snapshot(item, scales, updated_attendance_rows)
+                after["annual_totals"] = {
+                    key: str(value) for key, value in after_annual_totals.items()
+                }
+                after_events = BehaviorEvent.query.filter_by(
+                    behavior_session_id=item.id,
+                    status="active",
+                ).order_by(BehaviorEvent.id).all()
+                after["student_scores"] = _session_revision_score_snapshots(
+                    config,
+                    item,
+                    closure_levels,
+                    after_events,
+                    updated_attendance_rows,
+                )
+                after["closures"] = [{
+                    "id": closure.id,
+                    "date": closure.attendance_date.isoformat(),
+                    "scope_type": closure.scope_type,
+                    "school_shift": closure.school_shift,
+                    "kind": closure.closure_kind,
+                    "reason": closure.reason,
+                    "status": closure.status,
+                }]
+                affected_attendance_ids = {row.id for row in points_to_update}
+                affected_attendance_ids.update(row.id for row in closure_records if row.id)
+                attendance_rows_updated = len(affected_attendance_ids) + sum(
+                    1 for enrollment in closure_levels
+                    if enrollment.id not in closure_records_by_enrollment
+                )
+                revision = BehaviorSessionRevision(
+                    behavior_session_id=item.id,
+                    revision_number=(
+                        db.session.query(func.max(BehaviorSessionRevision.revision_number))
+                        .filter_by(behavior_session_id=item.id)
+                        .scalar() or 0
+                    ) + 1,
+                    changed_by_id=current_user.id,
+                    reason=values["reason"],
+                    before_snapshot=json.dumps(before, ensure_ascii=False, sort_keys=True),
+                    after_snapshot=json.dumps(after, ensure_ascii=False, sort_keys=True),
+                    attendance_rows_updated=attendance_rows_updated,
+                    grade_scales_updated=len(scale_updates),
+                )
+                db.session.add(revision)
+                audit(
+                    "Behavior Session Revision",
+                    f"Revised session {item.id} in configuration {config.id}; "
+                    f"attendance rows={attendance_rows_updated}, grade scales={len(scale_updates)}, "
+                    f"student scores={len(before_scores)}; "
+                    f"old maximum={old_maximum}, new maximum={new_maximum}; reason={values['reason']}",
+                )
+                db.session.commit()
+                flash(
+                    f"Xilliga waa la dib-u-habeeyey. {attendance_rows_updated} diiwaan xaadirin ah "
+                    f"iyo {len(scale_updates)} xad darajo ah ayaa la waafajiyey; taariikhdii horena waa la diiwaangeliyey.",
+                    "success",
+                )
+                return redirect(url_for("behavior.revise_session", session_id=item.id))
+
+            records_in_range = BehaviorAttendanceRecord.query.filter(
+                BehaviorAttendanceRecord.behavior_session_id == item.id,
+                BehaviorAttendanceRecord.attendance_date >= values["period_start_date"],
+                BehaviorAttendanceRecord.attendance_date <= values["period_end_date"],
+                BehaviorAttendanceRecord.status == "active",
+                BehaviorAttendanceRecord.deleted_at.is_(None),
+            ).all()
+            points_count = sum(
+                1 for row in records_in_range
+                if (row.status_key_snapshot or "").strip().lower()
+                in SESSION_DAILY_POSITIVE_ATTENDANCE_KEYS | {SCHOOL_CLOSURE_STATUS_KEY}
+            )
+            outside_attendance_count = BehaviorAttendanceRecord.query.filter(
+                BehaviorAttendanceRecord.behavior_session_id == item.id,
+                BehaviorAttendanceRecord.status == "active",
+                BehaviorAttendanceRecord.deleted_at.is_(None),
+                or_(
+                    BehaviorAttendanceRecord.attendance_date < values["period_start_date"],
+                    BehaviorAttendanceRecord.attendance_date > values["period_end_date"],
+                ),
+            ).count()
+            event_start = datetime.combine(values["period_start_date"], datetime.min.time())
+            event_end = datetime.combine(
+                values["period_end_date"] + timedelta(days=1),
+                datetime.min.time(),
+            )
+            outside_event_count = BehaviorEvent.query.filter(
+                BehaviorEvent.behavior_session_id == item.id,
+                BehaviorEvent.status == "active",
+                or_(BehaviorEvent.occurred_at < event_start, BehaviorEvent.occurred_at >= event_end),
+            ).count()
+            annual_totals = _session_revision_annual_totals(config, item, values["maximum_score"])
+            preview = {
+                "attendance_record_count": len(records_in_range),
+                "attendance_points_updated": points_count,
+                "closure_student_count": len(_closure_target_enrollments(
+                    config,
+                    item,
+                    "shift" if (item.applicable_shift or "all") != "all" else "all",
+                    school_shift=item.applicable_shift if (item.applicable_shift or "all") != "all" else None,
+                )),
+                "closure_existing_record_count": 0,
+                "grade_scale_count": sum(1 for scale in item.grade_scales if scale.is_active),
+                "event_count": BehaviorEvent.query.filter_by(behavior_session_id=item.id, status="active").count(),
+                "outside_attendance_count": outside_attendance_count,
+                "outside_event_count": outside_event_count,
+                "closure_conflicts": 0,
+                "annual_totals": annual_totals,
+                "expected_present_total": None,
+            }
+            preview_closure_date = date.fromisoformat(form_values["closure_date"])
+            preview_closure_scope = "shift" if (item.applicable_shift or "all") != "all" else "all"
+            preview_closure_enrollments = _closure_target_enrollments(
+                config,
+                item,
+                preview_closure_scope,
+                school_shift=item.applicable_shift if preview_closure_scope == "shift" else None,
+            )
+            preview_closure_ids = {enrollment.id for enrollment in preview_closure_enrollments}
+            preview_existing_closures = BehaviorAttendanceClosure.query.filter_by(
+                behavior_session_id=item.id,
+                attendance_date=preview_closure_date,
+                status="active",
+            ).all()
+            preview_closure_records = BehaviorAttendanceRecord.query.filter(
+                BehaviorAttendanceRecord.behavior_session_id == item.id,
+                BehaviorAttendanceRecord.attendance_date == preview_closure_date,
+                BehaviorAttendanceRecord.student_enrollment_id.in_(preview_closure_ids or {-1}),
+            ).all()
+            preview["closure_existing_record_count"] = len(preview_closure_records)
+            compatible_closure_ids = {row.id for row in preview_existing_closures}
+            preview["closure_conflicts"] = sum(
+                1 for row in preview_closure_records
+                if row.deleted_at
+                or row.status == "voided"
+                or (
+                    row.behavior_attendance_closure_id
+                    and row.behavior_attendance_closure_id not in compatible_closure_ids
+                )
+            )
+            if len(preview_existing_closures) > 1:
+                preview["closure_conflicts"] += len(preview_existing_closures) - 1
+            elif preview_existing_closures and (
+                preview_existing_closures[0].scope_type != preview_closure_scope
+                or (
+                    preview_closure_scope == "shift"
+                    and preview_existing_closures[0].school_shift != item.applicable_shift
+                )
+            ):
+                preview["closure_conflicts"] += 1
+            breakpoints = _session_revision_level_days(
+                config,
+                item,
+                values["period_start_date"],
+                values["period_end_date"],
+                values["attendance_present_weight"],
+                values["attendance_allocation"],
+            )
+            preview["levels"] = breakpoints
+            preview["policy_total_matches"] = all(
+                item["attendance_total"] == item["allocation"] for item in breakpoints
+            )
+            form_values["expected_updated_at"] = item.updated_at.isoformat() if item.updated_at else ""
+            form_values["expected_revision_count"] = BehaviorSessionRevision.query.filter_by(
+                behavior_session_id=item.id,
+            ).count()
+        except (BehaviorValidationError, ValueError, IntegrityError) as exc:
+            db.session.rollback()
+            error = str(exc) if not isinstance(exc, IntegrityError) else "Dib-u-habaynta lama kaydin karin sababo xog-isdiiddan awgeed."
+
+    revision_history = []
+    for revision in item.revisions:
+        try:
+            before_snapshot = json.loads(revision.before_snapshot or "{}")
+            after_snapshot = json.loads(revision.after_snapshot or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            before_snapshot, after_snapshot = {}, {}
+        revision_history.append({
+            "record": revision,
+            "before": before_snapshot.get("session", {}),
+            "after": after_snapshot.get("session", {}),
+            "score_changes": [
+                {"before": old_score, "after": current_score}
+                for old_score in before_snapshot.get("student_scores", [])
+                for current_score in [
+                    next((
+                        value for value in after_snapshot.get("student_scores", [])
+                        if value.get("enrollment_id") == old_score.get("enrollment_id")
+                    ), None)
+                ]
+                if current_score is not None
+            ],
+            "annual_before": before_snapshot.get("annual_totals", {}),
+            "annual_after": after_snapshot.get("annual_totals", {}),
+        })
+
+    return render_template(
+        "admin/behavior/session_revision.html",
+        item=item,
+        config=config,
+        form_values=form_values,
+        preview=preview,
+        error=error,
+        revision_history=revision_history,
+    )
+
+
 @behavior_bp.route("/session-allocation", methods=["GET"])
 def session_allocation():
     """Dedicated planning view backed by the canonical session mutation route."""
@@ -3063,6 +3775,7 @@ def attendance():
             action = request.form.get("action")
             if action == "closure_create":
                 closure_date = date.fromisoformat(request.form.get("closure_date") or "")
+                validate_session_date(selected_session, closure_date)
                 scope_type = (request.form.get("scope_type") or "").strip().lower()
                 school_shift = (request.form.get("school_shift") or "").strip().lower() or None
                 level_id = _int(request.form.get("closure_level_id"))
@@ -3135,7 +3848,11 @@ def attendance():
                     level_id_for_student = enrollment.academic_year_level_id
                     if level_id_for_student not in present_by_level:
                         ensure_status_level_points(config, level_id_for_student)
-                        points = attendance_status_points(present, level_id_for_student)
+                        points = attendance_status_points(
+                            present,
+                            level_id_for_student,
+                            selected_session,
+                        )
                         if not present or not present.contributes_to_behavior or present.polarity != "positive":
                             raise BehaviorValidationError(
                                 "Dhibcaha Joogid waa inay active yihiin oo positive noqdaan si fasaxu u helo dhibcaha saxda ah."
@@ -3376,6 +4093,17 @@ def attendance():
                         academic_year_level_id=context["selected_level"].id,
                     ).all()
                 })
+                session_positive_statuses = BehaviorAttendanceStatus.query.filter(
+                    BehaviorAttendanceStatus.behavior_configuration_id == config.id,
+                    BehaviorAttendanceStatus.key.in_(SESSION_DAILY_POSITIVE_ATTENDANCE_KEYS),
+                    BehaviorAttendanceStatus.is_active.is_(True),
+                ).all()
+                if (
+                    session_has_date_window(selected_session)
+                    and selected_session.attendance_present_weight is not None
+                ):
+                    for status in session_positive_statuses:
+                        effective_points_by_status_id[status.id] = selected_session.attendance_present_weight
                 saved_count = 0
                 cleared_count = 0
                 unmarked_count = 0
@@ -3508,6 +4236,7 @@ def attendance():
             attendance_statuses(
                 config,
                 academic_year_level_id=context["selected_level"].id,
+                session=selected_session,
             )
             if config and context["selected_level"]
             else []

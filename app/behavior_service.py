@@ -6,7 +6,7 @@ StudentEnrollment records, then writes Behavior-owned records.
 """
 
 import json
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from . import db
@@ -38,6 +38,7 @@ CANONICAL_ATTENDANCE_STATUS_KEYS = frozenset(
     {"present", "late", "absent", "excused", "official_leave"}
 )
 SCOREABLE_ATTENDANCE_STATUS_KEYS = CANONICAL_ATTENDANCE_STATUS_KEYS | {"school_closure"}
+SESSION_DAILY_POSITIVE_ATTENDANCE_KEYS = frozenset({"present", "excused", "official_leave"})
 DEFAULT_ATTENDANCE_WEIGHTS = {
     "present": Decimal("1.000"),
     "late": Decimal("-0.500"),
@@ -116,6 +117,16 @@ def capture_attendance_session_policy(configuration, session):
         key: Decimal(value)
         for key, value in policy["weights"].items()
     }
+    if session_has_date_window(session) and session.attendance_present_weight is not None:
+        daily_positive_weight = decimal_value(
+            session.attendance_present_weight,
+            "Session daily positive Attendance points",
+            minimum="0",
+        )
+        for key in SESSION_DAILY_POSITIVE_ATTENDANCE_KEYS:
+            weights[key] = daily_positive_weight
+            policy["weights"][key] = str(daily_positive_weight.quantize(Decimal("0.001")))
+        session.attendance_policy_snapshot = json.dumps(policy, sort_keys=True)
     session.attendance_present_weight = weights["present"]
     session.attendance_late_weight = weights["late"]
     session.attendance_absent_weight = weights["absent"]
@@ -512,6 +523,28 @@ def ensure_session_editable(configuration, session=None):
     return configuration
 
 
+def validate_session_date(session, value):
+    """Keep session activity inside its configured date window."""
+    if isinstance(value, datetime):
+        value = value.date()
+    if not isinstance(value, date):
+        raise BehaviorValidationError("Taariikhda xilliga waa khaldan tahay.")
+    start_date = getattr(session, "period_start_date", None)
+    end_date = getattr(session, "period_end_date", None)
+    if start_date and value < start_date:
+        raise BehaviorValidationError("Taariikhdu waxay ka horreysaa muddada xilligan.")
+    if end_date and value > end_date:
+        raise BehaviorValidationError("Taariikhdu waxay ka dambaysaa muddada xilligan.")
+    return value
+
+
+def session_has_date_window(session):
+    return bool(
+        getattr(session, "period_start_date", None)
+        and getattr(session, "period_end_date", None)
+    )
+
+
 def _clamp_decimal(value, minimum, maximum):
     return max(minimum, min(maximum, value))
 
@@ -788,6 +821,15 @@ def attendance_policy_for_session(session):
         if value is not None else DEFAULT_ATTENDANCE_WEIGHTS[key]
         for key, value in values.items()
     }
+    daily_positive_weight = getattr(session, "attendance_present_weight", None)
+    if session_has_date_window(session) and daily_positive_weight is not None:
+        daily_positive_weight = decimal_value(
+            daily_positive_weight,
+            "Session daily positive Attendance points",
+            minimum="0",
+        )
+        for key in SESSION_DAILY_POSITIVE_ATTENDANCE_KEYS:
+            weights[key] = daily_positive_weight
     return {
         "version": getattr(session, "scoring_policy_version", None) or "legacy",
         "weights": {
@@ -890,21 +932,34 @@ def attendance_score_projection(
 
     allocation = decimal_value(allocation_value, "Attendance allocation", minimum="0")
     if attendance_records is None:
-        rows = BehaviorAttendanceRecord.query.filter_by(
+        attendance_query = BehaviorAttendanceRecord.query.filter_by(
             behavior_configuration_id=configuration.id,
             behavior_session_id=session.id,
             student_enrollment_id=enrollment.id,
-        ).order_by(
+        )
+        if start_date := getattr(session, "period_start_date", None):
+            attendance_query = attendance_query.filter(
+                BehaviorAttendanceRecord.attendance_date >= start_date
+            )
+        if end_date := getattr(session, "period_end_date", None):
+            attendance_query = attendance_query.filter(
+                BehaviorAttendanceRecord.attendance_date <= end_date
+            )
+        rows = attendance_query.order_by(
             BehaviorAttendanceRecord.attendance_date.asc(),
             BehaviorAttendanceRecord.id.asc(),
         ).all()
     else:
         rows = list(attendance_records)
+    start_date = getattr(session, "period_start_date", None)
+    end_date = getattr(session, "period_end_date", None)
     canonical_rows = [
         row for row in rows
         if (getattr(row, "status", "active") or "active").strip().lower() not in {"voided", "deleted"}
         and not getattr(row, "deleted_at", None)
         and (row.status_key_snapshot or "").strip().lower() in SCOREABLE_ATTENDANCE_STATUS_KEYS
+        and (start_date is None or row.attendance_date >= start_date)
+        and (end_date is None or row.attendance_date <= end_date)
     ]
     point_projection = attendance_points_projection(canonical_rows)
     policy = attendance_policy_for_session(session)
@@ -1037,14 +1092,31 @@ def calculate_session_score(
             )
     base = (behavior_allocation / Decimal("2")).quantize(Decimal("0.001"))
     if behavior_events is None:
-        rows = BehaviorEvent.query.filter_by(
+        event_query = BehaviorEvent.query.filter_by(
             behavior_configuration_id=configuration.id,
             behavior_session_id=session.id,
             student_enrollment_id=enrollment.id,
             status="active",
-        ).all()
+        )
+        if session.period_start_date:
+            event_query = event_query.filter(
+                BehaviorEvent.occurred_at >= datetime.combine(session.period_start_date, datetime.min.time())
+            )
+        if session.period_end_date:
+            event_query = event_query.filter(
+                BehaviorEvent.occurred_at < datetime.combine(
+                    session.period_end_date + timedelta(days=1),
+                    datetime.min.time(),
+                )
+            )
+        rows = event_query.all()
     else:
-        rows = [row for row in behavior_events if row.status == "active"]
+        rows = [
+            row for row in behavior_events
+            if row.status == "active"
+            and (session.period_start_date is None or row.occurred_at.date() >= session.period_start_date)
+            and (session.period_end_date is None or row.occurred_at.date() <= session.period_end_date)
+        ]
     positive_raw = sum(
         (decimal_value(row.points_applied, "Event points") for row in rows if row.polarity == "positive"),
         Decimal("0.000"),
@@ -1437,6 +1509,8 @@ def record_event(
             ):
                 raise BehaviorValidationError("Event submission key was already used for another event")
             return existing
+    occurred_at = occurred_at or datetime.utcnow()
+    validate_session_date(session, occurred_at)
     validate_behavior_ledger_capacity(
         configuration,
         session,
@@ -1454,7 +1528,7 @@ def record_event(
         polarity=category.polarity,
         points_applied=response_points,
         status="active",
-        occurred_at=occurred_at or datetime.utcnow(),
+        occurred_at=occurred_at,
         notes=(notes or "").strip() or None,
         category_name_snapshot=category.name,
         action_name_snapshot=(
@@ -1517,6 +1591,8 @@ def edit_event(
         exam_type_id=session.exam_type_id,
         exam_id=session.exam_id,
     )
+    occurred_at = occurred_at or event.occurred_at
+    validate_session_date(session, occurred_at)
     if not session_applies_to_enrollment(session, enrollment):
         raise BehaviorValidationError("Session-kan kuma khuseeyo gelinka fasalkan.")
     validate_enrollment_session_allocations(configuration, enrollment, session)
@@ -1561,7 +1637,6 @@ def edit_event(
         response_points,
         exclude_event_id=event.id,
     )
-    occurred_at = occurred_at or event.occurred_at
     old_values = {
         "session_id": event.behavior_session_id,
         "category_id": event.behavior_category_id,

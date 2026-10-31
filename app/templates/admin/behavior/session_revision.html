@@ -1,0 +1,78 @@
+{% extends "admin/base.html" %}
+{% block page_title %}Dib-u-habaynta Xilliga{% endblock %}
+{% block admin_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='behavior-session-revision-20261031-2') }}">
+<div class="behavior-page view">
+  {% include "admin/behavior/_nav.html" %}
+
+  <section class="behavior-card card behavior-section">
+    <div class="behavior-section__head card-head">
+      <div>
+        <span class="behavior-kicker"><i class="fa-solid fa-rotate"></i> Dib-u-habayn la raad-raaci karo</span>
+        <h1>{{ item.session_label }}</h1>
+        <p class="behavior-muted">{{ config.academic_year.name }} · {{ config|behavior_levels }} · {{ config.behavior_subject.name }} · {{ item.exam.name if item.exam else item.exam_type.name if item.exam_type else 'Imtixaan' }} · {{ {'all': 'Dhammaan gelinnada', 'morning': 'Gelin hore', 'afternoon': 'Gelin dambe'}.get(item.applicable_shift or 'all', 'Dhammaan gelinnada') }}</p>
+      </div>
+      <a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.sessions', config_id=config.id) }}"><i class="fa-solid fa-arrow-left"></i> Xilliyada</a>
+    </div>
+    {% if error %}<div class="behavior-alert behavior-alert--danger" role="alert"><i class="fa-solid fa-triangle-exclamation"></i>{{ error }}</div>{% endif %}
+    <div class="behavior-alert"><i class="fa-solid fa-shield-halved"></i> Isbeddelkani wuxuu dib u xisaabinayaa dhibcaha taariikhda la doortay. Dhibcihii ka horreeyey, darajooyinkii, iyo xogta xaadirinta waxaa lagu kaydinayaa diiwaanka dib-u-habaynta.</div>
+
+    <form class="behavior-form behavior-form--wide" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if preview %}
+      <input type="hidden" name="revision_action" value="apply">
+      <input type="hidden" name="expected_updated_at" value="{{ form_values.expected_updated_at }}">
+      <input type="hidden" name="expected_revision_count" value="{{ form_values.expected_revision_count }}">
+      {% else %}
+      <input type="hidden" name="revision_action" value="preview">
+      {% endif %}
+
+      <div class="behavior-field"><label for="revisionStart">Taariikhda bilowga</label><input id="revisionStart" name="period_start_date" type="date" value="{{ form_values.period_start_date }}" required></div>
+      <div class="behavior-field"><label for="revisionEnd">Taariikhda dhammaadka</label><input id="revisionEnd" name="period_end_date" type="date" value="{{ form_values.period_end_date }}" required></div>
+      <div class="behavior-field"><label for="revisionMaximum">Wadarta xilliga</label><input id="revisionMaximum" name="maximum_score" type="number" min="0.001" step="0.001" value="{{ form_values.maximum_score }}" required></div>
+      <div class="behavior-field"><label for="revisionBehavior">Qoondada anshaxa</label><input id="revisionBehavior" name="behavior_allocation" type="number" min="0" step="0.001" value="{{ form_values.behavior_allocation }}" required></div>
+      <div class="behavior-field"><label for="revisionAttendance">Qoondada xaadirinta</label><input id="revisionAttendance" name="attendance_allocation" type="number" min="0" step="0.001" value="{{ form_values.attendance_allocation }}" required></div>
+      <div class="behavior-field"><label for="revisionPresent">Dhibcaha xaaladaha togan maalintii</label><input id="revisionPresent" name="attendance_present_weight" type="number" min="0" step="0.001" value="{{ form_values.attendance_present_weight }}" required><small>Waxay khusaysaa Joogid, Cudurdaar, Fasaxid Rasmi ah iyo Maalin Dugsi Xiran.</small></div>
+      <div class="behavior-field"><label for="revisionClosureDate">Taariikhda fasaxa guud ee dhibcaha leh</label><input id="revisionClosureDate" name="closure_date" type="date" value="{{ form_values.closure_date }}" required></div>
+      <div class="behavior-field behavior-field--wide"><label for="revisionClosureReason">Sababta fasaxa</label><input id="revisionClosureReason" name="closure_reason" maxlength="255" value="{{ form_values.closure_reason }}" required></div>
+      <div class="behavior-field behavior-field--wide"><label for="revisionReason">Sababta dib-u-habaynta</label><textarea id="revisionReason" name="reason" rows="3" minlength="10" maxlength="500" required>{{ form_values.reason }}</textarea></div>
+
+      {% if preview %}
+      <div class="behavior-revision-preview" style="grid-column:1/-1">
+        <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-magnifying-glass-chart"></i> Saamaynta la hubiyey</span><h2>Ka hor xaqiijinta</h2></div></div>
+        {% if preview.outside_attendance_count or preview.outside_event_count or preview.closure_conflicts %}<div class="behavior-alert behavior-alert--danger"><i class="fa-solid fa-triangle-exclamation"></i> Kaydintu way xanniban tahay: {{ preview.outside_attendance_count }} diiwaan xaadirin iyo {{ preview.outside_event_count }} dhacdo anshax ayaa ka baxsan muddada; {{ preview.closure_conflicts }} is-waafaqla'aan fasax ayaa jirta. Dib u eeg xogtan ka hor intaadan sii wadin.</div>{% endif %}
+        <div class="allocation-stat-grid">
+          <div class="allocation-stat"><span>Diiwaannada muddada</span><strong>{{ preview.attendance_record_count }}</strong><small>Xaadirin hore oo muddadan ku jira</small></div>
+          <div class="allocation-stat allocation-stat--attendance"><span>Dhibcaha xaaladaha togan la cusboonaysiinayo</span><strong>{{ preview.attendance_points_updated }}</strong><small>Joogid, Cudurdaar, Fasaxid Rasmi ah iyo Maalin Dugsi Xiran</small></div>
+          <div class="allocation-stat allocation-stat--behavior"><span>Dhibcaha darajooyinka</span><strong>{{ preview.grade_scale_count }}</strong><small>Xadka dhibcaha waxaa loo waafajinayaa boqolleyda hadda jirta</small></div>
+          <div class="allocation-stat"><span>Dhacdooyinka anshaxa</span><strong>{{ preview.event_count }}</strong><small>Waxaa lagu xisaabinayaa qoondada cusub</small></div>
+          <div class="allocation-stat allocation-stat--attendance"><span>Ardayda fasaxa</span><strong>{{ preview.closure_student_count }}</strong><small>{{ preview.closure_existing_record_count }} diiwaan hore; {{ preview.closure_conflicts }} is-waafaqla'aan</small></div>
+        </div>
+        <div class="behavior-table-wrap" style="margin-top:14px"><table class="behavior-table"><thead><tr><th>Heerka</th><th>Maalmaha jadwalka</th><th>Xaalad togan maalin kasta</th><th>Qoondada xaadirinta</th></tr></thead><tbody>
+          {% for row in preview.levels %}<tr><td>{{ row.level }}</td><td>{{ row.school_days }}</td><td>{{ row.attendance_total|behavior_points }}</td><td>{{ row.allocation|behavior_points }}</td></tr>{% endfor %}
+        </tbody></table></div>
+        {% if preview.policy_total_matches %}<div class="behavior-alert"><i class="fa-solid fa-circle-check"></i> Jadwalka maalmaha wuxuu si sax ah ula egyahay qoondada xaadirinta. Joogid, Cudurdaar, Fasaxid Rasmi ah iyo Maalin Dugsi Xiran waxay helayaan dhibcaha togan ee maalinta.</div>{% else %}<div class="behavior-alert behavior-alert--danger"><i class="fa-solid fa-triangle-exclamation"></i> Tirada maalmaha jadwalku si sax ah ulama eka qoondada. Si loo sii wado, heer kasta waa inuu yeeshaa 45 maalmood × 0.2 = 9 dhibcood.</div>{% endif %}
+        <div class="allocation-stat-grid" style="margin-top:14px">
+          <div class="allocation-stat {% if preview.annual_totals.morning == 100 %}allocation-stat--valid{% else %}allocation-stat--behavior{% endif %}"><span>Wadarta sannadlaha · Gelin hore</span><strong>{{ preview.annual_totals.morning|behavior_points }} / 100</strong><small>{% if preview.annual_totals.morning == 100 %}Waa dhammaystiran{% else %}Waxay u baahan tahay dib-u-eegis{% endif %}</small></div>
+          <div class="allocation-stat {% if preview.annual_totals.afternoon == 100 %}allocation-stat--valid{% else %}allocation-stat--behavior{% endif %}"><span>Wadarta sannadlaha · Gelin dambe</span><strong>{{ preview.annual_totals.afternoon|behavior_points }} / 100</strong><small>{% if preview.annual_totals.afternoon == 100 %}Waa dhammaystiran{% else %}Waxay u baahan tahay dib-u-eegis{% endif %}</small></div>
+        </div>
+      </div>
+      <label class="behavior-alert" style="grid-column:1/-1;display:flex;gap:10px;align-items:flex-start"><input type="checkbox" name="confirm_recalculation" value="yes" required style="margin-top:3px"><span>Waxaan xaqiijinayaa in dhibcaha muddada la doortay dib loo xisaabiyo, iyadoo xogtii ka horreysay lagu hayo diiwaanka taariikhda.</span></label>
+      <label class="behavior-alert" style="grid-column:1/-1;display:flex;gap:10px;align-items:flex-start"><input type="checkbox" name="confirm_closure" value="yes" required style="margin-top:3px"><span>Waxaan xaqiijinayaa in taariikhda fasaxa guud loo qoro dhammaan ardayda xilligan, dhibcaha xaaladda togan ee maalintana la siiyo.</span></label>
+      {% if preview.annual_totals.morning != 100 or preview.annual_totals.afternoon != 100 %}<label class="behavior-alert behavior-alert--danger" style="grid-column:1/-1;display:flex;gap:10px;align-items:flex-start"><input type="checkbox" name="confirm_annual_total" value="yes" required style="margin-top:3px"><span>Waxaan fahmay in wadarta sannadlaha ahi aanay noqonayn 100 ilaa qoondada kale dib loo habeeyo.</span></label>{% endif %}
+      <div class="behavior-form__actions" style="grid-column:1/-1"><button class="behavior-btn behavior-btn--primary" type="submit" {% if not preview.policy_total_matches or preview.outside_attendance_count or preview.outside_event_count or preview.closure_conflicts %}disabled{% endif %}><i class="fa-solid fa-shield-check"></i> Xaqiiji oo kaydi dib-u-habaynta</button><a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.revise_session', session_id=item.id) }}">Ka noqo</a></div>
+      {% else %}
+      <div class="behavior-alert" style="grid-column:1/-1"><i class="fa-solid fa-circle-info"></i> Taariikhda fasaxa ee la doortay ({{ form_values.closure_date }}) waxay noqonaysaa Maalin Dugsi Xiran; dhammaan xaaladaha togan ee maalinta waxay helayaan dhibcaha kor ku xusan. Hubi jadwalka maalintaas ka hor intaadan sii wadin.</div>
+      <div class="behavior-form__actions" style="grid-column:1/-1"><button class="behavior-btn behavior-btn--primary" type="submit"><i class="fa-solid fa-eye"></i> Eeg saamaynta</button></div>
+      {% endif %}
+    </form>
+  </section>
+
+  <section class="behavior-card card behavior-section">
+    <div class="behavior-section__head card-head"><div><span class="behavior-kicker"><i class="fa-solid fa-clock-rotate-left"></i> Raad-raaca xilliga</span><h2>{{ revision_history|length }} dib-u-habayn</h2></div></div>
+    {% if revision_history %}<div class="behavior-table-wrap"><table class="behavior-table"><thead><tr><th>Taariikh</th><th>Maamulaha</th><th>Sababta</th><th>Xaadirin la cusboonaysiiyey</th><th>Darajooyin la waafajiyey</th><th>Dejintii hore</th><th>Dejinta cusub</th><th>Dib-u-xisaabinta ardayda</th></tr></thead><tbody>
+      {% for revision in revision_history %}{% set row = revision.record %}<tr><td>{{ row.changed_at.strftime('%d %b %Y · %I:%M %p') }}</td><td>{{ row.changed_by.full_name if row.changed_by else 'Akoon maamul' }}</td><td>{{ row.reason }}</td><td>{{ row.attendance_rows_updated }}</td><td>{{ row.grade_scales_updated }}</td><td>{{ revision.before.maximum_score|default('-') }} / A{{ revision.before.behavior_allocation|default('-') }} / X{{ revision.before.attendance_allocation|default('-') }} / Togan/maalin {{ revision.before.attendance_present_weight|default('-') }}<small>Gelin hore {{ revision.annual_before.morning|default('-') }} · Gelin dambe {{ revision.annual_before.afternoon|default('-') }}</small></td><td>{{ revision.after.maximum_score|default('-') }} / A{{ revision.after.behavior_allocation|default('-') }} / X{{ revision.after.attendance_allocation|default('-') }} / Togan/maalin {{ revision.after.attendance_present_weight|default('-') }}<small>Gelin hore {{ revision.annual_after.morning|default('-') }} · Gelin dambe {{ revision.annual_after.afternoon|default('-') }}</small></td><td><details><summary>{{ revision.score_changes|length }} arday</summary><div class="behavior-table-wrap"><table class="behavior-table"><thead><tr><th>Arday</th><th>Dhibcaha hore</th><th>Dhibcaha cusub</th><th>Xaaladda</th></tr></thead><tbody>{% for change in revision.score_changes %}<tr><td>{{ change.after.student_name or change.before.student_name }} · {{ change.after.student_code or change.before.student_code or '-' }}</td><td>{{ change.before.final_score or '-' }} / {{ change.before.maximum_score }}</td><td>{{ change.after.final_score or '-' }} / {{ change.after.maximum_score }}</td><td>{{ change.after.status }}</td></tr>{% endfor %}</tbody></table></div></details></td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<div class="behavior-empty"><i class="fa-solid fa-clock-rotate-left"></i><p>Weli dib-u-habayn lama kaydin.</p></div>{% endif %}
+  </section>
+</div>
+{% endblock %}
