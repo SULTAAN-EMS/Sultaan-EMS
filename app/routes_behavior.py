@@ -1666,6 +1666,10 @@ def _session_revision_snapshot(session, scales, attendance_rows):
         "attendance_records": [
             {
                 "id": row.id,
+                "student_enrollment_id": row.student_enrollment_id,
+                "student_code": row.student.student_code if row.student else None,
+                "student_name": row.student.full_name if row.student else None,
+                "academic_year_class_id": row.academic_year_class_id,
                 "date": row.attendance_date.isoformat(),
                 "status": row.status_key_snapshot,
                 "status_label": row.status_label_snapshot,
@@ -1965,18 +1969,18 @@ def revise_session(session_id):
                         f"Fasaxyada {conflicting_ids} waxay daboolayaan isla arday ama baaxad aan ku habboonayn. "
                         "Hubi fasallada ay khuseeyaan ka hor dib-u-habaynta."
                     )
+                active_closure_ids = {closure.id for closure in existing_closures}
                 if any(
                     row.behavior_attendance_closure_id
-                    and closure_owners.get(row.student_enrollment_id) is not None
-                    and closure_owners[row.student_enrollment_id].id != row.behavior_attendance_closure_id
-                    for row in closure_records
-                ) or any(
-                    row.behavior_attendance_closure_id
-                    and row.student_enrollment_id not in closure_owners
+                    and (
+                        row.behavior_attendance_closure_id not in active_closure_ids
+                        or row.student_enrollment_id not in closure_owners
+                    )
                     for row in closure_records
                 ):
                     raise BehaviorValidationError(
-                        "Diiwaanka taariikhdan wuxuu ku xidhan yahay fasax kale. Dib u eeg xiriirka fasaxa ka hor dib-u-habaynta."
+                        "Diiwaanka taariikhdan wuxuu ku xidhan yahay fasax aan firfircoonayn ama aan daboolin ardayga. "
+                        "Dib u eeg xiriirka fasaxa ka hor dib-u-habaynta."
                     )
                 positive_statuses = {
                     status.key: status
@@ -2139,6 +2143,20 @@ def revise_session(session_id):
                         revision_closures.append(closure)
                         for enrollment in class_enrollments:
                             closure_by_enrollment[enrollment.id] = closure
+                closure_link_repairs = []
+                for row in closure_records:
+                    target_closure = closure_by_enrollment.get(row.student_enrollment_id)
+                    if target_closure and row.behavior_attendance_closure_id != target_closure.id:
+                        closure_link_repairs.append({
+                            "attendance_record_id": row.id,
+                            "student_enrollment_id": row.student_enrollment_id,
+                            "student_code": row.student.student_code if row.student else None,
+                            "student_name": row.student.full_name if row.student else None,
+                            "academic_year_class_id": row.academic_year_class_id,
+                            "from_closure_id": row.behavior_attendance_closure_id,
+                            "to_closure_id": target_closure.id,
+                        })
+                before["closure_link_repairs"] = closure_link_repairs
                 for closure in revision_closures:
                     closure.closure_kind = "holiday"
                     closure.reason = closure_reason
@@ -2197,6 +2215,7 @@ def revise_session(session_id):
                     BehaviorAttendanceRecord.deleted_at.is_(None),
                 ).order_by(BehaviorAttendanceRecord.id).all()
                 after = _session_revision_snapshot(item, scales, updated_attendance_rows)
+                after["closure_link_repairs"] = closure_link_repairs
                 after["annual_totals"] = {
                     key: str(value) for key, value in after_annual_totals.items()
                 }
@@ -2250,13 +2269,15 @@ def revise_session(session_id):
                     "Behavior Session Revision",
                     f"Revised session {item.id} in configuration {config.id}; "
                     f"attendance rows={attendance_rows_updated}, grade scales={len(scale_updates)}, "
+                    f"closure links repaired={len(closure_link_repairs)}, "
                     f"student scores={len(before_scores)}; "
                     f"old maximum={old_maximum}, new maximum={new_maximum}; reason={values['reason']}",
                 )
                 db.session.commit()
                 flash(
                     f"Xilliga waa la dib-u-habeeyey. {attendance_rows_updated} diiwaan xaadirin ah "
-                    f"iyo {len(scale_updates)} xad darajo ah ayaa la waafajiyey; taariikhdii horena waa la diiwaangeliyey.",
+                    f"iyo {len(scale_updates)} xad darajo ah ayaa la waafajiyey; "
+                    f"{len(closure_link_repairs)} xiriir fasax ah ayaa la saxay; taariikhdii horena waa la diiwaangeliyey.",
                     "success",
                 )
                 return redirect(url_for("behavior.revise_session", session_id=item.id))
@@ -2308,6 +2329,7 @@ def revise_session(session_id):
                 "outside_attendance_count": outside_attendance_count,
                 "outside_event_count": outside_event_count,
                 "closure_conflicts": 0,
+                "closure_link_repair_details": [],
                 "annual_totals": annual_totals,
                 "expected_present_total": None,
             }
@@ -2346,6 +2368,8 @@ def revise_session(session_id):
                 ).all()
             }
             closure_conflict_details = []
+            closure_link_repair_details = []
+            active_preview_closure_ids = {closure.id for closure in preview_existing_closures}
             for row in preview_closure_records:
                 reasons = []
                 if row.deleted_at:
@@ -2369,14 +2393,24 @@ def revise_session(session_id):
                             f"baaxad: {_closure_scope_label(linked_closure)}, xaalad: {linked_closure.status})."
                         )
                 elif (
-                    row.behavior_attendance_closure_id
+                    not reasons
                     and expected_closure
                     and expected_closure.id != row.behavior_attendance_closure_id
-                ):
-                    reasons.append(
-                        f"Fasaxa ku xidhan (# {row.behavior_attendance_closure_id}) ma aha fasaxa "
-                        f"daboolaya fasalka ardaygan (# {expected_closure.id})."
+                    and (
+                        not row.behavior_attendance_closure_id
+                        or row.behavior_attendance_closure_id in active_preview_closure_ids
                     )
+                ):
+                    closure_link_repair_details.append({
+                        "record_id": row.id,
+                        "student_name": row.student.full_name if row.student else "Arday aan la aqoonsan",
+                        "student_code": row.student.student_code if row.student else "-",
+                        "class_name": row.academic_year_class.name if row.academic_year_class else "-",
+                        "from_closure_id": row.behavior_attendance_closure_id,
+                        "to_closure_id": expected_closure.id,
+                    })
+                elif row.behavior_attendance_closure_id and not expected_closure:
+                    reasons.append("Ardaygan baaxaddiisa saxda ah ee fasaxa lama aqoonsan.")
                 if reasons:
                     closure_conflict_details.append({
                         "kind": "attendance",
@@ -2402,6 +2436,7 @@ def revise_session(session_id):
                 })
             preview["closure_conflicts"] = len(closure_conflict_details)
             preview["closure_conflict_details"] = closure_conflict_details
+            preview["closure_link_repair_details"] = closure_link_repair_details
             breakpoints = _session_revision_level_days(
                 config,
                 item,

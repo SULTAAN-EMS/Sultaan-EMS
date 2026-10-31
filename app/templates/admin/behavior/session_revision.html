@@ -49,6 +49,14 @@
           </tbody></table></div>
         </section>
         {% endif %}
+        {% if preview.closure_link_repair_details %}
+        <section class="behavior-card card" style="grid-column:1/-1;border-color:#e5c77b">
+          <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-link"></i> Xiriirka fasaxa</span><h3>{{ preview.closure_link_repair_details|length }} xiriir ayaa la waafajin doonaa</h3><p class="behavior-muted">Marka dib-u-habaynta la xaqiijiyo, diiwaanka xaadirinta waxaa lagu xidhi doonaa fasaxa daboolaya fasalka saxda ah. Xaadirinta iyo dhibcaha ardayga lama tirtirayo.</p></div></div>
+          <div class="behavior-table-wrap"><table class="behavior-table"><thead><tr><th>Diiwaan</th><th>Arday / aqoonsi</th><th>Fasal</th><th>Xiriirka hadda</th><th>Xiriirka saxda ah</th></tr></thead><tbody>
+            {% for repair in preview.closure_link_repair_details %}<tr><td>#{{ repair.record_id }}</td><td>{{ repair.student_name }}<small>{{ repair.student_code }}</small></td><td>{{ repair.class_name }}</td><td>{% if repair.from_closure_id %}Fasax #{{ repair.from_closure_id }}{% else %}Xiriir ma lahayn{% endif %}</td><td>Fasax #{{ repair.to_closure_id }}</td></tr>{% endfor %}
+          </tbody></table></div>
+        </section>
+        {% endif %}
         <div class="allocation-stat-grid">
           <div class="allocation-stat"><span>Diiwaannada muddada</span><strong>{{ preview.attendance_record_count }}</strong><small>Xaadirin hore oo muddadan ku jira</small></div>
           <div class="allocation-stat allocation-stat--attendance"><span>Dhibcaha xaaladaha togan la cusboonaysiinayo</span><strong>{{ preview.attendance_points_updated }}</strong><small>Joogid, Cudurdaar, Fasaxid Rasmi ah iyo Maalin Dugsi Xiran</small></div>
@@ -66,7 +74,7 @@
         </div>
       </div>
       <label class="behavior-alert" style="grid-column:1/-1;display:flex;gap:10px;align-items:flex-start"><input type="checkbox" name="confirm_recalculation" value="yes" required style="margin-top:3px"><span>Waxaan xaqiijinayaa in dhibcaha muddada la doortay dib loo xisaabiyo, iyadoo xogtii ka horreysay lagu hayo diiwaanka taariikhda.</span></label>
-      <label class="behavior-alert" style="grid-column:1/-1;display:flex;gap:10px;align-items:flex-start"><input type="checkbox" name="confirm_closure" value="yes" required style="margin-top:3px"><span>Waxaan xaqiijinayaa in taariikhda fasaxa guud loo qoro dhammaan ardayda xilligan, dhibcaha xaaladda togan ee maalintana la siiyo.</span></label>
+      <label class="behavior-alert" style="grid-column:1/-1;display:flex;gap:10px;align-items:flex-start"><input type="checkbox" name="confirm_closure" value="yes" required style="margin-top:3px"><span>Waxaan xaqiijinayaa in taariikhda fasaxa guud loo qoro dhammaan ardayda xilligan, xiriirrada fasaxyadana loo waafajiyo fasallada saxda ah; dhibcaha xaaladda togan ee maalintana la siiyo.</span></label>
       {% if preview.annual_totals.morning != 100 or preview.annual_totals.afternoon != 100 %}<label class="behavior-alert behavior-alert--danger" style="grid-column:1/-1;display:flex;gap:10px;align-items:flex-start"><input type="checkbox" name="confirm_annual_total" value="yes" required style="margin-top:3px"><span>Waxaan fahmay in wadarta sannadlaha ahi aanay noqonayn 100 ilaa qoondada kale dib loo habeeyo.</span></label>{% endif %}
       <div class="behavior-form__actions" style="grid-column:1/-1"><button class="behavior-btn behavior-btn--primary" type="submit" {% if not preview.policy_total_matches or preview.outside_attendance_count or preview.outside_event_count or preview.closure_conflicts %}disabled{% endif %}><i class="fa-solid fa-shield-check"></i> Xaqiiji oo kaydi dib-u-habaynta</button><a class="behavior-btn behavior-btn--outline" href="{{ url_for('behavior.revise_session', session_id=item.id) }}">Ka noqo</a></div>
       {% else %}

@@ -371,7 +371,7 @@ class TestPhase2DBehaviorUX(TestPhase2CBehaviorEvents):
         db.session.add_all([closure_one, closure_two])
         db.session.flush()
         for enrollment, closure in (
-            (self.enrollment_one, closure_one),
+            (self.enrollment_one, closure_two),
             (self.enrollment_two, closure_two),
         ):
             db.session.add(BehaviorAttendanceRecord(
@@ -401,6 +401,9 @@ class TestPhase2DBehaviorUX(TestPhase2CBehaviorEvents):
         preview_body = preview.get_data(as_text=True)
         self.assertNotIn("is-waafaqla'aan fasax ayaa jirta", preview_body)
         self.assertNotIn("Fasax is-dul-saaran", preview_body)
+        self.assertIn("1 xiriir ayaa la waafajin doonaa", preview_body)
+        self.assertIn(f"Fasax #{closure_two.id}", preview_body)
+        self.assertIn(f"Fasax #{closure_one.id}", preview_body)
 
         apply_payload = self._revision_payload(
             revision_action="apply",
@@ -429,7 +432,12 @@ class TestPhase2DBehaviorUX(TestPhase2CBehaviorEvents):
             attendance_date=date(2026, 9, 16),
         ).one().behavior_attendance_closure_id, closure_two.id)
         revision = BehaviorSessionRevision.query.one()
-        self.assertEqual(len(json.loads(revision.after_snapshot)["closures"]), 2)
+        before_snapshot = json.loads(revision.before_snapshot)
+        after_snapshot = json.loads(revision.after_snapshot)
+        self.assertEqual(len(after_snapshot["closures"]), 2)
+        self.assertEqual(before_snapshot["closure_link_repairs"][0]["from_closure_id"], closure_two.id)
+        self.assertEqual(before_snapshot["closure_link_repairs"][0]["to_closure_id"], closure_one.id)
+        self.assertEqual(after_snapshot["closure_link_repairs"], before_snapshot["closure_link_repairs"])
 
     def test_session_revision_rejects_overlapping_class_closures(self):
         self._prepare_session_revision()
