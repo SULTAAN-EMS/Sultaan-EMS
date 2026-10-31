@@ -285,6 +285,48 @@ class TestPhase2DBehaviorUX(TestPhase2CBehaviorEvents):
         self.assertEqual(self.session_a.maximum_score, Decimal("30.000"))
         self.assertEqual(BehaviorSessionRevision.query.count(), 0)
 
+    def test_session_revision_preview_explains_attendance_closure_conflicts(self):
+        self._prepare_session_revision()
+        present = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.config_one.id,
+            key="present",
+        ).one()
+        conflict = BehaviorAttendanceRecord(
+            student_id=self.student_one.id,
+            student_enrollment_id=self.enrollment_one.id,
+            behavior_configuration_id=self.config_one.id,
+            behavior_session_id=self.session_a.id,
+            academic_year_id=self.year_one.id,
+            academic_year_level_id=self.level_one.id,
+            academic_year_class_id=self.class_one.id,
+            attendance_date=date(2026, 9, 16),
+            status_id=present.id,
+            status_key_snapshot="present",
+            status_label_snapshot="Joogid",
+            polarity="positive",
+            points_applied=Decimal("0.150"),
+            status="voided",
+            voided_at=datetime(2026, 9, 17, 9, 0),
+            void_reason="Tijaabo audit ah",
+            marked_by_id=self.admin.id,
+        )
+        db.session.add(conflict)
+        db.session.commit()
+
+        response = self._client_as_admin().post(
+            f"/admin/behavior/sessions/{self.session_a.id}/revise",
+            data=self._revision_payload(),
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("1 qodob oo u baahan hubin", body)
+        self.assertIn(f"#{conflict.id}", body)
+        self.assertIn(self.student_one.student_code, body)
+        self.assertIn("Diiwaanka xaadirinta waa laga noqday.", body)
+        self.assertIn("akhris-keliya", body.lower())
+        self.assertEqual(self.session_a.maximum_score, Decimal("30.000"))
+        self.assertEqual(BehaviorSessionRevision.query.count(), 0)
+
     def test_scoped_behavior_pages_render(self):
         client = self._client_as_admin()
         self.admin.set_permissions([

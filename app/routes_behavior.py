@@ -2222,17 +2222,62 @@ def revise_session(session_id):
             ).all()
             preview["closure_existing_record_count"] = len(preview_closure_records)
             compatible_closure_ids = {row.id for row in preview_existing_closures}
-            preview["closure_conflicts"] = sum(
-                1 for row in preview_closure_records
-                if row.deleted_at
-                or row.status == "voided"
-                or (
-                    row.behavior_attendance_closure_id
-                    and row.behavior_attendance_closure_id not in compatible_closure_ids
-                )
-            )
+            linked_closure_ids = {
+                row.behavior_attendance_closure_id
+                for row in preview_closure_records
+                if row.behavior_attendance_closure_id
+            }
+            linked_closures = {
+                row.id: row
+                for row in BehaviorAttendanceClosure.query.filter(
+                    BehaviorAttendanceClosure.id.in_(linked_closure_ids or {-1})
+                ).all()
+            }
+            closure_conflict_details = []
+            for row in preview_closure_records:
+                reasons = []
+                if row.deleted_at:
+                    reasons.append("Diiwaanka xaadirinta waa la tirtiray.")
+                if row.status == "voided":
+                    reasons.append("Diiwaanka xaadirinta waa laga noqday.")
+                linked_closure = linked_closures.get(row.behavior_attendance_closure_id)
+                if row.behavior_attendance_closure_id and row.behavior_attendance_closure_id not in compatible_closure_ids:
+                    if linked_closure:
+                        scope_label = linked_closure.school_shift if linked_closure.scope_type == "shift" else linked_closure.scope_type
+                        reasons.append(
+                            f"Waxa uu ku xiran yahay fasax #{linked_closure.id} ({linked_closure.attendance_date}, "
+                            f"baaxad: {scope_label}, xaalad: {linked_closure.status})."
+                        )
+                    else:
+                        reasons.append(
+                            f"Waxa uu tixraacayaa fasax #{row.behavior_attendance_closure_id} "
+                            "oo aan laga helin diiwaanka fasaxyada."
+                        )
+                if reasons:
+                    closure_conflict_details.append({
+                        "kind": "attendance",
+                        "record_id": row.id,
+                        "student_name": row.student.full_name if row.student else "Arday aan la aqoonsan",
+                        "student_code": row.student.student_code if row.student else "-",
+                        "class_name": row.academic_year_class.name if row.academic_year_class else "-",
+                        "record_status": "La tirtiray" if row.deleted_at else ("Laga noqday" if row.status == "voided" else "Firfircoon"),
+                        "linked_closure_id": row.behavior_attendance_closure_id,
+                        "reason": " ".join(reasons),
+                    })
+            preview["closure_conflicts"] = len(closure_conflict_details)
             if len(preview_existing_closures) > 1:
                 preview["closure_conflicts"] += len(preview_existing_closures) - 1
+                for duplicate in preview_existing_closures[1:]:
+                    closure_conflict_details.append({
+                        "kind": "closure",
+                        "record_id": duplicate.id,
+                        "student_name": "Fasax is-dul-saaran",
+                        "student_code": "-",
+                        "class_name": duplicate.school_shift if duplicate.scope_type == "shift" else duplicate.scope_type,
+                        "record_status": duplicate.status,
+                        "linked_closure_id": duplicate.id,
+                        "reason": f"Fasax #{duplicate.id} oo kale ayaa isla xilliga iyo taariikhda ku jira.",
+                    })
             elif preview_existing_closures and (
                 preview_existing_closures[0].scope_type != preview_closure_scope
                 or (
@@ -2241,6 +2286,20 @@ def revise_session(session_id):
                 )
             ):
                 preview["closure_conflicts"] += 1
+                existing = preview_existing_closures[0]
+                existing_scope = existing.school_shift if existing.scope_type == "shift" else existing.scope_type
+                expected_scope = item.applicable_shift if preview_closure_scope == "shift" else preview_closure_scope
+                closure_conflict_details.append({
+                    "kind": "closure",
+                    "record_id": existing.id,
+                    "student_name": "Baaxadda fasaxa hore",
+                    "student_code": "-",
+                    "class_name": existing_scope,
+                    "record_status": existing.status,
+                    "linked_closure_id": existing.id,
+                    "reason": f"Fasax #{existing.id} baaxaddiisu waa {existing_scope}; xilligan waxa la filayaa {expected_scope}.",
+                })
+            preview["closure_conflict_details"] = closure_conflict_details
             breakpoints = _session_revision_level_days(
                 config,
                 item,

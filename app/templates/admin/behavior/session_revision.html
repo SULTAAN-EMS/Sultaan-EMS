@@ -41,6 +41,14 @@
       <div class="behavior-revision-preview" style="grid-column:1/-1">
         <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-magnifying-glass-chart"></i> Saamaynta la hubiyey</span><h2>Ka hor xaqiijinta</h2></div></div>
         {% if preview.outside_attendance_count or preview.outside_event_count or preview.closure_conflicts %}<div class="behavior-alert behavior-alert--danger"><i class="fa-solid fa-triangle-exclamation"></i> Kaydintu way xanniban tahay: {{ preview.outside_attendance_count }} diiwaan xaadirin iyo {{ preview.outside_event_count }} dhacdo anshax ayaa ka baxsan muddada; {{ preview.closure_conflicts }} is-waafaqla'aan fasax ayaa jirta. Dib u eeg xogtan ka hor intaadan sii wadin.</div>{% endif %}
+        {% if preview.closure_conflict_details %}
+        <section class="behavior-card card" style="grid-column:1/-1;border-color:#e7b6b1">
+          <div class="behavior-section__head"><div><span class="behavior-kicker"><i class="fa-solid fa-link-slash"></i> Baaritaanka fasaxa</span><h3>{{ preview.closure_conflict_details|length }} qodob oo u baahan hubin</h3><p class="behavior-muted">Faahfaahintani waa akhris-keliya. Ha tirtirin ama ha kala noqon diiwaan ilaa sababta la xaqiijiyo.</p></div></div>
+          <div class="behavior-table-wrap"><table class="behavior-table"><thead><tr><th>Nooca</th><th>Aqoonsiga diiwaanka</th><th>Arday / aqoonsi</th><th>Fasal / baaxad</th><th>Xaalad</th><th>Sababta is-waafaqla'aanta</th></tr></thead><tbody>
+            {% for conflict in preview.closure_conflict_details %}<tr><td>{{ 'Diiwaan xaadirin' if conflict.kind == 'attendance' else 'Diiwaan fasax' }}</td><td>#{{ conflict.record_id }}{% if conflict.linked_closure_id and conflict.kind == 'attendance' %}<small>Fasax #{{ conflict.linked_closure_id }}</small>{% endif %}</td><td>{{ conflict.student_name }}{% if conflict.student_code and conflict.student_code != '-' %}<small>{{ conflict.student_code }}</small>{% endif %}</td><td>{{ conflict.class_name }}</td><td>{{ conflict.record_status }}</td><td>{{ conflict.reason }}</td></tr>{% endfor %}
+          </tbody></table></div>
+        </section>
+        {% endif %}
         <div class="allocation-stat-grid">
           <div class="allocation-stat"><span>Diiwaannada muddada</span><strong>{{ preview.attendance_record_count }}</strong><small>Xaadirin hore oo muddadan ku jira</small></div>
           <div class="allocation-stat allocation-stat--attendance"><span>Dhibcaha xaaladaha togan la cusboonaysiinayo</span><strong>{{ preview.attendance_points_updated }}</strong><small>Joogid, Cudurdaar, Fasaxid Rasmi ah iyo Maalin Dugsi Xiran</small></div>
