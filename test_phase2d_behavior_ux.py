@@ -12,6 +12,8 @@ from app import db
 from app.behavior_attendance import attendance_statuses, ensure_attendance_defaults, mark_attendance, update_attendance_active_days
 from app.behavior_service import attendance_policy_for_session, record_event
 from app.models import (
+    AcademicYearClass,
+    BehaviorAttendanceClosure,
     BehaviorAttendanceRecord,
     BehaviorAttendanceStatus,
     BehaviorEvent,
@@ -324,6 +326,143 @@ class TestPhase2DBehaviorUX(TestPhase2CBehaviorEvents):
         self.assertIn(self.student_one.student_code, body)
         self.assertIn("Diiwaanka xaadirinta waa laga noqday.", body)
         self.assertIn("akhris-keliya", body.lower())
+        self.assertEqual(self.session_a.maximum_score, Decimal("30.000"))
+        self.assertEqual(BehaviorSessionRevision.query.count(), 0)
+
+    def test_session_revision_accepts_disjoint_class_closures(self):
+        present = self._prepare_session_revision()
+        self.session_a.applicable_shift = "afternoon"
+        self.class_one.school_shift = "afternoon"
+        class_two = AcademicYearClass(
+            name="1B",
+            academic_year_level_id=self.level_one.id,
+            school_shift="afternoon",
+        )
+        db.session.add(class_two)
+        db.session.flush()
+        self.enrollment_two.academic_year_class_id = class_two.id
+        db.session.flush()
+        closure_one = BehaviorAttendanceClosure(
+            academic_year_id=self.year_one.id,
+            behavior_configuration_id=self.config_one.id,
+            behavior_session_id=self.session_a.id,
+            attendance_date=date(2026, 9, 16),
+            scope_type="class",
+            academic_year_level_id=self.level_one.id,
+            academic_year_class_id=self.class_one.id,
+            closure_kind="holiday",
+            reason="Fasax guud",
+            status="active",
+            created_by_id=self.admin.id,
+        )
+        closure_two = BehaviorAttendanceClosure(
+            academic_year_id=self.year_one.id,
+            behavior_configuration_id=self.config_one.id,
+            behavior_session_id=self.session_a.id,
+            attendance_date=date(2026, 9, 16),
+            scope_type="class",
+            academic_year_level_id=self.level_one.id,
+            academic_year_class_id=class_two.id,
+            closure_kind="holiday",
+            reason="Fasax guud",
+            status="active",
+            created_by_id=self.admin.id,
+        )
+        db.session.add_all([closure_one, closure_two])
+        db.session.flush()
+        for enrollment, closure in (
+            (self.enrollment_one, closure_one),
+            (self.enrollment_two, closure_two),
+        ):
+            db.session.add(BehaviorAttendanceRecord(
+                student_id=enrollment.student_id,
+                student_enrollment_id=enrollment.id,
+                behavior_configuration_id=self.config_one.id,
+                behavior_session_id=self.session_a.id,
+                academic_year_id=self.year_one.id,
+                academic_year_level_id=self.level_one.id,
+                academic_year_class_id=enrollment.academic_year_class_id,
+                attendance_date=date(2026, 9, 16),
+                status_id=present.id,
+                behavior_attendance_closure_id=closure.id,
+                status_key_snapshot="school_closure",
+                status_label_snapshot="Maalin Dugsi Xiran",
+                polarity="positive",
+                points_applied=Decimal("0.150"),
+                status="active",
+                marked_by_id=self.admin.id,
+            ))
+        db.session.commit()
+
+        client = self._client_as_admin()
+        path = f"/admin/behavior/sessions/{self.session_a.id}/revise"
+        preview = client.post(path, data=self._revision_payload())
+        self.assertEqual(preview.status_code, 200)
+        preview_body = preview.get_data(as_text=True)
+        self.assertNotIn("is-waafaqla'aan fasax ayaa jirta", preview_body)
+        self.assertNotIn("Fasax is-dul-saaran", preview_body)
+
+        apply_payload = self._revision_payload(
+            revision_action="apply",
+            expected_updated_at=self.session_a.updated_at.isoformat(),
+            expected_revision_count="0",
+            confirm_recalculation="yes",
+            confirm_closure="yes",
+            confirm_annual_total="yes",
+        )
+        response = client.post(path, data=apply_payload, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.session_a.maximum_score, Decimal("20.000"))
+        self.assertEqual(BehaviorAttendanceClosure.query.filter_by(
+            behavior_session_id=self.session_a.id,
+            attendance_date=date(2026, 9, 16),
+            status="active",
+        ).count(), 2)
+        self.assertEqual(BehaviorAttendanceRecord.query.filter_by(
+            student_enrollment_id=self.enrollment_one.id,
+            behavior_session_id=self.session_a.id,
+            attendance_date=date(2026, 9, 16),
+        ).one().behavior_attendance_closure_id, closure_one.id)
+        self.assertEqual(BehaviorAttendanceRecord.query.filter_by(
+            student_enrollment_id=self.enrollment_two.id,
+            behavior_session_id=self.session_a.id,
+            attendance_date=date(2026, 9, 16),
+        ).one().behavior_attendance_closure_id, closure_two.id)
+        revision = BehaviorSessionRevision.query.one()
+        self.assertEqual(len(json.loads(revision.after_snapshot)["closures"]), 2)
+
+    def test_session_revision_rejects_overlapping_class_closures(self):
+        self._prepare_session_revision()
+        self.session_a.applicable_shift = "afternoon"
+        self.class_one.school_shift = "afternoon"
+        closures = [
+            BehaviorAttendanceClosure(
+                academic_year_id=self.year_one.id,
+                behavior_configuration_id=self.config_one.id,
+                behavior_session_id=self.session_a.id,
+                attendance_date=date(2026, 9, 16),
+                scope_type="class",
+                academic_year_level_id=self.level_one.id,
+                academic_year_class_id=self.class_one.id,
+                closure_kind="holiday",
+                reason="Fasax guud",
+                status="active",
+                created_by_id=self.admin.id,
+            )
+            for _ in range(2)
+        ]
+        db.session.add_all(closures)
+        db.session.commit()
+
+        response = self._client_as_admin().post(
+            f"/admin/behavior/sessions/{self.session_a.id}/revise",
+            data=self._revision_payload(),
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("1 is-waafaqla'aan fasax", body)
+        self.assertIn(self.class_one.name, body)
+        self.assertIn("ku dul dhacaysaa", body)
         self.assertEqual(self.session_a.maximum_score, Decimal("30.000"))
         self.assertEqual(BehaviorSessionRevision.query.count(), 0)
 

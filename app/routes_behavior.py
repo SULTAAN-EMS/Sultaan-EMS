@@ -162,6 +162,58 @@ def _closure_target_enrollments(configuration, session, scope_type, *, school_sh
     return result
 
 
+def _closure_scope_label(closure):
+    if closure.scope_type == "class":
+        return closure.school_class.name if closure.school_class else f"Fasal #{closure.academic_year_class_id or '-'}"
+    if closure.scope_type == "level":
+        return closure.level.name if closure.level else f"Heer #{closure.academic_year_level_id or '-'}"
+    if closure.scope_type == "shift":
+        return {"morning": "Gelin hore", "afternoon": "Gelin dambe"}.get(
+            closure.school_shift, closure.school_shift or "Gelin aan la cayimin"
+        )
+    return "Dhammaan fasallada"
+
+
+def _existing_closure_coverage(configuration, session, closures, target_enrollments):
+    """Map students to one existing closure, allowing disjoint class closures."""
+    target_ids = {enrollment.id for enrollment in target_enrollments}
+    owners = {}
+    conflicts = []
+    for closure in closures:
+        try:
+            scoped_enrollments = _closure_target_enrollments(
+                configuration,
+                session,
+                closure.scope_type,
+                school_shift=closure.school_shift if closure.scope_type == "shift" else None,
+                level_id=closure.academic_year_level_id if closure.scope_type == "level" else None,
+                class_id=closure.academic_year_class_id if closure.scope_type == "class" else None,
+            )
+        except BehaviorValidationError as exc:
+            conflicts.append({"closure": closure, "reason": str(exc)})
+            continue
+        covered_ids = {enrollment.id for enrollment in scoped_enrollments} & target_ids
+        if not covered_ids:
+            conflicts.append({
+                "closure": closure,
+                "reason": "Baaxadda fasaxani ma daboolayso arday ka tirsan xilligan.",
+            })
+            continue
+        overlaps = covered_ids & owners.keys()
+        if overlaps:
+            prior_ids = sorted({owners[enrollment_id].id for enrollment_id in overlaps})
+            conflicts.append({
+                "closure": closure,
+                "reason": "Baaxaddiisu waxay ku dul dhacaysaa fasax(yada) "
+                + ", ".join(f"#{closure_id}" for closure_id in prior_ids)
+                + " ee daboolaya isla ardayda.",
+            })
+            continue
+        for enrollment_id in covered_ids:
+            owners[enrollment_id] = closure
+    return owners, conflicts
+
+
 def _closure_redirect(closure, *, config=None, session=None, level_id=None, class_id=None):
     return redirect(url_for(
         "behavior.attendance",
@@ -1901,19 +1953,26 @@ def revise_session(session_id):
                     behavior_session_id=item.id,
                     attendance_date=closure_date,
                     status="active",
-                ).all()
-                if len(existing_closures) > 1:
-                    raise BehaviorValidationError("Fasaxyo badan ayaa taariikhdan hore ugu jira xilligan; dib u eeg diiwaankooda marka hore.")
-                if existing_closures:
-                    existing_closure = existing_closures[0]
-                    if existing_closure.scope_type != closure_scope or (
-                        closure_scope == "shift" and existing_closure.school_shift != item.applicable_shift
-                    ):
-                        raise BehaviorValidationError("Fasax hore oo baaxad kale leh ayaa taariikhdan ku jira; ma beddelin xogtiisa.")
-                allowed_closure_ids = {row.id for row in existing_closures}
+                ).order_by(BehaviorAttendanceClosure.id.asc()).all()
+                closure_owners, closure_scope_conflicts = _existing_closure_coverage(
+                    config, item, existing_closures, closure_levels,
+                )
+                if closure_scope_conflicts:
+                    conflicting_ids = ", ".join(
+                        f"#{entry['closure'].id}" for entry in closure_scope_conflicts
+                    )
+                    raise BehaviorValidationError(
+                        f"Fasaxyada {conflicting_ids} waxay daboolayaan isla arday ama baaxad aan ku habboonayn. "
+                        "Hubi fasallada ay khuseeyaan ka hor dib-u-habaynta."
+                    )
                 if any(
                     row.behavior_attendance_closure_id
-                    and row.behavior_attendance_closure_id not in allowed_closure_ids
+                    and closure_owners.get(row.student_enrollment_id) is not None
+                    and closure_owners[row.student_enrollment_id].id != row.behavior_attendance_closure_id
+                    for row in closure_records
+                ) or any(
+                    row.behavior_attendance_closure_id
+                    and row.student_enrollment_id not in closure_owners
                     for row in closure_records
                 ):
                     raise BehaviorValidationError(
@@ -1991,6 +2050,8 @@ def revise_session(session_id):
                         "date": closure.attendance_date.isoformat(),
                         "scope_type": closure.scope_type,
                         "school_shift": closure.school_shift,
+                        "academic_year_level_id": closure.academic_year_level_id,
+                        "academic_year_class_id": closure.academic_year_class_id,
                         "kind": closure.closure_kind,
                         "reason": closure.reason,
                         "status": closure.status,
@@ -2025,22 +2086,60 @@ def revise_session(session_id):
                     policy_weights[key] = str(values["attendance_present_weight"])
                 item.attendance_policy_snapshot = json.dumps(policy, sort_keys=True)
 
-                closure = existing_closures[0] if existing_closures else BehaviorAttendanceClosure(
-                    academic_year_id=config.academic_year_id,
-                    behavior_configuration_id=config.id,
-                    behavior_session_id=item.id,
-                    attendance_date=closure_date,
-                    scope_type=closure_scope,
-                    school_shift=item.applicable_shift if closure_scope == "shift" else None,
-                    closure_kind="holiday",
-                    reason=closure_reason,
-                    created_by_id=current_user.id,
-                    updated_by_id=current_user.id,
-                )
+                closure_by_enrollment = dict(closure_owners)
+                revision_closures = list(existing_closures)
                 if not existing_closures:
+                    closure = BehaviorAttendanceClosure(
+                        academic_year_id=config.academic_year_id,
+                        behavior_configuration_id=config.id,
+                        behavior_session_id=item.id,
+                        attendance_date=closure_date,
+                        scope_type=closure_scope,
+                        school_shift=item.applicable_shift if closure_scope == "shift" else None,
+                        closure_kind="holiday",
+                        reason=closure_reason,
+                        created_by_id=current_user.id,
+                        updated_by_id=current_user.id,
+                    )
                     db.session.add(closure)
                     db.session.flush()
+                    revision_closures.append(closure)
+                    for enrollment in closure_levels:
+                        closure_by_enrollment[enrollment.id] = closure
                 else:
+                    uncovered_by_class = defaultdict(list)
+                    for enrollment in closure_levels:
+                        if enrollment.id not in closure_by_enrollment:
+                            if not enrollment.academic_year_class_id:
+                                raise BehaviorValidationError(
+                                    "Arday aan fasal ku xidhnayn ayaa ka haray baaxadda fasaxa; dib u eeg diiwaankiisa."
+                                )
+                            uncovered_by_class[enrollment.academic_year_class_id].append(enrollment)
+                    for class_id, class_enrollments in uncovered_by_class.items():
+                        school_class = class_enrollments[0].academic_year_class
+                        if not school_class:
+                            raise BehaviorValidationError(
+                                "Fasal ka maqan baaxadda fasaxa lama aqoonsan; dib u eeg qaab-dhismeedka fasalka."
+                            )
+                        closure = BehaviorAttendanceClosure(
+                            academic_year_id=config.academic_year_id,
+                            behavior_configuration_id=config.id,
+                            behavior_session_id=item.id,
+                            attendance_date=closure_date,
+                            scope_type="class",
+                            academic_year_level_id=school_class.academic_year_level_id,
+                            academic_year_class_id=school_class.id,
+                            closure_kind="holiday",
+                            reason=closure_reason,
+                            created_by_id=current_user.id,
+                            updated_by_id=current_user.id,
+                        )
+                        db.session.add(closure)
+                        db.session.flush()
+                        revision_closures.append(closure)
+                        for enrollment in class_enrollments:
+                            closure_by_enrollment[enrollment.id] = closure
+                for closure in revision_closures:
                     closure.closure_kind = "holiday"
                     closure.reason = closure_reason
                     closure.updated_by_id = current_user.id
@@ -2054,6 +2153,12 @@ def revise_session(session_id):
                         enrollment.academic_year_level_id,
                         item,
                     )
+                    closure = closure_by_enrollment.get(enrollment.id)
+                    if not closure:
+                        raise BehaviorValidationError(
+                            f"Ardayga {enrollment.student.student_code if enrollment.student else enrollment.id} "
+                            "fasax u dhigma looma helin; xogta lama kaydin."
+                        )
                     record = closure_records_by_enrollment.get(enrollment.id)
                     if record is None:
                         record = BehaviorAttendanceRecord(
@@ -2106,15 +2211,20 @@ def revise_session(session_id):
                     after_events,
                     updated_attendance_rows,
                 )
-                after["closures"] = [{
-                    "id": closure.id,
-                    "date": closure.attendance_date.isoformat(),
-                    "scope_type": closure.scope_type,
-                    "school_shift": closure.school_shift,
-                    "kind": closure.closure_kind,
-                    "reason": closure.reason,
-                    "status": closure.status,
-                }]
+                after["closures"] = [
+                    {
+                        "id": closure.id,
+                        "date": closure.attendance_date.isoformat(),
+                        "scope_type": closure.scope_type,
+                        "school_shift": closure.school_shift,
+                        "academic_year_level_id": closure.academic_year_level_id,
+                        "academic_year_class_id": closure.academic_year_class_id,
+                        "kind": closure.closure_kind,
+                        "reason": closure.reason,
+                        "status": closure.status,
+                    }
+                    for closure in revision_closures
+                ]
                 affected_attendance_ids = {row.id for row in points_to_update}
                 affected_attendance_ids.update(row.id for row in closure_records if row.id)
                 attendance_rows_updated = len(affected_attendance_ids) + sum(
@@ -2214,14 +2324,16 @@ def revise_session(session_id):
                 behavior_session_id=item.id,
                 attendance_date=preview_closure_date,
                 status="active",
-            ).all()
+            ).order_by(BehaviorAttendanceClosure.id.asc()).all()
             preview_closure_records = BehaviorAttendanceRecord.query.filter(
                 BehaviorAttendanceRecord.behavior_session_id == item.id,
                 BehaviorAttendanceRecord.attendance_date == preview_closure_date,
                 BehaviorAttendanceRecord.student_enrollment_id.in_(preview_closure_ids or {-1}),
             ).all()
             preview["closure_existing_record_count"] = len(preview_closure_records)
-            compatible_closure_ids = {row.id for row in preview_existing_closures}
+            preview_closure_owners, preview_closure_scope_conflicts = _existing_closure_coverage(
+                config, item, preview_existing_closures, preview_closure_enrollments,
+            )
             linked_closure_ids = {
                 row.behavior_attendance_closure_id
                 for row in preview_closure_records
@@ -2241,18 +2353,30 @@ def revise_session(session_id):
                 if row.status == "voided":
                     reasons.append("Diiwaanka xaadirinta waa laga noqday.")
                 linked_closure = linked_closures.get(row.behavior_attendance_closure_id)
-                if row.behavior_attendance_closure_id and row.behavior_attendance_closure_id not in compatible_closure_ids:
+                expected_closure = preview_closure_owners.get(row.student_enrollment_id)
+                if row.behavior_attendance_closure_id and not linked_closure:
+                    reasons.append(
+                        f"Waxa uu tixraacayaa fasax #{row.behavior_attendance_closure_id} "
+                        "oo aan laga helin diiwaanka fasaxyada."
+                    )
+                elif (
+                    row.behavior_attendance_closure_id
+                    and row.behavior_attendance_closure_id not in {closure.id for closure in preview_existing_closures}
+                ):
                     if linked_closure:
-                        scope_label = linked_closure.school_shift if linked_closure.scope_type == "shift" else linked_closure.scope_type
                         reasons.append(
                             f"Waxa uu ku xiran yahay fasax #{linked_closure.id} ({linked_closure.attendance_date}, "
-                            f"baaxad: {scope_label}, xaalad: {linked_closure.status})."
+                            f"baaxad: {_closure_scope_label(linked_closure)}, xaalad: {linked_closure.status})."
                         )
-                    else:
-                        reasons.append(
-                            f"Waxa uu tixraacayaa fasax #{row.behavior_attendance_closure_id} "
-                            "oo aan laga helin diiwaanka fasaxyada."
-                        )
+                elif (
+                    row.behavior_attendance_closure_id
+                    and expected_closure
+                    and expected_closure.id != row.behavior_attendance_closure_id
+                ):
+                    reasons.append(
+                        f"Fasaxa ku xidhan (# {row.behavior_attendance_closure_id}) ma aha fasaxa "
+                        f"daboolaya fasalka ardaygan (# {expected_closure.id})."
+                    )
                 if reasons:
                     closure_conflict_details.append({
                         "kind": "attendance",
@@ -2264,41 +2388,19 @@ def revise_session(session_id):
                         "linked_closure_id": row.behavior_attendance_closure_id,
                         "reason": " ".join(reasons),
                     })
-            preview["closure_conflicts"] = len(closure_conflict_details)
-            if len(preview_existing_closures) > 1:
-                preview["closure_conflicts"] += len(preview_existing_closures) - 1
-                for duplicate in preview_existing_closures[1:]:
-                    closure_conflict_details.append({
-                        "kind": "closure",
-                        "record_id": duplicate.id,
-                        "student_name": "Fasax is-dul-saaran",
-                        "student_code": "-",
-                        "class_name": duplicate.school_shift if duplicate.scope_type == "shift" else duplicate.scope_type,
-                        "record_status": duplicate.status,
-                        "linked_closure_id": duplicate.id,
-                        "reason": f"Fasax #{duplicate.id} oo kale ayaa isla xilliga iyo taariikhda ku jira.",
-                    })
-            elif preview_existing_closures and (
-                preview_existing_closures[0].scope_type != preview_closure_scope
-                or (
-                    preview_closure_scope == "shift"
-                    and preview_existing_closures[0].school_shift != item.applicable_shift
-                )
-            ):
-                preview["closure_conflicts"] += 1
-                existing = preview_existing_closures[0]
-                existing_scope = existing.school_shift if existing.scope_type == "shift" else existing.scope_type
-                expected_scope = item.applicable_shift if preview_closure_scope == "shift" else preview_closure_scope
+            for conflict in preview_closure_scope_conflicts:
+                existing = conflict["closure"]
                 closure_conflict_details.append({
                     "kind": "closure",
                     "record_id": existing.id,
-                    "student_name": "Baaxadda fasaxa hore",
+                    "student_name": "Fasax u baahan hubin",
                     "student_code": "-",
-                    "class_name": existing_scope,
+                    "class_name": _closure_scope_label(existing),
                     "record_status": existing.status,
                     "linked_closure_id": existing.id,
-                    "reason": f"Fasax #{existing.id} baaxaddiisu waa {existing_scope}; xilligan waxa la filayaa {expected_scope}.",
+                    "reason": conflict["reason"],
                 })
+            preview["closure_conflicts"] = len(closure_conflict_details)
             preview["closure_conflict_details"] = closure_conflict_details
             breakpoints = _session_revision_level_days(
                 config,
