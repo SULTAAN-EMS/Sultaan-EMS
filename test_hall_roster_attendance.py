@@ -13,7 +13,8 @@ from app.pdf_rendering import html_report_to_pdf
 from pypdf import PdfReader
 from config import Config
 from app.models import (
-    AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord,
+    AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearClassSubjectExclusion,
+    AcademicYearLevel, AcademicYearSubject, AttendanceRecord,
     Exam, ExamHall, ExamHallEnrollment, ExamHallSubject, ExamSession,
     ExamSessionSubject, ExamType, SchoolClass, Setting, Student, StudentEnrollment, Subject, User
 )
@@ -1726,6 +1727,163 @@ class TestHallRosterAndAttendance(unittest.TestCase):
             'Af Soomaali Dhexe',
         )
         print('[PASS] Timetable honours year-level subject links even when a legacy Subject is shared.')
+
+    def test_class_subject_exclusion_scopes_attendance_writes_and_preserves_history(self):
+        self.login()
+        self.year_scope_class.legacy_class_id = self.class_form1.id
+        self.year_scope_class_form2.legacy_class_id = self.class_form2.id
+        offering = AcademicYearSubject(
+            academic_year_id=self.year.id,
+            academic_year_level_id=self.year_scope_level.id,
+            legacy_subject_id=self.subject.id,
+            name='Af Soomaali Test',
+            subject_kind='exam',
+            is_active=True,
+        )
+        db.session.add(offering)
+        db.session.flush()
+        db.session.add(AcademicYearClassSubjectExclusion(
+            academic_year_class_id=self.year_scope_class.id,
+            academic_year_subject_id=offering.id,
+        ))
+        hall = ExamHall(
+            name='Mixed Class Subject Scope Hall',
+            code=f'MIXED_SCOPE_{self.student1.id}',
+            exam_type_id=self.exam_type.id,
+            is_active=True,
+        )
+        db.session.add(hall)
+        db.session.flush()
+        db.session.add_all([
+            ExamHallEnrollment(exam_hall_id=hall.id, student_id=self.student1.id),
+            ExamHallEnrollment(exam_hall_id=hall.id, student_id=self.student3_form2.id),
+        ])
+        db.session.commit()
+
+        session_id = self._create_schedule_session([
+            {'level_id': self.level_sec.id, 'subject_id': self.subject.id},
+        ])
+        historical = AttendanceRecord(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=hall.id,
+            subject_id=self.subject.id,
+            exam_session_id=session_id,
+            exam_type_id=self.exam_type.id,
+            status='absent',
+            attendance_date=date(2026, 10, 1),
+        )
+        db.session.add(historical)
+        db.session.commit()
+
+        roster = self.client.get(
+            f'/admin/attendance/api/attendance-data?academic_year_id={self.year.id}'
+            f'&exam_type_id={self.exam_type.id}&exam_hall_id={hall.id}'
+            f'&exam_session_id={session_id}'
+        ).get_json()
+        students = {
+            student['id']: student
+            for group in roster['groups']
+            for student in group['students']
+        }
+        self.assertFalse(students[self.student1.id]['slots'][0]['scope_applicable'])
+        self.assertEqual(students[self.student1.id]['slots'][0]['status'], 'absent')
+        self.assertTrue(students[self.student3_form2.id]['slots'][0]['scope_applicable'])
+
+        denied = self.client.post('/admin/attendance/api/mark-status', json={
+            'student_id': self.student1.id,
+            'exam_hall_id': hall.id,
+            'exam_session_id': session_id,
+            'subject_id': self.subject.id,
+            'academic_year_id': self.year.id,
+            'exam_type_id': self.exam_type.id,
+            'status': 'present',
+        })
+        self.assertEqual(denied.status_code, 400)
+        db.session.refresh(historical)
+        self.assertEqual(historical.status, 'absent')
+
+        bulk = self.client.post('/admin/attendance/api/mark-bulk', json={
+            'exam_hall_id': hall.id,
+            'exam_session_id': session_id,
+            'subject_id': self.subject.id,
+            'academic_year_id': self.year.id,
+            'exam_type_id': self.exam_type.id,
+            'status': 'present',
+        })
+        self.assertEqual(bulk.status_code, 200)
+        self.assertEqual(bulk.get_json()['updated_count'], 1)
+        db.session.refresh(historical)
+        self.assertEqual(historical.status, 'absent')
+
+        cleared = self.client.post('/admin/attendance/api/mark-bulk', json={
+            'exam_hall_id': hall.id,
+            'exam_session_id': session_id,
+            'subject_id': self.subject.id,
+            'academic_year_id': self.year.id,
+            'exam_type_id': self.exam_type.id,
+            'status': 'clear',
+        })
+        self.assertEqual(cleared.status_code, 200)
+        self.assertEqual(cleared.get_json()['updated_count'], 1)
+        db.session.refresh(historical)
+        self.assertEqual(historical.status, 'absent')
+        self.assertEqual(
+            AttendanceRecord.query.filter_by(
+                student_id=self.student3_form2.id,
+                exam_hall_id=hall.id,
+                subject_id=self.subject.id,
+                exam_session_id=session_id,
+            ).count(),
+            0,
+        )
+
+        db.session.add(ExamHallSubject(exam_hall_id=hall.id, subject_id=self.subject.id))
+        unscoped_history = AttendanceRecord(
+            student_id=self.student1.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=hall.id,
+            subject_id=self.subject.id,
+            exam_type_id=self.exam_type.id,
+            status='absent',
+            attendance_date=date(2026, 10, 2),
+        )
+        db.session.add(unscoped_history)
+        db.session.commit()
+
+        rejected_unscoped = self.client.post('/admin/attendance/api/mark-status', json={
+            'student_id': self.student1.id,
+            'exam_hall_id': hall.id,
+            'subject_id': self.subject.id,
+            'academic_year_id': self.year.id,
+            'exam_type_id': self.exam_type.id,
+            'status': 'present',
+        })
+        self.assertEqual(rejected_unscoped.status_code, 400)
+
+        unscoped_bulk = self.client.post('/admin/attendance/api/mark-bulk', json={
+            'exam_hall_id': hall.id,
+            'subject_id': self.subject.id,
+            'academic_year_id': self.year.id,
+            'exam_type_id': self.exam_type.id,
+            'status': 'present',
+        })
+        self.assertEqual(unscoped_bulk.status_code, 200)
+        self.assertEqual(unscoped_bulk.get_json()['updated_count'], 1)
+        db.session.refresh(unscoped_history)
+        self.assertEqual(unscoped_history.status, 'absent')
+
+        unscoped_clear = self.client.post('/admin/attendance/api/mark-bulk', json={
+            'exam_hall_id': hall.id,
+            'subject_id': self.subject.id,
+            'academic_year_id': self.year.id,
+            'exam_type_id': self.exam_type.id,
+            'status': 'clear',
+        })
+        self.assertEqual(unscoped_clear.status_code, 200)
+        self.assertEqual(unscoped_clear.get_json()['updated_count'], 1)
+        db.session.refresh(unscoped_history)
+        self.assertEqual(unscoped_history.status, 'absent')
 
     def test_timetable_page_renders_exam_options_without_an_extra_bootstrap_request(self):
         self.login()

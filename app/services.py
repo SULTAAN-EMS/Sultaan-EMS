@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
 from . import db
+from .academic_hierarchy import year_subjects, year_subjects_for_class_scope
 from .models import (
     AcademicYear,
     AcademicLevel,
@@ -896,12 +897,12 @@ def top_students_for_class(student, exam, limit=10):
     subject_ids = []
     scoped_subject_by_id = {}
     if selected_placement.get("academic_year_level_id"):
-        year_subject_items = AcademicYearSubject.query.filter_by(
-                academic_year_id=exam.academic_year_id,
-                academic_year_level_id=selected_placement.get("academic_year_level_id"),
-                subject_kind="exam",
-                is_active=True,
-            ).order_by(AcademicYearSubject.sort_order, AcademicYearSubject.name, AcademicYearSubject.id).all()
+        year_subject_items = year_subjects_for_class_scope(
+            exam.academic_year_id,
+            selected_placement.get("academic_year_level_id"),
+            selected_placement.get("academic_year_class_id"),
+            subject_kind="exam",
+        )
         subject_ids = [row.legacy_subject_id for row in year_subject_items if row.legacy_subject_id]
         scoped_subject_by_id = {
             subject.id: subject for subject in scoped_legacy_subjects(year_subject_items)
@@ -1774,27 +1775,35 @@ def result_payload(student, exam=None, public_only=True):
     selected_year_level_id = selected_placement.get("academic_year_level_id") if selected_placement else None
     query = query.join(Result.subject)
     selected_subject_ids = []
+    applicable_subject_ids = set()
     if selected_year_level_id and exam:
-        year_subject_items = AcademicYearSubject.query.filter_by(
-                academic_year_id=exam.academic_year_id,
-                academic_year_level_id=selected_year_level_id,
-                subject_kind="exam",
-                is_active=True,
-            ).order_by(
-                AcademicYearSubject.sort_order,
-                AcademicYearSubject.name,
-                AcademicYearSubject.id,
-            ).all()
+        all_year_subject_items = year_subjects(
+            exam.academic_year_id,
+            selected_year_level_id,
+            subject_kind="exam",
+        )
+        applicable_year_subject_items = year_subjects_for_class_scope(
+            exam.academic_year_id,
+            selected_year_level_id,
+            selected_placement.get("academic_year_class_id"),
+            subject_kind="exam",
+        )
         selected_subject_ids = [
-            row.legacy_subject_id for row in year_subject_items if row.legacy_subject_id
+            row.legacy_subject_id for row in all_year_subject_items if row.legacy_subject_id
         ]
+        applicable_subject_ids = {
+            row.legacy_subject_id
+            for row in applicable_year_subject_items
+            if row.legacy_subject_id
+        }
         scoped_subject_by_id = {
-            subject.id: subject for subject in scoped_legacy_subjects(year_subject_items)
+            subject.id: subject for subject in scoped_legacy_subjects(all_year_subject_items)
         }
         scoped_subjects_for_max = list(scoped_subject_by_id.values())
     else:
         scoped_subject_by_id = {}
         scoped_subjects_for_max = []
+        applicable_subject_ids = set(selected_subject_ids)
     if selected_year_level_id:
         # A configured year-level with no subject mappings is incomplete setup,
         # not permission to expose every legacy subject. This applies to both
@@ -1819,6 +1828,10 @@ def result_payload(student, exam=None, public_only=True):
         academic_year_level_id=selected_year_level_id,
         academic_level_id=student_level_id,
     )
+    applicable_rows = [
+        row for row in rows
+        if not selected_year_level_id or row.subject_id in applicable_subject_ids
+    ]
     total, max_total, average = calculate_score_totals(
         (
             row.score,
@@ -1827,7 +1840,7 @@ def result_payload(student, exam=None, public_only=True):
                 Decimal(str(scoped_subject_by_id.get(row.subject_id, row.subject).max_score or 0)),
             ),
         )
-        for row in rows
+        for row in applicable_rows
     )
     settings = dict(get_settings())
     active_exam = exam or (rows[0].exam if rows else None)
@@ -1850,7 +1863,11 @@ def result_payload(student, exam=None, public_only=True):
     total += behavior_total
     max_total += behavior_max_total
     average = round(float(total / max_total * Decimal("100")), 2) if max_total else 0
-    critical_badges = critical_subject_badges(active_exam, selected_year_level_id)
+    critical_badges = {
+        subject_id: badge
+        for subject_id, badge in critical_subject_badges(active_exam, selected_year_level_id).items()
+        if not selected_year_level_id or subject_id in applicable_subject_ids
+    }
     portal_outcome = {"code": "NOT_EVALUATED", "label": "LAMA QIIMEYN", "tone": "muted"}
     if active_exam and selected_placement and selected_placement.get("enrollment"):
         # Local import avoids the promotion_service -> services import cycle.
@@ -1876,6 +1893,7 @@ def result_payload(student, exam=None, public_only=True):
     uf_subject_keys = attendance_uf_subject_keys(
         active_exam,
         [student.id],
+        applicable_subject_ids if selected_year_level_id else None,
     )
     subject_rows = []
     for row in rows:
@@ -1902,6 +1920,7 @@ def result_payload(student, exam=None, public_only=True):
                 "is_uf": (student.id, row.subject_id) in uf_subject_keys,
                 "is_critical": row.subject_id in critical_badges,
                 "critical_badge": critical_badges.get(row.subject_id),
+                "scope_applicable": not selected_year_level_id or row.subject_id in applicable_subject_ids,
             }
         )
 
@@ -1948,6 +1967,7 @@ def result_payload(student, exam=None, public_only=True):
                     "is_uf": True,
                     "is_critical": subject.id in critical_badges,
                     "critical_badge": critical_badges.get(subject.id),
+                    "scope_applicable": True,
                 }
             )
 
@@ -1994,8 +2014,12 @@ def result_payload(student, exam=None, public_only=True):
                 peer_query = peer_query.filter(Student.level == student.level)
 
         peers = peer_query.all()
+        rank_subjects = [
+            subject for subject_id, subject in scoped_subject_by_id.items()
+            if not selected_year_level_id or subject_id in applicable_subject_ids
+        ] if selected_year_level_id else [row.subject for row in rows]
         subject_maxima = resolved_subject_maxima(
-            [row.subject for row in rows],
+            rank_subjects,
             exam=active_exam,
             academic_year_level_id=peer_placement.get("academic_year_level_id") if peer_placement else None,
             academic_level_id=peer_placement.get("academic_level_id") if peer_placement else None,

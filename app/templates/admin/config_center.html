@@ -235,7 +235,24 @@
               <td><span class="config-badge {{ 'config-badge-success' if item.is_active else 'config-badge-neutral' }}">{{ 'Active' if item.is_active else 'Archived' }}</span></td>
               <td>{{ item.academic_year_level.name if item.academic_year_level else '-' }} ({{ item.academic_year.name if item.academic_year else '-' }})</td>
               <td>
-                {% if assigned_classes %}
+                {% if item.subject_kind == 'exam' and item.is_active %}
+                  {% set excluded_classes = subject_class_exclusion_map.get(item.id, []) %}
+                  <div class="config-class-availability">
+                    <span class="config-class-availability-summary">{{ assigned_classes|length - excluded_classes|length }} / {{ assigned_classes|length }} fasal ayaa heli kara</span>
+                    <details class="config-class-availability-details">
+                      <summary><i class="fas fa-sliders-h" aria-hidden="true"></i> Maamul fasallada</summary>
+                      <form data-class-availability-form data-subject-id="{{ item.id }}">
+                        <p>Maaddadu heerka ayay ka dhaxashaa. Calaamadda ka saar fasalka aan loo qaadanayn. Dhibcihii hore lama tirtirayo; fasallada kale waxba iskama beddelayaan.</p>
+                        <div class="config-class-availability-list">
+                          {% for cls in assigned_classes %}
+                          <label><input type="checkbox" data-available-class value="{{ cls.id }}" {% if cls.id not in excluded_classes %}checked{% endif %}><span><strong>{{ cls.name }}</strong><small>{% if cls.id in excluded_classes %}Maaddadu fasalkan way ka reeban tahay{% else %}Maaddadu fasalkan way u furan tahay{% endif %}</small></span></label>
+                          {% else %}<span class="config-muted">Heerkan fasallo firfircoon kuma jiraan.</span>{% endfor %}
+                        </div>
+                        {% if assigned_classes %}<button type="submit" class="config-btn config-btn-primary"><i class="fas fa-save" aria-hidden="true"></i> Kaydi fasallada</button>{% endif %}
+                      </form>
+                    </details>
+                  </div>
+                {% elif assigned_classes %}
                   {{ assigned_classes|map(attribute='name')|join(', ') }}
                 {% else %}
                   Level-wide / global
@@ -865,6 +882,34 @@ document.getElementById('searchInput').addEventListener('input', event => {
   document.querySelectorAll('#tableBody tr').forEach(row => {
     row.style.display = row.textContent.toLowerCase().includes(searchTerm) ? '' : 'none';
   });
+});
+
+document.addEventListener('submit', event => {
+  const form = event.target.closest('[data-class-availability-form]');
+  if (!form) return;
+  event.preventDefault();
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  fetch(`/admin/config-center/api/subjects/${encodeURIComponent(form.dataset.subjectId)}/class-availability`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+    body: JSON.stringify({
+      available_class_ids: [...form.querySelectorAll('[data-available-class]:checked')].map(input => Number(input.value)),
+    }),
+  })
+    .then(async response => {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.message || 'Fasallada lama kaydin.');
+      return data;
+    })
+    .then(data => {
+      showNotification('success', 'Waa la kaydiyey', data.message || 'Helitaanka maaddada waa la cusboonaysiiyey.');
+      setTimeout(() => location.reload(), 700);
+    })
+    .catch(error => {
+      button.disabled = false;
+      showNotification('error', 'Kaydintu way fashilantay', error.message);
+    });
 });
 
 function showNotification(type, title, message) {

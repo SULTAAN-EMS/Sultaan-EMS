@@ -16,10 +16,11 @@ from sqlalchemy.orm import joinedload
 from . import db
 from .models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, ClubTeamLeaderAssignment,
-    ClubTeamMembership, Exam, ExamMarkingConfiguration, Result, Student, Subject, TeacherResultAssignment,
+    AcademicYearSubject, ClubTeamMembership, Exam, ExamMarkingConfiguration, Result, Student, Subject, TeacherResultAssignment,
     TeacherResultMark, TeacherResultMissingMarkReport, TeacherResultSubmission,
 )
 from .teacher_result_history import record_teacher_result_event, record_teacher_result_mark_revision
+from .academic_hierarchy import is_year_subject_available_for_class
 from .teacher_analytics import (
     classes_cards,
     comparison_data,
@@ -174,6 +175,19 @@ def _unique_assignments(items, key):
     relationship = {"exam_id": "exam", "class_id": "school_class", "subject_id": "subject"}[key]
     unique = {getattr(item, key): getattr(item, relationship) for item in items}
     return sorted(unique.values(), key=lambda item: (getattr(item, "sort_order", 0), item.name.casefold()))
+
+
+def _assignment_subject_available(assignment, year_level, year_class):
+    if not assignment or not year_level or not year_class:
+        return False
+    year_subject = AcademicYearSubject.query.filter_by(
+        academic_year_id=assignment.academic_year_id,
+        academic_year_level_id=year_level.id,
+        legacy_subject_id=assignment.subject_id,
+        subject_kind="exam",
+        is_active=True,
+    ).first()
+    return is_year_subject_available_for_class(year_subject, year_class.id)
 
 
 def _result_entry_scope(teacher):
@@ -406,6 +420,7 @@ def result_entry():
     submission = None
     max_score = None
     locked = False
+    class_subject_unavailable = False
     grade_scales = {"exam": [], "global": [], "fallback": []}
     if assignment:
         year_level, year_class = _year_scope_ids_from_legacy(
@@ -413,6 +428,7 @@ def result_entry():
             assignment.school_class.academic_level_id,
             assignment.class_id,
         )
+        class_subject_unavailable = not _assignment_subject_available(assignment, year_level, year_class)
         students = []
         if year_level and year_class and assignment.exam.academic_year_id == assignment.academic_year_id:
             students = students_for_scope_query(
@@ -477,7 +493,11 @@ def result_entry():
         }
         deadline_passed = bool(assignment.deadline_at and datetime.utcnow() > assignment.deadline_at)
         reopened = bool(submission and submission.status == "reopened")
-        locked = (deadline_passed and not reopened) or bool(submission and submission.status == "approved")
+        locked = (
+            class_subject_unavailable
+            or (deadline_passed and not reopened)
+            or bool(submission and submission.status == "approved")
+        )
 
     approved_mark_count = sum(mark.status == "approved" for mark in submission.marks) if submission else 0
     pending_mark_count = sum(mark.status == "submitted" for mark in submission.marks) if submission else 0
@@ -504,6 +524,7 @@ def result_entry():
         max_score=max_score,
         grade_scales=grade_scales,
         locked=locked,
+        class_subject_unavailable=class_subject_unavailable,
         approved_mark_count=approved_mark_count,
         pending_mark_count=pending_mark_count,
         remaining_submissions=max(0, (assignment.max_submissions or 0) - (submission.submission_count if submission else 0)) if assignment else 0,
@@ -539,6 +560,8 @@ def result_entry_missing_mark_report():
     )
     if not year_level or not year_class or assignment.exam.academic_year_id != assignment.academic_year_id:
         return failure("Xilsaaristan hadda ma shaqaynayso. Dib u cusboonaysii bogga.", 409)
+    if not _assignment_subject_available(assignment, year_level, year_class):
+        return failure("Maamulka ayaa maaddadan fasalkan ka reebay. Xogtii hore way sii jirtaa, balse gelin cusub lama samayn karo.", 409)
     try:
         student_id = int(payload.get("student_id"))
     except (TypeError, ValueError):
@@ -650,6 +673,8 @@ def result_entry_autosave():
     )
     if not year_level or not year_class or assignment.exam.academic_year_id != assignment.academic_year_id:
         return failure("Xilsaarista natiijadu hadda ma shaqaynayso. Dib u cusboonaysii bogga.", 409)
+    if not _assignment_subject_available(assignment, year_level, year_class):
+        return failure("Maamulka ayaa maaddadan fasalkan ka reebay. Xogtii hore way sii jirtaa, balse gelin cusub lama samayn karo.", 409)
     try:
         student_id = int(payload.get("student_id"))
     except (TypeError, ValueError):
@@ -805,6 +830,8 @@ def result_entry_save():
     )
     if not year_level or not year_class or assignment.exam.academic_year_id != assignment.academic_year_id:
         abort(409, "The academic assignment is no longer valid.")
+    if not _assignment_subject_available(assignment, year_level, year_class):
+        return failure("Maamulka ayaa maaddadan fasalkan ka reebay. Xogtii hore way sii jirtaa, balse gelin cusub lama samayn karo.", "warning", 409)
     students = students_for_scope_query(
         assignment.academic_year_id,
         level_id=assignment.school_class.academic_level_id,

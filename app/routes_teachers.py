@@ -15,7 +15,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .enrollment_service import EnrollmentValidationError
-from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, ClubTeam, ClubTeamLeaderAssignment, ClubTeamMembership, Exam, Result, Setting, Student, StudentClub, StudentEnrollment, Subject, Teacher, TeacherActivity, TeacherResultAssignment, TeacherResultEvent, TeacherResultMark, TeacherResultMarkRevision, TeacherResultMissingMarkReport, TeacherResultSubmission, User
+from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearClassSubjectExclusion, AcademicYearLevel, AcademicYearSubject, ClubTeam, ClubTeamLeaderAssignment, ClubTeamMembership, Exam, Result, Setting, Student, StudentClub, StudentEnrollment, Subject, Teacher, TeacherActivity, TeacherResultAssignment, TeacherResultEvent, TeacherResultMark, TeacherResultMarkRevision, TeacherResultMissingMarkReport, TeacherResultSubmission, User
 from .permissions import enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, allowed_file
 from .teacher_services import (
@@ -34,6 +34,7 @@ from .teacher_services import (
     teacher_permission_set,
 )
 from .routes_advanced_results import students_for_scope_query, _year_scope_ids_from_legacy
+from .academic_hierarchy import is_year_subject_available_for_class
 from .services import resolve_subject_max_score
 from .teacher_result_history import record_teacher_result_event
 
@@ -487,6 +488,7 @@ def result_entry_setup():
                     and year_subject.academic_year_level_id == year_level.id
                     and subject and subject.is_active
                     and (subject.academic_level_id is None or subject.academic_level_id == year_level.legacy_level_id)
+                    and is_year_subject_available_for_class(year_subject, year_class.id)
                 )
                 exam_matches = bool(
                     exam and exam.is_active and year_scope_matches
@@ -787,6 +789,7 @@ def result_entry_setup():
                 and year_class.legacy_class_id == assignment.class_id
                 and year_class.academic_year_level_id == year_level.id
                 and year_subject
+                and is_year_subject_available_for_class(year_subject, year_class.id)
                 and assignment.subject
                 and assignment.subject.is_active
                 and (
@@ -1314,6 +1317,15 @@ def result_entry_setup():
         .order_by(AcademicYearSubject.sort_order, AcademicYearSubject.name)
         .all()
     )
+    subject_exclusions = AcademicYearClassSubjectExclusion.query.filter(
+        AcademicYearClassSubjectExclusion.academic_year_class_id.in_([item.id for item in year_classes] or {-1}),
+        AcademicYearClassSubjectExclusion.academic_year_subject_id.in_([item.id for item in year_subjects] or {-1}),
+    ).all()
+    excluded_classes_by_subject = {}
+    for exclusion in subject_exclusions:
+        excluded_classes_by_subject.setdefault(exclusion.academic_year_subject_id, set()).add(
+            exclusion.academic_year_class_id
+        )
     year_subjects = [
         item for item in year_subjects
         if item.legacy_subject and item.legacy_subject.is_active
@@ -1414,6 +1426,10 @@ def result_entry_setup():
         year_subject = year_subject_by_scope.get(
             (assignment.academic_year_id, year_level.id, assignment.subject_id)
         ) if year_level else None
+        subject_available = bool(
+            year_subject and year_class
+            and year_class.id not in excluded_classes_by_subject.get(year_subject.id, set())
+        )
         assignment_scope_details[assignment.id] = {
             "level_name": year_level.name if year_level else (assignment.school_class.academic_level.name if assignment.school_class.academic_level else ""),
             "class_name": year_class.name if year_class else assignment.school_class.name,
@@ -1421,6 +1437,7 @@ def result_entry_setup():
             "academic_year_level_id": year_level.id if year_level else None,
             "academic_year_class_id": year_class.id if year_class else None,
             "academic_year_subject_id": year_subject.id if year_subject else None,
+            "subject_available": subject_available,
             "editable": bool(
                 assignment.teacher.is_active
                 and assignment.teacher.employment_status == "Active"
@@ -1429,6 +1446,7 @@ def result_entry_setup():
                 and year_level and year_level.id in year_level_ids
                 and year_class and year_class.id in active_class_ids
                 and year_subject and year_subject.id in active_subject_ids
+                and subject_available
             ),
         }
     return render_template(
@@ -1439,6 +1457,7 @@ def result_entry_setup():
         selected_year_id=selected_year_id, selected_year_level_id=selected_year_level_id,
         assignment_scope_reservations=assignment_scope_reservations,
         assignment_scope_details=assignment_scope_details,
+        excluded_classes_by_subject=excluded_classes_by_subject,
         pagination=pagination,
         deadline_labels=deadline_labels,
         review_rows=review_rows,

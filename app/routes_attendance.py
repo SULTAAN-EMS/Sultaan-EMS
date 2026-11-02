@@ -14,7 +14,8 @@ from uuid import uuid4
 from . import db
 from .audit import audit
 from .models import (
-    AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord,
+    AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearClassSubjectExclusion,
+    AcademicYearLevel, AcademicYearSubject, AttendanceRecord,
     Exam, ExamHall, ExamHallEnrollment, ExamHallSubject, ExamSession,
     ExamSessionSubject, ExamType, SchoolClass, Student, Subject
 )
@@ -265,6 +266,7 @@ def attendance_record_for(
                 exam_hall_id=exam_hall_id,
                 subject_id=subject_id,
             )
+            .filter(AttendanceRecord.exam_session_id.is_(None))
             .order_by(AttendanceRecord.id.desc())
             .first()
         )
@@ -272,7 +274,11 @@ def attendance_record_for(
             return rec
 
     # Fall back to student + subject + exam
-    query = AttendanceRecord.query.filter_by(student_id=student_id, subject_id=subject_id)
+    query = AttendanceRecord.query.filter_by(
+        student_id=student_id,
+        subject_id=subject_id,
+        exam_session_id=None,
+    )
     if exam_id:
         rec = query.filter_by(exam_id=exam_id).order_by(AttendanceRecord.id.desc()).first()
         if rec:
@@ -481,8 +487,202 @@ def subjects_by_session_level(session, allowed_pairs=None):
     return grouped
 
 
-def session_attendance_payload(hall, session, allowed_pairs=None):
+def year_class_exam_subject_scope(year_id):
+    """Return the current exam-subject IDs available to each year class.
+
+    The timetable remains level-scoped for compatibility, but attendance
+    entry must honor class-level exclusions. Legacy years without year-aware
+    offerings keep their existing level-to-subject behavior.
+    """
+    year_level_rows = year_levels(year_id)
+    active_levels = [
+        scope for scope in year_level_rows
+        if scope.legacy_level_id and scope.legacy_level and scope.legacy_level.is_active
+    ]
+    if not active_levels:
+        return {
+            "year_aware": False,
+            "classes_by_id": {},
+            "classes_by_level": {},
+            "subjects_by_class": {},
+            "subjects_by_level": {},
+            "year_level_by_legacy_level": {},
+            "offered_subjects_by_level": {},
+            "active_offered_subjects_by_level": {},
+        }
+
+    level_ids = {scope.id for scope in active_levels}
+    classes = (
+        AcademicYearClass.query
+        .filter(
+            AcademicYearClass.academic_year_level_id.in_(level_ids),
+            AcademicYearClass.is_active.is_(True),
+        )
+        .all()
+    )
+    classes_by_id = {year_class.id: year_class for year_class in classes}
+    classes_by_level = {}
+    for year_class in classes:
+        classes_by_level.setdefault(year_class.academic_year_level_id, []).append(year_class.id)
+
+    offerings = (
+        AcademicYearSubject.query
+        .filter(
+            AcademicYearSubject.academic_year_id == year_id,
+            AcademicYearSubject.academic_year_level_id.in_(level_ids),
+            AcademicYearSubject.subject_kind == "exam",
+        )
+        .all()
+    )
+    offerings_by_level = {}
+    all_offerings_by_level = {}
+    offerings_by_id = {}
+    for offering in offerings:
+        all_offerings_by_level.setdefault(offering.academic_year_level_id, []).append(offering)
+        if offering.is_active:
+            offerings_by_level.setdefault(offering.academic_year_level_id, []).append(offering)
+        offerings_by_id[offering.id] = offering
+
+    linked_ids = {
+        offering.legacy_subject_id
+        for offering in offerings
+        if offering.is_active and offering.legacy_subject_id
+    }
+    active_subject_ids = {
+        subject.id
+        for subject in Subject.query.filter(
+            Subject.id.in_(linked_ids),
+            Subject.is_active.is_(True),
+        ).all()
+    } if linked_ids else set()
+    exclusions = (
+        AcademicYearClassSubjectExclusion.query
+        .filter(AcademicYearClassSubjectExclusion.academic_year_class_id.in_(classes_by_id))
+        .all()
+        if classes_by_id else []
+    )
+    excluded_subjects_by_class = {}
+    for exclusion in exclusions:
+        offering = offerings_by_id.get(exclusion.academic_year_subject_id)
+        if offering and offering.legacy_subject_id:
+            excluded_subjects_by_class.setdefault(exclusion.academic_year_class_id, set()).add(
+                offering.legacy_subject_id
+            )
+
+    legacy_level_ids = {scope.legacy_level_id for scope in active_levels}
+    legacy_subjects_by_level = {}
+    legacy_subjects = (
+        Subject.query
+        .filter(
+            Subject.academic_level_id.in_(legacy_level_ids),
+            Subject.is_active.is_(True),
+        )
+        .all()
+        if legacy_level_ids else []
+    )
+    for subject in legacy_subjects:
+        legacy_subjects_by_level.setdefault(subject.academic_level_id, set()).add(subject.id)
+
+    subjects_by_level = {}
+    subjects_by_class = {}
+    offered_subjects_by_level = {}
+    active_offered_subjects_by_level = {}
+    legacy_level_by_year_level = {}
+    for scope in active_levels:
+        level_offerings = offerings_by_level.get(scope.id, [])
+        offered_subjects_by_level[scope.id] = {
+            offering.legacy_subject_id
+            for offering in all_offerings_by_level.get(scope.id, [])
+            if offering.legacy_subject_id
+        }
+        active_offered_subjects_by_level[scope.id] = {
+            offering.legacy_subject_id
+            for offering in level_offerings
+            if offering.legacy_subject_id in active_subject_ids
+        }
+        legacy_level_by_year_level[scope.id] = scope.legacy_level_id
+        if level_offerings:
+            level_subject_ids = {
+                offering.legacy_subject_id
+                for offering in level_offerings
+                if offering.legacy_subject_id in active_subject_ids
+            }
+        else:
+            level_subject_ids = set(legacy_subjects_by_level.get(scope.legacy_level_id, set()))
+
+        level_classes = classes_by_level.get(scope.id, [])
+        if level_classes:
+            for year_class_id in level_classes:
+                subjects_by_class[year_class_id] = level_subject_ids - excluded_subjects_by_class.get(
+                    year_class_id, set()
+                )
+            subjects_by_level[scope.id] = set().union(*(
+                subjects_by_class[year_class_id] for year_class_id in level_classes
+            ))
+        else:
+            subjects_by_level[scope.id] = level_subject_ids
+
+    year_level_by_legacy_level = {}
+    for scope in active_levels:
+        year_level_by_legacy_level.setdefault(scope.legacy_level_id, []).append(scope.id)
+    return {
+        "year_aware": True,
+        "classes_by_id": classes_by_id,
+        "classes_by_level": classes_by_level,
+        "subjects_by_class": subjects_by_class,
+        "subjects_by_level": subjects_by_level,
+        "offered_subjects_by_level": offered_subjects_by_level,
+        "active_offered_subjects_by_level": active_offered_subjects_by_level,
+        "legacy_level_by_year_level": legacy_level_by_year_level,
+        "year_level_by_legacy_level": year_level_by_legacy_level,
+    }
+
+
+def exam_subject_available_for_student(scope, student, placement, subject_id):
+    """Fail closed when a year-aware student's exact class cannot be resolved."""
+    if not scope.get("year_aware"):
+        level_id = placement.get("academic_level_id") or effective_student_level_id(student)
+        subject = db.session.get(Subject, subject_id)
+        return bool(subject and subject.is_active and subject.academic_level_id == level_id)
+
+    year_level_id = placement.get("academic_year_level_id")
+    if not year_level_id:
+        legacy_level_id = placement.get("academic_level_id") or effective_student_level_id(student)
+        candidates = scope["year_level_by_legacy_level"].get(legacy_level_id, [])
+        year_level_id = candidates[0] if len(candidates) == 1 else None
+    if not year_level_id:
+        return False
+
+    mapped_subject_ids = scope["offered_subjects_by_level"].get(year_level_id, set())
+    if subject_id in mapped_subject_ids and subject_id not in scope[
+        "active_offered_subjects_by_level"
+    ].get(year_level_id, set()):
+        return False
+    if subject_id not in mapped_subject_ids:
+        subject = db.session.get(Subject, subject_id)
+        return bool(
+            subject
+            and subject.is_active
+            and subject.academic_level_id == scope["legacy_level_by_year_level"].get(year_level_id)
+        )
+
+    year_class_id = placement.get("academic_year_class_id")
+    if year_class_id:
+        year_class = scope["classes_by_id"].get(year_class_id)
+        if not year_class or year_class.academic_year_level_id != year_level_id:
+            return False
+        return subject_id in scope["subjects_by_class"].get(year_class_id, set())
+
+    # A mapped class is required to apply an exclusion reliably. If the year
+    # has no classes under this level, retain the legacy level-level behavior.
+    if scope["classes_by_level"].get(year_level_id):
+        return False
+    return subject_id in scope["subjects_by_level"].get(year_level_id, set())
+
+
+def session_attendance_payload(hall, session, allowed_pairs=None, class_subject_scope=None):
     """Build the timetable-driven attendance roster grouped by student level/class."""
+    class_subject_scope = class_subject_scope or year_class_exam_subject_scope(session.academic_year_id)
     subjects_by_level = subjects_by_session_level(session, allowed_pairs)
     enrollment_rows = (
         ExamHallEnrollment.query
@@ -537,21 +737,33 @@ def session_attendance_payload(hall, session, allowed_pairs=None):
         level = levels_by_id.get(level_id)
         class_name = placement.get("class_name") or student_class_name(student)
         class_id = placement.get("academic_class_id") or student.academic_class_id or student.class_id or 0
-        key = (level_id or 0, class_id, class_name)
+        year_class_id = placement.get("academic_year_class_id")
+        key = (level_id or 0, class_id, class_name, year_class_id or 0)
+        applicable_subjects = [
+            subject for subject in subjects_by_level.get(level_id, [])
+            if exam_subject_available_for_student(
+                class_subject_scope, student, placement, subject.id
+            )
+        ]
+        historical_subjects = [
+            subject for subject in subjects_by_level.get(level_id, [])
+            if (student.id, subject.id) in record_map and subject not in applicable_subjects
+        ]
+        slot_subjects = applicable_subjects + historical_subjects
         group = groups.setdefault(key, {
             "level_id": level_id,
             "level_name": level.name if level else "Heer lama dejin",
             "class_name": class_name or "Fasal lama dejin",
             "subjects": [
-                {"id": subject.id, "name": subject.name}
-                for subject in subjects_by_level.get(level_id, [])
+                {"id": subject.id, "name": subject.name, "scope_applicable": True}
+                for subject in applicable_subjects
             ],
             "students": [],
         })
         assigned_order = student_order.get(student.id, len(student_order))
         group_order[key] = min(group_order.get(key, assigned_order), assigned_order)
         slots = []
-        for subject in subjects_by_level.get(level_id, []):
+        for subject in slot_subjects:
             saved_record = record_map.get((student.id, subject.id), {})
             current_status = saved_record.get("status")
             if current_status not in tallies:
@@ -563,6 +775,7 @@ def session_attendance_payload(hall, session, allowed_pairs=None):
                 "subject_name": subject.name,
                 "status": current_status,
                 "note": saved_record.get("note", ""),
+                "scope_applicable": subject in applicable_subjects,
             })
         group["students"].append({
             "id": student.id,
@@ -1320,6 +1533,7 @@ def _attendance_summary_report_data(*, year_id, exam, legacy_exam_type, halls, s
         if start_date <= session.session_date <= end_date
     ]
     _, allowed_pairs = timetable_level_scope(year_id, exam=exam)
+    class_subject_scope = year_class_exam_subject_scope(year_id)
     hall_session_ids = {
         hall.id: {
             session.id for session in sessions_for_attendance_hall(
@@ -1351,7 +1565,9 @@ def _attendance_summary_report_data(*, year_id, exam, legacy_exam_type, halls, s
         for hall in halls:
             if session.id not in hall_session_ids[hall.id]:
                 continue
-            groups, tallies = session_attendance_payload(hall, session, allowed_pairs)
+            groups, tallies = session_attendance_payload(
+                hall, session, allowed_pairs, class_subject_scope
+            )
             students = [student for group in groups for student in group["students"]]
             slot_count = sum(len(student["slots"]) for student in students)
             marked_count = sum(
@@ -1815,7 +2031,10 @@ def api_attendance_context():
         ), None) or (scoped_sessions[0] if scoped_sessions else None)
         if selected_session:
             groups, tallies = session_attendance_payload(
-                selected_hall, selected_session, allowed_pairs
+                selected_hall,
+                selected_session,
+                allowed_pairs,
+                year_class_exam_subject_scope(year_id),
             )
 
     return jsonify({
@@ -2438,7 +2657,12 @@ def api_attendance_data():
                 exam_session_id,
             )
             _, allowed_pairs = timetable_level_scope(year_id, exam=exam)
-            groups, tallies = session_attendance_payload(hall, session, allowed_pairs)
+            groups, tallies = session_attendance_payload(
+                hall,
+                session,
+                allowed_pairs,
+                year_class_exam_subject_scope(year_id),
+            )
             return jsonify({
                 "success": True,
                 "session": serialize_session(session, allowed_pairs),
@@ -2480,9 +2704,15 @@ def api_attendance_data():
         for student_id in enrolled_student_ids
         if student_id in scoped_students_by_id
     ]
+    class_subject_scope = year_class_exam_subject_scope(year_id)
+    placements = resolve_student_placements((student, year_id) for student in students_raw)
 
     # Fetch recorded attendance for this hall & subject
-    records = AttendanceRecord.query.filter_by(exam_hall_id=exam_hall_id, subject_id=subject_id).order_by(AttendanceRecord.id.asc()).all() if subject_id else []
+    records = AttendanceRecord.query.filter_by(
+        exam_hall_id=exam_hall_id,
+        subject_id=subject_id,
+        exam_session_id=None,
+    ).order_by(AttendanceRecord.id.asc()).all() if subject_id else []
     record_map = {}
     for r in records:
         record_map[r.student_id] = {
@@ -2502,7 +2732,12 @@ def api_attendance_data():
             st_val = None
         if st_val:
             tallies[st_val] += 1
-        placement = enrollment_placement_for_student(s, year_id) or {}
+        placement = placements.get((s.id, year_id)) or {}
+        scope_applicable = bool(subject_id and exam_subject_available_for_student(
+            class_subject_scope, s, placement, subject_id
+        ))
+        if not scope_applicable and not saved_record:
+            continue
         cls_name = placement.get("class_name") or student_class_name(s)
 
         students_data.append({
@@ -2514,6 +2749,7 @@ def api_attendance_data():
             "photo_url": stored_photo_url(s.photo_path),
             "status": st_val,
             "note": saved_record.get("note", ""),
+            "scope_applicable": scope_applicable,
         })
 
     return jsonify({
@@ -2589,6 +2825,14 @@ def api_mark_status():
     placement = enrollment_placement_for_student(student, year_id)
     if not placement:
         return jsonify({"success": False, "error": "Ardaygani kuma jiro sanad-dugsiyeedka imtixaankan."}), 400
+    class_subject_scope = year_class_exam_subject_scope(year_id)
+    if not exam_subject_available_for_student(
+        class_subject_scope, student, placement, subject_id
+    ):
+        return jsonify({
+            "success": False,
+            "error": "Maadadani kuma jirto fasalka ardaygan sanad-dugsiyeedkan.",
+        }), 400
     if exam_session:
         student_level_id = placement.get("academic_level_id") or effective_student_level_id(student)
         _, allowed_pairs = timetable_level_scope(year_id, exam=exam)
@@ -2725,14 +2969,41 @@ def mark_session_bulk_attendance(*, hall, exam, legacy_exam_type, session, year_
     )
     _, allowed_pairs = timetable_level_scope(year_id, exam=exam)
     subject_map = subjects_by_session_level(session, allowed_pairs)
+    class_subject_scope = year_class_exam_subject_scope(year_id)
+    placements = resolve_student_placements(
+        (student, year_id) for student in students
+    )
+    student_level_ids = {}
+    for student in students:
+        placement = placements.get((student.id, year_id)) or {}
+        student_level_ids[student.id] = (
+            placement.get("academic_level_id")
+            or student.academic_level_id
+            or (student.academic_class.academic_level_id if student.academic_class else None)
+        )
 
     if status_val == "clear":
         try:
-            removed = (
-                AttendanceRecord.query
-                .filter_by(exam_hall_id=hall.id, exam_session_id=session.id)
-                .delete(synchronize_session=False)
-            )
+            eligible_slot_keys = {
+                (student.id, subject.id)
+                for student in students
+                for subject in subject_map.get(student_level_ids[student.id], [])
+                if exam_subject_available_for_student(
+                    class_subject_scope,
+                    student,
+                    placements.get((student.id, year_id)) or {},
+                    subject.id,
+                )
+            }
+            records = AttendanceRecord.query.filter_by(
+                exam_hall_id=hall.id,
+                exam_session_id=session.id,
+            ).all()
+            removed = 0
+            for record in records:
+                if (record.student_id, record.subject_id) in eligible_slot_keys:
+                    db.session.delete(record)
+                    removed += 1
             db.session.commit()
         except Exception:
             db.session.rollback()
@@ -2742,7 +3013,7 @@ def mark_session_bulk_attendance(*, hall, exam, legacy_exam_type, session, year_
                 session.id,
             )
             return {"success": False, "error": "Xaadirinta lama nadiifin. Xogtii hore waa la ilaaliyey; fadlan mar kale isku day."}, 500
-        audit("Bulk Attendance", f"Cleared {removed} session slots in Hall {hall.id}")
+        audit("Bulk Attendance", f"Cleared {removed} currently applicable session slots in Hall {hall.id}")
         return {"success": True, "updated_count": removed, "status": "clear"}
 
     status_val = normalize_attendance_status(status_val)
@@ -2753,18 +3024,6 @@ def mark_session_bulk_attendance(*, hall, exam, legacy_exam_type, session, year_
     new_records = []
     legacy_class_cache = {}
     try:
-        placements = resolve_student_placements(
-            (student, year_id) for student in students
-        )
-        student_level_ids = {}
-        for student in students:
-            placement = placements.get((student.id, year_id)) or {}
-            student_level_ids[student.id] = (
-                placement.get("academic_level_id")
-                or student.academic_level_id
-                or (student.academic_class.academic_level_id if student.academic_class else None)
-            )
-
         subject_ids = {
             subject.id
             for subjects in subject_map.values()
@@ -2789,6 +3048,10 @@ def mark_session_bulk_attendance(*, hall, exam, legacy_exam_type, session, year_
         for student in students:
             placement = placements.get((student.id, year_id)) or {}
             for subject in subject_map.get(student_level_ids[student.id], []):
+                if not exam_subject_available_for_student(
+                    class_subject_scope, student, placement, subject.id
+                ):
+                    continue
                 record = records_by_slot.get((student.id, subject.id))
                 if not record:
                     record = AttendanceRecord(
@@ -2888,21 +3151,52 @@ def api_mark_bulk():
         student.id: student
         for student in student_enrollment_scope_query(year_id).filter(Student.id.in_(student_ids)).all()
     } if student_ids else {}
-
-    if status_val == "clear":
-        AttendanceRecord.query.filter_by(exam_hall_id=exam_hall_id, subject_id=subject_id).delete(synchronize_session=False)
-        db.session.commit()
-        audit("Bulk Attendance", f"Cleared attendance for {len(student_ids)} students in Hall {exam_hall_id}")
-        return jsonify({"success": True, "updated_count": len(student_ids), "status": "clear"})
-
-    status_val = normalize_attendance_status(status_val)
-    if status_val not in ATTENDANCE_STATUS_KEYS:
-        return jsonify({"success": False, "error": "Xaaladda xaadirinta lama aqoonsan."}), 400
-
+    placements = resolve_student_placements(
+        (student, year_id) for student in students_by_id.values()
+    )
+    class_subject_scope = year_class_exam_subject_scope(year_id)
+    applicable_student_ids = []
     for s_id in student_ids:
         student = students_by_id.get(s_id)
         if not student:
             return jsonify({"success": False, "error": "Mid ka mid ah ardeyda hall-kan lama heli karo."}), 404
+        placement = placements.get((s_id, year_id)) or {}
+        if exam_subject_available_for_student(
+            class_subject_scope, student, placement, subject_id
+        ):
+            applicable_student_ids.append(s_id)
+
+    if status_val == "clear":
+        clear_query = AttendanceRecord.query.filter_by(
+            exam_hall_id=exam_hall_id,
+            subject_id=subject_id,
+            exam_session_id=None,
+            academic_year_id=year_id,
+        )
+        if applicable_student_ids:
+            clear_query = clear_query.filter(
+                AttendanceRecord.student_id.in_(applicable_student_ids)
+            )
+        if exam:
+            clear_query = clear_query.filter(AttendanceRecord.exam_id == exam.id)
+        elif legacy_exam_type:
+            clear_query = clear_query.filter(AttendanceRecord.exam_type_id == legacy_exam_type.id)
+        removed = clear_query.delete(synchronize_session=False) if applicable_student_ids else 0
+        db.session.commit()
+        audit("Bulk Attendance", f"Cleared {removed} applicable student records in Hall {exam_hall_id}")
+        return jsonify({"success": True, "updated_count": removed, "status": "clear"})
+
+    status_val = normalize_attendance_status(status_val)
+    if status_val not in ATTENDANCE_STATUS_KEYS:
+        return jsonify({"success": False, "error": "Xaaladda xaadirinta lama aqoonsan."}), 400
+    if not applicable_student_ids:
+        return jsonify({
+            "success": False,
+            "error": "Ma jiro arday fasalkiisu maaddadan imtixaanka ugu jiro sanadkan.",
+        }), 400
+
+    for s_id in applicable_student_ids:
+        student = students_by_id.get(s_id)
         existing = attendance_record_for(s_id, exam_hall_id, subject_id, year_id=year_id, exam_id=exam.id if exam else None, exam_type_id=legacy_exam_type.id if legacy_exam_type else None)
 
         record = existing or AttendanceRecord(
@@ -2929,7 +3223,7 @@ def api_mark_bulk():
         # Fallback: resolve a concurrent insert per student, without hiding a
         # failed save behind a false success response.
         failed_ids = []
-        for s_id in student_ids:
+        for s_id in applicable_student_ids:
             student = students_by_id.get(s_id)
             record = attendance_record_for(s_id, exam_hall_id, subject_id, year_id=year_id, exam_id=exam.id if exam else None, exam_type_id=legacy_exam_type.id if legacy_exam_type else None)
             if not record:
@@ -2958,9 +3252,9 @@ def api_mark_bulk():
         current_app.logger.exception("Unexpected error in mark bulk: %s", exc)
         return jsonify({"success": False, "error": f"Bulk attendance lama kaydin: {str(exc)}"}), 500
 
-    audit("Bulk Attendance", f"Marked {len(student_ids)} students as {status_val} for Hall {exam_hall_id}")
+    audit("Bulk Attendance", f"Marked {len(applicable_student_ids)} applicable students as {status_val} for Hall {exam_hall_id}")
 
-    return jsonify({"success": True, "updated_count": len(student_ids), "status": status_val})
+    return jsonify({"success": True, "updated_count": len(applicable_student_ids), "status": status_val})
 
 
 # ==========================================
@@ -3059,7 +3353,12 @@ def _attendance_report_context():
         abort(400, description=str(exc))
 
     _, allowed_pairs = timetable_level_scope(year_id, exam=exam)
-    groups, tallies = session_attendance_payload(hall, exam_session, allowed_pairs)
+    groups, tallies = session_attendance_payload(
+        hall,
+        exam_session,
+        allowed_pairs,
+        year_class_exam_subject_scope(year_id),
+    )
     roster_ids = [
         student_row["id"]
         for group in groups

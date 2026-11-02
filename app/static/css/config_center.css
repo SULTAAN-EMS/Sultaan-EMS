@@ -1208,6 +1208,88 @@ body:has(.config-dashboard) .admin-top-compact {
   gap: 12px;
 }
 
+.config-class-availability {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  min-width: 190px;
+}
+
+.config-class-availability-summary {
+  color: var(--text-secondary);
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.config-class-availability-details {
+  position: relative;
+}
+
+.config-class-availability-details > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--academic-blue-dark);
+  cursor: pointer;
+  font-size: .82rem;
+  font-weight: 700;
+  list-style: none;
+}
+
+.config-class-availability-details > summary::-webkit-details-marker { display: none; }
+
+.config-class-availability-details[open] > summary {
+  border-color: var(--academic-blue-light);
+  background: var(--primary-50);
+}
+
+.config-class-availability-details form {
+  position: static;
+  width: min(340px, 78vw);
+  margin-top: 6px;
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, .08);
+}
+
+.config-class-availability-details form > p {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: .82rem;
+  line-height: 1.45;
+}
+
+.config-class-availability-list {
+  display: grid;
+  gap: 5px;
+  max-height: 230px;
+  margin-bottom: 12px;
+  overflow-y: auto;
+}
+
+.config-class-availability-list label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.config-class-availability-list input { flex: 0 0 auto; }
+.config-class-availability-list label > span { display: grid; gap: 2px; }
+.config-class-availability-list strong { color: var(--text-primary); font-size: .86rem; }
+.config-class-availability-list small { color: var(--text-secondary); font-size: .74rem; }
+.config-class-availability-details form .config-btn { min-height: 34px; }
+
 .config-subject-icon {
   width: 34px;
   height: 34px;

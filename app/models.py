@@ -281,6 +281,37 @@ class AcademicYearSubject(TimestampMixin, db.Model):
     )
 
 
+class AcademicYearClassSubjectExclusion(TimestampMixin, db.Model):
+    """Exclude one level subject from one year-scoped class only."""
+
+    __tablename__ = "academic_year_class_subject_exclusions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    academic_year_class_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_classes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_subject_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    academic_year_class = db.relationship("AcademicYearClass")
+    academic_year_subject = db.relationship("AcademicYearSubject")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "academic_year_class_id",
+            "academic_year_subject_id",
+            name="uq_year_class_subject_exclusion",
+        ),
+    )
+
+
 class BehaviorConfiguration(TimestampMixin, db.Model):
     """Year-aware configuration root for the dedicated Behavior domain."""
 

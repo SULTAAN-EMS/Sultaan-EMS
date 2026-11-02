@@ -139,9 +139,9 @@
         <thead><tr><th>No.</th><th>Maado</th><th>Full Marks</th><th>Marks Obtained</th><th>Grade</th><th>Remarks</th></tr></thead>
         <tbody>
           {% for row in result.subjects %}
-            <tr data-mg-token="{{ feedback_token|e }}" data-mg-subject-id="{{ row.subject_id }}" data-mg-subject="{{ row.subject|e }}">
+            <tr data-mg-token="{{ feedback_token|e }}" data-mg-subject-id="{{ row.subject_id if row.scope_applicable else '' }}" data-mg-subject="{{ row.subject|e }}">
               <td>{{ loop.index }}</td>
-              <td class="result-subject-cell"><span class="subj-cell"><span>{{ row.subject }}</span>{{ critical_subject_badge(row.critical_badge, interactive=false, subject_name=row.subject) }}</span></td>
+              <td class="result-subject-cell"><span class="subj-cell"><span>{{ row.subject }}</span>{{ critical_subject_badge(row.critical_badge, interactive=false, subject_name=row.subject) }}</span>{% if not row.scope_applicable %}<small class="class-subject-excluded-note">Diiwaan hore · fasalkan hadda ma khusayso</small>{% endif %}</td>
               <td>{{ row.max_score|academic_number(settings) }}</td>
               <td>{% if row.is_uf %}<strong class="print-grade-badge print-mark-badge uf-result-indicator" title="Ma Gelin — Examination not taken">⚠️ MG</strong>{% else %}<strong class="print-grade-badge print-mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.score|academic_number(settings) }}</strong>{% endif %}</td>
               <td>{% if row.is_uf %}<strong class="print-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken">⚠️ MG</strong>{% else %}<strong class="print-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.grade.grade }}</strong>{% endif %}</td>

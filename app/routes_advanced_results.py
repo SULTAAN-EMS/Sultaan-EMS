@@ -12,14 +12,21 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font
 from sqlalchemy import and_ as db_and, func, or_ as db_or
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import normalize_student_phone, process_result_import, process_student_import, result_entry_import_template, student_template
 from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, ExamMarkingConfiguration, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentCodeAlias, StudentEnrollment, StudentEnrollmentMovement, Subject, LabelTranslation
-from .academic_hierarchy import students_for_year_scope_query, year_classes, year_level_options, year_levels, year_subjects
+from .academic_hierarchy import (
+    students_for_year_scope_query,
+    year_classes,
+    year_level_options,
+    year_levels,
+    year_subjects,
+    year_subjects_for_class_scope,
+)
 from .enrollment_service import (
     EnrollmentValidationError,
     apply_legacy_placement,
@@ -279,7 +286,12 @@ def subjects_for_scope(exam, level_id=None, class_id=None):
         )
         if not year_level:
             return []
-        year_items = year_subjects(exam.academic_year_id, year_level.id, subject_kind="exam")
+        year_items = year_subjects_for_class_scope(
+            exam.academic_year_id,
+            year_level.id,
+            year_class.id if year_class else None,
+            subject_kind="exam",
+        )
         mapped_subjects = scoped_legacy_subjects(year_items)
         if mapped_subjects:
             return mapped_subjects
@@ -308,18 +320,108 @@ def analytics_subject_bridge(academic_year_id, year_level_id=None):
     return year_items, legacy_items
 
 
-def subjects_for_year_level(exam, year_level_id):
-    """Resolve the subject bridge for an enrollment's exact year-level."""
+def subjects_for_year_level(exam, year_level_id, academic_year_class_id=None):
+    """Resolve the subject bridge for one enrollment's exact year/class."""
     if not exam or not year_level_id:
         return []
     year_level = db.session.get(AcademicYearLevel, year_level_id)
     if not year_level or year_level.academic_year_id != exam.academic_year_id:
         return []
-    year_items = year_subjects(exam.academic_year_id, year_level.id, subject_kind="exam")
+    year_items = year_subjects(
+        exam.academic_year_id,
+        year_level.id,
+        subject_kind="exam",
+        academic_year_class_id=academic_year_class_id,
+    )
     subjects = scoped_legacy_subjects(year_items)
     # A year-level without a subject bridge is incomplete setup.  Do not
     # widen the report/result view to the legacy global subject set.
     return subjects
+
+
+def _year_placement_cache(students, academic_year_id):
+    """Load enrollment placements in one query; resolve only legacy rows individually."""
+    students = list(students or [])
+    student_ids = [student.id for student in students if student]
+    placements = {}
+    if student_ids:
+        enrollments = (
+            StudentEnrollment.query.options(
+                joinedload(StudentEnrollment.academic_year_level),
+                joinedload(StudentEnrollment.academic_year_class).joinedload(
+                    AcademicYearClass.academic_year_level
+                ),
+            )
+            .filter(
+                StudentEnrollment.academic_year_id == academic_year_id,
+                StudentEnrollment.student_id.in_(student_ids),
+            )
+            .all()
+        )
+        for enrollment in enrollments:
+            year_level = enrollment.academic_year_level
+            year_class = enrollment.academic_year_class
+            if (
+                not year_level
+                or not year_class
+                or year_level.academic_year_id != academic_year_id
+                or year_class.academic_year_level_id != year_level.id
+            ):
+                continue
+            placements[(enrollment.student_id, academic_year_id)] = {
+                "source": "enrollment",
+                "context_status": "enrollment",
+                "academic_year_id": academic_year_id,
+                "academic_year_level_id": year_level.id,
+                "academic_year_class_id": year_class.id,
+                "academic_level_id": year_level.legacy_level_id,
+                "academic_class_id": year_class.legacy_class_id,
+                "class_name": year_class.name,
+                "level_name": year_level.name,
+            }
+
+    for student in students:
+        key = (student.id, academic_year_id)
+        if key not in placements:
+            placements[key] = resolve_student_academic_context(student, academic_year_id)
+    return placements
+
+
+def _student_exam_subject_ids(student, exam, *, scoped_subject_ids=None, placement_cache=None, offering_cache=None):
+    """Resolve the exam subjects applicable to one student's year/class."""
+    if not student or not exam:
+        return set()
+    placement_cache = placement_cache if placement_cache is not None else {}
+    offering_cache = offering_cache if offering_cache is not None else {}
+    cache_key = (student.id, exam.academic_year_id)
+    if cache_key not in placement_cache:
+        placement_cache[cache_key] = resolve_student_academic_context(student, exam.academic_year_id)
+    placement = placement_cache[cache_key]
+
+    base_ids = set(scoped_subject_ids) if scoped_subject_ids is not None else None
+    if not placement or not placement.get("academic_year_level_id"):
+        return base_ids or set()
+    if exam.academic_level_id and placement.get("academic_level_id") != exam.academic_level_id:
+        return set()
+    if exam.academic_class_id and placement.get("academic_class_id") != exam.academic_class_id:
+        return set()
+
+    offering_key = (
+        exam.academic_year_id,
+        placement["academic_year_level_id"],
+        placement.get("academic_year_class_id"),
+    )
+    if offering_key not in offering_cache:
+        offering_cache[offering_key] = {
+            subject.id
+            for subject in subjects_for_year_level(
+                exam,
+                placement["academic_year_level_id"],
+                placement.get("academic_year_class_id"),
+            )
+        }
+    available_ids = offering_cache[offering_key]
+    return available_ids.intersection(base_ids) if base_ids is not None else set(available_ids)
 
 
 def _year_scope_ids_from_legacy(academic_year_id, level_id=None, class_id=None):
@@ -1076,7 +1178,11 @@ def student_view():
     selected_level_id = selected_placement.get("academic_level_id") or student.academic_level_id
     selected_class_id = selected_placement.get("academic_class_id") or student.academic_class_id
     if selected_enrollment:
-        subjects = subjects_for_year_level(selected_exam, selected_enrollment.academic_year_level_id)
+        subjects = subjects_for_year_level(
+            selected_exam,
+            selected_enrollment.academic_year_level_id,
+            selected_enrollment.academic_year_class_id,
+        )
         selected_level_id = selected_enrollment.academic_year_level.legacy_level_id
         selected_class_id = selected_enrollment.academic_year_class.legacy_class_id
     else:
@@ -2759,30 +2865,56 @@ def build_analytics_results_report_data(academic_year, exam):
         return "f" if gender == "female" else "m"
 
     student_level_lookup = {}
+    student_class_lookup = {}
     for (level_id, _class_id), grouped_students in students_by_level_class.items():
         for student in grouped_students:
             student_level_lookup[student.id] = level_id
+            student_class_lookup[student.id] = _class_id
     subject_ids_by_level = defaultdict(set)
+    subject_ids_by_student = defaultdict(set)
     if legacy_report_mode:
         for level in levels:
             subject_ids_by_level[level.id].update(
                 subject.id
                 for subject in Subject.query.filter_by(academic_level_id=level.id, is_active=True).all()
             )
+        for student in scoped_students:
+            subject_ids_by_student[student.id].update(
+                subject_ids_by_level.get(student_level_lookup.get(student.id), set())
+            )
     else:
+        year_level_by_legacy = {
+            scope.legacy_level_id: scope.id
+            for scope in year_level_scopes
+            if scope.legacy_level_id
+        }
+        year_class_by_legacy_scope = {}
+        subject_scope_cache = {}
         for scope in year_level_scopes:
             if not scope.legacy_level_id:
                 continue
-            subject_ids_by_level[scope.legacy_level_id].update(
-                item.legacy_subject_id
-                for item in year_subjects(academic_year.id, scope.id, subject_kind="exam")
-                if item.legacy_subject_id
-            )
-    year_level_by_legacy = {
-        scope.legacy_level_id: scope.id
-        for scope in year_level_scopes
-        if scope.legacy_level_id
-    }
+            for year_class in year_classes(scope.id):
+                if year_class.legacy_class_id:
+                    year_class_by_legacy_scope[(scope.legacy_level_id, year_class.legacy_class_id)] = year_class.id
+        for student in scoped_students:
+            level_id = student_level_lookup.get(student.id)
+            legacy_class_id = student_class_lookup.get(student.id)
+            scope_id = year_level_by_legacy.get(level_id)
+            year_class_id = year_class_by_legacy_scope.get((level_id, legacy_class_id))
+            cache_key = (scope_id, year_class_id)
+            if cache_key not in subject_scope_cache:
+                subject_scope_cache[cache_key] = {
+                    item.legacy_subject_id
+                    for item in year_subjects_for_class_scope(
+                        academic_year.id,
+                        scope_id,
+                        year_class_id,
+                        subject_kind="exam",
+                    )
+                    if item.legacy_subject_id
+                } if scope_id else set()
+            subject_ids_by_student[student.id].update(subject_scope_cache[cache_key])
+            subject_ids_by_level[level_id].update(subject_scope_cache[cache_key])
     scoped_subjects_by_level = {
         scope.legacy_level_id: {
             subject.id: subject
@@ -2801,7 +2933,7 @@ def build_analytics_results_report_data(academic_year, exam):
         student_level_id = student_level_lookup.get(student_id)
         if (
             student_level_id
-            and subject_id in subject_ids_by_level.get(student_level_id, set())
+            and subject_id in subject_ids_by_student.get(student_id, set())
             and counts_as_exam_sitting(record.status)
         ):
             subject_sitting_student_ids[subject_id].add(student_id)
@@ -2815,7 +2947,7 @@ def build_analytics_results_report_data(academic_year, exam):
         if (
             not level_id
             or not result.subject
-            or result.subject_id not in subject_ids_by_level.get(level_id, set())
+            or result.subject_id not in subject_ids_by_student.get(result.student_id, set())
             or result.student_id not in subject_sitting_student_ids.get(result.subject_id, set())
         ):
             continue
@@ -2907,6 +3039,13 @@ def build_analytics_results_report_data(academic_year, exam):
                 else subjects_for_scope(exam, level_id=level.id)
             )
         }
+        offered_subject_ids = subject_ids_by_level.get(level.id, set())
+        if not legacy_report_mode:
+            level_subjects = {
+                subject_id: subject
+                for subject_id, subject in level_subjects.items()
+                if subject_id in offered_subject_ids
+            }
         for subject in sorted(level_subjects.values(), key=lambda item: (item.sort_order, item.name)):
             scores = [score for _subject, score in results_by_level_subject[level.id].get(subject.id, [])]
             sat_count = len(subject_sitting_student_ids.get(subject.id, set()))
@@ -3098,6 +3237,8 @@ def analytics_grade_drill_down():
             return jsonify({"error": "Selected subject is not configured for this academic year"}), 400
         if selected_year_level and selected_year_subject.academic_year_level_id != selected_year_level.id:
             return jsonify({"error": "Selected subject does not belong to the selected level"}), 400
+        if selected_year_class and not is_year_subject_available_for_class(selected_year_subject, selected_year_class.id):
+            return jsonify({"error": "Selected subject is not available for the selected class"}), 400
 
     if section_id:
         selected_section = db.session.get(AcademicSection, section_id)
@@ -3143,6 +3284,7 @@ def analytics_grade_drill_down():
                 selected_year.id,
                 selected_year_level.id if selected_year_level else None,
                 subject_kind="exam",
+                academic_year_class_id=selected_year_class.id if selected_year_class else None,
             )
             if item.legacy_subject_id
         ]
@@ -3157,12 +3299,37 @@ def analytics_grade_drill_down():
         by_student.setdefault(r.student_id, []).append(r)
 
     rows = []
+    subject_ids_by_class = {}
     for sid, res_list in by_student.items():
         student = student_map.get(sid)
         if not student:
             continue
-        total_score = sum(float(r.score or 0) for r in res_list)
         placement = enrollment_placement_for_student(student, selected_year.id) or {}
+        student_year_class_id = placement.get("academic_year_class_id")
+        if selected_year_subject and not is_year_subject_available_for_class(
+            selected_year_subject,
+            student_year_class_id,
+        ):
+            continue
+        if not selected_year_subject and placement.get("academic_year_level_id"):
+            student_year_level_id = placement["academic_year_level_id"]
+            class_scope_key = (student_year_level_id, student_year_class_id)
+            if class_scope_key not in subject_ids_by_class:
+                subject_ids_by_class[class_scope_key] = {
+                    item.legacy_subject_id
+                    for item in year_subjects_for_class_scope(
+                        selected_year.id,
+                        student_year_level_id,
+                        student_year_class_id,
+                        subject_kind="exam",
+                    )
+                    if item.legacy_subject_id
+                }
+            applicable_ids = subject_ids_by_class[class_scope_key]
+            res_list = [result for result in res_list if result.subject_id in applicable_ids]
+            if not res_list:
+                continue
+        total_score = sum(float(r.score or 0) for r in res_list)
         context_level_id = placement.get("academic_year_level_id") or level_id
         total_max = sum(
             float(resolve_subject_max_score(
@@ -3203,8 +3370,31 @@ def analytics_grade_drill_down():
 def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, scoped_subjects=None, academic_year_level_id=None, year_scoped_subjects=None):
     """Build analytics data for charts using existing grade_for logic"""
     total_students_count = len(students) if students else 0
-    num_scoped_subjects = len(scoped_subjects) if scoped_subjects else 0
-    expected_results = total_students_count * num_scoped_subjects
+    scoped_subject_ids = {
+        subject.id for subject in (scoped_subjects or []) if subject
+    }
+    if not scoped_subject_ids and year_scoped_subjects:
+        scoped_subject_ids = {
+            item.legacy_subject_id
+            for item in year_scoped_subjects
+            if item.legacy_subject_id
+        }
+    placements_by_student = _year_placement_cache(students, exam.academic_year_id)
+    offerings_by_class = {}
+    applicable_subjects_by_student = {}
+    for student in students or []:
+        applicable_subjects_by_student[student.id] = _student_exam_subject_ids(
+            student,
+            exam,
+            scoped_subject_ids=scoped_subject_ids,
+            placement_cache=placements_by_student,
+            offering_cache=offerings_by_class,
+        )
+    expected_results = sum(len(subject_ids) for subject_ids in applicable_subjects_by_student.values())
+    results = [
+        result for result in (results or [])
+        if result.subject_id in applicable_subjects_by_student.get(result.student_id, set())
+    ]
 
     if not results:
         return {
@@ -3249,11 +3439,10 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
     def result_max_score(result, context_exam=None):
         context_exam = context_exam or getattr(result, "exam", None) or exam
         student = students_by_id.get(result.student_id) or result.student
-        placement = (
-            resolve_student_academic_context(student, context_exam.academic_year_id)
-            if student and context_exam
-            else None
-        )
+        placement_key = (student.id, context_exam.academic_year_id) if student and context_exam else None
+        if placement_key and placement_key not in placements_by_student:
+            placements_by_student[placement_key] = resolve_student_academic_context(student, context_exam.academic_year_id)
+        placement = placements_by_student.get(placement_key) if placement_key else None
         display_subject = display_subject_for(result, placement)
         return resolve_subject_max_score(
             display_subject,
@@ -3296,11 +3485,7 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
     # Subject-wise performance
     subject_averages = {}
     for result in results:
-        placement = (
-            resolve_student_academic_context(students_by_id.get(result.student_id), exam.academic_year_id)
-            if students_by_id.get(result.student_id)
-            else None
-        )
+        placement = placements_by_student.get((result.student_id, exam.academic_year_id))
         subject_name = display_subject_for(result, placement).name
         max_score = result_max_score(result, exam)
         pct = round(float(result.score) / float(max_score) * 100, 2) if max_score > 0 else 0
@@ -3316,13 +3501,51 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
     exam_trend_labels = [e.name for e in year_exams]
     year_exam_ids = [year_exam.id for year_exam in year_exams]
     trend_results = (
-        Result.query.options(selectinload(Result.subject))
+        Result.query.options(
+            selectinload(Result.subject),
+            selectinload(Result.student),
+            selectinload(Result.exam),
+        )
         .filter(Result.exam_id.in_(year_exam_ids), Result.is_published.is_(True))
         .all()
         if year_exam_ids else []
     )
+    trend_students = {result.student.id: result.student for result in trend_results if result.student}
+    placements_by_student.update(
+        _year_placement_cache(trend_students.values(), exam.academic_year_id)
+    )
     trend_percentages = {}
     for result in trend_results:
+        trend_student = result.student
+        trend_exam = result.exam
+        trend_placement_key = (
+            (trend_student.id, trend_exam.academic_year_id)
+            if trend_student and trend_exam
+            else None
+        )
+        if trend_placement_key and trend_placement_key not in placements_by_student:
+            placements_by_student[trend_placement_key] = resolve_student_academic_context(
+                trend_student,
+                trend_exam.academic_year_id,
+            )
+        trend_placement = placements_by_student.get(trend_placement_key) if trend_placement_key else None
+        if trend_placement and trend_placement.get("academic_year_level_id"):
+            trend_offering_key = (
+                trend_exam.academic_year_id,
+                trend_placement["academic_year_level_id"],
+                trend_placement.get("academic_year_class_id"),
+            )
+            if trend_offering_key not in offerings_by_class:
+                offerings_by_class[trend_offering_key] = {
+                    subject.id
+                    for subject in subjects_for_year_level(
+                        trend_exam,
+                        trend_placement["academic_year_level_id"],
+                        trend_placement.get("academic_year_class_id"),
+                    )
+                }
+            if result.subject_id not in offerings_by_class[trend_offering_key]:
+                continue
         max_score = result_max_score(result, result.exam)
         if max_score > 0:
             trend_percentages.setdefault(result.exam_id, []).append(
@@ -5119,20 +5342,46 @@ def workbook_response(workbook, filename):
 def build_dashboard_stats(exam):
     """Build statistics for the dashboard"""
     students_query = students_for_scope_query(exam.academic_year_id, exam=exam)
-    student_ids = [student_id for (student_id,) in students_query.with_entities(Student.id).all()]
-    total_students = len(student_ids)
+    students = students_query.all()
+    student_ids = [student.id for student in students]
+    total_students = len(students)
 
     subjects = subjects_for_scope(exam)
     total_subjects = len(subjects)
-    
-    expected_results = total_students * total_subjects if total_subjects > 0 else 0
+    scoped_subject_ids = (
+        {subject.id for subject in subjects}
+        if exam.academic_level_id or exam.academic_class_id
+        else None
+    )
+    placement_cache = _year_placement_cache(students, exam.academic_year_id)
+    offering_cache = {}
+    applicable_subjects = {
+        student.id: _student_exam_subject_ids(
+            student,
+            exam,
+            scoped_subject_ids=scoped_subject_ids,
+            placement_cache=placement_cache,
+            offering_cache=offering_cache,
+        )
+        for student in students
+    }
+    offered_subject_ids = set().union(*applicable_subjects.values()) if applicable_subjects else set()
+    total_subjects = len(offered_subject_ids)
+    expected_results = sum(len(subject_ids) for subject_ids in applicable_subjects.values())
     actual_results = 0
     if student_ids:
-        actual_results = Result.query.filter(
+        published_results = Result.query.with_entities(
+            Result.student_id,
+            Result.subject_id,
+        ).filter(
             Result.exam_id == exam.id,
             Result.student_id.in_(student_ids),
             Result.is_published.is_(True),
-        ).count()
+        ).all()
+        actual_results = sum(
+            1 for student_id, subject_id in published_results
+            if subject_id in applicable_subjects.get(student_id, set())
+        )
     completion_percentage = round((actual_results / expected_results * 100), 2) if expected_results > 0 else 0
     
     # Get active classes
@@ -5287,20 +5536,45 @@ def build_single_class_card(exam, academic_level=None, academic_class=None, sect
         label = "All Students"
         student_query = students_for_scope_query(exam.academic_year_id)
     
-    # Fetch IDs once and reuse them for both the count and completion query.
-    # This removes a duplicate full scope query from every dashboard card.
-    student_ids = [student_id for (student_id,) in student_query.with_entities(Student.id).all()]
-    student_count = len(student_ids)
+    students = student_query.all()
+    student_ids = [student.id for student in students]
+    student_count = len(students)
 
-    # Calculate completion for this scope (only published results)
-    if student_ids:
+    if students:
         subjects = subjects_for_scope(
             exam,
             level_id=academic_level.id if academic_level else None,
             class_id=academic_class.id if academic_class else None,
         )
-        expected = len(student_ids) * len(subjects)
-        actual = Result.query.filter(Result.exam_id == exam.id, Result.student_id.in_(student_ids), Result.is_published.is_(True)).count()
+        # An unscoped level card computes each student's own class offering;
+        # a class/level card stays constrained to its configured subjects.
+        subject_scope_is_explicit = bool(academic_level or academic_class)
+        scoped_subject_ids = {subject.id for subject in subjects} if subject_scope_is_explicit else None
+        placement_cache = _year_placement_cache(students, exam.academic_year_id)
+        offering_cache = {}
+        applicable_subjects = {
+            student.id: _student_exam_subject_ids(
+                student,
+                exam,
+                scoped_subject_ids=scoped_subject_ids,
+                placement_cache=placement_cache,
+                offering_cache=offering_cache,
+            )
+            for student in students
+        }
+        expected = sum(len(subject_ids) for subject_ids in applicable_subjects.values())
+        published_results = Result.query.with_entities(
+            Result.student_id,
+            Result.subject_id,
+        ).filter(
+            Result.exam_id == exam.id,
+            Result.student_id.in_(student_ids),
+            Result.is_published.is_(True),
+        ).all()
+        actual = sum(
+            1 for student_id, subject_id in published_results
+            if subject_id in applicable_subjects.get(student_id, set())
+        )
         completion = round((actual / expected * 100), 2) if expected > 0 else 0
     else:
         completion = 0

@@ -10,7 +10,7 @@ from pathlib import Path
 import json
 from types import SimpleNamespace
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, select
 
 from . import db
 from .models import (
@@ -18,6 +18,7 @@ from .models import (
     AcademicLevel,
     AcademicYear,
     AcademicYearClass,
+    AcademicYearClassSubjectExclusion,
     AcademicYearLevel,
     AcademicYearSubject,
     Exam,
@@ -78,7 +79,13 @@ def year_classes_for_year(year_id, year_level_id, active_only=True):
     return year_classes(year_level.id, active_only=active_only)
 
 
-def year_subjects(year_id, year_level_id=None, active_only=True, subject_kind=None):
+def year_subjects(
+    year_id,
+    year_level_id=None,
+    active_only=True,
+    subject_kind=None,
+    academic_year_class_id=None,
+):
     query = AcademicYearSubject.query.filter_by(academic_year_id=year_id)
     if year_level_id:
         query = query.filter_by(academic_year_level_id=year_level_id)
@@ -86,7 +93,86 @@ def year_subjects(year_id, year_level_id=None, active_only=True, subject_kind=No
         query = query.filter_by(is_active=True)
     if subject_kind is not None:
         query = query.filter_by(subject_kind=subject_kind)
+    if academic_year_class_id:
+        year_class = (
+            AcademicYearClass.query
+            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+            .filter(
+                AcademicYearClass.id == academic_year_class_id,
+                AcademicYearLevel.academic_year_id == year_id,
+                AcademicYearClass.is_active.is_(True),
+            )
+            .first()
+        )
+        if not year_class or (year_level_id and year_class.academic_year_level_id != year_level_id):
+            return []
+        query = query.filter(AcademicYearSubject.academic_year_level_id == year_class.academic_year_level_id)
+        excluded_ids = select(AcademicYearClassSubjectExclusion.academic_year_subject_id).filter_by(
+            academic_year_class_id=year_class.id
+        )
+        query = query.filter(~AcademicYearSubject.id.in_(excluded_ids))
     return query.order_by(AcademicYearSubject.sort_order, AcademicYearSubject.name, AcademicYearSubject.id).all()
+
+
+def year_subjects_for_class_scope(
+    year_id,
+    year_level_id,
+    year_class_id,
+    active_only=True,
+    subject_kind=None,
+):
+    """Resolve offerings for one student/class without widening an unknown class.
+
+    A missing class mapping may use the old level-wide behavior only when the
+    year-level has no active year-scoped classes at all. Once classes exist,
+    an unresolved class cannot safely inherit every class's subjects.
+    """
+    year_level = validate_year_level(year_id, year_level_id)
+    if not year_level:
+        return []
+    if year_class_id:
+        return year_subjects(
+            year_id,
+            year_level_id,
+            active_only=active_only,
+            subject_kind=subject_kind,
+            academic_year_class_id=year_class_id,
+        )
+    has_active_classes = AcademicYearClass.query.filter_by(
+        academic_year_level_id=year_level.id,
+        is_active=True,
+    ).first() is not None
+    if has_active_classes:
+        return []
+    return year_subjects(
+        year_id,
+        year_level_id,
+        active_only=active_only,
+        subject_kind=subject_kind,
+    )
+
+
+def is_year_subject_available_for_class(year_subject, academic_year_class_id):
+    """Validate an active offering against its exact year-scoped class."""
+    if not year_subject or not year_subject.is_active or not academic_year_class_id:
+        return False
+    year_class = (
+        AcademicYearClass.query
+        .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+        .filter(
+            AcademicYearClass.id == academic_year_class_id,
+            AcademicYearLevel.academic_year_id == year_subject.academic_year_id,
+            AcademicYearClass.academic_year_level_id == year_subject.academic_year_level_id,
+            AcademicYearClass.is_active.is_(True),
+        )
+        .first()
+    )
+    if not year_class:
+        return False
+    return not AcademicYearClassSubjectExclusion.query.filter_by(
+        academic_year_class_id=year_class.id,
+        academic_year_subject_id=year_subject.id,
+    ).first()
 
 
 def validate_year_level(year_id, year_level_id):

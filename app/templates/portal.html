@@ -522,9 +522,9 @@
               <thead><tr><th>TT.</th><th>Maaddo</th><th>Dhibcaha Guud</th><th>Dhibcaha la Helay</th><th>Darajo</th><th>Darajo Dhibceed</th></tr></thead>
               <tbody>
                 {% for row in result.subjects %}
-                  <tr data-mg-subject-id="{{ row.subject_id or '' }}" data-mg-subject="{{ row.subject|e }}" data-mg-theme-index="{{ loop.index0 % 8 }}">
+                  <tr data-mg-subject-id="{{ row.subject_id if row.scope_applicable else '' }}" data-mg-subject="{{ row.subject|e }}" data-mg-theme-index="{{ loop.index0 % 8 }}">
                     <td data-label="TT.">{{ loop.index }}</td>
-                    <td data-label="Maaddo" class="result-subject-cell"><span class="subj-cell"><span>{{ row.subject }}</span>{{ critical_subject_badge(row.critical_badge, interactive=true, subject_name=row.subject, score=row.score, max_score=row.max_score) }}</span></td>
+                    <td data-label="Maaddo" class="result-subject-cell"><span class="subj-cell"><span>{{ row.subject }}</span>{{ critical_subject_badge(row.critical_badge, interactive=true, subject_name=row.subject, score=row.score, max_score=row.max_score) }}</span>{% if not row.scope_applicable %}<small class="class-subject-excluded-note">Diiwaan hore · fasalkan hadda ma khusayso</small>{% endif %}</td>
                     <td data-label="Dhibcaha Guud">{{ row.max_score|academic_number(settings) }}</td>
                     <td data-label="Dhibcaha la Helay">{% if row.is_uf %}<span class="dynamic-grade-badge mark-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b><span class="mg-danger-icon" aria-hidden="true">⚠️</span><span>MG</span></b></span>{% else %}<span class="dynamic-grade-badge mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.score|academic_number(settings) }}</b></span>{% endif %}</td>
                     <td data-label="Darajo">{% if row.is_uf %}<span class="dynamic-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken" aria-label="Ma Gelin — Examination not taken"><b><span class="mg-danger-icon" aria-hidden="true">⚠️</span><span>MG</span></b></span>{% else %}<span class="dynamic-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};"><b style="background: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.grade.grade }}</b></span>{% endif %}</td>
@@ -569,7 +569,7 @@
           <aside class="reference-right-column">
             <section class="reference-academic-summary">
               <h3>{{ settings.result_academic_summary_title if settings.result_academic_summary_title != 'Academic Summary' else 'SOO KOOBID' }}</h3>
-              <div><span><i class="fa-solid fa-book-open"></i> Maadooyinka Guud</span><strong>{{ result.subjects|length + (result.behavior_reports|default([])|length) }}</strong></div>
+              <div><span><i class="fa-solid fa-book-open"></i> Maadooyinka Guud</span><strong>{{ result.subjects|selectattr('scope_applicable')|list|length + (result.behavior_reports|default([])|length) }}</strong></div>
               <div><span><i class="fa-solid fa-list-check"></i> Dhibcaha Guud</span><strong>{{ result.max_total|academic_number(settings) }}</strong></div>
               <div><span><i class="fa-solid fa-chart-line"></i> Dhibcaha Guud ee la helay</span><strong>{{ result.total|academic_number(settings) }}</strong></div>
               <div><span><i class="fa-solid fa-chart-pie"></i> Celceliska Boqolleyda</span><strong>{{ result.average|academic_number(settings) }}%</strong></div>

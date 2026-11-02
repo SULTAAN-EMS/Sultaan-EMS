@@ -16,8 +16,8 @@ from flask_login import login_required
 from app import create_app, db
 from app.models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel,
-    AcademicSection, AcademicYearSubject, Exam, ExamMarkingConfiguration, GradeScale, Result, Student, StudentEnrollment, Subject, Teacher,
-    TeacherActivity, TeacherResultAssignment, TeacherResultEvent, TeacherResultMarkRevision, TeacherResultSubmission, User,
+    AcademicSection, AcademicYearClassSubjectExclusion, AcademicYearSubject, Exam, ExamMarkingConfiguration, GradeScale, Result, Student, StudentEnrollment, Subject, Teacher,
+    AuditLog, TeacherActivity, TeacherResultAssignment, TeacherResultEvent, TeacherResultMarkRevision, TeacherResultSubmission, User,
     TeacherResultMark, TeacherResultMissingMarkReport, Setting,
 )
 from migrations import phase_14_teacher_result_entry
@@ -1219,6 +1219,26 @@ class TestTeacherResultEntry(unittest.TestCase):
             "assignment_id": other_assignment.id, "action": "submit",
         })
         self.assertEqual(response.status_code, 404)
+        self.assertEqual(Result.query.count(), 0)
+
+    def test_class_excluded_subject_blocks_existing_teacher_assignment_writes(self):
+        year_subject = AcademicYearSubject.query.filter_by(legacy_subject_id=self.subject.id).one()
+        db.session.add(AcademicYearClassSubjectExclusion(
+            academic_year_class_id=self.year_class.id,
+            academic_year_subject_id=year_subject.id,
+        ))
+        db.session.commit()
+        self._teacher_login()
+
+        response = self.client.post("/teacher/result-entry/autosave", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "score": "42",
+        })
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("maaddadan fasalkan", response.json["message"].lower())
+        self.assertEqual(TeacherResultMark.query.count(), 0)
         self.assertEqual(Result.query.count(), 0)
 
     def test_admin_can_create_assignment_only_for_existing_teacher_scope(self):

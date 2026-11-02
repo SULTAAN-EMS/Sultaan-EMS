@@ -12,6 +12,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from PIL import Image
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from . import db
+from .academic_hierarchy import is_year_subject_available_for_class, year_subjects
 from .models import (
     AcademicClass,
     AcademicLevel,
@@ -265,7 +266,7 @@ def result_entry_import_template(year_id=None, exam_id=None, level_id=None, clas
         # keeps generated headers and validator resolution on one contract.
         scoped_subjects = [
             binding["year_subject"]
-            for binding in _result_import_subject_bindings(selected_year, year_level)
+            for binding in _result_import_subject_bindings(selected_year, year_level, year_class)
         ]
     elif effective_level_id and selected_year:
         # An invalid year/level pairing must produce an empty safe template,
@@ -957,7 +958,7 @@ def _resolve_result_import_scope(year_obj, level_id=None, class_id=None, section
     return year_level, year_class, section
 
 
-def _result_import_subject_bindings(year_obj=None, year_level=None):
+def _result_import_subject_bindings(year_obj=None, year_level=None, year_class=None):
     """Return only subjects usable by the selected year/level.
 
     A binding keeps the year-aware display name/max mark alongside the legacy
@@ -965,18 +966,12 @@ def _result_import_subject_bindings(year_obj=None, year_level=None):
     """
     bindings = []
     if year_obj:
-        query = AcademicYearSubject.query.filter_by(
-            academic_year_id=year_obj.id,
+        for year_subject in year_subjects(
+            year_obj.id,
+            year_level.id if year_level else None,
             subject_kind="exam",
-            is_active=True,
-        )
-        if year_level:
-            query = query.filter_by(academic_year_level_id=year_level.id)
-        for year_subject in query.order_by(
-            AcademicYearSubject.sort_order,
-            AcademicYearSubject.name,
-            AcademicYearSubject.id,
-        ).all():
+            academic_year_class_id=year_class.id if year_class else None,
+        ):
             legacy_subject = db.session.get(Subject, year_subject.legacy_subject_id) if year_subject.legacy_subject_id else None
             if legacy_subject:
                 bindings.append({"year_subject": year_subject, "subject": legacy_subject})
@@ -1264,6 +1259,11 @@ def process_result_import(
                             else student_year_level_id
                         )
                         if target_level_id and year_subject.academic_year_level_id != target_level_id:
+                            continue
+                        if placement and not is_year_subject_available_for_class(
+                            year_subject,
+                            placement.get("academic_year_class_id"),
+                        ):
                             continue
                     elif selected_year or student_year_level_id:
                         if not student_year_level_id or subject.academic_level_id != placement.get("academic_level_id"):

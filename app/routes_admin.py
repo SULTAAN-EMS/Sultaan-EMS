@@ -15,7 +15,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, AuditLog, Exam, ExamHall, ExamSession, ExamSessionSubject, ExamType, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, PromotionEvaluation, PromotionOutcomeApplication, PromotionRule, PromotionRuleCriticalSubject, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentEnrollment, StudentEnrollmentMovement, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue, BehaviorAttendanceRecord, BehaviorEvent, BehaviorSession
+from .models import AcademicLevel, AcademicClass, AcademicSection, AcademicYear, AcademicYearClass, AcademicYearClassSubjectExclusion, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, AuditLog, Exam, ExamHall, ExamSession, ExamSessionSubject, ExamType, GradeScale, IncidentAction, IncidentAttachment, IncidentCategory, IncidentReport, IncidentReportCategory, PromotionEvaluation, PromotionOutcomeApplication, PromotionRule, PromotionRuleCriticalSubject, ReportVerification, Result, SchoolClass, SeverityLevel, Setting, Student, StudentEnrollment, StudentEnrollmentMovement, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, Subject, User, ExamInvigilator, InvigilatorLoginHistory, IncidentReportSettings, IdCardIssue, BehaviorAttendanceRecord, BehaviorEvent, BehaviorSession
 from .academic_hierarchy import validate_year_level, year_classes, year_classes_for_year, year_levels, year_subjects
 from .permissions import PERMISSIONS, can, enforce_endpoint_permission, permission_required
 from .security import ALLOWED_AUDIO, ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
@@ -3142,6 +3142,7 @@ def config_center():
     classes_by_level = {}
     class_student_counts = {}
     subject_class_map = {}
+    subject_class_exclusion_map = {}
     subject_icons = {}
     selected_subject_year_id = _parse_int(request.args.get("year_id"))
     selected_subject_level_id = _parse_int(request.args.get("level_id"))
@@ -3178,6 +3179,20 @@ def config_center():
         for subject in items:
             subject_icons[subject.id] = subject_icon(subject.name, settings)
             subject_class_map[subject.id] = year_classes(subject.academic_year_level_id)
+        active_class_ids_by_subject = {
+            subject.id: {year_class.id for year_class in subject_class_map.get(subject.id, [])}
+            for subject in items
+        }
+        subject_ids = [subject.id for subject in items]
+        if subject_ids:
+            exclusions = AcademicYearClassSubjectExclusion.query.filter(
+                AcademicYearClassSubjectExclusion.academic_year_subject_id.in_(subject_ids)
+            ).all()
+            for exclusion in exclusions:
+                if exclusion.academic_year_class_id in active_class_ids_by_subject.get(exclusion.academic_year_subject_id, set()):
+                    subject_class_exclusion_map.setdefault(exclusion.academic_year_subject_id, set()).add(
+                        exclusion.academic_year_class_id
+                    )
     elif section == 'audit-logs':
         items = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(50).all()
     elif section == 'archive':
@@ -3216,6 +3231,7 @@ def config_center():
                          classes_by_level=classes_by_level,
                          class_student_counts=class_student_counts,
                          subject_class_map=subject_class_map,
+                         subject_class_exclusion_map=subject_class_exclusion_map,
                          subject_icons=subject_icons,
                          school_stage_labels=SCHOOL_STAGE_LABELS,
                          selected_subject_year_id=selected_subject_year_id,
@@ -3676,6 +3692,16 @@ def _promotion_evaluation_page_data(year_id=None, level_id=None, exam_id=None, c
         )
     selected_exam = next((exam for exam in exams if exam.id == exam_id), None)
     subjects = valid_promotion_subjects(year_id, level_id) if selected_level else []
+    if selected_class:
+        available_subject_ids = {
+            subject.id
+            for subject in year_subjects(
+                year_id,
+                level_id,
+                academic_year_class_id=selected_class.id,
+            )
+        }
+        subjects = [subject for subject in subjects if subject.id in available_subject_ids]
     subject_maxima = promotion_subject_maxima(
         subjects,
         exam=selected_exam,
@@ -3695,6 +3721,8 @@ def _promotion_evaluation_page_data(year_id=None, level_id=None, exam_id=None, c
         default_subject_ids.update(
             item.academic_year_subject_id for item in rule.critical_subjects
         )
+    if selected_class:
+        default_subject_ids.intersection_update({subject.id for subject in subjects})
     return {
         "years": years,
         "selected_year": selected_year,
@@ -4677,6 +4705,67 @@ def config_deactivate_subject(subject_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)})
+
+
+@admin_bp.route("/config-center/api/subjects/<int:subject_id>/class-availability", methods=["PUT"])
+@login_required
+def config_update_subject_class_availability(subject_id):
+    """Save class-specific availability without changing the level offering."""
+    subject = db.session.get(AcademicYearSubject, subject_id)
+    if not subject:
+        return jsonify({'success': False, 'message': 'Maaddada lama helin.'}), 404
+    if not subject.is_active or subject.subject_kind != 'exam':
+        return jsonify({'success': False, 'message': 'Kaliya maaddo imtixaan oo firfircoon ayaa fasal-gaar looga maamuli karaa.'}), 409
+
+    payload = request.get_json(silent=True) or {}
+    raw_ids = payload.get('available_class_ids')
+    if not isinstance(raw_ids, list):
+        return jsonify({'success': False, 'message': 'Xogta fasallada lama aqbalin.'}), 400
+    try:
+        available_ids = {int(value) for value in raw_ids}
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Aqoonsiga fasalku sax ma aha.'}), 400
+
+    active_classes = year_classes(subject.academic_year_level_id)
+    active_class_ids = {item.id for item in active_classes}
+    if not available_ids.issubset(active_class_ids):
+        return jsonify({'success': False, 'message': 'Fasallada la doortay kuma wada jiraan heerka maaddadan.'}), 400
+
+    existing = {
+        row.academic_year_class_id: row
+        for row in AcademicYearClassSubjectExclusion.query.filter(
+            AcademicYearClassSubjectExclusion.academic_year_subject_id == subject.id,
+            AcademicYearClassSubjectExclusion.academic_year_class_id.in_(active_class_ids or {-1}),
+        ).all()
+    }
+    previous_available = sorted(active_class_ids - set(existing))
+    expected_excluded = active_class_ids - available_ids
+    if expected_excluded == set(existing):
+        return jsonify({'success': True, 'message': 'Isbeddel cusub ma jiro.'})
+
+    try:
+        for class_id, exclusion in existing.items():
+            if class_id in available_ids:
+                db.session.delete(exclusion)
+        for class_id in expected_excluded - set(existing):
+            db.session.add(AcademicYearClassSubjectExclusion(
+                academic_year_class_id=class_id,
+                academic_year_subject_id=subject.id,
+            ))
+        _audit_config_change(
+            'Configuration Center Subject Class Availability Updated',
+            'subjects',
+            subject,
+            old_value={'available_class_ids': previous_available},
+            new_value={'available_class_ids': sorted(available_ids)},
+            reason='Class-specific subject availability; saved results and existing records are retained.',
+        )
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Helitaanka maaddada fasallada waa la kaydiyey.'})
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception('Could not update class-specific subject availability')
+        return jsonify({'success': False, 'message': 'Isbeddelka lama kaydin. Dib u eeg fasalka iyo maaddada.'}), 500
 
 
 @admin_bp.route("/config-center/api/subjects", methods=["POST"])

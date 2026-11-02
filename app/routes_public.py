@@ -11,6 +11,7 @@ from sqlalchemy.orm import joinedload
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from . import csrf, db
+from .academic_hierarchy import year_subjects, year_subjects_for_class_scope
 from .i18n import language_redirect
 from .models import AcademicLevel, AcademicYear, AcademicYearSubject, Exam, ExamHall, ExamHallVersion, ExamInvigilator, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeatMixerAssignment, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, StudentEnrollment, Subject
 from .services import attendance_uf_record, get_settings, result_payload, result_success_overlay_config, scoped_legacy_subjects, top_students_for_class
@@ -114,16 +115,12 @@ def incident_subjects_for_student(student, academic_year_id=None, placement=None
     if not level_id:
         return []
     if placement and placement.get("academic_year_level_id"):
-        year_items = AcademicYearSubject.query.filter_by(
-                academic_year_id=academic_year_id,
-                academic_year_level_id=placement.get("academic_year_level_id"),
-                subject_kind="exam",
-                is_active=True,
-            ).order_by(
-                AcademicYearSubject.sort_order,
-                AcademicYearSubject.name,
-                AcademicYearSubject.id,
-            ).all()
+        year_items = year_subjects_for_class_scope(
+            academic_year_id,
+            placement.get("academic_year_level_id"),
+            placement.get("academic_year_class_id"),
+            subject_kind="exam",
+        )
         mapped_ids = [row.legacy_subject_id for row in year_items if row.legacy_subject_id]
         # A year-aware scope with no subject bridge is incomplete setup; do
         # not silently widen it to the global subject table.
@@ -952,16 +949,12 @@ def _feedback_subject_names(student, exam):
     mapped_ids = []
     year_items = []
     if placement.get("academic_year_level_id"):
-        year_items = AcademicYearSubject.query.filter_by(
-                academic_year_id=exam.academic_year_id,
-                academic_year_level_id=placement.get("academic_year_level_id"),
-                subject_kind="exam",
-                is_active=True,
-            ).order_by(
-                AcademicYearSubject.sort_order,
-                AcademicYearSubject.name,
-                AcademicYearSubject.id,
-            ).all()
+        year_items = year_subjects_for_class_scope(
+            exam.academic_year_id,
+            placement.get("academic_year_level_id"),
+            placement.get("academic_year_class_id"),
+            subject_kind="exam",
+        )
         mapped_ids = [row.legacy_subject_id for row in year_items if row.legacy_subject_id]
         behavior_items = AcademicYearSubject.query.filter_by(
                 academic_year_id=exam.academic_year_id,
@@ -1080,16 +1073,12 @@ def feedback_mg_details():
     year_items = []
     scoped_subject_by_id = {}
     if placement.get("academic_year_level_id"):
-        year_items = AcademicYearSubject.query.filter_by(
-            academic_year_id=exam.academic_year_id,
-            academic_year_level_id=placement.get("academic_year_level_id"),
+        year_items = year_subjects_for_class_scope(
+            exam.academic_year_id,
+            placement.get("academic_year_level_id"),
+            placement.get("academic_year_class_id"),
             subject_kind="exam",
-            is_active=True,
-        ).order_by(
-            AcademicYearSubject.sort_order,
-            AcademicYearSubject.name,
-            AcademicYearSubject.id,
-        ).all()
+        )
         scoped_subject_by_id = {
             item.id: item for item in scoped_legacy_subjects(year_items)
         }

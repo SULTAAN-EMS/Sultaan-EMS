@@ -13,6 +13,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from . import db
+from .academic_hierarchy import year_subjects_for_class_scope
 from .models import (
     AcademicYear,
     AcademicYearClass,
@@ -757,7 +758,16 @@ def evaluate_student_promotion(student_enrollment, evaluation_context, *, persis
     )
     if student_enrollment.academic_year_id != year.id or student_enrollment.academic_year_level_id != level.id:
         raise PromotionValidationError("StudentEnrollment does not belong to the selected evaluation scope")
-    subjects = evaluation_subjects(year.id, level.id, evaluation_context.get("subject_ids"))
+    requested_subjects = evaluation_subjects(year.id, level.id, evaluation_context.get("subject_ids"))
+    class_subject_ids = {
+        subject.id
+        for subject in year_subjects_for_class_scope(
+            year.id,
+            level.id,
+            student_enrollment.academic_year_class_id,
+        )
+    }
+    subjects = [subject for subject in requested_subjects if subject.id in class_subject_ids]
     mapped, evaluation_status, data_reason = _result_snapshot_for_student(
         student_enrollment, exam, subjects
     )
@@ -795,6 +805,17 @@ def evaluate_student_promotion(student_enrollment, evaluation_context, *, persis
     if rule:
         for mapping in rule.critical_subjects:
             subject = mapping.academic_year_subject
+            if subject.id not in class_subject_ids:
+                critical_results.append({
+                    "academic_year_subject_id": subject.id,
+                    "subject": subject.name,
+                    "score": None,
+                    "maximum": None,
+                    "percentage": None,
+                    "threshold": critical_threshold,
+                    "status": "NOT_APPLICABLE",
+                })
+                continue
             result = mapped.get(subject.id)
             if evaluation_status != "EVALUATED" or not result:
                 status = "NOT_EVALUATED"
