@@ -30,10 +30,12 @@ from .behavior_service import (
 )
 from .models import (
     AcademicYearLevelAttendanceDay,
+    AcademicYearLevelShiftAttendanceDay,
     BehaviorAttendanceDay,
     BehaviorAttendanceRecord,
     BehaviorAttendanceStatus,
     BehaviorAttendanceStatusLevel,
+    BehaviorAttendanceStatusShiftLevel,
     BehaviorConfiguration,
     BehaviorSession,
     StudentEnrollment,
@@ -47,6 +49,8 @@ DEFAULT_ATTENDANCE_STATUSES = (
     {"key": "excused", "label": "Cudurdaar", "polarity": "neutral", "points": "0", "sort_order": 4},
     {"key": "official_leave", "label": "Fasaxid Rasmi ah", "polarity": "neutral", "points": "0", "sort_order": 5},
 )
+
+ATTENDANCE_SHIFTS = ("morning", "afternoon")
 
 OFFICIAL_ATTENDANCE_LABELS = {
     "present": "Joogid",
@@ -242,6 +246,57 @@ def update_attendance_active_days(configuration, active_days, academic_year_leve
     return before, selected
 
 
+def ensure_shift_attendance_days(configuration, academic_year_level_id, school_shift):
+    """Initialize a shift calendar from the current level calendar once."""
+    configuration = validate_behavior_configuration(configuration)
+    level_id = _attendance_level_id(configuration, academic_year_level_id)
+    shift = (school_shift or "").strip().lower()
+    if shift not in ATTENDANCE_SHIFTS:
+        raise BehaviorValidationError("Dooro Gelin Hore ama Gelin Dambe.")
+    base_days = ensure_level_attendance_days(configuration, level_id)
+    existing = {
+        item.weekday: item
+        for item in AcademicYearLevelShiftAttendanceDay.query.filter_by(
+            academic_year_level_id=level_id,
+            school_shift=shift,
+        ).all()
+    }
+    base_by_weekday = {item.weekday: item for item in base_days}
+    for weekday in ALL_WEEKDAYS:
+        if weekday in existing:
+            existing[weekday].label = CANONICAL_WEEKDAY_LABELS[weekday]
+            continue
+        source = base_by_weekday.get(weekday)
+        db.session.add(AcademicYearLevelShiftAttendanceDay(
+            academic_year_level_id=level_id,
+            school_shift=shift,
+            weekday=weekday,
+            label=CANONICAL_WEEKDAY_LABELS[weekday],
+            is_active=bool(source and source.is_active),
+        ))
+    db.session.flush()
+    days = AcademicYearLevelShiftAttendanceDay.query.filter_by(
+        academic_year_level_id=level_id,
+        school_shift=shift,
+    ).all()
+    return _sort_attendance_days(days)
+
+
+def update_shift_attendance_active_days(configuration, active_days, academic_year_level_id, school_shift):
+    """Update only one level's calendar for one school shift."""
+    try:
+        selected = {int(value) for value in active_days}
+    except (TypeError, ValueError):
+        raise BehaviorValidationError("School day selection is invalid")
+    if not selected.issubset(set(ALL_WEEKDAYS)):
+        raise BehaviorValidationError("School day selection is invalid")
+    days = ensure_shift_attendance_days(configuration, academic_year_level_id, school_shift)
+    before = {item.weekday for item in days if item.is_active}
+    for day in days:
+        day.is_active = day.weekday in selected
+    return before, selected
+
+
 def ensure_attendance_defaults(configuration, academic_year_level_id=None):
     """Ensure automatic status scoring and the canonical attendance defaults."""
     configuration = validate_behavior_configuration(configuration)
@@ -314,7 +369,7 @@ def ensure_attendance_defaults(configuration, academic_year_level_id=None):
     return configuration
 
 
-def ensure_status_level_points(configuration, academic_year_level_id=None):
+def ensure_status_level_points(configuration, academic_year_level_id=None, school_shift=None):
     """Create missing per-level status point overrides without rewriting edits."""
     configuration = validate_behavior_configuration(configuration)
     level_ids = configuration_level_ids(configuration)
@@ -342,33 +397,104 @@ def ensure_status_level_points(configuration, academic_year_level_id=None):
                     points=decimal_value(status.points or 0, "Attendance points", minimum="0"),
                 )
             )
+    shift = (school_shift or "").strip().lower()
+    if shift:
+        if shift not in ATTENDANCE_SHIFTS:
+            raise BehaviorValidationError("Dooro Gelin Hore ama Gelin Dambe.")
+        db.session.flush()
+        base_rows = {
+            (item.behavior_attendance_status_id, item.academic_year_level_id): item
+            for item in BehaviorAttendanceStatusLevel.query.filter(
+                BehaviorAttendanceStatusLevel.behavior_configuration_id == configuration.id,
+                BehaviorAttendanceStatusLevel.academic_year_level_id.in_(level_ids or {-1}),
+            ).all()
+        }
+        shift_rows = {
+            (item.behavior_attendance_status_id, item.academic_year_level_id): item
+            for item in BehaviorAttendanceStatusShiftLevel.query.filter(
+                BehaviorAttendanceStatusShiftLevel.behavior_configuration_id == configuration.id,
+                BehaviorAttendanceStatusShiftLevel.academic_year_level_id.in_(level_ids or {-1}),
+                BehaviorAttendanceStatusShiftLevel.school_shift == shift,
+            ).all()
+        }
+        for status in statuses:
+            for level_id in level_ids:
+                if (status.id, level_id) in shift_rows:
+                    continue
+                base = base_rows.get((status.id, level_id))
+                db.session.add(BehaviorAttendanceStatusShiftLevel(
+                    behavior_attendance_status_id=status.id,
+                    behavior_configuration_id=configuration.id,
+                    academic_year_level_id=level_id,
+                    school_shift=shift,
+                    points=decimal_value(
+                        base.points if base is not None else status.points or 0,
+                        "Attendance points",
+                        minimum="0",
+                    ),
+                ))
     db.session.flush()
     return statuses
 
 
-def attendance_status_points(status, academic_year_level_id=None, session=None):
+def attendance_status_points(status, academic_year_level_id=None, session=None, school_shift=None, cache=None):
     """Return the session daily-positive override or configured status points."""
     if not status:
         return Decimal("0.000")
+    session_shift = (getattr(session, "applicable_shift", None) or "all").strip().lower()
+    requested_shift = (school_shift or "").strip().lower()
+    result = None
     if (
         session is not None
         and session_has_date_window(session)
         and (status.key or "").strip().lower() in SESSION_DAILY_POSITIVE_ATTENDANCE_KEYS
         and session.attendance_present_weight is not None
+        and (not requested_shift or session_shift == requested_shift)
     ):
-        return decimal_value(
+        result = decimal_value(
             session.attendance_present_weight,
             "Session daily positive Attendance points",
             minimum="0",
         )
+    shift = requested_shift or session_shift
+    cache_key = (
+        status.id,
+        int(academic_year_level_id) if academic_year_level_id is not None else None,
+        shift,
+        getattr(session, "id", None),
+        str(getattr(session, "attendance_present_weight", None)),
+    )
+    if result is not None:
+        if cache is not None:
+            cache[cache_key] = result
+        return result
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
+    if shift in ATTENDANCE_SHIFTS and academic_year_level_id is not None:
+        shift_override = BehaviorAttendanceStatusShiftLevel.query.filter_by(
+            behavior_attendance_status_id=status.id,
+            academic_year_level_id=int(academic_year_level_id),
+            school_shift=shift,
+        ).first()
+        if shift_override is not None:
+            result = decimal_value(shift_override.points or 0, "Attendance points", minimum="0")
+            if cache is not None:
+                cache[cache_key] = result
+            return result
     if academic_year_level_id is not None:
         override = BehaviorAttendanceStatusLevel.query.filter_by(
             behavior_attendance_status_id=status.id,
             academic_year_level_id=int(academic_year_level_id),
         ).first()
         if override is not None:
-            return decimal_value(override.points or 0, "Attendance points", minimum="0")
-    return decimal_value(status.points or 0, "Attendance points", minimum="0")
+            result = decimal_value(override.points or 0, "Attendance points", minimum="0")
+            if cache is not None:
+                cache[cache_key] = result
+            return result
+    result = decimal_value(status.points or 0, "Attendance points", minimum="0")
+    if cache is not None:
+        cache[cache_key] = result
+    return result
 
 
 def attendance_status_polarity(status, session=None):
@@ -384,11 +510,11 @@ def attendance_status_polarity(status, session=None):
     return (getattr(status, "polarity", None) or "neutral").strip().lower()
 
 
-def attendance_statuses(configuration, active_only=True, academic_year_level_id=None, session=None):
+def attendance_statuses(configuration, active_only=True, academic_year_level_id=None, session=None, school_shift=None):
     configuration = validate_behavior_configuration(configuration)
     if academic_year_level_id is not None:
         level_id = _attendance_level_id(configuration, academic_year_level_id)
-        ensure_status_level_points(configuration, level_id)
+        ensure_status_level_points(configuration, level_id, school_shift)
     query = BehaviorAttendanceStatus.query.filter_by(
         behavior_configuration_id=configuration.id
     ).order_by(BehaviorAttendanceStatus.sort_order, BehaviorAttendanceStatus.id)
@@ -396,14 +522,40 @@ def attendance_statuses(configuration, active_only=True, academic_year_level_id=
         query = query.filter_by(is_active=True)
     statuses = query.all()
     for status in statuses:
-        status.effective_points = attendance_status_points(status, academic_year_level_id, session)
+        shift = school_shift or getattr(session, "applicable_shift", None)
+        level_override = None
+        if academic_year_level_id is not None and shift in ATTENDANCE_SHIFTS:
+            level_override = BehaviorAttendanceStatusShiftLevel.query.filter_by(
+                behavior_attendance_status_id=status.id,
+                academic_year_level_id=int(academic_year_level_id),
+                school_shift=shift,
+            ).first()
+        if level_override is None and academic_year_level_id is not None:
+            level_override = BehaviorAttendanceStatusLevel.query.filter_by(
+                behavior_attendance_status_id=status.id,
+                academic_year_level_id=int(academic_year_level_id),
+            ).first()
+        status.configured_points = decimal_value(
+            level_override.points if level_override is not None else status.points or 0,
+            "Attendance points",
+            minimum="0",
+        )
+        status.effective_points = attendance_status_points(
+            status, academic_year_level_id, session, school_shift
+        )
         status.effective_polarity = attendance_status_polarity(status, session)
     return statuses
 
 
-def attendance_days(configuration, active_only=True, academic_year_level_id=None):
+def attendance_days(configuration, active_only=True, academic_year_level_id=None, school_shift=None):
     configuration = validate_behavior_configuration(configuration)
     level_id = _attendance_level_id(configuration, academic_year_level_id)
+    shift = (school_shift or "").strip().lower()
+    if shift:
+        days = ensure_shift_attendance_days(configuration, level_id, shift)
+        if active_only:
+            days = [item for item in days if item.is_active]
+        return days
     query = AcademicYearLevelAttendanceDay.query.filter_by(academic_year_level_id=level_id)
     if active_only:
         query = query.filter_by(is_active=True)
@@ -536,10 +688,34 @@ def generate_daily_roster(
     if not isinstance(attendance_date, date):
         raise BehaviorValidationError("Attendance date is invalid")
     validate_session_date(session, attendance_date)
-    if attendance_date.weekday() not in {
-        item.weekday for item in attendance_days(configuration, academic_year_level_id=academic_year_level_id)
-    }:
-        raise BehaviorValidationError("Taariikhda la xushay looma dejin in ay noqoto maalin xaadirin dugsi.")
+    enrollments = [
+        enrollment
+        for enrollment in enrollments_for_class(
+            configuration,
+            academic_year_class_id,
+            academic_year_level_id,
+        )
+        if session_applies_to_enrollment(session, enrollment)
+    ]
+    if not enrollments:
+        raise BehaviorValidationError("Fasalka ama gelinka la doortay arday firfircoon kuma jiro.")
+    active_weekday_cache = {}
+    for enrollment in enrollments:
+        shift = getattr(enrollment.academic_year_class, "school_shift", None)
+        schedule_key = (enrollment.academic_year_level_id, shift)
+        if schedule_key not in active_weekday_cache:
+            active_weekday_cache[schedule_key] = {
+                item.weekday for item in attendance_days(
+                    configuration,
+                    academic_year_level_id=enrollment.academic_year_level_id,
+                    school_shift=shift,
+                ) if item.is_active
+            }
+        if attendance_date.weekday() not in active_weekday_cache[schedule_key]:
+            raise BehaviorValidationError(
+                f"Taariikhda la xushay ma aha maalin xaadirin oo loogu talagalay gelinka "
+                f"fasalka {enrollment.academic_year_class.name if enrollment.academic_year_class else ''}."
+            )
     present = next(
         (
             item
@@ -554,15 +730,6 @@ def generate_daily_roster(
     )
     if not present:
         raise BehaviorValidationError("A Present Attendance status is required")
-    enrollments = [
-        enrollment
-        for enrollment in enrollments_for_class(
-            configuration,
-            academic_year_class_id,
-            academic_year_level_id,
-        )
-        if session_applies_to_enrollment(session, enrollment)
-    ]
     enrollment_ids = [item.id for item in enrollments]
     existing_rows = BehaviorAttendanceRecord.query.filter(
         BehaviorAttendanceRecord.behavior_configuration_id == configuration.id,
@@ -577,6 +744,7 @@ def generate_daily_roster(
             existing_by_date[row.student_enrollment_id] = row
 
     pending = []
+    points_cache = {}
     for enrollment in enrollments:
         validate_enrollment_session_allocations(configuration, enrollment, session)
         if enrollment.id in existing_by_date:
@@ -587,7 +755,13 @@ def generate_daily_roster(
         )
         validate_attendance_ledger_capacity(
             configuration, session, enrollment, present.polarity,
-            attendance_status_points(present, enrollment.academic_year_level_id, session)
+            attendance_status_points(
+                present,
+                enrollment.academic_year_level_id,
+                session,
+                getattr(enrollment.academic_year_class, "school_shift", None),
+                points_cache,
+            )
             if present.contributes_to_behavior else 0,
         )
         pending.append(enrollment)
@@ -610,7 +784,13 @@ def generate_daily_roster(
                 status_label_snapshot=attendance_status_label(present.key, present.label),
                 polarity=present.polarity,
                 points_applied=(
-                    attendance_status_points(present, enrollment.academic_year_level_id, session)
+                    attendance_status_points(
+                        present,
+                        enrollment.academic_year_level_id,
+                        session,
+                        getattr(enrollment.academic_year_class, "school_shift", None),
+                        points_cache,
+                    )
                     if present.contributes_to_behavior else 0
                 ),
             )
@@ -683,7 +863,12 @@ def mark_attendance(
         new_points = (
             decimal_value(effective_points, "Attendance points", minimum="0")
             if effective_points is not None
-            else attendance_status_points(status, enrollment.academic_year_level_id, session)
+            else attendance_status_points(
+                status,
+                enrollment.academic_year_level_id,
+                session,
+                getattr(enrollment.academic_year_class, "school_shift", None),
+            )
         )
     validate_attendance_ledger_capacity(
         configuration,

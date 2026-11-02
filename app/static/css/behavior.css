@@ -1975,7 +1975,54 @@ body:has(.att-daily) .behavior-hero { display:none !important; }
 .att-action-check--bulk input { flex:0 0 22px; width:22px; height:22px; margin:0; accent-color:#087f5b; cursor:pointer; }
 .att-action-check--bulk input:focus-visible { outline:3px solid rgba(8,127,91,.28); outline-offset:3px; }
 .att-action-check--bulk strong { color:#075b43; font-weight:850; }
+.attendance-controls-scope-note { display:flex; align-items:flex-start; gap:12px; margin:0 0 16px; padding:13px 14px; border:1px solid #bfddd2; border-left:4px solid #16856c; border-radius:7px; color:#294c43; background:#f4faf7; font-size:.82rem; line-height:1.45; }
+.attendance-controls-scope-icon { display:grid; flex:0 0 34px; width:34px; height:34px; place-items:center; border:1px solid #c8e5d9; border-radius:6px; background:#e8f5ee; color:#167355; }
+.attendance-controls-scope-content { display:grid; gap:7px; min-width:0; flex:1; }
+.attendance-controls-scope-heading { display:flex; align-items:center; flex-wrap:wrap; gap:6px 8px; color:#1e4037; }
+.attendance-controls-scope-heading>strong { margin-right:2px; font-size:.82rem; font-weight:800; }
+.attendance-controls-scope-tag { display:inline-flex; align-items:center; gap:5px; min-height:23px; padding:3px 7px; border:1px solid #cbded7; border-radius:4px; background:#fff; color:#45645a; font-size:.7rem; font-weight:750; }
+.attendance-controls-scope-tag.is-shift { border-color:#a9d7c5; background:#eaf7f0; color:#176c52; }
+.attendance-controls-scope-tag.is-level { border-color:#d6d9bd; background:#f7f7ec; color:#686b35; }
+.attendance-controls-scope-content p { display:flex; align-items:flex-start; gap:7px; margin:0; color:#48645b; }
+.attendance-controls-scope-content p>i { flex:0 0 14px; margin-top:2px; color:#218269; text-align:center; }
+.attendance-controls-scope-content p strong { color:#294c43; font-weight:800; }
+.attendance-controls-scope-content p.is-global { padding-top:7px; border-top:1px solid #dcebe4; color:#65746e; }
+.attendance-controls-scope-content p.is-global>i { color:#687c73; }
+.attendance-controls-scope-content p.is-global strong { color:#52675f; }
+.attendance-controls-scope-note.is-warning { border-color:#ead7aa; border-left-color:#bd861c; color:#704d12; background:#fffbf1; }
+.attendance-controls-scope-note.is-warning .attendance-controls-scope-icon { border-color:#f0dfb8; background:#fff4d9; color:#9b6b10; }
+.attendance-controls-scope-note.is-warning .attendance-controls-scope-heading { color:#6f4d14; }
+.attendance-controls-scope-note.is-warning .attendance-controls-scope-content p,.attendance-controls-scope-note.is-warning .attendance-controls-scope-content p strong { color:#775c2b; }
+.attendance-controls-scope-note.is-warning .attendance-controls-scope-content p>i { color:#a57617; }
+.theme-dark .attendance-controls-scope-note { border-color:#315647; border-left-color:#4ab891; color:#d8ece3; background:#172a23; }
+.theme-dark .attendance-controls-scope-icon { border-color:#315c49; background:#203a2e; color:#7bd5ae; }
+.theme-dark .attendance-controls-scope-heading,.theme-dark .attendance-controls-scope-content p strong { color:#e2f0e9; }
+.theme-dark .attendance-controls-scope-tag { border-color:#42584d; background:#202f29; color:#c8d9d0; }
+.theme-dark .attendance-controls-scope-tag.is-shift { border-color:#35684f; background:#20392c; color:#a5e0bf; }
+.theme-dark .attendance-controls-scope-tag.is-level { border-color:#5b6041; background:#303321; color:#dcdfa7; }
+.theme-dark .attendance-controls-scope-content p { color:#c2d5ca; }
+.theme-dark .attendance-controls-scope-content p>i { color:#72c7a3; }
+.theme-dark .attendance-controls-scope-content p.is-global { border-top-color:#344a3e; color:#b8c8bf; }
+.theme-dark .attendance-controls-scope-content p.is-global>i,.theme-dark .attendance-controls-scope-content p.is-global strong { color:#cbd8d0; }
+.theme-dark .attendance-controls-scope-note.is-warning { border-color:#5a4a28; border-left-color:#d5a743; color:#ffedc2; background:#30291b; }
+.theme-dark .attendance-controls-scope-note.is-warning .attendance-controls-scope-icon { border-color:#6a552b; background:#3b321f; color:#f1c86a; }
+.theme-dark .attendance-controls-scope-note.is-warning .attendance-controls-scope-heading,.theme-dark .attendance-controls-scope-note.is-warning .attendance-controls-scope-content p,.theme-dark .attendance-controls-scope-note.is-warning .attendance-controls-scope-content p strong { color:#f1dfb6; }
+.theme-dark .attendance-controls-scope-note.is-warning .attendance-controls-scope-content p>i { color:#e0b44d; }
 @media (prefers-color-scheme:dark) {
   .att-action-check--bulk { border-color:#315343; color:#dbece2; background:#162d22; }
   .att-action-check--bulk strong { color:#86efac; }
+  .attendance-controls-scope-note { border-color:#315647; border-left-color:#4ab891; color:#d8ece3; background:#172a23; }
+  .attendance-controls-scope-icon { border-color:#315c49; background:#203a2e; color:#7bd5ae; }
+  .attendance-controls-scope-heading,.attendance-controls-scope-content p strong { color:#e2f0e9; }
+  .attendance-controls-scope-tag { border-color:#42584d; background:#202f29; color:#c8d9d0; }
+  .attendance-controls-scope-tag.is-shift { border-color:#35684f; background:#20392c; color:#a5e0bf; }
+  .attendance-controls-scope-tag.is-level { border-color:#5b6041; background:#303321; color:#dcdfa7; }
+  .attendance-controls-scope-content p { color:#c2d5ca; }
+  .attendance-controls-scope-content p>i { color:#72c7a3; }
+  .attendance-controls-scope-content p.is-global { border-top-color:#344a3e; color:#b8c8bf; }
+  .attendance-controls-scope-content p.is-global>i,.attendance-controls-scope-content p.is-global strong { color:#cbd8d0; }
+  .attendance-controls-scope-note.is-warning { border-color:#5a4a28; border-left-color:#d5a743; color:#ffedc2; background:#30291b; }
+  .attendance-controls-scope-note.is-warning .attendance-controls-scope-icon { border-color:#6a552b; background:#3b321f; color:#f1c86a; }
+  .attendance-controls-scope-note.is-warning .attendance-controls-scope-heading,.attendance-controls-scope-note.is-warning .attendance-controls-scope-content p,.attendance-controls-scope-note.is-warning .attendance-controls-scope-content p strong { color:#f1dfb6; }
+  .attendance-controls-scope-note.is-warning .attendance-controls-scope-content p>i { color:#e0b44d; }
 }

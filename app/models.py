@@ -180,6 +180,41 @@ class AcademicYearLevelAttendanceDay(TimestampMixin, db.Model):
     )
 
 
+class AcademicYearLevelShiftAttendanceDay(TimestampMixin, db.Model):
+    """Active-day policy for one year-scoped level and school shift."""
+
+    __tablename__ = "academic_year_level_shift_attendance_days"
+
+    id = db.Column(db.Integer, primary_key=True)
+    academic_year_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_levels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    school_shift = db.Column(db.String(20), nullable=False)
+    weekday = db.Column(db.Integer, nullable=False)
+    label = db.Column(db.String(40), nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "academic_year_level_id",
+            "school_shift",
+            "weekday",
+            name="uq_year_level_shift_attendance_day_weekday",
+        ),
+        db.CheckConstraint(
+            "school_shift IN ('morning', 'afternoon')",
+            name="ck_year_level_shift_attendance_day_shift",
+        ),
+        db.CheckConstraint(
+            "weekday BETWEEN 0 AND 6",
+            name="ck_year_level_shift_attendance_day_weekday",
+        ),
+    )
+
+
 class AcademicYearSubject(TimestampMixin, db.Model):
     """Year + level scoped subject offering.
 
@@ -935,6 +970,8 @@ class BehaviorAttendanceStatusLevel(TimestampMixin, db.Model):
         nullable=False,
         index=True,
     )
+
+
     behavior_configuration_id = db.Column(
         db.Integer,
         db.ForeignKey("behavior_configurations.id", ondelete="CASCADE"),
@@ -968,6 +1005,52 @@ class BehaviorAttendanceStatusLevel(TimestampMixin, db.Model):
         db.CheckConstraint(
             "points >= 0",
             name="ck_behavior_attendance_status_level_points_nonnegative",
+        ),
+    )
+
+
+class BehaviorAttendanceStatusShiftLevel(TimestampMixin, db.Model):
+    """Per-status point override for one level and school shift."""
+
+    __tablename__ = "behavior_attendance_status_shift_levels"
+
+    id = db.Column(db.Integer, primary_key=True)
+    behavior_attendance_status_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_attendance_statuses.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    behavior_configuration_id = db.Column(
+        db.Integer,
+        db.ForeignKey("behavior_configurations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_levels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    school_shift = db.Column(db.String(20), nullable=False)
+    points = db.Column(db.Numeric(8, 3), nullable=False, default=0)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "behavior_configuration_id",
+            "academic_year_level_id",
+            "behavior_attendance_status_id",
+            "school_shift",
+            name="uq_behavior_attendance_status_shift_level",
+        ),
+        db.CheckConstraint(
+            "school_shift IN ('morning', 'afternoon')",
+            name="ck_behavior_attendance_status_shift_level_shift",
+        ),
+        db.CheckConstraint(
+            "points >= 0",
+            name="ck_behavior_attendance_status_shift_level_points_nonnegative",
         ),
     )
 

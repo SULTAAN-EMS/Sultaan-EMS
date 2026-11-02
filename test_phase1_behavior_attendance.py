@@ -17,6 +17,8 @@ from app.behavior_attendance import (
     ensure_attendance_defaults,
     ensure_status_level_points,
     update_attendance_active_days,
+    ensure_shift_attendance_days,
+    update_shift_attendance_active_days,
     generate_daily_roster,
     mark_attendance,
 )
@@ -40,6 +42,7 @@ from app.models import (
     AcademicYearClass,
     AcademicYearLevel,
     AcademicYearLevelAttendanceDay,
+    AcademicYearLevelShiftAttendanceDay,
     AcademicYearSubject,
     AuditLog,
     BehaviorAction,
@@ -50,7 +53,9 @@ from app.models import (
     BehaviorAttendanceRecord,
     BehaviorAttendanceClosure,
     BehaviorAttendanceDeletion,
+    BehaviorAttendanceStatus,
     BehaviorAttendanceStatusLevel,
+    BehaviorAttendanceStatusShiftLevel,
     BehaviorEvent,
     BehaviorConfigurationLevel,
     BehaviorSession,
@@ -61,6 +66,7 @@ from app.models import (
 )
 from app.routes_behavior import _academic_year_bounds, _behavior_context
 from migrations.phase_1d_behavior_level_attendance_days import _backfill
+from migrations.phase_30_behavior_shift_attendance_settings import _backfill as _backfill_shift_settings
 
 
 class TestPhase1BehaviorAttendance(unittest.TestCase):
@@ -139,6 +145,202 @@ class TestPhase1BehaviorAttendance(unittest.TestCase):
         self.assertEqual(generate_daily_roster(self.config, self.session, saturday), 1)
         self.assertEqual(generate_daily_roster(self.config, self.session, saturday), 0)
         self.assertEqual(BehaviorAttendanceRecord.query.count(), 1)
+
+    def test_attendance_points_and_active_days_are_isolated_by_school_shift(self):
+        self.enrollment.academic_year_class.school_shift = "morning"
+        afternoon_class = AcademicYearClass(
+            name="1B",
+            academic_year_level=self.enrollment.academic_year_level,
+            school_shift="afternoon",
+        )
+        afternoon_student = Student(
+            student_code="BHV-P1-003",
+            full_name="Afternoon Student",
+            is_active=True,
+        )
+        db.session.add_all([afternoon_class, afternoon_student])
+        db.session.flush()
+        afternoon_enrollment = StudentEnrollment(
+            student=afternoon_student,
+            academic_year=self.config.academic_year,
+            academic_year_level=self.enrollment.academic_year_level,
+            academic_year_class=afternoon_class,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source="manual",
+        )
+        db.session.add(afternoon_enrollment)
+        ensure_attendance_defaults(self.config)
+        db.session.flush()
+        present = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.config.id,
+            key="present",
+        ).one()
+        ensure_status_level_points(self.config, self.enrollment.academic_year_level_id, "morning")
+        ensure_status_level_points(self.config, self.enrollment.academic_year_level_id, "afternoon")
+        for shift, value in (("morning", "0.200"), ("afternoon", "0.350")):
+            BehaviorAttendanceStatusShiftLevel.query.filter_by(
+                behavior_configuration_id=self.config.id,
+                academic_year_level_id=self.enrollment.academic_year_level_id,
+                behavior_attendance_status_id=present.id,
+                school_shift=shift,
+            ).one().points = Decimal(value)
+
+        update_shift_attendance_active_days(
+            self.config, {0, 1}, self.enrollment.academic_year_level_id, "morning"
+        )
+        update_shift_attendance_active_days(
+            self.config, {2, 3}, self.enrollment.academic_year_level_id, "afternoon"
+        )
+        self.assertEqual(
+            {day.weekday for day in attendance_days(
+                self.config,
+                academic_year_level_id=self.enrollment.academic_year_level_id,
+                school_shift="morning",
+            ) if day.is_active},
+            {0, 1},
+        )
+        self.assertEqual(
+            {day.weekday for day in attendance_days(
+                self.config,
+                academic_year_level_id=self.enrollment.academic_year_level_id,
+                school_shift="afternoon",
+            ) if day.is_active},
+            {2, 3},
+        )
+
+        mark_attendance(self.config, self.session, self.enrollment, present.id, date(2026, 8, 29))
+        mark_attendance(self.config, self.session, afternoon_enrollment, present.id, date(2026, 8, 29))
+        morning_record = BehaviorAttendanceRecord.query.filter_by(
+            student_enrollment_id=self.enrollment.id,
+            behavior_session_id=self.session.id,
+        ).one()
+        afternoon_record = BehaviorAttendanceRecord.query.filter_by(
+            student_enrollment_id=afternoon_enrollment.id,
+            behavior_session_id=self.session.id,
+        ).one()
+        self.assertEqual(morning_record.points_applied, Decimal("0.200"))
+        self.assertEqual(afternoon_record.points_applied, Decimal("0.350"))
+
+    def test_shift_settings_migration_copies_current_level_values_to_both_shifts(self):
+        ensure_attendance_defaults(self.config)
+        db.session.commit()
+        with db.engine.begin() as connection:
+            _backfill_shift_settings(connection)
+        present = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.config.id,
+            key="present",
+        ).one()
+        values = {
+            row.school_shift: row.points
+            for row in BehaviorAttendanceStatusShiftLevel.query.filter_by(
+                behavior_attendance_status_id=present.id,
+                academic_year_level_id=self.enrollment.academic_year_level_id,
+            ).all()
+        }
+        self.assertEqual(values, {"morning": Decimal("1.000"), "afternoon": Decimal("1.000")})
+        schedules = {
+            row.school_shift: row.is_active
+            for row in AcademicYearLevelShiftAttendanceDay.query.filter_by(
+                academic_year_level_id=self.enrollment.academic_year_level_id,
+                weekday=5,
+            ).all()
+        }
+        self.assertEqual(schedules, {"morning": True, "afternoon": True})
+
+    def test_attendance_settings_autosave_is_shift_scoped_and_rejects_wrong_class(self):
+        self.enrollment.academic_year_class.school_shift = "morning"
+        afternoon_class = AcademicYearClass(
+            name="1C",
+            academic_year_level=self.enrollment.academic_year_level,
+            school_shift="afternoon",
+        )
+        db.session.add(afternoon_class)
+        ensure_attendance_defaults(self.config)
+        db.session.flush()
+        present = BehaviorAttendanceStatus.query.filter_by(
+            behavior_configuration_id=self.config.id,
+            key="present",
+        ).one()
+        ensure_status_level_points(self.config, self.enrollment.academic_year_level_id, "morning")
+        ensure_status_level_points(self.config, self.enrollment.academic_year_level_id, "afternoon")
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["_user_id"] = str(self.admin.id)
+            browser_session["_fresh"] = True
+        xhr = {"X-Requested-With": "XMLHttpRequest"}
+        base = {
+            "config_id": self.config.id,
+            "level_id": self.enrollment.academic_year_level_id,
+            "session_id": self.session.id,
+            "attendance_date": "2026-08-29",
+            "label": "Joogid",
+            "polarity": "positive",
+        }
+        for shift, school_class, points in (
+            ("morning", self.enrollment.academic_year_class, "0.200"),
+            ("afternoon", afternoon_class, "0.350"),
+        ):
+            response = client.post(
+                f"/admin/behavior/attendance/statuses/{present.id}",
+                data={**base, "school_shift": shift, "class_id": school_class.id, "points": points},
+                headers=xhr,
+            )
+            self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+
+        scoped_points = {
+            row.school_shift: row.points
+            for row in BehaviorAttendanceStatusShiftLevel.query.filter_by(
+                behavior_attendance_status_id=present.id,
+                academic_year_level_id=self.enrollment.academic_year_level_id,
+            ).all()
+        }
+        self.assertEqual(scoped_points["morning"], Decimal("0.200"))
+        self.assertEqual(scoped_points["afternoon"], Decimal("0.350"))
+
+        for shift, school_class, weekdays in (
+            ("morning", self.enrollment.academic_year_class, [0, 1]),
+            ("afternoon", afternoon_class, [2, 3]),
+        ):
+            payload = MultiDict([
+                ("config_id", str(self.config.id)),
+                ("level_id", str(self.enrollment.academic_year_level_id)),
+                ("session_id", str(self.session.id)),
+                ("class_id", str(school_class.id)),
+                ("school_shift", shift),
+                ("attendance_date", "2026-08-29"),
+                *(('school_days', str(day)) for day in weekdays),
+            ])
+            response = client.post(
+                "/admin/behavior/attendance/active-days",
+                data=payload,
+                headers=xhr,
+            )
+            self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+
+        morning_days = {
+            row.weekday for row in AcademicYearLevelShiftAttendanceDay.query.filter_by(
+                academic_year_level_id=self.enrollment.academic_year_level_id,
+                school_shift="morning",
+            ).all() if row.is_active
+        }
+        afternoon_days = {
+            row.weekday for row in AcademicYearLevelShiftAttendanceDay.query.filter_by(
+                academic_year_level_id=self.enrollment.academic_year_level_id,
+                school_shift="afternoon",
+            ).all() if row.is_active
+        }
+        self.assertEqual(morning_days, {0, 1})
+        self.assertEqual(afternoon_days, {2, 3})
+
+        rejected = client.post(
+            f"/admin/behavior/attendance/statuses/{present.id}",
+            data={**base, "school_shift": "afternoon", "class_id": self.enrollment.academic_year_class_id, "points": "9"},
+            headers=xhr,
+        )
+        self.assertEqual(rejected.status_code, 400)
 
     def test_attendance_session_defaults_to_newest_active_session_not_sort_order(self):
         self.session.created_at = datetime(2026, 1, 1)

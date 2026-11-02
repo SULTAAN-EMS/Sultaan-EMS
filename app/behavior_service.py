@@ -16,8 +16,11 @@ from .models import (
     AcademicYearLevel,
     AcademicYearSubject,
     AcademicYearLevelAttendanceDay,
+    AcademicYearLevelShiftAttendanceDay,
     BehaviorAction,
     BehaviorAttendanceStatus,
+    BehaviorAttendanceStatusLevel,
+    BehaviorAttendanceStatusShiftLevel,
     BehaviorAttendanceRecord,
     BehaviorAttendanceDeletion,
     BehaviorCategory,
@@ -74,7 +77,7 @@ def _configured_attendance_weight(status, fallback):
     return Decimal("0.000")
 
 
-def attendance_policy_snapshot_for_configuration(configuration):
+def attendance_policy_snapshot_for_configuration(configuration, academic_year_level_id=None, school_shift=None):
     """Return the exact five-status policy configured for one scope.
 
     This is the only place that translates editable Attendance status rows into
@@ -87,10 +90,40 @@ def attendance_policy_snapshot_for_configuration(configuration):
             behavior_configuration_id=configuration.id
         ).all()
     }
-    weights = {
-        key: _configured_attendance_weight(statuses.get(key), fallback)
-        for key, fallback in DEFAULT_ATTENDANCE_WEIGHTS.items()
-    }
+    level_id = academic_year_level_id or configuration.academic_year_level_id
+    shift = (school_shift or "").strip().lower()
+    weights = {}
+    for key, fallback in DEFAULT_ATTENDANCE_WEIGHTS.items():
+        status = statuses.get(key)
+        if not status or not status.is_active:
+            weights[key] = fallback
+            continue
+        points = None
+        if shift in {"morning", "afternoon"} and level_id is not None:
+            scoped = BehaviorAttendanceStatusShiftLevel.query.filter_by(
+                behavior_configuration_id=configuration.id,
+                academic_year_level_id=level_id,
+                behavior_attendance_status_id=status.id,
+                school_shift=shift,
+            ).first()
+            points = scoped.points if scoped is not None else None
+        if points is None and level_id is not None:
+            scoped = BehaviorAttendanceStatusLevel.query.filter_by(
+                behavior_configuration_id=configuration.id,
+                academic_year_level_id=level_id,
+                behavior_attendance_status_id=status.id,
+            ).first()
+            points = scoped.points if scoped is not None else None
+        points = decimal_value(
+            status.points if points is None else points,
+            "Attendance points",
+            minimum="0",
+        )
+        weights[key] = (
+            points if status.polarity == "positive"
+            else -points if status.polarity == "negative"
+            else Decimal("0.000")
+        )
     return {
         "version": ATTENDANCE_SCORING_POLICY_VERSION,
         "weights": {key: str(value.quantize(Decimal("0.001"))) for key, value in weights.items()},
@@ -105,13 +138,24 @@ def capture_attendance_session_policy(configuration, session):
     ).first():
         return session
 
-    policy = attendance_policy_snapshot_for_configuration(configuration)
+    shift = (getattr(session, "applicable_shift", None) or "all").strip().lower()
+    policy = attendance_policy_snapshot_for_configuration(
+        configuration,
+        school_shift=shift if shift in {"morning", "afternoon"} else None,
+    )
     session.attendance_policy_snapshot = json.dumps(policy, sort_keys=True)
     session.attendance_frequency_snapshot = (configuration.frequency or "monthly").strip().lower()
-    active_days = AcademicYearLevelAttendanceDay.query.filter_by(
-        academic_year_level_id=configuration.academic_year_level_id,
-        is_active=True,
-    ).order_by(AcademicYearLevelAttendanceDay.weekday).all()
+    if shift in {"morning", "afternoon"}:
+        active_days = AcademicYearLevelShiftAttendanceDay.query.filter_by(
+            academic_year_level_id=configuration.academic_year_level_id,
+            school_shift=shift,
+            is_active=True,
+        ).order_by(AcademicYearLevelShiftAttendanceDay.weekday).all()
+    else:
+        active_days = AcademicYearLevelAttendanceDay.query.filter_by(
+            academic_year_level_id=configuration.academic_year_level_id,
+            is_active=True,
+        ).order_by(AcademicYearLevelAttendanceDay.weekday).all()
     session.attendance_weekdays_snapshot = ",".join(str(item.weekday) for item in active_days)
     weights = {
         key: Decimal(value)

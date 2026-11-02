@@ -190,16 +190,25 @@
 .tra-mark-return-form button:hover{border-color:#d9b574;background:#fff2d9}
 .tra-review-form label.tra-confirm{display:flex;flex:1 1 100%;align-items:center;gap:8px;min-width:0;font-weight:600}
 .tra-review-form label.tra-confirm input{width:16px;height:16px;accent-color:#087f6b}
-.tra-assignment-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:5px;margin-top:8px}
+.tra-assignment-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:7px;margin-top:8px}
 .tra-assignment-actions form{margin:0}
-.tra-assignment-actions button{padding:5px 7px;border:0;background:transparent;color:#667873;font:inherit;font-size:.72rem;cursor:pointer}
-.tra-assignment-actions button:hover{color:#087f6b}
-.tra-assignment-actions .tra-edit-trigger{display:inline-flex;align-items:center;gap:6px;border:1px solid #c9e4dc;border-radius:5px;background:#f1faf6;color:#176c5a}
-.tra-assignment-actions .tra-edit-trigger:hover{border-color:#8bcbb9;background:#e5f6ef;color:#0d594b}
-.tra-assignment-actions .tra-delete-trigger{display:inline-flex;align-items:center;gap:6px;color:#a84d43}
-.tra-assignment-actions .tra-delete-trigger:hover{color:#8d3029}
-.tra-assignment-actions .tra-restore-assignment{display:inline-flex;align-items:center;gap:6px;color:#16724a}
-.tra-assignment-actions .tra-restore-assignment:hover{color:#0c5838}
+.tra-assignment-actions button,.tra-assignment-actions .tra-print-trigger{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;padding:6px 10px;border:1px solid #d4dfdc;border-radius:5px;background:#fff;color:#405951;box-shadow:none!important;font:inherit;font-size:.72rem;font-weight:750;line-height:1.2;text-decoration:none;white-space:nowrap;cursor:pointer;transition:background-color .16s ease,border-color .16s ease,color .16s ease}
+.tra-assignment-actions button:hover,.tra-assignment-actions .tra-print-trigger:hover{box-shadow:none!important}
+.tra-assignment-actions .tra-edit-trigger{border-color:#b9dfd1;background:#f0faf5;color:#176c52}
+.tra-assignment-actions .tra-edit-trigger:hover{border-color:#79bda4;background:#e5f5ed;color:#105940}
+.tra-assignment-actions form button[name="action"][value="toggle"]{border-color:#ead6a9;background:#fff9eb;color:#875c08}
+.tra-assignment-actions form button[name="action"][value="toggle"]:hover{border-color:#d6b76f;background:#fff2d2;color:#704800}
+.tra-assignment-actions .tra-delete-trigger{border-color:#e8c4c0;background:#fff5f4;color:#a3443d}
+.tra-assignment-actions .tra-delete-trigger:hover{border-color:#d99a94;background:#ffebe9;color:#87352f}
+.tra-assignment-actions .tra-restore-assignment{border-color:#b9dfd1;background:#f0faf5;color:#176c52}
+.tra-assignment-actions .tra-restore-assignment:hover{border-color:#79bda4;background:#e5f5ed;color:#105940}
+.tra-assignment-actions .tra-print-trigger{border-color:#bfd8e5;background:#f2f8fb;color:#285d78}
+.tra-assignment-actions .tra-print-trigger:hover{border-color:#8fb9cc;background:#e8f3f8;color:#194b66}
+.tra-assignment-actions .tra-edit-trigger:focus-visible{outline:2px solid #5ca98d;outline-offset:2px}
+.tra-assignment-actions form button[name="action"][value="toggle"]:focus-visible{outline:2px solid #c79632;outline-offset:2px}
+.tra-assignment-actions .tra-delete-trigger:focus-visible{outline:2px solid #cb6e65;outline-offset:2px}
+.tra-assignment-actions .tra-print-trigger:focus-visible{outline:2px solid #6498b0;outline-offset:2px}
+.tra-assignment-actions button:disabled{opacity:.55;cursor:not-allowed}
 .tra-archived-note{display:flex;align-items:center;gap:8px;margin:11px 0 0;padding:9px 11px;border:1px solid #eadbc0;border-radius:5px;background:#fffbf2;color:#73561e;font-size:.76rem}
 .tra-delete-dialog{width:min(480px,calc(100vw - 28px));max-width:none;padding:0;border:1px solid #dce7e3;border-radius:9px;background:#fff;color:#18312e;box-shadow:0 24px 70px rgba(12,35,29,.28)}
 .tra-delete-dialog::backdrop{background:rgba(14,30,27,.48);backdrop-filter:blur(2px)}
