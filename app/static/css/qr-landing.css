@@ -276,3 +276,16 @@ body[data-theme=radar] .radar{display:block}
   background:#00ff9c;color:#02221a;box-shadow:0 0 0 2px #0b1d3a,0 0 10px rgba(0,255,156,.7)}
 .floaters .vbm svg{width:11px;height:11px}
 @keyframes fglow{from{box-shadow:0 0 6px rgba(0,255,156,.3)}to{box-shadow:0 0 20px rgba(0,255,156,.85)}}
+
+@media (max-width:720px), (pointer:coarse) {
+  body{background-attachment:scroll;animation:none;background-size:100% 100%}
+  .blob{filter:none;opacity:.16;animation:none}
+  .aurora .fx:not(.floaters){display:none!important}
+  .aurora .floaters{display:block!important}
+  .floaters span{opacity:.2;animation-duration:28s!important}
+  .floaters span.ph{opacity:.72}
+  .pfl{animation:none}
+  .logo,.beam,.hero,.card,footer,.report .icon,.icon::after,.tick,.copy::before,.brand-name,.live i{animation:none!important}
+  .card,.go,.pick-btn,.sw i{transition:none!important}
+  .icon::after{display:none!important}
+}

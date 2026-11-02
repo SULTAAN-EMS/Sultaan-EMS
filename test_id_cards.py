@@ -175,8 +175,16 @@ class TestIdCards(unittest.TestCase):
             b'data-photo-url="/static/uploads/students/qr-photo.jpg"',
             response.data,
         )
-        self.assertIn(b"qr-landing.css?v=qr-student-photo-20261016-1", response.data)
-        self.assertIn(b"qr-landing.js?v=qr-student-photo-20261016-1", response.data)
+        self.assertIn(b"qr-landing.css?v=qr-mobile-performance-20261102-2", response.data)
+        self.assertIn(b"qr-landing.js?v=qr-mobile-performance-20261102-2", response.data)
+
+        script = (self.app.root_path + "/static/js/qr-landing.js")
+        with open(script, encoding="utf-8") as handle:
+            script_source = handle.read()
+        self.assertIn("(max-width: 720px), (pointer: coarse)", script_source)
+        self.assertIn("MIX[id]?15:(isConstrainedDevice?0:SP[id][1])", script_source)
+        self.assertIn("qrcode:['qrcode','idcard','report','shield','badge','photoC','photoR']", script_source)
+        self.assertIn("if(!LOCK)THEMES.forEach", script_source)
 
     def test_exam_filter_shows_correct_year_roster_without_duplicate_bulk_panel_or_nested_forms(self):
         db.session.add(IdCardIssue(

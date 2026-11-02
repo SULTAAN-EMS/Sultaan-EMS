@@ -1385,13 +1385,6 @@ def verify_id_card(token):
         "icon": "fa-circle-question",
     })
     
-    # Debug logging - Student details
-    logger.info(f"VERIFY STUDENT - Student ID: {issue.student.id}, Student Code: {issue.student.student_code}")
-    logger.info(f"VERIFY STUDENT - Student academic_year_id: {issue.student.academic_year_id}")
-    logger.info(f"VERIFY STUDENT - Student academic_level_id: {issue.student.academic_level_id}")
-    logger.info(f"VERIFY STUDENT - Student academic_class_id: {issue.student.academic_class_id}")
-    logger.info(f"VERIFY STUDENT - Student academic_section_id: {issue.student.academic_section_id}")
-    
     # A bound ID-card exam is authoritative. Older general cards may use an
     # explicitly supplied, same-year exam, but must never guess the current
     # active exam because that could attach the wrong seating plan.
@@ -1425,22 +1418,13 @@ def verify_id_card(token):
                 "seat_label": f"Safka {seating_row.row_number + 1}aad ee {side} · Miis {seating_row.table_number + 1} · Kursi {seating_row.seat_number + 1}",
             }
     
-    if exam:
-        # Debug logging - Exam details
-        logger.info(f"VERIFY STUDENT - Exam found: ID={exam.id}, Name={exam.name}")
-        logger.info(f"VERIFY STUDENT - Exam academic_year_id: {exam.academic_year_id}")
-        logger.info(f"VERIFY STUDENT - Exam academic_level_id: {exam.academic_level_id}")
-        logger.info(f"VERIFY STUDENT - Exam academic_class_id: {exam.academic_class_id}")
-        logger.info(f"VERIFY STUDENT - Exam academic_section_id: {exam.academic_section_id}")
-        logger.info(f"VERIFY STUDENT - Exam is_active: {exam.is_active}")
-        logger.info(f"VERIFY STUDENT - Exam is_published: {exam.is_published}")
-    else:
-        logger.warning(f"VERIFY STUDENT - No exam found through shared active exam lookup")
-        # Log all exams for this academic year for debugging
-        issue_year_exams = Exam.query.filter_by(academic_year_id=issue.academic_year_id).all()
-        student_year_exams = Exam.query.filter_by(academic_year_id=issue.student.academic_year_id).all()
-        logger.info(f"VERIFY STUDENT - ID card year exams: {[(e.id, e.name, e.is_active, e.is_published, e.academic_level_id, e.academic_class_id, e.academic_section_id) for e in issue_year_exams]}")
-        logger.info(f"VERIFY STUDENT - Student year exams: {[(e.id, e.name, e.is_active, e.is_published, e.academic_level_id, e.academic_class_id, e.academic_section_id) for e in student_year_exams]}")
+    if not exam:
+        logger.warning(
+            "ID-card verification exam not found (issue_id=%s, requested_exam_id=%s, academic_year_id=%s)",
+            issue.id,
+            requested_exam_id,
+            issue.academic_year_id,
+        )
     
     return render_template(
         "verify_id.html",

@@ -23,13 +23,10 @@ var THEMES=[
   function set(v){try{localStorage.setItem('qrTheme',v)}catch(e){}}
   var q=new URLSearchParams(location.search).get('theme');
   var cur=LOCK||(ids.indexOf(q)>-1?q:null)||(ids.indexOf(get())>-1?get():'aurora');
+  var isConstrainedDevice=window.matchMedia('(max-width: 720px), (pointer: coarse), (prefers-reduced-motion: reduce)').matches;
   var r=function(a,b){return a+Math.random()*(b-a)};
   var st=document.getElementById('stars');
-  for(var i=0;i<60;i++){var d=document.createElement('span');var z=r(1,3);
-    d.style.cssText='left:'+r(0,100)+'%;top:'+r(0,100)+'%;width:'+z+'px;height:'+z+'px;animation-delay:'+r(0,4)+'s;animation-duration:'+r(2,5)+'s';st.appendChild(d)}
   var bb=document.getElementById('bubbles');
-  for(var j=0;j<18;j++){var b=document.createElement('span');var sz=r(10,46);
-    b.style.cssText='left:'+r(0,100)+'%;width:'+sz+'px;height:'+sz+'px;animation-duration:'+r(9,20)+'s;animation-delay:-'+r(0,18)+'s;--dx:'+r(-40,40)+'px';bb.appendChild(b)}
 
   var SP={
    qrcode:['<svg viewBox="0 0 48 48" fill="currentColor"><path fill-rule="evenodd" d="M2 2h16v16H2zM6 6v8h8V6zM30 2h16v16H30zM34 6v8h8V6zM2 30h16v16H2zM6 34v8h8v-8z"/><path d="M8 8h4v4H8zM36 8h4v4h-4zM8 36h4v4H8zM22 2h4v4h-4zM22 10h4v4h-4zM22 22h4v4h-4zM30 22h4v4h-4zM38 22h8v4h-8zM22 30h4v8h-4zM30 34h4v4h-4zM38 30h4v4h-4zM30 42h8v4h-8zM42 38h4v8h-4z"/></svg>',14,[26,56]],
@@ -46,7 +43,7 @@ var THEMES=[
   var MIX={qrcode:['qrcode','idcard','report','shield','badge','photoC','photoR']};
   function fill(id){
     fl.innerHTML='';var keys=MIX[id]||(SP[id]?[id]:null);if(!keys)return;
-    var total=MIX[id]?28:SP[id][1];
+    var total=MIX[id]?15:(isConstrainedDevice?0:SP[id][1]);
     for(var i=0;i<total;i++){var key=keys[i%keys.length];var c=SP[key];var e=document.createElement('span');var w=r(c[2][0],c[2][1]);
       e.style.cssText='left:'+r(0,92)+'%;width:'+w+'px;animation-duration:'+r(12,24)+'s;animation-delay:-'+r(0,22)+'s;--dx:'+r(-50,50)+'px;--r0:'+r(-25,25)+'deg;--r1:'+r(-45,45)+'deg';
       e.innerHTML=c[0];
@@ -62,15 +59,22 @@ var THEMES=[
       fl.appendChild(e)}
   }
   var bars=document.getElementById('bars');
-  for(var n=0;n<18;n++){var g=document.createElement('span');g.style.cssText='--h:'+Math.round(r(35,100))+'%;animation-delay:-'+r(0,3.6)+'s;animation-duration:'+r(2.6,4.6)+'s';bars.appendChild(g)}
   var grid=document.getElementById('swGrid'),btns={};
-  THEMES.forEach(function(t){
+
+  function addThemeEffects(id){
+    if(isConstrainedDevice)return;
+    if(id==='stars'&&!st.dataset.generated){st.dataset.generated='true';for(var i=0;i<24;i++){var d=document.createElement('span');var z=r(1,3);d.style.cssText='left:'+r(0,100)+'%;top:'+r(0,100)+'%;width:'+z+'px;height:'+z+'px;animation-delay:'+r(0,4)+'s;animation-duration:'+r(2,5)+'s';st.appendChild(d)}}
+    if(['ocean','sunset','forest','light'].indexOf(id)>-1&&!bb.dataset.generated){bb.dataset.generated='true';for(var j=0;j<10;j++){var b=document.createElement('span');var sz=r(10,38);b.style.cssText='left:'+r(0,100)+'%;width:'+sz+'px;height:'+sz+'px;animation-duration:'+r(9,20)+'s;animation-delay:-'+r(0,18)+'s;--dx:'+r(-40,40)+'px';bb.appendChild(b)}}
+    if(id==='report'&&!bars.dataset.generated){bars.dataset.generated='true';for(var n=0;n<10;n++){var g=document.createElement('span');g.style.cssText='--h:'+Math.round(r(35,100))+'%;animation-delay:-'+r(0,3.6)+'s;animation-duration:'+r(2.6,4.6)+'s';bars.appendChild(g)}}
+  }
+
+  function apply(id){cur=id;addThemeEffects(id);fill(id);document.body.setAttribute('data-theme',id);
+    var m=document.querySelector('meta[name=theme-color]');
+    for(var k in btns)btns[k].classList.toggle('on',k===id)}
+  if(!LOCK)THEMES.forEach(function(t){
     var e=document.createElement('button');e.className='sw';e.type='button';
     e.innerHTML='<i style="background:'+t[2]+'"></i>'+t[1];
     e.onclick=function(){apply(t[0]);set(t[0])};grid.appendChild(e);btns[t[0]]=e});
-  function apply(id){cur=id;fill(id);document.body.setAttribute('data-theme',id);
-    var m=document.querySelector('meta[name=theme-color]');
-    for(var k in btns)btns[k].classList.toggle('on',k===id)}
   apply(cur);
   var pb=document.getElementById('pickBtn'),pn=document.getElementById('panel');
   if(LOCK){pb.style.display='none';pn.style.display='none';return}
