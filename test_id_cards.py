@@ -175,8 +175,14 @@ class TestIdCards(unittest.TestCase):
             b'data-photo-url="/static/uploads/students/qr-photo.jpg"',
             response.data,
         )
-        self.assertIn(b"qr-landing.css?v=qr-mobile-performance-20261102-2", response.data)
-        self.assertIn(b"qr-landing.js?v=qr-mobile-performance-20261102-2", response.data)
+        self.assertIn(b"qr-landing.css?v=qr-mobile-performance-20261102-3", response.data)
+        self.assertIn(b"qr-landing.js?v=qr-mobile-performance-20261102-3", response.data)
+
+        stylesheet = self.app.root_path + "/static/css/qr-landing.css"
+        with open(stylesheet, encoding="utf-8") as handle:
+            stylesheet_source = handle.read()
+        self.assertIn(".beam{animation:scan 2.8s ease-in-out infinite}", stylesheet_source)
+        self.assertIn(".logo,.hero,.card,footer,.report .icon", stylesheet_source)
 
         script = (self.app.root_path + "/static/js/qr-landing.js")
         with open(script, encoding="utf-8") as handle:

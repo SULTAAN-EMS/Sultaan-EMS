@@ -285,7 +285,8 @@ body[data-theme=radar] .radar{display:block}
   .floaters span{opacity:.2;animation-duration:28s!important}
   .floaters span.ph{opacity:.72}
   .pfl{animation:none}
-  .logo,.beam,.hero,.card,footer,.report .icon,.icon::after,.tick,.copy::before,.brand-name,.live i{animation:none!important}
+  .logo,.hero,.card,footer,.report .icon,.icon::after,.tick,.copy::before,.brand-name,.live i{animation:none!important}
+  .beam{animation:scan 2.8s ease-in-out infinite}
   .card,.go,.pick-btn,.sw i{transition:none!important}
   .icon::after{display:none!important}
 }
