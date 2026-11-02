@@ -279,7 +279,7 @@ def subjects_for_scope(exam, level_id=None, class_id=None):
     if not effective_level_id:
         return []
     if exam and exam.academic_year_id:
-        year_level, _year_class = _year_scope_ids_from_legacy(
+        year_level, year_class = _year_scope_ids_from_legacy(
             exam.academic_year_id,
             effective_level_id,
             class_id,

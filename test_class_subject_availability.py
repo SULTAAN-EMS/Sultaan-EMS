@@ -28,6 +28,7 @@ from app.routes_advanced_results import (
     _student_exam_subject_ids,
     build_analytics_data,
     build_dashboard_stats,
+    subjects_for_scope,
 )
 
 
@@ -130,6 +131,45 @@ class TestClassSubjectAvailability(unittest.TestCase):
                 subject_kind="exam",
             )],
             [self.subject.id],
+        )
+
+    def test_results_hub_resolves_subjects_for_selected_year_class(self):
+        legacy_level = AcademicLevel(name="Legacy Secondary")
+        db.session.add(legacy_level)
+        db.session.flush()
+        legacy_class = AcademicClass(
+            academic_level_id=legacy_level.id,
+            name="Form 1A",
+        )
+        legacy_subject = Subject(
+            academic_level_id=legacy_level.id,
+            name="English",
+        )
+        db.session.add_all([legacy_class, legacy_subject])
+        db.session.flush()
+
+        self.level.legacy_level_id = legacy_level.id
+        self.class_a.legacy_class_id = legacy_class.id
+        self.subject.legacy_subject_id = legacy_subject.id
+        exam = Exam(
+            name="Midterm",
+            academic_year_id=self.year.id,
+            academic_level_id=legacy_level.id,
+            academic_class_id=legacy_class.id,
+        )
+        db.session.add(exam)
+        db.session.commit()
+
+        self.assertEqual(
+            [
+                subject.id
+                for subject in subjects_for_scope(
+                    exam,
+                    level_id=legacy_level.id,
+                    class_id=legacy_class.id,
+                )
+            ],
+            [legacy_subject.id],
         )
 
     def test_inactive_year_offering_cannot_return_through_legacy_attendance_fallback(self):
