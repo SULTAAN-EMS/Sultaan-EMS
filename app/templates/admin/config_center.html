@@ -3,7 +3,7 @@
 {% block title %}Dejinta Nidaamka{% endblock %}
 {% block page_title %}Dejinta Nidaamka{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/config_center.css', v='stage-colors-20260927') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/config_center.css', v='subject-classes-in-form-20261102') }}">
 
 {% set mutable_sections = ["academic-years", "exam-types", "levels", "subjects"] %}
 {% set section_item_type = {"academic-years": "academic-years", "exam-types": "exam-types", "levels": "levels", "subjects": "subjects"} %}
@@ -216,8 +216,9 @@
           {% elif section == 'subjects' %}
             {% for item in items %}
             {% set assigned_classes = subject_class_map.get(item.id, []) %}
+            {% set excluded_classes = subject_class_exclusion_map.get(item.id, []) %}
             {% set icon = subject_icons.get(item.id, {"type": "fa", "value": "fa-book"}) %}
-            <tr data-id="{{ item.id }}" data-item-type="subjects" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-subject-kind="{{ item.subject_kind or 'exam' }}" data-academic-year-id="{{ item.academic_year_id }}" data-academic-year-level-id="{{ item.academic_year_level_id }}" data-sort-order="{{ item.sort_order }}">
+            <tr data-id="{{ item.id }}" data-item-type="subjects" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-subject-kind="{{ item.subject_kind or 'exam' }}" data-academic-year-id="{{ item.academic_year_id }}" data-academic-year-level-id="{{ item.academic_year_level_id }}" data-sort-order="{{ item.sort_order }}" data-excluded-class-ids="{{ excluded_classes|join(',') }}">
               <td>
                 <div class="config-subject-cell subject-theme-{{ item.name|lower|replace(' ', '-')|replace('/', '-') }}">
                   <span class="config-subject-icon">
@@ -236,21 +237,10 @@
               <td>{{ item.academic_year_level.name if item.academic_year_level else '-' }} ({{ item.academic_year.name if item.academic_year else '-' }})</td>
               <td>
                 {% if item.subject_kind == 'exam' and item.is_active %}
-                  {% set excluded_classes = subject_class_exclusion_map.get(item.id, []) %}
                   <div class="config-class-availability">
-                    <span class="config-class-availability-summary">{{ assigned_classes|length - excluded_classes|length }} / {{ assigned_classes|length }} fasal ayaa heli kara</span>
-                    <details class="config-class-availability-details">
-                      <summary><i class="fas fa-sliders-h" aria-hidden="true"></i> Maamul fasallada</summary>
-                      <form data-class-availability-form data-subject-id="{{ item.id }}">
-                        <p>Maaddadu heerka ayay ka dhaxashaa. Calaamadda ka saar fasalka aan loo qaadanayn. Dhibcihii hore lama tirtirayo; fasallada kale waxba iskama beddelayaan.</p>
-                        <div class="config-class-availability-list">
-                          {% for cls in assigned_classes %}
-                          <label><input type="checkbox" data-available-class value="{{ cls.id }}" {% if cls.id not in excluded_classes %}checked{% endif %}><span><strong>{{ cls.name }}</strong><small>{% if cls.id in excluded_classes %}Maaddadu fasalkan way ka reeban tahay{% else %}Maaddadu fasalkan way u furan tahay{% endif %}</small></span></label>
-                          {% else %}<span class="config-muted">Heerkan fasallo firfircoon kuma jiraan.</span>{% endfor %}
-                        </div>
-                        {% if assigned_classes %}<button type="submit" class="config-btn config-btn-primary"><i class="fas fa-save" aria-hidden="true"></i> Kaydi fasallada</button>{% endif %}
-                      </form>
-                    </details>
+                    {% if assigned_classes %}
+                    <span class="config-class-availability-summary">{{ assigned_classes|length - excluded_classes|length }} / {{ assigned_classes|length }} fasal ayaa loo furay</span>
+                    {% else %}<span class="config-muted">Heerkan fasallo firfircoon kuma jiraan.</span>{% endif %}
                   </div>
                 {% elif assigned_classes %}
                   {{ assigned_classes|map(attribute='name')|join(', ') }}
@@ -310,7 +300,7 @@
       <button class="config-modal-close" onclick="closeItemModal()"><i class="fas fa-times"></i></button>
     </div>
     <div class="config-modal-body">
-      <form id="itemForm">
+      <form id="itemForm" onsubmit="event.preventDefault(); saveItem();">
         <div class="config-form-group js-kind-group">
           <label class="config-form-label">Record Type</label>
           <select class="config-form-select" id="itemRecordKind" onchange="configureForm()">
@@ -345,7 +335,7 @@
         </div>
         <div class="config-form-group js-level-group">
           <label class="config-form-label">Academic Level</label>
-          <select class="config-form-select" id="itemAcademicLevelId">
+          <select class="config-form-select" id="itemAcademicLevelId" onchange="renderSubjectClassOptions(this.value)">
             <option value="">All Levels / Select level</option>
             {% for level in levels %}
             <option value="{{ level.id }}">{{ level.name }}</option>
@@ -369,6 +359,22 @@
           </select>
           <small class="config-form-help">Behavior scores are configured through Behavior Sessions.</small>
         </div>
+        <section class="config-form-group js-subject-class-group" aria-labelledby="itemAvailableClassesTitle">
+          <div class="config-subject-class-heading">
+            <div>
+              <label class="config-form-label" id="itemAvailableClassesTitle">Fasallada maaddadani u furan tahay</label>
+              <small class="config-form-help">Fasallada heerka la xushay ayaa halkan ka muuqanaya. Dhammaantood waa furan yihiin marka hore; calaamadda ka qaad fasallada aan maaddadan qaadanayn.</small>
+            </div>
+            <span class="config-subject-class-count" id="itemAvailableClassCount" aria-live="polite"></span>
+          </div>
+          <div class="config-subject-class-tools">
+            <button type="button" class="config-btn config-btn-secondary" data-select-subject-classes="all">Dhammaan xulo</button>
+            <button type="button" class="config-btn config-btn-secondary" data-select-subject-classes="none">Ka saar dhammaan</button>
+          </div>
+          <div class="config-subject-class-options" id="itemAvailableClasses" data-loaded="false" role="group" aria-labelledby="itemAvailableClassesTitle">
+            <p class="config-subject-class-empty">Marka hore xulo sannad-dugsiyeedka iyo heerka.</p>
+          </div>
+        </section>
         <div class="config-form-group js-code-group">
           <label class="config-form-label">Short Code</label>
           <input type="text" class="config-form-input" id="itemShortCode" placeholder="FIN, MID, MT1">
@@ -477,6 +483,9 @@ const currentSection = '{{ section }}';
 let editingItemId = null;
 let editingItemType = null;
 let pendingAction = null;
+let subjectClassesByLevel = {};
+let subjectClassEditContext = null;
+let yearLevelLoadToken = 0;
 
 function apiTypeForSection() {
   if (currentSection === 'academic-years') return 'academic-years';
@@ -506,12 +515,14 @@ function setGroup(selector, visible) {
 
 function configureForm() {
   const apiType = apiTypeForSection();
+  const isExamSubject = apiType === 'subjects' && document.getElementById('itemSubjectKind').value === 'exam';
   setGroup('.js-kind-group', currentSection === 'levels' && !editingItemId);
   setGroup('.js-year-group', ['exam-types', 'levels', 'classes', 'subjects'].includes(apiType));
   setGroup('.js-stage-group', apiType === 'levels');
   setGroup('.js-level-group', apiType === 'subjects' || apiType === 'classes');
   setGroup('.js-shift-group', apiType === 'classes');
   setGroup('.js-subject-kind-group', apiType === 'subjects');
+  setGroup('.js-subject-class-group', isExamSubject);
   setGroup('.js-code-group', apiType === 'exam-types');
   setGroup('.js-weight-group', apiType === 'exam-types');
   setGroup('.js-final-evaluation-group', apiType === 'exam-types');
@@ -525,17 +536,21 @@ function configureForm() {
     subjects: 'Subject Name'
   };
   document.getElementById('itemNameLabel').textContent = labels[apiType] || 'Name';
+  document.querySelector('#itemModal .config-modal')?.classList.toggle('config-modal-subject', apiType === 'subjects');
+  if (apiType === 'subjects') renderSubjectClassOptions(document.getElementById('itemAcademicLevelId').value);
 }
 
 function openAddModal() {
   editingItemId = null;
   editingItemType = null;
+  subjectClassEditContext = null;
   document.getElementById('modalTitle').textContent = 'Add New ' + '{{ section_title }}';
   document.getElementById('itemForm').reset();
   const pageYear = document.getElementById('subjectYearFilter')?.value || '';
+  const pageLevel = document.getElementById('subjectLevelFilter')?.value || '';
   if (pageYear) {
     document.getElementById('itemAcademicYearId').value = pageYear;
-    loadYearLevels(pageYear);
+    loadYearLevels(pageYear, pageLevel);
   }
   configureForm();
   document.getElementById('itemModal').classList.add('show');
@@ -568,6 +583,10 @@ function editItem(itemType, itemId) {
   document.getElementById('itemSubjectKind').value = row.dataset.subjectKind || 'exam';
   const yearId = row.dataset.academicYearId || '';
   const yearLevelId = row.dataset.academicYearLevelId || '';
+  subjectClassEditContext = {
+    levelId: yearLevelId,
+    excludedIds: (row.dataset.excludedClassIds || '').split(',').filter(Boolean).map(Number),
+  };
   document.getElementById('itemAcademicYearId').value = yearId;
   document.getElementById('itemSchoolStage').value = row.dataset.schoolStage || '';
   document.getElementById('itemSchoolShift').value = row.dataset.schoolShift || '';
@@ -580,19 +599,96 @@ function editItem(itemType, itemId) {
 function loadYearLevels(yearId, selectedId = '') {
   const select = document.getElementById('itemAcademicLevelId');
   if (!select) return Promise.resolve();
+  const loadToken = ++yearLevelLoadToken;
+  subjectClassesByLevel = {};
   select.innerHTML = '<option value="">Select academic level</option>';
-  if (!yearId) return Promise.resolve();
+  select.disabled = Boolean(yearId);
+  if (!yearId) {
+    select.disabled = false;
+    renderSubjectClassOptions('');
+    return Promise.resolve();
+  }
   return fetch(`/admin/config-center/api/year-levels?year_id=${encodeURIComponent(yearId)}`)
     .then(response => response.json())
     .then(data => {
+      if (loadToken !== yearLevelLoadToken) return;
       (data.data || []).forEach(item => {
+        subjectClassesByLevel[String(item.id)] = item.classes || [];
         const option = document.createElement('option');
         option.value = item.id;
         option.textContent = item.name;
         option.selected = String(item.id) === String(selectedId);
         select.appendChild(option);
       });
+      select.disabled = false;
+      renderSubjectClassOptions(selectedId || select.value);
+    })
+    .catch(() => {
+      if (loadToken !== yearLevelLoadToken) return;
+      select.disabled = false;
+      renderSubjectClassOptions('', 'Fasallada lama soo rari karin. Mar kale dooro sannad-dugsiyeedka.');
     });
+}
+
+function renderSubjectClassOptions(levelId, emptyMessage = '') {
+  const container = document.getElementById('itemAvailableClasses');
+  if (!container) return;
+  const count = document.getElementById('itemAvailableClassCount');
+  const selectedLevelId = String(levelId || '');
+  container.replaceChildren();
+  container.dataset.loaded = 'false';
+  if (!selectedLevelId) {
+    container.innerHTML = `<p class="config-subject-class-empty">${emptyMessage || 'Marka hore xulo sannad-dugsiyeedka iyo heerka.'}</p>`;
+    if (count) count.textContent = '';
+    return;
+  }
+
+  const classes = subjectClassesByLevel[selectedLevelId];
+  if (!classes) {
+    container.innerHTML = `<p class="config-subject-class-empty">${emptyMessage || 'Fasallada lama helin; dib u xulo sannad-dugsiyeedka.'}</p>`;
+    if (count) count.textContent = '';
+    return;
+  }
+  container.dataset.loaded = 'true';
+  if (!classes.length) {
+    container.innerHTML = '<p class="config-subject-class-empty">Heerkan fasallo firfircoon kuma jiraan.</p>';
+    if (count) count.textContent = '0 fasal';
+    return;
+  }
+
+  const preservePrevious = subjectClassEditContext && subjectClassEditContext.levelId === selectedLevelId;
+  const excludedIds = new Set(preservePrevious ? subjectClassEditContext.excludedIds : []);
+  classes.forEach(classItem => {
+    const label = document.createElement('label');
+    label.className = 'config-subject-class-option';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.dataset.subjectAvailableClass = '';
+    checkbox.value = classItem.id;
+    checkbox.checked = !excludedIds.has(Number(classItem.id));
+    const name = document.createElement('span');
+    name.className = 'config-subject-class-name';
+    name.textContent = classItem.name;
+    const shift = document.createElement('small');
+    shift.className = 'config-subject-class-shift';
+    shift.textContent = classItem.school_shift === 'morning'
+      ? 'Gelin hore'
+      : classItem.school_shift === 'afternoon' ? 'Gelin dambe' : 'Gelin lama cayimin';
+    const copy = document.createElement('span');
+    copy.className = 'config-subject-class-copy';
+    copy.append(name, shift);
+    label.append(checkbox, copy);
+    container.appendChild(label);
+  });
+  updateSubjectClassCount();
+}
+
+function updateSubjectClassCount() {
+  const container = document.getElementById('itemAvailableClasses');
+  const count = document.getElementById('itemAvailableClassCount');
+  if (!container || !count || container.dataset.loaded !== 'true') return;
+  const options = [...container.querySelectorAll('[data-subject-available-class]')];
+  count.textContent = `${options.filter(option => option.checked).length} / ${options.length} fasal`;
 }
 
 function deactivateItem(itemType, itemId) { prepareProtectedAction(itemType, itemId, 'deactivate'); }
@@ -830,12 +926,24 @@ function payloadFor(apiType) {
     payload.academic_year_level_id = document.getElementById('itemAcademicLevelId').value;
     payload.sort_order = document.getElementById('itemSortOrder').value;
     payload.subject_kind = document.getElementById('itemSubjectKind').value;
+    if (payload.subject_kind === 'exam') {
+      payload.available_class_ids = [...document.querySelectorAll('#itemAvailableClasses [data-subject-available-class]:checked')]
+        .map(input => Number(input.value));
+    }
   }
   return payload;
 }
 
 function saveItem() {
   const apiType = editingItemType || apiTypeForSection();
+  if (
+    apiType === 'subjects' &&
+    document.getElementById('itemSubjectKind').value === 'exam' &&
+    document.getElementById('itemAvailableClasses').dataset.loaded !== 'true'
+  ) {
+    showNotification('error', 'Fasallada lama diyaarin', 'Xulo sannad-dugsiyeed iyo heer, sug fasallada, dabadeed kaydi maaddada.');
+    return;
+  }
   const endpoint = editingItemId ? `/admin/config-center/api/${apiType}/${editingItemId}` : `/admin/config-center/api/${apiType}`;
   const method = editingItemId ? 'PUT' : 'POST';
   fetch(endpoint, {
@@ -884,32 +992,20 @@ document.getElementById('searchInput').addEventListener('input', event => {
   });
 });
 
-document.addEventListener('submit', event => {
-  const form = event.target.closest('[data-class-availability-form]');
-  if (!form) return;
-  event.preventDefault();
-  const button = form.querySelector('button[type="submit"]');
-  button.disabled = true;
-  fetch(`/admin/config-center/api/subjects/${encodeURIComponent(form.dataset.subjectId)}/class-availability`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
-    body: JSON.stringify({
-      available_class_ids: [...form.querySelectorAll('[data-available-class]:checked')].map(input => Number(input.value)),
-    }),
-  })
-    .then(async response => {
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.success) throw new Error(data.message || 'Fasallada lama kaydin.');
-      return data;
-    })
-    .then(data => {
-      showNotification('success', 'Waa la kaydiyey', data.message || 'Helitaanka maaddada waa la cusboonaysiiyey.');
-      setTimeout(() => location.reload(), 700);
-    })
-    .catch(error => {
-      button.disabled = false;
-      showNotification('error', 'Kaydintu way fashilantay', error.message);
-    });
+document.addEventListener('click', event => {
+  const selectClasses = event.target.closest('[data-select-subject-classes]');
+  if (!selectClasses) return;
+  const shouldCheck = selectClasses.dataset.selectSubjectClasses === 'all';
+  document.querySelectorAll('#itemAvailableClasses [data-subject-available-class]').forEach(input => {
+    input.checked = shouldCheck;
+  });
+  updateSubjectClassCount();
+});
+
+document.addEventListener('change', event => {
+  if (event.target.matches('#itemAvailableClasses [data-subject-available-class]')) {
+    updateSubjectClassCount();
+  }
 });
 
 function showNotification(type, title, message) {

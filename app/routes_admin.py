@@ -4306,10 +4306,66 @@ def config_year_levels():
     return jsonify({
         'success': True,
         'data': [
-            {'id': item.id, 'name': item.name, 'academic_year_id': item.academic_year_id, 'school_stage': item.school_stage}
+            {
+                'id': item.id,
+                'name': item.name,
+                'academic_year_id': item.academic_year_id,
+                'school_stage': item.school_stage,
+                'classes': [
+                    {'id': cls.id, 'name': cls.name, 'school_shift': cls.school_shift}
+                    for cls in year_classes(item.id)
+                ],
+            }
             for item in year_levels(year_id)
         ],
     })
+
+
+def _validated_subject_available_class_ids(payload, year_level):
+    if "available_class_ids" not in payload:
+        return None, None
+    raw_ids = payload.get("available_class_ids")
+    if not isinstance(raw_ids, list):
+        return None, "Xogta fasallada lama aqbalin."
+    try:
+        available_ids = {int(value) for value in raw_ids}
+    except (TypeError, ValueError):
+        return None, "Aqoonsiga fasalku sax ma aha."
+    valid_ids = {item.id for item in year_classes(year_level.id)}
+    if not available_ids.issubset(valid_ids):
+        return None, "Fasallada la doortay kuma wada jiraan heerka maaddadan."
+    return available_ids, None
+
+
+def _sync_subject_class_exclusions(subject, year_level, available_ids):
+    """Apply class availability without dropping exclusions for inactive sibling classes."""
+    active_classes = year_classes(year_level.id)
+    active_ids = {item.id for item in active_classes}
+    existing = AcademicYearClassSubjectExclusion.query.filter_by(
+        academic_year_subject_id=subject.id
+    ).all()
+    existing_class_ids = {row.academic_year_class_id for row in existing}
+    class_rows = {
+        item.id: item
+        for item in AcademicYearClass.query.filter(
+            AcademicYearClass.id.in_(existing_class_ids or {-1})
+        ).all()
+    }
+    kept_ids = set()
+    for row in existing:
+        linked_class = class_rows.get(row.academic_year_class_id)
+        if not linked_class or linked_class.academic_year_level_id != year_level.id:
+            db.session.delete(row)
+        elif row.academic_year_class_id in active_ids and row.academic_year_class_id in available_ids:
+            db.session.delete(row)
+        else:
+            kept_ids.add(row.academic_year_class_id)
+
+    for class_id in active_ids - available_ids - kept_ids:
+        db.session.add(AcademicYearClassSubjectExclusion(
+            academic_year_class_id=class_id,
+            academic_year_subject_id=subject.id,
+        ))
 
 
 @admin_bp.route("/config-center/api/exam-types/<int:exam_id>", methods=["PUT"])
@@ -4789,6 +4845,13 @@ def config_create_subject():
     year_level = validate_year_level(academic_year_id, year_level_id)
     if not year_level:
         return jsonify({'success': False, 'message': 'Academic year and matching academic level are required'})
+    available_class_ids = None
+    if subject_kind == 'exam':
+        available_class_ids, selection_error = _validated_subject_available_class_ids(data, year_level)
+        if selection_error:
+            return jsonify({'success': False, 'message': selection_error}), 400
+        if available_class_ids is None:
+            available_class_ids = {item.id for item in year_classes(year_level.id)}
 
     try:
         from sqlalchemy import func
@@ -4815,9 +4878,12 @@ def config_create_subject():
             sort_order=sort_order if sort_order is not None else max_sort + 1,
         )
         db.session.add(subject)
+        db.session.flush()
+        if subject_kind == 'exam':
+            _sync_subject_class_exclusions(subject, year_level, available_class_ids)
         db.session.commit()
 
-        audit("Configuration Center", f"Created subject: {name}")
+        audit("Configuration Center", f"Created subject: {name}; available classes: {sorted(available_class_ids) if subject_kind == 'exam' else 'not applicable'}")
         return jsonify({'success': True, 'message': 'Subject created successfully', 'data': {'id': subject.id, 'name': subject.name, 'subject_kind': subject.subject_kind}})
     except Exception as e:
         db.session.rollback()
@@ -4847,7 +4913,29 @@ def config_update_subject(subject_id):
     subject_kind = str(data.get('subject_kind', getattr(subject, 'subject_kind', 'exam')) or 'exam').strip().lower()
     if subject_kind not in ('exam', 'behavior'):
         return jsonify({'success': False, 'message': 'Subject kind must be exam or behavior'})
-    old_value = {'name': subject.name, 'academic_year_id': subject.academic_year_id, 'academic_year_level_id': subject.academic_year_level_id, 'subject_kind': getattr(subject, 'subject_kind', 'exam'), 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order}
+    available_class_ids = None
+    if subject_kind == 'exam':
+        available_class_ids, selection_error = _validated_subject_available_class_ids(data, year_level)
+        if selection_error:
+            return jsonify({'success': False, 'message': selection_error}), 400
+    old_year_level_id = subject.academic_year_level_id
+    old_subject_kind = getattr(subject, 'subject_kind', 'exam')
+    old_class_ids = {item.id for item in year_classes(old_year_level_id)} if old_subject_kind == 'exam' else set()
+    old_excluded_ids = {
+        row.academic_year_class_id
+        for row in AcademicYearClassSubjectExclusion.query.filter_by(
+            academic_year_subject_id=subject.id
+        ).all()
+    }
+    old_value = {
+        'name': subject.name,
+        'academic_year_id': subject.academic_year_id,
+        'academic_year_level_id': old_year_level_id,
+        'subject_kind': old_subject_kind,
+        'max_score': float(subject.max_score or 0),
+        'sort_order': subject.sort_order,
+        'available_class_ids': sorted(old_class_ids - old_excluded_ids) if old_subject_kind == 'exam' else None,
+    }
     subject.name = name
     subject.academic_year_id = academic_year_id
     subject.academic_year_level_id = year_level.id
@@ -4884,8 +4972,36 @@ def config_update_subject(subject_id):
                 )
                 subject.legacy_subject_id = legacy_subject.id
 
+        if subject_kind == 'behavior':
+            AcademicYearClassSubjectExclusion.query.filter_by(
+                academic_year_subject_id=subject.id
+            ).delete(synchronize_session=False)
+        elif available_class_ids is not None:
+            _sync_subject_class_exclusions(subject, year_level, available_class_ids)
+        elif old_year_level_id != year_level.id:
+            _sync_subject_class_exclusions(
+                subject,
+                year_level,
+                {item.id for item in year_classes(year_level.id)},
+            )
+
+        if subject_kind == 'exam':
+            new_class_ids = {item.id for item in year_classes(year_level.id)}
+            new_excluded_ids = {
+                row.academic_year_class_id
+                for row in AcademicYearClassSubjectExclusion.query.filter_by(
+                    academic_year_subject_id=subject.id
+                ).all()
+            }
+            new_available_class_ids = sorted(
+                available_class_ids if available_class_ids is not None
+                else new_class_ids - new_excluded_ids
+            )
+        else:
+            new_available_class_ids = None
+
         db.session.commit()
-        _audit_config_change("Configuration Center Updated", "subjects", subject, old_value=old_value, new_value={'name': subject.name, 'academic_year_id': subject.academic_year_id, 'academic_year_level_id': subject.academic_year_level_id, 'subject_kind': subject.subject_kind, 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order})
+        _audit_config_change("Configuration Center Updated", "subjects", subject, old_value=old_value, new_value={'name': subject.name, 'academic_year_id': subject.academic_year_id, 'academic_year_level_id': subject.academic_year_level_id, 'subject_kind': subject.subject_kind, 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order, 'available_class_ids': new_available_class_ids})
         return jsonify({
             'success': True,
             'message': 'Subject updated successfully',

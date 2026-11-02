@@ -1221,74 +1221,82 @@ body:has(.config-dashboard) .admin-top-compact {
   font-weight: 700;
 }
 
-.config-class-availability-details {
-  position: relative;
-}
+.config-modal-subject { width: min(760px, 100%); max-width: 760px; }
 
-.config-class-availability-details > summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 34px;
-  padding: 6px 10px;
-  border: 1px solid var(--border-light);
-  border-radius: 6px;
-  background: var(--bg-secondary);
-  color: var(--academic-blue-dark);
-  cursor: pointer;
-  font-size: .82rem;
-  font-weight: 700;
-  list-style: none;
-}
-
-.config-class-availability-details > summary::-webkit-details-marker { display: none; }
-
-.config-class-availability-details[open] > summary {
-  border-color: var(--academic-blue-light);
-  background: var(--primary-50);
-}
-
-.config-class-availability-details form {
-  position: static;
-  width: min(340px, 78vw);
-  margin-top: 6px;
-  padding: 12px;
+.config-subject-class-group {
+  padding: 14px;
   border: 1px solid var(--border-light);
   border-radius: 8px;
-  background: var(--bg-primary);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, .08);
+  background: var(--bg-secondary);
 }
 
-.config-class-availability-details form > p {
-  margin: 0 0 10px;
-  color: var(--text-secondary);
-  font-size: .82rem;
-  line-height: 1.45;
-}
-
-.config-class-availability-list {
-  display: grid;
-  gap: 5px;
-  max-height: 230px;
-  margin-bottom: 12px;
-  overflow-y: auto;
-}
-
-.config-class-availability-list label {
+.config-subject-class-heading {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.config-subject-class-heading > div { min-width: 0; }
+.config-subject-class-heading .config-form-label { margin-bottom: 4px; }
+.config-subject-class-count { flex: 0 0 auto; color: var(--text-secondary); font-size: .8rem; font-weight: 700; }
+
+.config-subject-class-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 10px;
+}
+
+.config-subject-class-tools .config-btn { min-height: 34px; padding: 6px 10px; font-size: .8rem; }
+
+.config-subject-class-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 205px), 1fr));
+  gap: 8px;
+  max-height: 240px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 1px 3px 1px 1px;
+}
+
+.config-subject-class-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
   gap: 9px;
-  padding: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
   border: 1px solid var(--border-light);
-  border-radius: 6px;
+  border-radius: 7px;
+  background: var(--bg-primary);
   cursor: pointer;
 }
 
-.config-class-availability-list input { flex: 0 0 auto; }
-.config-class-availability-list label > span { display: grid; gap: 2px; }
-.config-class-availability-list strong { color: var(--text-primary); font-size: .86rem; }
-.config-class-availability-list small { color: var(--text-secondary); font-size: .74rem; }
-.config-class-availability-details form .config-btn { min-height: 34px; }
+.config-subject-class-option:has(input:checked) {
+  border-color: var(--primary-400, #60a5fa);
+  background: var(--primary-50, #eff6ff);
+}
+
+.config-subject-class-option input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--primary-600, #2563eb);
+}
+
+.config-subject-class-copy { display: grid; min-width: 0; gap: 3px; }
+.config-subject-class-name { color: var(--text-primary); font-size: .88rem; font-weight: 700; overflow-wrap: anywhere; }
+.config-subject-class-shift { color: var(--text-secondary); font-size: .75rem; line-height: 1.35; }
+.config-subject-class-empty { grid-column: 1 / -1; margin: 0; color: var(--text-secondary); font-size: .85rem; }
+
+@media (max-width: 620px) {
+  .config-modal-subject { max-width: 100%; }
+  .config-subject-class-group { padding: 11px; }
+  .config-subject-class-options { grid-template-columns: 1fr; max-height: 210px; }
+  .config-subject-class-heading { gap: 8px; }
+}
 
 .config-subject-icon {
   width: 34px;

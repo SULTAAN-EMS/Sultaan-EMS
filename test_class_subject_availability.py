@@ -218,6 +218,16 @@ class TestClassSubjectAvailability(unittest.TestCase):
             session["_fresh"] = True
             session["config_center_authenticated"] = True
 
+        page = client.get(
+            f"/admin/config-center?section=subjects&year_id={self.year.id}&level_id={self.level.id}"
+        )
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'class="config-form-group js-subject-class-group"', page.data)
+        self.assertIn(b'id="itemAvailableClasses"', page.data)
+        self.assertIn(b'data-select-subject-classes="all"', page.data)
+        self.assertNotIn(b'data-open-class-availability', page.data)
+        self.assertNotIn(b'config-class-availability-dialog', page.data)
+
         saved = client.put(
             f"/admin/config-center/api/subjects/{self.subject.id}/class-availability",
             json={"available_class_ids": [self.class_b.id]},
@@ -252,6 +262,68 @@ class TestClassSubjectAvailability(unittest.TestCase):
         self.assertEqual(rejected.status_code, 400)
         self.assertFalse(is_year_subject_available_for_class(self.subject, self.class_a.id))
         self.assertTrue(is_year_subject_available_for_class(self.subject, self.class_b.id))
+
+    def test_subject_form_saves_and_updates_class_choices_in_one_request(self):
+        user = User(username="subject-form-admin", full_name="Subject Form Admin", role="super_admin")
+        user.set_password("test-password")
+        db.session.add(user)
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(user.id)
+            session["_fresh"] = True
+            session["config_center_authenticated"] = True
+
+        created = client.post(
+            "/admin/config-center/api/subjects",
+            json={
+                "name": "Science",
+                "academic_year_id": self.year.id,
+                "academic_year_level_id": self.level.id,
+                "subject_kind": "exam",
+                "available_class_ids": [self.class_a.id],
+            },
+        )
+        self.assertEqual(created.status_code, 200, created.get_json())
+        subject_id = created.get_json()["data"]["id"]
+        subject = db.session.get(AcademicYearSubject, subject_id)
+        self.assertTrue(is_year_subject_available_for_class(subject, self.class_a.id))
+        self.assertFalse(is_year_subject_available_for_class(subject, self.class_b.id))
+
+        updated = client.put(
+            f"/admin/config-center/api/subjects/{subject_id}",
+            json={
+                "name": "Science",
+                "academic_year_id": self.year.id,
+                "academic_year_level_id": self.level.id,
+                "subject_kind": "exam",
+                "available_class_ids": [self.class_b.id],
+            },
+        )
+        self.assertEqual(updated.status_code, 200, updated.get_json())
+        self.assertFalse(is_year_subject_available_for_class(subject, self.class_a.id))
+        self.assertTrue(is_year_subject_available_for_class(subject, self.class_b.id))
+
+        other_level = AcademicYearLevel(academic_year_id=self.year.id, name="Dugsi Hoose")
+        db.session.add(other_level)
+        db.session.flush()
+        other_class = AcademicYearClass(academic_year_level_id=other_level.id, name="Grade 1")
+        db.session.add(other_class)
+        db.session.commit()
+        rejected = client.put(
+            f"/admin/config-center/api/subjects/{subject_id}",
+            json={
+                "name": "Science",
+                "academic_year_id": self.year.id,
+                "academic_year_level_id": self.level.id,
+                "subject_kind": "exam",
+                "available_class_ids": [other_class.id],
+            },
+        )
+        self.assertEqual(rejected.status_code, 400)
+        self.assertFalse(is_year_subject_available_for_class(subject, self.class_a.id))
+        self.assertTrue(is_year_subject_available_for_class(subject, self.class_b.id))
 
     def test_excluded_historical_mark_is_retained_but_not_counted_for_class_average(self):
         legacy_level = AcademicLevel(name="Secondary")
