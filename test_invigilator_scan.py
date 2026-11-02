@@ -151,6 +151,7 @@ class TestInvigilatorScan(unittest.TestCase):
         self.assertIn('property="og:image"', html)
         self.assertIn('name="twitter:card" content="summary_large_image"', html)
         self.assertIn("qr-landing-school-logo.jpg", html)
+        self.assertIn("qr-landing.css?v=qr-mobile-performance-20261102-3", html)
         self.assertIn("favicon.ico?v=school-icon-20261023", html)
         self.assertIn("site.webmanifest?v=school-icon-20261023", html)
 
