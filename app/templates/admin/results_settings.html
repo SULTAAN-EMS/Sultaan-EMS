@@ -9,6 +9,144 @@
   {% include "admin/_results_hub_header.html" %}
 
   <main class="rh-screen">
+    {% set student_results_open = settings.get('student_results_portal_enabled', 'on')|lower not in ['off', 'false', '0', 'no'] %}
+    {% if can_manage_student_results_visibility %}
+    <section class="rh-card student-results-visibility" aria-labelledby="studentResultsVisibilityTitle">
+      <style>
+        .student-results-visibility{max-width:980px;margin-bottom:22px;padding:26px;border-color:#dce5eb}
+        .srv-head{display:flex;align-items:flex-start;gap:16px}
+        .srv-icon{display:grid;place-items:center;width:52px;height:52px;flex:0 0 52px;border-radius:15px;color:#fff;background:linear-gradient(145deg,#285d9e,#173b70);font-size:21px}
+        .srv-copy{min-width:0;flex:1}
+        .srv-kicker{margin:0 0 5px;color:#50708a;font-size:.72rem;font-weight:850;letter-spacing:.08em}
+        .srv-copy h2{margin:0;color:#18354a;font-size:1.35rem;line-height:1.25}
+        .srv-copy>p{margin:8px 0 0;color:#596b79;line-height:1.55}
+        .srv-status{display:inline-flex;align-items:center;gap:8px;flex:none;padding:9px 12px;border:1px solid;border-radius:999px;font-size:.8rem;font-weight:850}
+        .srv-status.is-open{color:#08764f;border-color:#b7e4cf;background:#effaf4}
+        .srv-status.is-closed{color:#a12d38;border-color:#f0c5c8;background:#fff3f3}
+        .srv-impact{display:flex;gap:11px;margin:20px 0;padding:14px 15px;border:1px solid #dce8f1;border-radius:10px;color:#304b60;background:#f5f9fc;line-height:1.5}
+        .srv-impact i{margin-top:3px;color:#2869a5}
+        .srv-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+        .srv-toggle{border:0;border-radius:9px;padding:12px 16px;color:#fff;font-weight:850;cursor:pointer}
+        .srv-toggle.is-open{background:#b83c48}
+        .srv-toggle.is-closed{background:#12825d}
+        .srv-toggle:focus-visible{outline:3px solid #edbd56;outline-offset:3px}
+        .srv-note{margin:0;color:#64748b;font-size:.82rem}
+        .srv-confirm{width:min(440px,calc(100% - 28px));padding:0;border:1px solid #d7e1e8;border-radius:16px;color:#203446;background:#fff;box-shadow:0 24px 80px rgba(12,35,55,.28)}
+        .srv-confirm::backdrop{background:rgba(11,27,44,.58);backdrop-filter:blur(3px)}
+        .srv-confirm__content{padding:22px}
+        .srv-confirm__head{display:flex;align-items:flex-start;gap:14px}
+        .srv-confirm__icon{display:grid;place-items:center;width:46px;height:46px;flex:0 0 46px;border:1px solid;border-radius:13px;font-size:18px}
+        .srv-confirm.is-close .srv-confirm__icon{color:#a62f3c;border-color:#f0c5c8;background:#fff1f2}
+        .srv-confirm.is-open .srv-confirm__icon{color:#08764f;border-color:#b7e4cf;background:#effaf4}
+        .srv-confirm__copy{min-width:0;flex:1;padding-top:1px}
+        .srv-confirm__eyebrow{margin:0 0 4px;color:#718293;font-size:.68rem;font-weight:850}
+        .srv-confirm__copy h3{margin:0;color:#1d3547;font-size:1.12rem;line-height:1.3}
+        .srv-confirm__copy p{margin:8px 0 0;color:#5d6f7d;font-size:.9rem;line-height:1.55}
+        .srv-confirm__actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:9px;margin-top:22px;padding-top:15px;border-top:1px solid #e7edf1}
+        .srv-confirm__button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:9px 13px;border:1px solid #d5dfe6;border-radius:9px;color:#405466;background:#fff;font-size:.84rem;font-weight:800;cursor:pointer}
+        .srv-confirm__button:hover{background:#f5f8fa}
+        .srv-confirm__button--commit{border-color:transparent;color:#fff}
+        .srv-confirm.is-close .srv-confirm__button--commit{background:#b83c48}
+        .srv-confirm.is-open .srv-confirm__button--commit{background:#12825d}
+        .srv-confirm__button--commit:hover{filter:brightness(.94)}
+        .srv-confirm__button:focus-visible{outline:3px solid #edbd56;outline-offset:2px}
+        @media(max-width:640px){.student-results-visibility{padding:18px}.srv-head{flex-wrap:wrap}.srv-status{margin-left:68px}.srv-copy h2{font-size:1.12rem}.srv-actions{align-items:stretch;flex-direction:column}.srv-toggle{width:100%}}
+      </style>
+      <div class="srv-head">
+        <span class="srv-icon" aria-hidden="true"><i class="fa-solid fa-eye-slash"></i></span>
+        <div class="srv-copy">
+          <p class="srv-kicker">XAKAMAYNTA PORTALKA ARDAYGA</p>
+          <h2 id="studentResultsVisibilityTitle">Fasax / Xidh Natiijada Imtixaanka</h2>
+          <p>Dejintani waxay xakamaysaa oo keliya aragtida natiijooyinka ee portalka ardayga.</p>
+        </div>
+        <span class="srv-status {{ 'is-open' if student_results_open else 'is-closed' }}" role="status" aria-live="polite">
+          <i class="fa-solid {{ 'fa-lock-open' if student_results_open else 'fa-lock' }}" aria-hidden="true"></i>
+          {{ 'NATIIJADU WAY FURAN TAHAY' if student_results_open else 'NATIIJADU WAY XIRAN TAHAY' }}
+        </span>
+      </div>
+      <div class="srv-impact">
+        <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+        <span>{% if student_results_open %}Ardaydu waxay arki karaan natiijooyinka la daabacay. Xiritaanku wuxuu qarinayaa bogagga natiijada ardayga oo keliya.{% else %}Natiijooyinka ardayda way qarsoon yihiin ilaa dib loo fasaxo. Dhibcaha, gudbinta macallinka, dib-u-eegista iyo ansixintu sidii hore ayay u shaqaynayaan; wax xog ah lama tirtirayo.{% endif %}</span>
+      </div>
+      <div class="srv-actions">
+        <form method="post" action="{{ url_for('admin.update_student_results_portal_visibility') }}" data-student-results-toggle>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="enabled" value="{{ 'off' if student_results_open else 'on' }}">
+          <button class="srv-toggle {{ 'is-open' if student_results_open else 'is-closed' }}" type="submit">
+            <i class="fa-solid {{ 'fa-lock' if student_results_open else 'fa-lock-open' }}" aria-hidden="true"></i>
+            {{ 'XIDH NATIIJADA IMTIXAANKA' if student_results_open else 'FASAX NATIIJADA IMTIXAANKA' }}
+          </button>
+        </form>
+        <p class="srv-note">Isbeddelkan waxaa loo diiwaangeliyaa raadraaca maamulka.</p>
+      </div>
+      <dialog class="srv-confirm" id="studentResultsConfirmDialog" aria-labelledby="studentResultsConfirmTitle" aria-describedby="studentResultsConfirmMessage">
+        <div class="srv-confirm__content">
+          <div class="srv-confirm__head">
+            <span class="srv-confirm__icon" data-confirm-icon aria-hidden="true"><i class="fa-solid fa-lock"></i></span>
+            <div class="srv-confirm__copy">
+              <p class="srv-confirm__eyebrow">XAQIIJI ISBEDDELKA</p>
+              <h3 id="studentResultsConfirmTitle">Xaqiiji</h3>
+              <p id="studentResultsConfirmMessage"></p>
+            </div>
+          </div>
+          <div class="srv-confirm__actions">
+            <button class="srv-confirm__button" type="button" data-confirm-cancel>Ka noqo</button>
+            <button class="srv-confirm__button srv-confirm__button--commit" type="button" data-confirm-commit>
+              <i class="fa-solid fa-lock" aria-hidden="true"></i><span>Haa, xaqiiji</span>
+            </button>
+          </div>
+        </div>
+      </dialog>
+      <script>
+        (() => {
+          const dialog = document.getElementById('studentResultsConfirmDialog');
+          const title = document.getElementById('studentResultsConfirmTitle');
+          const message = document.getElementById('studentResultsConfirmMessage');
+          const icon = dialog?.querySelector('[data-confirm-icon] i');
+          const commitButton = dialog?.querySelector('[data-confirm-commit]');
+          let pendingForm = null;
+
+          if (!dialog || typeof dialog.showModal !== 'function') return;
+
+          document.querySelectorAll('[data-student-results-toggle]').forEach((form) => {
+            form.addEventListener('submit', (event) => {
+              event.preventDefault();
+              const isClosing = form.querySelector('[name="enabled"]')?.value === 'off';
+              pendingForm = form;
+              dialog.classList.toggle('is-close', isClosing);
+              dialog.classList.toggle('is-open', !isClosing);
+              icon.className = `fa-solid ${isClosing ? 'fa-lock' : 'fa-lock-open'}`;
+              title.textContent = isClosing
+                ? 'Xidh natiijooyinka ardayda?'
+                : 'Fasax natiijooyinka ardayda?';
+              message.textContent = isClosing
+                ? 'Ardaydu ma arki doonaan natiijooyinka ilaa dib loo fasaxo. Dhibcaha, gudbinta iyo ansixinta nidaamka waxba iskama beddelayaan.'
+                : 'Natiijooyinka la daabacay waxay mar kale uga muuqan doonaan portalka ardayda.';
+              commitButton.classList.toggle('is-close', isClosing);
+              commitButton.querySelector('i').className = `fa-solid ${isClosing ? 'fa-lock' : 'fa-lock-open'}`;
+              commitButton.querySelector('span').textContent = isClosing
+                ? 'Haa, xidhi natiijooyinka'
+                : 'Haa, fasax natiijooyinka';
+              dialog.showModal();
+            });
+          });
+
+          dialog.querySelector('[data-confirm-cancel]').addEventListener('click', () => dialog.close());
+          dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) dialog.close();
+          });
+          dialog.addEventListener('close', () => { pendingForm = null; });
+          commitButton.addEventListener('click', () => {
+            const form = pendingForm;
+            if (!form) return;
+            pendingForm = null;
+            dialog.close();
+            HTMLFormElement.prototype.submit.call(form);
+          });
+        })();
+      </script>
+    </section>
+    {% endif %}
     <p style="margin:0 0 20px;"><a class="rh-btn" href="{{ url_for('admin.result_success_overlay_settings') }}"><i class="fa-solid fa-wand-magic-sparkles"></i> Result Success Overlay</a></p>
   </main>
 </div>

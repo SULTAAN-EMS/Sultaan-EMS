@@ -4056,6 +4056,7 @@ def results_settings():
         language_codes=language_codes,
         label_matrix=label_matrix,
         settings=settings,
+        can_manage_student_results_visibility=can("system_settings"),
     )
 
 

@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from functools import wraps
 from types import SimpleNamespace
 
-from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
 from openpyxl import Workbook
 from sqlalchemy import and_, func, or_, select
@@ -1426,6 +1426,42 @@ def settings():
         subjects=Subject.query.order_by(Subject.name).all(),
         slug=slug,
     )
+
+
+@admin_bp.route("/settings/student-results-portal", methods=["POST"])
+@permission_required("system_settings")
+def update_student_results_portal_visibility():
+    """Show or hide published results in the student-facing portal only."""
+    enabled = (request.form.get("enabled") or "").strip().lower()
+    if enabled not in {"on", "off"}:
+        abort(400)
+
+    setting_key = "student_results_portal_enabled"
+    setting = db.session.get(Setting, setting_key)
+    current_value = (setting.value if setting else "on") or "on"
+    current_value = current_value.strip().lower()
+    if current_value not in {"on", "off"}:
+        current_value = "on"
+    if enabled == current_value:
+        flash("Xaaladda natiijooyinka hore ayay sidaas ahayd.", "info")
+        return redirect(url_for("admin_advanced_results.results_settings"))
+
+    setting = setting or Setting(key=setting_key)
+    setting.value = enabled
+    db.session.add(setting)
+    audit(
+        "Student Results Portal Visibility",
+        f"Student-facing results changed from {current_value} to {enabled}.",
+    )
+    db.session.commit()
+    cached_settings = getattr(g, "_sultaan_settings", None)
+    if cached_settings is not None:
+        cached_settings[setting_key] = enabled
+    flash(
+        "Natiijooyinka ardayda waa la fasaxay." if enabled == "on" else "Natiijooyinka ardayda waa la xidhay.",
+        "success",
+    )
+    return redirect(url_for("admin_advanced_results.results_settings"))
 
 
 @admin_bp.route("/settings/top10-tunnel-music/reset", methods=["POST"])

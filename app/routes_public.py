@@ -30,6 +30,72 @@ from .routes_invigilator import current_invigilator, invigilator_login_required
 
 public_bp = Blueprint("public", __name__)
 
+STUDENT_RESULT_PORTAL_ENDPOINTS = frozenset({
+    "public.portal",
+    "public.result",
+    "public.result_view",
+    "public.behavior_reading_view",
+    "public.attendance_reading_view",
+    "public.print_report",
+    "public.download_report",
+    "public.api_result",
+    "public.feedback_result_summary",
+    "public.feedback_mg_details",
+    "public.api_top_students",
+})
+
+STUDENT_RESULTS_CLOSED_MESSAGE = (
+    "Natiijooyinka imtixaanka si ku-meel-gaar ah ayaa loo xidhay. "
+    "Fadlan la soco ogeysiiska dugsiga ama la xidhiidh Xafiiska Imtixaannada."
+)
+
+
+def _student_result_portal_is_enabled(settings=None):
+    settings = settings or get_settings()
+    value = str(settings.get("student_results_portal_enabled", "on") or "on").strip().lower()
+    return value not in {"off", "false", "0", "no"}
+
+
+def _student_result_portal_endpoint(endpoint):
+    return endpoint in STUDENT_RESULT_PORTAL_ENDPOINTS
+
+
+def _no_store(response):
+    response.headers["Cache-Control"] = "private, no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
+@public_bp.before_request
+def enforce_student_results_portal_visibility():
+    if not _student_result_portal_endpoint(request.endpoint):
+        return None
+
+    settings = get_settings()
+    if _student_result_portal_is_enabled(settings):
+        return None
+
+    if request.path.startswith("/api/"):
+        return _no_store(make_response(jsonify(
+            ok=False,
+            code="student_results_closed",
+            message=STUDENT_RESULTS_CLOSED_MESSAGE,
+        ), 423))
+
+    return _no_store(make_response(render_template(
+        "student_results_closed.html",
+        settings=settings,
+        message=STUDENT_RESULTS_CLOSED_MESSAGE,
+    )))
+
+
+@public_bp.after_request
+def prevent_student_result_portal_caching(response):
+    if _student_result_portal_endpoint(request.endpoint):
+        return _no_store(response)
+    return response
+
 
 @public_bp.route("/api/ping", methods=["GET", "HEAD"])
 def ping():
