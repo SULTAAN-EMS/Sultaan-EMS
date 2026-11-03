@@ -194,6 +194,14 @@
   letter-spacing: .035em;
   text-transform: uppercase;
 }
+.idc-sort-head { display: flex; align-items: center; gap: 12px; }
+.idc-sort-link { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; color: inherit; text-decoration: none; white-space: nowrap; }
+.idc-sort-link i { color: #82938f; font-size: .72rem; }
+.idc-sort-link.is-active { color: #087f72; }
+.idc-sort-link.is-active i { color: currentColor; }
+.idc-sort-link:hover { color: #087f72; text-decoration: underline; text-underline-offset: 3px; }
+.idc-sort-link:focus-visible { outline: 2px solid #168477; outline-offset: 3px; border-radius: 3px; }
+.idc-mobile-sort { display: none; }
 .idc-table td { padding: 11px 13px; border-bottom: 1px solid #edf1f0; color: #40535a; font-size: .84rem; vertical-align: middle; }
 .idc-table tbody tr:last-child td { border-bottom: 0; }
 .idc-table tbody tr:hover td { background: #f8fbfa; }
@@ -329,6 +337,8 @@
 .theme-dark .idc-empty-state h3, .theme-dark .idc-student-copy strong { color: var(--idc-ink); }
 .theme-dark .idc-table-wrap { border-color: #344743; }
 .theme-dark .idc-table th { border-color: #344743; background: #223632; color: #d0e2dc; }
+.theme-dark .idc-sort-link.is-active,.theme-dark .idc-sort-link:hover { color: #82d7c8; }
+.theme-dark .idc-sort-link i { color: #91aaa2; }
 .theme-dark .idc-table td { border-color: #2c403b; color: #bacac5; }
 .theme-dark .idc-table tbody tr:hover td { background: #1b2b28; }
 .theme-dark .idc-student-copy small { color: #9aadaa; }
@@ -358,6 +368,9 @@
   .idc-generate-actions { width: 100%; margin: 0; }
   .idc-generate-actions .idc-button { flex: 1; white-space: normal; }
   .idc-table-wrap { overflow: visible; border: 0; }
+  .idc-mobile-sort { display: flex; align-items: center; gap: 9px; margin: 0 0 12px; color: var(--idc-muted); font-size: .78rem; font-weight: 800; }
+  .idc-mobile-sort select { min-height: 38px; min-width: 0; flex: 1; padding: 7px 10px; border: 1px solid var(--idc-line); border-radius: 7px; color: var(--idc-ink); background: var(--idc-surface); font: inherit; }
+  .theme-dark .idc-mobile-sort select { border-color: #344743; color: #d0e2dc; background: #182824; }
   .idc-table, .idc-table tbody, .idc-table tr, .idc-table td { display: block; width: 100%; min-width: 0; }
   .idc-table thead { display: none; }
   .idc-table tr { display: grid; grid-template-columns: 1fr; gap: 0; margin-bottom: 10px; overflow: hidden; border: 1px solid var(--idc-line); border-radius: 8px; background: var(--idc-surface); }

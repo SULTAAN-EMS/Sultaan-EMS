@@ -4,11 +4,20 @@
 {% block extra_head %}
 {{ super() }}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-page-heroes.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/id_cards.css', v='id-cards-validity-20261013-1') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/id_cards.css', v='id-cards-roster-sort-20261103-1') }}">
 <script src="{{ url_for('static', filename='js/id_cards.js', v='id-cards-validity-20261013-1') }}" defer></script>
 {% endblock %}
 {% block admin_content %}
 {% from 'partials/admin_page_hero.html' import admin_page_hero %}
+{% macro roster_sort_link(field, label) -%}
+  {% set ascending = field ~ '_asc' %}
+  {% set descending = field ~ '_desc' %}
+  {% set next_sort = descending if sort_order == ascending else ascending %}
+  <a class="idc-sort-link{{ ' is-active' if sort_order in [ascending, descending] else '' }}" href="{{ url_for('admin_id_cards.dashboard', q=filters.q, year_id=filters.year_id or '', exam_id=selected_exam.id if selected_exam else '', level=filters.level, academic_year_class_id=filters.academic_year_class_id or '', section=filters.section, sort=next_sort) }}" aria-label="Kala hormari {{ label }} {{ 'hoos' if sort_order == ascending else 'kor' }}">
+    <span>{{ label }}</span>
+    <i class="fa-solid {{ 'fa-sort-up' if sort_order == ascending else 'fa-sort-down' if sort_order == descending else 'fa-sort' }}" aria-hidden="true"></i>
+  </a>
+{%- endmacro %}
 <div class="idc-page">
   {{ admin_page_hero('id') }}
 
@@ -73,6 +82,15 @@
       </div>
       {% if selected_exam %}<span class="idc-results-context"><i class="fa-solid fa-shield-halved"></i>{{ selected_exam.name }} · {{ selected_exam.academic_year.name }}</span>{% endif %}
     </div>
+    {% if selected_exam and students %}
+      <label class="idc-mobile-sort" for="idcRosterSort"><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i> Kala hormari
+        <select id="idcRosterSort">
+          {% for value, label in [('name_asc', 'Magaca: A–Z'), ('name_desc', 'Magaca: Z–A'), ('id_asc', 'Aqoonsiga: kor'), ('id_desc', 'Aqoonsiga: hoos'), ('level_asc', 'Heerka: kor'), ('level_desc', 'Heerka: hoos'), ('class_asc', 'Fasalka: kor'), ('class_desc', 'Fasalka: hoos'), ('section_asc', 'Qeybta: kor'), ('section_desc', 'Qeybta: hoos')] %}
+            <option value="{{ value }}" {{ 'selected' if sort_order == value else '' }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    {% endif %}
 
     <form method="post" action="{{ url_for('admin_id_cards.bulk_generate') }}" id="idcBulkForm" class="idc-roster-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -84,6 +102,7 @@
       <input type="hidden" name="level" value="{{ filters.level }}">
       <input type="hidden" name="academic_year_class_id" value="{{ filters.academic_year_class_id or '' }}">
       <input type="hidden" name="section" value="{{ filters.section }}">
+      <input type="hidden" name="sort" value="{{ sort_order }}">
 
       {% if selected_exam and students %}
         <div class="idc-roster-toolbar">
@@ -96,7 +115,14 @@
         </div>
         <div class="idc-table-wrap">
           <table class="idc-table">
-            <thead><tr><th class="idc-check-col" aria-label="Select students"></th><th>Ardeyga</th><th>Heerka</th><th>Fasalka</th><th>Qeybta</th><th class="idc-action-col">Kaadhka</th></tr></thead>
+            <thead><tr>
+              <th class="idc-check-col" aria-label="Select students"></th>
+              <th scope="col" aria-sort="{{ 'ascending' if sort_order in ['name_asc', 'id_asc'] else 'descending' if sort_order in ['name_desc', 'id_desc'] else 'none' }}"><div class="idc-sort-head">{{ roster_sort_link('name', 'Ardeyga') }}{{ roster_sort_link('id', 'ID') }}</div></th>
+              <th scope="col" aria-sort="{{ 'ascending' if sort_order == 'level_asc' else 'descending' if sort_order == 'level_desc' else 'none' }}">{{ roster_sort_link('level', 'Heerka') }}</th>
+              <th scope="col" aria-sort="{{ 'ascending' if sort_order == 'class_asc' else 'descending' if sort_order == 'class_desc' else 'none' }}">{{ roster_sort_link('class', 'Fasalka') }}</th>
+              <th scope="col" aria-sort="{{ 'ascending' if sort_order == 'section_asc' else 'descending' if sort_order == 'section_desc' else 'none' }}">{{ roster_sort_link('section', 'Qeybta') }}</th>
+              <th class="idc-action-col">Kaadhka</th>
+            </tr></thead>
             <tbody>
               {% for s in students %}
                 {% set placement = student_placements.get(s.id, {}) %}
@@ -254,4 +280,15 @@
     </div>
   </details>
 </div>
+<script>
+  (() => {
+    const sortSelect = document.getElementById('idcRosterSort');
+    if (!sortSelect) return;
+    sortSelect.addEventListener('change', () => {
+      const target = new URL(window.location.href);
+      target.searchParams.set('sort', sortSelect.value);
+      window.location.assign(target);
+    });
+  })();
+</script>
 {% endblock %}

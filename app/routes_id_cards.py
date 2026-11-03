@@ -1,5 +1,6 @@
 import secrets
 import calendar
+import re
 from datetime import date
 from io import BytesIO
 from tempfile import NamedTemporaryFile
@@ -28,6 +29,63 @@ ID_CARD_TEMPLATES = {
     "minimal": {"primary": "#334155", "accent": "#64748b", "background": "#ffffff", "font": "Arial", "border": "minimal", "rounded": "off"},
     "executive": {"primary": "#312e81", "accent": "#7c3aed", "background": "#fbfaff", "font": "Tahoma", "border": "solid", "rounded": "on"},
 }
+
+ID_CARD_SORT_ORDERS = {
+    "name_asc", "name_desc", "id_asc", "id_desc",
+    "level_asc", "level_desc", "class_asc", "class_desc",
+    "section_asc", "section_desc",
+}
+
+
+def _natural_roster_sort_key(value):
+    return tuple(
+        (1, int(part)) if part.isdigit() else (0, part.casefold())
+        for part in re.split(r"(\d+)", str(value or ""))
+    )
+
+
+def _sort_id_card_roster(students, placements, sort_order, levels, classes, sections):
+    descending = sort_order.endswith("_desc")
+    field = sort_order.rsplit("_", 1)[0]
+    levels_by_id = {item.id: item for item in levels}
+    classes_by_id = {item.id: item for item in classes}
+    sections_by_id = {item.id: item for item in sections}
+
+    def rank(item, name):
+        if not item:
+            return (0, _natural_roster_sort_key(name))
+        return (item.sort_order or 0, _natural_roster_sort_key(name or item.name))
+
+    def key(student):
+        placement = placements.get(student.id, {})
+        level_name = placement.get("level_name") or ""
+        class_name = placement.get("class_name") or ""
+        section_name = placement.get("section_name") or ""
+        level_rank = rank(levels_by_id.get(placement.get("academic_year_level_id")), level_name)
+        class_rank = rank(classes_by_id.get(placement.get("academic_year_class_id")), class_name)
+        section_rank = rank(sections_by_id.get(placement.get("academic_section_id")), section_name)
+
+        if field == "name":
+            return (_natural_roster_sort_key(student.full_name), _natural_roster_sort_key(student.student_code), student.id)
+        if field == "id":
+            return (_natural_roster_sort_key(student.student_code), student.id)
+        if field == "level":
+            return (level_rank, class_rank, section_rank, student.id)
+        if field == "class":
+            return (class_rank, level_rank, section_rank, student.id)
+        return (section_rank, class_rank, level_rank, student.id)
+
+    missing_sections = []
+    sortable = students
+    if field == "section":
+        sortable = []
+        for student in students:
+            if not (placements.get(student.id, {}).get("section_name") or "").strip():
+                missing_sections.append(student)
+            else:
+                sortable.append(student)
+    sortable.sort(key=key, reverse=descending)
+    return sortable + missing_sections
 
 
 @id_cards_bp.before_request
@@ -100,6 +158,9 @@ def dashboard():
 
     scope_filters = dict(filters)
     option_filters = dict(filters)
+    sort_order = request.args.get("sort", "name_asc").strip().lower()
+    if sort_order not in ID_CARD_SORT_ORDERS:
+        sort_order = "name_asc"
     if selected_exam:
         scope_filters["year_id"] = selected_exam.academic_year_id
         option_filters["year_id"] = selected_exam.academic_year_id
@@ -120,6 +181,29 @@ def dashboard():
         for student in students
     } if selected_exam else {}
     students = [student for student in students if student_placements.get(student.id)]
+    if selected_exam and students:
+        roster_levels = AcademicYearLevel.query.filter_by(
+            academic_year_id=selected_exam.academic_year_id,
+        ).all()
+        roster_classes = (
+            AcademicYearClass.query
+            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+            .filter(AcademicYearLevel.academic_year_id == selected_exam.academic_year_id)
+            .all()
+        )
+        legacy_class_ids = [item.legacy_class_id for item in roster_classes if item.legacy_class_id]
+        roster_sections = (
+            AcademicSection.query.filter(AcademicSection.academic_class_id.in_(legacy_class_ids)).all()
+            if legacy_class_ids else []
+        )
+        students = _sort_id_card_roster(
+            students,
+            student_placements,
+            sort_order,
+            roster_levels,
+            roster_classes,
+            roster_sections,
+        )
     issues = (
         IdCardIssue.query
         .options(joinedload(IdCardIssue.student), joinedload(IdCardIssue.exam))
@@ -156,6 +240,7 @@ def dashboard():
         sections=filter_section_options(option_filters),
         exams=exams,
         templates=ID_CARD_TEMPLATES,
+        sort_order=sort_order,
     )
 
 
@@ -267,6 +352,7 @@ def bulk_generate():
         "back_level": request.form.get("level", "").strip(),
         "back_class_id": request.form.get("academic_year_class_id", ""),
         "back_section": request.form.get("section", "").strip(),
+        "back_sort": request.form.get("sort", "name_asc"),
     }
     return redirect(url_for(
         "admin_id_cards.print_cards",
@@ -285,6 +371,7 @@ def _redirect_to_posted_id_card_filters():
         level=request.form.get("level", "").strip(),
         academic_year_class_id=request.form.get("academic_year_class_id", ""),
         section=request.form.get("section", "").strip(),
+        sort=request.form.get("sort", "name_asc"),
     ))
 
 
@@ -328,6 +415,7 @@ def print_cards():
         "level": "back_level",
         "academic_year_class_id": "back_class_id",
         "section": "back_section",
+        "sort": "back_sort",
     }
     return_url_args = {
         target: request.args[source]

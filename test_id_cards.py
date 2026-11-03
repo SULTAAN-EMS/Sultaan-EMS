@@ -10,6 +10,7 @@ from app.verification import id_card_qr_payload
 from app.models import (
     AcademicClass,
     AcademicLevel,
+    AcademicSection,
     AcademicYear,
     AcademicYearClass,
     AcademicYearLevel,
@@ -139,7 +140,7 @@ class TestIdCards(unittest.TestCase):
         self.ctx.pop()
 
     @staticmethod
-    def _student(code, name, year, year_level, year_class):
+    def _student(code, name, year, year_level, year_class, section=None):
         student = Student(student_code=code, full_name=name, is_active=True)
         db.session.add(student)
         db.session.flush()
@@ -148,6 +149,7 @@ class TestIdCards(unittest.TestCase):
             academic_year=year,
             academic_year_level=year_level,
             academic_year_class=year_class,
+            academic_section=section,
             status="active",
             academic_outcome="pending",
             enrollment_source="manual",
@@ -217,7 +219,12 @@ class TestIdCards(unittest.TestCase):
         self.assertNotIn(b"DIIWAANGELIN ARDAYDA", response.data)
         self.assertNotIn(b"Daabac, soo dejiso PDF ama xaqiiji kaadhadhkii ugu dambeeyey", response.data)
         self.assertEqual(response.data.count(b'<select name="exam_id"'), 1)
-        self.assertIn(b"<th>Ardeyga</th><th>Heerka</th><th>Fasalka</th><th>Qeybta</th>", response.data)
+        self.assertIn(b">Ardeyga</span>", response.data)
+        self.assertIn(b">Heerka</span>", response.data)
+        self.assertIn(b">Fasalka</span>", response.data)
+        self.assertIn(b">Qeybta</span>", response.data)
+        self.assertIn(b"sort=id_asc", response.data)
+        self.assertIn(b'id="idcRosterSort"', response.data)
         self.assertIn(b'class="idc-action-col">Kaadhka</th>', response.data)
         self.assertIn(b'<th>Sawirka</th>', response.data)
         self.assertIn(b'data-label="Sawirka"', response.data)
@@ -244,6 +251,82 @@ class TestIdCards(unittest.TestCase):
         parser = FormNestingParser()
         parser.feed(response.get_data(as_text=True))
         self.assertFalse(parser.has_nested_form)
+
+    def test_roster_sorting_uses_alphabetical_ids_and_academic_order(self):
+        self.first_student.full_name = "Zahra Cabdi"
+        self.second_student.full_name = "Aamina Cali"
+
+        form_two = AcademicClass(academic_level=self.level, name="Form 2", sort_order=2)
+        form_ten = AcademicClass(academic_level=self.level, name="Form 10", sort_order=10)
+        db.session.add_all([form_two, form_ten])
+        db.session.flush()
+        year_form_two = AcademicYearClass(
+            academic_year_level=self.year_level,
+            legacy_class=form_two,
+            name="Form 2",
+            sort_order=2,
+        )
+        year_form_ten = AcademicYearClass(
+            academic_year_level=self.year_level,
+            legacy_class=form_ten,
+            name="Form 10",
+            sort_order=10,
+        )
+        db.session.add_all([year_form_two, year_form_ten])
+        db.session.flush()
+        self._student("FORM-2", "Muna Maxamed", self.year, self.year_level, year_form_two)
+        self._student("FORM-10", "Bilan Axmed", self.year, self.year_level, year_form_ten)
+
+        middle_level = AcademicLevel(name="Dugsi Dhexe", sort_order=2)
+        db.session.add(middle_level)
+        db.session.flush()
+        year_middle_level = AcademicYearLevel(
+            academic_year=self.year,
+            legacy_level=middle_level,
+            name="Dugsi Dhexe",
+            sort_order=2,
+        )
+        middle_class = AcademicClass(academic_level=middle_level, name="8aad", sort_order=1)
+        db.session.add_all([year_middle_level, middle_class])
+        db.session.flush()
+        year_middle_class = AcademicYearClass(
+            academic_year_level=year_middle_level,
+            legacy_class=middle_class,
+            name="8aad",
+            sort_order=1,
+        )
+        db.session.add(year_middle_class)
+        db.session.flush()
+        self._student("LEVEL-2", "Cabdi Axmed", self.year, year_middle_level, year_middle_class)
+
+        section_b = AcademicSection(academic_class=self.legacy_class, name="B", sort_order=2)
+        section_a = AcademicSection(academic_class=self.legacy_class, name="A", sort_order=1)
+        db.session.add_all([section_b, section_a])
+        db.session.flush()
+        self._student("SEC-B", "Xaliimo B", self.year, self.year_level, self.year_class, section_b)
+        self._student("SEC-A", "Xaliimo A", self.year, self.year_level, self.year_class, section_a)
+        db.session.commit()
+
+        base_url = f"/admin/id-cards/?year_id={self.year.id}&exam_id={self.exam.id}"
+        by_name = self.client.get(f"{base_url}&sort=name_asc")
+        self.assertEqual(by_name.status_code, 200)
+        self.assertLess(by_name.data.index(b"ID-002"), by_name.data.index(b"ID-001"))
+
+        by_id = self.client.get(f"{base_url}&sort=id_asc")
+        self.assertEqual(by_id.status_code, 200)
+        self.assertLess(by_id.data.index(b"ID-001"), by_id.data.index(b"ID-002"))
+
+        by_class = self.client.get(f"{base_url}&sort=class_asc")
+        self.assertEqual(by_class.status_code, 200)
+        self.assertLess(by_class.data.index(b"FORM-2"), by_class.data.index(b"FORM-10"))
+
+        by_level = self.client.get(f"{base_url}&sort=level_asc")
+        self.assertEqual(by_level.status_code, 200)
+        self.assertLess(by_level.data.index(b"ID-001"), by_level.data.index(b"LEVEL-2"))
+
+        by_section = self.client.get(f"{base_url}&sort=section_asc")
+        self.assertEqual(by_section.status_code, 200)
+        self.assertLess(by_section.data.index(b"SEC-A"), by_section.data.index(b"SEC-B"))
 
     def test_initial_history_load_uses_bounded_query_count(self):
         for index in range(30):
