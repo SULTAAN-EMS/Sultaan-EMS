@@ -17,7 +17,11 @@ from app.behavior_attendance import (
     ensure_status_level_points,
     mark_attendance,
 )
-from app.behavior_reporting import build_behavior_report_categories, get_behavior_report_data
+from app.behavior_reporting import (
+    build_behavior_report_categories,
+    get_behavior_report_data,
+    get_behavior_scores_for_students,
+)
 from app.behavior_service import (
     attendance_points_projection,
     calculate_annual_behavior_score,
@@ -222,6 +226,51 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
             session["_user_id"] = str(self.admin.id)
             session["_fresh"] = True
         return client
+
+    def test_top_tunnel_behavior_scores_are_batched_and_match_student_reports(self):
+        peer = Student(student_code="PHASE2E-BATCH", full_name="Batch Peer", is_active=True)
+        peer_enrollment = StudentEnrollment(
+            student=peer,
+            academic_year=self.year_one,
+            academic_year_level=self.year_level_one,
+            academic_year_class=self.year_class_one,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source="manual",
+        )
+        db.session.add_all([peer, peer_enrollment])
+        db.session.commit()
+
+        statements = []
+
+        def capture_ledger_queries(_connection, _cursor, statement, _parameters, _context, _many):
+            normalized = statement.lower()
+            if "behavior_events" in normalized or "behavior_attendance_records" in normalized:
+                statements.append(normalized)
+
+        event.listen(db.engine, "before_cursor_execute", capture_ledger_queries)
+        try:
+            batch = get_behavior_scores_for_students(
+                [self.student, peer],
+                self.exam_one,
+                self.year_level_one.id,
+            )
+        finally:
+            event.remove(db.engine, "before_cursor_execute", capture_ledger_queries)
+
+        self.assertEqual(sum("behavior_events" in sql for sql in statements), 1)
+        self.assertEqual(sum("behavior_attendance_records" in sql for sql in statements), 1)
+        for student in (self.student, peer):
+            reports = get_behavior_report_data(student, self.exam_one)
+            self.assertEqual(batch[student.id]["has_reports"], bool(reports))
+            self.assertEqual(
+                batch[student.id]["session_score"],
+                sum((Decimal(str(row.get("session_score") or 0)) for row in reports), Decimal("0")),
+            )
+            self.assertEqual(
+                batch[student.id]["session_maximum"],
+                sum((Decimal(str(row.get("session_maximum") or 0)) for row in reports), Decimal("0")),
+            )
 
     def test_bulk_attendance_reports_create_one_pdf_with_a_page_for_each_student(self):
         self.admin.set_permissions(["behavior.audit"])

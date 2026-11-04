@@ -10,6 +10,7 @@ from collections import defaultdict
 from decimal import Decimal
 
 from sqlalchemy import and_, or_
+from sqlalchemy.orm import joinedload, selectinload
 
 from .behavior_service import (
     BehaviorValidationError,
@@ -27,6 +28,8 @@ from .models import (
     BehaviorConfiguration,
     BehaviorConfigurationLevel,
     BehaviorEvent,
+    BehaviorSession,
+    StudentEnrollment,
 )
 
 
@@ -81,6 +84,189 @@ def _session_matches_exam(session, exam):
         and legacy_exam.academic_year_id == exam.academic_year_id
         and (legacy_exam.name or "").strip().casefold() == (exam.name or "").strip().casefold()
     )
+
+
+def _selected_session_for_exam(configuration, exam):
+    """Select the unique canonical or legacy session for a report exam."""
+    scoped_sessions = []
+    for session in (item for item in configuration.sessions if item.is_active):
+        linked_exam = session.exam if session.exam_id is not None else session.exam_type
+        if not linked_exam or linked_exam.academic_year_id != configuration.academic_year_id:
+            continue
+        configured_level = configuration.academic_year_level
+        linked_level_id = getattr(linked_exam, "academic_level_id", None)
+        if (
+            linked_level_id is not None
+            and configured_level
+            and configured_level.legacy_level_id is not None
+            and linked_level_id != configured_level.legacy_level_id
+        ):
+            continue
+        scoped_sessions.append(session)
+
+    exact_sessions = [
+        session for session in scoped_sessions
+        if session.exam_id == exam.id and session.exam is not None
+    ]
+    legacy_sessions = [
+        session for session in scoped_sessions
+        if session.exam_id is None and _session_matches_exam(session, exam)
+    ]
+    if len(exact_sessions) > 1:
+        return None, "Behavior assessment is invalid because multiple sessions are linked to the selected examination."
+    if exact_sessions:
+        return exact_sessions[0], None
+    if len(legacy_sessions) > 1:
+        return None, "Behavior assessment is invalid because multiple legacy sessions match the selected examination."
+    if legacy_sessions:
+        return legacy_sessions[0], None
+    return None, None
+
+
+def get_behavior_scores_for_students(students, exam, academic_year_level_id):
+    """Project the selected-exam Behavior scores for a whole class in batches.
+
+    This keeps the same session selection and scoring rules as the individual
+    report while avoiding a full report (and its per-student ledger queries)
+    for every student in a Top 10 request.
+    """
+    students = list(students or [])
+    summary_by_student = {
+        student.id: {
+            "has_reports": False,
+            "session_score": Decimal("0"),
+            "session_maximum": Decimal("0"),
+        }
+        for student in students
+    }
+    if not students or not exam or not exam.academic_year_id or not academic_year_level_id:
+        return summary_by_student
+
+    enrollments = (
+        StudentEnrollment.query
+        .options(
+            joinedload(StudentEnrollment.academic_year_level),
+            joinedload(StudentEnrollment.academic_year_class),
+        )
+        .filter(
+            StudentEnrollment.student_id.in_(summary_by_student),
+            StudentEnrollment.academic_year_id == exam.academic_year_id,
+            StudentEnrollment.academic_year_level_id == academic_year_level_id,
+            StudentEnrollment.status.in_(("active", "completed")),
+        )
+        .all()
+    )
+    if not enrollments:
+        return summary_by_student
+
+    enrollment_ids = [enrollment.id for enrollment in enrollments]
+    configurations = (
+        BehaviorConfiguration.query
+        .options(
+            joinedload(BehaviorConfiguration.academic_year_level),
+            selectinload(BehaviorConfiguration.academic_year_levels),
+            selectinload(BehaviorConfiguration.sessions).joinedload(BehaviorSession.exam),
+            selectinload(BehaviorConfiguration.sessions).joinedload(BehaviorSession.exam_type),
+        )
+        .join(
+            AcademicYearSubject,
+            AcademicYearSubject.id == BehaviorConfiguration.academic_year_subject_id,
+        )
+        .filter(
+            BehaviorConfiguration.academic_year_id == exam.academic_year_id,
+            or_(
+                BehaviorConfiguration.academic_year_levels.any(
+                    BehaviorConfigurationLevel.academic_year_level_id == academic_year_level_id
+                ),
+                and_(
+                    ~BehaviorConfiguration.academic_year_levels.any(),
+                    BehaviorConfiguration.academic_year_level_id == academic_year_level_id,
+                ),
+            ),
+            AcademicYearSubject.subject_kind == "behavior",
+            AcademicYearSubject.is_active.is_(True),
+        )
+        .order_by(BehaviorConfiguration.id.asc())
+        .all()
+    )
+
+    for configuration in configurations:
+        try:
+            validate_behavior_configuration(configuration)
+            selected_session, _selection_error = _selected_session_for_exam(configuration, exam)
+        except BehaviorValidationError:
+            continue
+
+        if selected_session is None:
+            # The individual report still emits an unavailable/invalid report
+            # for every valid enrollment when no unique session is available.
+            for enrollment in enrollments:
+                summary_by_student[enrollment.student_id]["has_reports"] = True
+            continue
+
+        events_by_enrollment = defaultdict(lambda: defaultdict(list))
+        for event in (
+            BehaviorEvent.query
+            .filter(
+                BehaviorEvent.behavior_configuration_id == configuration.id,
+                BehaviorEvent.student_enrollment_id.in_(enrollment_ids),
+                BehaviorEvent.status == "active",
+            )
+            .order_by(BehaviorEvent.occurred_at.asc(), BehaviorEvent.id.asc())
+            .all()
+        ):
+            events_by_enrollment[event.student_enrollment_id][event.behavior_session_id].append(event)
+
+        attendance_by_enrollment = defaultdict(lambda: defaultdict(list))
+        for record in (
+            BehaviorAttendanceRecord.query
+            .filter(
+                BehaviorAttendanceRecord.behavior_configuration_id == configuration.id,
+                BehaviorAttendanceRecord.student_enrollment_id.in_(enrollment_ids),
+                BehaviorAttendanceRecord.status == "active",
+            )
+            .order_by(
+                BehaviorAttendanceRecord.attendance_date.asc(),
+                BehaviorAttendanceRecord.id.asc(),
+            )
+            .all()
+        ):
+            attendance_by_enrollment[record.student_enrollment_id][record.behavior_session_id].append(record)
+
+        for enrollment in enrollments:
+            student_summary = summary_by_student[enrollment.student_id]
+            student_events = {
+                session.id: events_by_enrollment[enrollment.id].get(session.id, [])
+                for session in configuration.sessions
+            }
+            student_attendance = {
+                session.id: attendance_by_enrollment[enrollment.id].get(session.id, [])
+                for session in configuration.sessions
+            }
+            try:
+                score = calculate_session_score(
+                    configuration,
+                    selected_session,
+                    enrollment,
+                    behavior_events=student_events.get(selected_session.id, []),
+                    attendance_records=student_attendance.get(selected_session.id, []),
+                )
+                # Preserve the individual report's validity behavior: it omits
+                # this configuration if an unrelated active session makes its
+                # annual projection invalid.
+                calculate_annual_behavior_score(
+                    configuration,
+                    enrollment,
+                    behavior_events_by_session=student_events,
+                    attendance_records_by_session=student_attendance,
+                )
+            except BehaviorValidationError:
+                continue
+            student_summary["has_reports"] = True
+            student_summary["session_score"] += Decimal(str(score.get("final_score") or 0))
+            student_summary["session_maximum"] += Decimal(str(score.get("maximum_score") or 0))
+
+    return summary_by_student
 
 
 def _event_response_payload(event):
@@ -355,58 +541,12 @@ def get_behavior_report_data(student, exam):
     for configuration in configurations:
         try:
             validate_behavior_configuration(configuration)
-            sessions = [item for item in configuration.sessions if item.is_active]
+            selected_session, selection_error = _selected_session_for_exam(configuration, exam)
         except BehaviorValidationError:
             # A stale or inconsistent configuration must not leak into a
             # report.  The admin configuration page remains responsible for
             # showing and correcting that invalid state.
             continue
-
-        scoped_sessions = []
-        for session in sessions:
-            linked_exam = session.exam if session.exam_id is not None else session.exam_type
-            if not linked_exam:
-                continue
-            if linked_exam.academic_year_id != configuration.academic_year_id:
-                continue
-            configured_level = configuration.academic_year_level
-            linked_level_id = getattr(linked_exam, "academic_level_id", None)
-            if (
-                linked_level_id is not None
-                and configured_level
-                and configured_level.legacy_level_id is not None
-                and linked_level_id != configured_level.legacy_level_id
-            ):
-                continue
-            scoped_sessions.append(session)
-
-        # Canonical Exam IDs always win. A legacy same-name lookup is only a
-        # compatibility path for sessions that have no canonical exam_id; it
-        # must never override or compete with an exact relationship.
-        exact_sessions = [
-            session
-            for session in scoped_sessions
-            if session.exam_id == exam.id and session.exam is not None
-        ]
-        legacy_sessions = [
-            session
-            for session in scoped_sessions
-            if session.exam_id is None and _session_matches_exam(session, exam)
-        ]
-        selected_session = None
-        selection_error = None
-        if len(exact_sessions) > 1:
-            selection_error = (
-                "Behavior assessment is invalid because multiple sessions are linked to the selected examination."
-            )
-        elif exact_sessions:
-            selected_session = exact_sessions[0]
-        elif len(legacy_sessions) > 1:
-            selection_error = (
-                "Behavior assessment is invalid because multiple legacy sessions match the selected examination."
-            )
-        elif legacy_sessions:
-            selected_session = legacy_sessions[0]
 
         base_report = {
             "configuration_id": configuration.id,

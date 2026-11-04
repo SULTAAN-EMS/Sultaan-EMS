@@ -250,7 +250,20 @@ class TestPhase2FHistoricalCutover(unittest.TestCase):
             behavior_score = 20 if student.id == students[0].id else 0
             return [{"session_score": behavior_score, "session_maximum": 20}]
 
-        with patch("app.behavior_reporting.get_behavior_report_data", side_effect=behavior_report):
+        def behavior_scores(students_to_score, _exam, _level_id):
+            return {
+                item.id: {
+                    "has_reports": True,
+                    "session_score": 20 if item.id == students[0].id else 0,
+                    "session_maximum": 20,
+                }
+                for item in students_to_score
+            }
+
+        with (
+            patch("app.behavior_reporting.get_behavior_report_data", side_effect=behavior_report),
+            patch("app.behavior_reporting.get_behavior_scores_for_students", side_effect=behavior_scores),
+        ):
             portal_payload = result_payload(students[0], exam=exam, public_only=True)
             tunnel_rows = top_students_for_class(students[0], exam)
 

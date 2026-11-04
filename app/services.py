@@ -956,26 +956,21 @@ def top_students_for_class(student, exam, limit=10):
             marks_by_student[row.student_id] += Decimal(str(row.score or 0))
             has_published_marks[row.student_id] = True
 
-    from .behavior_reporting import get_behavior_report_data
+    from .behavior_reporting import get_behavior_scores_for_students
 
-    behavior_reports_by_student = {
-        classmate.id: get_behavior_report_data(classmate, exam)
-        for classmate in classmates
-    }
+    behavior_scores_by_student = get_behavior_scores_for_students(
+        classmates,
+        exam,
+        selected_placement.get("academic_year_level_id"),
+    )
     scores_by_student = {}
     ordinary_maximum = sum(subject_maxima.values(), Decimal("0"))
     for classmate in classmates:
-        behavior_reports = behavior_reports_by_student[classmate.id]
-        if not has_published_marks[classmate.id] and not behavior_reports:
+        behavior_summary = behavior_scores_by_student.get(classmate.id) or {}
+        if not has_published_marks[classmate.id] and not behavior_summary.get("has_reports"):
             continue
-        behavior_score = sum(
-            (Decimal(str(report.get("session_score") or 0)) for report in behavior_reports),
-            Decimal("0"),
-        )
-        behavior_maximum = sum(
-            (Decimal(str(report.get("session_maximum") or 0)) for report in behavior_reports),
-            Decimal("0"),
-        )
+        behavior_score = Decimal(str(behavior_summary.get("session_score") or 0))
+        behavior_maximum = Decimal(str(behavior_summary.get("session_maximum") or 0))
         total_maximum = ordinary_maximum + behavior_maximum
         if total_maximum > 0:
             scores_by_student[classmate.id] = round(
