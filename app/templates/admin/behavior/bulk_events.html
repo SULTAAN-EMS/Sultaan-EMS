@@ -14,8 +14,10 @@
 .behavior-bulk-class{margin-top:10px;border:1px solid #dce4ea;border-radius:11px;overflow:hidden;background:#fff}.behavior-bulk-class__head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;border-bottom:1px solid #e5eaee;background:#f7f9fa}.behavior-bulk-class__head strong{display:flex;align-items:center;gap:8px}.behavior-bulk-class__head label{display:flex;align-items:center;gap:8px;font-size:.88rem;font-weight:700;cursor:pointer}
 .behavior-bulk-students{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px}.behavior-bulk-student{display:flex;align-items:center;gap:10px;min-width:0;padding:9px 10px;border:1px solid #e0e7ec;border-radius:9px;background:#fff;cursor:pointer}.behavior-bulk-student:hover{border-color:#82b8aa;background:#f5fbf8}.behavior-bulk-student:has(input:checked){border-color:#24796c;background:#edf8f4}.behavior-bulk-student input{width:18px;height:18px;flex:0 0 auto;accent-color:#24796c}.behavior-bulk-student img,.behavior-bulk-avatar{display:grid;place-items:center;width:36px;height:36px;flex:0 0 36px;border-radius:50%;object-fit:cover;color:#fff;background:#5372a4;font-weight:700}.behavior-bulk-student__copy{min-width:0;display:grid;gap:2px}.behavior-bulk-student__copy strong,.behavior-bulk-student__copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.behavior-bulk-student__copy small{color:#718096}
 .behavior-bulk-record-badge{display:inline-flex;align-items:center;gap:4px;width:max-content;padding:3px 6px;border:1px solid #eccf91;border-radius:20px;color:#825a10;background:#fff7e5;font-size:.7rem;font-weight:700}.behavior-bulk-student.is-recorded{border-color:#e8d4a7;background:#fffcf4}.behavior-bulk-student.is-recorded input{cursor:not-allowed}
+.behavior-bulk-student.is-recorded input{cursor:pointer}.behavior-bulk-student.is-duplicate{border-color:#d9b77e;background:#fff9eb}.behavior-bulk-student.is-duplicate input{cursor:not-allowed}
 .behavior-bulk-empty{padding:18px;text-align:center;color:#718096}.behavior-bulk-submit{position:sticky;bottom:10px;z-index:3;display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:15px;padding:12px;border:1px solid #d8e3e8;border-radius:12px;background:rgba(255,255,255,.96);box-shadow:0 8px 24px rgba(25,45,60,.12)}
-.behavior-bulk-error{padding:12px 14px;margin:0 0 14px;border:1px solid #efb7b1;border-radius:10px;color:#9a3029;background:#fff2f0}
+.behavior-bulk-notice{display:grid;grid-template-columns:40px minmax(0,1fr) 30px;align-items:center;gap:12px;margin:0 0 14px;padding:13px 14px;border:1px solid var(--notice-border);border-left:4px solid var(--notice-accent);border-radius:12px;color:var(--notice-ink);background:var(--notice-bg);box-shadow:0 10px 26px rgba(20,40,30,.1);animation:bulk-notice-in .3s ease-out both}.behavior-bulk-notice--success{--notice-accent:#16845f;--notice-border:#b8dfcf;--notice-ink:#174f3d;--notice-bg:#f0fbf6}.behavior-bulk-notice--error{--notice-accent:#c13935;--notice-border:#efc3bf;--notice-ink:#762d2a;--notice-bg:#fff3f1}.behavior-bulk-notice--info{--notice-accent:#337c9a;--notice-border:#bfd9e4;--notice-ink:#28566a;--notice-bg:#f1f9fc}.behavior-bulk-notice__icon{display:grid;place-items:center;width:38px;height:38px;border-radius:11px;color:#fff;background:var(--notice-accent);font-size:17px}.behavior-bulk-notice__copy{display:grid;gap:3px;min-width:0}.behavior-bulk-notice__copy strong{font-weight:800}.behavior-bulk-notice__copy span{overflow-wrap:anywhere}.behavior-bulk-notice__close{display:grid;place-items:center;width:30px;height:30px;border:1px solid color-mix(in srgb,var(--notice-accent) 25%,transparent);border-radius:8px;color:var(--notice-ink);background:color-mix(in srgb,var(--notice-accent) 8%,transparent)}
+.behavior-bulk-error{margin:0 0 14px}.theme-dark .behavior-bulk-notice--success,[data-theme="dark"] .behavior-bulk-notice--success{--notice-accent:#45bd8d;--notice-border:#315d49;--notice-ink:#c8f2dd;--notice-bg:#172d23}.theme-dark .behavior-bulk-notice--error,[data-theme="dark"] .behavior-bulk-notice--error{--notice-accent:#f07970;--notice-border:#663b38;--notice-ink:#ffd6d1;--notice-bg:#321f20}.theme-dark .behavior-bulk-notice--info,[data-theme="dark"] .behavior-bulk-notice--info{--notice-accent:#70bedc;--notice-border:#315369;--notice-ink:#d0effb;--notice-bg:#172834}@keyframes bulk-notice-in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
 .behavior-bulk-taxonomy{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.behavior-bulk-taxonomy .behavior-bulk-field--wide{grid-column:1/-1}.behavior-bulk-direction{display:flex;flex-wrap:wrap;gap:10px}.behavior-bulk-direction label{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #dce4ea;border-radius:9px;cursor:pointer}.behavior-bulk-direction input{accent-color:#24796c}.behavior-bulk-response{display:none;margin-top:12px}.behavior-bulk-response.active{display:block}.behavior-bulk-choice-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.behavior-bulk-choice{display:flex;align-items:center;gap:9px;padding:10px;border:1px solid #dce4ea;border-radius:9px;cursor:pointer}.behavior-bulk-choice:has(input:checked){border-color:#24796c;background:#edf8f4}.behavior-bulk-choice input{accent-color:#24796c}.behavior-bulk-footnote{margin:5px 0 0;color:#718096;font-size:.86rem}
 @media(max-width:760px){.behavior-bulk-filters,.behavior-bulk-taxonomy{grid-template-columns:1fr}.behavior-bulk-toolbar,.behavior-bulk-toolbar--filters{grid-template-columns:1fr 1fr}.behavior-bulk-toolbar .behavior-bulk-search-wrap{grid-column:1/-1}.behavior-bulk-students,.behavior-bulk-choice-list{grid-template-columns:1fr}.behavior-bulk-submit{align-items:stretch;flex-direction:column}.behavior-bulk-submit .behavior-btn{width:100%;justify-content:center}.behavior-bulk-hero{align-items:flex-start}.behavior-bulk-hero h1{font-size:1.2rem}}
 .theme-dark .behavior-bulk-hero,[data-theme="dark"] .behavior-bulk-hero{border-color:#2b4650;color:#e8f0f5;background:linear-gradient(120deg,#152b2b,#172237)}
@@ -23,7 +25,9 @@
 .theme-dark .behavior-bulk-filters label,.theme-dark .behavior-bulk-field label,[data-theme="dark"] .behavior-bulk-filters label,[data-theme="dark"] .behavior-bulk-field label{color:#d7e2eb}
 .theme-dark .behavior-bulk-filters select,.theme-dark .behavior-bulk-field input,.theme-dark .behavior-bulk-field select,.theme-dark .behavior-bulk-field textarea,.theme-dark .behavior-bulk-search,[data-theme="dark"] .behavior-bulk-filters select,[data-theme="dark"] .behavior-bulk-field input,[data-theme="dark"] .behavior-bulk-field select,[data-theme="dark"] .behavior-bulk-field textarea,[data-theme="dark"] .behavior-bulk-search{border-color:#34495b;color:#e8f0f5;background:#111d2b}
 .theme-dark .behavior-bulk-class,.theme-dark .behavior-bulk-student,[data-theme="dark"] .behavior-bulk-class,[data-theme="dark"] .behavior-bulk-student{border-color:#304254;color:#e8f0f5;background:#172435}.theme-dark .behavior-bulk-class__head,[data-theme="dark"] .behavior-bulk-class__head{border-color:#304254;color:#e8f0f5;background:#1d3042}.theme-dark .behavior-bulk-student:hover,.theme-dark .behavior-bulk-student:has(input:checked),[data-theme="dark"] .behavior-bulk-student:hover,[data-theme="dark"] .behavior-bulk-student:has(input:checked){border-color:#50a68e;background:#18392f}.theme-dark .behavior-bulk-student__copy small,[data-theme="dark"] .behavior-bulk-student__copy small{color:#aebdca}.theme-dark .behavior-bulk-choice,.theme-dark .behavior-bulk-direction label,[data-theme="dark"] .behavior-bulk-choice,[data-theme="dark"] .behavior-bulk-direction label{border-color:#304254;color:#e8f0f5;background:#172435}.theme-dark .behavior-bulk-choice:has(input:checked),[data-theme="dark"] .behavior-bulk-choice:has(input:checked){border-color:#50a68e;background:#18392f}.theme-dark .behavior-bulk-submit,[data-theme="dark"] .behavior-bulk-submit{border-color:#304254;background:rgba(17,29,43,.97)}.theme-dark .behavior-bulk-error,[data-theme="dark"] .behavior-bulk-error{border-color:#74413d;color:#ffd6d2;background:#341f22}
-.theme-dark .behavior-bulk-record-badge,[data-theme="dark"] .behavior-bulk-record-badge{border-color:#68552d;color:#f1d997;background:#332b1b}.theme-dark .behavior-bulk-student.is-recorded,[data-theme="dark"] .behavior-bulk-student.is-recorded{border-color:#68552d;background:#292719}
+.theme-dark .behavior-bulk-record-badge,[data-theme="dark"] .behavior-bulk-record-badge{border-color:#68552d;color:#f1d997;background:#332b1b}.theme-dark .behavior-bulk-student.is-recorded,[data-theme="dark"] .behavior-bulk-student.is-recorded{border-color:#68552d;background:#292719}.theme-dark .behavior-bulk-student.is-duplicate,[data-theme="dark"] .behavior-bulk-student.is-duplicate{border-color:#7a6034;background:#342c1d}
+@media(max-width:560px){.behavior-bulk-notice{grid-template-columns:34px minmax(0,1fr) 28px;gap:9px;padding:11px}.behavior-bulk-notice__icon{width:34px;height:34px}}
+@media(prefers-reduced-motion:reduce){.behavior-bulk-notice{animation:none}}
 </style>
 
 <div class="behavior-page view">
@@ -41,7 +45,8 @@
     </div>
   </form>
 
-  {% if bulk_error %}<div class="behavior-bulk-error" role="alert"><i class="fa-solid fa-triangle-exclamation"></i> {{ bulk_error }}</div>{% endif %}
+  {% if bulk_notice %}<div class="behavior-bulk-notice behavior-bulk-notice--{{ bulk_notice.kind }}" role="{{ 'alert' if bulk_notice.kind == 'error' else 'status' }}" aria-live="{{ 'assertive' if bulk_notice.kind == 'error' else 'polite' }}"><span class="behavior-bulk-notice__icon" aria-hidden="true"><i class="fa-solid {{ 'fa-circle-check' if bulk_notice.kind == 'success' else 'fa-circle-info' }}"></i></span><span class="behavior-bulk-notice__copy"><strong>{{ bulk_notice.title }}</strong><span>{{ bulk_notice.message }}</span></span><button type="button" class="behavior-bulk-notice__close" aria-label="Xir fariinta" onclick="this.closest('.behavior-bulk-notice').remove()"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>{% endif %}
+  {% if bulk_error %}<div class="behavior-bulk-notice behavior-bulk-notice--error behavior-bulk-error" role="alert" aria-live="assertive"><span class="behavior-bulk-notice__icon" aria-hidden="true"><i class="fa-solid fa-circle-xmark"></i></span><span class="behavior-bulk-notice__copy"><strong>Diiwaangelintu way fashilantay</strong><span>{{ bulk_error }}</span></span><button type="button" class="behavior-bulk-notice__close" aria-label="Xir fariinta" onclick="this.closest('.behavior-bulk-notice').remove()"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>{% endif %}
 
   {% if config and selected_session and not scope_invalid %}
   <form class="behavior-card card behavior-bulk-card" id="behaviorBulkForm" data-duplicate-check-url="{{ url_for('behavior.bulk_duplicate_check') }}" method="post" action="{{ url_for('behavior.bulk_events') }}">
@@ -75,7 +80,7 @@
             <label class="behavior-bulk-student" data-roster-student data-recorded="false" data-class="{{ school_class.id }}" data-level="{{ school_class.academic_year_level_id }}" data-search="{{ (enrollment.student.full_name ~ ' ' ~ enrollment.student.student_code ~ ' ' ~ school_class.name ~ ' ' ~ school_class.academic_year_level.name)|lower }}">
               <input type="checkbox" name="student_enrollment_ids" value="{{ enrollment.id }}" {% if enrollment.id|string in form_values.getlist('student_enrollment_ids') %}checked{% endif %}>
               {% if enrollment.student.photo_path %}<img src="{{ asset_url(enrollment.student.photo_path) }}" alt="" loading="lazy">{% else %}<span class="behavior-bulk-avatar">{{ enrollment.student.full_name[:1]|upper }}</span>{% endif %}
-              <span class="behavior-bulk-student__copy"><strong>{{ enrollment.student.full_name }}</strong><small>{{ enrollment.student.student_code }}</small><span class="behavior-bulk-record-badge" data-recorded-badge hidden><i class="fa-solid fa-circle-check"></i> Hore ayaa loo diiwaangeliyey</span></span>
+              <span class="behavior-bulk-student__copy"><strong>{{ enrollment.student.full_name }}</strong><small>{{ enrollment.student.student_code }}</small><span class="behavior-bulk-record-badge" data-recorded-badge hidden><i class="fa-solid fa-circle-check"></i> <span data-recorded-label>Hore ayaa loo diiwaangeliyey</span></span></span>
             </label>
             {% endfor %}
           </div>
@@ -123,6 +128,7 @@
   const submitButton = document.getElementById('bulkSubmit');
   const duplicateStatus = document.getElementById('bulkDuplicateStatus');
   const duplicateIds = new Set();
+  const recordedIds = new Set();
   let duplicateCheckPending = true;
   let duplicateCheckFailed = false;
   let duplicateCheckRevision = 0;
@@ -224,20 +230,30 @@
       if (revision !== duplicateCheckRevision) return;
       if (!response.ok || !payload.success) throw new Error(payload.message || 'Hubinta lama dhammaystirin.');
       duplicateIds.clear();
-      payload.duplicate_enrollment_ids.forEach((id) => duplicateIds.add(String(id)));
+      recordedIds.clear();
+      (payload.recorded_enrollment_ids || payload.duplicate_enrollment_ids || []).forEach((id) => recordedIds.add(String(id)));
+      (payload.duplicate_enrollment_ids || []).forEach((id) => duplicateIds.add(String(id)));
       roster.querySelectorAll('[data-roster-student]').forEach((row) => {
         const checkbox = row.querySelector('input[name="student_enrollment_ids"]');
-        const recorded = duplicateIds.has(checkbox.value);
+        const duplicate = duplicateIds.has(checkbox.value);
+        const recorded = recordedIds.has(checkbox.value);
         row.dataset.recorded = recorded ? 'true' : 'false';
         row.classList.toggle('is-recorded', recorded);
-        row.querySelector('[data-recorded-badge]').hidden = !recorded;
-        checkbox.disabled = recorded;
-        if (recorded) checkbox.checked = false;
+        row.classList.toggle('is-duplicate', duplicate);
+        const badge = row.querySelector('[data-recorded-badge]');
+        badge.hidden = !recorded;
+        badge.querySelector('[data-recorded-label]').textContent = duplicate
+          ? 'Dhacdadan hore ayaa loo diiwaangeliyey'
+          : 'Qaybtan hore ayaa looga diiwaangeliyey';
+        checkbox.disabled = duplicate;
+        if (duplicate) checkbox.checked = false;
       });
       duplicateCheckFailed = false;
-      duplicateStatus.textContent = payload.duplicate_count
-        ? `${payload.duplicate_count} arday ayaa dhacdadan hore loogu diiwaangeliyey; dib looma xulan karo.`
-        : 'Dhacdadan weli looma diiwaangelin ardayda scope-kan.';
+      const recordedCount = Number(payload.recorded_count ?? payload.duplicate_count ?? 0);
+      const duplicateCount = Number(payload.duplicate_count || 0);
+      duplicateStatus.textContent = recordedCount
+        ? `${recordedCount} arday ayaa qaybtan hore uga diiwaangashan; ${duplicateCount} waxay leeyihiin isla ficilka iyo taariikhdan.`
+        : 'Qaybtan weli arday lagama diiwaangelin xilligan.';
     } catch (error) {
       if (revision !== duplicateCheckRevision) return;
       duplicateCheckFailed = true;

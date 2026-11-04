@@ -698,6 +698,27 @@ def _bulk_event_duplicates(config, session, category, action, occurred_at, enrol
     }
 
 
+def _bulk_category_recorded_students(config, session, category, enrollment_ids=None):
+    """Find students with any active event in this category and scoring session."""
+    if not all((config, session, category)):
+        return set()
+    query = BehaviorEvent.query.filter(
+        BehaviorEvent.behavior_configuration_id == config.id,
+        BehaviorEvent.behavior_session_id == session.id,
+        BehaviorEvent.behavior_category_id == category.id,
+        BehaviorEvent.status == "active",
+    )
+    if enrollment_ids is not None:
+        ids = list(enrollment_ids)
+        if not ids:
+            return set()
+        query = query.filter(BehaviorEvent.student_enrollment_id.in_(ids))
+    return {
+        row[0]
+        for row in query.with_entities(BehaviorEvent.student_enrollment_id).distinct().all()
+    }
+
+
 def _student_board_rows(config, selected_session, class_id=None, academic_year_level_id=None):
     if not config or not selected_session:
         return []
@@ -3344,8 +3365,17 @@ def bulk_duplicate_check():
             eligible_ids,
         )
         duplicate_ids.intersection_update(eligible_ids)
+        recorded_ids = _bulk_category_recorded_students(
+            config,
+            session,
+            category,
+            eligible_ids,
+        )
+        recorded_ids.intersection_update(eligible_ids)
         return jsonify({
             "success": True,
+            "recorded_enrollment_ids": sorted(recorded_ids),
+            "recorded_count": len(recorded_ids),
             "duplicate_enrollment_ids": sorted(duplicate_ids),
             "duplicate_count": len(duplicate_ids),
         })
@@ -3410,6 +3440,22 @@ def bulk_events():
     )
     form_values = request.form
     bulk_error = None
+    bulk_notice = None
+
+    if request.method == "GET" and request.args.get("bulk_result") == "saved":
+        created_count = max(0, _int(request.args.get("created")))
+        replayed_count = max(0, _int(request.args.get("replayed")))
+        if created_count:
+            message = f"Dhacdada dhibcaha leh waxaa si guul leh loogu diiwaangeliyey {created_count} arday."
+            if replayed_count:
+                message += f" {replayed_count} diiwaan hore ayaa la aqoonsaday, mana la labanlaabin."
+            bulk_notice = {"kind": "success", "title": "Diiwaangelintu way guulaysatay", "message": message}
+        else:
+            bulk_notice = {
+                "kind": "info",
+                "title": "Diiwaankii hore ayaa la aqoonsaday",
+                "message": f"{replayed_count} diiwaan ayaa hore u jiray; wax cusub laguma darin.",
+            }
 
     if request.method == "POST":
         try:
@@ -3535,15 +3581,14 @@ def bulk_events():
                         f"Bulk-recorded {category.polarity} event for {created_count} students in configuration {config.id}, session {selected_session.id}",
                     )
             db.session.commit()
-            if created_count:
-                flash(f"Dhacdada dhibcaha leh waxaa loo diiwaangeliyey {created_count} arday.", "success")
-            if duplicate_count:
-                flash(f"{duplicate_count} diiwaan hore ayaa jiray; laguma celin.", "info")
             return redirect(url_for(
                 "behavior.bulk_events",
                 year_id=config.academic_year_id,
                 config_id=config.id,
                 session_id=selected_session.id,
+                bulk_result="saved",
+                created=created_count,
+                replayed=duplicate_count,
             ))
         except (BehaviorValidationError, ValueError, IntegrityError) as exc:
             db.session.rollback()
@@ -3559,6 +3604,7 @@ def bulk_events():
         current_time=datetime.utcnow(),
         idempotency_key=token_urlsafe(24),
         bulk_error=bulk_error,
+        bulk_notice=bulk_notice,
         form_values=form_values,
     )
 

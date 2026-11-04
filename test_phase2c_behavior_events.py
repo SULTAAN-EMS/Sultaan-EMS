@@ -367,6 +367,10 @@ class TestPhase2CBehaviorEvents(unittest.TestCase):
         }
         response = client.post("/admin/behavior/events/bulk", data=data)
         self.assertEqual(response.status_code, 302)
+        success_page = client.get(response.headers["Location"])
+        self.assertEqual(success_page.status_code, 200)
+        self.assertIn('behavior-bulk-notice--success', success_page.get_data(as_text=True))
+        self.assertIn("2 arday", success_page.get_data(as_text=True))
         events = BehaviorEvent.query.filter(
             BehaviorEvent.idempotency_key.in_([
                 f"bulk:bulk-route-test:{self.enrollment_one.id}",
@@ -380,6 +384,9 @@ class TestPhase2CBehaviorEvents(unittest.TestCase):
 
         replay = client.post("/admin/behavior/events/bulk", data=data)
         self.assertEqual(replay.status_code, 302)
+        replay_page = client.get(replay.headers["Location"])
+        self.assertIn('behavior-bulk-notice--info', replay_page.get_data(as_text=True))
+        self.assertIn("hore u jiray", replay_page.get_data(as_text=True))
         self.assertEqual(
             BehaviorEvent.query.filter(BehaviorEvent.idempotency_key.in_([
                 f"bulk:bulk-route-test:{self.enrollment_one.id}",
@@ -534,10 +541,12 @@ class TestPhase2CBehaviorEvents(unittest.TestCase):
             "category_id": self.positive.id,
             "action_id": self.subcategory_action.id,
             "enrollment_id": self.enrollment_one.id,
-            "occurred_at": "2026-08-29T12:34",
+            "occurred_at": "2026-08-30T12:34",
         }))
         self.assertEqual(different_action.status_code, 200)
         self.assertEqual(different_action.json["duplicate_enrollment_ids"], [])
+        self.assertEqual(different_action.json["recorded_enrollment_ids"], [self.enrollment_one.id])
+        self.assertEqual(different_action.json["recorded_count"], 1)
 
         response = client.post(
             f"/admin/behavior/students?config_id={self.config_one.id}",
@@ -593,6 +602,8 @@ class TestPhase2CBehaviorEvents(unittest.TestCase):
                 "idempotency_key": "bulk-capacity-atomic",
             })
         self.assertEqual(response.status_code, 200)
+        self.assertIn('behavior-bulk-notice--error', response.get_data(as_text=True))
+        self.assertIn("Diiwaangelintu way fashilantay", response.get_data(as_text=True))
         self.assertEqual(BehaviorEvent.query.filter(
             BehaviorEvent.idempotency_key.like("bulk:bulk-capacity-atomic:%")
         ).count(), 0)
