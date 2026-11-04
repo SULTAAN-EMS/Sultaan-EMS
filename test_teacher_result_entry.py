@@ -2342,10 +2342,24 @@ class TestTeacherResultEntry(unittest.TestCase):
 
         self.client.post("/teacher/logout")
         self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        review_list = self.client.get(
+            f"/admin/teachers/result-entry?status=review&teacher_id={self.teacher.id}&sort=teacher&page=1"
+        )
+        self.assertEqual(review_list.status_code, 200)
+        self.assertIn(f'name="return_teacher_id" value="{self.teacher.id}"'.encode(), review_list.data)
+        self.assertIn(b'name="return_status" value="review"', review_list.data)
         approved = self.client.post("/admin/teachers/result-entry", data={
             "action": "approve", "assignment_id": str(self.assignment.id),
-        }, follow_redirects=True)
-        self.assertEqual(approved.status_code, 200)
+            "return_status": "review",
+            "return_teacher_id": str(self.teacher.id),
+            "return_sort": "teacher",
+            "return_page": "2",
+        }, follow_redirects=False)
+        self.assertEqual(approved.status_code, 302)
+        self.assertIn("status=review", approved.headers["Location"])
+        self.assertIn("sort=teacher", approved.headers["Location"])
+        self.assertIn("page=2", approved.headers["Location"])
+        self.assertIn(f"teacher_id={self.teacher.id}", approved.headers["Location"])
         self.assertEqual(submission.status, "draft")
         self.assertEqual(first_mark.status, "approved")
         self.assertEqual(second_mark.status, "approved")
@@ -2451,6 +2465,16 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(approved.status_code, 200)
         approval_event = TeacherResultEvent.query.filter_by(event_type="partially_approved").one()
         self.assertEqual(approval_event.marks_count, 1)
+        self.assertEqual(
+            TeacherResultSubmission.query.filter_by(assignment_id=self.assignment.id).one().status,
+            "draft",
+        )
+        assignment_summary = self.client.get("/admin/teachers/result-entry")
+        self.assertEqual(assignment_summary.status_code, 200)
+        self.assertIn(
+            b'class="tra-metric approved"><span>La ansixiyey</span><strong>1</strong>',
+            assignment_summary.data,
+        )
 
         history = self.client.get("/admin/teachers/result-entry/history")
         self.assertEqual(history.status_code, 200)
