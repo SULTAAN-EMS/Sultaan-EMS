@@ -63,6 +63,22 @@ class TestStudentResultsPortalVisibility(unittest.TestCase):
         self.assertNotIn(b"NATIIJOOYINKA IMTIXAANKA EE DHAMMAAN ARDEYDA HADDA WEY XIDHAN YIHIIN.", response.data)
         self.assertIn("no-store", response.headers.get("Cache-Control", ""))
 
+    def test_homepage_exposes_student_services_social_preview(self):
+        response = self.client.get("/")
+        html = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('property="og:title" content="WAAXDA ADEEGGA ARDEYGA', html)
+        self.assertIn('property="og:type" content="website"', html)
+        self.assertIn('name="twitter:card" content="summary_large_image"', html)
+        self.assertIn("https://www.sultaan-ems.com/static/images/student-services-share.jpg", html)
+
+        image = self.client.get("/static/images/student-services-share.jpg")
+        self.assertEqual(image.status_code, 200)
+        self.assertEqual(image.mimetype, "image/jpeg")
+        self.assertTrue(image.data.startswith(b"\xff\xd8\xff"))
+        image.close()
+
     def test_only_system_settings_admin_can_close_or_open_student_results(self):
         self.login_as(self.results_admin)
         denied = self.client.post(
