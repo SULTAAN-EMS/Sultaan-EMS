@@ -698,8 +698,26 @@ def _bulk_event_duplicates(config, session, category, action, occurred_at, enrol
     }
 
 
+def _within_behavior_session_period(query, session):
+    if session.period_start_date:
+        query = query.filter(
+            BehaviorEvent.occurred_at >= datetime.combine(
+                session.period_start_date,
+                datetime.min.time(),
+            )
+        )
+    if session.period_end_date:
+        query = query.filter(
+            BehaviorEvent.occurred_at < datetime.combine(
+                session.period_end_date + timedelta(days=1),
+                datetime.min.time(),
+            )
+        )
+    return query
+
+
 def _bulk_category_recorded_students(config, session, category, enrollment_ids=None):
-    """Find students with any active event in this category and scoring session."""
+    """Find students with an active event in this category and scoring period."""
     if not all((config, session, category)):
         return set()
     query = BehaviorEvent.query.filter(
@@ -708,6 +726,7 @@ def _bulk_category_recorded_students(config, session, category, enrollment_ids=N
         BehaviorEvent.behavior_category_id == category.id,
         BehaviorEvent.status == "active",
     )
+    query = _within_behavior_session_period(query, session)
     if enrollment_ids is not None:
         ids = list(enrollment_ids)
         if not ids:
@@ -3493,19 +3512,20 @@ def bulk_events():
     for enrollment in enrollments:
         roster_by_class[enrollment.academic_year_class_id].append(enrollment)
     category_ids = [category.id for category in (config.categories if config else [])]
-    recorded_roster_ids = {
-        row[0]
-        for row in db.session.query(BehaviorEvent.student_enrollment_id)
-        .filter(
+    recorded_roster_ids = set()
+    if config and selected_session and category_ids and enrollments:
+        recorded_query = db.session.query(BehaviorEvent.student_enrollment_id).filter(
             BehaviorEvent.behavior_configuration_id == config.id,
             BehaviorEvent.behavior_session_id == selected_session.id,
             BehaviorEvent.behavior_category_id.in_(category_ids),
             BehaviorEvent.status == "active",
             BehaviorEvent.student_enrollment_id.in_([item.id for item in enrollments]),
         )
-        .distinct()
-        .all()
-    } if config and selected_session and category_ids and enrollments else set()
+        recorded_query = _within_behavior_session_period(recorded_query, selected_session)
+        recorded_roster_ids = {
+            row[0]
+            for row in recorded_query.distinct().all()
+        }
     configurations = (
         BehaviorConfiguration.query
         .filter_by(academic_year_id=context["selected_year"].id)

@@ -1,6 +1,6 @@
 import json
 import unittest
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from flask_login import login_user, logout_user
@@ -818,6 +818,62 @@ class TestPhase2CBehaviorEvents(unittest.TestCase):
             f'?config_id={self.config_one.id}&amp;session_id={self.session_a.id}"',
             snapshot_body,
         )
+
+    def test_bulk_recorded_marker_uses_revised_scoring_period(self):
+        record_event(
+            self.config_one,
+            self.enrollment_one,
+            self.session_a,
+            self.positive,
+            self.positive_action,
+            occurred_at=datetime(2026, 8, 29, 12, 34),
+            idempotency_key="bulk-history-outside-revised-period",
+        )
+        self.session_a.period_start_date = date(2026, 8, 30)
+        self.session_a.period_end_date = date(2026, 8, 31)
+        db.session.flush()
+        record_event(
+            self.config_one,
+            self.enrollment_two,
+            self.session_a,
+            self.positive,
+            self.positive_action,
+            occurred_at=datetime(2026, 8, 30, 12, 34),
+            idempotency_key="bulk-history-inside-revised-period",
+        )
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        page = client.get(
+            f"/admin/behavior/events/bulk?year_id={self.year_one.id}"
+            f"&config_id={self.config_one.id}&session_id={self.session_a.id}"
+        )
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn(
+            f'data-any-recorded="false" data-recorded="false" data-enrollment="{self.enrollment_one.id}"',
+            html,
+        )
+        self.assertIn(
+            f'data-any-recorded="true" data-recorded="true" data-enrollment="{self.enrollment_two.id}"',
+            html,
+        )
+
+        check = client.post("/admin/behavior/events/bulk/check", json={
+            "year_id": self.year_one.id,
+            "config_id": self.config_one.id,
+            "session_id": self.session_a.id,
+            "occurred_at": "2026-08-31T12:34",
+            "entries": [
+                {"enrollment_id": self.enrollment_one.id, "category_id": self.positive.id, "action_id": self.positive_action.id},
+                {"enrollment_id": self.enrollment_two.id, "category_id": self.positive.id, "action_id": self.positive_action.id},
+            ],
+        })
+        self.assertEqual(check.status_code, 200)
+        self.assertEqual(check.json["recorded_enrollment_ids"], [self.enrollment_two.id])
 
 
 if __name__ == "__main__":
