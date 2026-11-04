@@ -78,6 +78,7 @@ ENDPOINT_PERMISSIONS = {
     "admin.reset_user_password": "users",
     "admin.settings": ("settings", "system_settings"),
     "admin.update_student_results_portal_visibility": "system_settings",
+    "admin.update_student_results_announcement": "system_settings",
     "admin.delete_grade_scale": ("settings", "system_settings"),
     "admin.audit_logs": "system_settings",
     "admin.feedback_complaints": "settings",

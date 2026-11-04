@@ -117,6 +117,7 @@ DEFAULT_SETTINGS = {
     "admin_password_min_length": "8",
     "admin_session_timeout_minutes": "60",
     "student_results_portal_enabled": "on",
+    "student_results_announcement_at_eat": "",
     # Phase 3B: global switch for year/level-scoped promotion rules.
     # Keep it off by default so existing result and transition behavior is
     # unchanged until an administrator explicitly enables the feature.

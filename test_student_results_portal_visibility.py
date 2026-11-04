@@ -1,5 +1,7 @@
 import json
 import unittest
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from app import create_app, db
 from app.models import AuditLog, Setting, User
@@ -100,6 +102,7 @@ class TestStudentResultsPortalVisibility(unittest.TestCase):
         self.assertIn(b"WAAXDA ARRIMAHA ARDEYDA", public_page.data)
         self.assertIn(b"Xafiiska Imtixaannadu weli ma fasixin aragtida natiijooyinka", public_page.data)
         self.assertIn(b"ardaydu waxay halakan ka arki doonaan natiijooyinka la daabacay", public_page.data)
+        self.assertIn(b"Waqtiga shaacinta natiijooyinka weli lama cayimin", public_page.data)
         self.assertNotIn(b"TIS-PRIVATE-CHECK", public_page.data)
         self.assertIn("no-store", public_page.headers.get("Cache-Control", ""))
 
@@ -142,6 +145,63 @@ class TestStudentResultsPortalVisibility(unittest.TestCase):
         reopened_api = self.client.get("/api/results/TIS-PRIVATE-CHECK")
         self.assertEqual(reopened_api.status_code, 404)
         self.assertNotEqual(reopened_api.get_json().get("code"), "student_results_closed")
+
+    def test_announcement_schedule_is_restricted_and_does_not_open_results(self):
+        self.login_as(self.results_admin)
+        denied = self.client.post(
+            "/admin/settings/student-results-announcement",
+            data={"announcement_at_eat": "2026-11-04T06:00"},
+        )
+        self.assertEqual(denied.status_code, 403)
+        self.assertIsNone(db.session.get(Setting, "student_results_announcement_at_eat"))
+
+        self.client.post("/admin/logout")
+        self.login_as(self.owner)
+        settings_page = self.client.get("/admin/advanced-results/settings")
+        self.assertEqual(settings_page.status_code, 200)
+        self.assertIn(b"Jadwal u samee shaacinta natiijooyinka", settings_page.data)
+        self.assertIn(b"Waqtiga shaacinta", settings_page.data)
+
+        saved = self.client.post(
+            "/admin/settings/student-results-announcement",
+            data={"announcement_at_eat": "2026-11-04T06:00"},
+        )
+        self.assertEqual(saved.status_code, 302)
+        self.assertEqual(
+            db.session.get(Setting, "student_results_announcement_at_eat").value,
+            "2026-11-04T06:00",
+        )
+
+        self.client.post(
+            "/admin/settings/student-results-portal",
+            data={"enabled": "off"},
+        )
+        public_page = self.client.get("/result")
+        self.assertEqual(public_page.status_code, 200)
+        self.assertIn("Arbaca, November 04, 2026 · 06:00 AM EAT".encode(), public_page.data)
+        self.assertIn(b'data-results-announcement', public_page.data)
+        expected_timestamp = int(
+            datetime(2026, 11, 4, 6, 0, tzinfo=ZoneInfo("Africa/Mogadishu")).timestamp()
+            * 1000
+        )
+        self.assertIn(f'data-target-ms="{expected_timestamp}"'.encode(), public_page.data)
+        self.assertEqual(
+            db.session.get(Setting, "student_results_portal_enabled").value,
+            "off",
+        )
+
+        cleared = self.client.post(
+            "/admin/settings/student-results-announcement",
+            data={"announcement_at_eat": ""},
+        )
+        self.assertEqual(cleared.status_code, 302)
+        self.assertEqual(
+            db.session.get(Setting, "student_results_announcement_at_eat").value,
+            "",
+        )
+        cleared_page = self.client.get("/result")
+        self.assertNotIn(b'data-results-announcement', cleared_page.data)
+        self.assertIn(b"Waqtiga shaacinta natiijooyinka weli lama cayimin", cleared_page.data)
 
 
 if __name__ == "__main__":

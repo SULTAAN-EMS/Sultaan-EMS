@@ -25,6 +25,19 @@
         .srv-status.is-closed{color:#a12d38;border-color:#f0c5c8;background:#fff3f3}
         .srv-impact{display:flex;gap:11px;margin:20px 0;padding:14px 15px;border:1px solid #dce8f1;border-radius:10px;color:#304b60;background:#f5f9fc;line-height:1.5}
         .srv-impact i{margin-top:3px;color:#2869a5}
+        .srv-schedule{margin:18px 0;padding:16px 0;border-top:1px solid #e1e9ed;border-bottom:1px solid #e1e9ed}
+        .srv-schedule__heading{display:flex;align-items:flex-start;gap:11px;margin-bottom:12px}
+        .srv-schedule__icon{display:grid;place-items:center;width:38px;height:38px;flex:0 0 38px;border:1px solid #c9e4df;border-radius:10px;color:#087f72;background:#edf8f5}
+        .srv-schedule__copy{min-width:0}
+        .srv-schedule__copy strong{display:block;color:#254254;font-size:.92rem}
+        .srv-schedule__copy p{margin:4px 0 0;color:#667987;font-size:.8rem;line-height:1.5}
+        .srv-schedule__field{display:flex;align-items:end;gap:10px}
+        .srv-schedule__label{display:grid;gap:6px;min-width:0;flex:1;color:#455f6e;font-size:.78rem;font-weight:800}
+        .srv-schedule__input{width:100%;min-height:43px;padding:9px 11px;border:1px solid #ccd9df;border-radius:8px;color:#19394b;background:#fff;font:inherit;font-size:.88rem}
+        .srv-schedule__input:focus-visible{outline:3px solid #b5d9d4;outline-offset:1px;border-color:#168477}
+        .srv-schedule__save{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:43px;padding:10px 14px;border:1px solid #127f72;border-radius:8px;color:#fff;background:#128276;font-weight:800;cursor:pointer}
+        .srv-schedule__save:hover{background:#0d6c62}
+        .srv-schedule__save:focus-visible{outline:3px solid #edbd56;outline-offset:2px}
         .srv-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
         .srv-toggle{border:0;border-radius:9px;padding:12px 16px;color:#fff;font-weight:850;cursor:pointer}
         .srv-toggle.is-open{background:#b83c48}
@@ -50,7 +63,7 @@
         .srv-confirm.is-open .srv-confirm__button--commit{background:#12825d}
         .srv-confirm__button--commit:hover{filter:brightness(.94)}
         .srv-confirm__button:focus-visible{outline:3px solid #edbd56;outline-offset:2px}
-        @media(max-width:640px){.student-results-visibility{padding:18px}.srv-head{flex-wrap:wrap}.srv-status{margin-left:68px}.srv-copy h2{font-size:1.12rem}.srv-actions{align-items:stretch;flex-direction:column}.srv-toggle{width:100%}}
+        @media(max-width:640px){.student-results-visibility{padding:18px}.srv-head{flex-wrap:wrap}.srv-status{margin-left:68px}.srv-copy h2{font-size:1.12rem}.srv-schedule__field{align-items:stretch;flex-direction:column}.srv-schedule__save{width:100%}.srv-actions{align-items:stretch;flex-direction:column}.srv-toggle{width:100%}}
       </style>
       <div class="srv-head">
         <span class="srv-icon" aria-hidden="true"><i class="fa-solid fa-eye-slash"></i></span>
@@ -68,6 +81,22 @@
         <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
         <span>{% if student_results_open %}Ardaydu waxay arki karaan natiijooyinka la daabacay. Xiritaanku wuxuu qarinayaa bogagga natiijada ardayga oo keliya.{% else %}Natiijooyinka ardayda way qarsoon yihiin ilaa dib loo fasaxo. Dhibcaha, gudbinta macallinka, dib-u-eegista iyo ansixintu sidii hore ayay u shaqaynayaan; wax xog ah lama tirtirayo.{% endif %}</span>
       </div>
+      <form class="srv-schedule" method="post" action="{{ url_for('admin.update_student_results_announcement') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="srv-schedule__heading">
+          <span class="srv-schedule__icon" aria-hidden="true"><i class="fa-solid fa-calendar-days"></i></span>
+          <div class="srv-schedule__copy">
+            <strong>Jadwal u samee shaacinta natiijooyinka</strong>
+            <p>Ardaydu waxay arki doonaan waqtiga iyo tirin-toos u socota. Markay tirintu dhammaato, adiga ayaa weli ON ka dhigaya natiijooyinka.</p>
+          </div>
+        </div>
+        <div class="srv-schedule__field">
+          <label class="srv-schedule__label" for="studentResultsAnnouncementAt">Waqtiga shaacinta · EAT (UTC+3)
+            <input class="srv-schedule__input" id="studentResultsAnnouncementAt" name="announcement_at_eat" type="datetime-local" step="60" value="{{ student_results_announcement_input }}">
+          </label>
+          <button class="srv-schedule__save" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Kaydi waqtiga</button>
+        </div>
+      </form>
       <div class="srv-actions">
         <form method="post" action="{{ url_for('admin.update_student_results_portal_visibility') }}" data-student-results-toggle>
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -45,6 +45,7 @@ from .promotion_service import promotion_operational_status
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import DEFAULT_GRADE_SCALES, ScopedSubjectView, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, critical_subject_badges, get_exam_marking_configuration, get_label, get_settings, grade_for, grade_for_from_cache, grade_scale_input_bounds, load_grade_scale_cache, performance_tier_for, resolved_subject_maxima, result_payload, resolve_subject_max_score, scoped_legacy_subjects, subject_display_name
+from .student_results_portal import announcement_datetime_local_input
 from .attendance_rules import counts_as_exam_sitting
 from .behavior_reporting import get_behavior_report_data
 from .deletion_service import PurgeValidationError, purge_student
@@ -4057,6 +4058,9 @@ def results_settings():
         label_matrix=label_matrix,
         settings=settings,
         can_manage_student_results_visibility=can("system_settings"),
+        student_results_announcement_input=announcement_datetime_local_input(
+            settings.get("student_results_announcement_at_eat")
+        ),
     )
 
 

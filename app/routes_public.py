@@ -27,6 +27,7 @@ from .student_identity import find_student_by_code
 from .seat_mixer_layout import seat_row_placement
 from .pdf_rendering import html_report_to_pdf
 from .routes_invigilator import current_invigilator, invigilator_login_required
+from .student_results_portal import announcement_datetime_payload
 
 public_bp = Blueprint("public", __name__)
 
@@ -87,6 +88,9 @@ def enforce_student_results_portal_visibility():
         "student_results_closed.html",
         settings=settings,
         message=STUDENT_RESULTS_CLOSED_MESSAGE,
+        announcement=announcement_datetime_payload(
+            settings.get("student_results_announcement_at_eat")
+        ),
     )))
 
 

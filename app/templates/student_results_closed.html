@@ -25,6 +25,48 @@
   .student-results-closed__guidance p{margin:0}
   .student-results-closed__guidance--status i{color:#a9363f}
   .student-results-closed__guidance+.student-results-closed__guidance{margin-top:9px}
+  .student-results-announcement{margin-top:15px;padding:22px 25px;border:1px solid #cbdedc;border-left:4px solid #157c72;border-radius:12px;background:#eaf3f2}
+  .student-results-announcement__head{display:flex;align-items:flex-start;gap:13px}
+  .student-results-announcement__icon{display:grid;place-items:center;width:42px;height:42px;flex:0 0 42px;border:1px solid #b9dcd5;border-radius:10px;color:#126b63;background:#fff;font-size:17px}
+  .student-results-announcement__copy{min-width:0;flex:1}
+  .student-results-announcement__eyebrow{margin:0 0 4px;color:#59746f;font-size:.68rem;font-weight:850}
+  .student-results-announcement__copy h2{margin:0;color:#173b42;font-size:1.08rem;line-height:1.35}
+  .student-results-announcement__date{display:block;margin-top:6px;color:#315c5a;font-size:.93rem;font-weight:800;line-height:1.45}
+  .student-results-announcement__badge{display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;padding:7px 10px;border:1px solid #b8ded0;border-radius:7px;color:#08764f;background:#f1fbf6;font-size:.68rem;font-weight:900}
+  .student-results-announcement[data-state="expired"]{border-color:#ebc8cb;border-left-color:#a9363f;background:#fcf1f1}
+  .student-results-announcement[data-state="expired"] .student-results-announcement__icon{border-color:#edc7ca;color:#a9363f}
+  .student-results-announcement[data-state="expired"] .student-results-announcement__copy h2{color:#6c2830}
+  .student-results-announcement[data-state="expired"] .student-results-announcement__badge{border-color:#edc7ca;color:#9f3039;background:#fff6f6}
+  .student-results-announcement__notice{display:flex;align-items:center;gap:9px;min-height:38px;margin:17px 0 12px;padding:8px 11px;border:1px solid #d2e5e2;border-radius:8px;color:#315c5a;background:rgba(255,255,255,.7);font-size:.82rem;font-weight:700;line-height:1.4}
+  .student-results-announcement__notice i{color:#157c72}
+  .student-results-announcement[data-state="expired"] .student-results-announcement__notice{border-color:#efdbdc;color:#7f3038}
+  .student-results-announcement[data-state="expired"] .student-results-announcement__notice i{color:#a9363f}
+  .student-results-announcement__timer-label{display:flex;align-items:center;gap:7px;margin:0 0 8px;color:#536e6d;font-size:.72rem;font-weight:850}
+  .student-results-announcement__units{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  .student-results-announcement__unit{--unit-ink:#245eae;--unit-wash:#fff;--unit-border:#c9d9ed;display:grid;justify-items:center;gap:6px;min-width:0;padding:11px 7px;border:1px solid var(--unit-border);border-radius:9px;color:var(--unit-ink);background:var(--unit-wash)}
+  .student-results-announcement__unit:nth-child(2){--unit-ink:#6943a5;--unit-border:#ddcfee}
+  .student-results-announcement__unit:nth-child(3){--unit-ink:#9a650c;--unit-border:#e9d9b3}
+  .student-results-announcement__unit:nth-child(4){--unit-ink:#08735a;--unit-border:#bfdfd1}
+  .student-results-announcement__unit b{font-size:1.55rem;font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
+  .student-results-announcement__unit span{display:flex;align-items:center;gap:6px;font-size:.72rem;font-weight:800}
+  .student-results-announcement__unit i{font-size:.8rem}
+  .student-results-announcement[data-state="expired"] .student-results-announcement__unit{--unit-ink:#75494d;--unit-border:#ead6d8}
+  .student-results-announcement__empty{display:flex;align-items:center;gap:10px;margin-top:15px;padding:14px 16px;border:1px dashed #c8d8dc;border-radius:10px;color:#5b707b;background:#f7fafb;font-size:.85rem;font-weight:700}
+  .student-results-announcement__empty i{color:#647f88}
+  :root[data-theme="dark"] .student-results-closed-body{background:#101b29}
+  :root[data-theme="dark"] .student-results-closed__brand{border-color:#354557}
+  :root[data-theme="dark"] .student-results-closed__brand-name,:root[data-theme="dark"] .student-results-closed__panel h1{color:#e4edf3}
+  :root[data-theme="dark"] .student-results-closed__brand-unit,:root[data-theme="dark"] .student-results-closed__message,:root[data-theme="dark"] .student-results-closed__guidance{color:#b8c7d1}
+  :root[data-theme="dark"] .student-results-closed__logo,:root[data-theme="dark"] .student-results-closed__panel{border-color:#354557;background:#182638}
+  :root[data-theme="dark"] .student-results-closed__rule{background:#354557}
+  :root[data-theme="dark"] .student-results-announcement{border-color:#315a5a;border-left-color:#45b4a5;background:#142b33}
+  :root[data-theme="dark"] .student-results-announcement__icon,:root[data-theme="dark"] .student-results-announcement__notice{border-color:#315a5a;color:#bce6df;background:#1a3740}
+  :root[data-theme="dark"] .student-results-announcement__copy h2,:root[data-theme="dark"] .student-results-announcement__date,:root[data-theme="dark"] .student-results-announcement__timer-label{color:#d5e9e5}
+  :root[data-theme="dark"] .student-results-announcement__unit{--unit-ink:#a9ceff;--unit-wash:#142a42;--unit-border:#365371}
+  :root[data-theme="dark"] .student-results-announcement__unit:nth-child(2){--unit-ink:#d5c1ff;--unit-wash:#2a2242;--unit-border:#514171}
+  :root[data-theme="dark"] .student-results-announcement__unit:nth-child(3){--unit-ink:#f3d589;--unit-wash:#332b18;--unit-border:#66562d}
+  :root[data-theme="dark"] .student-results-announcement__unit:nth-child(4){--unit-ink:#a1e8cb;--unit-wash:#16362d;--unit-border:#315e4e}
+  :root[data-theme="dark"] .student-results-announcement__empty{border-color:#3d5660;color:#c0d0d6;background:#172735}
   @media(max-width:600px){
     .student-results-closed{min-height:calc(100vh - 90px);padding:22px 14px}
     .student-results-closed__brand{gap:11px;padding:0 2px 16px}
@@ -36,6 +78,15 @@
     .student-results-closed__status-row{align-items:flex-start;flex-direction:column;gap:10px;margin-bottom:15px}
     .student-results-closed__panel h1{font-size:1.42rem}
     .student-results-closed__message{font-size:.92rem}
+    .student-results-announcement{margin-top:12px;padding:17px 15px}
+    .student-results-announcement__head{gap:10px}
+    .student-results-announcement__icon{width:36px;height:36px;flex-basis:36px;font-size:15px}
+    .student-results-announcement__copy h2{font-size:.96rem}
+    .student-results-announcement__date{font-size:.82rem}
+    .student-results-announcement__badge{padding:6px 7px;font-size:.62rem}
+    .student-results-announcement__units{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+    .student-results-announcement__unit{padding:10px 6px}
+    .student-results-announcement__unit b{font-size:1.35rem}
   }
 </style>
 <main class="student-results-closed">
@@ -68,6 +119,73 @@
         </div>
       </div>
     </section>
+    {% if announcement %}
+    <section class="student-results-announcement" data-results-announcement data-target-ms="{{ announcement.timestamp_ms }}" data-state="scheduled" aria-labelledby="studentResultsAnnouncementTitle">
+      <div class="student-results-announcement__head">
+        <span class="student-results-announcement__icon" aria-hidden="true"><i class="fa-solid fa-calendar-check"></i></span>
+        <div class="student-results-announcement__copy">
+          <p class="student-results-announcement__eyebrow">WAQTIGA SHAACINTA NATIIJOOYINKA</p>
+          <h2 id="studentResultsAnnouncementTitle">Waqtiga la shaacinayo</h2>
+          <time class="student-results-announcement__date" datetime="{{ announcement.iso }}">{{ announcement.display }}</time>
+        </div>
+        <span class="student-results-announcement__badge" role="status" data-announcement-status><i class="fa-solid fa-bell" aria-hidden="true"></i><span data-announcement-status-text>JADWAL</span></span>
+      </div>
+      <p class="student-results-announcement__notice" role="status" data-announcement-message><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span data-announcement-message-text>Tirintu waa jadwalka shaacinta; aragtida natiijooyinka waxaa fura Xafiiska Imtixaannada.</span></p>
+      <p class="student-results-announcement__timer-label"><i class="fa-solid fa-stopwatch" aria-hidden="true"></i> Waqtiga haray</p>
+      <div class="student-results-announcement__units" role="timer" aria-label="Tirinta waqtiga shaacinta" aria-live="off">
+        <div class="student-results-announcement__unit"><b data-announcement-days>00</b><span><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Maalin</span></div>
+        <div class="student-results-announcement__unit"><b data-announcement-hours>00</b><span><i class="fa-regular fa-clock" aria-hidden="true"></i> Saacad</span></div>
+        <div class="student-results-announcement__unit"><b data-announcement-minutes>00</b><span><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> Daqiiqo</span></div>
+        <div class="student-results-announcement__unit"><b data-announcement-seconds>00</b><span><i class="fa-solid fa-stopwatch" aria-hidden="true"></i> Ilbidhiqsi</span></div>
+      </div>
+    </section>
+    {% else %}
+    <div class="student-results-announcement__empty" role="status"><i class="fa-regular fa-calendar-xmark" aria-hidden="true"></i> Waqtiga shaacinta natiijooyinka weli lama cayimin.</div>
+    {% endif %}
   </div>
 </main>
+{% if announcement %}
+<script>
+  (() => {
+    const timer = document.querySelector('[data-results-announcement]');
+    if (!timer) return;
+    const target = Number(timer.dataset.targetMs);
+    const status = timer.querySelector('[data-announcement-status]');
+    const message = timer.querySelector('[data-announcement-message]');
+    const statusText = timer.querySelector('[data-announcement-status-text]');
+    const messageText = timer.querySelector('[data-announcement-message-text]');
+    const statusIcon = status.querySelector('i');
+    const messageIcon = message.querySelector('i');
+    const values = {
+      days: timer.querySelector('[data-announcement-days]'),
+      hours: timer.querySelector('[data-announcement-hours]'),
+      minutes: timer.querySelector('[data-announcement-minutes]'),
+      seconds: timer.querySelector('[data-announcement-seconds]')
+    };
+    if (!Number.isFinite(target)) return;
+    let interval = 0;
+
+    const update = () => {
+      const remaining = Math.max(0, target - Date.now());
+      const seconds = Math.floor(remaining / 1000);
+      values.days.textContent = String(Math.floor(seconds / 86400)).padStart(2, '0');
+      values.hours.textContent = String(Math.floor((seconds % 86400) / 3600)).padStart(2, '0');
+      values.minutes.textContent = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+      values.seconds.textContent = String(seconds % 60).padStart(2, '0');
+
+      if (remaining <= 0) {
+        timer.dataset.state = 'expired';
+        statusIcon.className = 'fa-solid fa-circle-exclamation';
+        statusText.textContent = 'DHAMMAADAY';
+        messageIcon.className = 'fa-solid fa-circle-info';
+        messageText.textContent = 'Waqtigu wuu dhammaaday. La xiriir maamulka.';
+        if (interval) window.clearInterval(interval);
+      }
+    };
+
+    update();
+    if (target > Date.now()) interval = window.setInterval(update, 1000);
+  })();
+</script>
+{% endif %}
 {% endblock %}

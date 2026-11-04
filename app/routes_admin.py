@@ -1464,6 +1464,45 @@ def update_student_results_portal_visibility():
     return redirect(url_for("admin_advanced_results.results_settings"))
 
 
+@admin_bp.route("/settings/student-results-announcement", methods=["POST"])
+@permission_required("system_settings")
+def update_student_results_announcement():
+    raw_value = (request.form.get("announcement_at_eat") or "").strip()
+    if raw_value:
+        try:
+            announcement_at = datetime.strptime(raw_value, "%Y-%m-%dT%H:%M")
+        except ValueError:
+            flash("Geli taariikh iyo saacad sax ah oo ku salaysan waqtiga EAT.", "error")
+            return redirect(url_for("admin_advanced_results.results_settings"))
+        new_value = announcement_at.strftime("%Y-%m-%dT%H:%M")
+    else:
+        new_value = ""
+
+    setting_key = "student_results_announcement_at_eat"
+    setting = db.session.get(Setting, setting_key)
+    old_value = (setting.value if setting else "") or ""
+    if old_value == new_value:
+        flash("Waqtiga shaacinta wax isbeddel ah laguma samayn.", "info")
+        return redirect(url_for("admin_advanced_results.results_settings"))
+
+    setting = setting or Setting(key=setting_key)
+    setting.value = new_value
+    db.session.add(setting)
+    audit(
+        "Student Results Announcement Time",
+        f"Announcement time changed from {old_value or 'not set'} to {new_value or 'not set'} EAT.",
+    )
+    db.session.commit()
+    cached_settings = getattr(g, "_sultaan_settings", None)
+    if cached_settings is not None:
+        cached_settings[setting_key] = new_value
+    flash(
+        "Waqtiga shaacinta natiijooyinka waa la kaydiyey." if new_value else "Waqtiga shaacinta natiijooyinka waa la tirtiray.",
+        "success",
+    )
+    return redirect(url_for("admin_advanced_results.results_settings"))
+
+
 @admin_bp.route("/settings/top10-tunnel-music/reset", methods=["POST"])
 @permission_required("settings")
 def reset_top10_tunnel_music():
