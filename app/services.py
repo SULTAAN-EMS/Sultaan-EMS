@@ -854,11 +854,13 @@ def competition_rank_lookup(scores_by_student):
 
 
 def top_students_for_class(student, exam, limit=10):
-    """Return the published Top 10 for one student's real class and exam.
+    """Return published class leaders using the official report score.
 
     The ranking deliberately resolves results through the class level's subject
     records.  Identically named subjects from another level are separate
-    academic records and cannot influence this public Top 10 view.
+    academic records and cannot influence this public Top 10 view. Scores use
+    the same complete subject maxima and behavior contribution as the student
+    portal and whole-class report.
     """
     if not student or not exam:
         return []
@@ -876,7 +878,8 @@ def top_students_for_class(student, exam, limit=10):
             exam.academic_year_id,
             academic_year_level_id=selected_placement.get("academic_year_level_id"),
             academic_year_class_id=selected_placement.get("academic_year_class_id"),
-            academic_section_id=selected_placement.get("academic_section_id"),
+            # A class rank spans every section, matching the whole-class report.
+            academic_section_id=None,
         ).filter(Student.is_active.is_(True))
     else:
         classmates_query = Student.query.filter_by(academic_year_id=exam.academic_year_id, is_active=True)
@@ -921,7 +924,23 @@ def top_students_for_class(student, exam, limit=10):
     if not subject_ids:
         return []
 
-    marks_by_student = {classmate.id: [] for classmate in classmates}
+    ranking_subjects_by_id = {
+        subject.id: subject
+        for subject in Subject.query.filter(Subject.id.in_(subject_ids)).all()
+    }
+    ranking_subjects = [
+        scoped_subject_by_id.get(subject_id) or ranking_subjects_by_id[subject_id]
+        for subject_id in subject_ids
+        if subject_id in ranking_subjects_by_id
+    ]
+    subject_maxima = resolved_subject_maxima(
+        ranking_subjects,
+        exam=exam,
+        academic_year_level_id=selected_placement.get("academic_year_level_id"),
+        academic_level_id=level_id,
+    )
+    marks_by_student = {classmate.id: Decimal("0") for classmate in classmates}
+    has_published_marks = {classmate.id: False for classmate in classmates}
     rows = (
         Result.query.join(Result.subject)
         .filter(
@@ -933,45 +952,59 @@ def top_students_for_class(student, exam, limit=10):
         .all()
     )
     for row in rows:
-        row_placement = resolve_student_academic_context(
-            next((peer for peer in classmates if peer.id == row.student_id), None),
-            exam.academic_year_id,
-        )
-        display_subject = scoped_subject_by_id.get(row.subject_id, row.subject)
-        max_score = resolve_subject_max_score(
-            display_subject,
-            exam=exam,
-            academic_year_level_id=(
-                row_placement.get("academic_year_level_id") if row_placement else None
-            ),
-            academic_level_id=(
-                row_placement.get("academic_level_id") if row_placement else level_id
-            ),
-        )
-        if max_score > 0:
-            marks_by_student[row.student_id].append((Decimal(str(row.score or 0)), max_score))
+        if row.subject_id in subject_maxima:
+            marks_by_student[row.student_id] += Decimal(str(row.score or 0))
+            has_published_marks[row.student_id] = True
 
-    averages = {}
-    for student_id, marks in marks_by_student.items():
-        if not marks:
+    from .behavior_reporting import get_behavior_report_data
+
+    behavior_reports_by_student = {
+        classmate.id: get_behavior_report_data(classmate, exam)
+        for classmate in classmates
+    }
+    scores_by_student = {}
+    ordinary_maximum = sum(subject_maxima.values(), Decimal("0"))
+    for classmate in classmates:
+        behavior_reports = behavior_reports_by_student[classmate.id]
+        if not has_published_marks[classmate.id] and not behavior_reports:
             continue
-        total = sum((score for score, _max_score in marks), Decimal("0"))
-        maximum = sum((max_score for _score, max_score in marks), Decimal("0"))
-        if maximum > 0:
-            averages[student_id] = (total / maximum * Decimal("100")).quantize(Decimal("0.01"))
+        behavior_score = sum(
+            (Decimal(str(report.get("session_score") or 0)) for report in behavior_reports),
+            Decimal("0"),
+        )
+        behavior_maximum = sum(
+            (Decimal(str(report.get("session_maximum") or 0)) for report in behavior_reports),
+            Decimal("0"),
+        )
+        total_maximum = ordinary_maximum + behavior_maximum
+        if total_maximum > 0:
+            scores_by_student[classmate.id] = round(
+                float((marks_by_student[classmate.id] + behavior_score) / total_maximum * 100),
+                2,
+            )
 
-    ranks = competition_rank_lookup(averages)
+    ranks = competition_rank_lookup(scores_by_student)
     class_name = selected_placement.get("class_name") or "Class"
+    try:
+        rank_limit = max(1, min(int(limit or 10), 10))
+    except (TypeError, ValueError):
+        rank_limit = 10
     ordered = sorted(
-        (classmate for classmate in classmates if classmate.id in averages),
-        key=lambda classmate: (-averages[classmate.id], classmate.full_name.casefold(), classmate.id),
-    )[:max(1, min(int(limit or 10), 10))]
+        (classmate for classmate in classmates if classmate.id in scores_by_student),
+        key=lambda classmate: (
+            -scores_by_student[classmate.id],
+            classmate.full_name.casefold(),
+            classmate.id,
+        ),
+    )
+    # Never split a tie just to force the list to contain exactly ten rows.
+    ordered = [classmate for classmate in ordered if ranks[classmate.id] <= rank_limit]
     return [
         {
             "student_id": classmate.student_code,
             "name": classmate.full_name,
             "photo_path": classmate.photo_path,
-            "average": float(averages[classmate.id]),
+            "average": scores_by_student[classmate.id],
             "rank": ranks[classmate.id],
             "class_name": class_name,
         }
@@ -1988,7 +2021,8 @@ def result_payload(student, exam=None, public_only=True):
                 peer_year_id,
                 academic_year_level_id=peer_placement.get("academic_year_level_id"),
                 academic_year_class_id=peer_placement.get("academic_year_class_id"),
-                academic_section_id=peer_placement.get("academic_section_id"),
+                # A class rank spans every section of that class.
+                academic_section_id=None,
             ).filter(Student.is_active.is_(True))
         elif peer_placement:
             peer_query = Student.query.filter_by(academic_year_id=peer_year_id, is_active=True)

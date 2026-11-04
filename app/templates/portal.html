@@ -659,7 +659,7 @@
             </div>
           </div>
           <button type="button" class="result-action-button falcelin js-falcelin-launch"><i class="fa-solid fa-comment-dots"></i><span>Falcelin</span><small>Faallo &amp; Cabasho</small></button>
-          <button type="button" class="result-action-button top10 js-top10-launch" data-top10-url="{{ url_for('public.api_top_students', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}"><i class="fa-solid fa-trophy"></i><span>View Top 10 Students</span><small>Top 10</small></button>
+          <button type="button" class="result-action-button top10 js-top10-launch" aria-label="Daawo 10-ka arday ee kaalmaha hore ee fasalka" data-top10-url="{{ url_for('public.api_top_students', student_code=result.student.student_code, exam_id=result.exam.id if result.exam else None) }}"><i class="fa-solid fa-circle-play" aria-hidden="true"></i><span>Daawo Top 10</span><small>Ardayda kaalmaha hore</small></button>
         </section>
       </div>
     </section>

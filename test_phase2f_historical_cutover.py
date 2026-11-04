@@ -1,5 +1,6 @@
 import unittest
 from decimal import Decimal
+from unittest.mock import patch
 
 from app import create_app, db
 from app.academic_hierarchy import students_for_year_scope_query
@@ -20,6 +21,7 @@ from app.models import (
     AcademicYearClass,
     AcademicYearLevel,
     AcademicYearSubject,
+    AcademicSection,
     AuditLog,
     ExamMarkingConfiguration,
     Exam,
@@ -30,7 +32,7 @@ from app.models import (
     Teacher,
     User,
 )
-from app.services import result_payload
+from app.services import result_payload, top_students_for_class
 from app.teacher_analytics import results_list_data
 
 
@@ -140,6 +142,123 @@ class TestPhase2FHistoricalCutover(unittest.TestCase):
 
         payload = result_payload(student, exam=exam, public_only=True)
         self.assertEqual([row["subject_id"] for row in payload["subjects"]], [self.subject_a.id])
+
+    def test_portal_and_tunnel_rank_whole_class_ties_with_missing_marks(self):
+        section_a = AcademicSection(academic_class=self.class_a, name="Section A")
+        section_b = AcademicSection(academic_class=self.class_a, name="Section B")
+        subject_extra = Subject(name="Science A", academic_level=self.level_a, max_score=100)
+        exam = Exam(
+            name="Class Ranking Exam",
+            academic_year=self.year_a,
+            academic_level=self.level_a,
+            academic_class=self.class_a,
+            is_published=True,
+            is_active=True,
+        )
+        db.session.add_all([section_a, section_b, subject_extra, exam])
+        db.session.flush()
+        db.session.add(AcademicYearSubject(
+            academic_year=self.year_a,
+            academic_year_level=self.year_level_a,
+            legacy_subject=subject_extra,
+            name="Science A",
+        ))
+
+        students = [
+            Student(
+                student_code=f"RANK-{index}",
+                full_name=f"Rank Student {index}",
+                academic_year_id=self.year_a.id,
+                academic_level_id=self.level_a.id,
+                academic_class_id=self.class_a.id,
+            )
+            for index in range(1, 6)
+        ]
+        db.session.add_all(students)
+        db.session.flush()
+        for index, student in enumerate(students):
+            create_enrollment(
+                student.id,
+                self.year_a.id,
+                self.year_level_a.id,
+                self.year_class_a.id,
+                section_a.id if index % 2 == 0 else section_b.id,
+            )
+
+        results = []
+        for student in students[:3]:
+            results.extend([
+                Result(student_id=student.id, exam_id=exam.id, subject_id=self.subject_a.id, score=100, is_published=True),
+                Result(student_id=student.id, exam_id=exam.id, subject_id=subject_extra.id, score=100, is_published=True),
+            ])
+        results.extend([
+            Result(student_id=students[3].id, exam_id=exam.id, subject_id=self.subject_a.id, score=90, is_published=True),
+            Result(student_id=students[3].id, exam_id=exam.id, subject_id=subject_extra.id, score=90, is_published=True),
+            # A perfect mark in one subject must not erase the missing second
+            # subject from the official class denominator.
+            Result(student_id=students[4].id, exam_id=exam.id, subject_id=self.subject_a.id, score=100, is_published=True),
+        ])
+        db.session.add_all(results)
+        db.session.commit()
+
+        portal_payload = result_payload(students[0], exam=exam, public_only=True)
+        other_tied_portal_payload = result_payload(students[2], exam=exam, public_only=True)
+        partial_portal_payload = result_payload(students[4], exam=exam, public_only=True)
+        tunnel_rows = top_students_for_class(students[0], exam)
+        tunnel_ranks = {row["student_id"]: row["rank"] for row in tunnel_rows}
+
+        self.assertEqual(portal_payload["rank"], 1)
+        self.assertEqual(other_tied_portal_payload["rank"], 1)
+        self.assertEqual(partial_portal_payload["rank"], 3)
+        self.assertEqual([row["rank"] for row in tunnel_rows].count(1), 3)
+        self.assertEqual(tunnel_ranks[students[4].student_code], 3)
+        self.assertEqual(tunnel_ranks[students[3].student_code], 2)
+
+    def test_portal_and_tunnel_ranks_include_behavior_and_attendance_scores(self):
+        exam = Exam(
+            name="Behavior Ranking Exam",
+            academic_year=self.year_a,
+            academic_level=self.level_a,
+            academic_class=self.class_a,
+            is_published=True,
+            is_active=True,
+        )
+        students = [
+            Student(
+                student_code=f"BEHAVIOR-RANK-{index}",
+                full_name=f"Behavior Rank Student {index}",
+                academic_year_id=self.year_a.id,
+                academic_level_id=self.level_a.id,
+                academic_class_id=self.class_a.id,
+            )
+            for index in range(1, 4)
+        ]
+        db.session.add_all([exam, *students])
+        db.session.flush()
+        for student in students:
+            create_enrollment(student.id, self.year_a.id, self.year_level_a.id, self.year_class_a.id)
+            db.session.add(Result(
+                student_id=student.id,
+                exam_id=exam.id,
+                subject_id=self.subject_a.id,
+                score=80,
+                is_published=True,
+            ))
+        db.session.commit()
+
+        def behavior_report(student, _exam):
+            behavior_score = 20 if student.id == students[0].id else 0
+            return [{"session_score": behavior_score, "session_maximum": 20}]
+
+        with patch("app.behavior_reporting.get_behavior_report_data", side_effect=behavior_report):
+            portal_payload = result_payload(students[0], exam=exam, public_only=True)
+            tunnel_rows = top_students_for_class(students[0], exam)
+
+        tunnel_ranks = {row["student_id"]: row["rank"] for row in tunnel_rows}
+        self.assertEqual(portal_payload["rank"], 1)
+        self.assertEqual(tunnel_ranks[students[0].student_code], 1)
+        self.assertEqual(tunnel_ranks[students[1].student_code], 2)
+        self.assertEqual(tunnel_ranks[students[2].student_code], 2)
 
     def test_legacy_only_student_gets_a_safe_transition_source(self):
         student = Student(
