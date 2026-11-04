@@ -322,18 +322,18 @@
       header.append(info, polarity, remove);
       card.append(header);
       const fields = makeNode('div', 'behavior-bulk-review-fields');
-      const makeSelect = (name, labelText, dataKey) => {
+      const makeSelect = (field, labelText, dataKey) => {
         const control = makeNode('select');
-        control.id = `${name}-${id}`;
-        control.name = `${name}_${id}`;
+        control.id = `student-${field}-${id}`;
+        control.name = `student_${field}_${id}`;
         control.required = dataKey !== 'studentSubcategory';
         control.dataset[dataKey] = '1';
         const wrap = makeField(labelText, control);
         return { control, wrap };
       };
-      const category = makeSelect('student-category', 'Category', 'studentCategory');
-      const subcategory = makeSelect('student-subcategory', 'Sub-category', 'studentSubcategory');
-      const action = makeSelect('student-action', 'Ficilka / Action', 'studentAction');
+      const category = makeSelect('category', 'Category', 'studentCategory');
+      const subcategory = makeSelect('subcategory', 'Sub-category', 'studentSubcategory');
+      const action = makeSelect('action', 'Ficilka / Action', 'studentAction');
       const categories = new Map(actionCatalog.map((item) => [String(item.category_id), { name: item.category_name, polarity: item.polarity }]));
       const categoryPlaceholder = makeNode('option', '', 'Xulo category');
       categoryPlaceholder.value = '';

@@ -354,6 +354,7 @@ class TestPhase2CBehaviorEvents(unittest.TestCase):
         self.assertIn("Behavior Three", page.get_data(as_text=True))
         self.assertIn("dib-u-eegis arday kasta", page.get_data(as_text=True))
         self.assertIn("bulkActionCatalog", page.get_data(as_text=True))
+        self.assertIn("control.name = `student_${field}_${id}`;", page.get_data(as_text=True))
         self.assertIn("U dabaq dhacdo guud", page.get_data(as_text=True))
         self.assertIn("bulkApplyDefaults", page.get_data(as_text=True))
         self.assertIn("Ku dabaq kuwa la xushay", page.get_data(as_text=True))
