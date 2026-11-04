@@ -1,10 +1,13 @@
 import json
+import secrets
 from datetime import datetime, timedelta
 
-from flask import Flask, Request, current_app, flash, redirect, request, session, url_for
+from flask import Flask, Request, current_app, flash, jsonify, redirect, request, session, url_for
 from flask_login import LoginManager, current_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect
+from sqlalchemy.exc import SQLAlchemyError
+from werkzeug.routing import BuildError
 
 from config import Config
 
@@ -132,22 +135,64 @@ def create_app(config_class=Config):
 
     @app.errorhandler(Exception)
     def handle_unhandled_exception(error):
-        from flask import jsonify, request
         from werkzeug.exceptions import HTTPException
 
         if isinstance(error, HTTPException):
             return error
 
-        app.logger.error("UNHANDLED SERVER EXCEPTION [%s %s]: %s", request.method, request.path, str(error), exc_info=True)
+        reference_id = secrets.token_hex(4).upper()
+        app.logger.error(
+            "UNHANDLED SERVER EXCEPTION ref=%s [%s %s]",
+            reference_id,
+            request.method,
+            request.path,
+            exc_info=True,
+        )
+        if isinstance(error, BuildError):
+            title = "Bogga lama diyaarin"
+            if error.endpoint == "behavior.bulk_events":
+                message = (
+                    "Bogga diiwaangelinta bulk-ga ayaa la codsaday, laakiin server-ka local-ka "
+                    "ee hadda socda ma hayo qaybtaas. Dib u bilow server-ka mashruuca, dabadeed "
+                    "bogga dib u fur."
+                )
+            else:
+                message = (
+                    "Bogga ama ficilka la codsaday kuma jiro server-ka hadda socda. "
+                    "Dib u bilow server-ka local-ka ama cusboonaysii koodhka, dabadeed mar kale isku day."
+                )
+        elif isinstance(error, SQLAlchemyError):
+            title = "Xogta lama soo qaadi karin"
+            message = (
+                "Adeegga xogta ayaa diiday codsiga. Hubi in kaydka xogtu shaqaynayo; "
+                "haddii fariintani soo noqoto, maamulka ha baadho lambarka tixraaca."
+            )
+        else:
+            title = "Codsiga lama dhammaystirin"
+            message = (
+                "Cilad farsamo ayaa dhacday intii codsiga la fulinayey. Isku day mar kale; "
+                "haddii ay soo noqoto, maamulka sii lambarka tixraaca si uu log-ga uga hubiyo sababta."
+            )
         if request.headers.get("X-Requested-With") == "XMLHttpRequest" or \
            "application/json" in request.headers.get("Accept", "") or \
            request.is_json:
-            return jsonify({
+            response = jsonify({
                 "success": False,
-                "error": "Internal Server Error",
-                "details": str(error)
-            }), 500
-        return f"<h1>Internal Server Error</h1><p>{str(error)}</p>", 500
+                "error": title,
+                "message": message,
+                "reference": reference_id,
+            })
+        else:
+            error_html = current_app.jinja_env.get_template("errors/500.html").render(
+                error_title=title,
+                error_message=message,
+                error_reference=reference_id,
+                request_path=request.path,
+            )
+            response = current_app.response_class(error_html, mimetype="text/html")
+        response.status_code = 500
+        response.headers["X-Error-Reference"] = reference_id
+        return response
 
     @app.after_request
     def secure_headers(response):

@@ -279,9 +279,11 @@ class TestPhase2CBehaviorEvents(unittest.TestCase):
             session["_user_id"] = str(self.staff.id)
             session["_fresh"] = True
         self.assertEqual(client.get(f"/admin/behavior/students?config_id={self.config_one.id}").status_code, 403)
+        self.assertEqual(client.get(f"/admin/behavior/events/bulk?config_id={self.config_one.id}").status_code, 403)
         self.staff.set_permissions(["behavior.record"])
         db.session.commit()
         self.assertEqual(client.get(f"/admin/behavior/students?config_id={self.config_one.id}").status_code, 200)
+        self.assertEqual(client.get(f"/admin/behavior/events/bulk?config_id={self.config_one.id}").status_code, 200)
 
     def test_student_route_persists_form_datetime_and_scope(self):
         client = self.app.test_client()
@@ -308,6 +310,293 @@ class TestPhase2CBehaviorEvents(unittest.TestCase):
         event = BehaviorEvent.query.filter_by(idempotency_key="route-form-time-1").one()
         self.assertEqual(event.occurred_at, datetime(2026, 8, 29, 12, 34))
         self.assertEqual(event.student_enrollment_id, self.enrollment_one.id)
+
+    def test_bulk_route_records_checkbox_event_for_selected_students_across_classes_once(self):
+        from app.models import BehaviorActionChoice
+
+        class_two = AcademicYearClass(name="1B", academic_year_level=self.level_one)
+        student_three = Student(student_code="BHV-C-003", full_name="Behavior Three", is_active=True)
+        db.session.add_all([class_two, student_three])
+        db.session.flush()
+        enrollment_three = StudentEnrollment(
+            student_id=student_three.id,
+            academic_year_id=self.year_one.id,
+            academic_year_level_id=self.level_one.id,
+            academic_year_class_id=class_two.id,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source="manual",
+        )
+        action = BehaviorAction(
+            category=self.positive,
+            name="Class participation",
+            level_number=3,
+            points=3,
+            frequency="ad_hoc",
+            behavior_type="selection",
+        )
+        first_choice = BehaviorActionChoice(action=action, label="Wada-shaqayn", points=1)
+        second_choice = BehaviorActionChoice(action=action, label="Diyaar-garow", points=2)
+        db.session.add_all([enrollment_three, action, first_choice, second_choice])
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+
+        page = client.get(
+            f"/admin/behavior/events/bulk?config_id={self.config_one.id}"
+            f"&session_id={self.session_a.id}"
+        )
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Behavior Three", page.get_data(as_text=True))
+
+        data = {
+            "config_id": str(self.config_one.id),
+            "year_id": str(self.year_one.id),
+            "behavior_session_id": str(self.session_a.id),
+            "student_enrollment_ids": [str(self.enrollment_one.id), str(enrollment_three.id)],
+            "behavior_category_id": str(self.positive.id),
+            "behavior_subcategory_id": "",
+            "behavior_action_id": str(action.id),
+            "direction": "positive",
+            "behavior_action_choice_ids": [str(first_choice.id), str(second_choice.id)],
+            "occurred_at": "2026-08-29T12:34",
+            "idempotency_key": "bulk-route-test",
+        }
+        response = client.post("/admin/behavior/events/bulk", data=data)
+        self.assertEqual(response.status_code, 302)
+        events = BehaviorEvent.query.filter(
+            BehaviorEvent.idempotency_key.in_([
+                f"bulk:bulk-route-test:{self.enrollment_one.id}",
+                f"bulk:bulk-route-test:{enrollment_three.id}",
+            ])
+        ).order_by(BehaviorEvent.student_enrollment_id).all()
+        self.assertEqual(len(events), 2)
+        self.assertEqual({event.response_type_snapshot for event in events}, {"checkboxes"})
+        self.assertEqual({event.response_points for event in events}, {Decimal("3.000")})
+        self.assertEqual({event.student_enrollment_id for event in events}, {self.enrollment_one.id, enrollment_three.id})
+
+        replay = client.post("/admin/behavior/events/bulk", data=data)
+        self.assertEqual(replay.status_code, 302)
+        self.assertEqual(
+            BehaviorEvent.query.filter(BehaviorEvent.idempotency_key.in_([
+                f"bulk:bulk-route-test:{self.enrollment_one.id}",
+                f"bulk:bulk-route-test:{enrollment_three.id}",
+            ])).count(),
+            2,
+        )
+
+    def test_bulk_route_rejects_out_of_scope_student_without_partial_write(self):
+        other_class = AcademicYearClass(name="1Y", academic_year_level=self.level_two)
+        other_student = Student(student_code="BHV-C-OTHER", full_name="Other Year Student", is_active=True)
+        db.session.add_all([other_class, other_student])
+        db.session.flush()
+        other_enrollment = StudentEnrollment(
+            student_id=other_student.id,
+            academic_year_id=self.year_two.id,
+            academic_year_level_id=self.level_two.id,
+            academic_year_class_id=other_class.id,
+            status="active",
+            academic_outcome="pending",
+            enrollment_source="manual",
+        )
+        db.session.add(other_enrollment)
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        response = client.post(
+            "/admin/behavior/events/bulk",
+            data={
+                "config_id": str(self.config_one.id),
+                "year_id": str(self.year_one.id),
+                "behavior_session_id": str(self.session_a.id),
+                "student_enrollment_ids": [str(self.enrollment_one.id), str(other_enrollment.id)],
+                "behavior_category_id": str(self.positive.id),
+                "behavior_action_id": str(self.positive_action.id),
+                "direction": "positive",
+                "occurred_at": "2026-08-29T12:34",
+                "idempotency_key": "bulk-invalid-scope",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("kuma jiraan sannadka", response.get_data(as_text=True))
+        self.assertEqual(BehaviorEvent.query.filter(
+            BehaviorEvent.idempotency_key.like("bulk:bulk-invalid-scope:%")
+        ).count(), 0)
+
+    def test_bulk_duplicate_marker_and_server_reject_same_event_on_same_date(self):
+        from urllib.parse import urlencode
+
+        occurred_at = datetime(2026, 8, 29, 12, 34)
+        record_event(
+            self.config_one,
+            self.enrollment_one,
+            self.session_a,
+            self.positive,
+            self.positive_action,
+            occurred_at=occurred_at,
+            idempotency_key="bulk-duplicate-original",
+        )
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        check = client.get("/admin/behavior/events/bulk/check?" + urlencode({
+            "year_id": self.year_one.id,
+            "config_id": self.config_one.id,
+            "session_id": self.session_a.id,
+            "category_id": self.positive.id,
+            "action_id": self.positive_action.id,
+            "occurred_at": "2026-08-29T12:34",
+        }))
+        self.assertEqual(check.status_code, 200)
+        self.assertEqual(check.json["duplicate_enrollment_ids"], [self.enrollment_one.id])
+
+        blocked = client.post("/admin/behavior/events/bulk", data={
+            "year_id": str(self.year_one.id),
+            "config_id": str(self.config_one.id),
+            "behavior_session_id": str(self.session_a.id),
+            "student_enrollment_ids": [str(self.enrollment_one.id)],
+            "behavior_category_id": str(self.positive.id),
+            "behavior_action_id": str(self.positive_action.id),
+            "direction": "positive",
+            "occurred_at": "2026-08-29T12:34",
+            "idempotency_key": "bulk-duplicate-blocked",
+        })
+        self.assertEqual(blocked.status_code, 200)
+        self.assertIn("hore ayaa loogu diiwaangeliyey", blocked.get_data(as_text=True))
+        self.assertIsNone(BehaviorEvent.query.filter_by(
+            idempotency_key=f"bulk:bulk-duplicate-blocked:{self.enrollment_one.id}"
+        ).first())
+
+        next_day = client.post("/admin/behavior/events/bulk", data={
+            "year_id": str(self.year_one.id),
+            "config_id": str(self.config_one.id),
+            "behavior_session_id": str(self.session_a.id),
+            "student_enrollment_ids": [str(self.enrollment_one.id)],
+            "behavior_category_id": str(self.positive.id),
+            "behavior_action_id": str(self.positive_action.id),
+            "direction": "positive",
+            "occurred_at": "2026-08-30T12:34",
+            "idempotency_key": "bulk-next-day-allowed",
+        })
+        self.assertEqual(next_day.status_code, 302)
+        self.assertIsNotNone(BehaviorEvent.query.filter_by(
+            idempotency_key=f"bulk:bulk-next-day-allowed:{self.enrollment_one.id}"
+        ).first())
+
+    def test_single_student_route_rejects_same_action_duplicate_on_same_date(self):
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        form = client.get(
+            f"/admin/behavior/students?config_id={self.config_one.id}"
+            f"&session_id={self.session_a.id}"
+        )
+        self.assertEqual(form.status_code, 200)
+        self.assertIn('id="behaviorDialogDuplicateWarning"', form.get_data(as_text=True))
+
+        record_event(
+            self.config_one,
+            self.enrollment_one,
+            self.session_a,
+            self.positive,
+            self.positive_action,
+            occurred_at=datetime(2026, 8, 29, 12, 34),
+            idempotency_key="single-duplicate-original",
+        )
+        db.session.commit()
+
+        from urllib.parse import urlencode
+        check = client.get("/admin/behavior/events/bulk/check?" + urlencode({
+            "year_id": self.year_one.id,
+            "config_id": self.config_one.id,
+            "session_id": self.session_a.id,
+            "category_id": self.positive.id,
+            "action_id": self.positive_action.id,
+            "enrollment_id": self.enrollment_one.id,
+            "occurred_at": "2026-08-29T12:34",
+        }))
+        self.assertEqual(check.status_code, 200)
+        self.assertEqual(check.json["duplicate_enrollment_ids"], [self.enrollment_one.id])
+        different_action = client.get("/admin/behavior/events/bulk/check?" + urlencode({
+            "year_id": self.year_one.id,
+            "config_id": self.config_one.id,
+            "session_id": self.session_a.id,
+            "category_id": self.positive.id,
+            "action_id": self.subcategory_action.id,
+            "enrollment_id": self.enrollment_one.id,
+            "occurred_at": "2026-08-29T12:34",
+        }))
+        self.assertEqual(different_action.status_code, 200)
+        self.assertEqual(different_action.json["duplicate_enrollment_ids"], [])
+
+        response = client.post(
+            f"/admin/behavior/students?config_id={self.config_one.id}",
+            data={
+                "config_id": str(self.config_one.id),
+                "student_enrollment_id": str(self.enrollment_one.id),
+                "behavior_session_id": str(self.session_a.id),
+                "behavior_category_id": str(self.positive.id),
+                "behavior_subcategory_id": "",
+                "behavior_action_id": str(self.positive_action.id),
+                "direction": "positive",
+                "occurred_at": "2026-08-29T12:34",
+                "idempotency_key": "single-duplicate-blocked",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("hore ayaa loogu diiwaangeliyey", response.get_data(as_text=True))
+        self.assertIsNone(BehaviorEvent.query.filter_by(
+            idempotency_key="single-duplicate-blocked"
+        ).first())
+        self.assertEqual(BehaviorEvent.query.filter_by(
+            idempotency_key="single-duplicate-original"
+        ).count(), 1)
+
+    def test_bulk_capacity_error_rolls_back_events_for_every_selected_student(self):
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        from app.behavior_service import record_event as service_record_event
+        from unittest.mock import patch
+
+        calls = 0
+
+        def fail_second_record(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise BehaviorValidationError("Simulated second-student validation failure")
+            return service_record_event(*args, **kwargs)
+
+        with patch("app.routes_behavior.record_event", side_effect=fail_second_record):
+            response = client.post("/admin/behavior/events/bulk", data={
+                "year_id": str(self.year_one.id),
+                "config_id": str(self.config_one.id),
+                "behavior_session_id": str(self.session_a.id),
+                "student_enrollment_ids": [str(self.enrollment_one.id), str(self.enrollment_two.id)],
+                "behavior_category_id": str(self.positive.id),
+                "behavior_action_id": str(self.positive_action.id),
+                "direction": "positive",
+                "occurred_at": "2026-08-30T12:34",
+                "idempotency_key": "bulk-capacity-atomic",
+            })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(BehaviorEvent.query.filter(
+            BehaviorEvent.idempotency_key.like("bulk:bulk-capacity-atomic:%")
+        ).count(), 0)
+        self.assertEqual(calls, 2)
 
     def test_subcategory_is_constrained_and_visible_across_event_surfaces(self):
         client = self.app.test_client()

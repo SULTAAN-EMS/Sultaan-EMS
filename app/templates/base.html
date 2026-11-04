@@ -53,7 +53,16 @@
               <button type="button" class="behavior-delete-success-close" aria-label="Xir fariinta" onclick="this.closest('.behavior-delete-success-toast').remove()"><i class="fa-solid fa-xmark"></i></button>
             </div>
           {% else %}
-            <div class="toast {{ category }}">{{ _(message) }}</div>
+            {% set notice_kind = "success" if category == "success" else "error" if category in ["danger", "error"] else "warning" if category in ["warning", "warn"] else "info" %}
+            {% set notice_title = "Waa lagu guuleystay" if notice_kind == "success" else "Hawlgalku wuu fashilmay" if notice_kind == "error" else "Fiiro gaar ah" if notice_kind == "warning" else "Ogeysiis" %}
+            {% set notice_icon = "fa-circle-check" if notice_kind == "success" else "fa-circle-xmark" if notice_kind == "error" else "fa-triangle-exclamation" if notice_kind == "warning" else "fa-circle-info" %}
+            {% set notice_role = "alert" if notice_kind in ["error", "warning"] else "status" %}
+            {% set notice_duration = "8500" if notice_kind == "error" else "6500" if notice_kind == "warning" else "5000" %}
+            <div class="toast app-notice app-notice--{{ notice_kind }}" role="{{ notice_role }}" aria-live="{{ 'assertive' if notice_role == 'alert' else 'polite' }}" data-auto-dismiss="{{ notice_duration }}">
+              <span class="app-notice__icon" aria-hidden="true"><i class="fa-solid {{ notice_icon }}"></i></span>
+              <span class="app-notice__copy"><strong>{{ _(notice_title) }}</strong><span>{{ _(message) }}</span></span>
+              <button class="app-notice__close" type="button" aria-label="Xir ogeysiiska" onclick="this.closest('.app-notice').remove()"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            </div>
           {% endif %}
         {% endfor %}
       </div>

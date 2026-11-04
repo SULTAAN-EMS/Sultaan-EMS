@@ -189,6 +189,8 @@ ENDPOINT_PERMISSIONS = {
     "behavior.grade_management": "behavior.configure",
     "behavior.delete_grade_scale": "behavior.configure",
     "behavior.students": "behavior.record",
+    "behavior.bulk_events": "behavior.record",
+    "behavior.bulk_duplicate_check": "behavior.record",
     "behavior.student_detail": "behavior.view",
     "behavior.events": "behavior.view",
     "behavior.event_detail": "behavior.view",

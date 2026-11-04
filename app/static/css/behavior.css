@@ -536,6 +536,18 @@ body.behavior-drawer-open { overflow:hidden; }
 .behavior-record-form .field { min-width:0; }
 .behavior-record-form .field label { display:block; margin-bottom:6px; color:var(--ink-soft); font:600 11.8px/1.2 var(--font-sans); letter-spacing:.01em; }
 .behavior-record-form .field .hint { color:var(--ink-faint); font-size:11.3px; margin-top:5px; }
+.behavior-duplicate-warning { display:flex; align-items:flex-start; gap:9px; margin-top:12px; padding:11px 13px; border:1px solid #e5c778; border-left:4px solid #b7791f; border-radius:9px; color:#704d12; background:#fff8e7; font-size:13px; font-weight:650; line-height:1.45; }
+.behavior-duplicate-warning[hidden] { display:none !important; }
+.behavior-duplicate-warning > i { flex:0 0 auto; margin-top:2px; color:#a8660b; }
+.behavior-duplicate-warning.is-checking { border-color:#b8cfdf; border-left-color:#39779d; color:#315a73; background:#f0f7fb; }
+.behavior-duplicate-warning.is-checking > i { color:#39779d; }
+.behavior-duplicate-warning.is-duplicate { border-color:#e7b8b4; border-left-color:#b83e38; color:#812d29; background:#fff0ee; }
+.behavior-duplicate-warning.is-duplicate > i { color:#b83e38; }
+.behavior-duplicate-warning.is-error { border-color:#e5c778; border-left-color:#b7791f; }
+body.theme-dark .behavior-duplicate-warning, .theme-dark .behavior-duplicate-warning, [data-theme="dark"] .behavior-duplicate-warning { border-color:#67542c; border-left-color:#e4b94f; color:#f7e9bf; background:#30291b; }
+body.theme-dark .behavior-duplicate-warning.is-checking, .theme-dark .behavior-duplicate-warning.is-checking, [data-theme="dark"] .behavior-duplicate-warning.is-checking { border-color:#31566a; border-left-color:#67b4dc; color:#cceafa; background:#172a35; }
+body.theme-dark .behavior-duplicate-warning.is-duplicate, .theme-dark .behavior-duplicate-warning.is-duplicate, [data-theme="dark"] .behavior-duplicate-warning.is-duplicate { border-color:#6d3835; border-left-color:#ef8178; color:#ffd6d1; background:#351f20; }
+body.theme-dark .behavior-duplicate-warning.is-error, .theme-dark .behavior-duplicate-warning.is-error, [data-theme="dark"] .behavior-duplicate-warning.is-error { border-color:#67542c; border-left-color:#e4b94f; color:#f7e9bf; background:#30291b; }
 .behavior-record-form input[type=text],.behavior-record-form input[type=number],.behavior-record-form input[type=date],.behavior-record-form input[type=datetime-local],.behavior-record-form select,.behavior-record-form textarea { width:100%; min-width:0; padding:9px 11px; border:1.14px solid var(--line); border-radius:8px; outline:none; color:var(--ink); background:#fff; font:13.4px var(--font-sans); transition:border-color .15s,box-shadow .15s; }
 .behavior-record-form select { padding-right:32px; background-image:linear-gradient(45deg,transparent 50%,var(--ink-soft) 50%),linear-gradient(135deg,var(--ink-soft) 50%,transparent 50%); background-position:calc(100% - 15px) 50%,calc(100% - 10px) 50%; background-size:5px 5px,5px 5px; background-repeat:no-repeat; appearance:none; }
 .behavior-record-form textarea { min-height:62px; resize:vertical; }

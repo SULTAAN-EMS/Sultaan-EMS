@@ -673,6 +673,31 @@ def _behavior_enrollments(config, class_id=None, academic_year_level_id=None, se
     return enrollments
 
 
+def _bulk_event_duplicates(config, session, category, action, occurred_at, enrollment_ids=None):
+    """Find active same-leaf events already entered for the same school date."""
+    if not all((config, session, category, action, occurred_at)):
+        return set()
+    day_start = datetime.combine(occurred_at.date(), datetime.min.time())
+    query = BehaviorEvent.query.filter(
+        BehaviorEvent.behavior_configuration_id == config.id,
+        BehaviorEvent.behavior_session_id == session.id,
+        BehaviorEvent.behavior_category_id == category.id,
+        BehaviorEvent.behavior_action_id == action.id,
+        BehaviorEvent.status == "active",
+        BehaviorEvent.occurred_at >= day_start,
+        BehaviorEvent.occurred_at < day_start + timedelta(days=1),
+    )
+    if enrollment_ids is not None:
+        ids = list(enrollment_ids)
+        if not ids:
+            return set()
+        query = query.filter(BehaviorEvent.student_enrollment_id.in_(ids))
+    return {
+        row[0]
+        for row in query.with_entities(BehaviorEvent.student_enrollment_id).all()
+    }
+
+
 def _student_board_rows(config, selected_session, class_id=None, academic_year_level_id=None):
     if not config or not selected_session:
         return []
@@ -3163,6 +3188,19 @@ def students():
             direction = request.form.get("direction")
             idempotency_key = normalize_idempotency_key(request.form.get("idempotency_key"))
             existing = find_event_by_idempotency_key(idempotency_key)
+            occurred_at = _parse_event_datetime(request.form.get("occurred_at"))
+            if not existing and enrollment.id in _bulk_event_duplicates(
+                config,
+                session,
+                category,
+                action,
+                occurred_at,
+                [enrollment.id],
+            ):
+                raise BehaviorValidationError(
+                    "Dhacdadan category/action-ka ah ardaygan maalintan hore ayaa loogu diiwaangeliyey. "
+                    "Ka eeg timeline-ka, ama xulo ficil ama taariikh kale."
+                )
             record_event(
                 config,
                 enrollment,
@@ -3170,7 +3208,7 @@ def students():
                 category,
                 action,
                 notes=request.form.get("notes"),
-                occurred_at=_parse_event_datetime(request.form.get("occurred_at")),
+                occurred_at=occurred_at,
                 created_by=current_user.id,
                 direction=direction,
                 idempotency_key=idempotency_key,
@@ -3264,6 +3302,264 @@ def students():
         board_rows=board_rows,
         session_allocation=session_allocation,
         session_allocation_error=session_allocation_error,
+    )
+
+
+@behavior_bp.route("/events/bulk/check", methods=["GET"])
+def bulk_duplicate_check():
+    config = _selected_config(request.args.get("config_id"), request.args.get("year_id"))
+    session = next((
+        item for item in (config.sessions if config else [])
+        if item.id == _int(request.args.get("session_id"))
+    ), None)
+    category = db.session.get(BehaviorCategory, _int(request.args.get("category_id")))
+    action = db.session.get(BehaviorAction, _int(request.args.get("action_id")))
+    try:
+        if not config or not session:
+            raise BehaviorValidationError("Xulo maaddada iyo xilli sax ah.")
+        if session.behavior_configuration_id != config.id:
+            raise BehaviorValidationError("Xilligu kuma jiro maaddada la doortay.")
+        if not category or category.behavior_configuration_id != config.id or not category.is_active:
+            raise BehaviorValidationError("Category-ga la doortay kuma jiro maaddadan.")
+        if not action or action.behavior_category_id != category.id or not action.is_active:
+            raise BehaviorValidationError("Action-ku kuma jiro category-ga la doortay.")
+        occurred_at = _parse_event_datetime(request.args.get("occurred_at"))
+        validate_session_date(session, occurred_at)
+        requested_enrollment_id = _int(request.args.get("enrollment_id"))
+        if requested_enrollment_id:
+            enrollment = validate_enrollment_scope(config, requested_enrollment_id)
+            if not session_applies_to_enrollment(session, enrollment):
+                raise BehaviorValidationError("Ardaygani kuma jiro xilliga la doortay.")
+            eligible_ids = {enrollment.id}
+        else:
+            eligible_ids = {
+                item.id for item in _behavior_enrollments(config, session=session)
+            }
+        duplicate_ids = _bulk_event_duplicates(
+            config,
+            session,
+            category,
+            action,
+            occurred_at,
+            eligible_ids,
+        )
+        duplicate_ids.intersection_update(eligible_ids)
+        return jsonify({
+            "success": True,
+            "duplicate_enrollment_ids": sorted(duplicate_ids),
+            "duplicate_count": len(duplicate_ids),
+        })
+    except (BehaviorValidationError, ValueError) as exc:
+        return jsonify({"success": False, "message": str(exc)}), 400
+
+
+@behavior_bp.route("/events/bulk", methods=["GET", "POST"])
+def bulk_events():
+    """Record one scored Behavior event for a class or a selected roster."""
+    config_id = request.args.get("config_id") or request.form.get("config_id")
+    requested_config = _behavior_configuration(_int(config_id)) if config_id else None
+    year_id = (
+        request.args.get("year_id")
+        or request.form.get("year_id")
+        or (requested_config.academic_year_id if requested_config else None)
+    )
+    session_id = request.args.get("session_id") or request.form.get("behavior_session_id")
+    context = _behavior_context(
+        year_id,
+        None,
+        config_id,
+        None,
+        session_id,
+        auto_select_config=False,
+    )
+    config = context["config"]
+    selected_session = context["selected_session"]
+    enrollments = (
+        _behavior_enrollments(config, session=selected_session)
+        if config and selected_session and not context["scope_invalid"]
+        else []
+    )
+    level_ids = configuration_level_ids(config) if config else set()
+    roster_levels = (
+        AcademicYearLevel.query
+        .filter(AcademicYearLevel.id.in_(level_ids))
+        .order_by(AcademicYearLevel.sort_order, AcademicYearLevel.name, AcademicYearLevel.id)
+        .all()
+        if level_ids else []
+    )
+    roster_classes = (
+        AcademicYearClass.query
+        .filter(
+            AcademicYearClass.academic_year_level_id.in_(level_ids),
+            AcademicYearClass.is_active.is_(True),
+        )
+        .order_by(AcademicYearClass.sort_order, AcademicYearClass.name, AcademicYearClass.id)
+        .all()
+        if level_ids else []
+    )
+    roster_by_class = defaultdict(list)
+    for enrollment in enrollments:
+        roster_by_class[enrollment.academic_year_class_id].append(enrollment)
+    configurations = (
+        BehaviorConfiguration.query
+        .filter_by(academic_year_id=context["selected_year"].id)
+        .options(joinedload(BehaviorConfiguration.behavior_subject))
+        .order_by(BehaviorConfiguration.id.desc())
+        .all()
+        if context["selected_year"] else []
+    )
+    form_values = request.form
+    bulk_error = None
+
+    if request.method == "POST":
+        try:
+            if not config or not selected_session or context["scope_invalid"]:
+                raise BehaviorValidationError("Xulo sannad-dugsiyeed, maaddada hab-dhaqanka iyo xilli sax ah.")
+
+            raw_ids = request.form.getlist("student_enrollment_ids")
+            if not raw_ids:
+                raise BehaviorValidationError("Ugu yaraan hal arday xulo.")
+            if len(raw_ids) > 1000:
+                raise BehaviorValidationError("Hal mar ugu badnaan 1,000 arday ayaa la diiwaangelin karaa.")
+            try:
+                selected_ids = [int(value) for value in raw_ids]
+            except (TypeError, ValueError) as exc:
+                raise BehaviorValidationError("Liiska ardayda la xushay sax ma aha.") from exc
+            if len(selected_ids) != len(set(selected_ids)):
+                raise BehaviorValidationError("Arday isku mid ah ayaa liiska ku jira wax ka badan hal mar.")
+
+            eligible_by_id = {item.id: item for item in enrollments}
+            outside_scope = [item_id for item_id in selected_ids if item_id not in eligible_by_id]
+            if outside_scope:
+                raise BehaviorValidationError(
+                    "Qaar ka mid ah ardayda la xushay kuma jiraan sannadka, maaddada ama xilliga la doortay. Dib u xulo liiska."
+                )
+
+            category = db.session.get(BehaviorCategory, _int(request.form.get("behavior_category_id")))
+            action = db.session.get(BehaviorAction, _int(request.form.get("behavior_action_id")))
+            submitted_subcategory_id = _int(request.form.get("behavior_subcategory_id"))
+            choice = (
+                db.session.get(BehaviorActionChoice, _int(request.form.get("behavior_action_choice_id")))
+                if request.form.get("behavior_action_choice_id") else None
+            )
+            choice_ids = []
+            for raw_choice_id in request.form.getlist("behavior_action_choice_ids"):
+                choice_id = _int(raw_choice_id)
+                if choice_id and choice_id not in choice_ids:
+                    choice_ids.append(choice_id)
+            choices = [db.session.get(BehaviorActionChoice, choice_id) for choice_id in choice_ids]
+            if choice and choice not in choices:
+                choices.insert(0, choice)
+            if not category or not action:
+                raise BehaviorValidationError("Xulo category iyo action sax ah.")
+            if not category.is_active or not action.is_active:
+                raise BehaviorValidationError("Category-ga ama action-ka la doortay hadda ma shaqaynayo.")
+            if (submitted_subcategory_id or None) != (action.behavior_subcategory_id or None):
+                raise BehaviorValidationError("Sub-category-gu waa inuu la jaanqaadaa action-ka la doortay.")
+
+            idempotency_root = normalize_idempotency_key(request.form.get("idempotency_key"))
+            if not idempotency_root:
+                raise BehaviorValidationError("Furaha gudbinta ayaa maqan. Dib u cusboonaysii bogga oo mar kale isku day.")
+            if len(idempotency_root) > 100:
+                raise BehaviorValidationError("Furaha gudbinta aad buu u dheer yahay. Dib u cusboonaysii bogga oo mar kale isku day.")
+            occurred_at = _parse_event_datetime(request.form.get("occurred_at"))
+            event_keys = [f"bulk:{idempotency_root}:{enrollment_id}" for enrollment_id in selected_ids]
+            prior_by_key = {
+                event.idempotency_key: event
+                for event in BehaviorEvent.query.filter(BehaviorEvent.idempotency_key.in_(event_keys)).all()
+            }
+            replay_ids = set()
+            for enrollment_id, event_key in zip(selected_ids, event_keys):
+                prior = prior_by_key.get(event_key)
+                if prior:
+                    if (
+                        prior.student_enrollment_id != enrollment_id
+                        or prior.behavior_configuration_id != config.id
+                        or prior.behavior_session_id != selected_session.id
+                        or prior.behavior_category_id != category.id
+                        or prior.behavior_action_id != action.id
+                        or prior.occurred_at != occurred_at
+                    ):
+                        raise BehaviorValidationError("Furaha gudbintan hore ayaa xog kale loogu isticmaalay. Bogga dib u cusboonaysii.")
+                    replay_ids.add(enrollment_id)
+            duplicate_ids = _bulk_event_duplicates(
+                config,
+                selected_session,
+                category,
+                action,
+                occurred_at,
+                selected_ids,
+            ) - replay_ids
+            if duplicate_ids:
+                duplicate_names = [
+                    eligible_by_id[item_id].student.full_name
+                    for item_id in selected_ids
+                    if item_id in duplicate_ids
+                ]
+                shown_names = ", ".join(duplicate_names[:6])
+                more_count = max(0, len(duplicate_names) - 6)
+                suffix = f" iyo {more_count} kale" if more_count else ""
+                raise BehaviorValidationError(
+                    "Dhacdadan category/action-ka ah maalintan hore ayaa loogu diiwaangeliyey: "
+                    f"{shown_names}{suffix}. Ka saar ardaydaas ama xulo dhacdo/taariikh kale."
+                )
+            created_count = 0
+            duplicate_count = 0
+            with db.session.begin_nested():
+                for enrollment_id in selected_ids:
+                    event_key = f"bulk:{idempotency_root}:{enrollment_id}"
+                    existing = find_event_by_idempotency_key(event_key)
+                    record_event(
+                        config,
+                        eligible_by_id[enrollment_id],
+                        selected_session,
+                        category,
+                        action,
+                        notes=request.form.get("notes"),
+                        occurred_at=occurred_at,
+                        created_by=current_user.id,
+                        direction=request.form.get("direction"),
+                        idempotency_key=event_key,
+                        choice=choice,
+                        choices=choices,
+                        response_text=request.form.get("response_text"),
+                        rating=request.form.get("response_rating"),
+                    )
+                    if existing:
+                        duplicate_count += 1
+                    else:
+                        created_count += 1
+                if created_count:
+                    audit(
+                        "Behavior Events",
+                        f"Bulk-recorded {category.polarity} event for {created_count} students in configuration {config.id}, session {selected_session.id}",
+                    )
+            db.session.commit()
+            if created_count:
+                flash(f"Dhacdada dhibcaha leh waxaa loo diiwaangeliyey {created_count} arday.", "success")
+            if duplicate_count:
+                flash(f"{duplicate_count} diiwaan hore ayaa jiray; laguma celin.", "info")
+            return redirect(url_for(
+                "behavior.bulk_events",
+                year_id=config.academic_year_id,
+                config_id=config.id,
+                session_id=selected_session.id,
+            ))
+        except (BehaviorValidationError, ValueError, IntegrityError) as exc:
+            db.session.rollback()
+            bulk_error = str(exc) if not isinstance(exc, IntegrityError) else "Kaydintu way fashilantay; wax dhacdo ah lama kaydin. Dib u hubi xogta oo mar kale isku day."
+
+    return render_template(
+        "admin/behavior/bulk_events.html",
+        **context,
+        enrollments=enrollments,
+        roster_levels=roster_levels,
+        roster_classes=roster_classes,
+        roster_by_class=roster_by_class,
+        current_time=datetime.utcnow(),
+        idempotency_key=token_urlsafe(24),
+        bulk_error=bulk_error,
+        form_values=form_values,
     )
 
 

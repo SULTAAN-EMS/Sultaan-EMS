@@ -1,0 +1,339 @@
+{% extends "admin/base.html" %}
+{% block page_title %}Diiwaangelinta Dhacdooyinka Bulk{% endblock %}
+{% block admin_content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='behavior-bulk-events-20261104a') }}">
+<style>
+.behavior-bulk-hero{display:flex;align-items:center;gap:16px;padding:20px 22px;margin-bottom:16px;border:1px solid #d8e5e2;border-radius:16px;background:linear-gradient(120deg,#edf7f4,#f7f8fc)}
+.behavior-bulk-hero__icon{display:grid;place-items:center;flex:0 0 54px;width:54px;height:54px;border-radius:15px;color:#fff;background:#24796c;font-size:1.25rem}
+.behavior-bulk-hero h1{margin:0 0 4px;font:700 1.45rem/1.2 "IBM Plex Sans",sans-serif}.behavior-bulk-hero p{margin:0;color:#64748b}
+.behavior-bulk-card{margin-bottom:16px}.behavior-bulk-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.behavior-bulk-filters label,.behavior-bulk-field label{display:block;margin:0 0 6px;font-weight:700;color:#43556c}
+.behavior-bulk-filters select,.behavior-bulk-field input,.behavior-bulk-field select,.behavior-bulk-field textarea,.behavior-bulk-search{width:100%;min-height:44px;padding:10px 12px;border:1px solid #ccd8e0;border-radius:9px;background:#fff;color:#172638}
+.behavior-bulk-toolbar{display:grid;grid-template-columns:minmax(180px,1fr) repeat(2,auto);align-items:end;gap:10px;margin-bottom:12px}.behavior-bulk-toolbar label{display:block;margin-bottom:6px;font-weight:700}
+.behavior-bulk-toolbar--filters{grid-template-columns:minmax(180px,1fr) repeat(3,minmax(140px,auto))}
+.behavior-bulk-count{display:inline-flex;align-items:center;gap:7px;min-height:42px;padding:0 12px;border:1px solid #c8e5dc;border-radius:9px;color:#176b55;background:#eef8f4;font-weight:700}
+.behavior-bulk-class{margin-top:10px;border:1px solid #dce4ea;border-radius:11px;overflow:hidden;background:#fff}.behavior-bulk-class__head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;border-bottom:1px solid #e5eaee;background:#f7f9fa}.behavior-bulk-class__head strong{display:flex;align-items:center;gap:8px}.behavior-bulk-class__head label{display:flex;align-items:center;gap:8px;font-size:.88rem;font-weight:700;cursor:pointer}
+.behavior-bulk-students{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px}.behavior-bulk-student{display:flex;align-items:center;gap:10px;min-width:0;padding:9px 10px;border:1px solid #e0e7ec;border-radius:9px;background:#fff;cursor:pointer}.behavior-bulk-student:hover{border-color:#82b8aa;background:#f5fbf8}.behavior-bulk-student:has(input:checked){border-color:#24796c;background:#edf8f4}.behavior-bulk-student input{width:18px;height:18px;flex:0 0 auto;accent-color:#24796c}.behavior-bulk-student img,.behavior-bulk-avatar{display:grid;place-items:center;width:36px;height:36px;flex:0 0 36px;border-radius:50%;object-fit:cover;color:#fff;background:#5372a4;font-weight:700}.behavior-bulk-student__copy{min-width:0;display:grid;gap:2px}.behavior-bulk-student__copy strong,.behavior-bulk-student__copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.behavior-bulk-student__copy small{color:#718096}
+.behavior-bulk-record-badge{display:inline-flex;align-items:center;gap:4px;width:max-content;padding:3px 6px;border:1px solid #eccf91;border-radius:20px;color:#825a10;background:#fff7e5;font-size:.7rem;font-weight:700}.behavior-bulk-student.is-recorded{border-color:#e8d4a7;background:#fffcf4}.behavior-bulk-student.is-recorded input{cursor:not-allowed}
+.behavior-bulk-empty{padding:18px;text-align:center;color:#718096}.behavior-bulk-submit{position:sticky;bottom:10px;z-index:3;display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:15px;padding:12px;border:1px solid #d8e3e8;border-radius:12px;background:rgba(255,255,255,.96);box-shadow:0 8px 24px rgba(25,45,60,.12)}
+.behavior-bulk-error{padding:12px 14px;margin:0 0 14px;border:1px solid #efb7b1;border-radius:10px;color:#9a3029;background:#fff2f0}
+.behavior-bulk-taxonomy{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.behavior-bulk-taxonomy .behavior-bulk-field--wide{grid-column:1/-1}.behavior-bulk-direction{display:flex;flex-wrap:wrap;gap:10px}.behavior-bulk-direction label{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #dce4ea;border-radius:9px;cursor:pointer}.behavior-bulk-direction input{accent-color:#24796c}.behavior-bulk-response{display:none;margin-top:12px}.behavior-bulk-response.active{display:block}.behavior-bulk-choice-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.behavior-bulk-choice{display:flex;align-items:center;gap:9px;padding:10px;border:1px solid #dce4ea;border-radius:9px;cursor:pointer}.behavior-bulk-choice:has(input:checked){border-color:#24796c;background:#edf8f4}.behavior-bulk-choice input{accent-color:#24796c}.behavior-bulk-footnote{margin:5px 0 0;color:#718096;font-size:.86rem}
+@media(max-width:760px){.behavior-bulk-filters,.behavior-bulk-taxonomy{grid-template-columns:1fr}.behavior-bulk-toolbar,.behavior-bulk-toolbar--filters{grid-template-columns:1fr 1fr}.behavior-bulk-toolbar .behavior-bulk-search-wrap{grid-column:1/-1}.behavior-bulk-students,.behavior-bulk-choice-list{grid-template-columns:1fr}.behavior-bulk-submit{align-items:stretch;flex-direction:column}.behavior-bulk-submit .behavior-btn{width:100%;justify-content:center}.behavior-bulk-hero{align-items:flex-start}.behavior-bulk-hero h1{font-size:1.2rem}}
+.theme-dark .behavior-bulk-hero,[data-theme="dark"] .behavior-bulk-hero{border-color:#2b4650;color:#e8f0f5;background:linear-gradient(120deg,#152b2b,#172237)}
+.theme-dark .behavior-bulk-hero p,[data-theme="dark"] .behavior-bulk-hero p,.theme-dark .behavior-bulk-footnote,[data-theme="dark"] .behavior-bulk-footnote{color:#aebdca}
+.theme-dark .behavior-bulk-filters label,.theme-dark .behavior-bulk-field label,[data-theme="dark"] .behavior-bulk-filters label,[data-theme="dark"] .behavior-bulk-field label{color:#d7e2eb}
+.theme-dark .behavior-bulk-filters select,.theme-dark .behavior-bulk-field input,.theme-dark .behavior-bulk-field select,.theme-dark .behavior-bulk-field textarea,.theme-dark .behavior-bulk-search,[data-theme="dark"] .behavior-bulk-filters select,[data-theme="dark"] .behavior-bulk-field input,[data-theme="dark"] .behavior-bulk-field select,[data-theme="dark"] .behavior-bulk-field textarea,[data-theme="dark"] .behavior-bulk-search{border-color:#34495b;color:#e8f0f5;background:#111d2b}
+.theme-dark .behavior-bulk-class,.theme-dark .behavior-bulk-student,[data-theme="dark"] .behavior-bulk-class,[data-theme="dark"] .behavior-bulk-student{border-color:#304254;color:#e8f0f5;background:#172435}.theme-dark .behavior-bulk-class__head,[data-theme="dark"] .behavior-bulk-class__head{border-color:#304254;color:#e8f0f5;background:#1d3042}.theme-dark .behavior-bulk-student:hover,.theme-dark .behavior-bulk-student:has(input:checked),[data-theme="dark"] .behavior-bulk-student:hover,[data-theme="dark"] .behavior-bulk-student:has(input:checked){border-color:#50a68e;background:#18392f}.theme-dark .behavior-bulk-student__copy small,[data-theme="dark"] .behavior-bulk-student__copy small{color:#aebdca}.theme-dark .behavior-bulk-choice,.theme-dark .behavior-bulk-direction label,[data-theme="dark"] .behavior-bulk-choice,[data-theme="dark"] .behavior-bulk-direction label{border-color:#304254;color:#e8f0f5;background:#172435}.theme-dark .behavior-bulk-choice:has(input:checked),[data-theme="dark"] .behavior-bulk-choice:has(input:checked){border-color:#50a68e;background:#18392f}.theme-dark .behavior-bulk-submit,[data-theme="dark"] .behavior-bulk-submit{border-color:#304254;background:rgba(17,29,43,.97)}.theme-dark .behavior-bulk-error,[data-theme="dark"] .behavior-bulk-error{border-color:#74413d;color:#ffd6d2;background:#341f22}
+.theme-dark .behavior-bulk-record-badge,[data-theme="dark"] .behavior-bulk-record-badge{border-color:#68552d;color:#f1d997;background:#332b1b}.theme-dark .behavior-bulk-student.is-recorded,[data-theme="dark"] .behavior-bulk-student.is-recorded{border-color:#68552d;background:#292719}
+</style>
+
+<div class="behavior-page view">
+  {% include "admin/behavior/_nav.html" %}
+  <header class="behavior-bulk-hero">
+    <span class="behavior-bulk-hero__icon"><i class="fa-solid fa-users-rays" aria-hidden="true"></i></span>
+    <div><h1>Diiwaangelinta dhacdooyinka ardayda</h1><p>Hal dhacdo dhibco leh u diiwaangeli fasal dhan ama arday aad fasallo kala duwan ka soo xulatay.</p></div>
+  </header>
+
+  <form class="behavior-card card behavior-bulk-card" method="get" action="{{ url_for('behavior.bulk_events') }}">
+    <div class="behavior-bulk-filters">
+      <div><label for="bulkYear">Sannad-dugsiyeedka</label><select id="bulkYear" name="year_id" onchange="this.form.config_id.value='';this.form.session_id.value='';this.form.submit()"><option value="">Xulo sannad</option>{% for year in years %}<option value="{{ year.id }}" {% if selected_year and selected_year.id == year.id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}</select></div>
+      <div><label for="bulkConfig">Maaddada hab-dhaqanka</label><select id="bulkConfig" name="config_id" {% if not selected_year %}disabled{% endif %} onchange="this.form.session_id.value='';this.form.submit()"><option value="">Xulo maaddo</option>{% for item in configurations %}<option value="{{ item.id }}" {% if config and config.id == item.id %}selected{% endif %}>{{ item.behavior_subject.name }}</option>{% endfor %}</select></div>
+      <div><label for="bulkSession">Xilliga dhibcaha</label><select id="bulkSession" name="session_id" {% if not config %}disabled{% endif %} onchange="this.form.submit()"><option value="">Xulo xilli</option>{% for item in sessions %}<option value="{{ item.id }}" {% if selected_session and selected_session.id == item.id %}selected{% endif %}>{{ item.session_label }} · {{ item.maximum_score }} dhibcood</option>{% endfor %}</select></div>
+    </div>
+  </form>
+
+  {% if bulk_error %}<div class="behavior-bulk-error" role="alert"><i class="fa-solid fa-triangle-exclamation"></i> {{ bulk_error }}</div>{% endif %}
+
+  {% if config and selected_session and not scope_invalid %}
+  <form class="behavior-card card behavior-bulk-card" id="behaviorBulkForm" data-duplicate-check-url="{{ url_for('behavior.bulk_duplicate_check') }}" method="post" action="{{ url_for('behavior.bulk_events') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="year_id" value="{{ selected_year.id }}">
+    <input type="hidden" name="config_id" value="{{ config.id }}">
+    <input type="hidden" name="behavior_session_id" value="{{ selected_session.id }}">
+    <input type="hidden" name="idempotency_key" value="{{ form_values.get('idempotency_key') or idempotency_key }}">
+
+    <section class="rf-section">
+      <div class="rf-head"><div class="rf-ic c1"><i class="fa-solid fa-users"></i></div><div><h2>1. Xulo ardayda</h2><div class="d">Waxaad fasal dhan dooran kartaa, ama isku dari kartaa arday ka kala socda fasallo kala duwan.</div></div></div>
+      <div class="behavior-bulk-toolbar behavior-bulk-toolbar--filters">
+        <div class="behavior-bulk-search-wrap"><label for="bulkSearch">Raadi arday</label><input class="behavior-bulk-search" id="bulkSearch" type="search" placeholder="Magac ama aqoonsi"></div>
+        <div><label for="bulkLevelFilter">Heerka</label><select id="bulkLevelFilter"><option value="">Dhammaan heerarka</option>{% for level in roster_levels %}<option value="{{ level.id }}">{{ level.name }}</option>{% endfor %}</select></div>
+        <div><label for="bulkClassFilter">Fasalka</label><select id="bulkClassFilter"><option value="">Dhammaan fasallada</option>{% for school_class in roster_classes %}<option value="{{ school_class.id }}" data-level="{{ school_class.academic_year_level_id }}">{{ school_class.academic_year_level.name }} · {{ school_class.name }}</option>{% endfor %}</select></div>
+        <div><label for="bulkRecordStatus">Xaaladda dhacdada</label><select id="bulkRecordStatus"><option value="all">Dhammaan ardayda</option><option value="new">Weli looma diiwaangelin</option><option value="recorded">Hore ayaa loo diiwaangeliyey</option></select></div>
+      </div>
+      <div class="behavior-bulk-toolbar">
+        <span class="behavior-bulk-count" aria-live="polite"><i class="fa-solid fa-user-check"></i> <span id="bulkSelectedCount">0</span> arday ayaa la xushay</span>
+        <span class="behavior-bulk-footnote" id="bulkDuplicateStatus" aria-live="polite">Hubinta diiwaannada hore...</span>
+        <button class="behavior-btn behavior-btn--outline behavior-btn--small" type="button" id="bulkSelectVisible"><i class="fa-solid fa-check-double"></i> Xulo kuwa muuqda</button>
+        <button class="behavior-btn behavior-btn--outline behavior-btn--small" type="button" id="bulkClearSelection"><i class="fa-solid fa-eraser"></i> Ka saar xulashada</button>
+      </div>
+      <div id="bulkRoster">
+        {% set roster_count = namespace(value=0) %}
+        {% for school_class in roster_classes %}{% set class_roster = roster_by_class.get(school_class.id, []) %}{% if class_roster %}{% set roster_count.value = roster_count.value + class_roster|length %}
+        <section class="behavior-bulk-class" data-roster-class data-class="{{ school_class.id }}" data-level="{{ school_class.academic_year_level_id }}">
+          <header class="behavior-bulk-class__head"><strong><i class="fa-solid fa-people-group"></i> {{ school_class.academic_year_level.name }} · {{ school_class.name }} <span>({{ class_roster|length }})</span></strong><label><input type="checkbox" data-select-class="{{ school_class.id }}"> Xulo fasalkan</label></header>
+          <div class="behavior-bulk-students">
+            {% for enrollment in class_roster %}
+            <label class="behavior-bulk-student" data-roster-student data-recorded="false" data-class="{{ school_class.id }}" data-level="{{ school_class.academic_year_level_id }}" data-search="{{ (enrollment.student.full_name ~ ' ' ~ enrollment.student.student_code ~ ' ' ~ school_class.name ~ ' ' ~ school_class.academic_year_level.name)|lower }}">
+              <input type="checkbox" name="student_enrollment_ids" value="{{ enrollment.id }}" {% if enrollment.id|string in form_values.getlist('student_enrollment_ids') %}checked{% endif %}>
+              {% if enrollment.student.photo_path %}<img src="{{ asset_url(enrollment.student.photo_path) }}" alt="" loading="lazy">{% else %}<span class="behavior-bulk-avatar">{{ enrollment.student.full_name[:1]|upper }}</span>{% endif %}
+              <span class="behavior-bulk-student__copy"><strong>{{ enrollment.student.full_name }}</strong><small>{{ enrollment.student.student_code }}</small><span class="behavior-bulk-record-badge" data-recorded-badge hidden><i class="fa-solid fa-circle-check"></i> Hore ayaa loo diiwaangeliyey</span></span>
+            </label>
+            {% endfor %}
+          </div>
+        </section>
+        {% endif %}{% endfor %}
+        {% if not roster_count.value %}<div class="behavior-bulk-empty"><i class="fa-solid fa-users-slash"></i><p>Ma jiraan arday u qalma xilligan iyo maaddadan.</p></div>{% endif %}
+      </div>
+    </section>
+
+    <section class="rf-section">
+      <div class="rf-head"><div class="rf-ic c2"><i class="fa-solid fa-calendar-check"></i></div><div><h2>2. Faahfaahinta dhacdada</h2><div class="d">Nooca iyo jawaabta aad dejiso ayaa loo adeegsanayaa diiwaanka arday kasta oo la xushay.</div></div></div>
+      <div class="behavior-bulk-field"><label>Jihada dhibcaha</label><div class="behavior-bulk-direction"><label><input type="radio" name="direction" value="positive" {% if form_values.get('direction', 'positive') == 'positive' %}checked{% endif %}> <i class="fa-solid fa-circle-plus" style="color:#18845f"></i> Togan</label><label><input type="radio" name="direction" value="negative" {% if form_values.get('direction') == 'negative' %}checked{% endif %}> <i class="fa-solid fa-circle-minus" style="color:#cf4f4f"></i> Taban</label></div></div>
+      <div class="behavior-bulk-taxonomy" style="margin-top:12px">
+        <div class="behavior-bulk-field"><label for="bulkCategory">Category</label><select id="bulkCategory" name="behavior_category_id" required>{% for category in config.categories if category.is_active %}<option value="{{ category.id }}" data-polarity="{{ category.polarity }}" {% if form_values.get('behavior_category_id')|int == category.id %}selected{% endif %}>{{ category.name }} · {{ 'Togan' if category.polarity == 'positive' else 'Taban' }}</option>{% endfor %}</select></div>
+        <div class="behavior-bulk-field"><label for="bulkSubcategory">Sub-category</label><select id="bulkSubcategory" name="behavior_subcategory_id"><option value="">Ma jiro</option>{% for category in config.categories if category.is_active %}{% for subcategory in category.subcategories if subcategory.is_active %}<option value="{{ subcategory.id }}" data-category="{{ category.id }}" {% if form_values.get('behavior_subcategory_id')|int == subcategory.id %}selected{% endif %}>{{ subcategory.name }}</option>{% endfor %}{% endfor %}</select></div>
+        <div class="behavior-bulk-field behavior-bulk-field--wide"><label for="bulkAction">Action / Ficilka</label><select id="bulkAction" name="behavior_action_id" required>{% for category in config.categories if category.is_active %}{% for action in category.actions if action.is_active %}<option value="{{ action.id }}" data-category="{{ category.id }}" data-subcategory="{{ action.behavior_subcategory_id or '' }}" data-points="{{ action.points|behavior_points }}" data-type="{{ {'direct_action':'short_answer','choice':'multiple_choice','selection':'checkboxes','rating':'rating','text_note':'text_note','dropdown':'multiple_choice','linear_scale':'rating'}.get(action.behavior_type, 'short_answer') }}" data-required="{{ '1' if action.response_required else '0' }}" data-rating-scale="{{ action.rating_scale or '' }}" {% if form_values.get('behavior_action_id')|int == action.id %}selected{% endif %}>{{ category.name }} · {{ action.name }} · {{ action.points|behavior_points }} dhibcood · Heer {{ action.level_number }}</option>{% endfor %}{% endfor %}</select><p class="behavior-bulk-footnote">Dhibcaha action-ka iyo jawaabta waxaa server-ku uga xaqiijinayaa arday kasta si gooni ah.</p></div>
+      </div>
+      <div class="behavior-bulk-field" style="margin-top:12px"><label for="bulkOccurredAt">Taariikhda iyo waqtiga</label><input id="bulkOccurredAt" name="occurred_at" type="datetime-local" value="{{ form_values.get('occurred_at') or current_time.strftime('%Y-%m-%dT%H:%M') }}" required></div>
+      <div class="behavior-bulk-field" id="bulkChoicePanel" style="margin-top:12px">
+        <label>Jawaabta la xushayo</label>
+        <div class="behavior-bulk-response" data-response-panel="multiple_choice"><div class="behavior-bulk-choice-list">{% for category in config.categories %}{% for action in category.actions %}{% for choice in action.choices if choice.is_active %}<label class="behavior-bulk-choice" data-bulk-choice data-action="{{ action.id }}"><input type="radio" name="behavior_action_choice_id" value="{{ choice.id }}" data-action="{{ action.id }}" data-points="{{ choice.points|behavior_points }}" {% if form_values.get('behavior_action_choice_id')|int == choice.id %}checked{% endif %}><span>{{ choice.label }}</span><strong>{{ choice.points|behavior_points }}</strong></label>{% endfor %}{% endfor %}{% endfor %}</div><p class="behavior-bulk-footnote">Xulo hal jawaab oo dhammaan ardayda la xushay quseysa.</p></div>
+        <div class="behavior-bulk-response" data-response-panel="checkboxes"><div class="behavior-bulk-choice-list">{% for category in config.categories %}{% for action in category.actions %}{% for choice in action.choices if choice.is_active %}<label class="behavior-bulk-choice" data-bulk-choice data-action="{{ action.id }}"><input type="checkbox" name="behavior_action_choice_ids" value="{{ choice.id }}" data-action="{{ action.id }}" data-points="{{ choice.points|behavior_points }}" {% if choice.id|string in form_values.getlist('behavior_action_choice_ids') %}checked{% endif %}><span>{{ choice.label }}</span><strong>{{ choice.points|behavior_points }}</strong></label>{% endfor %}{% endfor %}{% endfor %}</div><p class="behavior-bulk-footnote">Waxaad xulan kartaa hal ama in ka badan oo jawaabood.</p></div>
+        <div class="behavior-bulk-response" data-response-panel="rating"><div class="behavior-rating" id="bulkRatingStars" data-scale="" role="radiogroup" aria-label="Qiimaynta dhacdada"></div><input type="hidden" id="bulkRating" name="response_rating" value="{{ form_values.get('response_rating', '') }}"><p class="behavior-bulk-footnote" id="bulkRatingHint">Xulo qiimaynta.</p></div>
+        <div class="behavior-bulk-response" data-response-panel="short_answer"><div class="behavior-bulk-field"><label for="bulkShortResponse">Jawaab gaaban</label><input id="bulkShortResponse" name="response_text" maxlength="2000" value="{{ form_values.get('response_text', '') }}" placeholder="Geli jawaabta haddii loo baahdo"></div></div>
+        <div class="behavior-bulk-response" data-response-panel="text_note"><div class="behavior-bulk-field"><label for="bulkLongResponse">Faahfaahin qoraal ah</label><textarea id="bulkLongResponse" name="response_text" maxlength="2000" placeholder="Geli faahfaahinta haddii loo baahdo">{{ form_values.get('response_text', '') }}</textarea></div></div>
+      </div>
+      <div class="behavior-bulk-field" style="margin-top:12px"><label for="bulkNotes">Faallo guud (ikhtiyaari)</label><textarea id="bulkNotes" name="notes" maxlength="2000" placeholder="Faahfaahin isku mid ah oo ku saabsan dhacdada">{{ form_values.get('notes', '') }}</textarea></div>
+    </section>
+    <div class="behavior-bulk-submit"><span class="behavior-bulk-count"><i class="fa-solid fa-circle-info"></i> Hubi tirada ardayda ka hor kaydinta.</span><button class="behavior-btn behavior-btn--primary" type="submit" id="bulkSubmit" disabled><i class="fa-solid fa-floppy-disk"></i> Diiwaangeli dhacdada</button></div>
+  </form>
+  {% else %}
+  <section class="behavior-card card behavior-section"><div class="behavior-empty"><i class="fa-solid fa-filter-circle-xmark"></i><h2>Xulo maaddo iyo xilli</h2><p>Dooro sannad-dugsiyeedka, maaddada hab-dhaqanka iyo xilliga dhibcaha si loo soo saaro ardayda scope-kaas ku jirta.</p></div></section>
+  {% endif %}
+</div>
+
+{% if config and selected_session and not scope_invalid %}
+<script>
+(() => {
+  const roster = document.getElementById('bulkRoster');
+  const search = document.getElementById('bulkSearch');
+  const levelFilter = document.getElementById('bulkLevelFilter');
+  const classFilter = document.getElementById('bulkClassFilter');
+  const recordStatus = document.getElementById('bulkRecordStatus');
+  const selectedCount = document.getElementById('bulkSelectedCount');
+  const submitButton = document.getElementById('bulkSubmit');
+  const duplicateStatus = document.getElementById('bulkDuplicateStatus');
+  const duplicateIds = new Set();
+  let duplicateCheckPending = true;
+  let duplicateCheckFailed = false;
+  let duplicateCheckRevision = 0;
+  const updateRoster = () => {
+    const level = levelFilter.value;
+    Array.from(classFilter.options).forEach((option) => {
+      option.hidden = Boolean(level && option.dataset.level && option.dataset.level !== level);
+      if (option.hidden && option.selected) classFilter.value = '';
+    });
+    const classId = classFilter.value;
+    const query = search.value.trim().toLocaleLowerCase();
+    const status = recordStatus.value;
+    roster.querySelectorAll('[data-roster-student]').forEach((row) => {
+      const statusMatches = status === 'all'
+        || (status === 'recorded' && row.dataset.recorded === 'true')
+        || (status === 'new' && row.dataset.recorded !== 'true');
+      const visible = statusMatches
+        && (!level || row.dataset.level === level)
+        && (!classId || row.dataset.class === classId)
+        && (!query || row.dataset.search.includes(query));
+      row.hidden = !visible;
+    });
+    roster.querySelectorAll('[data-roster-class]').forEach((group) => {
+      group.hidden = !Array.from(group.querySelectorAll('[data-roster-student]')).some((row) => !row.hidden);
+      const boxes = Array.from(group.querySelectorAll('input[name="student_enrollment_ids"]'));
+      const groupSelector = group.querySelector('[data-select-class]');
+      const checkedVisible = boxes.filter((box) => box.checked && !box.disabled && !box.closest('[data-roster-student]').hidden).length;
+      const visibleBoxes = boxes.filter((box) => !box.disabled && !box.closest('[data-roster-student]').hidden);
+      groupSelector.checked = visibleBoxes.length > 0 && checkedVisible === visibleBoxes.length;
+      groupSelector.indeterminate = checkedVisible > 0 && checkedVisible < visibleBoxes.length;
+      groupSelector.disabled = visibleBoxes.length === 0;
+    });
+    const count = roster.querySelectorAll('input[name="student_enrollment_ids"]:checked').length;
+    selectedCount.textContent = String(count);
+    submitButton.disabled = count === 0 || duplicateCheckPending || duplicateCheckFailed;
+  };
+  search.addEventListener('input', updateRoster);
+  levelFilter.addEventListener('change', updateRoster);
+  classFilter.addEventListener('change', updateRoster);
+  recordStatus.addEventListener('change', updateRoster);
+  roster.addEventListener('change', (event) => {
+    const classToggle = event.target.closest('[data-select-class]');
+    if (classToggle) {
+      const group = classToggle.closest('[data-roster-class]');
+      group.querySelectorAll('input[name="student_enrollment_ids"]').forEach((box) => {
+        if (!box.disabled && !box.closest('[data-roster-student]').hidden) box.checked = classToggle.checked;
+      });
+    }
+    updateRoster();
+  });
+  document.getElementById('bulkSelectVisible').addEventListener('click', () => {
+    roster.querySelectorAll('[data-roster-student]:not([hidden]) input[name="student_enrollment_ids"]').forEach((box) => { if (!box.disabled) box.checked = true; });
+    updateRoster();
+  });
+  document.getElementById('bulkClearSelection').addEventListener('click', () => {
+    roster.querySelectorAll('input[name="student_enrollment_ids"]').forEach((box) => { box.checked = false; });
+    updateRoster();
+  });
+
+  const directionInputs = Array.from(document.querySelectorAll('input[name="direction"]'));
+  const category = document.getElementById('bulkCategory');
+  const subcategory = document.getElementById('bulkSubcategory');
+  const action = document.getElementById('bulkAction');
+  const responsePanels = Array.from(document.querySelectorAll('[data-response-panel]'));
+  const ratingStars = document.getElementById('bulkRatingStars');
+  const ratingInput = document.getElementById('bulkRating');
+  const selectedChoiceInputs = Array.from(document.querySelectorAll('input[name="behavior_action_choice_id"], input[name="behavior_action_choice_ids"]'));
+  const occurredAt = document.getElementById('bulkOccurredAt');
+  const bulkForm = document.getElementById('behaviorBulkForm');
+  let dateCheckTimer;
+  const refreshDuplicateState = async () => {
+    const revision = ++duplicateCheckRevision;
+    const dateValue = occurredAt.value;
+    if (!category.value || !action.value || !dateValue) {
+      duplicateCheckPending = false;
+      duplicateCheckFailed = true;
+      duplicateStatus.textContent = 'Xaqiijinta dhacdooyinka lama samayn.';
+      updateRoster();
+      return;
+    }
+    duplicateCheckPending = true;
+    duplicateCheckFailed = false;
+    duplicateStatus.textContent = 'Hubinta diiwaannada hore...';
+    updateRoster();
+    const params = new URLSearchParams({
+      year_id: '{{ selected_year.id }}',
+      config_id: '{{ config.id }}',
+      session_id: '{{ selected_session.id }}',
+      category_id: category.value,
+      action_id: action.value,
+      occurred_at: dateValue,
+    });
+    try {
+      const response = await fetch(`${bulkForm.dataset.duplicateCheckUrl}?${params}`, {
+        headers: { Accept: 'application/json' },
+        credentials: 'same-origin',
+      });
+      const payload = await response.json();
+      if (revision !== duplicateCheckRevision) return;
+      if (!response.ok || !payload.success) throw new Error(payload.message || 'Hubinta lama dhammaystirin.');
+      duplicateIds.clear();
+      payload.duplicate_enrollment_ids.forEach((id) => duplicateIds.add(String(id)));
+      roster.querySelectorAll('[data-roster-student]').forEach((row) => {
+        const checkbox = row.querySelector('input[name="student_enrollment_ids"]');
+        const recorded = duplicateIds.has(checkbox.value);
+        row.dataset.recorded = recorded ? 'true' : 'false';
+        row.classList.toggle('is-recorded', recorded);
+        row.querySelector('[data-recorded-badge]').hidden = !recorded;
+        checkbox.disabled = recorded;
+        if (recorded) checkbox.checked = false;
+      });
+      duplicateCheckFailed = false;
+      duplicateStatus.textContent = payload.duplicate_count
+        ? `${payload.duplicate_count} arday ayaa dhacdadan hore loogu diiwaangeliyey; dib looma xulan karo.`
+        : 'Dhacdadan weli looma diiwaangelin ardayda scope-kan.';
+    } catch (error) {
+      if (revision !== duplicateCheckRevision) return;
+      duplicateCheckFailed = true;
+      duplicateStatus.textContent = error.message || 'Hubinta diiwaannada way fashilantay.';
+    } finally {
+      if (revision === duplicateCheckRevision) {
+        duplicateCheckPending = false;
+        updateRoster();
+      }
+    }
+  };
+  const syncTaxonomy = (resetAction = false) => {
+    const oldAction = action.value;
+    const oldSubcategory = subcategory.value;
+    const polarity = directionInputs.find((input) => input.checked)?.value || 'positive';
+    Array.from(category.options).forEach((option) => {
+      option.hidden = option.dataset.polarity !== polarity;
+      option.disabled = option.hidden;
+    });
+    if (category.options[category.selectedIndex]?.disabled) {
+      category.value = Array.from(category.options).find((option) => !option.disabled)?.value || '';
+    }
+    Array.from(subcategory.options).forEach((option) => {
+      option.hidden = Boolean(option.value && option.dataset.category !== category.value);
+      option.disabled = option.hidden;
+    });
+    if (!Array.from(subcategory.options).some((option) => option.value === oldSubcategory && !option.disabled)) {
+      subcategory.value = Array.from(subcategory.options).find((option) => !option.disabled)?.value || '';
+    }
+    Array.from(action.options).forEach((option) => {
+      option.hidden = option.dataset.category !== category.value || option.dataset.subcategory !== subcategory.value;
+      option.disabled = option.hidden;
+    });
+    const available = Array.from(action.options).filter((option) => !option.disabled);
+    action.value = !resetAction && available.some((option) => option.value === oldAction) ? oldAction : (available[0]?.value || '');
+    const current = action.options[action.selectedIndex];
+    const responseType = current?.dataset.type || 'short_answer';
+    responsePanels.forEach((panel) => {
+      const active = panel.dataset.responsePanel === responseType;
+      panel.classList.toggle('active', active);
+      panel.querySelectorAll('input,textarea,select').forEach((input) => { input.disabled = !active; });
+    });
+    selectedChoiceInputs.forEach((input) => {
+      input.disabled = input.dataset.action !== action.value || !['multiple_choice', 'checkboxes'].includes(responseType);
+    });
+    document.querySelectorAll('[data-bulk-choice]').forEach((choice) => {
+      choice.hidden = choice.dataset.action !== action.value || !['multiple_choice', 'checkboxes'].includes(responseType);
+    });
+    if (ratingStars.dataset.scale !== (current?.dataset.ratingScale || '')) {
+      const scale = Number(current?.dataset.ratingScale || 0);
+      ratingStars.dataset.scale = String(scale);
+      ratingStars.replaceChildren();
+      for (let value = 1; value <= scale; value += 1) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'behavior-rating-star';
+        button.dataset.value = String(value);
+        button.textContent = '★';
+        button.setAttribute('aria-label', `${value} / ${scale}`);
+        ratingStars.appendChild(button);
+      }
+      ratingInput.value = '';
+    }
+    document.getElementById('bulkRatingHint').textContent = current?.dataset.ratingScale ? `Xulo qiimayn u dhexaysa 1 ilaa ${current.dataset.ratingScale}.` : 'Qiimaynta lama dejin.';
+    refreshDuplicateState();
+  };
+  directionInputs.forEach((input) => input.addEventListener('change', () => syncTaxonomy(true)));
+  category.addEventListener('change', () => syncTaxonomy(true));
+  subcategory.addEventListener('change', () => syncTaxonomy(true));
+  action.addEventListener('change', () => syncTaxonomy(false));
+  occurredAt.addEventListener('change', () => {
+    window.clearTimeout(dateCheckTimer);
+    refreshDuplicateState();
+  });
+  occurredAt.addEventListener('input', () => {
+    window.clearTimeout(dateCheckTimer);
+    duplicateCheckPending = true;
+    duplicateStatus.textContent = 'Hubinta diiwaannada hore...';
+    updateRoster();
+    dateCheckTimer = window.setTimeout(refreshDuplicateState, 350);
+  });
+  ratingStars.addEventListener('click', (event) => {
+    const star = event.target.closest('[data-value]');
+    if (!star) return;
+    const value = Number(star.dataset.value);
+    ratingInput.value = String(value);
+    ratingStars.querySelectorAll('[data-value]').forEach((item) => item.classList.toggle('selected', Number(item.dataset.value) <= value));
+  });
+  document.getElementById('behaviorBulkForm').addEventListener('submit', (event) => {
+    const count = roster.querySelectorAll('input[name="student_enrollment_ids"]:checked').length;
+    if (!count || !window.confirm(`Ma hubtaa inaad dhacdadan u diiwaangelinayso ${count} arday?`)) event.preventDefault();
+  });
+  syncTaxonomy(false);
+  refreshDuplicateState();
+  updateRoster();
+})();
+</script>
+{% endif %}
+{% endblock %}

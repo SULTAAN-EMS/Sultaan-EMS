@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 {% block page_title %}Student Behavior{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='response-required-mark-20260920a') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='duplicate-event-warning-20261104') }}">
 <div class="behavior-page view">
   {% include "admin/behavior/_nav.html" %}
 
@@ -46,6 +46,7 @@
             <div class="field"><label for="behaviorDialogSession">Behavior session</label><select id="behaviorDialogSession" name="behavior_session_id" required>{% for item in sessions %}<option value="{{ item.id }}" data-maximum="{{ item.maximum_score }}" {% if item.id == selected_session.id %}selected{% endif %}>{{ item.session_label }} · {{ item.maximum_score }}</option>{% endfor %}</select></div>
           </div>
           <div class="field rf-field-spaced"><label for="behaviorDialogDate">Event date &amp; time</label><input id="behaviorDialogDate" name="occurred_at" type="datetime-local" value="{{ current_time.strftime('%Y-%m-%dT%H:%M') }}" required></div>
+          <div class="behavior-duplicate-warning" id="behaviorDialogDuplicateWarning" role="status" aria-live="polite" hidden><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span id="behaviorDialogDuplicateMessage"></span></div>
         </section>
 
         <section class="rf-section">
@@ -84,7 +85,7 @@
         </section>
       </form>
     </div>
-    <div class="modal-foot"><button class="behavior-btn btn btn-outline" type="button" data-close-behavior-dialog>Cancel</button><button class="behavior-btn btn btn-brass" type="submit" form="behaviorRecordForm"><i class="fa-solid fa-check"></i> Save event</button></div>
+    <div class="modal-foot"><button class="behavior-btn btn btn-outline" type="button" data-close-behavior-dialog>Cancel</button><button class="behavior-btn btn btn-brass" type="submit" form="behaviorRecordForm" id="behaviorRecordSubmit"><i class="fa-solid fa-check"></i> Save event</button></div>
   </div>
 </dialog>
 <script>
@@ -116,6 +117,11 @@
   const ratingInput = document.getElementById('behaviorDialogRating');
   const ratingStars = document.getElementById('behaviorRatingStars');
   const ratingHint = document.getElementById('behaviorRatingHint');
+  const eventDate = document.getElementById('behaviorDialogDate');
+  const duplicateWarning = document.getElementById('behaviorDialogDuplicateWarning');
+  const duplicateMessage = document.getElementById('behaviorDialogDuplicateMessage');
+  const submitButton = document.getElementById('behaviorRecordSubmit');
+  const duplicateCheckUrl = {{ url_for('behavior.bulk_duplicate_check')|tojson }};
   const studentLedger = {
     {% for row in board_rows %}
     "{{ row.enrollment.id }}": { earned: Number("{{ row.score.behavior_score|behavior_points }}"), allocation: Number("{{ row.score.behavior_allocation|behavior_points }}") },
@@ -127,6 +133,9 @@
     .filter((input) => input.checked && input.dataset.action === action?.value)
     .reduce((sum, input) => sum + Number(input.dataset.points || 0), 0);
   let selectedRadioChoiceId = null;
+  let duplicateCheckRevision = 0;
+  let duplicateCheckTimer = null;
+  let duplicateFound = false;
   const clearResponses = () => {
     selectedRadioChoiceId = null;
     responseInputs.forEach((input) => {
@@ -153,6 +162,65 @@
     }
   };
   const makeKey = () => window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const checkExistingEvent = async () => {
+    if (!dialog?.open || !eventDate || !duplicateWarning || !duplicateMessage || !submitButton) return;
+    const revision = ++duplicateCheckRevision;
+    const selectedAction = action?.options[action.selectedIndex];
+    const occurredAt = eventDate.value;
+    if (!enrollment?.value || !session?.value || !category?.value || !action?.value || !occurredAt) {
+      duplicateFound = false;
+      duplicateWarning.hidden = true;
+      submitButton.disabled = false;
+      return;
+    }
+    duplicateFound = false;
+    duplicateWarning.hidden = false;
+    duplicateWarning.classList.remove('is-duplicate', 'is-error');
+    duplicateWarning.classList.add('is-checking');
+    duplicateMessage.textContent = 'Waxaa la hubinayaa in ardaygan dhacdadan hore loogu diiwaangeliyey...';
+    submitButton.disabled = true;
+    const params = new URLSearchParams({
+      year_id: '{{ selected_year.id }}',
+      config_id: '{{ config.id }}',
+      session_id: session.value,
+      category_id: category.value,
+      action_id: action.value,
+      enrollment_id: enrollment.value,
+      occurred_at: occurredAt,
+    });
+    try {
+      const response = await fetch(`${duplicateCheckUrl}?${params}`, {
+        headers: { Accept: 'application/json' },
+        credentials: 'same-origin',
+      });
+      const result = await response.json();
+      if (revision !== duplicateCheckRevision) return;
+      duplicateWarning.classList.remove('is-checking');
+      duplicateFound = response.ok && result.duplicate_enrollment_ids?.includes(Number(enrollment.value));
+      if (duplicateFound) {
+        duplicateWarning.classList.add('is-duplicate');
+        duplicateMessage.textContent = `Hore ayaa loo diiwaangeliyey: ${selectedAction?.dataset.actionName || 'ficilkan'} ee ardaygan, xilligan iyo taariikhdan. Diiwaanka dib looma celinayo.`;
+        submitButton.disabled = true;
+      } else if (!response.ok) {
+        duplicateWarning.classList.add('is-error');
+        duplicateMessage.textContent = result.message || 'Hubinta diiwaanka hore way fashilantay. Server-ku mar kale ayuu xaqiijin doonaa marka la kaydinayo.';
+        submitButton.disabled = false;
+      } else {
+        duplicateWarning.hidden = true;
+        submitButton.disabled = false;
+      }
+    } catch (_) {
+      if (revision !== duplicateCheckRevision) return;
+      duplicateWarning.classList.remove('is-checking');
+      duplicateWarning.classList.add('is-error');
+      duplicateMessage.textContent = 'Hubinta tooska ahi ma dhammaan. Server-ku weli wuu diidi doonaa diiwaan hore u jiray.';
+      submitButton.disabled = false;
+    }
+  };
+  const scheduleDuplicateCheck = () => {
+    window.clearTimeout(duplicateCheckTimer);
+    duplicateCheckTimer = window.setTimeout(checkExistingEvent, 250);
+  };
   const sync = (resetAction = false) => {
     if (!category || !action) return;
     const sessionMaximum = getSessionMaximum();
@@ -231,6 +299,7 @@
     }
     if (previewBase) previewBase.textContent = `${selectedPoints?.textContent || '0.00'} base pts`;
     Array.from(direction || []).forEach((radio) => radio.closest('.rf-dcard')?.classList.toggle('active', radio.checked));
+    if (dialog?.open) scheduleDuplicateCheck();
   };
   document.querySelectorAll('[data-open-behavior-dialog]').forEach((button) => button.addEventListener('click', () => {
     const id = button.dataset.enrollment;
@@ -240,11 +309,14 @@
     if (token) token.value = makeKey();
     sync(false);
     if (dialog && dialog.showModal) dialog.showModal(); else if (dialog) dialog.setAttribute('open', '');
+    checkExistingEvent();
   }));
   student && student.addEventListener('change', () => { enrollment.value = student.value; label.textContent = student.options[student.selectedIndex].text; clearResponses(); sync(); });
   category && category.addEventListener('change', () => { clearResponses(); sync(true); });
   subcategory && subcategory.addEventListener('change', () => { clearResponses(); sync(true); });
   session && session.addEventListener('change', () => { clearResponses(); sync(true); });
+  eventDate && eventDate.addEventListener('change', checkExistingEvent);
+  eventDate && eventDate.addEventListener('input', scheduleDuplicateCheck);
   action && action.addEventListener('change', () => { clearResponses(); sync(false); });
   direction && Array.from(direction).forEach((radio) => radio.addEventListener('change', () => { clearResponses(); sync(true); }));
   responseInputs && Array.from(responseInputs).forEach((input) => {
