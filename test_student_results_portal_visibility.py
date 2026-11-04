@@ -71,7 +71,7 @@ class TestStudentResultsPortalVisibility(unittest.TestCase):
         self.assertIn('property="og:title" content="WAAXDA ADEEGGA ARDEYGA', html)
         self.assertIn('property="og:type" content="website"', html)
         self.assertIn('name="twitter:card" content="summary_large_image"', html)
-        self.assertIn("https://www.sultaan-ems.com/static/images/student-services-share.jpg", html)
+        self.assertIn("https://www.sultaan-ems.com/static/images/student-services-share.jpg?v=fd81476", html)
 
         image = self.client.get("/static/images/student-services-share.jpg")
         self.assertEqual(image.status_code, 200)
