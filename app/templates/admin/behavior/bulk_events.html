@@ -15,11 +15,13 @@
 .behavior-bulk-students{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px}.behavior-bulk-student{display:flex;align-items:center;gap:10px;min-width:0;padding:9px 10px;border:1px solid #e0e7ec;border-radius:9px;background:#fff;cursor:pointer}.behavior-bulk-student:hover{border-color:#82b8aa;background:#f5fbf8}.behavior-bulk-student:has(input:checked){border-color:#24796c;background:#edf8f4}.behavior-bulk-student input{width:18px;height:18px;flex:0 0 auto;accent-color:#24796c}.behavior-bulk-student img,.behavior-bulk-avatar{display:grid;place-items:center;width:36px;height:36px;flex:0 0 36px;border-radius:50%;object-fit:cover;color:#fff;background:#5372a4;font-weight:700}.behavior-bulk-student__copy{min-width:0;display:grid;gap:2px}.behavior-bulk-student__copy strong,.behavior-bulk-student__copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.behavior-bulk-student__copy small{color:#718096}
 .behavior-bulk-record-badge{display:inline-flex;align-items:center;gap:4px;width:max-content;padding:3px 6px;border:1px solid #eccf91;border-radius:20px;color:#825a10;background:#fff7e5;font-size:.7rem;font-weight:700}.behavior-bulk-student.is-recorded{border-color:#e8d4a7;background:#fffcf4}.behavior-bulk-student.is-recorded input{cursor:not-allowed}
 .behavior-bulk-student.is-recorded input{cursor:pointer}.behavior-bulk-student.is-duplicate{border-color:#d9b77e;background:#fff9eb}.behavior-bulk-student.is-duplicate input{cursor:not-allowed}
-.behavior-bulk-empty{padding:18px;text-align:center;color:#718096}.behavior-bulk-submit{position:sticky;bottom:10px;z-index:3;display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:15px;padding:12px;border:1px solid #d8e3e8;border-radius:12px;background:rgba(255,255,255,.96);box-shadow:0 8px 24px rgba(25,45,60,.12)}
+.behavior-bulk-empty{padding:18px;text-align:center;color:#718096}.behavior-bulk-review{display:grid;gap:10px}.behavior-bulk-review-empty{padding:14px;border:1px dashed #cbd5df;border-radius:10px;color:#64748b;background:#f8fafc}.behavior-bulk-review-row{padding:14px;border:1px solid #dbe5e9;border-left:4px solid #24796c;border-radius:11px;background:#fff}.behavior-bulk-review-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}.behavior-bulk-review-student{display:grid;gap:3px;min-width:0}.behavior-bulk-review-student strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.behavior-bulk-review-student small{color:#718096}.behavior-bulk-review-remove{border:1px solid #efc4c1;border-radius:8px;padding:7px 9px;color:#a13732;background:#fff5f4;font-weight:700;cursor:pointer}.behavior-bulk-review-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.behavior-bulk-review-fields label,.behavior-bulk-review-response>label{display:block;margin:0 0 5px;color:#43556c;font-weight:700}.behavior-bulk-review-fields select,.behavior-bulk-review-response select,.behavior-bulk-review-response input,.behavior-bulk-review-response textarea{width:100%;min-height:40px;padding:8px 10px;border:1px solid #ccd8e0;border-radius:8px;background:#fff;color:#172638}.behavior-bulk-review-response{margin-top:10px}.behavior-bulk-review-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.behavior-bulk-review-option{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #dce4ea;border-radius:8px;cursor:pointer}.behavior-bulk-review-option input{width:16px;min-height:16px;accent-color:#24796c}.behavior-bulk-review-warning{margin-top:7px;color:#a13732;font-size:.88rem;font-weight:700}.behavior-bulk-review-duplicate{margin-top:9px;color:#a13732;font-size:.88rem;font-weight:700}.behavior-bulk-submit{position:sticky;bottom:10px;z-index:3;display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:15px;padding:12px;border:1px solid #d8e3e8;border-radius:12px;background:rgba(255,255,255,.96);box-shadow:0 8px 24px rgba(25,45,60,.12)}
 .behavior-bulk-notice{display:grid;grid-template-columns:40px minmax(0,1fr) 30px;align-items:center;gap:12px;margin:0 0 14px;padding:13px 14px;border:1px solid var(--notice-border);border-left:4px solid var(--notice-accent);border-radius:12px;color:var(--notice-ink);background:var(--notice-bg);box-shadow:0 10px 26px rgba(20,40,30,.1);animation:bulk-notice-in .3s ease-out both}.behavior-bulk-notice--success{--notice-accent:#16845f;--notice-border:#b8dfcf;--notice-ink:#174f3d;--notice-bg:#f0fbf6}.behavior-bulk-notice--error{--notice-accent:#c13935;--notice-border:#efc3bf;--notice-ink:#762d2a;--notice-bg:#fff3f1}.behavior-bulk-notice--info{--notice-accent:#337c9a;--notice-border:#bfd9e4;--notice-ink:#28566a;--notice-bg:#f1f9fc}.behavior-bulk-notice__icon{display:grid;place-items:center;width:38px;height:38px;border-radius:11px;color:#fff;background:var(--notice-accent);font-size:17px}.behavior-bulk-notice__copy{display:grid;gap:3px;min-width:0}.behavior-bulk-notice__copy strong{font-weight:800}.behavior-bulk-notice__copy span{overflow-wrap:anywhere}.behavior-bulk-notice__close{display:grid;place-items:center;width:30px;height:30px;border:1px solid color-mix(in srgb,var(--notice-accent) 25%,transparent);border-radius:8px;color:var(--notice-ink);background:color-mix(in srgb,var(--notice-accent) 8%,transparent)}
 .behavior-bulk-error{margin:0 0 14px}.theme-dark .behavior-bulk-notice--success,[data-theme="dark"] .behavior-bulk-notice--success{--notice-accent:#45bd8d;--notice-border:#315d49;--notice-ink:#c8f2dd;--notice-bg:#172d23}.theme-dark .behavior-bulk-notice--error,[data-theme="dark"] .behavior-bulk-notice--error{--notice-accent:#f07970;--notice-border:#663b38;--notice-ink:#ffd6d1;--notice-bg:#321f20}.theme-dark .behavior-bulk-notice--info,[data-theme="dark"] .behavior-bulk-notice--info{--notice-accent:#70bedc;--notice-border:#315369;--notice-ink:#d0effb;--notice-bg:#172834}@keyframes bulk-notice-in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
 .behavior-bulk-taxonomy{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.behavior-bulk-taxonomy .behavior-bulk-field--wide{grid-column:1/-1}.behavior-bulk-direction{display:flex;flex-wrap:wrap;gap:10px}.behavior-bulk-direction label{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #dce4ea;border-radius:9px;cursor:pointer}.behavior-bulk-direction input{accent-color:#24796c}.behavior-bulk-response{display:none;margin-top:12px}.behavior-bulk-response.active{display:block}.behavior-bulk-choice-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.behavior-bulk-choice{display:flex;align-items:center;gap:9px;padding:10px;border:1px solid #dce4ea;border-radius:9px;cursor:pointer}.behavior-bulk-choice:has(input:checked){border-color:#24796c;background:#edf8f4}.behavior-bulk-choice input{accent-color:#24796c}.behavior-bulk-footnote{margin:5px 0 0;color:#718096;font-size:.86rem}
-@media(max-width:760px){.behavior-bulk-filters,.behavior-bulk-taxonomy{grid-template-columns:1fr}.behavior-bulk-toolbar,.behavior-bulk-toolbar--filters{grid-template-columns:1fr 1fr}.behavior-bulk-toolbar .behavior-bulk-search-wrap{grid-column:1/-1}.behavior-bulk-students,.behavior-bulk-choice-list{grid-template-columns:1fr}.behavior-bulk-submit{align-items:stretch;flex-direction:column}.behavior-bulk-submit .behavior-btn{width:100%;justify-content:center}.behavior-bulk-hero{align-items:flex-start}.behavior-bulk-hero h1{font-size:1.2rem}}
+@media(max-width:760px){.behavior-bulk-filters,.behavior-bulk-taxonomy{grid-template-columns:1fr}.behavior-bulk-toolbar,.behavior-bulk-toolbar--filters{grid-template-columns:1fr 1fr}.behavior-bulk-toolbar .behavior-bulk-search-wrap{grid-column:1/-1}.behavior-bulk-students,.behavior-bulk-choice-list{grid-template-columns:1fr}.behavior-bulk-review-fields{grid-template-columns:1fr 1fr}.behavior-bulk-submit{align-items:stretch;flex-direction:column}.behavior-bulk-submit .behavior-btn{width:100%;justify-content:center}.behavior-bulk-hero{align-items:flex-start}.behavior-bulk-hero h1{font-size:1.2rem}}
+@media(max-width:480px){.behavior-bulk-review-fields{grid-template-columns:1fr}.behavior-bulk-review-head{align-items:flex-start;flex-wrap:wrap}.behavior-bulk-review-head .behavior-bulk-record-badge{margin-left:auto}}
+.theme-dark .behavior-bulk-review-row,[data-theme="dark"] .behavior-bulk-review-row{border-color:#304254;color:#e8f0f5;background:#172435}.theme-dark .behavior-bulk-review-fields label,.theme-dark .behavior-bulk-review-response>label,[data-theme="dark"] .behavior-bulk-review-fields label,[data-theme="dark"] .behavior-bulk-review-response>label{color:#d7e2eb}.theme-dark .behavior-bulk-review-fields select,.theme-dark .behavior-bulk-review-response select,.theme-dark .behavior-bulk-review-response input,.theme-dark .behavior-bulk-review-response textarea,[data-theme="dark"] .behavior-bulk-review-fields select,[data-theme="dark"] .behavior-bulk-review-response select,[data-theme="dark"] .behavior-bulk-review-response input,[data-theme="dark"] .behavior-bulk-review-response textarea{border-color:#34495b;color:#e8f0f5;background:#111d2b}.theme-dark .behavior-bulk-review-empty,[data-theme="dark"] .behavior-bulk-review-empty{border-color:#34495b;color:#c5d1dc;background:#172435}.theme-dark .behavior-bulk-review-option,[data-theme="dark"] .behavior-bulk-review-option{border-color:#34495b;background:#1a2b3a}.theme-dark .behavior-bulk-review-student small,[data-theme="dark"] .behavior-bulk-review-student small{color:#aebdca}
 .theme-dark .behavior-bulk-hero,[data-theme="dark"] .behavior-bulk-hero{border-color:#2b4650;color:#e8f0f5;background:linear-gradient(120deg,#152b2b,#172237)}
 .theme-dark .behavior-bulk-hero p,[data-theme="dark"] .behavior-bulk-hero p,.theme-dark .behavior-bulk-footnote,[data-theme="dark"] .behavior-bulk-footnote{color:#aebdca}
 .theme-dark .behavior-bulk-filters label,.theme-dark .behavior-bulk-field label,[data-theme="dark"] .behavior-bulk-filters label,[data-theme="dark"] .behavior-bulk-field label{color:#d7e2eb}
@@ -77,10 +79,10 @@
           <header class="behavior-bulk-class__head"><strong><i class="fa-solid fa-people-group"></i> {{ school_class.academic_year_level.name }} · {{ school_class.name }} <span>({{ class_roster|length }})</span></strong><label><input type="checkbox" data-select-class="{{ school_class.id }}"> Xulo fasalkan</label></header>
           <div class="behavior-bulk-students">
             {% for enrollment in class_roster %}
-            <label class="behavior-bulk-student" data-roster-student data-recorded="false" data-class="{{ school_class.id }}" data-level="{{ school_class.academic_year_level_id }}" data-search="{{ (enrollment.student.full_name ~ ' ' ~ enrollment.student.student_code ~ ' ' ~ school_class.name ~ ' ' ~ school_class.academic_year_level.name)|lower }}">
+            <label class="behavior-bulk-student" data-roster-student data-any-recorded="{{ 'true' if enrollment.id in recorded_roster_ids else 'false' }}" data-recorded="{{ 'true' if enrollment.id in recorded_roster_ids else 'false' }}" data-enrollment="{{ enrollment.id }}" data-student-name="{{ enrollment.student.full_name }}" data-student-code="{{ enrollment.student.student_code }}" data-class-name="{{ school_class.academic_year_level.name }} · {{ school_class.name }}" data-class="{{ school_class.id }}" data-level="{{ school_class.academic_year_level_id }}" data-search="{{ (enrollment.student.full_name ~ ' ' ~ enrollment.student.student_code ~ ' ' ~ school_class.name ~ ' ' ~ school_class.academic_year_level.name)|lower }}">
               <input type="checkbox" name="student_enrollment_ids" value="{{ enrollment.id }}" {% if enrollment.id|string in form_values.getlist('student_enrollment_ids') %}checked{% endif %}>
               {% if enrollment.student.photo_path %}<img src="{{ asset_url(enrollment.student.photo_path) }}" alt="" loading="lazy">{% else %}<span class="behavior-bulk-avatar">{{ enrollment.student.full_name[:1]|upper }}</span>{% endif %}
-              <span class="behavior-bulk-student__copy"><strong>{{ enrollment.student.full_name }}</strong><small>{{ enrollment.student.student_code }}</small><span class="behavior-bulk-record-badge" data-recorded-badge hidden><i class="fa-solid fa-circle-check"></i> <span data-recorded-label>Hore ayaa loo diiwaangeliyey</span></span></span>
+              <span class="behavior-bulk-student__copy"><strong>{{ enrollment.student.full_name }}</strong><small>{{ enrollment.student.student_code }}</small><span class="behavior-bulk-record-badge" data-recorded-badge {% if enrollment.id not in recorded_roster_ids %}hidden{% endif %}><i class="fa-solid fa-circle-check"></i> <span data-recorded-label>Hore dhacdo ayaa loogu diiwaangeliyey</span></span></span>
             </label>
             {% endfor %}
           </div>
@@ -90,23 +92,14 @@
       </div>
     </section>
 
+    <input type="hidden" name="per_student_review" value="1">
     <section class="rf-section">
-      <div class="rf-head"><div class="rf-ic c2"><i class="fa-solid fa-calendar-check"></i></div><div><h2>2. Faahfaahinta dhacdada</h2><div class="d">Nooca iyo jawaabta aad dejiso ayaa loo adeegsanayaa diiwaanka arday kasta oo la xushay.</div></div></div>
-      <div class="behavior-bulk-field"><label>Jihada dhibcaha</label><div class="behavior-bulk-direction"><label><input type="radio" name="direction" value="positive" {% if form_values.get('direction', 'positive') == 'positive' %}checked{% endif %}> <i class="fa-solid fa-circle-plus" style="color:#18845f"></i> Togan</label><label><input type="radio" name="direction" value="negative" {% if form_values.get('direction') == 'negative' %}checked{% endif %}> <i class="fa-solid fa-circle-minus" style="color:#cf4f4f"></i> Taban</label></div></div>
-      <div class="behavior-bulk-taxonomy" style="margin-top:12px">
-        <div class="behavior-bulk-field"><label for="bulkCategory">Category</label><select id="bulkCategory" name="behavior_category_id" required>{% for category in config.categories if category.is_active %}<option value="{{ category.id }}" data-polarity="{{ category.polarity }}" {% if form_values.get('behavior_category_id')|int == category.id %}selected{% endif %}>{{ category.name }} · {{ 'Togan' if category.polarity == 'positive' else 'Taban' }}</option>{% endfor %}</select></div>
-        <div class="behavior-bulk-field"><label for="bulkSubcategory">Sub-category</label><select id="bulkSubcategory" name="behavior_subcategory_id"><option value="">Ma jiro</option>{% for category in config.categories if category.is_active %}{% for subcategory in category.subcategories if subcategory.is_active %}<option value="{{ subcategory.id }}" data-category="{{ category.id }}" {% if form_values.get('behavior_subcategory_id')|int == subcategory.id %}selected{% endif %}>{{ subcategory.name }}</option>{% endfor %}{% endfor %}</select></div>
-        <div class="behavior-bulk-field behavior-bulk-field--wide"><label for="bulkAction">Action / Ficilka</label><select id="bulkAction" name="behavior_action_id" required>{% for category in config.categories if category.is_active %}{% for action in category.actions if action.is_active %}<option value="{{ action.id }}" data-category="{{ category.id }}" data-subcategory="{{ action.behavior_subcategory_id or '' }}" data-points="{{ action.points|behavior_points }}" data-type="{{ {'direct_action':'short_answer','choice':'multiple_choice','selection':'checkboxes','rating':'rating','text_note':'text_note','dropdown':'multiple_choice','linear_scale':'rating'}.get(action.behavior_type, 'short_answer') }}" data-required="{{ '1' if action.response_required else '0' }}" data-rating-scale="{{ action.rating_scale or '' }}" {% if form_values.get('behavior_action_id')|int == action.id %}selected{% endif %}>{{ category.name }} · {{ action.name }} · {{ action.points|behavior_points }} dhibcood · Heer {{ action.level_number }}</option>{% endfor %}{% endfor %}</select><p class="behavior-bulk-footnote">Dhibcaha action-ka iyo jawaabta waxaa server-ku uga xaqiijinayaa arday kasta si gooni ah.</p></div>
-      </div>
-      <div class="behavior-bulk-field" style="margin-top:12px"><label for="bulkOccurredAt">Taariikhda iyo waqtiga</label><input id="bulkOccurredAt" name="occurred_at" type="datetime-local" value="{{ form_values.get('occurred_at') or current_time.strftime('%Y-%m-%dT%H:%M') }}" required></div>
-      <div class="behavior-bulk-field" id="bulkChoicePanel" style="margin-top:12px">
-        <label>Jawaabta la xushayo</label>
-        <div class="behavior-bulk-response" data-response-panel="multiple_choice"><div class="behavior-bulk-choice-list">{% for category in config.categories %}{% for action in category.actions %}{% for choice in action.choices if choice.is_active %}<label class="behavior-bulk-choice" data-bulk-choice data-action="{{ action.id }}"><input type="radio" name="behavior_action_choice_id" value="{{ choice.id }}" data-action="{{ action.id }}" data-points="{{ choice.points|behavior_points }}" {% if form_values.get('behavior_action_choice_id')|int == choice.id %}checked{% endif %}><span>{{ choice.label }}</span><strong>{{ choice.points|behavior_points }}</strong></label>{% endfor %}{% endfor %}{% endfor %}</div><p class="behavior-bulk-footnote">Xulo hal jawaab oo dhammaan ardayda la xushay quseysa.</p></div>
-        <div class="behavior-bulk-response" data-response-panel="checkboxes"><div class="behavior-bulk-choice-list">{% for category in config.categories %}{% for action in category.actions %}{% for choice in action.choices if choice.is_active %}<label class="behavior-bulk-choice" data-bulk-choice data-action="{{ action.id }}"><input type="checkbox" name="behavior_action_choice_ids" value="{{ choice.id }}" data-action="{{ action.id }}" data-points="{{ choice.points|behavior_points }}" {% if choice.id|string in form_values.getlist('behavior_action_choice_ids') %}checked{% endif %}><span>{{ choice.label }}</span><strong>{{ choice.points|behavior_points }}</strong></label>{% endfor %}{% endfor %}{% endfor %}</div><p class="behavior-bulk-footnote">Waxaad xulan kartaa hal ama in ka badan oo jawaabood.</p></div>
-        <div class="behavior-bulk-response" data-response-panel="rating"><div class="behavior-rating" id="bulkRatingStars" data-scale="" role="radiogroup" aria-label="Qiimaynta dhacdada"></div><input type="hidden" id="bulkRating" name="response_rating" value="{{ form_values.get('response_rating', '') }}"><p class="behavior-bulk-footnote" id="bulkRatingHint">Xulo qiimaynta.</p></div>
-        <div class="behavior-bulk-response" data-response-panel="short_answer"><div class="behavior-bulk-field"><label for="bulkShortResponse">Jawaab gaaban</label><input id="bulkShortResponse" name="response_text" maxlength="2000" value="{{ form_values.get('response_text', '') }}" placeholder="Geli jawaabta haddii loo baahdo"></div></div>
-        <div class="behavior-bulk-response" data-response-panel="text_note"><div class="behavior-bulk-field"><label for="bulkLongResponse">Faahfaahin qoraal ah</label><textarea id="bulkLongResponse" name="response_text" maxlength="2000" placeholder="Geli faahfaahinta haddii loo baahdo">{{ form_values.get('response_text', '') }}</textarea></div></div>
-      </div>
+      <div class="rf-head"><div class="rf-ic c2"><i class="fa-solid fa-list-check"></i></div><div><h2>2. Dib-u-eegis arday kasta</h2><div class="d">Arday kasta u xulo category, sub-category, ficil iyo jawaabtiisa. Waxaad ardayga ka saari kartaa batch-ka halkan.</div></div></div>
+      <div class="behavior-bulk-review" id="bulkReviewList" aria-live="polite"><div class="behavior-bulk-review-empty" data-review-empty>Ardayda aad xulato iyo faahfaahintooda ayaa halkan ka muuqan doona.</div></div>
+    </section>
+    <section class="rf-section">
+      <div class="rf-head"><div class="rf-ic c3"><i class="fa-solid fa-calendar-check"></i></div><div><h2>3. Waqtiga iyo faallada guud</h2><div class="d">Taariikhda iyo faalladani waxay wada khuseeyaan ardayda batch-kan.</div></div></div>
+      <div class="behavior-bulk-field"><label for="bulkOccurredAt">Taariikhda iyo waqtiga</label><input id="bulkOccurredAt" name="occurred_at" type="datetime-local" value="{{ form_values.get('occurred_at') or current_time.strftime('%Y-%m-%dT%H:%M') }}" required></div>
       <div class="behavior-bulk-field" style="margin-top:12px"><label for="bulkNotes">Faallo guud (ikhtiyaari)</label><textarea id="bulkNotes" name="notes" maxlength="2000" placeholder="Faahfaahin isku mid ah oo ku saabsan dhacdada">{{ form_values.get('notes', '') }}</textarea></div>
     </section>
     <div class="behavior-bulk-submit"><span class="behavior-bulk-count"><i class="fa-solid fa-circle-info"></i> Hubi tirada ardayda ka hor kaydinta.</span><button class="behavior-btn behavior-btn--primary" type="submit" id="bulkSubmit" disabled><i class="fa-solid fa-floppy-disk"></i> Diiwaangeli dhacdada</button></div>
@@ -115,240 +108,438 @@
   <section class="behavior-card card behavior-section"><div class="behavior-empty"><i class="fa-solid fa-filter-circle-xmark"></i><h2>Xulo maaddo iyo xilli</h2><p>Dooro sannad-dugsiyeedka, maaddada hab-dhaqanka iyo xilliga dhibcaha si loo soo saaro ardayda scope-kaas ku jirta.</p></div></section>
   {% endif %}
 </div>
+<script type="application/json" id="bulkActionCatalog">{{ bulk_action_catalog|tojson }}</script>
+<script type="application/json" id="bulkSavedStudentSpecs">{{ submitted_student_specs|tojson }}</script>
 
 {% if config and selected_session and not scope_invalid %}
 <script>
 (() => {
-  const roster = document.getElementById('bulkRoster');
-  const search = document.getElementById('bulkSearch');
-  const levelFilter = document.getElementById('bulkLevelFilter');
-  const classFilter = document.getElementById('bulkClassFilter');
-  const recordStatus = document.getElementById('bulkRecordStatus');
-  const selectedCount = document.getElementById('bulkSelectedCount');
-  const submitButton = document.getElementById('bulkSubmit');
-  const duplicateStatus = document.getElementById('bulkDuplicateStatus');
-  const duplicateIds = new Set();
-  const recordedIds = new Set();
-  let duplicateCheckPending = true;
-  let duplicateCheckFailed = false;
-  let duplicateCheckRevision = 0;
-  const updateRoster = () => {
-    const level = levelFilter.value;
-    Array.from(classFilter.options).forEach((option) => {
-      option.hidden = Boolean(level && option.dataset.level && option.dataset.level !== level);
-      if (option.hidden && option.selected) classFilter.value = '';
-    });
-    const classId = classFilter.value;
-    const query = search.value.trim().toLocaleLowerCase();
-    const status = recordStatus.value;
-    roster.querySelectorAll('[data-roster-student]').forEach((row) => {
-      const statusMatches = status === 'all'
-        || (status === 'recorded' && row.dataset.recorded === 'true')
-        || (status === 'new' && row.dataset.recorded !== 'true');
-      const visible = statusMatches
-        && (!level || row.dataset.level === level)
-        && (!classId || row.dataset.class === classId)
-        && (!query || row.dataset.search.includes(query));
-      row.hidden = !visible;
-    });
-    roster.querySelectorAll('[data-roster-class]').forEach((group) => {
-      group.hidden = !Array.from(group.querySelectorAll('[data-roster-student]')).some((row) => !row.hidden);
-      const boxes = Array.from(group.querySelectorAll('input[name="student_enrollment_ids"]'));
-      const groupSelector = group.querySelector('[data-select-class]');
-      const checkedVisible = boxes.filter((box) => box.checked && !box.disabled && !box.closest('[data-roster-student]').hidden).length;
-      const visibleBoxes = boxes.filter((box) => !box.disabled && !box.closest('[data-roster-student]').hidden);
-      groupSelector.checked = visibleBoxes.length > 0 && checkedVisible === visibleBoxes.length;
-      groupSelector.indeterminate = checkedVisible > 0 && checkedVisible < visibleBoxes.length;
-      groupSelector.disabled = visibleBoxes.length === 0;
-    });
-    const count = roster.querySelectorAll('input[name="student_enrollment_ids"]:checked').length;
-    selectedCount.textContent = String(count);
-    submitButton.disabled = count === 0 || duplicateCheckPending || duplicateCheckFailed;
-  };
-  search.addEventListener('input', updateRoster);
-  levelFilter.addEventListener('change', updateRoster);
-  classFilter.addEventListener('change', updateRoster);
-  recordStatus.addEventListener('change', updateRoster);
-  roster.addEventListener('change', (event) => {
-    const classToggle = event.target.closest('[data-select-class]');
-    if (classToggle) {
-      const group = classToggle.closest('[data-roster-class]');
-      group.querySelectorAll('input[name="student_enrollment_ids"]').forEach((box) => {
-        if (!box.disabled && !box.closest('[data-roster-student]').hidden) box.checked = classToggle.checked;
-      });
-    }
-    updateRoster();
-  });
-  document.getElementById('bulkSelectVisible').addEventListener('click', () => {
-    roster.querySelectorAll('[data-roster-student]:not([hidden]) input[name="student_enrollment_ids"]').forEach((box) => { if (!box.disabled) box.checked = true; });
-    updateRoster();
-  });
-  document.getElementById('bulkClearSelection').addEventListener('click', () => {
-    roster.querySelectorAll('input[name="student_enrollment_ids"]').forEach((box) => { box.checked = false; });
-    updateRoster();
-  });
+  const reviewList = document.getElementById('bulkReviewList');
+  if (reviewList) {
+    const roster = document.getElementById('bulkRoster');
+    const search = document.getElementById('bulkSearch');
+    const levelFilter = document.getElementById('bulkLevelFilter');
+    const classFilter = document.getElementById('bulkClassFilter');
+    const recordStatus = document.getElementById('bulkRecordStatus');
+    const selectedCount = document.getElementById('bulkSelectedCount');
+    const submitButton = document.getElementById('bulkSubmit');
+    const duplicateStatus = document.getElementById('bulkDuplicateStatus');
+    const occurredAt = document.getElementById('bulkOccurredAt');
+    const bulkForm = document.getElementById('behaviorBulkForm');
+    const actionCatalog = JSON.parse(document.getElementById('bulkActionCatalog').textContent || '[]');
+    const savedSpecs = JSON.parse(document.getElementById('bulkSavedStudentSpecs').textContent || '{}');
+    const reviewStates = new Map();
+    const duplicateIds = new Set();
+    const recordedIds = new Set();
+    let duplicateCheckPending = false;
+    let duplicateCheckFailed = false;
+    let duplicateCheckRevision = 0;
+    let dateCheckTimer;
 
-  const directionInputs = Array.from(document.querySelectorAll('input[name="direction"]'));
-  const category = document.getElementById('bulkCategory');
-  const subcategory = document.getElementById('bulkSubcategory');
-  const action = document.getElementById('bulkAction');
-  const responsePanels = Array.from(document.querySelectorAll('[data-response-panel]'));
-  const ratingStars = document.getElementById('bulkRatingStars');
-  const ratingInput = document.getElementById('bulkRating');
-  const selectedChoiceInputs = Array.from(document.querySelectorAll('input[name="behavior_action_choice_id"], input[name="behavior_action_choice_ids"]'));
-  const occurredAt = document.getElementById('bulkOccurredAt');
-  const bulkForm = document.getElementById('behaviorBulkForm');
-  let dateCheckTimer;
-  const refreshDuplicateState = async () => {
-    const revision = ++duplicateCheckRevision;
-    const dateValue = occurredAt.value;
-    if (!category.value || !action.value || !dateValue) {
-      duplicateCheckPending = false;
-      duplicateCheckFailed = true;
-      duplicateStatus.textContent = 'Xaqiijinta dhacdooyinka lama samayn.';
-      updateRoster();
-      return;
-    }
-    duplicateCheckPending = true;
-    duplicateCheckFailed = false;
-    duplicateStatus.textContent = 'Hubinta diiwaannada hore...';
-    updateRoster();
-    const params = new URLSearchParams({
-      year_id: '{{ selected_year.id }}',
-      config_id: '{{ config.id }}',
-      session_id: '{{ selected_session.id }}',
-      category_id: category.value,
-      action_id: action.value,
-      occurred_at: dateValue,
-    });
-    try {
-      const response = await fetch(`${bulkForm.dataset.duplicateCheckUrl}?${params}`, {
-        headers: { Accept: 'application/json' },
-        credentials: 'same-origin',
+    const makeNode = (tag, className, text) => {
+      const item = document.createElement(tag);
+      if (className) item.className = className;
+      if (text !== undefined) item.textContent = text;
+      return item;
+    };
+    const makeField = (labelText, control) => {
+      const wrap = makeNode('div', 'behavior-bulk-field');
+      const label = makeNode('label', '', labelText);
+      label.htmlFor = control.id;
+      wrap.append(label, control);
+      return wrap;
+    };
+    const saveState = (card) => {
+      if (!card) return;
+      const id = card.dataset.enrollment;
+      reviewStates.set(id, {
+        category_id: card.querySelector('[data-student-category]')?.value || '',
+        subcategory_id: card.querySelector('[data-student-subcategory]')?.value || '',
+        action_id: card.querySelector('[data-student-action]')?.value || '',
+        choice_id: card.querySelector('[data-student-choice]')?.value || '',
+        choice_ids: Array.from(card.querySelectorAll('[data-student-choices]:checked')).map((input) => input.value),
+        response_text: card.querySelector('[data-student-response]')?.value || '',
+        rating: card.querySelector('[data-student-rating]')?.value || '',
       });
-      const payload = await response.json();
-      if (revision !== duplicateCheckRevision) return;
-      if (!response.ok || !payload.success) throw new Error(payload.message || 'Hubinta lama dhammaystirin.');
-      duplicateIds.clear();
-      recordedIds.clear();
-      (payload.recorded_enrollment_ids || payload.duplicate_enrollment_ids || []).forEach((id) => recordedIds.add(String(id)));
-      (payload.duplicate_enrollment_ids || []).forEach((id) => duplicateIds.add(String(id)));
-      roster.querySelectorAll('[data-roster-student]').forEach((row) => {
-        const checkbox = row.querySelector('input[name="student_enrollment_ids"]');
-        const duplicate = duplicateIds.has(checkbox.value);
-        const recorded = recordedIds.has(checkbox.value);
-        row.dataset.recorded = recorded ? 'true' : 'false';
-        row.classList.toggle('is-recorded', recorded);
-        row.classList.toggle('is-duplicate', duplicate);
-        const badge = row.querySelector('[data-recorded-badge]');
-        badge.hidden = !recorded;
-        badge.querySelector('[data-recorded-label]').textContent = duplicate
-          ? 'Dhacdadan hore ayaa loo diiwaangeliyey'
-          : 'Qaybtan hore ayaa looga diiwaangeliyey';
-        checkbox.disabled = duplicate;
-        if (duplicate) checkbox.checked = false;
+    };
+    const clearSavedResponse = (card) => {
+      const state = reviewStates.get(card.dataset.enrollment) || {};
+      reviewStates.set(card.dataset.enrollment, { ...state, choice_id: '', choice_ids: [], response_text: '', rating: '' });
+    };
+    const selectedAction = (card) => actionCatalog.find((item) => String(item.id) === card.querySelector('[data-student-action]')?.value);
+    const renderResponse = (card, action, saved = {}) => {
+      const panel = card.querySelector('[data-student-response-panel]');
+      panel.replaceChildren();
+      if (!action) return;
+      const studentId = card.dataset.enrollment;
+      const appendTextResponse = (multiline) => {
+        const input = makeNode(multiline ? 'textarea' : 'input');
+        input.id = `student-response-${studentId}`;
+        input.name = `student_response_${studentId}`;
+        input.dataset.studentResponse = '1';
+        input.maxLength = 2000;
+        input.placeholder = multiline ? 'Faahfaahin qoraal ah' : 'Jawaab gaaban';
+        input.value = saved.response_text || '';
+        input.required = Boolean(action.response_required);
+        panel.append(makeField(multiline ? 'Faahfaahin qoraal ah' : 'Jawaab gaaban', input));
+      };
+      if (action.response_type === 'multiple_choice') {
+        const select = makeNode('select');
+        select.id = `student-choice-${studentId}`;
+        select.name = `student_choice_${studentId}`;
+        select.dataset.studentChoice = '1';
+        select.required = true;
+        const placeholder = makeNode('option', '', 'Xulo jawaabta');
+        placeholder.value = '';
+        select.append(placeholder);
+        (action.choices || []).forEach((choice) => {
+          const option = makeNode('option', '', `${choice.label} · ${choice.points}`);
+          option.value = String(choice.id);
+          option.dataset.points = choice.points;
+          select.append(option);
+        });
+        select.value = saved.choice_id || '';
+        panel.append(makeField('Jawaabta ardaygan', select));
+      } else if (action.response_type === 'checkboxes') {
+        const list = makeNode('div', 'behavior-bulk-review-options');
+        (action.choices || []).forEach((choice) => {
+          const label = makeNode('label', 'behavior-bulk-review-option');
+          const input = makeNode('input');
+          input.type = 'checkbox';
+          input.name = `student_choices_${studentId}`;
+          input.value = String(choice.id);
+          input.dataset.studentChoices = '1';
+          input.dataset.points = choice.points;
+          input.checked = (saved.choice_ids || []).map(String).includes(String(choice.id));
+          label.append(input, makeNode('span', '', `${choice.label} · ${choice.points}`));
+          list.append(label);
+        });
+        panel.append(makeNode('strong', '', 'Jawaabaha ardaygan'), list,
+          makeNode('small', 'behavior-bulk-footnote', `Xulo hal ama in ka badan; wadartu kama badnaan karto ${action.points} dhibcood.`));
+      } else if (action.response_type === 'rating') {
+        const select = makeNode('select');
+        select.id = `student-rating-${studentId}`;
+        select.name = `student_rating_${studentId}`;
+        select.dataset.studentRating = '1';
+        select.required = true;
+        const placeholder = makeNode('option', '', 'Xulo qiimayn');
+        placeholder.value = '';
+        select.append(placeholder);
+        for (let value = 1; value <= Number(action.rating_scale || 0); value += 1) {
+          const option = makeNode('option', '', `${value} / ${action.rating_scale}`);
+          option.value = String(value);
+          select.append(option);
+        }
+        select.value = saved.rating || '';
+        panel.append(makeField('Qiimaynta ardaygan', select));
+      } else if (action.response_type === 'text_note') {
+        appendTextResponse(true);
+      } else {
+        appendTextResponse(false);
+      }
+      panel.append(makeNode('small', 'behavior-bulk-footnote', `Xadka ficilka: ${action.points} dhibcood${action.response_required ? ' · jawaabtu waa khasab' : ''}.`));
+      const warning = makeNode('div', 'behavior-bulk-review-warning');
+      warning.dataset.studentResponseWarning = '1';
+      warning.hidden = true;
+      panel.append(warning);
+    };
+    const syncTaxonomy = (card, changed = 'action') => {
+      const category = card.querySelector('[data-student-category]');
+      const subcategory = card.querySelector('[data-student-subcategory]');
+      const action = card.querySelector('[data-student-action]');
+      const oldAction = action.value || (changed === 'init' ? String((savedSpecs[card.dataset.enrollment] || {}).action_id || '') : '');
+      const priorSubcategory = subcategory.value;
+      const categoryActions = actionCatalog.filter((item) => String(item.category_id) === category.value);
+      const subcategoryNames = new Map(categoryActions.filter((item) => item.subcategory_id).map((item) => [String(item.subcategory_id), item.subcategory_name]));
+      const subcategoryKeys = [...new Set(categoryActions.map((item) => String(item.subcategory_id || '')))];
+      const oldActionItem = actionCatalog.find((item) => String(item.id) === oldAction);
+      subcategory.replaceChildren();
+      const noSubcategory = makeNode('option', '', 'Ma jiro');
+      noSubcategory.value = '';
+      subcategory.append(noSubcategory);
+      subcategoryKeys.filter(Boolean).forEach((id) => {
+        const option = makeNode('option', '', subcategoryNames.get(id) || 'Qayb-hoosaad');
+        option.value = id;
+        subcategory.append(option);
       });
-      duplicateCheckFailed = false;
-      const recordedCount = Number(payload.recorded_count ?? payload.duplicate_count ?? 0);
-      const duplicateCount = Number(payload.duplicate_count || 0);
-      duplicateStatus.textContent = recordedCount
-        ? `${recordedCount} arday ayaa qaybtan hore uga diiwaangashan; ${duplicateCount} waxay leeyihiin isla ficilka iyo taariikhdan.`
-        : 'Qaybtan weli arday lagama diiwaangelin xilligan.';
-    } catch (error) {
-      if (revision !== duplicateCheckRevision) return;
-      duplicateCheckFailed = true;
-      duplicateStatus.textContent = error.message || 'Hubinta diiwaannada way fashilantay.';
-    } finally {
-      if (revision === duplicateCheckRevision) {
-        duplicateCheckPending = false;
+      let desiredSubcategory = changed === 'category' ? '' : priorSubcategory;
+      if (changed === 'init' && oldActionItem && String(oldActionItem.category_id) === category.value) {
+        desiredSubcategory = String(oldActionItem.subcategory_id || '');
+      }
+      if (!subcategoryKeys.includes(desiredSubcategory)) desiredSubcategory = '';
+      subcategory.value = desiredSubcategory;
+      const actions = categoryActions.filter((item) => String(item.subcategory_id || '') === desiredSubcategory);
+      action.replaceChildren();
+      const placeholder = makeNode('option', '', 'Xulo ficil');
+      placeholder.value = '';
+      action.append(placeholder);
+      actions.forEach((item) => {
+        const option = makeNode('option', '', `${item.name} · ${item.points} dhibcood`);
+        option.value = String(item.id);
+        action.append(option);
+      });
+      action.value = actions.some((item) => String(item.id) === oldAction) ? oldAction : '';
+      renderResponse(card, selectedAction(card), reviewStates.get(card.dataset.enrollment) || savedSpecs[card.dataset.enrollment] || {});
+      const polarity = category.selectedOptions[0]?.dataset.polarity;
+      card.querySelector('[data-student-polarity]').textContent = !category.value ? 'Xulo jihada' : polarity === 'negative' ? 'Taban' : 'Togan';
+      saveState(card);
+      scheduleDuplicateCheck();
+    };
+    const createReviewCard = (studentRow) => {
+      const id = studentRow.dataset.enrollment;
+      const card = makeNode('article', 'behavior-bulk-review-row');
+      card.dataset.enrollment = id;
+      const header = makeNode('header', 'behavior-bulk-review-head');
+      const info = makeNode('div', 'behavior-bulk-review-student');
+      info.append(makeNode('strong', '', studentRow.dataset.studentName), makeNode('small', '', `${studentRow.dataset.studentCode} · ${studentRow.dataset.className}`));
+      const polarity = makeNode('span', 'behavior-bulk-record-badge', 'Togan');
+      polarity.dataset.studentPolarity = '1';
+      const remove = makeNode('button', 'behavior-bulk-review-remove');
+      remove.type = 'button';
+      remove.innerHTML = '<i class="fa-solid fa-user-minus" aria-hidden="true"></i> Ka saar';
+      remove.addEventListener('click', () => {
+        saveState(card);
+        studentRow.querySelector('input[name="student_enrollment_ids"]').checked = false;
+        updateReviewCards();
         updateRoster();
+      });
+      header.append(info, polarity, remove);
+      card.append(header);
+      const fields = makeNode('div', 'behavior-bulk-review-fields');
+      const makeSelect = (name, labelText, dataKey) => {
+        const control = makeNode('select');
+        control.id = `${name}-${id}`;
+        control.name = `${name}_${id}`;
+        control.required = dataKey !== 'studentSubcategory';
+        control.dataset[dataKey] = '1';
+        const wrap = makeField(labelText, control);
+        return { control, wrap };
+      };
+      const category = makeSelect('student-category', 'Category', 'studentCategory');
+      const subcategory = makeSelect('student-subcategory', 'Sub-category', 'studentSubcategory');
+      const action = makeSelect('student-action', 'Ficilka / Action', 'studentAction');
+      const categories = new Map(actionCatalog.map((item) => [String(item.category_id), { name: item.category_name, polarity: item.polarity }]));
+      const categoryPlaceholder = makeNode('option', '', 'Xulo category');
+      categoryPlaceholder.value = '';
+      category.control.append(categoryPlaceholder);
+      categories.forEach((item, categoryId) => {
+        const option = makeNode('option', '', `${item.name} · ${item.polarity === 'negative' ? 'Taban' : 'Togan'}`);
+        option.value = categoryId;
+        option.dataset.polarity = item.polarity;
+        category.control.append(option);
+      });
+      fields.append(category.wrap, subcategory.wrap, action.wrap);
+      card.append(fields);
+      const response = makeNode('div', 'behavior-bulk-review-response');
+      response.dataset.studentResponsePanel = '1';
+      card.append(response);
+      const duplicate = makeNode('div', 'behavior-bulk-review-duplicate', 'Isla category/action-kan iyo taariikhdan hore ayaa loo diiwaangeliyey. Ka saar ardaygan ama u dooro ficil kale.');
+      duplicate.dataset.studentDuplicate = '1';
+      duplicate.hidden = true;
+      card.append(duplicate);
+      reviewList.append(card);
+      const saved = reviewStates.get(id) || savedSpecs[id] || {};
+      category.control.value = String(saved.category_id || '');
+      subcategory.control.value = String(saved.subcategory_id || '');
+      action.control.value = String(saved.action_id || '');
+      category.control.addEventListener('change', () => { clearSavedResponse(card); action.control.value = ''; syncTaxonomy(card, 'category'); });
+      subcategory.control.addEventListener('change', () => { clearSavedResponse(card); action.control.value = ''; syncTaxonomy(card, 'subcategory'); });
+      action.control.addEventListener('change', () => {
+        clearSavedResponse(card);
+        renderResponse(card, selectedAction(card), reviewStates.get(id) || {});
+        saveState(card);
+        validateReview();
+        scheduleDuplicateCheck();
+        updateRoster();
+      });
+      syncTaxonomy(card, 'init');
+      return card;
+    };
+    const updateReviewCards = () => {
+      const selected = Array.from(roster.querySelectorAll('[data-roster-student]')).filter((row) => row.querySelector('input[name="student_enrollment_ids"]').checked);
+      const selectedIds = new Set(selected.map((row) => row.dataset.enrollment));
+      reviewList.querySelectorAll('[data-enrollment]').forEach((card) => {
+        if (!selectedIds.has(card.dataset.enrollment)) { saveState(card); card.remove(); }
+      });
+      const empty = reviewList.querySelector('[data-review-empty]');
+      if (empty) empty.hidden = selected.length > 0;
+      selected.forEach((row) => {
+        if (!reviewList.querySelector(`[data-enrollment="${row.dataset.enrollment}"]`)) createReviewCard(row);
+      });
+      reviewList.querySelectorAll('[data-enrollment]').forEach(saveState);
+      validateReview();
+      scheduleDuplicateCheck();
+    };
+    const validateReview = () => {
+      let allValid = true;
+      reviewList.querySelectorAll('[data-enrollment]').forEach((card) => {
+        const action = selectedAction(card);
+        const category = card.querySelector('[data-student-category]');
+        let valid = Boolean(action && category.value && String(action.category_id) === category.value);
+        let message = valid ? '' : 'Xulo category iyo ficil sax ah.';
+        if (valid && action.response_type === 'multiple_choice') {
+          const choice = card.querySelector('[data-student-choice]');
+          if (!choice?.value) { valid = false; message = 'Xulo jawaabta ardaygan.'; }
+          else if (Math.round(Number(choice.selectedOptions[0]?.dataset.points || 0) * 1000) > Math.round(Number(action.points) * 1000)) {
+            valid = false; message = 'Dhibcaha jawaabtu waxay dhaafeen xadka ficilka.';
+          }
+        } else if (valid && action.response_type === 'checkboxes') {
+          const checked = Array.from(card.querySelectorAll('[data-student-choices]:checked'));
+          const sumMilli = checked.reduce((total, input) => total + Math.round(Number(input.dataset.points || 0) * 1000), 0);
+          const maxMilli = Math.round(Number(action.points) * 1000);
+          if (!checked.length) { valid = false; message = 'Ugu yaraan hal jawaab xulo.'; }
+          else if (sumMilli > maxMilli) { valid = false; message = `Wadarta ${(sumMilli / 1000).toFixed(3)} dhibcood waxay dhaaftay xadka ${action.points}.`; }
+        } else if (valid && action.response_type === 'rating' && !card.querySelector('[data-student-rating]')?.value) {
+          valid = false; message = 'Xulo qiimaynta ardaygan.';
+        } else if (valid && action.response_required && ['short_answer', 'text_note'].includes(action.response_type) && !card.querySelector('[data-student-response]')?.value.trim()) {
+          valid = false; message = 'Jawaab ayaa looga baahan yahay ficilkan.';
+        }
+        const warning = card.querySelector('[data-student-response-warning]');
+        if (warning) { warning.textContent = message; warning.hidden = valid; }
+        card.dataset.valid = valid ? 'true' : 'false';
+        if (!valid) allValid = false;
+      });
+      return allValid && reviewList.querySelectorAll('[data-enrollment]').length > 0;
+    };
+    const updateRoster = () => {
+      const level = levelFilter.value;
+      Array.from(classFilter.options).forEach((option) => {
+        option.hidden = Boolean(level && option.dataset.level && option.dataset.level !== level);
+        if (option.hidden && option.selected) classFilter.value = '';
+      });
+      const classId = classFilter.value;
+      const query = search.value.trim().toLocaleLowerCase();
+      const status = recordStatus.value;
+      roster.querySelectorAll('[data-roster-student]').forEach((row) => {
+        const statusMatches = status === 'all' || (status === 'recorded' && row.dataset.recorded === 'true') || (status === 'new' && row.dataset.recorded !== 'true');
+        row.hidden = !(statusMatches && (!level || row.dataset.level === level) && (!classId || row.dataset.class === classId) && (!query || row.dataset.search.includes(query)));
+      });
+      roster.querySelectorAll('[data-roster-class]').forEach((group) => {
+        group.hidden = !Array.from(group.querySelectorAll('[data-roster-student]')).some((row) => !row.hidden);
+        const boxes = Array.from(group.querySelectorAll('input[name="student_enrollment_ids"]'));
+        const selector = group.querySelector('[data-select-class]');
+        const visibleBoxes = boxes.filter((box) => !box.closest('[data-roster-student]').hidden);
+        const checked = visibleBoxes.filter((box) => box.checked).length;
+        selector.checked = visibleBoxes.length > 0 && checked === visibleBoxes.length;
+        selector.indeterminate = checked > 0 && checked < visibleBoxes.length;
+        selector.disabled = visibleBoxes.length === 0;
+      });
+      const count = roster.querySelectorAll('input[name="student_enrollment_ids"]:checked').length;
+      selectedCount.textContent = String(count);
+      const valid = count > 0 && validateReview();
+      submitButton.disabled = !valid || duplicateCheckPending || duplicateCheckFailed || duplicateIds.size > 0;
+    };
+    const refreshDuplicateState = async () => {
+      const revision = ++duplicateCheckRevision;
+      const entries = Array.from(reviewList.querySelectorAll('[data-enrollment]')).map((card) => ({
+        enrollment_id: Number(card.dataset.enrollment),
+        category_id: Number(card.querySelector('[data-student-category]').value),
+        action_id: Number(card.querySelector('[data-student-action]').value),
+      })).filter((entry) => entry.category_id && entry.action_id);
+      if (!entries.length) {
+        duplicateCheckPending = false; duplicateCheckFailed = false; duplicateIds.clear();
+        duplicateStatus.textContent = 'Ficilka iyo jawaabta arday kasta waxaa si gaar ah loo hubinayaa.';
+        updateRoster();
+        return;
       }
-    }
-  };
-  const syncTaxonomy = (resetAction = false) => {
-    const oldAction = action.value;
-    const oldSubcategory = subcategory.value;
-    const polarity = directionInputs.find((input) => input.checked)?.value || 'positive';
-    Array.from(category.options).forEach((option) => {
-      option.hidden = option.dataset.polarity !== polarity;
-      option.disabled = option.hidden;
-    });
-    if (category.options[category.selectedIndex]?.disabled) {
-      category.value = Array.from(category.options).find((option) => !option.disabled)?.value || '';
-    }
-    Array.from(subcategory.options).forEach((option) => {
-      option.hidden = Boolean(option.value && option.dataset.category !== category.value);
-      option.disabled = option.hidden;
-    });
-    if (!Array.from(subcategory.options).some((option) => option.value === oldSubcategory && !option.disabled)) {
-      subcategory.value = Array.from(subcategory.options).find((option) => !option.disabled)?.value || '';
-    }
-    Array.from(action.options).forEach((option) => {
-      option.hidden = option.dataset.category !== category.value || option.dataset.subcategory !== subcategory.value;
-      option.disabled = option.hidden;
-    });
-    const available = Array.from(action.options).filter((option) => !option.disabled);
-    action.value = !resetAction && available.some((option) => option.value === oldAction) ? oldAction : (available[0]?.value || '');
-    const current = action.options[action.selectedIndex];
-    const responseType = current?.dataset.type || 'short_answer';
-    responsePanels.forEach((panel) => {
-      const active = panel.dataset.responsePanel === responseType;
-      panel.classList.toggle('active', active);
-      panel.querySelectorAll('input,textarea,select').forEach((input) => { input.disabled = !active; });
-    });
-    selectedChoiceInputs.forEach((input) => {
-      input.disabled = input.dataset.action !== action.value || !['multiple_choice', 'checkboxes'].includes(responseType);
-    });
-    document.querySelectorAll('[data-bulk-choice]').forEach((choice) => {
-      choice.hidden = choice.dataset.action !== action.value || !['multiple_choice', 'checkboxes'].includes(responseType);
-    });
-    if (ratingStars.dataset.scale !== (current?.dataset.ratingScale || '')) {
-      const scale = Number(current?.dataset.ratingScale || 0);
-      ratingStars.dataset.scale = String(scale);
-      ratingStars.replaceChildren();
-      for (let value = 1; value <= scale; value += 1) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'behavior-rating-star';
-        button.dataset.value = String(value);
-        button.textContent = '★';
-        button.setAttribute('aria-label', `${value} / ${scale}`);
-        ratingStars.appendChild(button);
+      if (!occurredAt.value) {
+        duplicateCheckPending = false; duplicateCheckFailed = true;
+        duplicateStatus.textContent = 'Geli taariikhda dhacdada si loo hubiyo diiwaannada.';
+        updateRoster();
+        return;
       }
-      ratingInput.value = '';
-    }
-    document.getElementById('bulkRatingHint').textContent = current?.dataset.ratingScale ? `Xulo qiimayn u dhexaysa 1 ilaa ${current.dataset.ratingScale}.` : 'Qiimaynta lama dejin.';
-    refreshDuplicateState();
-  };
-  directionInputs.forEach((input) => input.addEventListener('change', () => syncTaxonomy(true)));
-  category.addEventListener('change', () => syncTaxonomy(true));
-  subcategory.addEventListener('change', () => syncTaxonomy(true));
-  action.addEventListener('change', () => syncTaxonomy(false));
-  occurredAt.addEventListener('change', () => {
-    window.clearTimeout(dateCheckTimer);
-    refreshDuplicateState();
-  });
-  occurredAt.addEventListener('input', () => {
-    window.clearTimeout(dateCheckTimer);
-    duplicateCheckPending = true;
-    duplicateStatus.textContent = 'Hubinta diiwaannada hore...';
-    updateRoster();
-    dateCheckTimer = window.setTimeout(refreshDuplicateState, 350);
-  });
-  ratingStars.addEventListener('click', (event) => {
-    const star = event.target.closest('[data-value]');
-    if (!star) return;
-    const value = Number(star.dataset.value);
-    ratingInput.value = String(value);
-    ratingStars.querySelectorAll('[data-value]').forEach((item) => item.classList.toggle('selected', Number(item.dataset.value) <= value));
-  });
-  document.getElementById('behaviorBulkForm').addEventListener('submit', (event) => {
-    const count = roster.querySelectorAll('input[name="student_enrollment_ids"]:checked').length;
-    if (!count || !window.confirm(`Ma hubtaa inaad dhacdadan u diiwaangelinayso ${count} arday?`)) event.preventDefault();
-  });
-  syncTaxonomy(false);
-  refreshDuplicateState();
-  updateRoster();
+      duplicateCheckPending = true; duplicateCheckFailed = false;
+      duplicateStatus.textContent = 'Hubinta ficilka iyo taariikhda arday kasta...';
+      updateRoster();
+      try {
+        const response = await fetch(bulkForm.dataset.duplicateCheckUrl, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': bulkForm.querySelector('[name="csrf_token"]').value, Accept: 'application/json' },
+          body: JSON.stringify({ year_id: '{{ selected_year.id }}', config_id: '{{ config.id }}', session_id: '{{ selected_session.id }}', occurred_at: occurredAt.value, entries }),
+        });
+        const payload = await response.json();
+        if (revision !== duplicateCheckRevision) return;
+        if (!response.ok || !payload.success) throw new Error(payload.message || 'Hubinta lama dhammaystirin.');
+        duplicateIds.clear(); recordedIds.clear();
+        (payload.duplicate_enrollment_ids || []).forEach((id) => duplicateIds.add(String(id)));
+        (payload.recorded_enrollment_ids || []).forEach((id) => recordedIds.add(String(id)));
+        reviewList.querySelectorAll('[data-enrollment]').forEach((card) => {
+          const id = card.dataset.enrollment;
+          card.querySelector('[data-student-duplicate]').hidden = !duplicateIds.has(id);
+          const row = roster.querySelector(`[data-enrollment="${id}"]`);
+          if (row) {
+            const recorded = row.dataset.anyRecorded === 'true' || recordedIds.has(id);
+            row.dataset.recorded = recorded ? 'true' : 'false';
+            row.classList.toggle('is-recorded', recorded);
+            row.querySelector('[data-recorded-badge]').hidden = !recorded;
+          }
+        });
+        duplicateCheckFailed = false;
+        duplicateStatus.textContent = duplicateIds.size
+          ? `${duplicateIds.size} arday ayaa leh isla ficil iyo taariikhdan hore; beddel ficilka ama ka saar batch-ka.`
+          : `${entries.length} arday/fal ayaa la hubiyey; nuqul isku ficil iyo taariikh ah ma jiro.`;
+      } catch (error) {
+        if (revision !== duplicateCheckRevision) return;
+        duplicateCheckFailed = true;
+        duplicateStatus.textContent = error.message || 'Hubinta diiwaannada way fashilantay.';
+      } finally {
+        if (revision === duplicateCheckRevision) { duplicateCheckPending = false; updateRoster(); }
+      }
+    };
+    const scheduleDuplicateCheck = () => {
+      window.clearTimeout(dateCheckTimer);
+      duplicateCheckRevision += 1;
+      duplicateCheckPending = true;
+      updateRoster();
+      dateCheckTimer = window.setTimeout(refreshDuplicateState, 300);
+    };
+
+    search.addEventListener('input', updateRoster);
+    levelFilter.addEventListener('change', updateRoster);
+    classFilter.addEventListener('change', updateRoster);
+    recordStatus.addEventListener('change', updateRoster);
+    roster.addEventListener('change', (event) => {
+      const toggle = event.target.closest('[data-select-class]');
+      if (toggle) {
+        toggle.closest('[data-roster-class]').querySelectorAll('input[name="student_enrollment_ids"]').forEach((box) => {
+          if (!box.closest('[data-roster-student]').hidden) box.checked = toggle.checked;
+        });
+      }
+      if (event.target.matches('input[name="student_enrollment_ids"]') || toggle) { updateReviewCards(); updateRoster(); }
+    });
+    document.getElementById('bulkSelectVisible').addEventListener('click', () => {
+      roster.querySelectorAll('[data-roster-student]:not([hidden]) input[name="student_enrollment_ids"]').forEach((box) => { box.checked = true; });
+      updateReviewCards(); updateRoster();
+    });
+    document.getElementById('bulkClearSelection').addEventListener('click', () => {
+      roster.querySelectorAll('input[name="student_enrollment_ids"]').forEach((box) => { box.checked = false; });
+      updateReviewCards(); updateRoster();
+    });
+    occurredAt.addEventListener('input', scheduleDuplicateCheck);
+    occurredAt.addEventListener('change', scheduleDuplicateCheck);
+    reviewList.addEventListener('input', (event) => {
+      const card = event.target.closest('[data-enrollment]');
+      if (card) saveState(card);
+      validateReview(); updateRoster();
+    });
+    reviewList.addEventListener('change', (event) => {
+      const card = event.target.closest('[data-enrollment]');
+      if (!card || event.target.closest('[data-student-category],[data-student-subcategory],[data-student-action]')) return;
+      saveState(card); validateReview(); updateRoster();
+    });
+    bulkForm.addEventListener('submit', (event) => {
+      const count = roster.querySelectorAll('input[name="student_enrollment_ids"]:checked').length;
+      if (!count || duplicateCheckPending || duplicateCheckFailed || duplicateIds.size || !validateReview()) {
+        event.preventDefault();
+        if (duplicateIds.size) duplicateStatus.textContent = 'Ka saar ama u beddel ficilka ardayda leh diiwaan isku mid ah ka hor gudbinta.';
+        else if (!count) duplicateStatus.textContent = 'Ugu yaraan hal arday xulo.';
+        return;
+      }
+      if (!window.confirm(`Ma hubtaa inaad faahfaahinta gaarka ah u gudbinayso ${count} arday?`)) event.preventDefault();
+    });
+    updateReviewCards(); updateRoster();
+    return;
+  }
 })();
 </script>
 {% endif %}

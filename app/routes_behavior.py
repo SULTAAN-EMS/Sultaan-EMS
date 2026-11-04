@@ -3326,8 +3326,70 @@ def students():
     )
 
 
-@behavior_bp.route("/events/bulk/check", methods=["GET"])
+@behavior_bp.route("/events/bulk/check", methods=["GET", "POST"])
 def bulk_duplicate_check():
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        config = _selected_config(payload.get("config_id"), payload.get("year_id"))
+        session = next((
+            item for item in (config.sessions if config else [])
+            if item.id == _int(payload.get("session_id"))
+        ), None)
+        entries = payload.get("entries")
+        try:
+            if not config or not session:
+                raise BehaviorValidationError("Xulo maaddada iyo xilli sax ah.")
+            if not isinstance(entries, list) or len(entries) > 1000:
+                raise BehaviorValidationError("Liiska hubinta ardaydu sax ma aha.")
+            occurred_at = _parse_event_datetime(payload.get("occurred_at"))
+            validate_session_date(session, occurred_at)
+            grouped_entries = defaultdict(set)
+            eligible_by_id = {}
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    raise BehaviorValidationError("Faahfaahinta dhacdada ardayga sax ma aha.")
+                enrollment_id = _int(entry.get("enrollment_id"))
+                if enrollment_id in eligible_by_id:
+                    raise BehaviorValidationError("Arday isku mid ah ayaa hubinta ku jira wax ka badan hal mar.")
+                enrollment = validate_enrollment_scope(config, enrollment_id)
+                if not session_applies_to_enrollment(session, enrollment):
+                    raise BehaviorValidationError("Arday ayaa ka baxsan xilliga dhibcaha la doortay.")
+                action = db.session.get(BehaviorAction, _int(entry.get("action_id")))
+                category = db.session.get(BehaviorCategory, _int(entry.get("category_id")))
+                if (
+                    not category
+                    or category.behavior_configuration_id != config.id
+                    or not category.is_active
+                    or not action
+                    or action.behavior_category_id != category.id
+                    or not action.is_active
+                ):
+                    raise BehaviorValidationError("Category ama action arday ayaa khaldan.")
+                group_key = (category.id, action.id)
+                grouped_entries[group_key].add(enrollment_id)
+                eligible_by_id[enrollment_id] = enrollment
+
+            duplicate_ids = set()
+            recorded_ids = set()
+            for (category_id, action_id), enrollment_ids in grouped_entries.items():
+                category = db.session.get(BehaviorCategory, category_id)
+                action = db.session.get(BehaviorAction, action_id)
+                duplicate_ids.update(_bulk_event_duplicates(
+                    config, session, category, action, occurred_at, enrollment_ids
+                ))
+                recorded_ids.update(_bulk_category_recorded_students(
+                    config, session, category, enrollment_ids
+                ))
+            return jsonify({
+                "success": True,
+                "recorded_enrollment_ids": sorted(recorded_ids),
+                "recorded_count": len(recorded_ids),
+                "duplicate_enrollment_ids": sorted(duplicate_ids),
+                "duplicate_count": len(duplicate_ids),
+            })
+        except (BehaviorValidationError, ValueError) as exc:
+            return jsonify({"success": False, "message": str(exc)}), 400
+
     config = _selected_config(request.args.get("config_id"), request.args.get("year_id"))
     session = next((
         item for item in (config.sessions if config else [])
@@ -3430,6 +3492,20 @@ def bulk_events():
     roster_by_class = defaultdict(list)
     for enrollment in enrollments:
         roster_by_class[enrollment.academic_year_class_id].append(enrollment)
+    category_ids = [category.id for category in (config.categories if config else [])]
+    recorded_roster_ids = {
+        row[0]
+        for row in db.session.query(BehaviorEvent.student_enrollment_id)
+        .filter(
+            BehaviorEvent.behavior_configuration_id == config.id,
+            BehaviorEvent.behavior_session_id == selected_session.id,
+            BehaviorEvent.behavior_category_id.in_(category_ids),
+            BehaviorEvent.status == "active",
+            BehaviorEvent.student_enrollment_id.in_([item.id for item in enrollments]),
+        )
+        .distinct()
+        .all()
+    } if config and selected_session and category_ids and enrollments else set()
     configurations = (
         BehaviorConfiguration.query
         .filter_by(academic_year_id=context["selected_year"].id)
@@ -3441,6 +3517,56 @@ def bulk_events():
     form_values = request.form
     bulk_error = None
     bulk_notice = None
+    subcategory_names = {
+        item.id: item.name
+        for category in (config.categories if config else [])
+        for item in category.subcategories
+    }
+    active_subcategory_ids = {
+        item.id
+        for category in (config.categories if config else [])
+        for item in category.subcategories
+        if item.is_active
+    }
+    bulk_action_catalog = [
+        {
+            "id": action.id,
+            "name": action.name,
+            "category_id": category.id,
+            "category_name": category.name,
+            "polarity": category.polarity,
+            "subcategory_id": action.behavior_subcategory_id,
+            "subcategory_name": subcategory_names.get(action.behavior_subcategory_id, ""),
+            "points": str(action.points),
+            "response_type": canonical_response_type(action),
+            "response_required": bool(action.response_required),
+            "rating_scale": action.rating_scale,
+            "choices": [
+                {"id": choice.id, "label": choice.label, "points": str(choice.points)}
+                for choice in action.choices if choice.is_active
+            ],
+        }
+        for category in (config.categories if config else []) if category.is_active
+        for action in category.actions
+        if action.is_active and (
+            not action.behavior_subcategory_id
+            or action.behavior_subcategory_id in active_subcategory_ids
+        )
+    ]
+    submitted_student_specs = {}
+    if request.method == "POST":
+        for raw_enrollment_id in request.form.getlist("student_enrollment_ids"):
+            enrollment_id = _int(raw_enrollment_id)
+            if enrollment_id:
+                submitted_student_specs[str(enrollment_id)] = {
+                    "category_id": request.form.get(f"student_category_{enrollment_id}", ""),
+                    "subcategory_id": request.form.get(f"student_subcategory_{enrollment_id}", ""),
+                    "action_id": request.form.get(f"student_action_{enrollment_id}", ""),
+                    "choice_id": request.form.get(f"student_choice_{enrollment_id}", ""),
+                    "choice_ids": request.form.getlist(f"student_choices_{enrollment_id}"),
+                    "response_text": request.form.get(f"student_response_{enrollment_id}", ""),
+                    "rating": request.form.get(f"student_rating_{enrollment_id}", ""),
+                }
 
     if request.method == "GET" and request.args.get("bulk_result") == "saved":
         created_count = max(0, _int(request.args.get("created")))
@@ -3481,27 +3607,93 @@ def bulk_events():
                     "Qaar ka mid ah ardayda la xushay kuma jiraan sannadka, maaddada ama xilliga la doortay. Dib u xulo liiska."
                 )
 
-            category = db.session.get(BehaviorCategory, _int(request.form.get("behavior_category_id")))
-            action = db.session.get(BehaviorAction, _int(request.form.get("behavior_action_id")))
-            submitted_subcategory_id = _int(request.form.get("behavior_subcategory_id"))
-            choice = (
-                db.session.get(BehaviorActionChoice, _int(request.form.get("behavior_action_choice_id")))
-                if request.form.get("behavior_action_choice_id") else None
-            )
-            choice_ids = []
-            for raw_choice_id in request.form.getlist("behavior_action_choice_ids"):
-                choice_id = _int(raw_choice_id)
-                if choice_id and choice_id not in choice_ids:
-                    choice_ids.append(choice_id)
-            choices = [db.session.get(BehaviorActionChoice, choice_id) for choice_id in choice_ids]
-            if choice and choice not in choices:
-                choices.insert(0, choice)
-            if not category or not action:
-                raise BehaviorValidationError("Xulo category iyo action sax ah.")
-            if not category.is_active or not action.is_active:
-                raise BehaviorValidationError("Category-ga ama action-ka la doortay hadda ma shaqaynayo.")
-            if (submitted_subcategory_id or None) != (action.behavior_subcategory_id or None):
-                raise BehaviorValidationError("Sub-category-gu waa inuu la jaanqaadaa action-ka la doortay.")
+            per_student_mode = request.form.get("per_student_review") == "1"
+            event_specs = {}
+            if per_student_mode:
+                for enrollment_id in selected_ids:
+                    category = db.session.get(
+                        BehaviorCategory,
+                        _int(request.form.get(f"student_category_{enrollment_id}")),
+                    )
+                    action = db.session.get(
+                        BehaviorAction,
+                        _int(request.form.get(f"student_action_{enrollment_id}")),
+                    )
+                    subcategory_id = _int(request.form.get(f"student_subcategory_{enrollment_id}"))
+                    if (
+                        not category or not category.is_active
+                        or category.behavior_configuration_id != config.id
+                        or not action or not action.is_active
+                        or action.behavior_category_id != category.id
+                        or (
+                            action.behavior_subcategory_id
+                            and (
+                                not action.subcategory
+                                or not action.subcategory.is_active
+                                or action.subcategory.behavior_category_id != category.id
+                            )
+                        )
+                    ):
+                        raise BehaviorValidationError(
+                            f"{eligible_by_id[enrollment_id].student.full_name}: xulo category iyo ficil sax ah."
+                        )
+                    if (subcategory_id or None) != (action.behavior_subcategory_id or None):
+                        raise BehaviorValidationError(
+                            f"{eligible_by_id[enrollment_id].student.full_name}: sub-category-gu lama jaanqaadayo ficilka."
+                        )
+                    choice_id = _int(request.form.get(f"student_choice_{enrollment_id}"))
+                    choice_ids = []
+                    for raw_choice_id in request.form.getlist(f"student_choices_{enrollment_id}"):
+                        parsed_choice_id = _int(raw_choice_id)
+                        if parsed_choice_id and parsed_choice_id not in choice_ids:
+                            choice_ids.append(parsed_choice_id)
+                    choice = db.session.get(BehaviorActionChoice, choice_id) if choice_id else None
+                    choices = [db.session.get(BehaviorActionChoice, item_id) for item_id in choice_ids]
+                    if choice and choice not in choices:
+                        choices.insert(0, choice)
+                    event_specs[enrollment_id] = {
+                        "category": category,
+                        "action": action,
+                        "choice": choice,
+                        "choices": choices,
+                        "response_text": request.form.get(f"student_response_{enrollment_id}"),
+                        "rating": request.form.get(f"student_rating_{enrollment_id}"),
+                        "direction": category.polarity,
+                    }
+            else:
+                category = db.session.get(BehaviorCategory, _int(request.form.get("behavior_category_id")))
+                action = db.session.get(BehaviorAction, _int(request.form.get("behavior_action_id")))
+                submitted_subcategory_id = _int(request.form.get("behavior_subcategory_id"))
+                choice = (
+                    db.session.get(BehaviorActionChoice, _int(request.form.get("behavior_action_choice_id")))
+                    if request.form.get("behavior_action_choice_id") else None
+                )
+                choice_ids = []
+                for raw_choice_id in request.form.getlist("behavior_action_choice_ids"):
+                    choice_id = _int(raw_choice_id)
+                    if choice_id and choice_id not in choice_ids:
+                        choice_ids.append(choice_id)
+                choices = [db.session.get(BehaviorActionChoice, choice_id) for choice_id in choice_ids]
+                if choice and choice not in choices:
+                    choices.insert(0, choice)
+                if not category or not action:
+                    raise BehaviorValidationError("Xulo category iyo action sax ah.")
+                if not category.is_active or not action.is_active:
+                    raise BehaviorValidationError("Category-ga ama action-ka la doortay hadda ma shaqaynayo.")
+                if (submitted_subcategory_id or None) != (action.behavior_subcategory_id or None):
+                    raise BehaviorValidationError("Sub-category-gu waa inuu la jaanqaadaa action-ka la doortay.")
+                event_specs = {
+                    enrollment_id: {
+                        "category": category,
+                        "action": action,
+                        "choice": choice,
+                        "choices": choices,
+                        "response_text": request.form.get("response_text"),
+                        "rating": request.form.get("response_rating"),
+                        "direction": request.form.get("direction"),
+                    }
+                    for enrollment_id in selected_ids
+                }
 
             idempotency_root = normalize_idempotency_key(request.form.get("idempotency_key"))
             if not idempotency_root:
@@ -3518,24 +3710,31 @@ def bulk_events():
             for enrollment_id, event_key in zip(selected_ids, event_keys):
                 prior = prior_by_key.get(event_key)
                 if prior:
+                    spec = event_specs[enrollment_id]
                     if (
                         prior.student_enrollment_id != enrollment_id
                         or prior.behavior_configuration_id != config.id
                         or prior.behavior_session_id != selected_session.id
-                        or prior.behavior_category_id != category.id
-                        or prior.behavior_action_id != action.id
+                        or prior.behavior_category_id != spec["category"].id
+                        or prior.behavior_action_id != spec["action"].id
                         or prior.occurred_at != occurred_at
                     ):
                         raise BehaviorValidationError("Furaha gudbintan hore ayaa xog kale loogu isticmaalay. Bogga dib u cusboonaysii.")
                     replay_ids.add(enrollment_id)
-            duplicate_ids = _bulk_event_duplicates(
-                config,
-                selected_session,
-                category,
-                action,
-                occurred_at,
-                selected_ids,
-            ) - replay_ids
+            duplicate_ids = set()
+            grouped_ids = defaultdict(set)
+            for enrollment_id, spec in event_specs.items():
+                grouped_ids[(spec["category"].id, spec["action"].id)].add(enrollment_id)
+            for (category_id, action_id), enrollment_ids in grouped_ids.items():
+                duplicate_ids.update(_bulk_event_duplicates(
+                    config,
+                    selected_session,
+                    db.session.get(BehaviorCategory, category_id),
+                    db.session.get(BehaviorAction, action_id),
+                    occurred_at,
+                    enrollment_ids,
+                ))
+            duplicate_ids -= replay_ids
             if duplicate_ids:
                 duplicate_names = [
                     eligible_by_id[item_id].student.full_name
@@ -3555,21 +3754,22 @@ def bulk_events():
                 for enrollment_id in selected_ids:
                     event_key = f"bulk:{idempotency_root}:{enrollment_id}"
                     existing = find_event_by_idempotency_key(event_key)
+                    spec = event_specs[enrollment_id]
                     record_event(
                         config,
                         eligible_by_id[enrollment_id],
                         selected_session,
-                        category,
-                        action,
+                        spec["category"],
+                        spec["action"],
                         notes=request.form.get("notes"),
                         occurred_at=occurred_at,
                         created_by=current_user.id,
-                        direction=request.form.get("direction"),
+                        direction=spec["direction"],
                         idempotency_key=event_key,
-                        choice=choice,
-                        choices=choices,
-                        response_text=request.form.get("response_text"),
-                        rating=request.form.get("response_rating"),
+                        choice=spec["choice"],
+                        choices=spec["choices"],
+                        response_text=spec["response_text"],
+                        rating=spec["rating"],
                     )
                     if existing:
                         duplicate_count += 1
@@ -3578,7 +3778,7 @@ def bulk_events():
                 if created_count:
                     audit(
                         "Behavior Events",
-                        f"Bulk-recorded {category.polarity} event for {created_count} students in configuration {config.id}, session {selected_session.id}",
+                        f"Bulk-recorded individualized events for {created_count} students in configuration {config.id}, session {selected_session.id}",
                     )
             db.session.commit()
             return redirect(url_for(
@@ -3601,11 +3801,14 @@ def bulk_events():
         roster_levels=roster_levels,
         roster_classes=roster_classes,
         roster_by_class=roster_by_class,
+        recorded_roster_ids=recorded_roster_ids,
         current_time=datetime.utcnow(),
         idempotency_key=token_urlsafe(24),
         bulk_error=bulk_error,
         bulk_notice=bulk_notice,
         form_values=form_values,
+        bulk_action_catalog=bulk_action_catalog,
+        submitted_student_specs=submitted_student_specs,
     )
 
 

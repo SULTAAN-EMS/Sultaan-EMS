@@ -22,6 +22,7 @@ from app.models import (
     AcademicYearLevel,
     AcademicYearSubject,
     BehaviorAction,
+    BehaviorActionChoice,
     BehaviorCategory,
     BehaviorConfiguration,
     BehaviorEvent,
@@ -351,6 +352,8 @@ class TestPhase2CBehaviorEvents(unittest.TestCase):
         )
         self.assertEqual(page.status_code, 200)
         self.assertIn("Behavior Three", page.get_data(as_text=True))
+        self.assertIn("Dib-u-eegis arday kasta", page.get_data(as_text=True))
+        self.assertIn("bulkActionCatalog", page.get_data(as_text=True))
 
         data = {
             "config_id": str(self.config_one.id),
@@ -434,6 +437,124 @@ class TestPhase2CBehaviorEvents(unittest.TestCase):
         self.assertIn("kuma jiraan sannadka", response.get_data(as_text=True))
         self.assertEqual(BehaviorEvent.query.filter(
             BehaviorEvent.idempotency_key.like("bulk:bulk-invalid-scope:%")
+        ).count(), 0)
+
+    def test_bulk_route_records_per_student_action_and_response(self):
+        selection_action = BehaviorAction(
+            category=self.positive,
+            name="Team habits",
+            level_number=1,
+            points=4,
+            frequency="ad_hoc",
+            behavior_type="selection",
+        )
+        first_selection = BehaviorActionChoice(action=selection_action, label="Prepared", points=1)
+        second_selection = BehaviorActionChoice(action=selection_action, label="Collaborated", points=2)
+        choice_action = BehaviorAction(
+            category=self.negative,
+            name="Team contribution",
+            level_number=1,
+            points=3,
+            frequency="ad_hoc",
+            behavior_type="choice",
+            response_required=True,
+        )
+        choice = BehaviorActionChoice(action=choice_action, label="Helped a classmate", points=2)
+        db.session.add_all([selection_action, first_selection, second_selection, choice_action, choice])
+        db.session.commit()
+
+        client = self.app.test_client()
+        self._login(self.admin)
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        response = client.post("/admin/behavior/events/bulk", data={
+            "year_id": str(self.year_one.id),
+            "config_id": str(self.config_one.id),
+            "behavior_session_id": str(self.session_a.id),
+            "per_student_review": "1",
+            "student_enrollment_ids": [str(self.enrollment_one.id), str(self.enrollment_two.id)],
+            f"student_category_{self.enrollment_one.id}": str(self.positive.id),
+            f"student_subcategory_{self.enrollment_one.id}": "",
+            f"student_action_{self.enrollment_one.id}": str(selection_action.id),
+            f"student_choices_{self.enrollment_one.id}": [str(first_selection.id), str(second_selection.id)],
+            f"student_category_{self.enrollment_two.id}": str(self.negative.id),
+            f"student_subcategory_{self.enrollment_two.id}": "",
+            f"student_action_{self.enrollment_two.id}": str(choice_action.id),
+            f"student_choice_{self.enrollment_two.id}": str(choice.id),
+            "occurred_at": "2026-08-30T12:34",
+            "idempotency_key": "bulk-individual-action-test",
+        })
+        self.assertEqual(response.status_code, 302)
+        events = BehaviorEvent.query.filter(
+            BehaviorEvent.idempotency_key.in_([
+                f"bulk:bulk-individual-action-test:{self.enrollment_one.id}",
+                f"bulk:bulk-individual-action-test:{self.enrollment_two.id}",
+            ])
+        ).order_by(BehaviorEvent.student_enrollment_id).all()
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0].behavior_action_id, selection_action.id)
+        self.assertEqual(events[0].behavior_category_id, self.positive.id)
+        self.assertEqual(events[0].response_type_snapshot, "checkboxes")
+        self.assertEqual(events[0].response_points, Decimal("3.000"))
+        self.assertEqual([item["id"] for item in json.loads(events[0].response_snapshot)["selected_options"]], [first_selection.id, second_selection.id])
+        self.assertEqual(events[1].behavior_action_id, choice_action.id)
+        self.assertEqual(events[1].behavior_category_id, self.negative.id)
+        self.assertEqual(events[1].response_type_snapshot, "multiple_choice")
+        self.assertEqual(events[1].behavior_action_choice_id, choice.id)
+        self.assertEqual(events[1].response_points, Decimal("2.000"))
+        duplicate_check = client.post("/admin/behavior/events/bulk/check", json={
+            "year_id": self.year_one.id,
+            "config_id": self.config_one.id,
+            "session_id": self.session_a.id,
+            "occurred_at": "2026-08-30T15:00",
+            "entries": [
+                {"enrollment_id": self.enrollment_one.id, "category_id": self.positive.id, "action_id": selection_action.id},
+                {"enrollment_id": self.enrollment_two.id, "category_id": self.negative.id, "action_id": choice_action.id},
+            ],
+        })
+        self.assertEqual(duplicate_check.status_code, 200)
+        self.assertEqual(duplicate_check.json["duplicate_enrollment_ids"], [self.enrollment_one.id, self.enrollment_two.id])
+
+    def test_bulk_individual_invalid_response_rolls_back_every_student(self):
+        choice_action = BehaviorAction(
+            category=self.positive,
+            name="Team contribution",
+            level_number=1,
+            points=3,
+            frequency="ad_hoc",
+            behavior_type="choice",
+            response_required=True,
+        )
+        valid_choice = BehaviorActionChoice(action=choice_action, label="Helped", points=2)
+        unrelated_choice = BehaviorActionChoice(action=self.positive_action, label="Unrelated", points=1)
+        db.session.add_all([choice_action, valid_choice, unrelated_choice])
+        db.session.commit()
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+        response = client.post("/admin/behavior/events/bulk", data={
+            "year_id": str(self.year_one.id),
+            "config_id": str(self.config_one.id),
+            "behavior_session_id": str(self.session_a.id),
+            "per_student_review": "1",
+            "student_enrollment_ids": [str(self.enrollment_one.id), str(self.enrollment_two.id)],
+            f"student_category_{self.enrollment_one.id}": str(self.positive.id),
+            f"student_subcategory_{self.enrollment_one.id}": "",
+            f"student_action_{self.enrollment_one.id}": str(self.positive_action.id),
+            f"student_category_{self.enrollment_two.id}": str(self.positive.id),
+            f"student_subcategory_{self.enrollment_two.id}": "",
+            f"student_action_{self.enrollment_two.id}": str(choice_action.id),
+            f"student_choice_{self.enrollment_two.id}": str(unrelated_choice.id),
+            "occurred_at": "2026-08-30T12:34",
+            "idempotency_key": "bulk-individual-invalid-option",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("outside the selected action", response.get_data(as_text=True))
+        self.assertEqual(BehaviorEvent.query.filter(
+            BehaviorEvent.idempotency_key.like("bulk:bulk-individual-invalid-option:%")
         ).count(), 0)
 
     def test_bulk_duplicate_marker_and_server_reject_same_event_on_same_date(self):
