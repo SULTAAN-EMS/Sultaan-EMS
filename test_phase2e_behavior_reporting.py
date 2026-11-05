@@ -227,6 +227,49 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
             session["_fresh"] = True
         return client
 
+    def test_individual_report_loads_configuration_sessions_in_one_batch(self):
+        second_subject = AcademicYearSubject(
+            academic_year=self.year_one,
+            academic_year_level=self.year_level_one,
+            name="Dhaqan",
+            subject_kind="behavior",
+            max_score=0,
+            is_active=True,
+        )
+        second_configuration = BehaviorConfiguration(
+            academic_year=self.year_one,
+            academic_year_level=self.year_level_one,
+            behavior_subject=second_subject,
+            frequency="monthly",
+            status="active",
+        )
+        second_session = BehaviorSession(
+            configuration=second_configuration,
+            exam=self.exam_one,
+            session_label="Dhaqan monthly",
+            maximum_score=50,
+            sort_order=1,
+            is_active=True,
+        )
+        db.session.add_all([second_subject, second_configuration, second_session])
+        db.session.commit()
+
+        session_queries = []
+
+        def capture_session_query(_connection, _cursor, statement, _parameters, _context, _many):
+            normalized = " ".join(statement.lower().split())
+            if normalized.startswith("select") and "from behavior_sessions" in normalized:
+                session_queries.append(normalized)
+
+        event.listen(db.engine, "before_cursor_execute", capture_session_query)
+        try:
+            reports = get_behavior_report_data(self.student, self.exam_one)
+        finally:
+            event.remove(db.engine, "before_cursor_execute", capture_session_query)
+
+        self.assertEqual(len(reports), 2)
+        self.assertEqual(len(session_queries), 1)
+
     def test_top_tunnel_behavior_scores_are_batched_and_match_student_reports(self):
         peer = Student(student_code="PHASE2E-BATCH", full_name="Batch Peer", is_active=True)
         peer_enrollment = StudentEnrollment(
@@ -974,6 +1017,7 @@ class TestPhase2EBehaviorReporting(unittest.TestCase):
                 "year_id": self.year_one.id,
                 "exam_id": self.exam_one.id,
             },
+            follow_redirects=True,
         )
 
         self.assertEqual(response.status_code, 200)

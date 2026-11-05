@@ -10,7 +10,7 @@ from collections import defaultdict
 from decimal import Decimal
 
 from sqlalchemy import and_, or_
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import contains_eager, joinedload, selectinload
 
 from .behavior_service import (
     BehaviorValidationError,
@@ -502,6 +502,12 @@ def get_behavior_report_data(student, exam):
 
     configurations = (
         BehaviorConfiguration.query
+        .options(
+            joinedload(BehaviorConfiguration.academic_year_level),
+            contains_eager(BehaviorConfiguration.behavior_subject),
+            selectinload(BehaviorConfiguration.sessions).joinedload(BehaviorSession.exam),
+            selectinload(BehaviorConfiguration.sessions).joinedload(BehaviorSession.exam_type),
+        )
         .join(
             AcademicYearSubject,
             AcademicYearSubject.id == BehaviorConfiguration.academic_year_subject_id,

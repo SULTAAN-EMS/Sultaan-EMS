@@ -2,9 +2,10 @@ import secrets
 from datetime import date, datetime
 from io import BytesIO
 import re
+from time import perf_counter
 from urllib.parse import parse_qs, urlparse
 
-from flask import Blueprint, abort, current_app, flash, get_flashed_messages, jsonify, make_response, redirect, render_template, request, send_file, session, url_for
+from flask import Blueprint, abort, current_app, flash, g, get_flashed_messages, jsonify, make_response, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
@@ -70,6 +71,9 @@ def _no_store(response):
 
 @public_bp.before_request
 def enforce_student_results_portal_visibility():
+    if request.endpoint in {"public.result", "public.result_view", "public.api_result"}:
+        g._student_result_request_started_at = perf_counter()
+
     if not _student_result_portal_endpoint(request.endpoint):
         return None
 
@@ -96,6 +100,17 @@ def enforce_student_results_portal_visibility():
 
 @public_bp.after_request
 def prevent_student_result_portal_caching(response):
+    started_at = getattr(g, "_student_result_request_started_at", None)
+    if started_at is not None:
+        elapsed_ms = (perf_counter() - started_at) * 1000
+        if elapsed_ms >= 2000:
+            current_app.logger.warning(
+                "slow_student_result_request endpoint=%s elapsed_ms=%.0f status=%s",
+                request.endpoint,
+                elapsed_ms,
+                response.status_code,
+            )
+
     if _student_result_portal_endpoint(request.endpoint):
         return _no_store(response)
     return response

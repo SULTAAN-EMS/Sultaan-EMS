@@ -1,7 +1,8 @@
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
+from time import perf_counter
 
-from flask import current_app, g, has_request_context
+from flask import current_app, g, has_request_context, request
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
@@ -1774,6 +1775,12 @@ def critical_subject_badges(exam, academic_year_level_id=None):
 
 
 def result_payload(student, exam=None, public_only=True):
+    profile_public_result = bool(
+        has_request_context()
+        and request.endpoint in {"public.result", "public.result_view", "public.api_result"}
+    )
+    profile_started_at = perf_counter() if profile_public_result else None
+
     # A single portal request can render the same payload through the result,
     # behavior, print, and download views.  Reuse only within this request so
     # mutations in later requests always see fresh data.
@@ -1879,7 +1886,13 @@ def result_payload(student, exam=None, public_only=True):
     # shared by the portal, official report card, and class report routes.
     from .behavior_reporting import get_behavior_report_data
 
+    behavior_started_at = perf_counter() if profile_public_result else None
     behavior_reports = get_behavior_report_data(student, active_exam)
+    behavior_elapsed_ms = (
+        (perf_counter() - behavior_started_at) * 1000
+        if behavior_started_at is not None
+        else 0
+    )
     behavior_total = sum(
         (Decimal(str(report.get("session_score") or 0)) for report in behavior_reports),
         Decimal("0"),
@@ -2002,6 +2015,8 @@ def result_payload(student, exam=None, public_only=True):
             )
 
     rank = None
+    rank_started_at = perf_counter() if profile_public_result else None
+    rank_elapsed_ms = 0
     if (rows or behavior_reports) and active_exam:
         # Rank against the student's own class first.  Older student records that
         # only have the legacy class/level fields remain in the same scope.
@@ -2094,6 +2109,9 @@ def result_payload(student, exam=None, public_only=True):
             }
             rank = competition_rank_lookup(official_scores).get(student.id)
 
+    if rank_started_at is not None:
+        rank_elapsed_ms = (perf_counter() - rank_started_at) * 1000
+
     # Regression fix: treat is_active=NULL as True for legacy production rows.
     from sqlalchemy import or_ as _or_rs
     _active_rs = _or_rs(GradeScale.is_active.is_(True), GradeScale.is_active.is_(None))
@@ -2152,6 +2170,17 @@ def result_payload(student, exam=None, public_only=True):
         "portal_outcome": portal_outcome,
         "behavior_reports": behavior_reports,
     }
+    if profile_started_at is not None:
+        payload_elapsed_ms = (perf_counter() - profile_started_at) * 1000
+        if payload_elapsed_ms >= 1000:
+            current_app.logger.warning(
+                "student_result_payload_profile elapsed_ms=%.0f behavior_ms=%.0f rank_ms=%.0f subject_count=%d behavior_report_count=%d",
+                payload_elapsed_ms,
+                behavior_elapsed_ms,
+                rank_elapsed_ms,
+                len(subject_rows),
+                len(behavior_reports),
+            )
     if payload_cache is not None:
         payload_cache[payload_key] = payload
     return payload
