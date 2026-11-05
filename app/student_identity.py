@@ -16,11 +16,22 @@ def find_student_by_code(value):
     if not normalized:
         return None
 
+    # Most portal lookups use the exact canonical ID. Let the unique index
+    # handle that hot path before falling back to tolerant legacy matching.
+    raw_code = str(value or "").strip()
+    student = Student.query.filter_by(student_code=raw_code).first()
+    if student:
+        return student
+
     student = Student.query.filter(
         func.lower(func.trim(Student.student_code)) == normalized
     ).first()
     if student:
         return student
+
+    alias = StudentCodeAlias.query.filter_by(old_code=raw_code).first()
+    if alias:
+        return alias.student
 
     alias = StudentCodeAlias.query.filter(
         func.lower(func.trim(StudentCodeAlias.old_code)) == normalized

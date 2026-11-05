@@ -28,6 +28,24 @@
   let combAvailable = true;
   let dataLoaded = false;
   let trackList = [], currentTrackIndex = 0;
+  let threeLoadPromise = null;
+
+  function ensureThreeJs() {
+    if (window.THREE) return Promise.resolve();
+    if (threeLoadPromise) return threeLoadPromise;
+    threeLoadPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+      script.async = true;
+      script.onload = resolve;
+      script.onerror = () => {
+        threeLoadPromise = null;
+        reject(new Error('Unable to load the Top 10 display.'));
+      };
+      document.head.appendChild(script);
+    });
+    return threeLoadPromise;
+  }
 
   const setOverlayLoading = (message) => {
     overlay.classList.remove('is-ready');
@@ -558,7 +576,7 @@
     ctx.beginPath(); ctx.moveTo(40,lineY); ctx.lineTo(W-40,lineY); ctx.stroke();
 
     // Section 2 & 3: Exactly 4 cards total (Class/Level, Average/Score, Academic Year, Exam Type)
-    const avgVal = student.average !== undefined ? `${Number(student.average).toFixed(1)}%` : (student.avg || '');
+    const avgVal = student.average !== undefined ? `${Number(student.average).toFixed(2)}%` : (student.avg || '');
     const academicYearVal = student.academic_year || student.sanadDugsiyeedka || '2025 - 2026';
     const examTypeVal = student.exam_type || student.examType || 'Exam-ka Guud (Final)';
 
@@ -888,7 +906,10 @@
   async function openTunnel() {
     overlay.classList.add('is-open'); overlay.setAttribute('aria-hidden', 'false'); setOverlayLoading('Loading Top 10 Students');
     try {
-      const response = await fetch(launch.dataset.top10Url, { credentials: 'same-origin' });
+      const [response] = await Promise.all([
+        fetch(launch.dataset.top10Url, { credentials: 'same-origin' }),
+        ensureThreeJs(),
+      ]);
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.message || 'Unable to load Top 10 Students.');
       students = (payload.students || []).map((entry) => ({ ...entry, academic_year: payload.academic_year, exam_type: payload.exam_type }));

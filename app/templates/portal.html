@@ -283,14 +283,14 @@
           <span class="result-options-photo">{% if result_options.student.photo_path %}<img src="{{ asset_url(result_options.student.photo_path) }}" alt="{{ result_options.student.full_name }} photo">{% elif settings.result_dashboard_default_avatar %}<img src="{{ asset_url(settings.result_dashboard_default_avatar) }}" alt="Default student avatar">{% else %}<i class="fa-solid fa-user-graduate"></i>{% endif %}</span>
           <div class="selection-profile-copy"><h2 id="selectionSheetTitle">{{ result_options.student.full_name }}{{ verified_name_badge(label='Verified', variant='white') }}</h2><p>{{ result_options.student.student_code }}</p></div>
         </div>
-        <form method="get" action="{{ url_for('public.result') }}" class="selection-wizard-form" id="selectionWizardForm">
+        <form method="get" action="{{ url_for('public.result') }}" class="selection-wizard-form" id="selectionWizardForm" data-result-submit>
           <input type="hidden" name="student_id" value="{{ result_options.student.student_code }}"><input type="hidden" name="phone" value="{{ result_options.phone or '' }}"><input type="hidden" name="year_id" id="selectionYearValue"><input type="hidden" name="exam_id" id="selectionExamValue">
           <div class="selection-progress"><div class="selection-progress-copy"><span id="selectionStepLabel">Step 1 of 2</span><strong id="selectionStepTitle">Select Academic Year</strong></div><div class="selection-progress-track"><span id="selectionProgressFill"></span></div><div class="selection-progress-dots"><i class="is-current"></i><i></i></div></div>
           <div class="selection-wizard-viewport"><div class="selection-wizard-track" id="selectionWizardTrack">
             <section class="selection-wizard-step"><div class="selection-step-heading"><span class="selection-step-icon year"><i class="fa-solid fa-calendar-days"></i></span><div><h3>Select Academic Year</h3><p>Choose the academic record you want to view.</p></div></div><div class="selection-choice-list">{% for year in result_options.years %}<button type="button" class="selection-choice year-choice{% if year.id == result_options.selected_year_id %} is-selected{% endif %}" data-year-id="{{ year.id }}"><span class="selection-choice-icon"><i class="fa-solid fa-calendar-check"></i></span><span class="selection-choice-copy"><strong>{{ year.name }}</strong><small>Academic Year</small></span><span class="selection-choice-check"><i class="fa-solid fa-check"></i></span></button>{% endfor %}</div></section>
             <section class="selection-wizard-step"><div class="selection-step-heading"><span class="selection-step-icon exam"><i class="fa-solid fa-file-lines"></i></span><div><h3>Select Exam Type</h3><p>Choose an examination from the selected academic year.</p></div></div><div class="selection-choice-list" id="selectionExamChoices">{% for exam_option in result_options.exams %}<button type="button" class="selection-choice exam-choice" data-exam-id="{{ exam_option.id }}" data-year-id="{{ exam_option.academic_year_id }}"><span class="selection-choice-icon"><i class="fa-solid fa-file-signature"></i></span><span class="selection-choice-copy"><strong>{{ exam_option.name }}</strong><small>{{ exam_option.academic_year.name if exam_option.academic_year else 'Examination' }}</small></span><span class="selection-choice-check"><i class="fa-solid fa-check"></i></span></button>{% endfor %}</div><div class="selection-no-exams" id="selectionNoExams" hidden>No published examinations are available for this year.</div></section>
           </div></div>
-          <div class="selection-sheet-actions"><button type="button" class="selection-back-button" id="selectionBackButton" hidden><i class="fa-solid fa-arrow-left"></i> Back</button><button type="submit" class="student-search-button premium-search-button result-options-submit" id="selectionViewButton" disabled><i class="fa-solid fa-eye"></i><span>ARAG NATIIJADA</span></button></div>
+          <div class="selection-sheet-actions"><button type="button" class="selection-back-button" id="selectionBackButton" hidden><i class="fa-solid fa-arrow-left"></i> Back</button><button type="submit" class="student-search-button premium-search-button result-options-submit" id="selectionViewButton" data-loading-label="Natiijada waa la furayaa..." disabled><i class="fa-solid fa-eye"></i><span>ARAG NATIIJADA</span></button></div>
         </form>
       </section>
     </section>
@@ -338,7 +338,7 @@
           <p>{{ result_options.student.student_code }} · Select an academic record to continue.</p>
         </div>
       </div>
-      <form method="get" action="{{ url_for('public.result') }}" class="premium-result-options-form">
+      <form method="get" action="{{ url_for('public.result') }}" class="premium-result-options-form" data-result-submit>
         <input type="hidden" name="student_id" value="{{ result_options.student.student_code }}">
         <input type="hidden" name="phone" value="{{ result_options.phone or '' }}">
         <label class="result-option-field">
@@ -357,7 +357,7 @@
             {% endfor %}
           </select>
         </label>
-        <button type="submit" class="student-search-button premium-search-button result-options-submit"><i class="fa-solid fa-eye"></i><span>ARAG NATIIJADA</span></button>
+        <button type="submit" class="student-search-button premium-search-button result-options-submit" data-loading-label="Natiijada waa la furayaa..."><i class="fa-solid fa-eye"></i><span>ARAG NATIIJADA</span></button>
       </form>
     </section>
     <script>
@@ -383,7 +383,7 @@
     {% endif %}
   {% elif not result %}
     <section class="premium-search-shell glass-card">
-      <form method="get" action="{{ url_for('public.result') }}" class="premium-search-form {% if settings.enable_phone_verification == 'on' %}has-phone{% endif %}">
+      <form method="get" action="{{ url_for('public.result') }}" class="premium-search-form {% if settings.enable_phone_verification == 'on' %}has-phone{% endif %}" data-result-submit>
         <div class="premium-input-icon"><i class="fa-regular fa-user"></i></div>
         <div class="floating-field">
           <input id="student_id" class="student-id-input premium-floating-input" name="student_id" value="{{ (invalid_student_id or unpublished_student_id or '')|e }}" required placeholder="Fadlan Halakan geli Tira-taxanaha">
@@ -395,7 +395,7 @@
             <label for="phone">{{ _('Phone Number') }}</label>
           </div>
         {% endif %}
-        <button type="submit" class="student-search-button premium-search-button"><i class="fa-solid fa-magnifying-glass"></i><span>RAADI</span></button>
+        <button type="submit" class="student-search-button premium-search-button" data-loading-label="Waa la raadinayaa..."><i class="fa-solid fa-magnifying-glass"></i><span>RAADI</span></button>
         <div class="premium-search-hint"><span></span>Geli Tira-taxanahaaga si aad u gudubto.<span></span></div>
       </form>
       {% if error and not unpublished_result %}<div class="empty-state premium-error"><i class="fa-solid fa-circle-exclamation"></i>{{ error }}</div>{% endif %}
@@ -735,7 +735,7 @@
     </script>
 
     <div class="falcelin-widget-host" id="falcelinWidgetHost" hidden aria-hidden="true">
-      <iframe id="falcelinWidgetFrame" title="Falcelin iyo Cabasho" src="{{ url_for('static', filename='falcelin-cabasho-widget.html') }}?token={{ feedback_access_token|urlencode }}&amp;embedded=1&amp;v=4" loading="eager"></iframe>
+      <iframe id="falcelinWidgetFrame" title="Falcelin iyo Cabasho" data-src="{{ url_for('static', filename='falcelin-cabasho-widget.html') }}?token={{ feedback_access_token|urlencode }}&amp;embedded=1&amp;v=4" loading="lazy"></iframe>
     </div>
 
     <section class="top10-tunnel-overlay" id="top10TunnelOverlay" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Top 10 Students">
@@ -761,9 +761,8 @@
         </div>
       </div>
       <div class="top10-tunnel-dots" id="top10TunnelDots" aria-hidden="true"></div>
-      <audio id="top10TunnelAudio" preload="auto" data-default-src="{{ url_for('static', filename='audio/top10-tunnel-default.wav') }}" data-custom-src="{{ asset_url(settings.top10_tunnel_music_path) if settings.top10_tunnel_music_path else '' }}" data-custom-sources="{{ settings.top10_tunnel_music_tracks|default('[]') }}"></audio>
+      <audio id="top10TunnelAudio" preload="none" data-default-src="{{ url_for('static', filename='audio/top10-tunnel-default.wav') }}" data-custom-src="{{ asset_url(settings.top10_tunnel_music_path) if settings.top10_tunnel_music_path else '' }}" data-custom-sources="{{ settings.top10_tunnel_music_tracks|default('[]') }}"></audio>
     </section>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
     <script src="{{ url_for('static', filename='js/top10-tunnel.js') }}" defer></script>
     <script>
       (function () {
@@ -776,16 +775,18 @@
           host.hidden = false;
           host.setAttribute('aria-hidden', 'false');
           const open = () => frame.contentWindow.postMessage({ type: 'falcelin:open' }, window.location.origin);
-          let alreadyLoaded = frame.dataset.ready === 'true';
-          try { alreadyLoaded = alreadyLoaded || frame.contentDocument?.readyState === 'complete'; } catch (error) { /* readiness check is optional */ }
-          if (alreadyLoaded) {
-            frame.dataset.ready = 'true';
+          if (frame.dataset.ready === 'true') {
             open();
+          } else if (frame.dataset.srcAssigned !== 'true') {
+            frame.dataset.srcAssigned = 'true';
+            frame.addEventListener('load', function onLoad() {
+              frame.dataset.ready = 'true';
+              open();
+            }, { once: true });
+            frame.src = frame.dataset.src;
           }
-          else frame.addEventListener('load', function onLoad() { frame.removeEventListener('load', onLoad); frame.dataset.ready = 'true'; open(); });
         }
 
-        frame.addEventListener('load', () => { frame.dataset.ready = 'true'; });
         launch.addEventListener('click', openWidget);
         window.addEventListener('message', (event) => {
           if (event.origin !== window.location.origin || !event.data || event.data.type !== 'falcelin:close') return;
@@ -986,4 +987,18 @@
     </script>
   {% endif %}
 </main>
+<script>
+  document.querySelectorAll('form[data-result-submit]').forEach((form) => {
+    form.addEventListener('submit', () => {
+      const button = form.querySelector('button[type="submit"]');
+      if (!button || button.disabled) return;
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      const label = button.querySelector('span');
+      if (label && button.dataset.loadingLabel) label.textContent = button.dataset.loadingLabel;
+      const icon = button.querySelector('i');
+      if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+    });
+  });
+</script>
 {% endblock %}

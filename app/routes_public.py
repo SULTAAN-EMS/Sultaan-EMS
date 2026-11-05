@@ -366,13 +366,20 @@ def result():
             locked_result=locked_result_context(student, settings, selected_exam_id),
         )
 
-    available_exams = (
-        Exam.query.join(Result, Result.exam_id == Exam.id)
-        .filter(Result.student_id == student.id, Result.is_published.is_(True))
-        .order_by(Exam.academic_year_id.desc(), Exam.id.desc())
-        .distinct()
-        .all()
-    )
+    if selected_exam_id:
+        selected_exam = _published_exam_for_student(student, selected_exam_id)
+        if selected_exam and selected_year_id and selected_exam.academic_year_id != selected_year_id:
+            selected_exam = None
+        available_exams = [selected_exam] if selected_exam else []
+    else:
+        available_exams = (
+            Exam.query.join(Result, Result.exam_id == Exam.id)
+            .options(joinedload(Exam.academic_year))
+            .filter(Result.student_id == student.id, Result.is_published.is_(True))
+            .order_by(Exam.academic_year_id.desc(), Exam.id.desc())
+            .distinct()
+            .all()
+        )
 
     if not available_exams:
         return render_template(
@@ -485,6 +492,7 @@ def _published_exam_for_student(student, requested_exam_id=None):
     """Resolve a published exam without using the student's mutable legacy year."""
     query = (
         Exam.query.join(Result, Result.exam_id == Exam.id)
+        .options(joinedload(Exam.academic_year))
         .filter(Result.student_id == student.id, Result.is_published.is_(True))
     )
     if requested_exam_id:
