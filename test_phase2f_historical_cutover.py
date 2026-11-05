@@ -261,12 +261,14 @@ class TestPhase2FHistoricalCutover(unittest.TestCase):
             }
 
         with (
-            patch("app.behavior_reporting.get_behavior_report_data", side_effect=behavior_report),
-            patch("app.behavior_reporting.get_behavior_scores_for_students", side_effect=behavior_scores),
+            patch("app.behavior_reporting.get_behavior_report_data", side_effect=behavior_report) as report_mock,
+            patch("app.behavior_reporting.get_behavior_scores_for_students", side_effect=behavior_scores) as batch_mock,
         ):
             portal_payload = result_payload(students[0], exam=exam, public_only=True)
             tunnel_rows = top_students_for_class(students[0], exam)
 
+        self.assertEqual(report_mock.call_count, 1)
+        self.assertEqual(batch_mock.call_count, 2)
         tunnel_ranks = {row["student_id"]: row["rank"] for row in tunnel_rows}
         self.assertEqual(portal_payload["rank"], 1)
         self.assertEqual(tunnel_ranks[students[0].student_code], 1)

@@ -2070,15 +2070,20 @@ def result_payload(student, exam=None, public_only=True):
             for peer_row in peer_rows_query.all():
                 scores_by_student[peer_row.student_id] += Decimal(peer_row.score)
 
+            from .behavior_reporting import get_behavior_scores_for_students
+
+            behavior_scores_by_student = get_behavior_scores_for_students(
+                peers,
+                active_exam,
+                peer_placement.get("academic_year_level_id") if peer_placement else None,
+            )
             for peer in peers:
-                peer_behavior_reports = get_behavior_report_data(peer, active_exam)
-                scores_by_student[peer.id] += sum(
-                    (Decimal(str(report.get("session_score") or 0)) for report in peer_behavior_reports),
-                    Decimal("0"),
+                behavior_summary = behavior_scores_by_student.get(peer.id) or {}
+                scores_by_student[peer.id] += Decimal(
+                    str(behavior_summary.get("session_score") or 0)
                 )
-                maxima_by_student[peer.id] += sum(
-                    (Decimal(str(report.get("session_maximum") or 0)) for report in peer_behavior_reports),
-                    Decimal("0"),
+                maxima_by_student[peer.id] += Decimal(
+                    str(behavior_summary.get("session_maximum") or 0)
                 )
             official_scores = {
                 peer_id: round(
