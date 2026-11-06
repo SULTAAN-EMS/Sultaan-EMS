@@ -7,6 +7,9 @@
   const loader = document.getElementById('top10TunnelLoader');
   const emptyState = document.getElementById('top10TunnelEmpty');
   const dotsWrap = document.getElementById('top10TunnelDots');
+  const currentStudentLabel = document.getElementById('top10TunnelCurrent');
+  const previousStudentButton = document.getElementById('top10TunnelPrevious');
+  const nextStudentButton = document.getElementById('top10TunnelNext');
   const hint = document.getElementById('top10TunnelHint');
   const closeButton = document.getElementById('top10TunnelClose');
   const muteButton = document.getElementById('top10TunnelMute');
@@ -25,6 +28,7 @@
   let scrollPos = 0, pressed = false, last = 0, raf = 0, running = false, muted = false;
   let paused = false, autoPausedByVisibility = false;
   let imageIndex = 0, colorIndex = 0, students = [], cardSpeed = 0, nameAnimClock = 0;
+  let currentStudentIndex = 0;
   let combAvailable = true;
   let dataLoaded = false;
   let trackList = [], currentTrackIndex = 0;
@@ -72,8 +76,9 @@
     const icon = pauseButton.querySelector('i');
     const label = pauseButton.querySelector('span');
     if (icon) icon.className = paused ? 'fa-solid fa-play' : 'fa-solid fa-pause';
-    if (label) label.textContent = paused ? 'Resume' : 'Pause';
-    pauseButton.title = paused ? 'Resume tunnel' : 'Pause tunnel';
+    if (label) label.textContent = paused ? 'Soco' : 'Haki';
+    pauseButton.title = paused ? 'Soco tunnel-ka' : 'Haki tunnel-ka';
+    pauseButton.setAttribute('aria-label', pauseButton.title);
   };
 
   const pauseTunnel = (reason = 'manual') => {
@@ -816,10 +821,59 @@
     });
 
     if (nearest >= 0) {
-      [...dotsWrap.children].forEach((dot, index) => dot.classList.toggle('is-current', index === nearest));
+      if (nearest !== currentStudentIndex) syncStudentNavigation(nearest);
       const frontCard = studentCards[nearest];
       if (frontCard?.context) { nameAnimClock += dt; drawStudentCard(frontCard.context, students[nearest], frontCard.photo, nameAnimClock); frontCard.texture.needsUpdate = true; }
     }
+  }
+
+  function syncStudentNavigation(index) {
+    currentStudentIndex = index;
+    [...dotsWrap.children].forEach((button, buttonIndex) => {
+      const isCurrent = buttonIndex === index;
+      button.classList.toggle('is-current', isCurrent);
+      if (isCurrent) button.setAttribute('aria-current', 'step');
+      else button.removeAttribute('aria-current');
+    });
+    const student = students[index] || {};
+    const rank = student.rank || student.position || index + 1;
+    if (currentStudentLabel) currentStudentLabel.textContent = `Arday ${index + 1}/${students.length} · kaalinta ${rank}`;
+  }
+
+  function jumpToStudent(index) {
+    if (!studentCards.length || !students.length) return;
+    const targetIndex = (index + students.length) % students.length;
+    const gap = (CARD_D_START - CARD_D_END) / students.length;
+    studentCards.forEach((card) => {
+      const offset = (card.index - targetIndex + students.length) % students.length;
+      card.d = CARD_D_END + gap * (offset + .55);
+      card.exiting = false;
+      card.exitProgress = 0;
+    });
+    pressed = false;
+    last = 0;
+    syncStudentNavigation(targetIndex);
+    if (paused && renderer && scene && camera) {
+      updateStudentCards(0);
+      renderer.render(scene, camera);
+    }
+  }
+
+  function buildStudentNavigation() {
+    dotsWrap.replaceChildren();
+    students.forEach((student, index) => {
+      const rank = student.rank || student.position || index + 1;
+      const name = student.name || student.student_name || `Ardayga ${index + 1}`;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'top10-tunnel-dot';
+      button.textContent = String(index + 1);
+      button.title = `Ardayga ${index + 1} · kaalinta ${rank} · ${name}`;
+      button.setAttribute('aria-label', `U bood ardayga ${index + 1}, kaalinta ${rank}, ${name}`);
+      button.addEventListener('click', () => jumpToStudent(index));
+      dotsWrap.appendChild(button);
+    });
+    syncStudentNavigation(0);
   }
 
   function buildTunnel() {
@@ -899,7 +953,8 @@
 
   function startTunnel() {
     destroyTunnel(); scrollPos = 0; last = 0; imageIndex = 0; colorIndex = 0; paused = false; autoPausedByVisibility = false;
-    students.forEach((_, index) => { const dot = document.createElement('span'); dot.classList.toggle('is-current', index === 0); dotsWrap.appendChild(dot); });
+    currentStudentIndex = 0;
+    buildStudentNavigation();
     buildTunnel(); running = true; raf = requestAnimationFrame(animate); setOverlayReady(); startMusic(); syncPauseUI();
   }
 
@@ -926,6 +981,8 @@
   if (pauseButton) {
     pauseButton.addEventListener('click', () => (paused ? resumeTunnel() : pauseTunnel()));
   }
+  previousStudentButton.addEventListener('click', () => jumpToStudent(currentStudentIndex - 1));
+  nextStudentButton.addEventListener('click', () => jumpToStudent(currentStudentIndex + 1));
 
   document.addEventListener('keydown', (event) => {
     if (!overlay.classList.contains('is-open')) return;
@@ -933,6 +990,14 @@
     if (event.key === ' ') {
       event.preventDefault();
       paused ? resumeTunnel() : pauseTunnel();
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      jumpToStudent(currentStudentIndex - 1);
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      jumpToStudent(currentStudentIndex + 1);
     }
   });
 

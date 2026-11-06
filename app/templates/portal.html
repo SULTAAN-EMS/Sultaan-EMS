@@ -730,22 +730,26 @@
       <header class="top10-tunnel-topbar">
         <p class="top10-tunnel-hint" id="top10TunnelHint">Hold to speed up &middot; Esc to close</p>
         <div class="top10-tunnel-actions">
-          <button type="button" class="top10-tunnel-pause" id="top10TunnelPause" title="Pause / Resume" aria-label="Pause tunnel motion"><i class="fa-solid fa-pause"></i><span>Pause</span></button>
-          <button type="button" class="top10-tunnel-music" id="top10TunnelMusic" title="Music settings" aria-label="Music settings"><i class="fa-solid fa-music"></i><span>Music</span></button>
+          <button type="button" class="top10-tunnel-pause" id="top10TunnelPause" title="Haki tunnel-ka" aria-label="Haki tunnel-ka"><i class="fa-solid fa-pause"></i><span>Haki</span></button>
+          <button type="button" class="top10-tunnel-music" id="top10TunnelMusic" title="Nashiido" aria-label="Fur dejinta nashiidada"><i class="fa-solid fa-music"></i><span>Nashiido</span></button>
           <button type="button" class="top10-tunnel-mute" id="top10TunnelMute" title="Sound on/off" aria-label="Toggle tunnel sound"><i class="fa-solid fa-volume-high"></i></button>
-          <button type="button" class="top10-tunnel-close" id="top10TunnelClose"><i class="fa-solid fa-arrow-left"></i> Back to Report Card</button>
+          <button type="button" class="top10-tunnel-close" id="top10TunnelClose" title="Ku noqo kaadhka natiijada" aria-label="Ku noqo kaadhka natiijada"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></button>
         </div>
       </header>
       <div class="music-panel" id="musicPanel">
-        <h3>Music Settings</h3>
-        <p>Waxaa la tarayaa dhammaan track-yada la soo geliyay (uploaded), si automatic ah oo isku beddelaya (auto-rotate) — ilaa aad gaar ahaan hal track doorato. Haddii aad hal track doorato, kaasi ayaa la tarayaa halkii uu auto-rotate ahaan lahaa.</p>
+        <h3>Nashiido</h3>
         <div class="music-options" id="musicOptions"></div>
         <div class="music-mode">
-          <button type="button" id="singleMusicMode">Hal Track</button>
-          <button type="button" id="sequenceMusicMode" class="active">Sequence (Auto-rotate)</button>
+          <button type="button" id="singleMusicMode">Midkan</button>
+          <button type="button" id="sequenceMusicMode" class="active">Isbeddelid</button>
         </div>
       </div>
-      <div class="top10-tunnel-dots" id="top10TunnelDots" aria-hidden="true"></div>
+      <nav class="top10-tunnel-navigation" aria-label="U gudub ardayda kaalmaha hore">
+        <button type="button" class="top10-tunnel-nav-arrow" id="top10TunnelPrevious" title="Ardaygii hore" aria-label="Ardaygii hore"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+        <div class="top10-tunnel-dots" id="top10TunnelDots" role="group" aria-label="Dooro arday ama kaalinta"></div>
+        <span class="top10-tunnel-current" id="top10TunnelCurrent" aria-live="polite">1 / 10</span>
+        <button type="button" class="top10-tunnel-nav-arrow" id="top10TunnelNext" title="Ardayga xiga" aria-label="Ardayga xiga"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+      </nav>
       <audio id="top10TunnelAudio" preload="none" data-default-src="{{ url_for('static', filename='audio/top10-tunnel-default.wav') }}" data-custom-src="{{ asset_url(settings.top10_tunnel_music_path) if settings.top10_tunnel_music_path else '' }}" data-custom-sources="{{ settings.top10_tunnel_music_tracks|default('[]') }}"></audio>
     </section>
     <script src="{{ url_for('static', filename='js/top10-tunnel.js') }}" defer></script>
