@@ -204,3 +204,60 @@ if (resultPanel) {
 
   console.log('[BG particles] ✓ Layers created — dust:90 twinkle:50 festive:recurring');
 })();
+
+(() => {
+  const control = document.querySelector(".result-orientation-hint");
+  if (!control) return;
+
+  control.setAttribute("role", "button");
+  control.setAttribute("tabindex", "0");
+  control.setAttribute("aria-label", "Taabo si aad u codsato in shaashaddu dhinac u wareegto");
+  control.title = "Taabo si aad shaashadda dhinac ugu rogto";
+
+  const feedback = document.createElement("div");
+  feedback.className = "result-orientation-feedback";
+  feedback.setAttribute("role", "status");
+  feedback.setAttribute("aria-live", "polite");
+  feedback.hidden = true;
+  document.body.appendChild(feedback);
+
+  let feedbackTimer;
+  const announce = (message) => {
+    feedback.textContent = message;
+    feedback.hidden = false;
+    window.clearTimeout(feedbackTimer);
+    feedbackTimer = window.setTimeout(() => { feedback.hidden = true; }, 4500);
+  };
+
+  const rotateToLandscape = async () => {
+    const orientation = window.screen && window.screen.orientation;
+    if (!orientation || typeof orientation.lock !== "function") {
+      announce("Browser-kani ma oggola rogista tooska ah. Daar auto-rotate oo telefoonka dhinac u rog.");
+      return;
+    }
+
+    let enteredFullscreen = false;
+    try {
+      if (!document.fullscreenElement) {
+        if (typeof document.documentElement.requestFullscreen !== "function") throw new Error("fullscreen unavailable");
+        await document.documentElement.requestFullscreen();
+        enteredFullscreen = true;
+      }
+      await orientation.lock("landscape");
+      announce("Shaashadda dhinac ayaa loo rogay.");
+    } catch (_error) {
+      if (enteredFullscreen && document.fullscreenElement && typeof document.exitFullscreen === "function") {
+        await document.exitFullscreen().catch(() => {});
+      }
+      announce("Browser-ku ma oggola rogista tooska ah. Daar auto-rotate oo telefoonka dhinac u rog.");
+    }
+  };
+
+  control.addEventListener("click", rotateToLandscape);
+  control.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      rotateToLandscape();
+    }
+  });
+})();
