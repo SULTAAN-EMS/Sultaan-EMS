@@ -229,7 +229,11 @@ def incident_subjects_for_student(student, academic_year_id=None, placement=None
 
 @public_bp.route("/")
 def portal():
-    return render_template("portal.html", settings=get_settings())
+    return render_template(
+        "portal.html",
+        settings=get_settings(),
+        prefill_student_id=request.args.get("student_id", "").strip(),
+    )
 
 
 @public_bp.route("/language/<lang>")
@@ -449,6 +453,7 @@ def result():
         settings=get_settings(),
         result=payload,
         result_scope=result_scope,
+        result_back_url=url_for("public.portal", student_id=student.student_code),
         generated_at=datetime.now(),
         feedback_access_token=feedback_access_token(student, exam),
         result_success_overlay=result_success_overlay_config(
@@ -486,6 +491,7 @@ def result_view(student_code, exam_id):
         settings=settings,
         result=payload,
         result_scope=result_scope,
+        result_back_url=url_for("public.portal", student_id=student.student_code),
         generated_at=datetime.now(),
         feedback_access_token=feedback_access_token(student, exam),
         result_success_overlay=result_success_overlay_config(

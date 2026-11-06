@@ -63,6 +63,15 @@ class TestStudentResultsPortalVisibility(unittest.TestCase):
         self.assertNotIn(b"NATIIJOOYINKA IMTIXAANKA EE DHAMMAAN ARDEYDA HADDA WEY XIDHAN YIHIIN.", response.data)
         self.assertIn("no-store", response.headers.get("Cache-Control", ""))
 
+    def test_portal_prefills_student_code_for_return_navigation(self):
+        response = self.client.get("/?student_id=TIS-BACK-TEST")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="student_id"'.encode(), response.data)
+        self.assertIn('value="TIS-BACK-TEST"'.encode(), response.data)
+        self.assertIn("returnedStudentIdInput.focus".encode(), response.data)
+        self.assertIn("setSelectionRange(caretPosition, caretPosition)".encode(), response.data)
+
     def test_homepage_exposes_student_services_social_preview(self):
         response = self.client.get("/")
         html = response.get_data(as_text=True)

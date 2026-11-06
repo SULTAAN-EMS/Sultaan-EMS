@@ -237,22 +237,6 @@
   --sis-display-print-button: {{ 'grid' if settings.result_dashboard_show_print_button == 'on' else 'none' }};
   --sis-display-top10-button: {{ 'grid' if settings.result_dashboard_show_top10_button == 'on' else 'none' }};
 "{% endif %}>
-  <nav class="premium-language-nav">
-    <a class="premium-contact-link" href="{{ settings.call_url or '#' }}" aria-label="Contact the examination office" title="Contact / Help">
-      <i class="fa-solid fa-headset"></i><span>Help</span>
-    </a>
-    <label class="premium-language-pill">
-      <i class="fa-solid fa-globe"></i>
-      <select aria-label="Language" onchange="window.location.href='{{ url_for('public.set_language', lang='__LANG__') }}'.replace('__LANG__', this.value)">
-        <option value="so" {% if current_language == 'so' %}selected{% endif %}>Somali</option>
-        <option value="en" {% if current_language == 'en' %}selected{% endif %}>English</option>
-        <option value="ar" {% if current_language == 'ar' %}selected{% endif %}>Arabic</option>
-        <option value="tr" {% if current_language == 'tr' %}selected{% endif %}>Turkish</option>
-      </select>
-      <i class="fa-solid fa-chevron-down"></i>
-    </label>
-  </nav>
-
   {% if not result %}
   <section class="premium-portal-hero">
     <div class="premium-school-logo">
@@ -290,7 +274,7 @@
             <section class="selection-wizard-step"><div class="selection-step-heading"><span class="selection-step-icon year"><i class="fa-solid fa-calendar-days"></i></span><div><h3>Select Academic Year</h3><p>Choose the academic record you want to view.</p></div></div><div class="selection-choice-list">{% for year in result_options.years %}<button type="button" class="selection-choice year-choice{% if year.id == result_options.selected_year_id %} is-selected{% endif %}" data-year-id="{{ year.id }}"><span class="selection-choice-icon"><i class="fa-solid fa-calendar-check"></i></span><span class="selection-choice-copy"><strong>{{ year.name }}</strong><small>Academic Year</small></span><span class="selection-choice-check"><i class="fa-solid fa-check"></i></span></button>{% endfor %}</div></section>
             <section class="selection-wizard-step"><div class="selection-step-heading"><span class="selection-step-icon exam"><i class="fa-solid fa-file-lines"></i></span><div><h3>Select Exam Type</h3><p>Choose an examination from the selected academic year.</p></div></div><div class="selection-choice-list" id="selectionExamChoices">{% for exam_option in result_options.exams %}<button type="button" class="selection-choice exam-choice" data-exam-id="{{ exam_option.id }}" data-year-id="{{ exam_option.academic_year_id }}"><span class="selection-choice-icon"><i class="fa-solid fa-file-signature"></i></span><span class="selection-choice-copy"><strong>{{ exam_option.name }}</strong><small>{{ exam_option.academic_year.name if exam_option.academic_year else 'Examination' }}</small></span><span class="selection-choice-check"><i class="fa-solid fa-check"></i></span></button>{% endfor %}</div><div class="selection-no-exams" id="selectionNoExams" hidden>No published examinations are available for this year.</div></section>
           </div></div>
-          <div class="selection-sheet-actions"><button type="button" class="selection-back-button" id="selectionBackButton" hidden><i class="fa-solid fa-arrow-left"></i> Back</button><button type="submit" class="student-search-button premium-search-button result-options-submit" id="selectionViewButton" data-loading-label="Natiijada waa la furayaa..." disabled><i class="fa-solid fa-eye"></i><span>ARAG NATIIJADA</span></button></div>
+          <div class="selection-sheet-actions"><button type="button" class="selection-back-button" id="selectionBackButton" hidden><i class="fa-solid fa-arrow-left"></i> Back</button><button type="submit" class="student-search-button premium-search-button result-options-submit" id="selectionViewButton" data-loading-label="Lasoo bandhigayaa......" disabled><i class="fa-solid fa-eye"></i><span>ARAG NATIIJADA</span></button></div>
         </form>
       </section>
     </section>
@@ -357,7 +341,7 @@
             {% endfor %}
           </select>
         </label>
-        <button type="submit" class="student-search-button premium-search-button result-options-submit" data-loading-label="Natiijada waa la furayaa..."><i class="fa-solid fa-eye"></i><span>ARAG NATIIJADA</span></button>
+        <button type="submit" class="student-search-button premium-search-button result-options-submit" data-loading-label="Lasoo bandhigayaa......"><i class="fa-solid fa-eye"></i><span>ARAG NATIIJADA</span></button>
       </form>
     </section>
     <script>
@@ -386,7 +370,7 @@
       <form method="get" action="{{ url_for('public.result') }}" class="premium-search-form {% if settings.enable_phone_verification == 'on' %}has-phone{% endif %}" data-result-submit>
         <div class="premium-input-icon"><i class="fa-regular fa-user"></i></div>
         <div class="floating-field">
-          <input id="student_id" class="student-id-input premium-floating-input" name="student_id" value="{{ (invalid_student_id or unpublished_student_id or '')|e }}" required placeholder="Fadlan Halakan geli Tira-taxanaha">
+          <input id="student_id" class="student-id-input premium-floating-input" name="student_id" value="{{ (prefill_student_id|default('', true) or invalid_student_id or unpublished_student_id or '')|e }}" required placeholder="Fadlan Halakan geli Tira-taxanaha">
           <label for="student_id">Fadlan halakan geli tira-taxanaha</label>
         </div>
         {% if settings.enable_phone_verification == 'on' %}
@@ -533,6 +517,7 @@
             <h2>WARBIXINTA <span>NATIIJADA</span></h2>
             <p>Sanad Dugsiyeedka {{ result_scope.academic_year_name }}</p>
           </div>
+          <a class="result-back-button" href="{{ result_back_url|default(url_for('public.portal'), true)|e }}" aria-label="Dib-u-noqo" title="Dib-u-noqo"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></a>
         </header>
 
         <main class="reference-result-grid">
@@ -988,12 +973,22 @@
   {% endif %}
 </main>
 <script>
+  const returnedStudentIdInput = document.getElementById('student_id');
+  if (returnedStudentIdInput && returnedStudentIdInput.value) {
+    window.requestAnimationFrame(() => {
+      returnedStudentIdInput.focus({ preventScroll: true });
+      const caretPosition = returnedStudentIdInput.value.length;
+      returnedStudentIdInput.setSelectionRange(caretPosition, caretPosition);
+    });
+  }
+
   document.querySelectorAll('form[data-result-submit]').forEach((form) => {
     form.addEventListener('submit', () => {
       const button = form.querySelector('button[type="submit"]');
       if (!button || button.disabled) return;
       button.disabled = true;
       button.setAttribute('aria-busy', 'true');
+      button.classList.add('is-loading');
       const label = button.querySelector('span');
       if (label && button.dataset.loadingLabel) label.textContent = button.dataset.loadingLabel;
       const icon = button.querySelector('i');
