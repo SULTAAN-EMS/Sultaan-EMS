@@ -71,6 +71,8 @@ class TestStudentResultsPortalVisibility(unittest.TestCase):
         self.assertIn('value="TIS-BACK-TEST"'.encode(), response.data)
         self.assertIn("returnedStudentIdInput.focus".encode(), response.data)
         self.assertIn("setSelectionRange(caretPosition, caretPosition)".encode(), response.data)
+        self.assertIn("returnedStudentIdCard.scrollIntoView".encode(), response.data)
+        self.assertIn("block: 'center'".encode(), response.data)
 
     def test_homepage_exposes_student_services_social_preview(self):
         response = self.client.get("/")

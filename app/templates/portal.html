@@ -975,10 +975,14 @@
 <script>
   const returnedStudentIdInput = document.getElementById('student_id');
   if (returnedStudentIdInput && returnedStudentIdInput.value) {
+    const returnedStudentIdCard = returnedStudentIdInput.closest('.premium-search-shell') || returnedStudentIdInput;
     window.requestAnimationFrame(() => {
       returnedStudentIdInput.focus({ preventScroll: true });
       const caretPosition = returnedStudentIdInput.value.length;
       returnedStudentIdInput.setSelectionRange(caretPosition, caretPosition);
+      window.setTimeout(() => {
+        returnedStudentIdCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      }, 120);
     });
   }
 
