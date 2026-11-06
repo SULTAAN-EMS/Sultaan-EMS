@@ -5930,3 +5930,24 @@ tbody tr:hover td { background: #f8fbff; }
 @keyframes app-notice-icon { 0% { opacity:0; transform:scale(.7) rotate(-7deg); } 75% { opacity:1; transform:scale(1.08) rotate(2deg); } 100% { transform:scale(1) rotate(0); } }
 @media(max-width:560px) { .toast-stack:has(.app-notice) { top:max(10px,env(safe-area-inset-top,0px)); width:calc(100vw - 20px); } .app-notice { grid-template-columns:36px minmax(0,1fr) 28px; gap:9px; padding:11px; } .app-notice__icon { width:36px; height:36px; font-size:16px; } }
 @media(prefers-reduced-motion:reduce) { .app-notice,.app-notice__icon { animation:none; } .app-notice.is-leaving { transition:none; } }
+
+/* Keep the result dashboard's physical layout stable when the page language is RTL. */
+@media (max-width: 768px) {
+  html[dir="rtl"] .premium-homepage.has-result {
+    direction: ltr;
+  }
+  html[dir="rtl"] .premium-homepage.has-result .premium-language-nav,
+  html[dir="rtl"] .premium-homepage.has-result .premium-portal-hero,
+  html[dir="rtl"] .premium-homepage.has-result .reference-student-panel,
+  html[dir="rtl"] .premium-homepage.has-result .reference-result-header,
+  html[dir="rtl"] .premium-homepage.has-result .reference-table-panel,
+  html[dir="rtl"] .premium-homepage.has-result .reference-right-column,
+  html[dir="rtl"] .premium-homepage.has-result .reference-result-footer {
+    direction: rtl;
+  }
+  html[dir="rtl"] .premium-homepage.has-result .reference-one-result,
+  html[dir="rtl"] .premium-homepage.has-result .reference-result-content,
+  html[dir="rtl"] .premium-homepage.has-result .reference-result-grid {
+    direction: ltr;
+  }
+}
