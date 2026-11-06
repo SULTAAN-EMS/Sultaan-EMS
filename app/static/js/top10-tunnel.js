@@ -32,6 +32,7 @@
   let combAvailable = true;
   let dataLoaded = false;
   let trackList = [], currentTrackIndex = 0;
+  const studentNameLayoutCache = new WeakMap();
   let threeLoadPromise = null;
 
   function ensureThreeJs() {
@@ -461,11 +462,65 @@
     const NAME_A = '#D4AF37';   // gold
     const NAME_B = '#FFE9AE';   // soft champagne-gold highlight
     const studentNameStr = student.name || student.student_name || '';
-    const nameWidth = Math.max(ctx.measureText(studentNameStr).width, 40);
+    const maxNameWidth = W - 140;
+    const fontsReady = !document.fonts || document.fonts.status === 'loaded';
+    let nameLayout = studentNameLayoutCache.get(student);
+    if (!nameLayout || (fontsReady && !nameLayout.fontsReady)) {
+      const wrapName = () => {
+        const lines = [];
+        let line = '';
+        const words = studentNameStr.trim().split(/\s+/).filter(Boolean);
+        words.forEach((word) => {
+          if (ctx.measureText(word).width > maxNameWidth) {
+            if (line) lines.push(line);
+            line = '';
+            let part = '';
+            Array.from(word).forEach((character) => {
+              if (part && ctx.measureText(part + character).width > maxNameWidth) {
+                lines.push(part);
+                part = character;
+              } else {
+                part += character;
+              }
+            });
+            line = part;
+          } else {
+            const candidate = line ? `${line} ${word}` : word;
+            if (line && ctx.measureText(candidate).width > maxNameWidth) {
+              lines.push(line);
+              line = word;
+            } else {
+              line = candidate;
+            }
+          }
+        });
+        if (line) lines.push(line);
+        return lines.length ? lines : [''];
+      };
+      let fontSize = 40;
+      let lines;
+      do {
+        ctx.font = `600 ${fontSize}px 'Fraunces', serif`;
+        lines = wrapName();
+        if (lines.length <= 3 || fontSize <= 20) break;
+        fontSize -= 2;
+      } while (fontSize >= 20);
+      nameLayout = {
+        lines,
+        fontSize,
+        lineHeight: fontSize * 1.16,
+        width: Math.max(...lines.map((line) => ctx.measureText(line).width), 40),
+        fontsReady,
+      };
+      studentNameLayoutCache.set(student, nameLayout);
+    }
+    const { lines: nameLines, fontSize: nameFontSize, lineHeight: nameLineHeight, width: nameWidth } = nameLayout;
+    ctx.font = `600 ${nameFontSize}px 'Fraunces', serif`;
 
     // Bounding box that hugs just the name text
     const boxPadX = 26, boxPadY = 10;
-    const textTop = infoTop - 34, textBottom = infoTop + 10;
+    const textTop = infoTop - nameFontSize * .85;
+    const textBottom = infoTop + (nameLines.length - 1) * nameLineHeight + nameFontSize * .25;
     const boxX = W/2 - nameWidth/2 - boxPadX;
     const boxY = textTop - boxPadY;
     const boxW = nameWidth + boxPadX*2;
@@ -511,7 +566,9 @@
     ctx.shadowColor = 'rgba(212,175,55,' + (0.4 + 0.3*Math.sin(t*2.4)).toFixed(3) + ')';
     ctx.shadowBlur = 20 + 10*Math.sin(t*2.4);
     ctx.fillStyle = nameGrad;
-    ctx.fillText(studentNameStr, W/2, infoTop);
+    nameLines.forEach((line, index) => {
+      ctx.fillText(line, W/2, infoTop + index * nameLineHeight, maxNameWidth);
+    });
     ctx.restore();
 
     // 3) .name-sweep — soft diagonal light bar sweeping across the box
@@ -959,7 +1016,7 @@
   }
 
   async function openTunnel() {
-    overlay.classList.add('is-open'); overlay.setAttribute('aria-hidden', 'false'); setOverlayLoading('Loading Top 10 Students');
+    overlay.classList.add('is-open'); overlay.setAttribute('aria-hidden', 'false'); setOverlayLoading('Lasoo Saarayaa Ardeyda Top 10-ka');
     try {
       const [response] = await Promise.all([
         fetch(launch.dataset.top10Url, { credentials: 'same-origin' }),
