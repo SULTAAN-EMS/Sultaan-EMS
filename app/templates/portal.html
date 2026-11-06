@@ -489,6 +489,9 @@
       {% set download_date_text = download_dt.strftime('%B %d, %Y     %I:%M %p') if download_dt else '-' %}
     {% endif %}
     <section class="premium-result result-dashboard reference-one-result" data-result-status="{{ result.status }}">
+      <div class="result-orientation-hint" role="note" aria-label="Taleefanka dhinac u rog si warbixinta si buuxda loo arko." title="Taleefanka dhinac u rog">
+        <span class="result-orientation-hint__icon" aria-hidden="true"><i class="fa-solid fa-mobile-screen-button"></i><i class="fa-solid fa-rotate"></i></span>
+      </div>
       <aside class="reference-student-panel sidebar-theme-{{ settings.result_sidebar_theme }}">
         <div class="reference-photo-wrap">
           {% if result.student.photo_path %}<img src="{{ asset_url(result.student.photo_path) }}" alt="{{ result.student.full_name }} photo">{% elif settings.result_dashboard_default_avatar %}<img src="{{ asset_url(settings.result_dashboard_default_avatar) }}" alt="Default student avatar">{% else %}<i class="fa-solid fa-user-graduate"></i>{% endif %}

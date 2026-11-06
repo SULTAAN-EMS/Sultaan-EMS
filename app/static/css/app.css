@@ -5042,6 +5042,8 @@ tbody tr:hover td { background: #f8fbff; }
   content: none;
 }
 
+.result-orientation-hint { display: none; }
+
 /* Mobile result viewport: preserve desktop layout and allow natural horizontal swipe. */
 @media (max-width: 768px) {
   html,
@@ -5113,6 +5115,65 @@ tbody tr:hover td { background: #f8fbff; }
   .reference-table-panel {
     overflow: visible;
   }
+}
+
+@media (max-width: 768px) and (orientation: portrait) {
+  .result-orientation-hint {
+    position: fixed;
+    left: 50%;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    z-index: 1200;
+    width: 58px;
+    height: 58px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, .8);
+    border-radius: 50%;
+    color: #fff;
+    background: linear-gradient(145deg, #078caa, #3159d8);
+    box-shadow: 0 10px 26px rgba(17, 61, 125, .34);
+    transform: translateX(-50%);
+    pointer-events: none;
+    animation: result-rotate-hint-pulse 2s ease-out infinite;
+  }
+  .result-orientation-hint__icon {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    animation: result-rotate-phone 2.4s ease-in-out infinite;
+  }
+  .result-orientation-hint__icon .fa-mobile-screen-button { font-size: 25px; }
+  .result-orientation-hint__icon .fa-rotate {
+    position: absolute;
+    right: -5px;
+    bottom: -4px;
+    padding: 4px;
+    border: 2px solid #3159d8;
+    border-radius: 50%;
+    color: #ffd166;
+    background: #123b63;
+    font-size: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result-orientation-hint,
+  .result-orientation-hint__icon { animation: none !important; }
+}
+
+@keyframes result-rotate-hint-pulse {
+  0% { box-shadow: 0 10px 26px rgba(17, 61, 125, .34), 0 0 0 0 rgba(22, 172, 204, .45); }
+  70% { box-shadow: 0 10px 26px rgba(17, 61, 125, .34), 0 0 0 12px rgba(22, 172, 204, 0); }
+  100% { box-shadow: 0 10px 26px rgba(17, 61, 125, .34), 0 0 0 0 rgba(22, 172, 204, 0); }
+}
+
+@keyframes result-rotate-phone {
+  0%, 100% { transform: rotate(0deg); }
+  35% { transform: rotate(-12deg); }
+  70% { transform: rotate(12deg); }
 }
 
 /* Dynamic grade scale manager */
