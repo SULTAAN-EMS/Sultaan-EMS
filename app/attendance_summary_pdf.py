@@ -79,13 +79,13 @@ def _styles():
         "kpi_label": ParagraphStyle("attendance_kpi_label", fontName="Helvetica-Bold", fontSize=6, leading=7.2, textColor=MUTED),
         "section": ParagraphStyle("attendance_section", fontName="Helvetica-Bold", fontSize=8.1, leading=9.5, textColor=NAVY),
         "section_note": ParagraphStyle("attendance_section_note", fontName="Helvetica", fontSize=6.4, leading=8, alignment=TA_RIGHT, textColor=MUTED),
-        "th": ParagraphStyle("attendance_th", fontName="Helvetica-Bold", fontSize=5.8, leading=6.8, alignment=TA_CENTER, textColor=colors.white),
-        "th_left": ParagraphStyle("attendance_th_left", fontName="Helvetica-Bold", fontSize=6, leading=7, alignment=TA_LEFT, textColor=colors.white),
+        "th": ParagraphStyle("attendance_th", fontName="Helvetica-Bold", fontSize=6.2, leading=7.4, alignment=TA_CENTER, textColor=colors.white),
+        "th_left": ParagraphStyle("attendance_th_left", fontName="Helvetica-Bold", fontSize=6.3, leading=7.5, alignment=TA_LEFT, textColor=colors.white),
         "cell": ParagraphStyle("attendance_cell", fontName="Helvetica", fontSize=6.6, leading=8, textColor=INK),
         "cell_num": ParagraphStyle("attendance_cell_num", fontName="Helvetica-Bold", fontSize=6.5, leading=7.7, alignment=TA_CENTER, textColor=INK),
         "absent_cell": ParagraphStyle("attendance_absent_cell", fontName="Helvetica", fontSize=7, leading=8.6, textColor=INK),
         "student": ParagraphStyle("attendance_student", fontName="Helvetica-Bold", fontSize=8.1, leading=9.8, textColor=NAVY),
-        "subjects": ParagraphStyle("attendance_subjects", fontName="Helvetica", fontSize=7.4, leading=9.2, textColor=INK),
+        "subjects": ParagraphStyle("attendance_subjects", fontName="Helvetica", fontSize=7.8, leading=9.6, textColor=INK),
         "footnote": ParagraphStyle("attendance_footnote", fontName="Helvetica", fontSize=6.1, leading=7.4, textColor=MUTED),
         "empty": ParagraphStyle("attendance_empty", fontName="Helvetica", fontSize=7, leading=9, alignment=TA_LEFT, textColor=MUTED),
         "session": ParagraphStyle("attendance_session", fontName="Helvetica-Bold", fontSize=6.5, leading=7.6, textColor=BLUE),
@@ -312,9 +312,13 @@ class KpiCard(Flowable):
         icon.drawOn(canvas, 2.6 * mm, (self.height - 7.2 * mm) / 2)
         text_x = 12 * mm
         text_width = self.width - text_x - 2 * mm
-        label = _p(self.label, self.styles["kpi_label"])
-        label.wrapOn(canvas, text_width, 8 * mm)
-        label.drawOn(canvas, text_x, self.height - 6.4 * mm)
+        label_font = "Helvetica-Bold"
+        label_size = 6.0
+        while label_size > 4.5 and pdfmetrics.stringWidth(self.label, label_font, label_size) > text_width:
+            label_size -= 0.25
+        canvas.setFillColor(MUTED)
+        canvas.setFont(label_font, label_size)
+        canvas.drawString(text_x, self.height - 5.3 * mm, self.label)
         canvas.setFillColor(self.accent)
         canvas.setFont("Helvetica-Bold", 14.5)
         canvas.drawString(text_x, 3 * mm, str(self.value))
@@ -383,19 +387,27 @@ def _metadata(styles, report, width):
     return table
 
 
-def _kpis(styles, totals, width):
-    items = [
-        ("ARDEY / FADHI", totals["students"], "users", BLUE, colors.HexColor("#F1F6FF")),
-        ("JOOGID (MAADO)", totals["present"], "check", TEAL, colors.HexColor("#EFFAF6")),
-        ("MAQAN (MAADO)", totals["absent"], "cross", CORAL, colors.HexColor("#FFF3F1")),
-        ("ARDEY MAQNAA / FADHI", totals["absent_students"], "users", AMBER, colors.HexColor("#FFF8ED")),
-        ("LA FASAXAY", totals["excused"], "shield", VIOLET, colors.HexColor("#F7F3FF")),
-        ("AAN LA CALAAMADIN", totals["unmarked"], "clock", CYAN, colors.HexColor("#EFF9FB")),
-    ]
+def _kpis(styles, totals, width, keys, columns=4):
+    specs = {
+        "present": ("JOOGID", "check", TEAL, colors.HexColor("#EFFAF6")),
+        "late": ("SOO DAAHID", "clock", BLUE, colors.HexColor("#F1F6FF")),
+        "absent": ("MAQAN", "cross", CORAL, colors.HexColor("#FFF3F1")),
+        "excused": ("LA FASAXAY", "shield", VIOLET, colors.HexColor("#F7F3FF")),
+        "sick": ("CUDUR-DAAR", "shield", AMBER, colors.HexColor("#FFF8ED")),
+        "emergency": ("XAALAD DEG-DEG AH", "cross", CORAL, colors.HexColor("#FFF3F1")),
+        "unmarked": ("AAN LA CALAAMADIN", "list", CYAN, colors.HexColor("#EFF9FB")),
+    }
+    items = [(key, *specs[key]) for key in keys]
     gap = 3
-    card_width = (width - gap * (len(items) - 1)) / len(items)
-    cells = [KpiCard(card_width, *item[:3], item[3], item[4], styles) for item in items]
-    table = Table([cells], colWidths=[card_width] * len(items))
+    card_width = (width - gap * (columns - 1)) / columns
+    cells = [
+        KpiCard(card_width, label, totals.get(key, 0), icon, accent, pale, styles)
+        for key, label, icon, accent, pale in items
+    ]
+    rows = [cells[index:index + columns] for index in range(0, len(cells), columns)]
+    for row in rows:
+        row.extend([""] * (columns - len(row)))
+    table = Table(rows, colWidths=[card_width] * columns, rowHeights=[19 * mm] * len(rows))
     table.setStyle(_make_styles_table(
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), gap),
@@ -477,29 +489,53 @@ def _day_table(report, styles, width):
     return _summary_table(styles, rows, headers, [width * weight for weight in weights], color_columns=color_columns)
 
 
-def _absent_table(report, styles, width):
-    headers = ["#", "Taariikh / fadhi", "Hall-ka", "Ardeyga / aqoonsiga", "Heerka / fasalka", "Maadooyinka maqnaanshaha"]
+def _student_attendance_table(rows, empty_message, styles, width):
+    headers = ["#", "Ardeyga / aqoonsiga", "Heerka / fasalka", "Taariikhaha, hall-ka, fadhiga iyo maadooyinka"]
     matrix = [[_p(header, styles["th"]) for header in headers]]
-    for index, row in enumerate(report["absent_students"], 1):
-        when = _date(row["date"])
-        time = row.get("time")
-        session = escape(str(row.get("session") or "Fadhi lama sheegin"))
-        if time:
-            session += f'<br/><font name="Helvetica" color="#66758B">{escape(time.strftime("%I:%M %p").lstrip("0"))}</font>'
+    status_colors = {
+        "present": TEAL.hexval(),
+        "absent": CORAL.hexval(),
+        "excused": VIOLET.hexval(),
+        "sick": AMBER.hexval(),
+        "emergency": CORAL.hexval(),
+        "late": BLUE.hexval(),
+        "unmarked": MUTED.hexval(),
+    }
+    for index, row in enumerate(rows, 1):
         student = f'{_rtl_text(row.get("full_name") or "Arday aan la aqoon")}<br/><font name="Helvetica-Bold" color="#2E67D1">{escape(str(row.get("student_code") or "-"))}</font>'
         class_name = f'{_rtl_text(row.get("level_name") or "-")}<br/><font name="Helvetica-Bold">{_rtl_text(row.get("class_name") or "-")}</font>'
-        subject_names = "<br/>".join(_rtl_text(subject) for subject in row.get("subjects", [])) or "-"
+        event_lines = []
+        for event in row.get("events", []):
+            date_text = f'{event["date"].strftime("%d/%m/%Y")} · {escape(str(event.get("session") or "Fadhi lama sheegin"))}'
+            if event.get("time"):
+                date_text += f' · {escape(event["time"].strftime("%I:%M %p").lstrip("0"))}'
+            event_lines.append(
+                f'<font name="Helvetica-Bold" color="#2E67D1">{date_text}</font>'
+                f'<br/>{_rtl_text(event.get("hall") or "-")} · '
+                f'{_rtl_text(event.get("level_name") or "-")} / {_rtl_text(event.get("class_name") or "-")}'
+            )
+            for subject in event.get("subjects", []):
+                status = subject.get("status") or "unmarked"
+                color = status_colors.get(status, MUTED.hexval())
+                status_label = _rtl_text(subject.get("status_label") or "Aan la calaamadin")
+                line = (
+                    f'&nbsp;&nbsp; {_rtl_text(subject.get("name") or "Maado aan la aqoon")} '
+                    f'<font name="Helvetica-Bold" color="{color}">- {status_label}</font>'
+                )
+                if subject.get("note"):
+                    line += f'<br/><font name="Helvetica" color="#66758B">&nbsp;&nbsp;&nbsp; Faallo: {_rtl_text(subject["note"])}</font>'
+                event_lines.append(line)
+            event_lines.append("<br/>")
+        event_details = "<br/>".join(event_lines) or "-"
         matrix.append([
             _p(index, styles["cell_num"]),
-            Paragraph(f'{escape(when)}<br/><font name="Helvetica-Bold" color="#2E67D1">{session}</font>', styles["absent_cell"]),
-            _p(row.get("hall") or "-", styles["absent_cell"]),
             Paragraph(student, styles["student"]),
             Paragraph(class_name, styles["absent_cell"]),
-            Paragraph(subject_names, styles["subjects"]),
+            Paragraph(event_details, styles["subjects"]),
         ])
     if len(matrix) == 1:
-        matrix.append([_p("Muddadan arday maqnaansho leh lagama helin.", styles["empty"]), "", "", "", "", ""])
-    widths = [width * fraction for fraction in (0.04, 0.19, 0.13, 0.24, 0.17, 0.23)]
+        matrix.append([_p(empty_message, styles["empty"]), "", "", ""])
+    widths = [width * fraction for fraction in (0.04, 0.22, 0.17, 0.57)]
     table = Table(matrix, colWidths=widths, repeatRows=1, hAlign="LEFT")
     commands = [
         ("BACKGROUND", (0, 0), (-1, 0), NAVY),
@@ -511,7 +547,7 @@ def _absent_table(report, styles, width):
         ("TOPPADDING", (0, 1), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
     ]
-    if len(matrix) == 2 and not report["absent_students"]:
+    if len(matrix) == 2 and not rows:
         commands.extend([("SPAN", (0, 1), (-1, 1)), ("ALIGN", (0, 1), (-1, 1), "LEFT")])
     table.setStyle(_make_styles_table(*commands))
     return table
@@ -584,7 +620,7 @@ def _school_logo(settings, static_root):
 
 
 def build_attendance_summary_pdf(context):
-    """Render the summary and absence register as a premium, printable PDF."""
+    """Render the summary and complete attendance-status register as a PDF."""
     report = context["report"]
     settings = context.get("settings") or {}
     school_name = settings.get("school_name_so") or settings.get("school_name") or "Dugsiyada Caalamiga ah ee Taysiir"
@@ -609,7 +645,7 @@ def build_attendance_summary_pdf(context):
         Spacer(1, 4),
         _metadata(styles, report, width),
         Spacer(1, 4),
-        _kpis(styles, report["totals"], width),
+        _kpis(styles, report["totals"], width, ("present", "late", "absent", "excused", "sick", "emergency", "unmarked")),
         Spacer(1, 5),
         SectionBand(width, "TIROKOOBKA HALL-KA", f'{report["hall_count"]} hall | {report["session_count"]} fadhi', "users", BLUE, styles),
         Spacer(1, 2),
@@ -619,13 +655,52 @@ def build_attendance_summary_pdf(context):
         Spacer(1, 2),
         _day_table(report, styles, width),
         Spacer(1, 3),
-        _p("Arday/fadhi wuxuu qofka mar kale tiriyaa haddii uu ku jiro fadhi ama hall kale. Xaaladaha maqan, joogid iyo fasax waa tirada maadooyinka. Liiska magacyadu wuxuu ku yaal bogga xiga.", styles["footnote"]),
+        _p("Tirooyinka cards-ku waa maado/fadhi. Bogagga faahfaahsan arday kasta hal saf ayuu ku leeyahay qaybta xaaladdiisa; dhammaan taariikhaha, fadhiyada, halls-ka iyo maaddooyinkiisa muddada la doortay ayaa lagu taxay.", styles["footnote"]),
         PageBreak(),
-        PremiumHeader(width, styles, school_name, "LIISKA ARDAYDA MAQNAANSHAHA LEH", subtitle, logo),
+        PremiumHeader(width, styles, school_name, "JOOGID IYO SOO DAAHID", subtitle, logo),
         Spacer(1, 5),
-        SectionBand(width, "ARDAYDA IYO MAADOYINKA LOO CALAAMADEEY MAQAN", f'{len(report["absent_students"])} arday/fadhi', "cross", CORAL, styles),
+        _kpis(styles, report["totals"], width, ("present", "late"), columns=2),
         Spacer(1, 3),
-        _absent_table(report, styles, width),
+        SectionBand(width, "ARDAYDA JOOGIDDA AMA SOO DAAHIDDA LEH", f'{len(report["routine_students"])} arday | {report["routine_event_count"]} diiwaan', "users", TEAL, styles),
+        Spacer(1, 3),
+        _student_attendance_table(
+            report["routine_students"],
+            "Muddadan Joogid ama Soo Daahid laguma diiwaangelin.",
+            styles,
+            width,
+        ),
+        Spacer(1, 3),
+        _p("Arday kasta hal saf ayuu ku leeyahay qaybtaan; dhammaan taariikhaha la doortay ee uu Joogid ama Soo Daahid lahaa ayaa la isu geeyey.", styles["footnote"]),
+        PageBreak(),
+        PremiumHeader(width, styles, school_name, "XAALADAHA KALE EE U BAAHAN DABAGAL", subtitle, logo),
+        Spacer(1, 5),
+        _kpis(styles, report["totals"], width, ("absent", "excused", "sick", "emergency"), columns=4),
+        Spacer(1, 3),
+        SectionBand(width, "MAQAN, CUDUR-DAAR, LA FASAXAY IYO XAALAD DEG-DEG AH", f'{len(report["exception_students"])} arday | {report["exception_event_count"]} diiwaan', "triangle", CORAL, styles),
+        Spacer(1, 3),
+        _student_attendance_table(
+            report["exception_students"],
+            "Muddadan xaalado kale oo dabagal u baahan lagama helin.",
+            styles,
+            width,
+        ),
+        Spacer(1, 3),
+        _p("Arday kasta hal saf ayuu ku leeyahay qaybtaan; dhammaan taariikhaha, fadhiyada, halls-ka iyo maaddooyinka leh xaaladahan ayaa la isu geeyey. Joogid/Soo Daahid halkan kuma jiraan.", styles["footnote"]),
+        PageBreak(),
+        PremiumHeader(width, styles, school_name, "DIIWAANNADA AAN LA CALAAMADIN", subtitle, logo),
+        Spacer(1, 5),
+        _kpis(styles, report["totals"], width, ("unmarked",), columns=4),
+        Spacer(1, 3),
+        SectionBand(width, "XAADIRIN AAN WELI LA GELIN", f'{len(report["unmarked_students"])} arday | {report["unmarked_event_count"]} diiwaan', "clock", MUTED, styles),
+        Spacer(1, 3),
+        _student_attendance_table(
+            report["unmarked_students"],
+            "Diiwaanno aan la calaamadin lagama helin muddadan.",
+            styles,
+            width,
+        ),
+        Spacer(1, 3),
+        _p("Aan la calaamadin macnaheedu ma aha in ardaygu maqnaa; waa xaadirin aan weli nidaamka lagu diiwaangelin.", styles["footnote"]),
     ]
 
     def draw_footer(canvas, document):

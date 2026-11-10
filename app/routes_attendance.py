@@ -22,7 +22,7 @@ from .models import (
 from .permissions import enforce_endpoint_permission
 from .services import get_settings
 from .pdf_rendering import html_report_to_pdf
-from .attendance_summary_pdf import build_attendance_summary_pdf
+from .report_theme import build_attendance_summary_pdf
 from .attendance_rules import NON_SAT_STATUSES, SAT_STATUSES, normalize_attendance_status, scheduled_subject_scope_key
 from .academic_hierarchy import year_classes, year_levels
 from .enrollment_service import (
@@ -44,6 +44,15 @@ ATTENDANCE_STATUSES = [
     {"key": "emergency", "label": "Xaalad degdeg", "cls": "o-emergency", "icon": "fa-triangle-exclamation"},
     {"key": "late", "label": "Soo daahid", "cls": "o-late", "icon": "fa-clock"},
 ]
+ATTENDANCE_REPORT_STATUS_LABELS = {
+    "present": "Joogid",
+    "absent": "Maqan",
+    "excused": "La Fasaxay",
+    "sick": "Cudur-daar",
+    "emergency": "Xaalad deg-deg ah",
+    "late": "Soo Daahid",
+    "unmarked": "Aan la calaamadin",
+}
 
 ATTENDANCE_CLASS_COLORS = [
     "#24406B", "#B8863E", "#2F6B4F", "#A6402F", "#6C4E9E",
@@ -1394,6 +1403,31 @@ def summary_report():
     )
 
 
+@attendance_bp.route("/summary-report/preview")
+def summary_report_preview():
+    context = _attendance_summary_page_context(request.args, force_generate=True)
+    report = context["report"]
+    filter_args = {
+        "academic_year_id": context["selected_year_id"],
+        "exam_scope": context["selected_exam_scope"],
+        "date_from": context["date_from"],
+        "date_to": context["date_to"],
+    }
+    if context["selected_all_halls"]:
+        filter_args["all_halls"] = "1"
+    else:
+        filter_args["hall_ids"] = sorted(context["selected_hall_ids"])
+
+    return render_template(
+        "admin/attendance_summary_preview.html",
+        **context,
+        pdf_url=url_for("admin_attendance.summary_report_pdf", **filter_args) if report else None,
+        download_url=url_for(
+            "admin_attendance.summary_report_pdf", download="1", **filter_args
+        ) if report else None,
+    )
+
+
 @attendance_bp.route("/summary-report.pdf")
 def summary_report_pdf():
     context = _attendance_summary_page_context(request.args, force_generate=True)
@@ -1403,7 +1437,7 @@ def summary_report_pdf():
     return send_file(
         BytesIO(pdf),
         mimetype="application/pdf",
-        as_attachment=True,
+        as_attachment=request.args.get("download") == "1",
         download_name="Warbixinta-Guud-Xaadirinta.pdf",
     )
 
@@ -1553,6 +1587,9 @@ def _attendance_summary_report_data(*, year_id, exam, legacy_exam_type, halls, s
     }
     rows = []
     absent_students = []
+    routine_student_rows = {}
+    exception_student_rows = {}
+    unmarked_student_rows = {}
     hall_totals = {
         hall.id: {"hall": hall.name, "sessions": 0, "unmarked": 0, **{
             key: 0 for key in ("students", "slots", "marked", "absent_students", *status_keys)
@@ -1577,6 +1614,61 @@ def _attendance_summary_report_data(*, year_id, exam, legacy_exam_type, halls, s
             absent_count = 0
             for group in groups:
                 for student in group["students"]:
+                    subject_items = []
+                    for slot in student["slots"]:
+                        status = slot.get("status") or "unmarked"
+                        subject_items.append({
+                            "name": slot.get("subject_name") or "Maado aan la aqoon",
+                            "status": status,
+                            "status_label": ATTENDANCE_REPORT_STATUS_LABELS.get(status, "Aan la calaamadin"),
+                            "status_class": f"status-{status}",
+                            "note": (slot.get("note") or "").strip(),
+                        })
+                    if subject_items:
+                        routine_subject_items = [
+                            subject for subject in subject_items
+                            if subject["status"] in {"present", "late"}
+                        ]
+                        exception_subject_items = [
+                            subject for subject in subject_items
+                            if subject["status"] in {"absent", "excused", "sick", "emergency"}
+                        ]
+                        unmarked_subject_items = [
+                            subject for subject in subject_items
+                            if subject["status"] == "unmarked"
+                        ]
+                        student_identity = student["id"]
+                        student_details = {
+                            "student_id": student_identity,
+                            "student_code": student.get("student_code") or "—",
+                            "full_name": student.get("full_name") or "Arday aan la aqoon",
+                            "level_name": group.get("level_name") or "—",
+                            "class_name": student.get("class_name") or group.get("class_name") or "—",
+                            "events": [],
+                        }
+                        event_details = {
+                            "date": session.session_date,
+                            "session": session.sitting_label,
+                            "time": session.session_time,
+                            "hall": hall.name,
+                            "level_name": group.get("level_name") or "—",
+                            "class_name": student.get("class_name") or group.get("class_name") or "—",
+                        }
+                        for target, selected_subjects in (
+                            (routine_student_rows, routine_subject_items),
+                            (exception_student_rows, exception_subject_items),
+                            (unmarked_student_rows, unmarked_subject_items),
+                        ):
+                            if not selected_subjects:
+                                continue
+                            detail_row = target.setdefault(student_identity, {
+                                **student_details,
+                                "events": [],
+                            })
+                            detail_row["events"].append({
+                                **event_details,
+                                "subjects": selected_subjects,
+                            })
                     absent_subjects = [
                         slot["subject_name"] for slot in student["slots"]
                         if slot.get("status") == "absent"
@@ -1626,15 +1718,53 @@ def _attendance_summary_report_data(*, year_id, exam, legacy_exam_type, halls, s
         row["date"], row["hall"].casefold(), row["class_name"].casefold(),
         row["full_name"].casefold(),
     ))
+    def sorted_student_details(student_map):
+        student_rows = list(student_map.values())
+        for student_row in student_rows:
+            student_row["events"].sort(key=lambda event: (
+                event["date"], event["hall"].casefold(), event["session"].casefold(),
+            ))
+        return sorted(student_rows, key=lambda row: (
+            row["full_name"].casefold(), row["student_code"].casefold(),
+        ))
+
+    routine_students = sorted_student_details(routine_student_rows)
+    exception_students = sorted_student_details(exception_student_rows)
+    unmarked_students = sorted_student_details(unmarked_student_rows)
     totals["unmarked"] = totals["slots"] - totals["marked"]
     for aggregate in [*hall_totals.values(), *day_totals.values()]:
         aggregate["unmarked"] = aggregate["slots"] - aggregate["marked"]
+    status_card_specs = [
+        ("present", "Joogid", "fa-circle-check"),
+        ("late", "Soo Daahid", "fa-clock"),
+        ("absent", "Maqan", "fa-circle-xmark"),
+        ("excused", "La Fasaxay", "fa-file-circle-check"),
+        ("sick", "Cudur-daar", "fa-notes-medical"),
+        ("emergency", "Xaalad deg-deg ah", "fa-triangle-exclamation"),
+        ("unmarked", "Aan la calaamadin", "fa-circle-question"),
+    ]
+    status_cards = [
+        {
+            "key": key,
+            "label": label,
+            "value": totals.get(key, 0),
+            "icon": icon,
+        }
+        for key, label, icon in status_card_specs
+    ]
     return {
         "rows": rows,
         "totals": totals,
+        "status_cards": status_cards,
         "hall_totals": list(hall_totals.values()),
         "day_totals": [day_totals[key] for key in sorted(day_totals)],
         "absent_students": absent_students,
+        "routine_students": routine_students,
+        "exception_students": exception_students,
+        "unmarked_students": unmarked_students,
+        "routine_event_count": sum(len(row["events"]) for row in routine_students),
+        "exception_event_count": sum(len(row["events"]) for row in exception_students),
+        "unmarked_event_count": sum(len(row["events"]) for row in unmarked_students),
         "session_count": len({row["session_id"] for row in rows}),
         "hall_count": len(halls),
         "start_date": start_date,

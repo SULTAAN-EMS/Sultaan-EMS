@@ -1670,6 +1670,34 @@ def result_entry_history():
     )
 
 
+@teachers_bp.route("/result-entry/history/<int:event_id>/delete", methods=["POST"])
+def delete_result_entry_history_event(event_id):
+    event = db.session.get(TeacherResultEvent, event_id)
+    if event is None:
+        abort(404)
+    if request.form.get("confirmation", "").strip() != "TIRTIR":
+        flash("Dhacdada lama tirtirin. Ku qor TIRTIR si aad u xaqiijiso tallaabadan joogtada ah.", "warning")
+    else:
+        audit(
+            "Teacher Result History Event Permanently Deleted",
+            f"Deleted event #{event.id} ({event.event_type}) for {event.teacher_name}; "
+            f"{event.academic_year_name} / {event.exam_name} / {event.class_name} / {event.subject_name}; "
+            f"event date={event.created_at.isoformat() if event.created_at else 'unknown'}. "
+            "Underlying marks, submissions, and official results were not changed.",
+        )
+        db.session.delete(event)
+        db.session.commit()
+        flash("Dhacdada taariikhda si joogto ah ayaa loo tirtiray; dhibcaha iyo natiijooyinka ardaydu ma isbeddelin.", "success")
+
+    filter_args = {
+        key: request.args.get(key, "").strip()
+        for key in ("q", "teacher", "year", "exam", "event_type", "from_date", "to_date")
+    }
+    filter_args = {key: value for key, value in filter_args.items() if value}
+    filter_args["page"] = max(request.args.get("page", 1, type=int) or 1, 1)
+    return redirect(url_for("admin_teachers.result_entry_history", **filter_args))
+
+
 @teachers_bp.route("/result-entry/history/export.xlsx")
 def export_result_entry_history():
     query, filters, _ = _teacher_result_history_query()

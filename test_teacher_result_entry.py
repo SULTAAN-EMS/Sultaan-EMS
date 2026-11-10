@@ -2493,6 +2493,63 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(sheet.max_row, 2)
         self.assertEqual(sheet.cell(2, 2).value, "Qayb ahaan la ansixiyey")
 
+    def test_admin_can_permanently_delete_one_history_event_without_changing_results(self):
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        event = TeacherResultEvent(
+            assignment_id=self.assignment.id,
+            teacher_id=self.teacher.id,
+            actor_user_id=self.admin.id,
+            event_type="submitted",
+            status_from="draft",
+            status_to="submitted",
+            marks_count=1,
+            teacher_name=self.teacher.full_name,
+            teacher_code=self.teacher.teacher_code,
+            actor_name=self.admin.full_name,
+            academic_year_name=self.year.name,
+            exam_name=self.exam.name,
+            class_name=self.school_class.name,
+            subject_name=self.subject.name,
+        )
+        db.session.add(event)
+        db.session.commit()
+        event_id = event.id
+        assignment_id = self.assignment.id
+
+        denied = self.client.post(
+            f"/admin/teachers/result-entry/history/{event_id}/delete",
+            data={"confirmation": "TIRTIR"},
+        )
+        self.assertEqual(denied.status_code, 403)
+        self.assertIsNotNone(db.session.get(TeacherResultEvent, event_id))
+        self.admin.set_permissions(["teachers", "system_settings"])
+        db.session.commit()
+
+        without_confirmation = self.client.post(
+            f"/admin/teachers/result-entry/history/{event_id}/delete?page=2&teacher=Results%20Teacher",
+            data={"confirmation": "delete"},
+            follow_redirects=True,
+        )
+        self.assertEqual(without_confirmation.status_code, 200)
+        self.assertIsNotNone(db.session.get(TeacherResultEvent, event_id))
+        self.assertIn(b"Ku qor TIRTIR", without_confirmation.data)
+
+        deleted = self.client.post(
+            f"/admin/teachers/result-entry/history/{event_id}/delete?page=2&teacher=Results%20Teacher",
+            data={"confirmation": "TIRTIR"},
+            follow_redirects=False,
+        )
+        self.assertEqual(deleted.status_code, 302)
+        self.assertIn("page=2", deleted.headers["Location"])
+        self.assertIn("teacher=Results+Teacher", deleted.headers["Location"])
+        self.assertIsNone(db.session.get(TeacherResultEvent, event_id))
+        self.assertIsNotNone(db.session.get(TeacherResultAssignment, assignment_id))
+        audit_row = AuditLog.query.filter_by(
+            action="Teacher Result History Event Permanently Deleted"
+        ).one()
+        self.assertIn(f"event #{event_id}", audit_row.details)
+        self.assertIn("Underlying marks, submissions, and official results were not changed.", audit_row.details)
+
     def test_admin_can_archive_restore_assignment_and_history_keeps_scope_and_marks(self):
         submission = TeacherResultSubmission(assignment=self.assignment, status="draft")
         db.session.add(submission)

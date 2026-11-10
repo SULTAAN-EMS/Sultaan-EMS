@@ -230,7 +230,7 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(b'<main class="admin-main"', response.data)
         self.assertIn(b'class="attendance-history"', response.data)
 
-    def test_multi_hall_attendance_summary_reports_range_and_absent_students(self):
+    def test_multi_hall_attendance_summary_reports_every_status_and_unmarked_slots(self):
         self.login()
         db.session.merge(Setting(key='logo_path', value='images/qr-landing-school-logo.jpg'))
         db.session.commit()
@@ -245,7 +245,11 @@ class TestHallRosterAndAttendance(unittest.TestCase):
             name='اَلتَّرْبِيَةُ الإِسْلَامِيَّةُ',
             academic_level_id=self.level_sec.id,
         )
-        db.session.add_all([second_hall, second_subject])
+        status_subjects = [
+            Subject(name=f'Status Subject {index}', academic_level_id=self.level_sec.id)
+            for index in range(1, 5)
+        ]
+        db.session.add_all([second_hall, second_subject, *status_subjects])
         db.session.flush()
         db.session.add_all([
             ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student1.id),
@@ -255,7 +259,10 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         db.session.commit()
 
         first_session = self._create_schedule_session(
-            [{'level_id': self.level_sec.id, 'subject_id': self.subject.id}],
+            [
+                {'level_id': self.level_sec.id, 'subject_id': subject_id}
+                for subject_id in [self.subject.id, *(subject.id for subject in status_subjects)]
+            ],
             when=date(2026, 8, 12),
         )
         second_session = self._create_schedule_session(
@@ -281,6 +288,22 @@ class TestHallRosterAndAttendance(unittest.TestCase):
                 exam_type_id=self.exam_type.id,
                 status='absent',
             ),
+            *[
+                AttendanceRecord(
+                    student_id=self.student1.id,
+                    academic_year_id=self.year.id,
+                    exam_hall_id=self.hall.id,
+                    subject_id=subject.id,
+                    exam_session_id=first_session,
+                    exam_type_id=self.exam_type.id,
+                    status=status,
+                    note='Faallo xaaladeed oo tijaabo ah' if status == 'emergency' else None,
+                )
+                for subject, status in zip(
+                    status_subjects,
+                    ('excused', 'sick', 'emergency', 'late'),
+                )
+            ],
             AttendanceRecord(
                 student_id=self.student1.id,
                 academic_year_id=self.year.id,
@@ -301,8 +324,29 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Warbixinta Guud ee Xaadirinta', response.data)
         self.assertIn(b'Summary Report Hall B', response.data)
-        self.assertIn(b'Ardayda maqnaanshaha loo diiwaangeliyey', response.data)
+        self.assertIn(b'Joogid iyo Soo Daahid', response.data)
+        self.assertIn(b'Xaaladaha kale ee u baahan dabagal', response.data)
+        self.assertIn(b'Aan la calaamadin', response.data)
+        self.assertIn(b'1 arday \xc2\xb7 1 diiwaan', response.data)
+        self.assertIn(b'2 arday \xc2\xb7 3 diiwaan', response.data)
+        self.assertIn(b'status-card-grid', response.data)
+        self.assertEqual(response.data.count(b'<strong>Amina Ali</strong>'), 2)
+        routine_section = response.data.split(b'id="routineAttendanceHeading"', 1)[1].split(b'</section>', 1)[0]
+        exception_section = response.data.split(b'id="exceptionAttendanceHeading"', 1)[1].split(b'</section>', 1)[0]
+        self.assertEqual(routine_section.count(b'<strong>Amina Ali</strong>'), 1)
+        self.assertNotIn(b'status-absent', routine_section)
+        self.assertNotIn(b'status-excused', routine_section)
+        self.assertEqual(exception_section.count(b'<strong>Amina Ali</strong>'), 1)
+        self.assertIn(b'12/08/2026', exception_section)
+        self.assertIn(b'13/08/2026', exception_section)
+        self.assertNotIn(b'status-present', exception_section)
+        self.assertNotIn(b'status-late', exception_section)
+        for label in (b'Joogid', b'Maqan', b'La Fasaxay', b'Cudur-daar', b'Xaalad deg-deg ah', b'Soo Daahid', b'Aan la calaamadin'):
+            self.assertIn(label, response.data)
+        self.assertIn(b'Faallo: Faallo xaaladeed oo tijaabo ah', response.data)
         self.assertIn(self.student1.student_code.encode(), response.data)
+        self.assertEqual(response.data.count(self.student1.student_code.encode()), 2)
+        self.assertIn(b'Taariikhaha, hall-ka, fadhiga iyo maaddooyinka', response.data)
         self.assertIn(self.student2.student_code.encode(), response.data)
         self.assertIn(b'12/08/2026', response.data)
         self.assertIn(b'13/08/2026', response.data)
@@ -313,12 +357,28 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertIn(self.hall.name.encode(), hall_only.data)
         self.assertIn(b'1 hall', hall_only.data)
 
-        downloaded = self.client.get(f'/admin/attendance/summary-report.pdf?{query}')
-        self.assertEqual(downloaded.status_code, 200)
-        self.assertEqual(downloaded.mimetype, 'application/pdf')
-        self.assertTrue(downloaded.data.startswith(b'%PDF-'))
-        pdf = PdfReader(BytesIO(downloaded.data))
-        self.assertEqual(len(pdf.pages), 2)
+        preview = self.client.get(f'/admin/attendance/summary-report/preview?{query}')
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn(b'Akhriska warbixinta', preview.data)
+        self.assertIn(b'id="attendancePdfFrame"', preview.data)
+        self.assertIn(b'printAttendancePdf', preview.data)
+        self.assertIn(b'Soo dejiso', preview.data)
+        self.assertIn(b'/admin/attendance/summary-report.pdf?', preview.data)
+        self.assertIn(b'download=1', preview.data)
+        self.assertIn(b'fa-arrow-left', preview.data)
+        self.assertIn(b'fa-print', preview.data)
+        self.assertIn(b'fa-download', preview.data)
+
+        inline_pdf = self.client.get(f'/admin/attendance/summary-report.pdf?{query}')
+        self.assertEqual(inline_pdf.status_code, 200)
+        self.assertEqual(inline_pdf.mimetype, 'application/pdf')
+        self.assertIn('inline;', inline_pdf.headers.get('Content-Disposition', ''))
+        self.assertTrue(inline_pdf.data.startswith(b'%PDF-'))
+        download = self.client.get(f'/admin/attendance/summary-report.pdf?{query}&download=1')
+        self.assertEqual(download.status_code, 200)
+        self.assertIn('attachment;', download.headers.get('Content-Disposition', ''))
+        pdf = PdfReader(BytesIO(inline_pdf.data))
+        self.assertGreaterEqual(len(pdf.pages), 4)
         self.assertAlmostEqual(float(pdf.pages[0].mediabox.width), 841.89, delta=0.2)
         self.assertAlmostEqual(float(pdf.pages[0].mediabox.height), 595.28, delta=0.2)
         logo_xobjects = pdf.pages[0]['/Resources'].get('/XObject')
@@ -327,8 +387,36 @@ class TestHallRosterAndAttendance(unittest.TestCase):
             xobject.get_object().get('/Subtype') == '/Image'
             for xobject in logo_xobjects.get_object().values()
         ))
-        extracted = '\n'.join(page.extract_text() or '' for page in pdf.pages)
+        page_texts = [page.extract_text() or '' for page in pdf.pages]
+        extracted = '\n'.join(page_texts)
+        self.assertTrue(any('JOOGID IYO SOO DAAHID' in page for page in page_texts))
+        self.assertTrue(any('XAALADAHA KALE EE U BAAHAN DABAGAL' in page for page in page_texts))
+        self.assertTrue(any('DIIWAANNADA AAN LA CALAAMADIN' in page for page in page_texts))
+        self.assertIn('Joogid', extracted)
+        self.assertIn('Soo Daahid', extracted)
+        self.assertIn('Cudur-daar', extracted)
+        self.assertIn('Aan la calaamadin', extracted)
+        card_labels = {'MAQAN', 'LA FASAXAY', 'CUDUR-DAAR', 'XAALAD DEG-DEG AH'}
+        card_positions = None
+        for page in pdf.pages:
+            positions = {}
+
+            def capture_card_position(text, _cm, tm, _font, _font_size):
+                label = text.strip()
+                if label in card_labels:
+                    positions[label] = round(tm[5], 2)
+
+            page.extract_text(visitor_text=capture_card_position)
+            if set(positions) == card_labels:
+                card_positions = positions
+                break
+        self.assertIsNotNone(card_positions)
+        self.assertEqual(set(card_positions), card_labels)
+        self.assertEqual(len(set(card_positions.values())), 1)
         self.assertIn(self.student2.student_code, extracted)
+        for label in ('Joogid', 'Maqan', 'La Fasaxay', 'Cudur-daar', 'Xaalad deg-deg ah', 'Soo Daahid', 'Aan la calaamadin'):
+            self.assertIn(label, extracted)
+        self.assertIn('Faallo: Faallo xaaladeed oo tijaabo ah', extracted)
         self.assertNotIn('\u25a0', extracted)
         self.assertTrue(any(0xFE70 <= ord(char) <= 0xFEFF for char in extracted))
 
