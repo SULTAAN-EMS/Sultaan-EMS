@@ -53,6 +53,17 @@ h1{font-size:clamp(1.55rem,7vw,2rem);font-weight:800;line-height:1.15;letter-spa
 .sub svg{width:18px;height:18px;flex:none}
 
 /* CARDS */
+.validity-banner{display:flex;align-items:flex-start;gap:12px;margin:-8px 0 18px;padding:13px 15px;border:1px solid;border-radius:16px;box-shadow:0 12px 28px rgba(5,10,50,.2)}
+.validity-icon{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;border-radius:11px;background:rgba(255,255,255,.72)}
+.validity-icon svg{width:20px;height:20px}
+.validity-copy{min-width:0}
+.validity-copy strong{display:block;font-size:.9rem;font-weight:800;line-height:1.35}
+.validity-copy p{margin:4px 0 0;font-size:.76rem;line-height:1.5;opacity:.88}
+.validity-active{color:#075B42;background:#E9FBF3;border-color:#8CE0BC}
+.validity-scheduled{color:#244b93;background:#edf4ff;border-color:#a9c4fa}
+.validity-expired{color:#7A3F08;background:#FFF4DF;border-color:#F3CD81}
+.validity-inactive{color:#334155;background:#F1F5F9;border-color:#CBD5E1}
+.validity-blocked{color:#8F1D2C;background:#FFF0F1;border-color:#F2B5BC}
 .cards{display:grid;gap:16px}
 .card{
   position:relative;display:block;text-decoration:none;color:var(--ink);background:var(--card);

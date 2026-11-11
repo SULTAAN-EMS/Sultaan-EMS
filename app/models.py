@@ -2296,6 +2296,8 @@ class IdCardIssue(TimestampMixin, db.Model):
     exam_id = db.Column(db.Integer, db.ForeignKey("exams.id", ondelete="SET NULL"), nullable=True, index=True)
     issue_date = db.Column(db.Date, nullable=False)
     expiry_date = db.Column(db.Date)
+    valid_from_at = db.Column(db.DateTime)
+    expires_at = db.Column(db.DateTime)
     status = db.Column(
         db.Enum("Active", "Inactive", "Expired", "Blocked", name="id_card_issue_status_enum"),
         default="Active",
@@ -3047,6 +3049,12 @@ class ExamHall(TimestampMixin, db.Model):
     start_time = db.Column(db.DateTime, nullable=True)
     end_time = db.Column(db.DateTime, nullable=True)
 
+    # The seating plan explicitly adopted for attendance. These are snapshots,
+    # not live foreign keys: changing a later mixer revision must not silently
+    # rewrite the roster used by an already prepared attendance session.
+    attendance_seat_plan_version_id = db.Column(db.Integer, nullable=True)
+    attendance_seat_plan_snapshot_id = db.Column(db.Integer, nullable=True)
+
     exam = db.relationship("Exam", backref=db.backref("hall_exams", lazy="dynamic"))
     exam_type = db.relationship("ExamType", backref=db.backref("legacy_halls", lazy="dynamic"))
     academic_class = db.relationship("AcademicClass", backref=db.backref("halls", lazy="dynamic"))
@@ -3083,6 +3091,14 @@ class ExamHallEnrollment(TimestampMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     exam_hall_id = db.Column(db.Integer, db.ForeignKey("exam_halls.id", ondelete="CASCADE"), nullable=False, index=True)
     student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Point-in-time seat coordinates adopted from a saved Seat Mixer revision.
+    # Kept nullable for existing/manual hall rosters and unseated students.
+    seat_plan_version_id = db.Column(db.Integer, nullable=True)
+    seat_plan_snapshot_id = db.Column(db.Integer, nullable=True)
+    seat_row_number = db.Column(db.Integer, nullable=True)
+    seat_table_number = db.Column(db.Integer, nullable=True)
+    seat_number = db.Column(db.Integer, nullable=True)
 
     exam_hall = db.relationship("ExamHall", backref=db.backref("enrollments", cascade="all, delete-orphan"))
     student = db.relationship("Student", backref=db.backref("hall_enrollments", cascade="all, delete-orphan"))

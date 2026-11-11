@@ -1,11 +1,12 @@
 import secrets
 import calendar
 import re
-from datetime import date
+from datetime import date, datetime, timezone
 from io import BytesIO
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, send_file, url_for
 from flask_login import login_required
@@ -21,6 +22,50 @@ from .services import get_settings
 from .verification import id_card_qr_payload
 
 id_cards_bp = Blueprint("admin_id_cards", __name__)
+SCHOOL_TIMEZONE = ZoneInfo("Africa/Mogadishu")
+
+
+def school_today():
+    """Return today's date using the school's local EAT calendar."""
+    return datetime.now(SCHOOL_TIMEZONE).date()
+
+
+def school_now():
+    return datetime.now(SCHOOL_TIMEZONE)
+
+
+def parse_school_datetime(value):
+    """Parse a datetime-local value as EAT, accepting an explicit offset too."""
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=SCHOOL_TIMEZONE)
+    return parsed.astimezone(SCHOOL_TIMEZONE)
+
+
+def db_utc_datetime(value):
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def school_datetime(value):
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(SCHOOL_TIMEZONE)
+
+
+def format_issue_validity(issue, field):
+    value = issue.valid_from_at if field == "from" else issue.expires_at
+    if value:
+        return school_datetime(value).strftime("%d/%m/%Y · %I:%M %p EAT")
+    value = issue.issue_date if field == "from" else issue.expiry_date
+    return value.strftime("%d/%m/%Y") if value else "-"
 
 ID_CARD_TEMPLATES = {
     "classic": {"primary": "#002060", "accent": "#007bff", "background": "#ffffff", "font": "Segoe UI", "border": "solid", "rounded": "on"},
@@ -98,19 +143,44 @@ def require_login():
 def dashboard():
     if request.method == "POST":
         if request.form.get("action") == "save_validity":
-            raw_issue_months = request.form.get("id_card_issue_months", "").strip()
-            try:
-                issue_months = int(raw_issue_months)
-            except (TypeError, ValueError):
-                issue_months = 0
-            if not 1 <= issue_months <= 120:
-                flash("Muddada ansaxnimadu waa inay u dhexaysaa 1 ilaa 120 bilood.", "danger")
+            validity_mode = request.form.get("id_card_validity_mode", "months").strip().lower()
+            if validity_mode not in {"months", "range"}:
+                flash("Dooro hab ansaxnimo oo sax ah.", "danger")
                 return redirect(url_for("admin_id_cards.dashboard"))
 
-            setting = db.session.get(Setting, "id_card_issue_months") or Setting(key="id_card_issue_months")
-            setting.value = str(issue_months)
-            db.session.add(setting)
-            audit("Settings Changes", f"Updated ID card validity to {issue_months} months")
+            values = {"id_card_validity_mode": validity_mode}
+            if validity_mode == "months":
+                raw_issue_months = request.form.get("id_card_issue_months", "").strip()
+                try:
+                    issue_months = int(raw_issue_months)
+                except (TypeError, ValueError):
+                    issue_months = 0
+                if not 1 <= issue_months <= 120:
+                    flash("Muddada ansaxnimadu waa inay u dhexaysaa 1 ilaa 120 bilood.", "danger")
+                    return redirect(url_for("admin_id_cards.dashboard"))
+                values["id_card_issue_months"] = str(issue_months)
+                audit_message = f"ID card validity set to {issue_months} months"
+            else:
+                valid_from = parse_school_datetime(request.form.get("id_card_valid_from_local"))
+                valid_until = parse_school_datetime(request.form.get("id_card_valid_until_local"))
+                if not valid_from or not valid_until:
+                    flash("Geli taariikhda iyo saacadda bilowga iyo dhammaadka.", "danger")
+                    return redirect(url_for("admin_id_cards.dashboard"))
+                if valid_from >= valid_until:
+                    flash("Waqtiga bilowgu waa inuu ka horreeyaa waqtiga dhammaadka.", "danger")
+                    return redirect(url_for("admin_id_cards.dashboard"))
+                if valid_until <= school_now():
+                    flash("Waqtiga dhammaadku waa inuu mustaqbalka ku jiraa.", "danger")
+                    return redirect(url_for("admin_id_cards.dashboard"))
+                values["id_card_valid_from_local"] = valid_from.strftime("%Y-%m-%dT%H:%M")
+                values["id_card_valid_until_local"] = valid_until.strftime("%Y-%m-%dT%H:%M")
+                audit_message = "ID card validity set to a custom EAT date-time range"
+
+            for key, value in values.items():
+                setting = db.session.get(Setting, key) or Setting(key=key)
+                setting.value = value
+                db.session.add(setting)
+            audit("Settings Changes", audit_message)
             db.session.commit()
             g.pop("_sultaan_settings", None)
             flash("Muddada ansaxnimada waa la kaydiyey.", "success")
@@ -224,6 +294,13 @@ def dashboard():
         for issue in issues
     }
     issue_statuses = {issue.id: effective_issue_status(issue) for issue in issues}
+    issue_validity_labels = {
+        issue.id: {
+            "start": format_issue_validity(issue, "from"),
+            "end": format_issue_validity(issue, "until"),
+        }
+        for issue in issues
+    }
     return render_template(
         "admin/id_cards.html",
         settings=get_settings(),
@@ -232,6 +309,7 @@ def dashboard():
         issues=issues,
         issue_placements=issue_placements,
         issue_statuses=issue_statuses,
+        issue_validity_labels=issue_validity_labels,
         filters=filters,
         selected_exam=selected_exam,
         classes=filter_class_options(option_filters),
@@ -405,6 +483,10 @@ def print_cards():
             "issue": issue,
             "placement": placements_by_scope.get((issue.student_id, issue.academic_year_id), {}),
             "qr": id_card_qr_payload(issue),
+            "validity": {
+                "start": format_issue_validity(issue, "from"),
+                "end": format_issue_validity(issue, "until"),
+            },
         }
         for issue in issues
     ]
@@ -552,8 +634,17 @@ def draw_id_card_pdf(pdf, issue, settings, x, y, w, h, primary, accent, qrcode, 
     pdf.setFont("Helvetica-Bold", 8)
     pdf.drawString(info_x, body_y + 47 * mm, f"ID Number: {issue.student.student_code}")
     pdf.drawString(info_x, body_y + 38 * mm, f"Mother: {(issue.student.mother_name or '-')[:28]}")
-    pdf.drawString(info_x, body_y + 28 * mm, f"Issue Date: {issue.issue_date}")
-    pdf.drawString(info_x, body_y + 20 * mm, f"Expiry Date: {issue.expiry_date or ''}")
+    if issue.valid_from_at and issue.expires_at:
+        start_at = school_datetime(issue.valid_from_at)
+        end_at = school_datetime(issue.expires_at)
+        pdf.setFont("Helvetica-Bold", 6.2)
+        pdf.drawString(info_x, body_y + 29 * mm, f"From: {start_at.strftime('%d/%m/%y')}")
+        pdf.drawString(info_x, body_y + 26 * mm, f"{start_at.strftime('%I:%M %p')} EAT")
+        pdf.drawString(info_x, body_y + 21 * mm, f"Until: {end_at.strftime('%d/%m/%y')}")
+        pdf.drawString(info_x, body_y + 18 * mm, f"{end_at.strftime('%I:%M %p')} EAT")
+    else:
+        pdf.drawString(info_x, body_y + 28 * mm, f"Issue Date: {issue.issue_date}")
+        pdf.drawString(info_x, body_y + 20 * mm, f"Expiry Date: {issue.expiry_date or ''}")
 
     qr = qrcode.make(id_card_qr_payload(issue)["url"])
     buffer = BytesIO()
@@ -596,26 +687,65 @@ def get_or_create_issue(student, academic_year_id=None, exam_id=None):
         exam_id=exam.id,
     ).first()
     settings = get_settings()
-    months = configured_issue_months(settings)
+    validity = configured_issue_validity(settings)
+    today = school_today()
+    if validity["mode"] == "range" and validity["until"] <= school_now():
+        raise EnrollmentValidationError("Muddada gaarka ah way dhammaatay; cusboonaysii taariikhda iyo saacadda ka hor samaynta kaadhadhka.")
     if issue:
-        ensure_issue_dates(issue, months=months)
+        ensure_issue_dates(issue, settings=settings, today=today)
         if issue.status == "Blocked":
             raise EnrollmentValidationError("Kaadhkan waa la xannibay; maamulka ha dib u eego ka hor dib-u-soo-saar.")
-        validity_changed = issue.expiry_date != add_months(issue.issue_date, months)
-        if effective_issue_status(issue) != "Active" or validity_changed:
+        if validity["mode"] == "range":
+            expected_from = db_utc_datetime(validity["from"])
+            expected_until = db_utc_datetime(validity["until"])
+            validity_changed = (
+                issue.valid_from_at != expected_from
+                or issue.expires_at != expected_until
+                or issue.issue_date != validity["from"].date()
+                or issue.expiry_date != validity["until"].date()
+            )
+        else:
+            months = validity["months"]
+            validity_changed = (
+                issue.valid_from_at is not None
+                or issue.expires_at is not None
+                or issue.expiry_date != add_months(issue.issue_date, months)
+            )
+        status = effective_issue_status(issue, today=today)
+        if status in {"Expired", "Inactive"} or validity_changed:
             issue.token = secrets.token_urlsafe(32)
-            issue.issue_date = date.today()
-            issue.expiry_date = add_months(date.today(), months)
+            if validity["mode"] == "range":
+                issue.issue_date = validity["from"].date()
+                issue.expiry_date = validity["until"].date()
+                issue.valid_from_at = db_utc_datetime(validity["from"])
+                issue.expires_at = db_utc_datetime(validity["until"])
+            else:
+                issue.issue_date = today
+                issue.expiry_date = add_months(today, months)
+                issue.valid_from_at = None
+                issue.expires_at = None
             issue.status = "Active"
         return issue
 
+    if validity["mode"] == "range":
+        issue_date = validity["from"].date()
+        expiry_date = validity["until"].date()
+        valid_from_at = db_utc_datetime(validity["from"])
+        expires_at = db_utc_datetime(validity["until"])
+    else:
+        issue_date = today
+        expiry_date = add_months(today, validity["months"])
+        valid_from_at = None
+        expires_at = None
     issue = IdCardIssue(
         token=secrets.token_urlsafe(32),
         student=student,
         academic_year_id=year_id,
         exam_id=exam.id,
-        issue_date=date.today(),
-        expiry_date=add_months(date.today(), months),
+        issue_date=issue_date,
+        expiry_date=expiry_date,
+        valid_from_at=valid_from_at,
+        expires_at=expires_at,
         status="Active",
     )
     db.session.add(issue)
@@ -634,21 +764,46 @@ def configured_issue_months(settings=None):
     return max(1, min(value, 120))
 
 
+def configured_issue_validity(settings=None):
+    settings = settings if settings is not None else get_settings()
+    mode = str(settings.get("id_card_validity_mode") or "months").strip().lower()
+    if mode != "range":
+        return {"mode": "months", "months": configured_issue_months(settings)}
+    valid_from = parse_school_datetime(settings.get("id_card_valid_from_local"))
+    valid_until = parse_school_datetime(settings.get("id_card_valid_until_local"))
+    if not valid_from or not valid_until or valid_from >= valid_until:
+        raise EnrollmentValidationError("Dejinta taariikhda/saacadda kaadhku ma dhammaystirna ama sax ma aha.")
+    return {"mode": "range", "from": valid_from, "until": valid_until}
+
+
 def ensure_issue_dates(issue, *, settings=None, months=None, today=None):
     """Repair missing/invalid dates and mark an active expired card."""
     if not issue:
         return False
-    today = today or date.today()
+    today = today or school_today()
     if months is None:
         months = configured_issue_months(settings)
     changed = False
     if not issue.issue_date:
-        issue.issue_date = issue.created_at.date() if issue.created_at else today
+        created_at = issue.created_at
+        if created_at and created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        issue.issue_date = created_at.astimezone(SCHOOL_TIMEZONE).date() if created_at else today
         changed = True
+    if issue.valid_from_at:
+        local_start_date = school_datetime(issue.valid_from_at).date()
+        if issue.issue_date != local_start_date:
+            issue.issue_date = local_start_date
+            changed = True
+    if issue.expires_at:
+        local_expiry_date = school_datetime(issue.expires_at).date()
+        if issue.expiry_date != local_expiry_date:
+            issue.expiry_date = local_expiry_date
+            changed = True
     if not issue.expiry_date or issue.expiry_date < issue.issue_date:
         issue.expiry_date = add_months(issue.issue_date, months)
         changed = True
-    if issue.status == "Active" and issue.expiry_date < today:
+    if issue.status == "Active" and effective_issue_status(issue, today=today) == "Expired":
         issue.status = "Expired"
         changed = True
     return changed
@@ -713,10 +868,20 @@ def resolve_issue_placement(issue):
     )
 
 
-def effective_issue_status(issue):
+def effective_issue_status(issue, *, today=None, now=None):
     """Return the status a user should see after applying expiry rules."""
-    if issue.expiry_date and issue.expiry_date < date.today() and issue.status == "Active":
-        return "Expired"
+    today = today or school_today()
+    if issue.status == "Active":
+        now = now or school_now()
+        if issue.valid_from_at:
+            valid_from = school_datetime(issue.valid_from_at)
+            if now < valid_from:
+                return "Scheduled"
+        if issue.expires_at:
+            if now >= school_datetime(issue.expires_at):
+                return "Expired"
+        elif issue.expiry_date and issue.expiry_date < today:
+            return "Expired"
     return issue.status
 
 

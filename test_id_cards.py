@@ -1,11 +1,20 @@
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
 
 from sqlalchemy import event
 
 from app import create_app, db
-from app.routes_id_cards import add_months
+from app.routes_id_cards import (
+    SCHOOL_TIMEZONE,
+    add_months,
+    db_utc_datetime,
+    effective_issue_status,
+    ensure_issue_dates,
+    get_or_create_issue,
+    school_now,
+    school_today,
+)
 from app.verification import id_card_qr_payload
 from app.models import (
     AcademicClass,
@@ -177,7 +186,7 @@ class TestIdCards(unittest.TestCase):
             b'data-photo-url="/static/uploads/students/qr-photo.jpg"',
             response.data,
         )
-        self.assertIn(b"qr-landing.css?v=qr-mobile-performance-20261102-3", response.data)
+        self.assertIn(b"qr-landing.css?v=qr-expiry-eat-20261110-2", response.data)
         self.assertIn(b"qr-landing.js?v=qr-mobile-performance-20261102-3", response.data)
 
         stylesheet = self.app.root_path + "/static/css/qr-landing.css"
@@ -399,7 +408,7 @@ class TestIdCards(unittest.TestCase):
         })
         self.assertIn(generated.status_code, (302, 303))
         issue = IdCardIssue.query.filter_by(student_id=self.first_student.id, exam_id=self.exam.id).one()
-        self.assertEqual(issue.expiry_date, add_months(date.today(), 24))
+        self.assertEqual(issue.expiry_date, add_months(school_today(), 24))
 
     def test_validity_setting_rejects_values_outside_supported_range(self):
         for value in ("0", "121", "not-a-number"):
@@ -410,6 +419,105 @@ class TestIdCards(unittest.TestCase):
                 })
                 self.assertIn(response.status_code, (302, 303))
                 self.assertIsNone(db.session.get(Setting, "id_card_issue_months"))
+
+    def test_custom_validity_setting_saves_eat_date_time_range(self):
+        start = (school_now() + timedelta(hours=2)).replace(second=0, microsecond=0)
+        end = start + timedelta(hours=5)
+        response = self.client.post("/admin/id-cards/", data={
+            "action": "save_validity",
+            "id_card_validity_mode": "range",
+            "id_card_valid_from_local": start.strftime("%Y-%m-%dT%H:%M"),
+            "id_card_valid_until_local": end.strftime("%Y-%m-%dT%H:%M"),
+        })
+        self.assertIn(response.status_code, (302, 303))
+        self.assertEqual(db.session.get(Setting, "id_card_validity_mode").value, "range")
+        self.assertEqual(
+            db.session.get(Setting, "id_card_valid_from_local").value,
+            start.strftime("%Y-%m-%dT%H:%M"),
+        )
+        self.assertEqual(
+            db.session.get(Setting, "id_card_valid_until_local").value,
+            end.strftime("%Y-%m-%dT%H:%M"),
+        )
+        page = self.client.get("/admin/id-cards/")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'id="idcValidFrom"', page.data)
+        self.assertIn(b'id="idcValidUntil"', page.data)
+        issue = get_or_create_issue(
+            self.first_student,
+            academic_year_id=self.year.id,
+            exam_id=self.exam.id,
+        )
+        self.assertEqual(issue.issue_date, start.date())
+        self.assertEqual(issue.expiry_date, end.date())
+        self.assertEqual(issue.valid_from_at, db_utc_datetime(start))
+        self.assertEqual(issue.expires_at, db_utc_datetime(end))
+        self.assertEqual(effective_issue_status(issue), "Scheduled")
+
+    def test_custom_validity_rejects_reversed_or_past_end(self):
+        now = school_now().replace(second=0, microsecond=0)
+        invalid_ranges = [
+            (now + timedelta(hours=2), now + timedelta(hours=2)),
+            (now - timedelta(days=2), now - timedelta(days=1)),
+        ]
+        for valid_from, valid_until in invalid_ranges:
+            with self.subTest(valid_from=valid_from, valid_until=valid_until):
+                response = self.client.post("/admin/id-cards/", data={
+                    "action": "save_validity",
+                    "id_card_validity_mode": "range",
+                    "id_card_valid_from_local": valid_from.strftime("%Y-%m-%dT%H:%M"),
+                    "id_card_valid_until_local": valid_until.strftime("%Y-%m-%dT%H:%M"),
+                })
+                self.assertIn(response.status_code, (302, 303))
+                self.assertIsNone(db.session.get(Setting, "id_card_validity_mode"))
+
+    def test_custom_validity_status_has_exact_start_and_end_boundaries(self):
+        start = datetime(2026, 11, 11, 9, 30, tzinfo=SCHOOL_TIMEZONE)
+        end = start + timedelta(hours=2)
+        issue = IdCardIssue(
+            token="custom-window-test-token",
+            student=self.first_student,
+            academic_year=self.year,
+            exam=self.exam,
+            issue_date=start.date(),
+            expiry_date=end.date(),
+            valid_from_at=db_utc_datetime(start),
+            expires_at=db_utc_datetime(end),
+            status="Active",
+        )
+        self.assertEqual(effective_issue_status(issue, now=start - timedelta(microseconds=1)), "Scheduled")
+        self.assertEqual(effective_issue_status(issue, now=start), "Active")
+        self.assertEqual(effective_issue_status(issue, now=end - timedelta(microseconds=1)), "Active")
+        self.assertEqual(effective_issue_status(issue, now=end), "Expired")
+
+    def test_qr_and_verification_show_a_future_custom_validity_window(self):
+        start = (school_now() + timedelta(hours=3)).replace(second=0, microsecond=0)
+        end = start + timedelta(hours=4)
+        issue = IdCardIssue(
+            token="future-custom-window-token",
+            student=self.first_student,
+            academic_year=self.year,
+            exam=self.exam,
+            issue_date=start.date(),
+            expiry_date=end.date(),
+            valid_from_at=db_utc_datetime(start),
+            expires_at=db_utc_datetime(end),
+            status="Active",
+        )
+        db.session.add(issue)
+        db.session.commit()
+
+        landing = self.client.get(f"/qr/{issue.token}")
+        self.assertEqual(landing.status_code, 200)
+        self.assertIn("Kaarku weli ma dhaqan gelin".encode(), landing.data)
+        self.assertIn(start.strftime("%d/%m/%Y · %I:%M %p EAT").encode(), landing.data)
+        self.assertIn(end.strftime("%d/%m/%Y · %I:%M %p EAT").encode(), landing.data)
+        self.assertIn(b"is-disabled", landing.data)
+
+        verification = self.client.get(f"/verify-id/{issue.token}?action=verify")
+        self.assertEqual(verification.status_code, 200)
+        self.assertIn("Xaaladda: Weli ma dhaqan gelin".encode(), verification.data)
+        self.assertIn(b"Wuxuu dhacayaa waqtigaas (EAT).", verification.data)
 
     def test_reissuing_active_card_applies_new_validity_period(self):
         saved = self.client.post("/admin/id-cards/", data={
@@ -439,8 +547,8 @@ class TestIdCards(unittest.TestCase):
         self.assertIn(response.status_code, (302, 303))
 
         refreshed = db.session.get(IdCardIssue, issue.id)
-        self.assertEqual(refreshed.issue_date, date.today())
-        self.assertEqual(refreshed.expiry_date, add_months(date.today(), 6))
+        self.assertEqual(refreshed.issue_date, school_today())
+        self.assertEqual(refreshed.expiry_date, add_months(school_today(), 6))
         self.assertNotEqual(refreshed.token, old_token)
 
     def test_card_qr_opens_action_chooser_and_old_qr_is_kept_compatible(self):
@@ -480,6 +588,38 @@ class TestIdCards(unittest.TestCase):
         )
         self.assertEqual(verify_response.status_code, 200)
         self.assertIn(b"Ardayga Koowaad", verify_response.data)
+
+    def test_expiry_uses_inclusive_school_date_and_qr_shows_expired_status(self):
+        expiry_date = date(2026, 10, 20)
+        issue = IdCardIssue(
+            token="expired-eat-card-token",
+            student=self.first_student,
+            academic_year=self.year,
+            exam=self.exam,
+            issue_date=expiry_date - timedelta(days=30),
+            expiry_date=expiry_date,
+            status="Active",
+        )
+        self.assertFalse(ensure_issue_dates(issue, today=expiry_date))
+        self.assertEqual(effective_issue_status(issue, today=expiry_date), "Active")
+        self.assertTrue(ensure_issue_dates(issue, today=expiry_date + timedelta(days=1)))
+        self.assertEqual(effective_issue_status(issue, today=expiry_date + timedelta(days=1)), "Expired")
+
+        issue.expiry_date = school_today() - timedelta(days=1)
+        issue.issue_date = issue.expiry_date - timedelta(days=30)
+        db.session.add(issue)
+        db.session.commit()
+
+        landing = self.client.get(f"/qr/{issue.token}")
+        self.assertEqual(landing.status_code, 200)
+        self.assertIn("no-store", landing.headers.get("Cache-Control", ""))
+        self.assertIn("Kaarku wuu dhacay".encode(), landing.data)
+        self.assertIn("11:59 PM EAT".encode(), landing.data)
+
+        verification = self.client.get(f"/verify-id/{issue.token}?action=verify")
+        self.assertEqual(verification.status_code, 200)
+        self.assertIn("Xaaladda: Wuu dhacay".encode(), verification.data)
+        self.assertIn("XILLIGA DHICIDDA".encode(), verification.data)
 
     def test_same_card_qr_shows_seat_added_after_card_was_issued(self):
         issue = IdCardIssue(
@@ -539,7 +679,7 @@ class TestIdCards(unittest.TestCase):
         self.assertIn("Safka 1aad ee".encode(), verify_after_seating.data)
         self.assertIn("Miis 2 · Kursi 1".encode(), verify_after_seating.data)
         self.assertIn(b"exam-seat-info", verify_after_seating.data)
-        self.assertIn(b"verification-id.css?v=seat-location-20261016-3", verify_after_seating.data)
+        self.assertIn(b"verification-id.css?v=id-expiry-eat-20261110-2", verify_after_seating.data)
 
     def test_scoped_exam_only_shows_and_generates_students_in_its_configured_class(self):
         second_legacy_class = AcademicClass(

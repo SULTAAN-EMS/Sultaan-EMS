@@ -13,9 +13,9 @@ import json
 import re
 from zoneinfo import ZoneInfo
 
-from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import joinedload
 
 from . import db
@@ -29,6 +29,7 @@ from .models import (
     ExamHall,
     ExamHallEnrollment,
     ExamHallVersion,
+    ExamType,
     IdCardIssue,
     SeatAssignment,
     SeatMixerAssignment,
@@ -36,7 +37,12 @@ from .models import (
     Setting,
     Student,
 )
-from .enrollment_service import EnrollmentValidationError, enrollment_placement_for_student, student_enrollment_legacy_scope_query
+from .enrollment_service import (
+    EnrollmentValidationError,
+    enrollment_placement_for_student,
+    resolve_student_placements,
+    student_enrollment_legacy_scope_query,
+)
 from .academic_hierarchy import year_classes, year_levels
 from .permissions import enforce_endpoint_permission
 from .verification import id_card_qr_payload
@@ -596,6 +602,201 @@ def snapshot_payload(snapshot):
         "last_meta": str(payload.get("last_meta") or "Saved layout"),
         "academic_year_id": optional_scope_id(payload.get("academic_year_id")),
         "exam_id": optional_scope_id(payload.get("exam_id")),
+    }
+
+
+def seat_mixer_attendance_plan(version):
+    """Resolve and validate the exact saved revision proposed for attendance."""
+    hall = version.hall
+    scope_error = seat_mixer_scope_error(hall, require_active_exam=True)
+    if scope_error:
+        raise ValueError(scope_error)
+    if not hall.is_active:
+        raise ValueError("Hall-kan imtixaanku hadda ma shaqaynayo.")
+
+    snapshot_id = current_snapshot_id(version.id)
+    if not snapshot_id:
+        snapshot = (
+            SeatMixerSaveSnapshot.query
+            .filter_by(version_id=version.id)
+            .order_by(SeatMixerSaveSnapshot.created_at.desc(), SeatMixerSaveSnapshot.id.desc())
+            .first()
+        )
+        snapshot_id = snapshot.id if snapshot else None
+    snapshot = SeatMixerSaveSnapshot.query.filter_by(
+        id=snapshot_id,
+        version_id=version.id,
+    ).first() if snapshot_id else None
+    if not snapshot:
+        raise ValueError("Marka hore kaydi qorshaha kuraasta; qorshe aan la kaydin xaadirinta looma gudbin karo.")
+
+    layout = snapshot_payload(snapshot)
+    if not layout:
+        raise ValueError("Qorshaha la kaydiyey lama akhrin karo. Dib u kaydi Seat Mixer-ka.")
+    year_id = seat_mixer_hall_year_id(hall)
+    if layout.get("academic_year_id") != year_id or layout.get("exam_id") != hall.exam_id:
+        raise ValueError("Sannad-dugsiyeedka ama imtixaanka qorshuhu kuma waafaqsana hall-kan.")
+
+    selected_students = layout["selected_students"]
+    student_ids = []
+    for class_key, class_student_ids in selected_students.items():
+        try:
+            class_id = int(class_key)
+        except (TypeError, ValueError):
+            raise ValueError("Qorshaha kuraastu wuxuu leeyahay fasal aan sax ahayn.")
+        for student_id in class_student_ids:
+            if student_id not in student_ids:
+                student_ids.append(student_id)
+    for assignment in layout["assignments"]:
+        if assignment["student_id"] not in student_ids:
+            student_ids.append(assignment["student_id"])
+    if not student_ids:
+        raise ValueError("Qorshaha la kaydiyey kuma jiraan arday. Xulo arday oo mar kale kaydi.")
+
+    validate_seat_mixer_students(student_ids, year_id)
+    students = Student.query.filter(Student.id.in_(student_ids)).all()
+    students_by_id = {student.id: student for student in students}
+    placements = resolve_student_placements((student, year_id) for student in students)
+    valid_class_ids = {
+        int(item["id"])
+        for level in seat_mixer_levels_for_year(year_id)
+        for item in level["classes"]
+    }
+    for class_key, class_student_ids in selected_students.items():
+        class_id = int(class_key)
+        if class_id not in valid_class_ids:
+            raise ValueError("Fasal qorshaha ku jira kama diiwaangashana sannad-dugsiyeedkan.")
+        for student_id in class_student_ids:
+            student = students_by_id.get(student_id)
+            placement = placements.get((student_id, year_id)) or {}
+            actual_class_id = placement.get("academic_class_id") or getattr(student, "academic_class_id", None)
+            if actual_class_id and int(actual_class_id) != class_id:
+                name = student.full_name if student else f"Arday #{student_id}"
+                raise ValueError(f"{name} fasalka uu sanadkan ku jiro wuu ka duwan yahay fasalka qorshaha.")
+
+    seats_by_student = {
+        item["student_id"]: item
+        for item in layout["assignments"]
+    }
+    return {
+        "hall": hall,
+        "version": version,
+        "snapshot": snapshot,
+        "year_id": year_id,
+        "student_ids": student_ids,
+        "students_by_id": students_by_id,
+        "placements": placements,
+        "seats_by_student": seats_by_student,
+    }
+
+
+def seat_mixer_same_exam_hall_filters(hall):
+    """Match canonical and legacy halls belonging to the same examination."""
+    if hall.exam_id:
+        filters = [ExamHall.exam_id == hall.exam_id]
+        if hall.exam:
+            legacy_exam_type = ExamType.query.filter_by(
+                academic_year_id=hall.exam.academic_year_id,
+                name=hall.exam.name,
+            ).first()
+            if legacy_exam_type:
+                filters.append(and_(
+                    ExamHall.exam_id.is_(None),
+                    ExamHall.exam_type_id == legacy_exam_type.id,
+                ))
+        return filters
+    if hall.exam_type_id:
+        return [ExamHall.exam_type_id == hall.exam_type_id]
+    return [ExamHall.id == hall.id]
+
+
+def seat_mixer_attendance_sync_preview(plan):
+    """Compare a saved layout with hall attendance enrollment without writes."""
+    hall = plan["hall"]
+    student_ids = plan["student_ids"]
+    current_rows = ExamHallEnrollment.query.filter_by(exam_hall_id=hall.id).all()
+    current_by_student = {row.student_id: row for row in current_rows}
+    incoming = set(student_ids)
+    other_rows = (
+        ExamHallEnrollment.query
+        .join(ExamHall, ExamHallEnrollment.exam_hall_id == ExamHall.id)
+        .filter(
+            ExamHallEnrollment.student_id.in_(student_ids),
+            ExamHallEnrollment.exam_hall_id != hall.id,
+            ExamHall.is_active.is_(True),
+            or_(*seat_mixer_same_exam_hall_filters(hall)),
+        )
+        .options(joinedload(ExamHallEnrollment.exam_hall))
+        .all()
+    ) if student_ids else []
+    other_pairs = {(row.student_id, row.exam_hall_id) for row in other_rows}
+    other_record_pairs = set()
+    if other_pairs:
+        other_records = AttendanceRecord.query.filter(
+            AttendanceRecord.student_id.in_({student_id for student_id, _ in other_pairs}),
+            AttendanceRecord.exam_hall_id.in_({hall_id for _, hall_id in other_pairs}),
+        ).all()
+        other_record_pairs = {
+            (record.student_id, record.exam_hall_id)
+            for record in other_records
+        }
+
+    transfers = []
+    blockers = []
+    for row in other_rows:
+        student = plan["students_by_id"].get(row.student_id)
+        hall_name = row.exam_hall.name if row.exam_hall else f"Hall #{row.exam_hall_id}"
+        item = {
+            "student_id": row.student_id,
+            "student_name": student.full_name if student else f"Arday #{row.student_id}",
+            "hall_name": hall_name,
+        }
+        if (row.student_id, row.exam_hall_id) in other_record_pairs:
+            blockers.append(item)
+        else:
+            transfers.append(item)
+
+    extras = [
+        {
+            "student_id": row.student_id,
+            "student_name": row.student.full_name if row.student else f"Arday #{row.student_id}",
+        }
+        for row in current_rows
+        if row.student_id not in incoming
+    ]
+    academic_year = db.session.get(AcademicYear, plan["year_id"])
+    return {
+        "success": True,
+        "hall_id": hall.id,
+        "hall_name": hall.name,
+        "academic_year_id": plan["year_id"],
+        "academic_year_name": academic_year.name if academic_year else "",
+        "exam_id": hall.exam_id,
+        "exam_name": hall.exam.name,
+        "version_id": plan["version"].id,
+        "version_label": plan["version"].label,
+        "snapshot_id": plan["snapshot"].id,
+        "student_count": len(student_ids),
+        "seated_count": len(plan["seats_by_student"]),
+        "unseated_count": len(student_ids) - len(plan["seats_by_student"]),
+        "new_count": len(incoming - set(current_by_student)),
+        "already_in_hall_count": len(incoming & set(current_by_student)),
+        "transfer_count": len(transfers),
+        "kept_outside_plan": extras,
+        "transfer_students": transfers,
+        "blocked_students": blockers,
+        "students": [
+            {
+                "student_id": student_id,
+                "student_code": getattr(plan["students_by_id"].get(student_id), "student_code", ""),
+                "student_name": getattr(plan["students_by_id"].get(student_id), "full_name", f"Arday #{student_id}"),
+                "class_name": (plan["placements"].get((student_id, plan["year_id"])) or {}).get("class_name", ""),
+                "seat": plan["seats_by_student"].get(student_id),
+                "already_in_hall": student_id in current_by_student,
+            }
+            for student_id in student_ids
+        ],
+        "can_sync": not blockers,
     }
 
 
@@ -1545,6 +1746,136 @@ def api_save():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
+
+@seat_mixer_bp.route("/api/version/<int:version_id>/attendance-sync", methods=["GET", "POST"])
+def api_attendance_sync(version_id):
+    """Preview or explicitly sync a saved seating roster into hall attendance."""
+    version = db.session.get(ExamHallVersion, version_id) or abort(404)
+    try:
+        plan = seat_mixer_attendance_plan(version)
+    except (ValueError, EnrollmentValidationError) as exc:
+        return jsonify({"success": False, "error": str(exc)}), 409
+
+    preview = seat_mixer_attendance_sync_preview(plan)
+    if request.method == "GET":
+        return jsonify(preview)
+
+    data = request.get_json(silent=True) or {}
+    try:
+        requested_snapshot_id = int(data.get("snapshot_id"))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "Dib u eeg qorshaha kuraasta ka hor xaqiijinta."}), 400
+    if requested_snapshot_id != plan["snapshot"].id:
+        return jsonify({"success": False, "error": "Qorshaha kuraastu wuu isbeddelay. Dib u fur hordhaca oo mar kale xaqiiji."}), 409
+
+    hall = plan["hall"]
+    same_exam_filters = seat_mixer_same_exam_hall_filters(hall)
+    locked_halls = (
+        ExamHall.query
+        .filter(ExamHall.is_active.is_(True), or_(*same_exam_filters))
+        .order_by(ExamHall.id.asc())
+        .with_for_update()
+        .all()
+    )
+    if hall.id not in {item.id for item in locked_halls}:
+        return jsonify({"success": False, "error": "Hall-kan imtixaanku hadda ma shaqaynayo."}), 409
+    if current_snapshot_id(version.id) != requested_snapshot_id:
+        db.session.rollback()
+        return jsonify({"success": False, "error": "Qorshaha la kaydiyey wuu isbeddelay intii hordhacu furnaa. Dib u eeg qorshaha cusub."}), 409
+
+    # Attendance writers take the same hall-row lock, so this recheck cannot
+    # race with a mark being saved while an unmarked enrollment is transferred.
+    preview = seat_mixer_attendance_sync_preview(plan)
+    if preview["blocked_students"]:
+        names = ", ".join(item["student_name"] for item in preview["blocked_students"][:5])
+        suffix = " iyo arday kale" if len(preview["blocked_students"]) > 5 else ""
+        return jsonify({
+            "success": False,
+            "error": f"Isku-waafajintu way istaagtay: arday leh xaadirin hore ayaa hall kale ku jira ({names}{suffix}). Diiwaankaas marka hore si gaar ah u eeg.",
+            "blocked_students": preview["blocked_students"],
+        }), 409
+
+    transfer_rows = (
+        ExamHallEnrollment.query
+        .join(ExamHall, ExamHallEnrollment.exam_hall_id == ExamHall.id)
+        .filter(
+            ExamHallEnrollment.student_id.in_(plan["student_ids"]),
+            ExamHallEnrollment.exam_hall_id != hall.id,
+            ExamHall.is_active.is_(True),
+            or_(*same_exam_filters),
+        )
+        .with_for_update()
+        .all()
+    )
+    transfer_pairs = {(row.student_id, row.exam_hall_id) for row in transfer_rows}
+    if transfer_pairs:
+        existing_records = AttendanceRecord.query.filter(
+            AttendanceRecord.student_id.in_({student_id for student_id, _ in transfer_pairs}),
+            AttendanceRecord.exam_hall_id.in_({hall_id for _, hall_id in transfer_pairs}),
+        ).with_for_update().all()
+        existing_record_pairs = {
+            (record.student_id, record.exam_hall_id)
+            for record in existing_records
+        }
+        if transfer_pairs & existing_record_pairs:
+            db.session.rollback()
+            return jsonify({
+                "success": False,
+                "error": "Isku-waafajintu way istaagtay: xaadirin ayaa la diiwaangeliyey intii hordhacu furnaa. Dib u eeg xogta hall-ka kale.",
+            }), 409
+
+    try:
+        for row in transfer_rows:
+            db.session.delete(row)
+
+        existing_target = {
+            row.student_id: row
+            for row in ExamHallEnrollment.query
+            .filter_by(exam_hall_id=hall.id)
+            .with_for_update()
+            .all()
+        }
+        added_count = 0
+        for student_id in plan["student_ids"]:
+            enrollment = existing_target.get(student_id)
+            if enrollment is None:
+                enrollment = ExamHallEnrollment(exam_hall_id=hall.id, student_id=student_id)
+                db.session.add(enrollment)
+                added_count += 1
+            seat = plan["seats_by_student"].get(student_id)
+            enrollment.seat_plan_version_id = version.id
+            enrollment.seat_plan_snapshot_id = plan["snapshot"].id
+            enrollment.seat_row_number = seat["row"] if seat else None
+            enrollment.seat_table_number = seat["table"] if seat else None
+            enrollment.seat_number = seat["seat"] if seat else None
+
+        hall.attendance_seat_plan_version_id = version.id
+        hall.attendance_seat_plan_snapshot_id = plan["snapshot"].id
+        audit(
+            "Seat Mixer Attendance",
+            f"Synced saved plan {plan['snapshot'].id} for '{hall.name}' to attendance: {len(plan['student_ids'])} students, {added_count} added, {len(transfer_rows)} moved.",
+        )
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "snapshot_id": plan["snapshot"].id,
+            "student_count": len(plan["student_ids"]),
+            "added_count": added_count,
+            "transferred_count": len(transfer_rows),
+            "kept_outside_plan_count": len(preview["kept_outside_plan"]),
+            "unseated_count": preview["unseated_count"],
+            "attendance_url": url_for(
+                "admin_attendance.dashboard",
+                academic_year_id=plan["year_id"],
+                exam_id=hall.exam_id,
+                exam_hall_id=hall.id,
+            ),
+        })
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception("Seat Mixer attendance sync failed for version %s", version_id)
+        return jsonify({"success": False, "error": "Qorshaha xaadirinta lama isku-waafajin. Xogtii hore lama beddelin; fadlan mar kale isku day."}), 500
 
 
 @seat_mixer_bp.route("/api/version/<int:version_id>/history")

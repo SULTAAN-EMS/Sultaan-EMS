@@ -52,24 +52,28 @@ function renderBuilder(){const panel=document.getElementById('builderPanel');if(
 async function saveSubjects(){if(!activeSession||savingSubjects)return;const sessionId=activeSession.id,assignments=[...assignmentKeys].map(key=>{const [level_id,subject_id]=key.split(':');return {level_id:Number(level_id),subject_id:Number(subject_id)};});savingSubjects=true;document.getElementById('yearSelect').disabled=true;document.getElementById('examSelect').disabled=true;renderBuilder();try{const data=await api(`/admin/attendance/api/sessions/${sessionId}/subjects`,{method:'PUT',body:JSON.stringify({assignments})});if(Number(activeSession?.id)!==Number(sessionId))return;const savedSession=data.session;sessions=sessions.map(session=>Number(session.id)===Number(sessionId)?savedSession:session);activeSession=savedSession;assignmentKeys=new Set((savedSession.assignments||[]).map(item=>`${item.level_id}:${item.subject_id}`));savingSubjects=false;renderSessions(sessionId);renderBuilder();persistTimetableSelection(sessionId);toast('Maadooyinka jadwalka si sax ah ayaa loo kaydiyey.');}catch(error){savingSubjects=false;renderBuilder();const saveState=document.querySelector('#builderPanel #saveState');if(saveState){saveState.textContent=error.message||'Kaydintu way fashilantay.';saveState.classList.add('dirty');}toast(error.message,true);}finally{savingSubjects=false;const yearSelect=document.getElementById('yearSelect'),examSelect=document.getElementById('examSelect');if(yearSelect)yearSelect.disabled=false;if(examSelect)examSelect.disabled=false;}}
 document.getElementById('createSessionForm').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;try{const data=await api('/admin/attendance/api/sessions',{method:'POST',body:JSON.stringify({academic_year_id:document.getElementById('yearSelect').value,...scope(),date:document.getElementById('sessionDate').value,time:document.getElementById('sessionTime').value,sitting_label:document.getElementById('sessionLabel').value})});sessions=[...sessions.filter(session=>Number(session.id)!==Number(data.session.id)),data.session];activeSession=data.session;assignmentKeys.clear();persistTimetableSelection(data.session.id);renderSessions(data.session.id);renderBuilder();form.reset();toast('Fadhi cusub si sax ah ayaa loo sameeyey.');await loadTimetable(data.session.id);}catch(error){toast(error.message,true);}});
 function forgetSavedSession(sessionId){const preferences=readTimetablePreferences(),exam=selectedExam(),key=sessionPreferenceKey(document.getElementById('yearSelect').value,exam);preferences.sessions={...(preferences.sessions||{})};if(String(preferences.sessions[key])===String(sessionId))delete preferences.sessions[key];saveTimetablePreferences(preferences);}
-function openDelete(){deleteTarget=activeSession;document.getElementById('deleteModal').classList.add('show');document.getElementById('deleteModal').setAttribute('aria-hidden','false');}
+function restoreDeleteControls(){const modal=document.getElementById('deleteModal'),button=document.getElementById('confirmDelete'),cancel=document.getElementById('cancelDelete');deletingSession=false;modal.setAttribute('aria-busy','false');button.disabled=false;button.innerHTML='<i class="fa-solid fa-trash"></i> Tirtir';cancel.disabled=false;}
+function openDelete(){if(deletingSession||!activeSession)return;deleteTarget={id:Number(activeSession.id)};restoreDeleteControls();document.getElementById('deleteModal').classList.add('show');document.getElementById('deleteModal').setAttribute('aria-hidden','false');}
 function closeDelete(){if(deletingSession)return;deleteTarget=null;document.getElementById('deleteModal').classList.remove('show');document.getElementById('deleteModal').setAttribute('aria-hidden','true');}
 document.getElementById('cancelDelete').addEventListener('click',closeDelete);
 document.getElementById('deleteModal').addEventListener('click',event=>{if(event.target===event.currentTarget&&!deletingSession)closeDelete();});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!deletingSession)closeDelete();});
 document.getElementById('confirmDelete').addEventListener('click',async event=>{
   if(!deleteTarget||deletingSession)return;
-  const deletedId=deleteTarget.id,button=event.currentTarget,cancel=document.getElementById('cancelDelete');
+  const deletedId=Number(deleteTarget.id),button=event.currentTarget,cancel=document.getElementById('cancelDelete'),modal=document.getElementById('deleteModal');
   deletingSession=true;button.disabled=true;cancel.disabled=true;button.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Tirtiraya...';
-  document.getElementById('deleteModal').setAttribute('aria-busy','true');
+  modal.setAttribute('aria-busy','true');
   try{
     await api(`/admin/attendance/api/sessions/${deletedId}`,{method:'DELETE'});
-    forgetSavedSession(deletedId);sessions=sessions.filter(session=>Number(session.id)!==Number(deletedId));activeSession=null;assignmentKeys.clear();
-    deletingSession=false;document.getElementById('deleteModal').setAttribute('aria-busy','false');closeDelete();
-    renderSessions();renderBuilder();persistTimetableSelection();toast('Fadhiga jadwalka si sax ah ayaa loo tirtiray.');await loadTimetable();
+    forgetSavedSession(deletedId);sessions=sessions.filter(session=>Number(session.id)!==deletedId);deleteTarget=null;
+    modal.classList.remove('show');modal.setAttribute('aria-hidden','true');
+    const preferredId=savedSessionForCurrentScope(),nextSession=sessions.find(session=>Number(session.id)===Number(preferredId))||sessions[0]||null;
+    if(nextSession)selectSession(nextSession.id);else{activeSession=null;assignmentKeys.clear();renderSessions();renderBuilder();persistTimetableSelection();}
+    toast('Fadhiga jadwalka si sax ah ayaa loo tirtiray.');
   }catch(error){
-    deletingSession=false;button.disabled=false;cancel.disabled=false;button.innerHTML='<i class="fa-solid fa-trash"></i> Tirtir';
-    document.getElementById('deleteModal').setAttribute('aria-busy','false');toast(error.message,true);
+    toast(error.message,true);
+  }finally{
+    restoreDeleteControls();
   }
 });
 document.getElementById('yearSelect').addEventListener('change',async()=>{activeSession=null;sessions=[];assignmentKeys.clear();renderSessions();renderBuilder();const yearId=document.getElementById('yearSelect').value;if(!await loadExamTypes(examPreferenceForYear(yearId)))return;persistTimetableSelection();await loadTimetable(savedSessionForCurrentScope());});

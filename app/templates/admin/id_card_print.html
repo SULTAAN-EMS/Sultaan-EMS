@@ -525,9 +525,9 @@
                   </div>
                   <div class="info-row compact">
                     <div class="info-icon"><i class="fa-solid fa-calendar-days"></i></div>
-                    <div><span>TR BIXIDDA</span><strong>{{ issue.issue_date }}</strong></div>
+                    <div><span>TR BIXIDDA</span><strong>{{ item.validity.start }}</strong></div>
                     <div class="info-icon"><i class="fa-solid fa-calendar-check"></i></div>
-                    <div><span>TR DHICIDDA</span><strong>{{ issue.expiry_date or '' }}</strong></div>
+                    <div><span>TR DHICIDDA</span><strong>{{ item.validity.end }}</strong></div>
                   </div>
                 </div>
 

@@ -47,6 +47,9 @@
   .att-scope .note-label{display:block;margin-top:8px;color:#566176;font-size:10px;font-weight:800;}.att-scope .attendance-note{display:block;width:100%;min-height:52px;resize:vertical;margin-top:5px;padding:8px 10px;border:1px solid #D8D2C5;border-radius:8px;background:#fff;color:#25324A;font:500 11.5px/1.4 Inter, sans-serif;}.att-scope .attendance-note:focus{outline:3px solid rgba(124,58,237,.18);border-color:#7C3AED;}.att-scope .note-actions{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px;color:#778196;font-size:10px;}.att-scope .note-save{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border:1px solid #D9C9F7;border-radius:7px;background:#F8F4FF;color:#68439D;font:700 10.5px Inter,sans-serif;cursor:pointer;}.att-scope .note-save:hover:not(:disabled){background:#EEE5FF;}.att-scope .note-save:disabled{opacity:.48;cursor:not-allowed;}
   .att-scope .hint-bar{padding:12px 20px;font-size:11.5px;color:var(--slate);background:var(--paper-2);border-top:1px solid var(--line);}.att-scope .exports-bar{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;}
   @media(max-width:900px){.att-scope .stepper{grid-template-columns:1fr 1fr;}.att-scope .roster-row{flex-direction:column;align-items:flex-start;}.att-scope .student-info,.att-scope .student-subjects{width:100%;}}@media(max-width:600px){.att-scope .stepper{grid-template-columns:minmax(0,1fr);}.att-scope .step{min-width:0;}.att-scope .step .field{min-width:0;}.att-scope .step select{font-size:14px;}.att-scope .statusrow{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:100%;}.att-scope .opt{justify-content:center;}.att-scope .level-head{padding:11px 13px;}.att-scope .student-subjects{min-width:0;grid-template-columns:1fr;}}
+  .att-scope .seat-plan-chip{display:inline-flex;align-items:center;gap:5px;width:max-content;max-width:100%;margin-top:5px;padding:3px 7px;border:1px solid #B9DDD5;border-radius:7px;background:#F0FAF7;color:#17665C;font:700 9.5px/1.35 'IBM Plex Mono',monospace;white-space:normal;}
+  .att-scope .seat-plan-chip.old{border-color:#D7DCE5;background:#F4F6F9;color:#667085;}
+  .att-scope .seat-plan-chip.unseated{border-color:#F1D39A;background:#FFF8E8;color:#87520C;}
 </style>
 <style>
   .att-scope .roster-loading{display:flex;align-items:center;justify-content:center;gap:10px;min-height:120px;padding:24px;color:#40516F;font-size:13px;font-weight:700;}
@@ -108,7 +111,9 @@ function renderStudentRow(student){
   const row=document.createElement('div');row.className='roster-row';
   const avatarStyle=student.photo_url?`background-image:url('${student.photo_url}')`:`background-color:${colorFor(student.id)}`;
   const avatarText=student.photo_url?'':initials(student.full_name),cColor=classColor(student);
-  row.innerHTML=`<div class="student-info"><span class="avatar" style="${avatarStyle}">${escapeHtml(avatarText)}</span><div class="snames"><span class="sid">${escapeHtml(student.student_code)}</span><span class="sname">${escapeHtml(student.full_name)}</span><span class="sclass" style="background:${cColor};">${escapeHtml(student.class_name)}</span></div></div><div class="student-subjects"></div>`;
+  const seatClass=student.seat_label==='Kursi looma qoondeyn'?'unseated':(student.seat_plan_current?'current':'old');
+  const seatChip=student.seat_label?`<span class="seat-plan-chip ${seatClass}"><i class="fa-solid fa-chair" aria-hidden="true"></i>${escapeHtml(student.seat_label)}</span>`:'';
+  row.innerHTML=`<div class="student-info"><span class="avatar" style="${avatarStyle}">${escapeHtml(avatarText)}</span><div class="snames"><span class="sid">${escapeHtml(student.student_code)}</span><span class="sname">${escapeHtml(student.full_name)}</span><span class="sclass" style="background:${cColor};">${escapeHtml(student.class_name)}</span>${seatChip}</div></div><div class="student-subjects"></div>`;
   const subjects=row.querySelector('.student-subjects');
   if(!(student.slots||[]).length){subjects.innerHTML='<div class="subject-slot"><div class="subject-slot-head"><i class="fa-solid fa-circle-info"></i>Maado jadwal lama dejin heerkan</div></div>';return row;}
   student.slots.forEach(slot=>{

@@ -309,6 +309,11 @@ def attendance_record_for(
     return None
 
 
+def lock_attendance_hall(hall_id):
+    """Serialize attendance writes with administrative roster transfers."""
+    return ExamHall.query.filter_by(id=hall_id, is_active=True).with_for_update().first()
+
+
 def legacy_school_class_id(student, class_name=None, class_cache=None):
     """Provide the legacy class link required by older attendance schemas."""
     if student.class_id and not class_name:
@@ -689,6 +694,32 @@ def exam_subject_available_for_student(scope, student, placement, subject_id):
     return subject_id in scope["subjects_by_level"].get(year_level_id, set())
 
 
+def attendance_seat_payload(hall, enrollment):
+    if not enrollment:
+        return {"seat_label": None, "seat_plan_current": False}
+    has_seat = all(value is not None for value in (
+        enrollment.seat_row_number,
+        enrollment.seat_table_number,
+        enrollment.seat_number,
+    ))
+    is_current = bool(
+        hall.attendance_seat_plan_snapshot_id
+        and enrollment.seat_plan_snapshot_id == hall.attendance_seat_plan_snapshot_id
+    )
+    if has_seat:
+        prefix = "" if is_current else "Qorshe hore · "
+        seat_label = (
+            f"{prefix}Saf {enrollment.seat_row_number + 1} · "
+            f"Miis {enrollment.seat_table_number + 1} · "
+            f"Kursi {enrollment.seat_number + 1}"
+        )
+    elif is_current:
+        seat_label = "Kursi looma qoondeyn"
+    else:
+        seat_label = None
+    return {"seat_label": seat_label, "seat_plan_current": is_current}
+
+
 def session_attendance_payload(hall, session, allowed_pairs=None, class_subject_scope=None, prefetched=None):
     """Build the timetable-driven attendance roster grouped by student level/class."""
     class_subject_scope = class_subject_scope or year_class_exam_subject_scope(session.academic_year_id)
@@ -704,7 +735,32 @@ def session_attendance_payload(hall, session, allowed_pairs=None, class_subject_
         subjects_by_level = prefetched["subjects_by_session"].get(session.id, {})
         enrollment_rows = prefetched["enrollments_by_hall"].get(hall.id, [])
     student_ids = [row.student_id for row in enrollment_rows]
-    student_order = {student_id: index for index, student_id in enumerate(student_ids)}
+    enrollment_by_student = {row.student_id: row for row in enrollment_rows}
+
+    def attendance_order_key(student_id, fallback_index):
+        enrollment = enrollment_by_student.get(student_id)
+        uses_selected_plan = bool(
+            enrollment
+            and hall.attendance_seat_plan_snapshot_id
+            and enrollment.seat_plan_snapshot_id == hall.attendance_seat_plan_snapshot_id
+            and enrollment.seat_row_number is not None
+            and enrollment.seat_table_number is not None
+            and enrollment.seat_number is not None
+        )
+        if uses_selected_plan:
+            return (
+                0,
+                enrollment.seat_row_number,
+                enrollment.seat_table_number,
+                enrollment.seat_number,
+                fallback_index,
+            )
+        return (1, fallback_index, 0, 0, fallback_index)
+
+    student_order = {
+        student_id: attendance_order_key(student_id, index)
+        for index, student_id in enumerate(student_ids)
+    }
     if prefetched is None:
         students = (
             student_enrollment_scope_query(session.academic_year_id)
@@ -779,7 +835,7 @@ def session_attendance_payload(hall, session, allowed_pairs=None, class_subject_
             ],
             "students": [],
         })
-        assigned_order = student_order.get(student.id, len(student_order))
+        assigned_order = student_order.get(student.id, (1, len(student_order), 0, 0, len(student_order)))
         group_order[key] = min(group_order.get(key, assigned_order), assigned_order)
         slots = []
         for subject in slot_subjects:
@@ -803,6 +859,7 @@ def session_attendance_payload(hall, session, allowed_pairs=None, class_subject_
             "class_name": class_name,
             "academic_class_id": placement.get("academic_class_id") or student.academic_class_id,
             "photo_url": stored_photo_url(student.photo_path),
+            **attendance_seat_payload(hall, enrollment_by_student.get(student.id)),
             "slots": slots,
         })
 
@@ -2994,7 +3051,9 @@ def api_attendance_data():
         .order_by(ExamHallEnrollment.created_at, ExamHallEnrollment.id)
         .all()
     )
+    enrollment_by_student = {enrollment.student_id: enrollment for enrollment in enrollments}
     enrolled_student_ids = [e.student_id for e in enrollments]
+    fallback_order = {student_id: index for index, student_id in enumerate(enrolled_student_ids)}
 
     scoped_students = (
         student_enrollment_scope_query(year_id)
@@ -3008,6 +3067,21 @@ def api_attendance_data():
         for student_id in enrolled_student_ids
         if student_id in scoped_students_by_id
     ]
+
+    def legacy_attendance_order(student):
+        enrollment = enrollment_by_student.get(student.id)
+        seat = attendance_seat_payload(hall, enrollment)
+        if seat["seat_plan_current"] and seat["seat_label"] not in (None, "Kursi looma qoondeyn"):
+            return (
+                0,
+                enrollment.seat_row_number,
+                enrollment.seat_table_number,
+                enrollment.seat_number,
+                fallback_order.get(student.id, 0),
+            )
+        return (1, fallback_order.get(student.id, 0), 0, 0, 0)
+
+    students_raw.sort(key=legacy_attendance_order)
     class_subject_scope = year_class_exam_subject_scope(year_id)
     placements = resolve_student_placements((student, year_id) for student in students_raw)
 
@@ -3054,6 +3128,7 @@ def api_attendance_data():
             "status": st_val,
             "note": saved_record.get("note", ""),
             "scope_applicable": scope_applicable,
+            **attendance_seat_payload(hall, enrollment_by_student.get(s.id)),
         })
 
     return jsonify({
@@ -3118,6 +3193,9 @@ def api_mark_status():
             exam_session = None
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
+
+    if not lock_attendance_hall(hall.id):
+        return jsonify({"success": False, "error": "Hall-ka imtixaanku hadda ma shaqaynayo."}), 409
 
     if not exam_session and subject_id not in {subject.id for subject in hall_subjects(hall)}:
         return jsonify({"success": False, "error": "Maadadani kuma jirto hall exam-kan."}), 400
@@ -3430,6 +3508,8 @@ def api_mark_bulk():
                 exam_hall_id,
                 exam_session_id,
             )
+            if not lock_attendance_hall(hall.id):
+                return jsonify({"success": False, "error": "Hall-ka imtixaanku hadda ma shaqaynayo."}), 409
             result = mark_session_bulk_attendance(
                 hall=hall,
                 exam=exam,
@@ -3445,6 +3525,9 @@ def api_mark_bulk():
         hall, exam, legacy_exam_type = hall_context(year_id, exam_id, exam_type_id, exam_hall_id)
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
+
+    if not lock_attendance_hall(hall.id):
+        return jsonify({"success": False, "error": "Hall-ka imtixaanku hadda ma shaqaynayo."}), 409
 
     if subject_id not in {subject.id for subject in hall_subjects(hall)}:
         return jsonify({"success": False, "error": "Maadadani kuma jirto hall exam-kan."}), 400

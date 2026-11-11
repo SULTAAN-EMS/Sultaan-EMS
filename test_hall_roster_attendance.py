@@ -1700,6 +1700,45 @@ class TestHallRosterAndAttendance(unittest.TestCase):
             [self.student3_form2.id, self.student2.id, self.student1.id],
         )
 
+    def test_attendance_roster_uses_synced_seats_for_order_and_labels(self):
+        self.login()
+        db.session.add_all([
+            ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student3_form2.id),
+            ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student2.id),
+            ExamHallEnrollment(exam_hall_id=self.hall.id, student_id=self.student1.id),
+        ])
+        db.session.flush()
+        self.hall.attendance_seat_plan_version_id = 4
+        self.hall.attendance_seat_plan_snapshot_id = 77
+        seat_positions = {
+            self.student1.id: (1, 0, 0),
+            self.student2.id: (0, 0, 0),
+        }
+        for enrollment in ExamHallEnrollment.query.filter_by(exam_hall_id=self.hall.id).all():
+            enrollment.seat_plan_version_id = 4
+            enrollment.seat_plan_snapshot_id = 77
+            position = seat_positions.get(enrollment.student_id)
+            if position:
+                enrollment.seat_row_number, enrollment.seat_table_number, enrollment.seat_number = position
+        db.session.commit()
+
+        response = self.client.get(
+            f'/admin/attendance/api/attendance-data?academic_year_id={self.year.id}'
+            f'&exam_type_id={self.exam_type.id}&exam_hall_id={self.hall.id}'
+            f'&subject_id={self.subject.id}'
+        )
+        payload = response.get_json()
+        self.assertTrue(payload['success'], payload)
+        students = payload['students']
+        self.assertEqual(
+            [student['id'] for student in students],
+            [self.student2.id, self.student1.id, self.student3_form2.id],
+        )
+        by_id = {student['id']: student for student in students}
+        self.assertEqual(by_id[self.student2.id]['seat_label'], 'Saf 1 · Miis 1 · Kursi 1')
+        self.assertEqual(by_id[self.student1.id]['seat_label'], 'Saf 2 · Miis 1 · Kursi 1')
+        self.assertEqual(by_id[self.student3_form2.id]['seat_label'], 'Kursi looma qoondeyn')
+
     def test_m1_year_enrollment_controls_session_visibility_over_legacy_student_level(self):
         """A current-year enrollment must override a stale legacy student level when loading sessions."""
         self.login()

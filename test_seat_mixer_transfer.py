@@ -23,6 +23,7 @@ from app.models import (
 from app.routes_seat_mixer import (
     api_restore_history_snapshot,
     api_save,
+    api_attendance_sync,
     get_school_name,
     set_current_snapshot_id,
 )
@@ -190,6 +191,119 @@ class SeatMixerTransferTests(unittest.TestCase):
             result = api_save()
         return result if isinstance(result, tuple) else (result, 200)
 
+    def _save_target_layout(self):
+        snapshot = SeatMixerSaveSnapshot(
+            version_id=self.target_version.id,
+            snapshot_json=json.dumps({
+                "config": {"rows": 2, "tablesPerRow": 2, "seatsPerTable": 2},
+                "assignments": [{"student_id": self.student.id, "row": 1, "table": 1, "seat": 0}],
+                "selected_students": {str(self.academic_class.id): [self.student.id]},
+                "last_meta": "Saved target plan",
+                "academic_year_id": self.year.id,
+                "exam_id": self.exam.id,
+            }),
+            integrity_score=100,
+            near_adjacency_count=0,
+            placed_count=1,
+        )
+        db.session.add(snapshot)
+        db.session.flush()
+        set_current_snapshot_id(self.target_version.id, snapshot.id)
+        db.session.commit()
+        return snapshot
+
+    def _call_attendance_sync(self, method="GET", snapshot_id=None):
+        payload = {"snapshot_id": snapshot_id} if snapshot_id is not None else None
+        with self.app.test_request_context(
+            f"/admin/seat-mixer/api/version/{self.target_version.id}/attendance-sync",
+            method=method,
+            json=payload,
+        ):
+            result = api_attendance_sync(self.target_version.id)
+        return result if isinstance(result, tuple) else (result, 200)
+
+    def test_attendance_sync_previews_then_imports_roster_and_seat_without_marking_status(self):
+        snapshot = self._save_target_layout()
+
+        preview, status = self._call_attendance_sync()
+        self.assertEqual(status, 200, preview.get_json())
+        data = preview.get_json()
+        self.assertEqual(data["snapshot_id"], snapshot.id)
+        self.assertEqual(data["student_count"], 1)
+        self.assertEqual(data["new_count"], 1)
+        self.assertEqual(data["seated_count"], 1)
+        self.assertTrue(data["can_sync"])
+        self.assertEqual(ExamHallEnrollment.query.filter_by(exam_hall_id=self.target_hall.id).count(), 0)
+
+        synced, status = self._call_attendance_sync("POST", snapshot.id)
+        self.assertEqual(status, 200, synced.get_json())
+        result = synced.get_json()
+        self.assertEqual(result["added_count"], 1)
+        self.assertIn("exam_hall_id=", result["attendance_url"])
+        enrollment = ExamHallEnrollment.query.filter_by(
+            exam_hall_id=self.target_hall.id,
+            student_id=self.student.id,
+        ).one()
+        self.assertEqual(enrollment.seat_plan_version_id, self.target_version.id)
+        self.assertEqual(enrollment.seat_plan_snapshot_id, snapshot.id)
+        self.assertEqual((enrollment.seat_row_number, enrollment.seat_table_number, enrollment.seat_number), (1, 1, 0))
+        self.assertEqual(self.target_hall.attendance_seat_plan_snapshot_id, snapshot.id)
+        self.assertEqual(AttendanceRecord.query.filter_by(exam_hall_id=self.target_hall.id).count(), 0)
+
+        repeated, status = self._call_attendance_sync("POST", snapshot.id)
+        self.assertEqual(status, 200, repeated.get_json())
+        self.assertEqual(repeated.get_json()["added_count"], 0)
+        self.assertEqual(ExamHallEnrollment.query.filter_by(exam_hall_id=self.target_hall.id).count(), 1)
+
+    def test_attendance_sync_moves_unmarked_enrollment_but_blocks_existing_attendance(self):
+        snapshot = self._save_target_layout()
+        db.session.add(ExamHallEnrollment(exam_hall_id=self.source_hall.id, student_id=self.student.id))
+        db.session.commit()
+
+        preview, status = self._call_attendance_sync()
+        self.assertEqual(status, 200, preview.get_json())
+        self.assertEqual(preview.get_json()["transfer_count"], 1)
+        synced, status = self._call_attendance_sync("POST", snapshot.id)
+        self.assertEqual(status, 200, synced.get_json())
+        self.assertEqual(ExamHallEnrollment.query.filter_by(exam_hall_id=self.source_hall.id).count(), 0)
+        self.assertEqual(ExamHallEnrollment.query.filter_by(exam_hall_id=self.target_hall.id).count(), 1)
+
+        db.session.add(ExamHallEnrollment(exam_hall_id=self.source_hall.id, student_id=self.student.id))
+        db.session.add(AttendanceRecord(
+            student_id=self.student.id,
+            academic_year_id=self.year.id,
+            exam_hall_id=self.source_hall.id,
+            exam_id=self.exam.id,
+            status="present",
+        ))
+        db.session.commit()
+        blocked_preview, status = self._call_attendance_sync()
+        self.assertEqual(status, 200)
+        self.assertFalse(blocked_preview.get_json()["can_sync"])
+        blocked, status = self._call_attendance_sync("POST", snapshot.id)
+        self.assertEqual(status, 409)
+        self.assertIn("xaadirin", blocked.get_json()["error"])
+        self.assertEqual(ExamHallEnrollment.query.filter_by(exam_hall_id=self.source_hall.id).count(), 1)
+
+    def test_attendance_sync_rejects_a_plan_replaced_after_preview(self):
+        snapshot = self._save_target_layout()
+        replacement = SeatMixerSaveSnapshot(
+            version_id=self.target_version.id,
+            snapshot_json=snapshot.snapshot_json,
+            integrity_score=100,
+            near_adjacency_count=0,
+            placed_count=1,
+        )
+        db.session.add(replacement)
+        db.session.flush()
+        set_current_snapshot_id(self.target_version.id, replacement.id)
+        db.session.commit()
+
+        response, status = self._call_attendance_sync("POST", snapshot.id)
+        self.assertEqual(status, 409)
+        self.assertIn("isbeddelay", response.get_json()["error"])
+        self.assertEqual(ExamHallEnrollment.query.filter_by(exam_hall_id=self.target_hall.id).count(), 0)
+
     def test_requires_confirmation_then_moves_active_assignment_once(self):
         response, status = self._call_save(self._payload())
         self.assertEqual(status, 409)
@@ -241,8 +355,10 @@ class SeatMixerTransferTests(unittest.TestCase):
         self.assertIn("FARIIN MUHIIM AH".encode(), response.data)
         self.assertIn("Halakan usoo wareeji".encode(), response.data)
         self.assertIn(b'id="smSaveProgress"', response.data)
+        self.assertIn(b'id="smAttendanceSyncBtn"', response.data)
+        self.assertIn(b'id="smAttendanceSyncOverlay"', response.data)
         self.assertIn("Fadhiga waa la kaydinayaa".encode(), response.data)
-        self.assertIn(b"seat_mixer.js?v=seat-row-sides-20261016-1", response.data)
+        self.assertIn(b"seat_mixer.js?v=seat-attendance-sync-20261110-1", response.data)
 
     def test_hall_delete_preserves_roster_attendance_and_saved_seating(self):
         db.session.add(ExamHallEnrollment(

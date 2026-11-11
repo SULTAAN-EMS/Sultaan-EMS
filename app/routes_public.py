@@ -111,7 +111,11 @@ def prevent_student_result_portal_caching(response):
                 response.status_code,
             )
 
-    if _student_result_portal_endpoint(request.endpoint):
+    if _student_result_portal_endpoint(request.endpoint) or request.endpoint in {
+        "public.qr_landing",
+        "public.verify_id_card",
+        "public.incident_report_form",
+    }:
         return _no_store(response)
     return response
 
@@ -1439,7 +1443,7 @@ def verify_id_card(token):
             landing_args["exam_id"] = exam_id
         return redirect(url_for("public.qr_landing", **landing_args))
 
-    from .routes_id_cards import effective_issue_status, ensure_issue_dates
+    from .routes_id_cards import effective_issue_status, ensure_issue_dates, format_issue_validity
     if ensure_issue_dates(issue, settings=settings):
         db.session.commit()
     status = effective_issue_status(issue)
@@ -1458,6 +1462,12 @@ def verify_id_card(token):
             "message": "Ardeygan waqti xaadirkan wuu firfircoon yahay.",
             "class_name": "status-active",
             "icon": "fa-shield-halved",
+        },
+        "Scheduled": {
+            "label": "Weli ma dhaqan gelin",
+            "message": "Kaarkani wuxuu shaqayn doonaa marka la gaaro waqtiga bilowga loo dejiyey.",
+            "class_name": "status-scheduled",
+            "icon": "fa-calendar-clock",
         },
         "Expired": {
             "label": "Wuu dhacay",
@@ -1533,6 +1543,8 @@ def verify_id_card(token):
         placement=placement,
         display_status=status,
         status_details=status_details,
+        id_card_valid_from_label=format_issue_validity(issue, "from") if issue.valid_from_at else None,
+        id_card_valid_until_label=format_issue_validity(issue, "until") if issue.expires_at else None,
         exam=exam,
         seating=seating,
         scan_return_url=(
@@ -1552,7 +1564,7 @@ def qr_landing(token):
     issue = IdCardIssue.query.filter_by(token=token).first()
     if not issue:
         return render_template("qr_landing.html", settings=settings, token=token, student=None), 404
-    from .routes_id_cards import effective_issue_status, ensure_issue_dates
+    from .routes_id_cards import effective_issue_status, ensure_issue_dates, format_issue_validity
     if ensure_issue_dates(issue, settings=settings):
         db.session.commit()
     requested_exam_id = request.args.get("exam_id", type=int)
@@ -1569,6 +1581,9 @@ def qr_landing(token):
         student=issue.student,
         student_photo_url=student_photo_url,
         id_card_status=effective_issue_status(issue),
+        id_card_expiry_label=issue.expiry_date.strftime("%d/%m/%Y") if issue.expiry_date else None,
+        id_card_valid_from_label=format_issue_validity(issue, "from") if issue.valid_from_at else None,
+        id_card_valid_until_label=format_issue_validity(issue, "until") if issue.expires_at else None,
         qr_exam_id=qr_exam.id if qr_exam else None,
     )
 

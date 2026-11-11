@@ -47,6 +47,43 @@
 
   const validityInput = document.getElementById('idcValidityMonths');
   const validitySummary = document.getElementById('idcValiditySummary');
+  const validityMode = document.getElementById('idcValidityMode');
+  const monthValidity = document.getElementById('idcMonthValidity');
+  const rangeFields = document.getElementById('idcRangeFields');
+  const validFromInput = document.getElementById('idcValidFrom');
+  const validUntilInput = document.getElementById('idcValidUntil');
+  const updateValidityMode = () => {
+    const isRange = validityMode?.value === 'range';
+    if (monthValidity) monthValidity.hidden = isRange;
+    if (rangeFields) rangeFields.hidden = !isRange;
+    if (validityInput) {
+      validityInput.disabled = isRange;
+      validityInput.required = !isRange;
+    }
+    [validFromInput, validUntilInput].forEach((input) => {
+      if (!input) return;
+      input.disabled = !isRange;
+      input.required = isRange;
+    });
+    if (validUntilInput) {
+      validUntilInput.min = isRange && validFromInput?.value ? validFromInput.value : '';
+      validUntilInput.setCustomValidity(
+        isRange && validFromInput?.value && validUntilInput.value && validUntilInput.value <= validFromInput.value
+          ? 'Waqtiga dhammaadku waa inuu ka dambeeyaa waqtiga bilowga.'
+          : ''
+      );
+    }
+    if (validitySummary) {
+      if (isRange && validFromInput?.value && validUntilInput?.value) {
+        validitySummary.textContent = `${validFromInput.value.replace('T', ' ')} ilaa ${validUntilInput.value.replace('T', ' ')} EAT`;
+      } else if (!isRange && validityInput?.value) {
+        validitySummary.textContent = `${validityInput.value} bilood`;
+      }
+    }
+  };
+  validityMode?.addEventListener('change', updateValidityMode);
+  [validFromInput, validUntilInput].forEach((input) => input?.addEventListener('input', updateValidityMode));
+  updateValidityMode();
   if (validityInput) {
     const stepButtons = Array.from(document.querySelectorAll('[data-month-step]'));
     const presetButtons = Array.from(document.querySelectorAll('[data-validity-preset]'));

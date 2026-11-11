@@ -1462,6 +1462,139 @@
     } else {
       el.textContent = '● Unsaved'; el.classList.add('unsaved');
     }
+    var attendanceButton = $('smAttendanceSyncBtn');
+    if (attendanceButton) {
+      var ready = Boolean(combo.currentSnapshotId && combo.savedAssignment && !combo.dirty && !combo.previewSnapshotId && !SM.savingArrangement);
+      attendanceButton.disabled = !ready;
+      attendanceButton.title = ready
+        ? 'Dib u eeg qorshaha kaydsan oo u gudbi xaadirinta hall-kan.'
+        : 'Marka hore kaydi qorshaha hadda jira; taariikh dib-u-eegis ah toos looma adeegsan karo.';
+    }
+  }
+
+  function attendanceSyncSeatText(seat) {
+    return seat ? 'Saf ' + (seat.row + 1) + ' · Miis ' + (seat.table + 1) + ' · Kursi ' + (seat.seat + 1) : 'Kursi looma qoondeyn';
+  }
+
+  function renderAttendanceSyncPreview(data) {
+    var stats = [
+      ['Arday qorshaha ku jira', data.student_count],
+      ['Kuraas loo qoondeeyey', data.seated_count],
+      ['Ku cusub hall-kan', data.new_count],
+      ['Hore ugu jiray', data.already_in_hall_count],
+      ['Hall kale laga wareejinayo', data.transfer_count],
+      ['Kursi aan lahayn', data.unseated_count],
+    ];
+    var html = '<div class="sm-attendance-sync-stats">' + stats.map(function (item) {
+      return '<div class="sm-attendance-sync-stat"><b>' + Number(item[1] || 0) + '</b><span>' + escapeHtml(item[0]) + '</span></div>';
+    }).join('') + '</div>';
+    html += '<div class="sm-attendance-sync-note">' +
+      '<b>' + escapeHtml(data.academic_year_name || '') + ' · ' + escapeHtml(data.exam_name || '') + ' · ' + escapeHtml(data.hall_name || '') + '</b><br>' +
+      'Nooca qorshaha: ' + escapeHtml(data.version_label || '') + ' · Dib-u-eegis kaydsan #' + Number(data.snapshot_id) + '.<br>' +
+      'Isku-waafajintu liiska iyo kuraasta ayay gelinaysaa; xaaladaha xaadirinta kama dhigayso Joogid, mana beddelayso dhibco ama xaadirin hore.' +
+      '</div>';
+    if (data.unseated_count) {
+      html += '<div class="sm-attendance-sync-note warning"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> ' + Number(data.unseated_count) + ' arday qorshaha ku jira kursi looma qoondeyn. Liiska xaadirinta way ku jiri doonaan, digniinta kursiguna way muuqan doontaa.</div>';
+    }
+    if (data.kept_outside_plan && data.kept_outside_plan.length) {
+      var extraNames = data.kept_outside_plan.slice(0, 5).map(function (item) { return escapeHtml(item.student_name); }).join(', ');
+      html += '<div class="sm-attendance-sync-note warning"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> ' +
+        data.kept_outside_plan.length + ' arday oo hore hall-kan ugu jiray kuma jiraan qorshahan; si xog hore loo ilaaliyo lama tirtirayo, waxayna weli ka muuqan doonaan xaadirinta.' +
+        (extraNames ? '<small style="display:block;margin-top:4px">' + extraNames + (data.kept_outside_plan.length > 5 ? ', ...' : '') + '</small>' : '') +
+        '</div>';
+    }
+    if (data.blocked_students && data.blocked_students.length) {
+      var blockers = data.blocked_students.slice(0, 8).map(function (item) {
+        return '<div class="sm-attendance-sync-row"><span><b>' + escapeHtml(item.student_name) + '</b><small>Xaadirin hore ayaa ugu jirta ' + escapeHtml(item.hall_name) + '</small></span></div>';
+      }).join('');
+      html += '<div class="sm-attendance-sync-note error"><b>Isku-waafajinta waa la joojiyey.</b> Ardaydan hall kale ayay ugu leeyihiin diiwaan xaadirin. Diiwaankaas marka hore dib u eeg.</div>';
+      html += '<div class="sm-attendance-sync-list">' + blockers + '</div>';
+    }
+    var listed = (data.students || []).slice(0, 18);
+    if (listed.length) {
+      html += '<div class="sm-attendance-sync-list">' + listed.map(function (item) {
+        return '<div class="sm-attendance-sync-row"><span><b>' + escapeHtml(item.student_code || ('#' + item.student_id)) + ' · ' + escapeHtml(item.student_name) +
+          '</b><small>' + escapeHtml(item.class_name || 'Fasal lama cayimin') + (item.already_in_hall ? ' · Hall-ka wuu ugu jiraa' : ' · Liiska waa lagu dari doonaa') +
+          '</small></span><span class="seat">' + escapeHtml(attendanceSyncSeatText(item.seat)) + '</span></div>';
+      }).join('') + '</div>';
+      if ((data.students || []).length > listed.length) {
+        html += '<div class="sm-attendance-sync-note">' + (data.students.length - listed.length) + ' arday oo kale ayaa ku jira qorshaha; liiska oo dhan waxaa laga arki doonaa bogga xaadirinta.</div>';
+      }
+    }
+    $('smAttendanceSyncContent').innerHTML = html;
+    $('smAttendanceSyncConfirm').disabled = !data.can_sync || !data.student_count;
+    $('smAttendanceSyncStatus').textContent = data.blocked_students && data.blocked_students.length
+      ? 'Marka hore xalli is-waafajinta hall-ka kale.'
+      : (data.can_sync ? 'Dib u eeg faahfaahinta, kadib xaqiiji.' : 'Qorshahan xaadirinta looma gudbin karo.');
+    $('smAttendanceSyncStatus').className = 'sm-attendance-sync-status' + (data.can_sync ? '' : ' error');
+  }
+
+  function openAttendanceSync() {
+    var combo = currentCombo();
+    if (!combo || !combo.currentSnapshotId || !combo.savedAssignment || combo.dirty || combo.previewSnapshotId || SM.savingArrangement) {
+      notify('Marka hore kaydi qorshaha hadda jira; dabadeed ayaad xaadirinta u gudbin kartaa.', 'info');
+      return;
+    }
+    var overlay = $('smAttendanceSyncOverlay');
+    $('smAttendanceSyncCopy').textContent = 'Hordhaca qorshaha kaydsan ayaa la soo qaadanayaa...';
+    $('smAttendanceSyncContent').innerHTML = '<div class="sm-attendance-sync-note"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Xogta sannadka, imtixaanka, hall-ka iyo ardayda ayaa la hubinayaa.</div>';
+    $('smAttendanceSyncStatus').textContent = '';
+    $('smAttendanceSyncConfirm').classList.remove('hidden');
+    $('smAttendanceSyncConfirm').disabled = true;
+    $('smAttendanceSyncOpen').classList.add('hidden');
+    overlay.classList.remove('hidden');
+    requestJson('/admin/seat-mixer/api/version/' + SM.currentVersionId + '/attendance-sync', 'GET')
+      .then(function (data) {
+        SM.attendanceSyncPreview = data;
+        $('smAttendanceSyncCopy').textContent = 'Hubi ardayda iyo kuraasta la soo gelinayo. Xaaladaha xaadirinta iyo diiwaannada hore lama beddelayo.';
+        renderAttendanceSyncPreview(data);
+      })
+      .catch(function (error) {
+        $('smAttendanceSyncCopy').textContent = 'Qorshaha xaadirinta lama diyaarin karo.';
+        $('smAttendanceSyncContent').innerHTML = '<div class="sm-attendance-sync-note error">' + escapeHtml(error.message) + '</div>';
+        $('smAttendanceSyncStatus').textContent = 'Isku-waafajin lama samayn.';
+        $('smAttendanceSyncStatus').className = 'sm-attendance-sync-status error';
+      });
+  }
+
+  function confirmAttendanceSync() {
+    var preview = SM.attendanceSyncPreview;
+    if (!preview || !preview.can_sync || !preview.snapshot_id) return;
+    var button = $('smAttendanceSyncConfirm');
+    button.disabled = true;
+    $('smAttendanceSyncStatus').textContent = 'Liiska hall-ka ayaa la isku-waafajinayaa...';
+    $('smAttendanceSyncStatus').className = 'sm-attendance-sync-status';
+    requestJson('/admin/seat-mixer/api/version/' + preview.version_id + '/attendance-sync', 'POST', {
+      snapshot_id: preview.snapshot_id
+    }).then(function (data) {
+      $('smAttendanceSyncCopy').textContent = 'Qorshaha kuraasta si guul leh ayaa loogu xidhay xaadirinta.';
+      $('smAttendanceSyncContent').innerHTML = '<div class="sm-attendance-sync-note">' +
+        '<b>' + Number(data.student_count) + ' arday</b> ayaa hadda ku jira liiska hall-ka; ' + Number(data.added_count) + ' waa lagu daray.' +
+        (data.transferred_count ? ' ' + Number(data.transferred_count) + ' arday ayaa laga soo wareejiyey hall kale oo aan lahayn diiwaan xaadirin.' : '') +
+        (data.kept_outside_plan_count ? ' ' + Number(data.kept_outside_plan_count) + ' arday oo qorshahan ka maqnaa waa la ilaaliyey.' : '') +
+        '<br><b>Wax xaadirin ah looma calaamadin.</b></div>' +
+        (data.unseated_count ? '<div class="sm-attendance-sync-note warning">' + Number(data.unseated_count) + ' arday ayaan kursi ku lahayn qorshaha la gudbiyey.</div>' : '');
+      $('smAttendanceSyncConfirm').classList.add('hidden');
+      $('smAttendanceSyncCancel').classList.add('hidden');
+      var openButton = $('smAttendanceSyncOpen');
+      openButton.dataset.url = data.attendance_url;
+      openButton.classList.remove('hidden');
+      $('smAttendanceSyncStatus').textContent = 'Qorshaha kaydsan #' + Number(data.snapshot_id) + ' ayaa lagu xidhay xaadirinta.';
+      $('smAttendanceSyncStatus').className = 'sm-attendance-sync-status success';
+      notify('Qorshaha kuraasta waa lagu xidhay xaadirinta; xaalad xaadirin lama calaamadin.', 'success');
+    }).catch(function (error) {
+      $('smAttendanceSyncStatus').textContent = error.message || 'Isku-waafajintu way fashilantay.';
+      $('smAttendanceSyncStatus').className = 'sm-attendance-sync-status error';
+      button.disabled = false;
+    });
+  }
+
+  function closeAttendanceSync() {
+    $('smAttendanceSyncOverlay').classList.add('hidden');
+    $('smAttendanceSyncCancel').classList.remove('hidden');
+    $('smAttendanceSyncConfirm').classList.remove('hidden');
+    $('smAttendanceSyncOpen').classList.add('hidden');
+    SM.attendanceSyncPreview = null;
   }
 
   // ── Modal: open / close / replace ──
@@ -1692,6 +1825,7 @@
   function persistArrangement(combo) {
     if (SM.savingArrangement) return;
     SM.savingArrangement = true;
+    updateSaveBadge(combo);
     showProgressOverlay('Fadhiga waa la kaydinayaa', 'Fadlan u kaadi inta keydintu socoto');
 
     var assignments = [];
@@ -1783,6 +1917,7 @@
       .catch(function (e) { notify('Could not save: ' + e.message, 'error'); })
       .finally(function () {
         SM.savingArrangement = false;
+        updateSaveBadge(combo);
         hideProgressOverlay();
       });
   }
@@ -2242,6 +2377,17 @@
     });
 
     $('smSaveBtn').addEventListener('click', saveArrangement);
+    $('smAttendanceSyncBtn').addEventListener('click', openAttendanceSync);
+    $('smAttendanceSyncConfirm').addEventListener('click', confirmAttendanceSync);
+    $('smAttendanceSyncClose').addEventListener('click', closeAttendanceSync);
+    $('smAttendanceSyncCancel').addEventListener('click', closeAttendanceSync);
+    $('smAttendanceSyncOpen').addEventListener('click', function () {
+      if (this.dataset.url) window.location.href = this.dataset.url;
+    });
+    $('smAttendanceSyncOverlay').addEventListener('click', function (event) {
+      if (event.target === this && !$('smAttendanceSyncOpen').classList.contains('hidden')) closeAttendanceSync();
+      else if (event.target === this && !$('smAttendanceSyncConfirm').disabled) closeAttendanceSync();
+    });
     $('smSaveHistory').addEventListener('click', function (e) {
       var preview = e.target.closest('[data-history-preview]');
       var restore = e.target.closest('[data-history-restore]');

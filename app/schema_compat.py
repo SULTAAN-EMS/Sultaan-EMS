@@ -49,6 +49,10 @@ def ensure_schema_compatibility():
     # Exam-scoped ID cards: old cards remain readable with a NULL exam until
     # an administrator regenerates them with an explicit exam selection.
     add_column_if_missing("id_card_issues", "exam_id", column_sql(dialect, "exam_id", "INTEGER"))
+    # Exact EAT validity bounds are NULL on legacy cards, which retain their
+    # inclusive date-only expiry behavior.
+    add_column_if_missing("id_card_issues", "valid_from_at", column_sql(dialect, "valid_from_at", "DATETIME"))
+    add_column_if_missing("id_card_issues", "expires_at", column_sql(dialect, "expires_at", "DATETIME"))
     add_index_if_missing("id_card_issues", "idx_id_card_issues_exam_id", ["exam_id"])
     add_index_if_missing(
         "id_card_issues",

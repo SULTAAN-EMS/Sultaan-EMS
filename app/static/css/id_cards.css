@@ -275,6 +275,13 @@
 .idc-validity-heading strong { color: var(--idc-ink); font-size: .9rem; }
 .idc-validity-heading small, .idc-validity-footer small { color: var(--idc-muted); font-size: .74rem; line-height: 1.4; }
 .idc-validity-controls { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 9px; }
+.idc-validity-card [hidden] { display: none !important; }
+.idc-validity-mode, .idc-range-fields label { display: grid; gap: 5px; min-width: 0; color: var(--idc-ink); font-size: .72rem; font-weight: 750; }
+.idc-validity-mode > span, .idc-range-fields label > span { display: flex; align-items: center; gap: 6px; }
+.idc-validity-mode > span i, .idc-range-fields label > span i { color: var(--idc-blue); }
+.idc-validity-mode select, .idc-range-fields input { height: 40px; min-width: 0; padding: 0 9px; border: 1px solid #cbded8; border-radius: 7px; background: #fff; color: #263a43; font: inherit; font-size: .78rem; }
+.idc-month-validity { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+.idc-range-fields { display: grid; grid-template-columns: repeat(2, minmax(190px, 1fr)); gap: 9px; width: min(100%, 520px); }
 .idc-month-stepper { display: flex; align-items: center; height: 42px; overflow: hidden; border: 1px solid #cbded8; border-radius: 8px; background: #fff; }
 .idc-month-step { display: grid; flex: 0 0 36px; width: 36px; height: 100%; place-items: center; border: 0; background: transparent; color: #46625d; cursor: pointer; }
 .idc-month-step:hover:not(:disabled) { background: #e8f4ef; color: #087b65; }
@@ -305,6 +312,7 @@
 .idc-issue-student { display: block; margin-top: 3px; color: var(--idc-muted); }
 .idc-status-pill { display: inline-flex; padding: 5px 8px; border: 1px solid #cfe5d8; border-radius: 999px; background: #eff8f2; color: #23704a; font-size: .72rem; font-weight: 750; }
 .idc-status-pill.is-expired { border-color: #f0dbbb; background: #fff7eb; color: #995b13; }
+.idc-status-pill.is-scheduled { border-color: #c9d9ff; background: #eff4ff; color: #3159a8; }
 .idc-row-actions { display: flex; gap: 6px; }
 .idc-row-actions a { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #dce5e4; border-radius: 6px; background: #fff; color: #526a71; }
 .idc-row-actions a:hover { border-color: #a6c7bb; background: #eff7f3; color: var(--idc-green-dark); }
@@ -324,6 +332,7 @@
 .theme-dark .idc-validity-heading strong, .theme-dark .idc-month-stepper input { color: var(--idc-ink); }
 .theme-dark .idc-validity-icon { border-color: #39685a; background: linear-gradient(145deg, #203d34, #27364c); color: #8bd5bb; }
 .theme-dark .idc-month-stepper, .theme-dark .idc-validity-presets button { border-color: #455a55; background: #1d2d2a; color: #d4e2dd; }
+.theme-dark .idc-validity-mode select, .theme-dark .idc-range-fields input { border-color: #455a55; background: #1d2d2a; color: #e5eeec; color-scheme: dark; }
 .theme-dark .idc-month-unit { color: #b6c8c1; }
 .theme-dark .idc-validity-presets button:hover, .theme-dark .idc-validity-presets button[aria-pressed="true"] { border-color: #4b8e76; background: #244739; color: #c9f0df; }
 .theme-dark .idc-validity-footer { border-color: rgba(130, 170, 156, .2); }
@@ -388,6 +397,9 @@
   .idc-designer-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .idc-validity-card { grid-template-columns: 1fr; gap: 12px; }
   .idc-validity-controls { justify-content: flex-start; }
+  .idc-validity-mode, .idc-range-fields { width: 100%; }
+  .idc-month-validity { width: 100%; }
+  .idc-range-fields { grid-template-columns: 1fr; }
   .idc-validity-footer { grid-column: auto; }
   .idc-issue-actions { width: 100%; }
   .idc-issue-actions .idc-button { flex: 1; }
@@ -404,6 +416,9 @@
   .idc-template-grid, .idc-designer-form { grid-template-columns: 1fr; }
   .idc-validity-controls { display: grid; grid-template-columns: 1fr auto; justify-content: stretch; }
   .idc-month-stepper { grid-column: 1 / -1; width: max-content; }
+  .idc-validity-mode, .idc-month-validity, .idc-range-fields { grid-column: 1 / -1; width: 100%; }
+  .idc-month-validity { display: grid; }
+  .idc-range-fields { grid-template-columns: 1fr; }
   .idc-validity-presets { grid-column: 1 / -1; }
   .idc-validity-save { grid-column: 1 / -1; width: 100%; }
   .idc-validity-footer { align-items: flex-start; }
