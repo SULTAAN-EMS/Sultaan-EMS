@@ -689,46 +689,56 @@ def exam_subject_available_for_student(scope, student, placement, subject_id):
     return subject_id in scope["subjects_by_level"].get(year_level_id, set())
 
 
-def session_attendance_payload(hall, session, allowed_pairs=None, class_subject_scope=None):
+def session_attendance_payload(hall, session, allowed_pairs=None, class_subject_scope=None, prefetched=None):
     """Build the timetable-driven attendance roster grouped by student level/class."""
     class_subject_scope = class_subject_scope or year_class_exam_subject_scope(session.academic_year_id)
-    subjects_by_level = subjects_by_session_level(session, allowed_pairs)
-    enrollment_rows = (
-        ExamHallEnrollment.query
-        .filter_by(exam_hall_id=hall.id)
-        .order_by(ExamHallEnrollment.created_at, ExamHallEnrollment.id)
-        .all()
-    )
+    if prefetched is None:
+        subjects_by_level = subjects_by_session_level(session, allowed_pairs)
+        enrollment_rows = (
+            ExamHallEnrollment.query
+            .filter_by(exam_hall_id=hall.id)
+            .order_by(ExamHallEnrollment.created_at, ExamHallEnrollment.id)
+            .all()
+        )
+    else:
+        subjects_by_level = prefetched["subjects_by_session"].get(session.id, {})
+        enrollment_rows = prefetched["enrollments_by_hall"].get(hall.id, [])
     student_ids = [row.student_id for row in enrollment_rows]
     student_order = {student_id: index for index, student_id in enumerate(student_ids)}
-    students = (
-        student_enrollment_scope_query(session.academic_year_id)
-        .filter(Student.id.in_(student_ids))
-        .options(
-            joinedload(Student.academic_class),
-            joinedload(Student.school_class),
-            joinedload(Student.academic_section),
+    if prefetched is None:
+        students = (
+            student_enrollment_scope_query(session.academic_year_id)
+            .filter(Student.id.in_(student_ids))
+            .options(
+                joinedload(Student.academic_class),
+                joinedload(Student.school_class),
+                joinedload(Student.academic_section),
+            )
+            .all()
+            if student_ids else []
         )
-        .all()
-        if student_ids else []
-    )
-    placements = resolve_student_placements(
-        (student, session.academic_year_id) for student in students
-    )
-    level_ids = {
-        placement.get("academic_level_id")
-        for placement in placements.values()
-        if placement and placement.get("academic_level_id")
-    }
-    levels_by_id = {
-        level.id: level
-        for level in AcademicLevel.query.filter(AcademicLevel.id.in_(level_ids)).all()
-    } if level_ids else {}
-    records = (
-        AttendanceRecord.query
-        .filter_by(exam_hall_id=hall.id, exam_session_id=session.id)
-        .all()
-    )
+        placements = resolve_student_placements(
+            (student, session.academic_year_id) for student in students
+        )
+        level_ids = {
+            placement.get("academic_level_id")
+            for placement in placements.values()
+            if placement and placement.get("academic_level_id")
+        }
+        levels_by_id = {
+            level.id: level
+            for level in AcademicLevel.query.filter(AcademicLevel.id.in_(level_ids)).all()
+        } if level_ids else {}
+        records = (
+            AttendanceRecord.query
+            .filter_by(exam_hall_id=hall.id, exam_session_id=session.id)
+            .all()
+        )
+    else:
+        students = prefetched["students_by_hall"].get(hall.id, [])
+        placements = prefetched["placements"]
+        levels_by_id = prefetched["levels_by_id"]
+        records = prefetched["records_by_hall_session"].get((hall.id, session.id), [])
     record_map = {
         (record.student_id, record.subject_id): {
             "status": normalize_attendance_status(record.status),
@@ -1405,8 +1415,9 @@ def summary_report():
 
 @attendance_bp.route("/summary-report/preview")
 def summary_report_preview():
-    context = _attendance_summary_page_context(request.args, force_generate=True)
-    report = context["report"]
+    context = _attendance_summary_page_context(
+        request.args, force_generate=True, build_report=False
+    )
     filter_args = {
         "academic_year_id": context["selected_year_id"],
         "exam_scope": context["selected_exam_scope"],
@@ -1421,10 +1432,10 @@ def summary_report_preview():
     return render_template(
         "admin/attendance_summary_preview.html",
         **context,
-        pdf_url=url_for("admin_attendance.summary_report_pdf", **filter_args) if report else None,
+        pdf_url=url_for("admin_attendance.summary_report_pdf", **filter_args) if context["report_ready"] else None,
         download_url=url_for(
             "admin_attendance.summary_report_pdf", download="1", **filter_args
-        ) if report else None,
+        ) if context["report_ready"] else None,
     )
 
 
@@ -1442,7 +1453,7 @@ def summary_report_pdf():
     )
 
 
-def _attendance_summary_page_context(args, force_generate=False):
+def _attendance_summary_page_context(args, force_generate=False, build_report=True):
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
     current_year = AcademicYear.query.filter_by(is_current=True).first()
     year_id = args.get("academic_year_id", type=int)
@@ -1533,7 +1544,8 @@ def _attendance_summary_page_context(args, force_generate=False):
         filter_errors.append("Imtixaankan kuma jiro hall firfircoon.")
 
     report = None
-    if generate and not filter_errors:
+    report_ready = generate and not filter_errors
+    if report_ready and build_report:
         report = _attendance_summary_report_data(
             year_id=year_id,
             exam=exam,
@@ -1556,6 +1568,9 @@ def _attendance_summary_page_context(args, force_generate=False):
         "date_to": end_date_value,
         "filter_errors": filter_errors,
         "report": report,
+        "report_ready": report_ready,
+        "selected_year": db.session.get(AcademicYear, year_id) if year_id else None,
+        "selected_exam_name": exam.name if exam else legacy_exam_type.name if legacy_exam_type else "",
         "settings": get_settings(),
         "today": date.today(),
     }
@@ -1568,14 +1583,8 @@ def _attendance_summary_report_data(*, year_id, exam, legacy_exam_type, halls, s
     ]
     _, allowed_pairs = timetable_level_scope(year_id, exam=exam)
     class_subject_scope = year_class_exam_subject_scope(year_id)
-    hall_session_ids = {
-        hall.id: {
-            session.id for session in sessions_for_attendance_hall(
-                year_id, exam, legacy_exam_type, hall
-            )
-        }
-        for hall in halls
-    }
+    prefetched = _attendance_summary_prefetch(year_id, sessions, halls, allowed_pairs)
+    hall_session_ids = prefetched["hall_session_ids"]
     status_keys = [item["key"] for item in ATTENDANCE_STATUSES]
     totals = {
         "students": 0,
@@ -1603,7 +1612,7 @@ def _attendance_summary_report_data(*, year_id, exam, legacy_exam_type, halls, s
             if session.id not in hall_session_ids[hall.id]:
                 continue
             groups, tallies = session_attendance_payload(
-                hall, session, allowed_pairs, class_subject_scope
+                hall, session, allowed_pairs, class_subject_scope, prefetched=prefetched
             )
             students = [student for group in groups for student in group["students"]]
             slot_count = sum(len(student["slots"]) for student in students)
@@ -1772,6 +1781,171 @@ def _attendance_summary_report_data(*, year_id, exam, legacy_exam_type, halls, s
         "year": db.session.get(AcademicYear, year_id),
         "exam_name": exam.name if exam else legacy_exam_type.name,
         "hall_names": sorted({hall.name for hall in halls}, key=str.casefold),
+    }
+
+
+def _attendance_summary_prefetch(year_id, sessions, halls, allowed_pairs):
+    """Load the shared report roster and attendance inputs in bounded queries."""
+    hall_ids = [hall.id for hall in halls]
+    session_ids = [session.id for session in sessions]
+    enrollments_by_hall = {hall_id: [] for hall_id in hall_ids}
+    if hall_ids:
+        enrollment_rows = (
+            ExamHallEnrollment.query
+            .filter(ExamHallEnrollment.exam_hall_id.in_(hall_ids))
+            .order_by(
+                ExamHallEnrollment.exam_hall_id,
+                ExamHallEnrollment.created_at,
+                ExamHallEnrollment.id,
+            )
+            .all()
+        )
+        for enrollment in enrollment_rows:
+            enrollments_by_hall.setdefault(enrollment.exam_hall_id, []).append(enrollment)
+
+    student_ids = list(dict.fromkeys(
+        enrollment.student_id
+        for rows in enrollments_by_hall.values()
+        for enrollment in rows
+    ))
+    students_by_id = {
+        student.id: student
+        for student in (
+            student_enrollment_scope_query(year_id)
+            .filter(Student.id.in_(student_ids))
+            .options(
+                joinedload(Student.academic_class),
+                joinedload(Student.school_class),
+                joinedload(Student.academic_section),
+            )
+            .all()
+            if student_ids else []
+        )
+    }
+    students_by_hall = {
+        hall_id: [
+            students_by_id[enrollment.student_id]
+            for enrollment in rows
+            if enrollment.student_id in students_by_id
+        ]
+        for hall_id, rows in enrollments_by_hall.items()
+    }
+    all_students = list(students_by_id.values())
+    placements = resolve_student_placements(
+        (student, year_id) for student in all_students
+    )
+    level_ids = {
+        (placements.get((student.id, year_id)) or {}).get("academic_level_id")
+        or student.academic_level_id
+        or (student.academic_class.academic_level_id if student.academic_class else None)
+        for student in all_students
+    }
+    level_ids.discard(None)
+    levels_by_id = {
+        level.id: level
+        for level in AcademicLevel.query.filter(AcademicLevel.id.in_(level_ids)).all()
+    } if level_ids else {}
+
+    assignments_by_session = {session_id: {} for session_id in session_ids}
+    if session_ids:
+        assignment_rows = (
+            db.session.query(ExamSessionSubject, Subject)
+            .join(Subject, ExamSessionSubject.subject_id == Subject.id)
+            .filter(
+                ExamSessionSubject.exam_session_id.in_(session_ids),
+                Subject.is_active.is_(True),
+            )
+            .order_by(
+                ExamSessionSubject.exam_session_id,
+                ExamSessionSubject.academic_level_id,
+                ExamSessionSubject.id,
+            )
+            .all()
+        )
+        subject_ids = {subject.id for _, subject in assignment_rows}
+        scoped_names = {}
+        if subject_ids:
+            scoped_names = {
+                (level_id, subject_id): name
+                for level_id, subject_id, name in db.session.query(
+                    AcademicYearLevel.legacy_level_id,
+                    AcademicYearSubject.legacy_subject_id,
+                    AcademicYearSubject.name,
+                )
+                .join(
+                    AcademicYearLevel,
+                    AcademicYearLevel.id == AcademicYearSubject.academic_year_level_id,
+                )
+                .filter(
+                    AcademicYearSubject.academic_year_id == year_id,
+                    AcademicYearSubject.subject_kind == "exam",
+                    AcademicYearSubject.is_active.is_(True),
+                    AcademicYearSubject.legacy_subject_id.in_(subject_ids),
+                )
+                .all()
+            }
+        for assignment, subject in assignment_rows:
+            pair = (assignment.academic_level_id, assignment.subject_id)
+            if allowed_pairs is not None:
+                if pair not in allowed_pairs:
+                    continue
+            elif subject.academic_level_id != assignment.academic_level_id:
+                continue
+            assignments_by_session.setdefault(assignment.exam_session_id, {}).setdefault(
+                assignment.academic_level_id, []
+            ).append(SimpleNamespace(
+                id=subject.id,
+                name=scoped_names.get(pair, subject.name),
+            ))
+
+    records_by_hall_session = {}
+    if hall_ids and session_ids:
+        records = AttendanceRecord.query.filter(
+            AttendanceRecord.exam_hall_id.in_(hall_ids),
+            AttendanceRecord.exam_session_id.in_(session_ids),
+        ).all()
+        for record in records:
+            records_by_hall_session.setdefault(
+                (record.exam_hall_id, record.exam_session_id), []
+            ).append(record)
+
+    hall_level_ids = {hall_id: set() for hall_id in hall_ids}
+    for hall_id, enrollments in enrollments_by_hall.items():
+        for enrollment in enrollments:
+            student = students_by_id.get(enrollment.student_id)
+            if not student:
+                continue
+            placement = placements.get((student.id, year_id)) or {}
+            level_id = (
+                placement.get("academic_level_id")
+                or student.academic_level_id
+                or (student.academic_class.academic_level_id if student.academic_class else None)
+            )
+            if level_id is not None:
+                hall_level_ids[hall_id].add(level_id)
+
+    session_level_ids = {
+        session.id: {
+            assignment.academic_level_id
+            for assignment in session.subject_assignments
+        }
+        for session in sessions
+    }
+    hall_session_ids = {
+        hall_id: {
+            session.id for session in sessions
+            if session_level_ids[session.id] & hall_level_ids.get(hall_id, set())
+        }
+        for hall_id in hall_ids
+    }
+    return {
+        "enrollments_by_hall": enrollments_by_hall,
+        "students_by_hall": students_by_hall,
+        "placements": placements,
+        "levels_by_id": levels_by_id,
+        "subjects_by_session": assignments_by_session,
+        "records_by_hall_session": records_by_hall_session,
+        "hall_session_ids": hall_session_ids,
     }
 
 

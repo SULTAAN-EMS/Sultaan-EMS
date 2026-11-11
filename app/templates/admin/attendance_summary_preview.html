@@ -37,11 +37,11 @@
     <div class="heading-copy">
       <p class="eyebrow"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Warbixin rasmi ah</p>
       <h1>Hordhaca Warbixinta Xaadirinta</h1>
-      {% if report %}<p class="scope">{{ report.year.name }} · {{ report.exam_name }} · {{ report.start_date.strftime('%d/%m/%Y') }} ilaa {{ report.end_date.strftime('%d/%m/%Y') }} · {{ report.hall_count }} hall</p>{% endif %}
+      {% if report_ready %}<p class="scope">{{ selected_year.name if selected_year else '' }} · {{ selected_exam_name }} · {{ date_from }} ilaa {{ date_to }} · {{ selected_hall_ids|length }} hall</p>{% endif %}
     </div>
     <nav class="preview-actions" aria-label="Ficillada warbixinta">
-      <a class="action action-back" href="{{ url_for('admin_attendance.summary_report', academic_year_id=selected_year_id, exam_scope=selected_exam_scope, date_from=date_from, date_to=date_to, all_halls='1' if selected_all_halls else None, hall_ids=selected_hall_ids|list if not selected_all_halls else None, generate='1' if report else None) }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>Ku noqo warbixinta</span></a>
-      {% if report %}
+      <a class="action action-back" href="{{ url_for('admin_attendance.summary_report', academic_year_id=selected_year_id, exam_scope=selected_exam_scope, date_from=date_from, date_to=date_to, all_halls='1' if selected_all_halls else None, hall_ids=selected_hall_ids|list if not selected_all_halls else None, generate='1' if report_ready else None) }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>Ku noqo warbixinta</span></a>
+      {% if report_ready %}
       <button class="action action-print" id="printAttendancePdf" type="button"><i class="fa-solid fa-print" aria-hidden="true"></i><span>Daabac</span></button>
       <a class="action action-download" href="{{ download_url }}"><i class="fa-solid fa-download" aria-hidden="true"></i><span>Soo dejiso</span></a>
       {% endif %}
@@ -50,14 +50,14 @@
 
   {% for message in filter_errors %}<div class="preview-error" role="alert"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><p>{{ message }}</p></div>{% endfor %}
 
-  {% if report %}
+  {% if report_ready %}
   <section class="preview-shell" aria-label="Akhriska PDF-ga gudaha portalka">
     <div class="preview-toolbar"><i class="fa-solid fa-eye" aria-hidden="true"></i><span>Akhriska warbixinta</span></div>
     <iframe class="pdf-frame" id="attendancePdfFrame" src="{{ pdf_url }}" title="Warbixinta guud ee xaadirinta PDF ahaan" loading="eager"></iframe>
   </section>
   {% endif %}
 </main>
-{% if report %}<script>
+{% if report_ready %}<script>
 (()=>{
   const button=document.getElementById('printAttendancePdf');
   const frame=document.getElementById('attendancePdfFrame');

@@ -420,6 +420,24 @@ class TestHallRosterAndAttendance(unittest.TestCase):
         self.assertNotIn('\u25a0', extracted)
         self.assertTrue(any(0xFE70 <= ord(char) <= 0xFEFF for char in extracted))
 
+    def test_attendance_summary_preview_defers_full_report_until_pdf_request(self):
+        self.login()
+        query = (
+            f'academic_year_id={self.year.id}&exam_scope=legacy:{self.exam_type.id}'
+            '&date_from=2026-08-12&date_to=2026-08-13'
+            f'&hall_ids={self.hall.id}'
+        )
+        with patch(
+            'app.routes_attendance._attendance_summary_report_data',
+            side_effect=AssertionError('preview should not build the complete report'),
+        ):
+            response = self.client.get(f'/admin/attendance/summary-report/preview?{query}')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'id="attendancePdfFrame"', response.data)
+        self.assertIn(b'/admin/attendance/summary-report.pdf?', response.data)
+        self.assertIn(b'download=1', response.data)
+
     def test_attendance_print_and_pdf_share_year_exam_sitting_report(self):
         self.login()
         self.student1.mother_name = 'Hodan Maxamed'
