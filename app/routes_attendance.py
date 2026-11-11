@@ -80,10 +80,17 @@ def require_login():
 
 @attendance_bp.after_request
 def prevent_cached_attendance_api_responses(response):
-    """A newly saved timetable must be visible to the same browser immediately."""
-    if request.path.startswith("/admin/attendance/api/"):
+    """Keep attendance APIs and generated reports fresh after edits."""
+    if (
+        request.path.startswith("/admin/attendance/api/")
+        or request.path in {
+            "/admin/attendance/summary-report/preview",
+            "/admin/attendance/summary-report.pdf",
+        }
+    ):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     return response
 
 
