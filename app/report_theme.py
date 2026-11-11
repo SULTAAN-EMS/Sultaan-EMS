@@ -420,18 +420,49 @@ def _info_cards(report, styles, width):
     return row
 
 
+class StackedStatusBar(Flowable):
+    def __init__(self, counts, height=23):
+        super().__init__()
+        self.counts = counts
+        self.height = height
+
+    def wrap(self, avail_width, avail_height):
+        self.width = avail_width
+        return self.width, self.height
+
+    def draw(self):
+        canvas = self.canv
+        canvas.saveState()
+        total = sum(max(0, int(self.counts.get(key, 0) or 0)) for key in STATUS_ORDER)
+        if not total:
+            canvas.setFillColor(_color(TOKENS["row_line"]))
+            canvas.roundRect(0, 0, self.width, self.height, self.height / 2, fill=1, stroke=0)
+            canvas.restoreState()
+            return
+
+        x = 0
+        for key in STATUS_ORDER:
+            count = max(0, int(self.counts.get(key, 0) or 0))
+            if not count:
+                continue
+            segment_width = self.width * count / total
+            canvas.setFillColor(_color(STATUS[key]["color"]))
+            canvas.rect(x, 0, segment_width, self.height, fill=1, stroke=0)
+            if x:
+                canvas.setStrokeColor(colors.white)
+                canvas.setLineWidth(1.5)
+                canvas.line(x, 0, x, self.height)
+            if count / total >= .045 and segment_width >= 18:
+                canvas.setFillColor(colors.white)
+                canvas.setFont("TISInterBold", 7)
+                canvas.drawCentredString(x + segment_width / 2, (self.height - 7) / 2 + 1, str(count))
+            x += segment_width
+        canvas.restoreState()
+
+
 def _stacked_status(report, width, styles):
     counts = report["totals"]
-    total = sum(counts.get(key, 0) for key in STATUS_ORDER)
-    bar_cells, bar_widths = [], []
-    for key in STATUS_ORDER:
-        count = counts.get(key, 0)
-        bar_cells.append(Paragraph(f'<font color="white"><b>{count}</b></font>' if total and count / total >= .045 else "", ParagraphStyle("bar_count", fontName="TISInterBold", fontSize=7, leading=8, alignment=TA_CENTER)))
-        bar_widths.append(max(2, (width - 20) * count / max(total, 1)))
-    bar = Table([bar_cells], colWidths=bar_widths, rowHeights=[23])
-    commands = [("BACKGROUND", (i,0),(i,0),_color(STATUS[key]["color"])) for i,key in enumerate(STATUS_ORDER)]
-    commands.extend([("LINEAFTER",(0,0),(-2,0),1.5,colors.white), ("VALIGN",(0,0),(-1,-1),"MIDDLE")])
-    bar.setStyle(TableStyle(commands))
+    bar = StackedStatusBar(counts, 23)
     legends = []
     for key in STATUS_ORDER:
         item = STATUS[key]
