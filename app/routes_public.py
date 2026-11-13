@@ -1,3 +1,4 @@
+import json
 import secrets
 from datetime import date, datetime
 from io import BytesIO
@@ -14,7 +15,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from . import csrf, db
 from .academic_hierarchy import year_subjects, year_subjects_for_class_scope
 from .i18n import language_redirect
-from .models import AcademicLevel, AcademicYear, AcademicYearSubject, Exam, ExamHall, ExamHallVersion, ExamInvigilator, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeatMixerAssignment, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, StudentEnrollment, Subject
+from .models import AcademicLevel, AcademicYear, AcademicYearSubject, Exam, ExamHall, ExamHallVersion, ExamInvigilator, IdCardIssue, IncidentAction, IncidentCategory, IncidentReport, IncidentReportCategory, ReportVerification, Result, SeatMixerAssignment, SeverityLevel, Student, StudentComplaint, StudentComplaintReply, StudentFeedback, StudentFeedbackReply, StudentEnrollment, Subject, Teacher, TeacherResultAssignment
 from .services import attendance_uf_record, get_settings, result_payload, result_success_overlay_config, scoped_legacy_subjects, top_students_for_class
 from .attendance_rules import normalize_attendance_status
 from .enrollment_service import (
@@ -906,6 +907,50 @@ def _public_asset_url(path):
     return url_for("static", filename=value if value.startswith("uploads/") else f"uploads/{value}")
 
 
+def _top10_teacher_wall_photos(exam, placement, settings):
+    if str(settings.get("top10_tunnel_teacher_walls_enabled", "on") or "on").strip().lower() != "on":
+        return []
+    class_id = placement.get("academic_class_id") if placement else None
+    if not class_id:
+        return []
+    try:
+        excluded_ids = {
+            int(value)
+            for value in json.loads(settings.get("top10_tunnel_teacher_excluded_ids", "[]") or "[]")
+        }
+    except (TypeError, ValueError, json.JSONDecodeError):
+        excluded_ids = set()
+
+    assigned_teachers = (
+        Teacher.query.join(TeacherResultAssignment, TeacherResultAssignment.teacher_id == Teacher.id)
+        .filter(
+            TeacherResultAssignment.academic_year_id == exam.academic_year_id,
+            TeacherResultAssignment.exam_id == exam.id,
+            TeacherResultAssignment.class_id == class_id,
+            TeacherResultAssignment.is_active.is_(True),
+            TeacherResultAssignment.deleted_at.is_(None),
+            Teacher.is_active.is_(True),
+            Teacher.employment_status == "Active",
+            Teacher.photo_path.isnot(None),
+            Teacher.photo_path != "",
+        )
+        .distinct()
+        .order_by(Teacher.full_name, Teacher.id)
+        .limit(24)
+        .all()
+    )
+    teacher_photos = []
+    seen_teacher_ids = set()
+    for teacher in assigned_teachers:
+        if teacher.id in seen_teacher_ids or teacher.id in excluded_ids:
+            continue
+        seen_teacher_ids.add(teacher.id)
+        photo_url = _public_asset_url(teacher.photo_path)
+        if photo_url:
+            teacher_photos.append({"photo": photo_url, "name": teacher.full_name})
+    return teacher_photos
+
+
 def _feedback_serializer():
     return URLSafeTimedSerializer(current_app.config["SECRET_KEY"], salt="sultaan-feedback-result-view")
 
@@ -1390,6 +1435,7 @@ def api_top_students(student_code):
     students = top_students_for_class(student, exam)
     for entry in students:
         entry["photo"] = _public_asset_url(entry.pop("photo_path", "")) or _public_asset_url(settings.get("result_dashboard_default_avatar"))
+    teacher_photos = _top10_teacher_wall_photos(exam, placement, settings)
     class_name = students[0]["class_name"] if students else (
         placement.get("class_name") or placement.get("level_name") or "Class"
     )
@@ -1399,6 +1445,7 @@ def api_top_students(student_code):
         academic_year=exam.academic_year.name if exam.academic_year else "",
         exam_type=exam.name,
         students=students,
+        teachers=teacher_photos,
     )
 
 

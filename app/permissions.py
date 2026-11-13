@@ -77,6 +77,7 @@ ENDPOINT_PERMISSIONS = {
     "admin.users": "users",
     "admin.reset_user_password": "users",
     "admin.settings": ("settings", "system_settings"),
+    "admin_advanced_results.update_top10_tunnel_teacher_settings": ("settings", "system_settings"),
     "admin.update_student_results_portal_visibility": "system_settings",
     "admin.update_student_results_announcement": "system_settings",
     "admin.delete_grade_scale": ("settings", "system_settings"),

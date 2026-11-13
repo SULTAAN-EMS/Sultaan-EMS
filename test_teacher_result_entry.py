@@ -14,6 +14,7 @@ from sqlalchemy import event, inspect, text
 from flask_login import login_required
 
 from app import create_app, db
+from app.routes_public import _top10_teacher_wall_photos
 from app.models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel,
     AcademicSection, AcademicYearClassSubjectExclusion, AcademicYearSubject, Exam, ExamMarkingConfiguration, GradeScale, Result, Student, StudentEnrollment, Subject, Teacher,
@@ -111,6 +112,63 @@ class TestTeacherResultEntry(unittest.TestCase):
         return self.client.post("/teacher/login", data={
             "username": "result-teacher", "password": "TeacherPass123"
         }, follow_redirects=True)
+
+    def test_top10_teacher_wall_photos_respect_scope_and_admin_controls(self):
+        self.teacher.photo_path = "teachers/results-teacher.jpg"
+        other_exam = Exam(name="Final", academic_year=self.year, is_active=True)
+        other_teacher = Teacher(
+            teacher_id="RT-3", teacher_code="RT-C3", full_name="Other Scope Teacher",
+            employment_status="Active", is_active=True, photo_path="teachers/other.jpg",
+        )
+        db.session.add_all([other_exam, other_teacher])
+        db.session.flush()
+        db.session.add(TeacherResultAssignment(
+            teacher=other_teacher, academic_year=self.year, exam=other_exam,
+            school_class=self.school_class, subject=self.subject,
+        ))
+        db.session.commit()
+
+        placement = {"academic_class_id": self.school_class.id}
+        settings = {"top10_tunnel_teacher_walls_enabled": "on", "top10_tunnel_teacher_excluded_ids": "[]"}
+        with self.app.test_request_context("/"):
+            self.assertEqual(
+                _top10_teacher_wall_photos(self.exam, placement, settings),
+                [{"photo": "/static/uploads/teachers/results-teacher.jpg", "name": "Results Teacher"}],
+            )
+            settings["top10_tunnel_teacher_excluded_ids"] = json.dumps([self.teacher.id])
+            self.assertEqual(_top10_teacher_wall_photos(self.exam, placement, settings), [])
+            settings["top10_tunnel_teacher_excluded_ids"] = "[]"
+            settings["top10_tunnel_teacher_walls_enabled"] = "off"
+            self.assertEqual(_top10_teacher_wall_photos(self.exam, placement, settings), [])
+
+    def test_admin_can_toggle_tunnel_teacher_photos_and_block_individual_teachers(self):
+        self.admin.set_permissions(["teachers", "system_settings"])
+        self.teacher.photo_path = "teachers/results-teacher.jpg"
+        db.session.commit()
+        self.client.post("/admin/login", data={
+            "username": "result-admin", "password": "AdminPass123"
+        })
+
+        general_settings_page = self.client.get("/admin/settings")
+        self.assertEqual(general_settings_page.status_code, 200)
+        self.assertNotIn(b"Sawirrada macallimiinta ee Top 10", general_settings_page.data)
+
+        settings_page = self.client.get("/admin/advanced-results/settings")
+        self.assertEqual(settings_page.status_code, 200)
+        self.assertIn(b"Sawirrada macallimiinta", settings_page.data)
+        self.assertIn(f'value="{self.teacher.id}" data-twt-teacher-toggle checked'.encode(), settings_page.data)
+
+        saved = self.client.post("/admin/advanced-results/settings/top10-teacher-walls", data={
+            "top10_tunnel_teacher_controls_present": "1",
+            "top10_tunnel_teacher_walls_enabled": "off",
+        })
+        self.assertEqual(saved.status_code, 302)
+        db.session.expire_all()
+        self.assertEqual(db.session.get(Setting, "top10_tunnel_teacher_walls_enabled").value, "off")
+        self.assertEqual(
+            json.loads(db.session.get(Setting, "top10_tunnel_teacher_excluded_ids").value),
+            [self.teacher.id],
+        )
 
     def test_teacher_login_prefers_official_school_logo(self):
         db.session.add_all([

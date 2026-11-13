@@ -27,7 +27,8 @@
   let renderer, scene, camera, segments = [], fading = [], studentCards = [], populateSegment;
   let scrollPos = 0, pressed = false, last = 0, raf = 0, running = false, muted = false;
   let paused = false, autoPausedByVisibility = false;
-  let imageIndex = 0, colorIndex = 0, students = [], cardSpeed = 0, nameAnimClock = 0;
+  let imageIndex = 0, colorIndex = 0, students = [], teachers = [], cardSpeed = 0, nameAnimClock = 0, teacherImageIndex = 0;
+  let teacherWallMaterials = [];
   let currentStudentIndex = 0;
   let combAvailable = true;
   let dataLoaded = false;
@@ -946,6 +947,107 @@
       if (student.photo) textureLoader.load(student.photo, (texture) => { texture.minFilter = THREE.LinearFilter; texture.generateMipmaps = false; if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace; material.map = texture; material.needsUpdate = true; fading.push(material); }, undefined, () => {});
       return material;
     });
+    const makeTeacherTexture = (image, name, aspect) => {
+      const width = aspect > 1 ? 1024 : 384;
+      const height = Math.round(width / aspect);
+      const textureCanvas = document.createElement('canvas');
+      textureCanvas.width = width;
+      textureCanvas.height = height;
+      const context = textureCanvas.getContext('2d');
+      if (!context) return null;
+
+      const background = context.createLinearGradient(0, 0, width, height);
+      background.addColorStop(0, '#10234b');
+      background.addColorStop(1, '#174d7d');
+      context.fillStyle = background;
+      context.fillRect(0, 0, width, height);
+
+      const wideWall = aspect > 1;
+      const photoHeight = height * (wideWall ? .74 : .54);
+      const photoWidth = wideWall ? photoHeight : Math.min(width * .72, photoHeight * .78);
+      const photoX = (width - photoWidth) / 2;
+      const photoY = height * (wideWall ? .025 : .045);
+      const sourceWidth = image.naturalWidth || image.width || 1;
+      const sourceHeight = image.naturalHeight || image.height || 1;
+      const scale = Math.max(photoWidth / sourceWidth, photoHeight / sourceHeight);
+      const cropWidth = photoWidth / scale;
+      const cropHeight = photoHeight / scale;
+      const cropX = (sourceWidth - cropWidth) / 2;
+      const cropY = (sourceHeight - cropHeight) / 2;
+
+      context.save();
+      context.beginPath();
+      context.roundRect(photoX, photoY, photoWidth, photoHeight, Math.min(12, width * .035));
+      context.clip();
+      context.drawImage(image, cropX, cropY, cropWidth, cropHeight, photoX, photoY, photoWidth, photoHeight);
+      context.restore();
+      context.strokeStyle = '#e1bd5b';
+      context.lineWidth = Math.max(2, width * .009);
+      context.beginPath();
+      context.roundRect(photoX, photoY, photoWidth, photoHeight, Math.min(12, width * .035));
+      context.stroke();
+
+      const fontSize = wideWall ? 13 : Math.min(27, Math.max(16, height * .07));
+      context.font = `700 ${fontSize}px system-ui, sans-serif`;
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillStyle = '#f7f9ff';
+      context.shadowColor = 'rgba(0, 0, 0, .65)';
+      context.shadowBlur = 3;
+      const maxWidth = width * .9;
+      const maxLines = 3;
+      const lines = [];
+      let line = '';
+      String(name || 'Macallin').trim().split(/\s+/).forEach((word) => {
+        const candidate = line ? `${line} ${word}` : word;
+        if (line && context.measureText(candidate).width > maxWidth) {
+          lines.push(line);
+          line = word;
+        } else {
+          line = candidate;
+        }
+      });
+      if (line) lines.push(line);
+      if (lines.length > maxLines) {
+        lines.length = maxLines;
+        let lastLine = lines[maxLines - 1];
+        while (lastLine.length && context.measureText(`${lastLine}...`).width > maxWidth) {
+          lastLine = lastLine.slice(0, -1).trimEnd();
+        }
+        lines[maxLines - 1] = `${lastLine}...`;
+      }
+      const lineHeight = fontSize * 1.12;
+      const captionTop = photoY + photoHeight + height * .06;
+      const captionHeight = height - captionTop - height * .045;
+      const fittedLineHeight = Math.min(lineHeight, captionHeight / Math.max(lines.length, 1));
+      const firstLineY = captionTop + captionHeight / 2 - ((lines.length - 1) * fittedLineHeight) / 2;
+      lines.forEach((text, index) => context.fillText(text, width / 2, firstLineY + index * fittedLineHeight, maxWidth));
+
+      const texture = new THREE.CanvasTexture(textureCanvas);
+      texture.minFilter = THREE.LinearFilter;
+      texture.generateMipmaps = false;
+      if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
+      return texture;
+    };
+    const teacherWallMats = teachers.map((teacher) => {
+      const mats = {
+        horizontal: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }),
+        vertical: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }),
+      };
+      if (teacher.photo) {
+        textureLoader.load(teacher.photo, (texture) => {
+          mats.horizontal.map = makeTeacherTexture(texture.image, teacher.name, (TUNNEL_WIDTH / GRID) / SEGMENT_DEPTH);
+          mats.vertical.map = makeTeacherTexture(texture.image, teacher.name, SEGMENT_DEPTH / (TUNNEL_HEIGHT / GRID));
+          mats.horizontal.needsUpdate = true;
+          mats.vertical.needsUpdate = true;
+          mats.horizontal.opacity = .96;
+          mats.vertical.opacity = .96;
+          texture.dispose();
+        }, undefined, () => {});
+      }
+      return mats;
+    });
+    teacherWallMaterials = teacherWallMats.flatMap((mats) => [mats.horizontal, mats.vertical]);
     const palette = [0x1a1f2b, 0x14181f, GOLD, 0x2a2f3a];
     const colorMats = palette.map((hex) => new THREE.MeshBasicMaterial({ color: hex, side: THREE.DoubleSide }));
     const hw = TUNNEL_WIDTH / 2, hh = TUNNEL_HEIGHT / 2, colW = TUNNEL_WIDTH / GRID, rowH = TUNNEL_HEIGHT / GRID;
@@ -953,16 +1055,31 @@
     const tubeGeometry = (x, y, z) => new THREE.TubeGeometry(new THREE.LineCurve3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(x, y, z)), 1, LINE_RADIUS, 8);
     const tubeZ = tubeGeometry(0, 0, -SEGMENT_DEPTH), tubeX = tubeGeometry(TUNNEL_WIDTH, 0, 0), tubeY = tubeGeometry(0, TUNNEL_HEIGHT, 0);
     const slots = [];
-    for (let col = 0; col < GRID; col += 1) { const x = -hw + col * colW + colW / 2; slots.push({ geo: geoFloor, pos: new THREE.Vector3(x, -hh, -SEGMENT_DEPTH / 2), rot: new THREE.Euler(-Math.PI / 2, 0, 0) }, { geo: geoFloor, pos: new THREE.Vector3(x, hh, -SEGMENT_DEPTH / 2), rot: new THREE.Euler(Math.PI / 2, 0, 0) }); }
-    for (let row = 0; row < GRID; row += 1) { const y = -hh + row * rowH + rowH / 2; slots.push({ geo: geoWall, pos: new THREE.Vector3(-hw, y, -SEGMENT_DEPTH / 2), rot: new THREE.Euler(0, Math.PI / 2, 0) }, { geo: geoWall, pos: new THREE.Vector3(hw, y, -SEGMENT_DEPTH / 2), rot: new THREE.Euler(0, -Math.PI / 2, 0) }); }
+    for (let col = 0; col < GRID; col += 1) { const x = -hw + col * colW + colW / 2; slots.push({ side: 'floor', geo: geoFloor, pos: new THREE.Vector3(x, -hh, -SEGMENT_DEPTH / 2), rot: new THREE.Euler(-Math.PI / 2, 0, 0) }, { side: 'ceiling', geo: geoFloor, pos: new THREE.Vector3(x, hh, -SEGMENT_DEPTH / 2), rot: new THREE.Euler(Math.PI / 2, 0, 0) }); }
+    for (let row = 0; row < GRID; row += 1) { const y = -hh + row * rowH + rowH / 2; slots.push({ side: 'left', geo: geoWall, pos: new THREE.Vector3(-hw, y, -SEGMENT_DEPTH / 2), rot: new THREE.Euler(0, Math.PI / 2, 0) }, { side: 'right', geo: geoWall, pos: new THREE.Vector3(hw, y, -SEGMENT_DEPTH / 2), rot: new THREE.Euler(0, -Math.PI / 2, 0) }); }
     const tube = (geometry, x, y) => { const mesh = new THREE.Mesh(geometry, lineMaterial); mesh.position.set(x, y, 0); return mesh; };
-    const populate = (group) => group.userData.slabs.forEach((slab) => { const chance = Math.random(); if (chance < .72) { slab.visible = true; slab.material = imageMats[imageIndex++ % imageMats.length]; } else if (chance < .92) { slab.visible = true; slab.material = colorMats[(colorIndex++ % (colorMats.length - 1)) + 1]; } else slab.visible = false; });
+    const populate = (group) => {
+      const blankBySide = { floor: [], ceiling: [], left: [], right: [] };
+      group.userData.slabs.forEach((slab) => {
+        const chance = Math.random();
+        if (chance < .72) { slab.visible = true; slab.material = imageMats[imageIndex++ % imageMats.length]; }
+        else if (chance < .92) { slab.visible = true; slab.material = colorMats[(colorIndex++ % (colorMats.length - 1)) + 1]; }
+        else { slab.visible = false; blankBySide[slab.userData.side].push(slab); }
+      });
+      if (!teacherWallMats.length) return;
+      Object.entries(blankBySide).forEach(([side, blanks]) => {
+        if (!blanks.length) return;
+        const slab = blanks[Math.floor(Math.random() * blanks.length)];
+        slab.material = teacherWallMats[teacherImageIndex++ % teacherWallMats.length][side === 'floor' || side === 'ceiling' ? 'horizontal' : 'vertical'];
+        slab.visible = true;
+      });
+    };
     const createSegment = (z) => {
       const group = new THREE.Group(); group.position.z = z;
       for (let col = 0; col <= GRID; col += 1) { const x = -hw + col * colW; group.add(tube(tubeZ, x, -hh), tube(tubeZ, x, hh)); }
       for (let row = 1; row < GRID; row += 1) { const y = -hh + row * rowH; group.add(tube(tubeZ, -hw, y), tube(tubeZ, hw, y)); }
       group.add(tube(tubeX, -hw, -hh), tube(tubeX, -hw, hh), tube(tubeY, -hw, -hh), tube(tubeY, hw, -hh));
-      group.userData.slabs = slots.map((slot) => { const mesh = new THREE.Mesh(slot.geo, colorMats[0]); mesh.position.copy(slot.pos); mesh.rotation.copy(slot.rot); mesh.visible = false; group.add(mesh); return mesh; });
+      group.userData.slabs = slots.map((slot) => { const mesh = new THREE.Mesh(slot.geo, colorMats[0]); mesh.userData.side = slot.side; mesh.position.copy(slot.pos); mesh.rotation.copy(slot.rot); mesh.visible = false; group.add(mesh); return mesh; });
       populate(group); return group;
     };
     populateSegment = populate; segments = [];
@@ -1005,11 +1122,13 @@
     cancelAnimationFrame(raf); running = false; paused = false; autoPausedByVisibility = false;
     if (!renderer) return;
     scene.traverse((object) => { if (object.geometry) object.geometry.dispose?.(); if (object.material) { const materials = Array.isArray(object.material) ? object.material : [object.material]; materials.forEach((material) => { material.map?.dispose?.(); material.dispose?.(); }); } });
+    teacherWallMaterials.forEach((material) => { material.map?.dispose?.(); material.dispose?.(); });
+    teacherWallMaterials = [];
     renderer.dispose(); renderer = scene = camera = null; segments = []; fading = []; studentCards = []; dotsWrap.replaceChildren();
   }
 
   function startTunnel() {
-    destroyTunnel(); scrollPos = 0; last = 0; imageIndex = 0; colorIndex = 0; paused = false; autoPausedByVisibility = false;
+    destroyTunnel(); scrollPos = 0; last = 0; imageIndex = 0; colorIndex = 0; teacherImageIndex = 0; paused = false; autoPausedByVisibility = false;
     currentStudentIndex = 0;
     buildStudentNavigation();
     buildTunnel(); running = true; raf = requestAnimationFrame(animate); setOverlayReady(); startMusic(); syncPauseUI();
@@ -1025,6 +1144,7 @@
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.message || 'Unable to load Top 10 Students.');
       students = (payload.students || []).map((entry) => ({ ...entry, academic_year: payload.academic_year, exam_type: payload.exam_type }));
+      teachers = Array.isArray(payload.teachers) ? payload.teachers.filter((teacher) => teacher && teacher.photo) : [];
       if (!students.length) { setOverlayEmpty('Top 10 is not available yet'); return; }
       hint.textContent = `Top 10 · ${payload.class_name} · Hold to speed up · Esc to close`;
       startTunnel();

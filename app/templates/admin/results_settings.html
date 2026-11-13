@@ -176,6 +176,142 @@
       </script>
     </section>
     {% endif %}
+    {% if can_manage_tunnel_teacher_settings %}
+    <style>
+      .twt-card{position:relative;overflow:hidden;margin:0 0 24px;padding:24px;border:1px solid #cfe1e3;border-radius:14px;background:linear-gradient(125deg,#f4fbfa 0%,#fff 54%,#f5f8fd 100%);box-shadow:0 14px 34px rgba(22,58,72,.08);animation:twt-enter .42s ease both}
+      .twt-card::before{position:absolute;inset:0 0 auto;height:4px;background:linear-gradient(90deg,#087f72,#258ca4 55%,#d6a83d);content:""}
+      @keyframes twt-enter{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+      .twt-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:20px}
+      .twt-mark{display:grid;place-items:center;width:50px;height:50px;flex:0 0 50px;border:1px solid #bfe2dc;border-radius:13px;color:#fff;background:linear-gradient(145deg,#078478,#1872a0);font-size:20px;box-shadow:0 7px 15px rgba(8,127,114,.18)}
+      .twt-head-copy{min-width:0;flex:1}
+      .twt-kicker{margin:0 0 4px;color:#08786f;font-size:.7rem;font-weight:850;letter-spacing:.08em}
+      .twt-head h2{margin:0;color:#173b49;font-size:1.2rem;line-height:1.3}
+      .twt-head p:last-child{max-width:760px;margin:6px 0 0;color:#5b707a;line-height:1.55}
+      .twt-status{display:inline-flex;align-items:center;gap:7px;flex:none;padding:8px 11px;border:1px solid #b7dfd1;border-radius:999px;color:#08764f;background:#effaf4;font-size:.75rem;font-weight:850}
+      .twt-status.is-off{border-color:#f0cccc;color:#a4383d;background:#fff4f3}
+      .twt-controls{display:grid;grid-template-columns:minmax(260px,1fr) minmax(240px,.85fr);gap:14px;margin-bottom:16px}
+      .twt-master,.twt-search{display:flex;align-items:center;gap:12px;min-height:70px;padding:12px 14px;border:1px solid #d8e4e6;border-radius:10px;background:rgba(255,255,255,.88)}
+      .twt-master{cursor:pointer;transition:border-color .2s,box-shadow .2s,transform .2s}
+      .twt-master:hover{border-color:#8dc8bd;box-shadow:0 7px 17px rgba(18,95,94,.09);transform:translateY(-1px)}
+      .twt-master input{position:absolute;width:1px;height:1px;opacity:0}
+      .twt-master input:focus-visible+.twt-switch{outline:3px solid #f0c65b;outline-offset:3px}
+      .twt-switch{position:relative;width:46px;height:26px;flex:0 0 46px;border:1px solid #bdcbd0;border-radius:99px;background:#e9eff1;transition:background .2s,border-color .2s}
+      .twt-switch::after{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.18);content:"";transition:transform .2s}
+      .twt-master input:checked+.twt-switch{border-color:#078478;background:#078478}
+      .twt-master input:checked+.twt-switch::after{transform:translateX(20px)}
+      .twt-master-copy{display:grid;gap:3px;min-width:0;flex:1}
+      .twt-master-copy strong{color:#234450;font-size:.88rem}
+      .twt-master-copy small,.twt-search small{color:#73858b;font-size:.75rem;line-height:1.4}
+      .twt-search{display:grid;grid-template-columns:20px 1fr;column-gap:9px;row-gap:3px;color:#217789}
+      .twt-search i{grid-row:1/3}
+      .twt-search small{grid-column:2}
+      .twt-search input{width:100%;min-width:0;border:0;outline:0;color:#193e4c;background:transparent;font:inherit}
+      .twt-search:focus-within{border-color:#63aeb0;box-shadow:0 0 0 3px rgba(41,137,146,.12)}
+      .twt-list-heading{display:flex;justify-content:space-between;gap:12px;margin:18px 0 10px;color:#375764;font-size:.82rem;font-weight:800}
+      .twt-count{color:#08786f;white-space:nowrap}
+      .twt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,285px),1fr));gap:10px;max-height:440px;overflow:auto;padding:2px 4px 8px 2px;scrollbar-color:#8bbdbb #e7efef;scrollbar-width:thin}
+      .twt-option{display:flex;align-items:center;gap:11px;min-width:0;padding:10px;border:1px solid #dae5e7;border-radius:10px;background:#fff;cursor:pointer;transition:transform .18s,border-color .18s,box-shadow .18s}
+      .twt-option[hidden],.twt-empty[hidden]{display:none}
+      .twt-option:hover{transform:translateY(-2px);border-color:#80bbb2;box-shadow:0 8px 18px rgba(25,82,91,.09)}
+      .twt-option input{width:17px;height:17px;flex:0 0 17px;accent-color:#078478}
+      .twt-photo{display:grid;place-items:center;width:48px;height:48px;flex:0 0 48px;overflow:hidden;border:1px solid #d3e3e5;border-radius:10px;color:#187d86;background:linear-gradient(145deg,#e8f5f2,#edf2fb)}
+      .twt-photo img{width:100%;height:100%;object-fit:cover}
+      .twt-option-copy{display:grid;gap:3px;min-width:0;flex:1}
+      .twt-option-copy strong{overflow:hidden;color:#254451;font-size:.83rem;text-overflow:ellipsis;white-space:nowrap}
+      .twt-option-copy small{color:#73858b;font-size:.73rem}
+      .twt-choice{flex:none;padding:5px 7px;border:1px solid #d4e5dd;border-radius:999px;color:#08764f;background:#f0faf4;font-size:.66rem;font-weight:850}
+      .twt-option:not(:has(input:checked)) .twt-choice{border-color:#e1e5e7;color:#748087;background:#f3f5f6}
+      .twt-empty{grid-column:1/-1;margin:0;padding:24px;border:1px dashed #bfd3d5;border-radius:10px;color:#667b83;text-align:center}
+      .twt-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:16px;padding-top:15px;border-top:1px solid #dbe7e8}
+      .twt-footer p{margin:0;color:#637980;font-size:.78rem}
+      .twt-save{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:42px;padding:10px 16px;border:1px solid #087a73;border-radius:9px;color:#fff;background:linear-gradient(110deg,#087f72,#1d7698);font-weight:850;cursor:pointer;box-shadow:0 6px 14px rgba(8,127,114,.18);transition:transform .18s,box-shadow .18s,filter .18s}
+      .twt-save:hover{transform:translateY(-2px);box-shadow:0 10px 20px rgba(8,127,114,.23);filter:saturate(1.12)}
+      .twt-save:focus-visible{outline:3px solid #e6b744;outline-offset:3px}
+      @media(max-width:700px){.twt-card{padding:17px}.twt-head{flex-wrap:wrap}.twt-status{margin-left:64px}.twt-controls{grid-template-columns:1fr}.twt-grid{grid-template-columns:1fr;max-height:380px}.twt-footer{align-items:stretch;flex-direction:column}.twt-save{width:100%}}
+      @media(prefers-reduced-motion:reduce){.twt-card,.twt-master,.twt-switch,.twt-switch::after,.twt-option,.twt-save{animation:none!important;transition:none!important}}
+    </style>
+    <section class="rh-card twt-card" data-tunnel-teacher-settings aria-labelledby="twtTitle">
+      <form method="post" action="{{ url_for('admin_advanced_results.update_top10_tunnel_teacher_settings') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="top10_tunnel_teacher_controls_present" value="1">
+        <header class="twt-head">
+          <span class="twt-mark" aria-hidden="true"><i class="fa-solid fa-images"></i></span>
+          <div class="twt-head-copy">
+            <p class="twt-kicker">DIIWAANNADA WAXBARASHADA · TUNNEL-KA TOP 10</p>
+            <h2 id="twtTitle">Sawirrada macallimiinta</h2>
+            <p>Oggolow sawirrada macallimiinta ee afarta darbi. Macallin wuxuu muuqanayaa oo keliya marka loo xil-saaray fasalka iyo imtixaanka la daawanayo.</p>
+          </div>
+          <span class="twt-status {{ 'is-off' if settings.get('top10_tunnel_teacher_walls_enabled') == 'off' else '' }}" data-twt-global-status role="status">
+            <i class="fa-solid {{ 'fa-circle-xmark' if settings.get('top10_tunnel_teacher_walls_enabled') == 'off' else 'fa-circle-check' }}" aria-hidden="true"></i>
+            <span>{{ 'WAA DAMSAN YAHAY' if settings.get('top10_tunnel_teacher_walls_enabled') == 'off' else 'WAA DAARAN YAHAY' }}</span>
+          </span>
+        </header>
+        <div class="twt-controls">
+          <label class="twt-master">
+            <input type="checkbox" name="top10_tunnel_teacher_walls_enabled" value="on" data-twt-global-toggle {% if settings.get('top10_tunnel_teacher_walls_enabled') != 'off' %}checked{% endif %}>
+            <span class="twt-switch" aria-hidden="true"></span>
+            <span class="twt-master-copy"><strong>Muuji sawirrada tunnel-ka</strong><small>Haddii la damiyo, dhammaan sawirrada macallimiinta waa qarsoomayaan.</small></span>
+          </label>
+          <label class="twt-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input type="search" placeholder="Raadi macallin ama aqoonsi" data-twt-search><small>Ku shaandhee liiska macallimiinta firfircoon.</small></label>
+        </div>
+        <div class="twt-list-heading"><span>Oggolaanshaha macallimiinta</span><span class="twt-count" data-twt-count></span></div>
+        <div class="twt-grid" data-twt-grid>
+          {% for teacher in tunnel_teachers %}
+          <label class="twt-option" data-twt-option data-search="{{ (teacher.full_name ~ ' ' ~ teacher.teacher_id ~ ' ' ~ teacher.teacher_code)|lower }}">
+            <input type="checkbox" name="top10_tunnel_teacher_allowed_ids" value="{{ teacher.id }}" data-twt-teacher-toggle {% if teacher.id not in excluded_tunnel_teacher_ids %}checked{% endif %}>
+            <span class="twt-photo">{% if teacher.photo_path %}<img src="{{ asset_url(teacher.photo_path) }}" alt="" loading="lazy">{% else %}<i class="fa-solid fa-user-tie" aria-hidden="true"></i>{% endif %}</span>
+            <span class="twt-option-copy"><strong>{{ teacher.full_name }}</strong><small>{{ teacher.teacher_code }} · {{ teacher.teacher_id }}{% if not teacher.photo_path %} · Sawir ma leh{% endif %}</small></span>
+            <span class="twt-choice" data-twt-choice>{{ 'Laga reebay' if teacher.id in excluded_tunnel_teacher_ids else 'La oggol yahay' }}</span>
+          </label>
+          {% else %}
+          <p class="twt-empty" data-twt-empty>Macallin firfircoon lama helin.</p>
+          {% endfor %}
+          <p class="twt-empty" data-twt-no-match hidden>Raadintaas macallin kuma jiro.</p>
+        </div>
+        <footer class="twt-footer">
+          <p>Doorashadani ma beddelayso xil-saarista, darajooyinka ama kaadhadhka ardayda.</p>
+          <button class="twt-save" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Kaydi dejinta</button>
+        </footer>
+      </form>
+    </section>
+    <script>
+      (() => {
+        const card = document.querySelector('[data-tunnel-teacher-settings]');
+        if (!card) return;
+        const globalToggle = card.querySelector('[data-twt-global-toggle]');
+        const globalStatus = card.querySelector('[data-twt-global-status]');
+        const search = card.querySelector('[data-twt-search]');
+        const options = [...card.querySelectorAll('[data-twt-option]')];
+        const count = card.querySelector('[data-twt-count]');
+        const noMatch = card.querySelector('[data-twt-no-match]');
+        const refresh = () => {
+          let visible = 0;
+          let allowed = 0;
+          const query = (search?.value || '').trim().toLocaleLowerCase();
+          options.forEach((option) => {
+            const checkbox = option.querySelector('[data-twt-teacher-toggle]');
+            const choice = option.querySelector('[data-twt-choice]');
+            const matches = (option.dataset.search || '').includes(query);
+            option.hidden = !matches;
+            if (matches) visible += 1;
+            if (checkbox?.checked) allowed += 1;
+            if (choice) choice.textContent = checkbox?.checked ? 'La oggol yahay' : 'Laga reebay';
+          });
+          if (noMatch) noMatch.hidden = visible > 0 || options.length === 0;
+          if (count) count.textContent = `${allowed} / ${options.length} la oggol yahay${query ? ` · ${visible} muuqda` : ''}`;
+          if (globalToggle && globalStatus) {
+            const isOn = globalToggle.checked;
+            globalStatus.classList.toggle('is-off', !isOn);
+            globalStatus.querySelector('i').className = `fa-solid ${isOn ? 'fa-circle-check' : 'fa-circle-xmark'}`;
+            globalStatus.querySelector('span').textContent = isOn ? 'WAA DAARAN YAHAY' : 'WAA DAMSAN YAHAY';
+          }
+        };
+        search?.addEventListener('input', refresh);
+        card.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener('change', refresh));
+        refresh();
+      })();
+    </script>
+    {% endif %}
     <p style="margin:0 0 20px;"><a class="rh-btn" href="{{ url_for('admin.result_success_overlay_settings') }}"><i class="fa-solid fa-wand-magic-sparkles"></i> Result Success Overlay</a></p>
   </main>
 </div>

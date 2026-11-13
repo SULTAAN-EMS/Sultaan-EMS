@@ -18,7 +18,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import normalize_student_phone, process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, ExamMarkingConfiguration, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentCodeAlias, StudentEnrollment, StudentEnrollmentMovement, Subject, LabelTranslation
+from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, ExamMarkingConfiguration, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentCodeAlias, StudentEnrollment, StudentEnrollmentMovement, Subject, Teacher, LabelTranslation
 from .academic_hierarchy import (
     students_for_year_scope_query,
     year_classes,
@@ -4030,6 +4030,13 @@ def _decimal_form_value(field_name, default=0):
 def results_settings():
     """Settings page with label and language customization"""
     settings = get_settings()
+    try:
+        excluded_tunnel_teacher_ids = {
+            int(value)
+            for value in json.loads(settings.get("top10_tunnel_teacher_excluded_ids", "[]") or "[]")
+        }
+    except (TypeError, ValueError, json.JSONDecodeError):
+        excluded_tunnel_teacher_ids = set()
     
     # Get all unique label keys
     label_keys = db.session.query(LabelTranslation.label_key).distinct().order_by(LabelTranslation.label_key).all()
@@ -4057,11 +4064,54 @@ def results_settings():
         language_codes=language_codes,
         label_matrix=label_matrix,
         settings=settings,
+        tunnel_teachers=Teacher.query.filter(
+            Teacher.is_active.is_(True), Teacher.employment_status == "Active"
+        ).order_by(Teacher.full_name, Teacher.id).all(),
+        excluded_tunnel_teacher_ids=excluded_tunnel_teacher_ids,
+        can_manage_tunnel_teacher_settings=can("settings") or can("system_settings"),
         can_manage_student_results_visibility=can("system_settings"),
         student_results_announcement_input=announcement_datetime_local_input(
             settings.get("student_results_announcement_at_eat")
         ),
     )
+
+
+@advanced_results_bp.route("/settings/top10-teacher-walls", methods=["POST"])
+def update_top10_tunnel_teacher_settings():
+    enabled = "on" if request.form.get("top10_tunnel_teacher_walls_enabled") == "on" else "off"
+    enabled_setting = db.session.get(Setting, "top10_tunnel_teacher_walls_enabled") or Setting(
+        key="top10_tunnel_teacher_walls_enabled"
+    )
+    enabled_setting.value = enabled
+    db.session.add(enabled_setting)
+
+    if request.form.get("top10_tunnel_teacher_controls_present") == "1":
+        excluded_setting = db.session.get(Setting, "top10_tunnel_teacher_excluded_ids")
+        try:
+            previously_excluded = {
+                int(value)
+                for value in json.loads(excluded_setting.value if excluded_setting else "[]")
+            }
+        except (TypeError, ValueError, json.JSONDecodeError):
+            previously_excluded = set()
+
+        active_teachers = Teacher.query.filter(
+            Teacher.is_active.is_(True), Teacher.employment_status == "Active"
+        ).all()
+        active_ids = {teacher.id for teacher in active_teachers}
+        allowed_ids = {
+            int(raw_id)
+            for raw_id in request.form.getlist("top10_tunnel_teacher_allowed_ids")
+            if raw_id.isdigit() and int(raw_id) in active_ids
+        }
+        excluded_setting = excluded_setting or Setting(key="top10_tunnel_teacher_excluded_ids")
+        excluded_setting.value = json.dumps(sorted((previously_excluded - active_ids) | (active_ids - allowed_ids)))
+        db.session.add(excluded_setting)
+
+    audit("Settings Changes", "Updated Top 10 teacher wall photo settings")
+    db.session.commit()
+    flash("Dejinta sawirrada macallimiinta waa la kaydiyey.", "success")
+    return redirect(url_for("admin_advanced_results.results_settings"))
 
 
 STUDENT_STAGE_KEYS = {
