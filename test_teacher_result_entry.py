@@ -403,6 +403,105 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertNotIn(b"Student 1", response.data)
         self.assertNotIn(b"Mathematics", response.data)
 
+    def test_result_entry_uses_year_scoped_level_when_legacy_class_level_is_wrong(self):
+        legacy_level = AcademicLevel(name="Dugsi Hoose", sort_order=1, is_active=True)
+        middle_level = AcademicLevel(name="Dugsi Dhexe", sort_order=2, is_active=True)
+        db.session.add_all([legacy_level, middle_level])
+        db.session.flush()
+
+        canonical_year_level = AcademicYearLevel(
+            academic_year=self.year,
+            legacy_level=middle_level,
+            name="Dugsi Dhexe",
+            school_stage="upper_primary",
+        )
+        misclassified_class = AcademicClass(
+            academic_level=legacy_level,
+            name="8aad B",
+            is_active=True,
+        )
+        subject = Subject(
+            name="Xisaab 8aad B",
+            academic_level=middle_level,
+            max_score=100,
+            is_active=True,
+        )
+        db.session.add_all([canonical_year_level, misclassified_class, subject])
+        db.session.flush()
+
+        year_class = AcademicYearClass(
+            academic_year_level=canonical_year_level,
+            legacy_class=misclassified_class,
+            name="8aad B",
+        )
+        db.session.add_all([
+            year_class,
+            AcademicYearSubject(
+                academic_year=self.year,
+                academic_year_level=canonical_year_level,
+                legacy_subject=subject,
+                name=subject.name,
+                subject_kind="exam",
+                max_score=100,
+            ),
+        ])
+        student = Student(
+            student_code="ST-8B",
+            full_name="Student 8B",
+            gender="Female",
+            is_active=True,
+        )
+        db.session.add(student)
+        db.session.flush()
+        assignment = TeacherResultAssignment(
+            teacher=self.teacher,
+            academic_year=self.year,
+            exam=self.exam,
+            school_class=misclassified_class,
+            subject=subject,
+        )
+        db.session.add_all([
+            StudentEnrollment(
+                student=student,
+                academic_year=self.year,
+                academic_year_level=canonical_year_level,
+                academic_year_class=year_class,
+                status="active",
+                academic_outcome="pending",
+                enrollment_source="manual",
+            ),
+            assignment,
+        ])
+        db.session.commit()
+
+        self._teacher_login()
+        response = self.client.get("/teacher/result-entry", query_string={
+            "academic_year_id": self.year.id,
+            "exam_id": self.exam.id,
+            "academic_level_id": middle_level.id,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn(f'<option value="{middle_level.id}" selected>Dugsi Dhexe</option>', body)
+        self.assertNotIn('<option value="%s" selected>Dugsi Hoose</option>' % legacy_level.id, body)
+        self.assertIn("Dugsi Dhexe · 8aad B · Midterm".encode(), response.data)
+        self.assertIn("Student 8B".encode(), response.data)
+        self.assertNotIn("Dugsi Hoose · 8aad B".encode(), response.data)
+
+        save_response = self.client.post("/teacher/result-entry/autosave", json={
+            "assignment_id": assignment.id,
+            "student_id": student.id,
+            "score": "76",
+        })
+        self.assertEqual(save_response.status_code, 200)
+        self.assertTrue(save_response.get_json()["success"])
+        saved_mark = TeacherResultMark.query.join(TeacherResultSubmission).filter(
+            TeacherResultSubmission.assignment_id == assignment.id,
+            TeacherResultMark.student_id == student.id,
+        ).one()
+        self.assertEqual(float(saved_mark.score), 76)
+
     def test_switching_subject_uses_its_own_submission_not_the_previous_sheet(self):
         other_subject = Subject(name="Arabic", academic_level=self.level, max_score=50, is_active=True)
         db.session.add(other_subject)

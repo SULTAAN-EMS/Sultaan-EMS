@@ -1,6 +1,7 @@
 import io
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 from flask import Blueprint, abort, flash, jsonify, make_response, redirect, render_template, request, session, url_for
@@ -190,6 +191,93 @@ def _assignment_subject_available(assignment, year_level, year_class):
     return is_year_subject_available_for_class(year_subject, year_class.id)
 
 
+def _assignment_year_scope_map(assignments):
+    assignments = list(assignments or [])
+    if not assignments:
+        return {}
+
+    year_ids = {item.academic_year_id for item in assignments}
+    class_ids = {item.class_id for item in assignments}
+    mapped_classes = (
+        AcademicYearClass.query
+        .options(
+            joinedload(AcademicYearClass.academic_year_level)
+            .joinedload(AcademicYearLevel.legacy_level)
+        )
+        .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+        .filter(
+            AcademicYearLevel.academic_year_id.in_(year_ids),
+            AcademicYearClass.legacy_class_id.in_(class_ids),
+        )
+        .order_by(AcademicYearClass.id)
+        .all()
+    )
+    legacy_level_ids = {item.school_class.academic_level_id for item in assignments}
+    mapped_levels = (
+        AcademicYearLevel.query
+        .options(joinedload(AcademicYearLevel.legacy_level))
+        .filter(
+            AcademicYearLevel.academic_year_id.in_(year_ids),
+            AcademicYearLevel.legacy_level_id.in_(legacy_level_ids),
+        )
+        .order_by(AcademicYearLevel.id)
+        .all()
+    )
+    by_scope = {}
+    for year_class in mapped_classes:
+        year_level = year_class.academic_year_level
+        by_scope.setdefault((year_level.academic_year_id, year_class.legacy_class_id), []).append(
+            (year_level, year_class)
+        )
+    levels_by_legacy_scope = {}
+    for year_level in mapped_levels:
+        levels_by_legacy_scope.setdefault(
+            (year_level.academic_year_id, year_level.legacy_level_id), []
+        ).append(year_level)
+
+    scopes = {}
+    for assignment in assignments:
+        candidates = by_scope.get((assignment.academic_year_id, assignment.class_id), [])
+        if len(candidates) == 1:
+            scopes[assignment.id] = candidates[0]
+            continue
+        if len(candidates) > 1:
+            matching_legacy_level = [
+                pair for pair in candidates
+                if pair[0].legacy_level_id == assignment.school_class.academic_level_id
+            ]
+            if len(matching_legacy_level) == 1:
+                scopes[assignment.id] = matching_legacy_level[0]
+            elif len({pair[0].legacy_level_id for pair in candidates}) == 1:
+                scopes[assignment.id] = candidates[0]
+            else:
+                # Conflicting year mappings are ambiguous; do not guess a level.
+                scopes[assignment.id] = None
+            continue
+
+        legacy_level_matches = levels_by_legacy_scope.get(
+            (assignment.academic_year_id, assignment.school_class.academic_level_id), []
+        )
+        scopes[assignment.id] = (
+            (legacy_level_matches[0], None) if len(legacy_level_matches) == 1 else (None, None)
+        )
+    return scopes
+
+
+def _assignment_year_scope(assignment, scope_map=None):
+    scopes = scope_map if scope_map is not None else _assignment_year_scope_map([assignment])
+    scope = scopes.get(assignment.id)
+    if scope is None:
+        return None, None, None
+    year_level, year_class = scope
+    level_id = (
+        year_level.legacy_level_id
+        if year_level and year_level.legacy_level_id
+        else assignment.school_class.academic_level_id
+    )
+    return year_level, year_class, level_id
+
+
 def _result_entry_scope(teacher):
     assignments = (
         TeacherResultAssignment.query
@@ -208,6 +296,7 @@ def _result_entry_scope(teacher):
         )
         .all()
     )
+    assignment_scopes = _assignment_year_scope_map(assignments)
 
     raw_filters = {key: request.args.get(key, type=int) for key in RESULT_ENTRY_FILTER_KEYS if key != "status"}
     raw_filters["status"] = (request.args.get("status") or "all").strip()
@@ -227,13 +316,36 @@ def _result_entry_scope(teacher):
         filters["exam_id"] = raw_filters["exam_id"]
     scoped = [item for item in scoped if not filters["exam_id"] or item.exam_id == filters["exam_id"]]
 
+    level_options_by_id = {}
+    assignment_level_ids = {}
+    for item in scoped:
+        scope = assignment_scopes.get(item.id)
+        if scope is None:
+            assignment_level_ids[item.id] = None
+            continue
+        year_level, _year_class = scope
+        level_id = (
+            year_level.legacy_level_id
+            if year_level and year_level.legacy_level_id
+            else item.school_class.academic_level_id
+        )
+        assignment_level_ids[item.id] = level_id
+        legacy_level = year_level.legacy_level if year_level else item.school_class.academic_level
+        name = (year_level.name if year_level and year_level.name else None) or legacy_level.name
+        sort_order = year_level.sort_order if year_level else legacy_level.sort_order
+        existing = level_options_by_id.get(level_id)
+        if existing is None or (year_level and not existing[1]):
+            level_options_by_id[level_id] = (
+                SimpleNamespace(id=level_id, name=name, sort_order=sort_order),
+                bool(year_level),
+            )
     levels = sorted(
-        {item.school_class.academic_level_id: item.school_class.academic_level for item in scoped}.values(),
+        (item[0] for item in level_options_by_id.values()),
         key=lambda level: (level.sort_order, level.name.casefold()),
     )
     if raw_filters["academic_level_id"] in {item.id for item in levels}:
         filters["academic_level_id"] = raw_filters["academic_level_id"]
-    scoped = [item for item in scoped if not filters["academic_level_id"] or item.school_class.academic_level_id == filters["academic_level_id"]]
+    scoped = [item for item in scoped if not filters["academic_level_id"] or assignment_level_ids[item.id] == filters["academic_level_id"]]
 
     classes = _unique_assignments(scoped, "class_id")
     if raw_filters["class_id"] in {item.id for item in classes}:
@@ -270,7 +382,7 @@ def _result_entry_scope(teacher):
         "subjects": subjects,
         "statuses": status_options,
     }
-    return assignments, filter_options, filters, scoped, assignment
+    return assignments, filter_options, filters, scoped, assignment, assignment_scopes
 
 
 def _redirect_result_entry(assignment_id, preserve_status=True):
@@ -406,7 +518,7 @@ def dashboard():
 @teacher_login_required
 def result_entry():
     teacher = get_current_teacher()
-    assignments, entry_filter_options, filters, visible_assignments, assignment = _result_entry_scope(teacher)
+    assignments, entry_filter_options, filters, visible_assignments, assignment, assignment_scopes = _result_entry_scope(teacher)
     deadline_labels = {
         item.id: item.deadline_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Africa/Mogadishu"))
         for item in assignments if item.deadline_at
@@ -422,18 +534,23 @@ def result_entry():
     locked = False
     class_subject_unavailable = False
     grade_scales = {"exam": [], "global": [], "fallback": []}
+    assignment_level_name = None
     if assignment:
-        year_level, year_class = _year_scope_ids_from_legacy(
-            assignment.academic_year_id,
-            assignment.school_class.academic_level_id,
-            assignment.class_id,
+        year_level, year_class, assignment_level_id = _assignment_year_scope(assignment, assignment_scopes)
+        assignment_level_name = (
+            year_level.name if year_level and year_level.name
+            else (
+                "Heerka lama xaqiijin"
+                if assignment_scopes.get(assignment.id) is None
+                else assignment.school_class.academic_level.name
+            )
         )
         class_subject_unavailable = not _assignment_subject_available(assignment, year_level, year_class)
         students = []
         if year_level and year_class and assignment.exam.academic_year_id == assignment.academic_year_id:
             students = students_for_scope_query(
                 assignment.academic_year_id,
-                level_id=assignment.school_class.academic_level_id,
+                level_id=assignment_level_id,
                 class_id=assignment.class_id,
                 exam=assignment.exam,
             ).order_by(Student.full_name).all()
@@ -481,7 +598,7 @@ def result_entry():
             assignment.subject,
             exam=assignment.exam,
             academic_year_level_id=year_level.id if year_level else None,
-            academic_level_id=assignment.school_class.academic_level_id,
+            academic_level_id=assignment_level_id,
         )
         marking_configuration = ExamMarkingConfiguration.query.filter_by(
             academic_year_id=assignment.academic_year_id,
@@ -530,6 +647,7 @@ def result_entry():
         deadline_labels=deadline_labels,
         deadline_display_labels=deadline_display_labels,
         assignment=assignment,
+        assignment_level_name=assignment_level_name,
         submission=submission,
         rows=rows,
         missing_mark_reason_labels=MISSING_MARK_REASON_LABELS,
@@ -566,11 +684,7 @@ def result_entry_missing_mark_report():
 
     if submission and submission.status == "approved":
         return failure("Xaashidan waa la ansixiyey oo way xiran tahay.", 409)
-    year_level, year_class = _year_scope_ids_from_legacy(
-        assignment.academic_year_id,
-        assignment.school_class.academic_level_id,
-        assignment.class_id,
-    )
+    year_level, year_class, assignment_level_id = _assignment_year_scope(assignment)
     if not year_level or not year_class or assignment.exam.academic_year_id != assignment.academic_year_id:
         return failure("Xilsaaristan hadda ma shaqaynayso. Dib u cusboonaysii bogga.", 409)
     if not _assignment_subject_available(assignment, year_level, year_class):
@@ -581,7 +695,7 @@ def result_entry_missing_mark_report():
         return failure("Ardayga lama aqoonsan. Dib u cusboonaysii bogga.")
     student = students_for_scope_query(
         assignment.academic_year_id,
-        level_id=assignment.school_class.academic_level_id,
+        level_id=assignment_level_id,
         class_id=assignment.class_id,
         exam=assignment.exam,
     ).filter(Student.id == student_id).first()
@@ -689,11 +803,7 @@ def result_entry_autosave():
     if assignment.deadline_at and now > assignment.deadline_at and not (submission and submission.status == "reopened"):
         return failure("Waqtigii gudbinta natiijadan wuu dhammaaday.", 409)
 
-    year_level, year_class = _year_scope_ids_from_legacy(
-        assignment.academic_year_id,
-        assignment.school_class.academic_level_id,
-        assignment.class_id,
-    )
+    year_level, year_class, assignment_level_id = _assignment_year_scope(assignment)
     if not year_level or not year_class or assignment.exam.academic_year_id != assignment.academic_year_id:
         return failure("Xilsaarista natiijadu hadda ma shaqaynayso. Dib u cusboonaysii bogga.", 409)
     if not _assignment_subject_available(assignment, year_level, year_class):
@@ -704,7 +814,7 @@ def result_entry_autosave():
         return failure("Ardayga lama aqoonsan. Dib u cusboonaysii bogga.", 400)
     student = students_for_scope_query(
         assignment.academic_year_id,
-        level_id=assignment.school_class.academic_level_id,
+        level_id=assignment_level_id,
         class_id=assignment.class_id,
         exam=assignment.exam,
     ).filter(Student.id == student_id).first()
@@ -726,7 +836,7 @@ def result_entry_autosave():
             assignment.subject,
             exam=assignment.exam,
             academic_year_level_id=year_level.id,
-            academic_level_id=assignment.school_class.academic_level_id,
+            academic_level_id=assignment_level_id,
         )
         if configured_maximum is None:
             return failure("Xadka dhibcaha maaddadan lama dejin. La xiriir maamulka.", 409)
@@ -854,18 +964,14 @@ def result_entry_save():
     ):
         return failure("Tirada gudbinta ee laguu oggolaaday way dhammaatay. La xiriir maamulka.", "danger", 409)
 
-    year_level, year_class = _year_scope_ids_from_legacy(
-        assignment.academic_year_id,
-        assignment.school_class.academic_level_id,
-        assignment.class_id,
-    )
+    year_level, year_class, assignment_level_id = _assignment_year_scope(assignment)
     if not year_level or not year_class or assignment.exam.academic_year_id != assignment.academic_year_id:
         abort(409, "The academic assignment is no longer valid.")
     if not _assignment_subject_available(assignment, year_level, year_class):
         return failure("Maamulka ayaa maaddadan fasalkan ka reebay. Xogtii hore way sii jirtaa, balse gelin cusub lama samayn karo.", "warning", 409)
     students = students_for_scope_query(
         assignment.academic_year_id,
-        level_id=assignment.school_class.academic_level_id,
+        level_id=assignment_level_id,
         class_id=assignment.class_id,
         exam=assignment.exam,
     ).order_by(Student.full_name).all()
@@ -878,7 +984,7 @@ def result_entry_save():
         assignment.subject,
         exam=assignment.exam,
         academic_year_level_id=year_level.id,
-        academic_level_id=assignment.school_class.academic_level_id,
+        academic_level_id=assignment_level_id,
     )))
     errors = []
     precision_errors = []
