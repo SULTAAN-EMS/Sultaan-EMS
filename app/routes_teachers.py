@@ -424,6 +424,13 @@ def result_entry_setup():
                 if edit_assignment.deleted_at:
                     flash("Xilsaaristan waa la tirtiray. Marka hore dib uga soo celi diiwaanka tirtiridda.", "warning")
                     return redirect_to_assignment_list(status="deleted")
+                existing_submission = next(iter(edit_assignment.submissions), None)
+                if existing_submission and existing_submission.status == "approved":
+                    flash(
+                        "Xaashidan si kama dambays ah ayaa loo ansixiyey. Si macallinku mar kale u sixi karo, marka hore isticmaal 'Reopen for correction' oo qor sababta; dabadeed kordhi attempts-ka ama waqtiga.",
+                        "warning",
+                    )
+                    return redirect_to_assignment_list(status="approved")
 
             teacher = db.session.get(Teacher, request.form.get("teacher_id", type=int))
             row_fields = (
@@ -857,7 +864,14 @@ def result_entry_setup():
                     Result.student_id.in_(roster_ids),
                 ).all()
             } if roster_ids else set()
-            complete_roster = roster_ids.issubset(already_published_ids | set(pending_ids))
+            has_unsubmitted_draft_scores = any(
+                mark.status == "draft" and mark.score is not None
+                for mark in submission.marks
+            )
+            complete_roster = (
+                roster_ids.issubset(already_published_ids | set(pending_ids))
+                and not has_unsubmitted_draft_scores
+            )
             submission.status = "approved" if complete_roster else "draft"
             submission.reviewed_at = datetime.utcnow()
             submission.reviewed_by_id = current_user.id

@@ -1692,6 +1692,101 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(self.assignment.max_submissions, 2)
         self.assertEqual(self.assignment.deadline_at.strftime("%Y-%m-%d %H:%M"), "2026-10-23 07:00")
 
+    def test_admin_can_extend_attempts_and_deadline_after_teacher_uses_last_attempt(self):
+        self.assignment.max_submissions = 1
+        db.session.commit()
+        self._teacher_login()
+        submitted = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "44",
+            f"score_{self.students[1].id}": "39",
+        })
+        self.assertEqual(submitted.status_code, 302)
+        submission = TeacherResultSubmission.query.one()
+        self.assertEqual(submission.status, "submitted")
+        self.assertEqual(submission.submission_count, 1)
+
+        self.client.post("/teacher/logout")
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        updated = self.client.post("/admin/teachers/result-entry", data={
+            "action": "update",
+            "assignment_id": str(self.assignment.id),
+            "teacher_id": str(self.teacher.id),
+            "academic_year_id": str(self.year.id),
+            "exam_id": str(self.exam.id),
+            "academic_year_level_id": str(self.year_level.id),
+            "academic_year_class_id": str(self.year_class.id),
+            "academic_year_subject_id": str(AcademicYearSubject.query.one().id),
+            "deadline_at": "2026-11-20T18:30",
+            "max_submissions": "2",
+        }, follow_redirects=True)
+        self.assertEqual(updated.status_code, 200)
+        self.assertIn("Xilsaarista waa la tafatiray".encode(), updated.data)
+        db.session.refresh(self.assignment)
+        self.assertEqual(self.assignment.max_submissions, 2)
+        self.assertEqual(self.assignment.deadline_at.strftime("%Y-%m-%d %H:%M"), "2026-11-20 15:30")
+        self.assertEqual(submission.status, "submitted")
+        self.assertEqual(submission.submission_count, 1)
+
+        self.client.post("/admin/logout")
+        self._teacher_login()
+        reopened_page = self.client.get(f"/teacher/result-entry?assignment_id={self.assignment.id}")
+        self.assertIn(b"Gudbin 1 / 2", reopened_page.data)
+        for student in self.students:
+            self.assertNotRegex(
+                reopened_page.data,
+                f'name="score_{student.id}"[^>]*disabled'.encode(),
+            )
+
+        correction = self.client.post("/teacher/result-entry/autosave", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "score": "46",
+        })
+        self.assertEqual(correction.status_code, 200)
+        resubmitted = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "46",
+            f"score_{self.students[1].id}": "39",
+        })
+        self.assertEqual(resubmitted.status_code, 302)
+        self.assertEqual(submission.submission_count, 2)
+        self.assertEqual(submission.status, "submitted")
+
+    def test_admin_must_reopen_finally_approved_sheet_before_changing_policy(self):
+        submission = TeacherResultSubmission(
+            assignment=self.assignment, status="approved", submission_count=1
+        )
+        db.session.add(submission)
+        db.session.commit()
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+
+        page = self.client.get("/admin/teachers/result-entry?status=approved")
+        self.assertNotIn(b'class="tra-edit-trigger"', page.data)
+        self.assertIn("Ansixinta kama dambaysta ahi way xidhaysaa xaashida".encode(), page.data)
+
+        blocked_update = self.client.post("/admin/teachers/result-entry", data={
+            "action": "update",
+            "assignment_id": str(self.assignment.id),
+            "teacher_id": str(self.teacher.id),
+            "academic_year_id": str(self.year.id),
+            "exam_id": str(self.exam.id),
+            "academic_year_level_id": str(self.year_level.id),
+            "academic_year_class_id": str(self.year_class.id),
+            "academic_year_subject_id": str(AcademicYearSubject.query.one().id),
+            "deadline_at": "2026-11-20T18:30",
+            "max_submissions": "3",
+        }, follow_redirects=True)
+
+        self.assertEqual(blocked_update.status_code, 200)
+        self.assertIn("si kama dambays ah ayaa loo ansixiyey".encode(), blocked_update.data)
+        db.session.refresh(self.assignment)
+        self.assertEqual(self.assignment.max_submissions, 1)
+        self.assertIsNone(self.assignment.deadline_at)
+        self.assertEqual(submission.status, "approved")
+
     def test_admin_cannot_change_assignment_scope_after_submission_exists(self):
         other_subject = Subject(
             name="Arabic", academic_level=self.level, max_score=50, is_active=True
@@ -2145,6 +2240,120 @@ class TestTeacherResultEntry(unittest.TestCase):
         }, follow_redirects=True)
         self.assertEqual(submission.status, "approved")
         self.assertEqual(float(Result.query.filter_by(student_id=self.students[0].id).one().score), 46)
+
+    def test_teacher_can_edit_and_resubmit_while_submission_attempts_remain(self):
+        self.assignment.max_submissions = 2
+        db.session.commit()
+        self._teacher_login()
+
+        first_submit = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "44",
+            f"score_{self.students[1].id}": "39",
+        })
+        self.assertEqual(first_submit.status_code, 302)
+        submission = TeacherResultSubmission.query.one()
+        self.assertEqual(submission.status, "submitted")
+        self.assertEqual(submission.submission_count, 1)
+
+        editable_page = self.client.get(f"/teacher/result-entry?assignment_id={self.assignment.id}")
+        self.assertIn(b"Gudbin 1 / 2", editable_page.data)
+        for student in self.students:
+            self.assertNotRegex(
+                editable_page.data,
+                f'name="score_{student.id}"[^>]*disabled'.encode(),
+            )
+
+        correction = self.client.post("/teacher/result-entry/autosave", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "score": "46.25",
+        })
+        self.assertEqual(correction.status_code, 200)
+        first_mark = TeacherResultMark.query.filter_by(student_id=self.students[0].id).one()
+        self.assertEqual(first_mark.status, "draft")
+        self.assertEqual(first_mark.score, Decimal("46.25"))
+        self.assertEqual(submission.status, "submitted")
+        revisions = TeacherResultMarkRevision.query.filter_by(mark_id=first_mark.id).order_by(
+            TeacherResultMarkRevision.id
+        ).all()
+        self.assertEqual(revisions[-1].submission_attempt, 2)
+
+        second_submit = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "46.25",
+            f"score_{self.students[1].id}": "39.00",
+        })
+        self.assertEqual(second_submit.status_code, 302)
+        self.assertEqual(submission.submission_count, 2)
+        self.assertEqual(submission.status, "submitted")
+        resubmission_event = TeacherResultEvent.query.filter_by(
+            assignment_id=self.assignment.id, event_type="resubmitted",
+        ).one()
+        self.assertEqual(resubmission_event.submission_id, submission.id)
+
+        locked_page = self.client.get(f"/teacher/result-entry?assignment_id={self.assignment.id}")
+        for student in self.students:
+            self.assertRegex(
+                locked_page.data,
+                f'name="score_{student.id}"[^>]*disabled'.encode(),
+            )
+        exhausted_save = self.client.post("/teacher/result-entry/autosave", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "score": "47",
+        })
+        self.assertEqual(exhausted_save.status_code, 409)
+        exhausted_submit = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "47",
+            f"score_{self.students[1].id}": "39",
+        })
+        self.assertEqual(exhausted_submit.status_code, 302)
+        self.assertEqual(submission.submission_count, 2)
+        self.assertEqual(first_mark.score, Decimal("46.25"))
+
+    def test_final_admin_approval_locks_sheet_even_with_attempts_remaining(self):
+        self.assignment.max_submissions = 3
+        db.session.commit()
+        self._teacher_login()
+        submitted = self.client.post("/teacher/result-entry/save", data={
+            "assignment_id": self.assignment.id,
+            "action": "submit",
+            f"score_{self.students[0].id}": "44",
+            f"score_{self.students[1].id}": "39",
+        })
+        self.assertEqual(submitted.status_code, 302)
+        submission = TeacherResultSubmission.query.one()
+        self.assertEqual(submission.submission_count, 1)
+
+        self.client.post("/teacher/logout")
+        self.client.post("/admin/login", data={"username": "result-admin", "password": "AdminPass123"})
+        approved = self.client.post("/admin/teachers/result-entry", data={
+            "action": "approve", "assignment_id": str(self.assignment.id),
+        }, follow_redirects=True)
+        self.assertEqual(approved.status_code, 200)
+        self.assertEqual(submission.status, "approved")
+        self.assertEqual(self.assignment.max_submissions - submission.submission_count, 2)
+
+        self.client.post("/admin/logout")
+        self._teacher_login()
+        final_page = self.client.get(f"/teacher/result-entry?assignment_id={self.assignment.id}")
+        self.assertIn(b"2 ayaa hadhay", final_page.data)
+        for student in self.students:
+            self.assertRegex(
+                final_page.data,
+                f'name="score_{student.id}"[^>]*disabled'.encode(),
+            )
+        rejected_edit = self.client.post("/teacher/result-entry/autosave", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "score": "45",
+        })
+        self.assertEqual(rejected_edit.status_code, 409)
 
     def test_admin_can_return_submitted_marks_for_correction_then_approve_resubmission(self):
         self._teacher_login()

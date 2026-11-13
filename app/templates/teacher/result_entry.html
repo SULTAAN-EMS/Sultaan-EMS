@@ -78,10 +78,10 @@
               <div class="re-no-deadline"><i class="fa-solid fa-infinity" aria-hidden="true"></i><span>Ma jiro waqti kama dambays ah oo loo cayimay xaashidan.</span></div>
             {% endif %}
           </article>
-          <article class="re-policy-item"><span class="re-policy-icon {{ submission_status_tone }}"><i class="fa-solid {{ submission_status_icon }}" aria-hidden="true"></i></span><div><small>Xaaladda gudbinta</small><b>{{ submission_status_label }}</b><span>{{ remaining_submissions }} gudbin oo hadhay</span></div></article>
+          <article class="re-policy-item"><span class="re-policy-icon {{ submission_status_tone }}"><i class="fa-solid {{ submission_status_icon }}" aria-hidden="true"></i></span><div><small>Xaaladda gudbinta</small><b>{{ submission_status_label }}</b><span>Gudbin {{ submission.submission_count if submission else 0 }} / {{ assignment.max_submissions }} · {{ remaining_submissions }} ayaa hadhay</span></div></article>
         </section>
         {% if submission_status == 'reopened' and submission.reviewer_note %}<div class="re-lock-note" role="status"><i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i><span>Sixitaan ayaa loo celiyey ardaygan: {{ submission.reviewer_note }}</span></div>{% endif %}
-        {% if class_subject_unavailable %}<div class="re-lock-note" role="status"><i class="fa-solid fa-book-bookmark" aria-hidden="true"></i><span>Maamulka ayaa maaddadan fasalkan ka reebay. Dhibcihii iyo warbixinnadii hore way sii jiraan, balse gelin cusub lama samayn karo.</span></div>{% elif locked %}<div class="re-lock-note" role="status"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Gelinta Natiijooyinka wuu xidhmay. Fadlan faafaahin la xidhiidh xafiiska imtixaannada TIS.</span></div>{% endif %}
+        {% if class_subject_unavailable %}<div class="re-lock-note" role="status"><i class="fa-solid fa-book-bookmark" aria-hidden="true"></i><span>Maamulka ayaa maaddadan fasalkan ka reebay. Dhibcihii iyo warbixinnadii hore way sii jiraan, balse gelin cusub lama samayn karo.</span></div>{% elif submission_status in ['submitted', 'reopened'] and remaining_submissions == 0 %}<div class="re-lock-note" role="status"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Isku-dayadii gudbinta way dhammaadeen. Dhibcaha lama sii beddeli karo ilaa maamulka kordhiyo isku-dayada.</span></div>{% elif locked %}<div class="re-lock-note" role="status"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Gelinta Natiijooyinka wuu xidhmay. Fadlan faafaahin la xidhiidh xafiiska imtixaannada TIS.</span></div>{% endif %}
 
         <form method="get" class="re-filter-card" id="resultScopeFilters" data-filter-assignment-id="{{ assignment.id }}">
           <button type="button" class="re-filter-toggle" id="filterToggle" aria-expanded="false" aria-controls="filterBody">
@@ -266,6 +266,6 @@
     </div>
   {% endif %}
 </section>
-<script src="{{ url_for('static', filename='js/teacher-result-entry.js', v='teacher-missing-reports-20261028-9') }}" defer></script>
+<script src="{{ url_for('static', filename='js/teacher-result-entry.js', v='teacher-submission-attempts-20261113-1') }}" defer></script>
 <script>document.querySelectorAll('[data-copyright-year]').forEach(function (year) { year.textContent = new Date().getFullYear(); });</script>
 {% endblock %}

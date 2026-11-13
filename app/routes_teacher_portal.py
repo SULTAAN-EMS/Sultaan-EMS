@@ -119,7 +119,7 @@ def _set_result_mark_action(mark, previous_score, next_score, occurred_at):
 
 
 def _next_result_submission_attempt(submission):
-    if submission.status == "reopened":
+    if submission.status in {"submitted", "reopened"}:
         return submission.submission_count + 1
     return submission.submission_count or None
 
@@ -438,6 +438,15 @@ def result_entry():
                 exam=assignment.exam,
             ).order_by(Student.full_name).all()
         submission = TeacherResultSubmission.query.filter_by(assignment_id=assignment.id).first()
+        remaining_submissions = max(
+            0,
+            (assignment.max_submissions or 0) - (submission.submission_count if submission else 0),
+        )
+        attempts_exhausted = bool(
+            submission
+            and submission.status in {"submitted", "reopened"}
+            and remaining_submissions == 0
+        )
         missing_reports = {
             report.student_id: report
             for report in TeacherResultMissingMarkReport.query.filter_by(
@@ -460,7 +469,10 @@ def result_entry():
                 "is_existing": bool(existing),
                 "has_draft_mark": bool(draft),
                 "mark_status": draft.status if draft else "draft",
-                "is_locked": bool(draft and draft.status in {"submitted", "approved"}),
+                "is_locked": bool(
+                    (draft and draft.status == "approved")
+                    or attempts_exhausted
+                ),
                 "missing_report": missing_reports.get(student.id),
                 "action_type": (draft.last_action if draft and draft.last_action else None)
                 or ("legacy" if (draft.score if draft else (existing.score if existing else None)) is not None else None),
@@ -497,6 +509,7 @@ def result_entry():
             class_subject_unavailable
             or (deadline_passed and not reopened)
             or bool(submission and submission.status == "approved")
+            or attempts_exhausted
         )
 
     approved_mark_count = sum(mark.status == "approved" for mark in submission.marks) if submission else 0
@@ -527,7 +540,7 @@ def result_entry():
         class_subject_unavailable=class_subject_unavailable,
         approved_mark_count=approved_mark_count,
         pending_mark_count=pending_mark_count,
-        remaining_submissions=max(0, (assignment.max_submissions or 0) - (submission.submission_count if submission else 0)) if assignment else 0,
+        remaining_submissions=remaining_submissions if assignment else 0,
         now=datetime.utcnow(),
     ))
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
@@ -663,6 +676,16 @@ def result_entry_autosave():
 
     if submission and submission.status == "approved":
         return failure("Xaashida oo dhan waa la ansixiyey oo way xiran tahay. Maamulka ayaa dib u furi kara.", 409)
+    remaining_submissions = max(
+        0,
+        (assignment.max_submissions or 0) - (submission.submission_count if submission else 0),
+    )
+    if (
+        submission
+        and submission.status in {"submitted", "reopened"}
+        and remaining_submissions == 0
+    ):
+        return failure("Isku-dayadii gudbinta way dhammaadeen. La xiriir maamulka.", 409)
     if assignment.deadline_at and now > assignment.deadline_at and not (submission and submission.status == "reopened"):
         return failure("Waqtigii gudbinta natiijadan wuu dhammaaday.", 409)
 
@@ -690,8 +713,10 @@ def result_entry_autosave():
 
     marks = {mark.student_id: mark for mark in submission.marks} if submission else {}
     mark = marks.get(student.id)
-    if mark and mark.status in {"submitted", "approved"}:
+    if mark and mark.status == "approved":
         return failure("Dhibcahan hore ayaa maamulka loogu gudbiyey, mana la beddeli karo.", 409)
+    if mark and mark.status == "submitted" and remaining_submissions <= 0:
+        return failure("Isku-dayadii gudbinta way dhammaadeen. La xiriir maamulka.", 409)
 
     raw_score = payload.get("score", "")
     raw_score = "" if raw_score is None else str(raw_score).strip()
@@ -718,7 +743,7 @@ def result_entry_autosave():
         exam_id=assignment.exam_id, subject_id=assignment.subject_id, student_id=student.id
     ).first()
     if not raw_score:
-        if mark and mark.status == "draft":
+        if mark and mark.status in {"draft", "submitted"}:
             previous_score = mark.score
             had_previous_action = bool(mark.last_action)
             action_type = _set_result_mark_action(mark, previous_score, None, now)
@@ -730,6 +755,7 @@ def result_entry_autosave():
                     submission_attempt=_next_result_submission_attempt(submission),
                 )
             mark.score = None
+            mark.status = "draft"
         report = _sync_missing_mark_report(
             assignment,
             student.id,
@@ -820,7 +846,12 @@ def result_entry_save():
         return failure("Xaashida oo dhan waa la ansixiyey oo way xiran tahay. Maamulka ayaa dib u furi kara.", "warning", 409)
     if assignment.deadline_at and now > assignment.deadline_at and not (submission and submission.status == "reopened"):
         return failure("Waqtigii gudbinta natiijadan wuu dhammaaday.", "danger", 409)
-    if action == "submit" and submission and submission.status == "reopened" and submission.submission_count >= assignment.max_submissions:
+    if (
+        action == "submit"
+        and submission
+        and submission.status in {"submitted", "reopened"}
+        and submission.submission_count >= assignment.max_submissions
+    ):
         return failure("Tirada gudbinta ee laguu oggolaaday way dhammaatay. La xiriir maamulka.", "danger", 409)
 
     year_level, year_class = _year_scope_ids_from_legacy(
@@ -863,14 +894,31 @@ def result_entry_save():
         ).all()
     } if students else {}
     previous_submission_status = submission.status if submission else None
+    remaining_submissions = max(
+        0,
+        (assignment.max_submissions or 0) - (submission.submission_count if submission else 0),
+    )
     revision_changes = []
     score_by_student = {}
     for student in students:
         mark = existing_marks.get(student.id)
-        if mark and mark.status in {"submitted", "approved"}:
+        if mark and mark.status == "approved":
             continue
         raw = (request.form.get(f"score_{student.id}") or "").strip()
         if not raw:
+            if mark and mark.status == "submitted":
+                if remaining_submissions <= 0:
+                    return failure("Isku-dayadii gudbinta way dhammaadeen. La xiriir maamulka.", "danger", 409)
+                previous_score = mark.score
+                had_previous_action = bool(mark.last_action)
+                action_type = _set_result_mark_action(mark, previous_score, None, now)
+                if action_type:
+                    revision_changes.append((
+                        mark, previous_score, None, action_type,
+                        previous_score is not None or had_previous_action,
+                    ))
+                mark.score = None
+                mark.status = "draft"
             continue
         score, score_error = _parse_result_entry_score(raw)
         if score_error == "precision":
@@ -882,6 +930,11 @@ def result_entry_save():
         if score > max_score:
             errors.append(student.full_name)
             continue
+        if mark and mark.status == "submitted":
+            if mark.score is not None and score == Decimal(str(mark.score)):
+                continue
+            if remaining_submissions <= 0:
+                return failure("Isku-dayadii gudbinta way dhammaadeen. La xiriir maamulka.", "danger", 409)
         score_by_student[student.id] = score
     if precision_errors:
         return failure("Geli ugu badnaan laba meelood oo jajab ah: %s" % ", ".join(precision_errors[:6]))
@@ -896,7 +949,10 @@ def result_entry_save():
     if not submit_now:
         for student in students:
             existing_mark = mark_by_student.get(student.id)
-            if existing_mark and existing_mark.status == "draft" and not (request.form.get(f"score_{student.id}") or "").strip():
+            if existing_mark and existing_mark.status in {"draft", "submitted"} and not (request.form.get(f"score_{student.id}") or "").strip():
+                if existing_mark.status == "submitted" and remaining_submissions <= 0:
+                    db.session.rollback()
+                    return failure("Isku-dayadii gudbinta way dhammaadeen. La xiriir maamulka.", "danger", 409)
                 previous_score = existing_mark.score
                 had_previous_action = bool(existing_mark.last_action)
                 action_type = _set_result_mark_action(existing_mark, previous_score, None, now)
@@ -906,6 +962,7 @@ def result_entry_save():
                         previous_score is not None or had_previous_action,
                     ))
                 existing_mark.score = None
+                existing_mark.status = "draft"
                 _sync_missing_mark_report(
                     assignment,
                     student.id,
@@ -942,11 +999,12 @@ def result_entry_save():
     submit_message = None
     if submit_now:
         pending_marks = [mark for mark in submission.marks if mark.status == "submitted" and mark.score is not None]
-        if not pending_marks:
+        newly_submitted_ids = set(score_by_student)
+        if not newly_submitted_ids:
             db.session.rollback()
-            return failure("Geli ugu yaraan hal dhibcood oo cusub ka hor intaadan maamulka u gudbin.", "warning", 422)
-        reopened = submission.status == "reopened"
-        if reopened:
+            return failure("Wax ka beddel ama geli ugu yaraan hal dhibcood ka hor gudbinta.", "warning", 422)
+        is_resubmission = submission.status in {"submitted", "reopened"}
+        if is_resubmission:
             if submission.submission_count >= assignment.max_submissions:
                 db.session.rollback()
                 return failure("Tirada gudbinta ee laguu oggolaaday way dhammaatay.", "danger", 409)
@@ -957,14 +1015,16 @@ def result_entry_save():
         submission.submitted_at = now
         record_teacher_result_event(
             assignment,
-            "resubmitted" if reopened else "submitted",
+            "resubmitted" if is_resubmission else "submitted",
             submission=submission,
-            status_from="reopened" if reopened else previous_submission_status or "draft",
+            status_from=previous_submission_status or "draft",
             status_to="submitted",
             marks_count=len(pending_marks),
             note=f"{len(pending_marks)} arday ayaa lagu gudbiyey isku-dayga {submission.submission_count}.",
         )
-        submit_message = "Dhibcaha %s arday ayaa maamulka loo gudbiyey si dib loogu eego." % len(score_by_student)
+        submit_message = "Dhibcaha waa la gudbiyey; isku-dayga %s / %s ayaa la isticmaalay." % (
+            submission.submission_count, assignment.max_submissions,
+        )
     else:
         if submission.status not in {"submitted", "reopened"}:
             submission.status = "draft"

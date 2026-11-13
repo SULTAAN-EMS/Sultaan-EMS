@@ -787,7 +787,11 @@
     const summary = updateView();
     const allRows = summary.records;
     const invalidCount = allRows.filter(({ result }) => !result.empty && !result.valid).length;
-    const pendingCount = allRows.filter(({ result, card }) => result.valid && card.dataset.locked !== "true" && (card.dataset.hasDraft === "true" || result.changed)).length;
+    const pendingCount = allRows.filter(({ result, card }) => (
+      result.valid
+      && card.dataset.locked !== "true"
+      && ((card.dataset.markStatus === "draft" && card.dataset.hasDraft === "true") || result.changed)
+    )).length;
     const enteredNode = document.querySelector("[data-review-entered]");
     const flaggedNode = document.querySelector("[data-review-flagged]");
     const averageNode = document.querySelector("[data-review-average]");
