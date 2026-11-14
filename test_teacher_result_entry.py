@@ -135,6 +135,12 @@ class TestTeacherResultEntry(unittest.TestCase):
                 _top10_teacher_wall_photos(self.exam, placement, settings),
                 [{"photo": "/static/uploads/teachers/results-teacher.jpg", "name": "Results Teacher"}],
             )
+            settings["top10_tunnel_teacher_names_enabled"] = "off"
+            self.assertEqual(
+                _top10_teacher_wall_photos(self.exam, placement, settings),
+                [{"photo": "/static/uploads/teachers/results-teacher.jpg", "name": ""}],
+            )
+            settings["top10_tunnel_teacher_names_enabled"] = "on"
             settings["top10_tunnel_teacher_excluded_ids"] = json.dumps([self.teacher.id])
             self.assertEqual(_top10_teacher_wall_photos(self.exam, placement, settings), [])
             settings["top10_tunnel_teacher_excluded_ids"] = "[]"
@@ -156,6 +162,9 @@ class TestTeacherResultEntry(unittest.TestCase):
         settings_page = self.client.get("/admin/advanced-results/settings")
         self.assertEqual(settings_page.status_code, 200)
         self.assertIn(b"Sawirrada macallimiinta", settings_page.data)
+        self.assertIn(b"Muuji magacyada macallimiinta", settings_page.data)
+        self.assertIn(b"Kaydin toos ah", settings_page.data)
+        self.assertNotIn(b"Kaydi dejinta", settings_page.data)
         self.assertIn(f'value="{self.teacher.id}" data-twt-teacher-toggle checked'.encode(), settings_page.data)
 
         saved = self.client.post("/admin/advanced-results/settings/top10-teacher-walls", data={
@@ -169,6 +178,53 @@ class TestTeacherResultEntry(unittest.TestCase):
             json.loads(db.session.get(Setting, "top10_tunnel_teacher_excluded_ids").value),
             [self.teacher.id],
         )
+
+        self.app.config["WTF_CSRF_ENABLED"] = True
+        settings_page = self.client.get("/admin/advanced-results/settings")
+        csrf_match = re.search(
+            r'name="csrf_token" value="([^"]+)"',
+            settings_page.get_data(as_text=True),
+        )
+        self.assertIsNotNone(csrf_match)
+        autosaved = self.client.post(
+            "/admin/advanced-results/settings/top10-teacher-walls",
+            data={
+                "csrf_token": csrf_match.group(1),
+                "top10_tunnel_teacher_controls_present": "1",
+                "top10_tunnel_teacher_walls_enabled": "on",
+                "top10_tunnel_teacher_allowed_ids": str(self.teacher.id),
+            },
+            headers={
+                "X-Requested-With": "XMLHttpRequest",
+                "Accept": "application/json",
+                "X-CSRFToken": csrf_match.group(1),
+            },
+        )
+        self.assertEqual(autosaved.status_code, 200)
+        self.assertTrue(autosaved.json["ok"])
+        db.session.expire_all()
+        self.assertEqual(db.session.get(Setting, "top10_tunnel_teacher_walls_enabled").value, "on")
+        self.assertEqual(json.loads(db.session.get(Setting, "top10_tunnel_teacher_excluded_ids").value), [])
+
+        autosaved_names = self.client.post(
+            "/admin/advanced-results/settings/top10-teacher-walls",
+            data={
+                "csrf_token": csrf_match.group(1),
+                "top10_tunnel_teacher_controls_present": "1",
+                "top10_tunnel_teacher_names_control_present": "1",
+                "top10_tunnel_teacher_walls_enabled": "on",
+                "top10_tunnel_teacher_names_enabled": "off",
+                "top10_tunnel_teacher_allowed_ids": str(self.teacher.id),
+            },
+            headers={
+                "X-Requested-With": "XMLHttpRequest",
+                "Accept": "application/json",
+                "X-CSRFToken": csrf_match.group(1),
+            },
+        )
+        self.assertEqual(autosaved_names.status_code, 200)
+        db.session.expire_all()
+        self.assertEqual(db.session.get(Setting, "top10_tunnel_teacher_names_enabled").value, "off")
 
     def test_teacher_login_prefers_official_school_logo(self):
         db.session.add_all([

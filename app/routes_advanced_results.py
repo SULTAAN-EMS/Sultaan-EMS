@@ -4086,6 +4086,14 @@ def update_top10_tunnel_teacher_settings():
     db.session.add(enabled_setting)
 
     if request.form.get("top10_tunnel_teacher_controls_present") == "1":
+        if request.form.get("top10_tunnel_teacher_names_control_present") == "1":
+            names_enabled = "on" if request.form.get("top10_tunnel_teacher_names_enabled") == "on" else "off"
+            names_setting = db.session.get(Setting, "top10_tunnel_teacher_names_enabled") or Setting(
+                key="top10_tunnel_teacher_names_enabled"
+            )
+            names_setting.value = names_enabled
+            db.session.add(names_setting)
+
         excluded_setting = db.session.get(Setting, "top10_tunnel_teacher_excluded_ids")
         try:
             previously_excluded = {
@@ -4110,6 +4118,8 @@ def update_top10_tunnel_teacher_settings():
 
     audit("Settings Changes", "Updated Top 10 teacher wall photo settings")
     db.session.commit()
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": True, "message": "Dejinta sawirrada macallimiinta waa la kaydiyey."})
     flash("Dejinta sawirrada macallimiinta waa la kaydiyey.", "success")
     return redirect(url_for("admin_advanced_results.results_settings"))
 

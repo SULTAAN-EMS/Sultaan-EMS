@@ -910,6 +910,7 @@ def _public_asset_url(path):
 def _top10_teacher_wall_photos(exam, placement, settings):
     if str(settings.get("top10_tunnel_teacher_walls_enabled", "on") or "on").strip().lower() != "on":
         return []
+    show_teacher_names = str(settings.get("top10_tunnel_teacher_names_enabled", "on") or "on").strip().lower() == "on"
     class_id = placement.get("academic_class_id") if placement else None
     if not class_id:
         return []
@@ -947,7 +948,7 @@ def _top10_teacher_wall_photos(exam, placement, settings):
         seen_teacher_ids.add(teacher.id)
         photo_url = _public_asset_url(teacher.photo_path)
         if photo_url:
-            teacher_photos.append({"photo": photo_url, "name": teacher.full_name})
+            teacher_photos.append({"photo": photo_url, "name": teacher.full_name if show_teacher_names else ""})
     return teacher_photos
 
 
@@ -1446,6 +1447,7 @@ def api_top_students(student_code):
         exam_type=exam.name,
         students=students,
         teachers=teacher_photos,
+        teacher_names_enabled=str(settings.get("top10_tunnel_teacher_names_enabled", "on") or "on").strip().lower() == "on",
     )
 
 

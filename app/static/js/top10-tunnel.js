@@ -27,7 +27,7 @@
   let renderer, scene, camera, segments = [], fading = [], studentCards = [], populateSegment;
   let scrollPos = 0, pressed = false, last = 0, raf = 0, running = false, muted = false;
   let paused = false, autoPausedByVisibility = false;
-  let imageIndex = 0, colorIndex = 0, students = [], teachers = [], cardSpeed = 0, nameAnimClock = 0, teacherImageIndex = 0;
+  let imageIndex = 0, colorIndex = 0, students = [], teachers = [], teacherNamesEnabled = true, cardSpeed = 0, nameAnimClock = 0, teacherImageIndex = 0;
   let teacherWallMaterials = [];
   let currentStudentIndex = 0;
   let combAvailable = true;
@@ -956,72 +956,48 @@
       const context = textureCanvas.getContext('2d');
       if (!context) return null;
 
-      const background = context.createLinearGradient(0, 0, width, height);
-      background.addColorStop(0, '#10234b');
-      background.addColorStop(1, '#174d7d');
-      context.fillStyle = background;
-      context.fillRect(0, 0, width, height);
+      context.drawImage(image, 0, 0, width, height);
+      if (name) {
+        const fontSize = Math.max(22, Math.min(28, Math.round(Math.min(width, height) * .065)));
+        const lineHeight = fontSize * 1.08;
+        const stripHeight = Math.max(height * .19, lineHeight * 3 + 18);
+        const stripTop = height - stripHeight;
+        const caption = context.createLinearGradient(0, stripTop, 0, height);
+        caption.addColorStop(0, 'rgba(5, 14, 34, .72)');
+        caption.addColorStop(1, 'rgba(5, 14, 34, .96)');
+        context.fillStyle = caption;
+        context.fillRect(0, stripTop, width, stripHeight);
 
-      const wideWall = aspect > 1;
-      const photoHeight = height * (wideWall ? .74 : .54);
-      const photoWidth = wideWall ? photoHeight : Math.min(width * .72, photoHeight * .78);
-      const photoX = (width - photoWidth) / 2;
-      const photoY = height * (wideWall ? .025 : .045);
-      const sourceWidth = image.naturalWidth || image.width || 1;
-      const sourceHeight = image.naturalHeight || image.height || 1;
-      const scale = Math.max(photoWidth / sourceWidth, photoHeight / sourceHeight);
-      const cropWidth = photoWidth / scale;
-      const cropHeight = photoHeight / scale;
-      const cropX = (sourceWidth - cropWidth) / 2;
-      const cropY = (sourceHeight - cropHeight) / 2;
-
-      context.save();
-      context.beginPath();
-      context.roundRect(photoX, photoY, photoWidth, photoHeight, Math.min(12, width * .035));
-      context.clip();
-      context.drawImage(image, cropX, cropY, cropWidth, cropHeight, photoX, photoY, photoWidth, photoHeight);
-      context.restore();
-      context.strokeStyle = '#e1bd5b';
-      context.lineWidth = Math.max(2, width * .009);
-      context.beginPath();
-      context.roundRect(photoX, photoY, photoWidth, photoHeight, Math.min(12, width * .035));
-      context.stroke();
-
-      const fontSize = wideWall ? 13 : Math.min(27, Math.max(16, height * .07));
-      context.font = `700 ${fontSize}px system-ui, sans-serif`;
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.fillStyle = '#f7f9ff';
-      context.shadowColor = 'rgba(0, 0, 0, .65)';
-      context.shadowBlur = 3;
-      const maxWidth = width * .9;
-      const maxLines = 3;
-      const lines = [];
-      let line = '';
-      String(name || 'Macallin').trim().split(/\s+/).forEach((word) => {
-        const candidate = line ? `${line} ${word}` : word;
-        if (line && context.measureText(candidate).width > maxWidth) {
-          lines.push(line);
-          line = word;
-        } else {
-          line = candidate;
+        context.font = `700 ${fontSize}px system-ui, sans-serif`;
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.fillStyle = '#fff';
+        context.shadowColor = 'rgba(0, 0, 0, .72)';
+        context.shadowBlur = 3;
+        const maxWidth = width * .9;
+        const lines = [];
+        let line = '';
+        String(name).trim().split(/\s+/).forEach((word) => {
+          const candidate = line ? `${line} ${word}` : word;
+          if (line && context.measureText(candidate).width > maxWidth) {
+            lines.push(line);
+            line = word;
+          } else {
+            line = candidate;
+          }
+        });
+        if (line) lines.push(line);
+        if (lines.length > 3) {
+          lines.length = 3;
+          let lastLine = lines[2];
+          while (lastLine.length && context.measureText(`${lastLine}…`).width > maxWidth) {
+            lastLine = lastLine.slice(0, -1).trimEnd();
+          }
+          lines[2] = `${lastLine}…`;
         }
-      });
-      if (line) lines.push(line);
-      if (lines.length > maxLines) {
-        lines.length = maxLines;
-        let lastLine = lines[maxLines - 1];
-        while (lastLine.length && context.measureText(`${lastLine}...`).width > maxWidth) {
-          lastLine = lastLine.slice(0, -1).trimEnd();
-        }
-        lines[maxLines - 1] = `${lastLine}...`;
+        const firstLineY = stripTop + stripHeight / 2 - ((lines.length - 1) * lineHeight) / 2;
+        lines.forEach((text, index) => context.fillText(text, width / 2, firstLineY + index * lineHeight, maxWidth));
       }
-      const lineHeight = fontSize * 1.12;
-      const captionTop = photoY + photoHeight + height * .06;
-      const captionHeight = height - captionTop - height * .045;
-      const fittedLineHeight = Math.min(lineHeight, captionHeight / Math.max(lines.length, 1));
-      const firstLineY = captionTop + captionHeight / 2 - ((lines.length - 1) * fittedLineHeight) / 2;
-      lines.forEach((text, index) => context.fillText(text, width / 2, firstLineY + index * fittedLineHeight, maxWidth));
 
       const texture = new THREE.CanvasTexture(textureCanvas);
       texture.minFilter = THREE.LinearFilter;
@@ -1030,24 +1006,24 @@
       return texture;
     };
     const teacherWallMats = teachers.map((teacher) => {
-      const mats = {
-        horizontal: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }),
-        vertical: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }),
+      const materials = {
+        horizontal: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, side: THREE.DoubleSide }),
+        vertical: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, side: THREE.DoubleSide }),
       };
       if (teacher.photo) {
         textureLoader.load(teacher.photo, (texture) => {
-          mats.horizontal.map = makeTeacherTexture(texture.image, teacher.name, (TUNNEL_WIDTH / GRID) / SEGMENT_DEPTH);
-          mats.vertical.map = makeTeacherTexture(texture.image, teacher.name, SEGMENT_DEPTH / (TUNNEL_HEIGHT / GRID));
-          mats.horizontal.needsUpdate = true;
-          mats.vertical.needsUpdate = true;
-          mats.horizontal.opacity = .96;
-          mats.vertical.opacity = .96;
+          const teacherName = teacherNamesEnabled ? teacher.name : '';
+          materials.horizontal.map = makeTeacherTexture(texture.image, teacherName, (TUNNEL_WIDTH / GRID) / SEGMENT_DEPTH);
+          materials.vertical.map = makeTeacherTexture(texture.image, teacherName, SEGMENT_DEPTH / (TUNNEL_HEIGHT / GRID));
+          materials.horizontal.needsUpdate = true;
+          materials.vertical.needsUpdate = true;
+          fading.push(materials.horizontal, materials.vertical);
           texture.dispose();
         }, undefined, () => {});
       }
-      return mats;
+      return materials;
     });
-    teacherWallMaterials = teacherWallMats.flatMap((mats) => [mats.horizontal, mats.vertical]);
+    teacherWallMaterials = teacherWallMats.flatMap((materials) => [materials.horizontal, materials.vertical]);
     const palette = [0x1a1f2b, 0x14181f, GOLD, 0x2a2f3a];
     const colorMats = palette.map((hex) => new THREE.MeshBasicMaterial({ color: hex, side: THREE.DoubleSide }));
     const hw = TUNNEL_WIDTH / 2, hh = TUNNEL_HEIGHT / 2, colW = TUNNEL_WIDTH / GRID, rowH = TUNNEL_HEIGHT / GRID;
@@ -1070,7 +1046,10 @@
       Object.entries(blankBySide).forEach(([side, blanks]) => {
         if (!blanks.length) return;
         const slab = blanks[Math.floor(Math.random() * blanks.length)];
-        slab.material = teacherWallMats[teacherImageIndex++ % teacherWallMats.length][side === 'floor' || side === 'ceiling' ? 'horizontal' : 'vertical'];
+        const teacherMaterials = teacherWallMats[teacherImageIndex++ % teacherWallMats.length];
+        slab.material = side === 'floor' || side === 'ceiling'
+          ? teacherMaterials.horizontal
+          : teacherMaterials.vertical;
         slab.visible = true;
       });
     };
@@ -1145,6 +1124,7 @@
       if (!response.ok || !payload.ok) throw new Error(payload.message || 'Unable to load Top 10 Students.');
       students = (payload.students || []).map((entry) => ({ ...entry, academic_year: payload.academic_year, exam_type: payload.exam_type }));
       teachers = Array.isArray(payload.teachers) ? payload.teachers.filter((teacher) => teacher && teacher.photo) : [];
+      teacherNamesEnabled = payload.teacher_names_enabled !== false;
       if (!students.length) { setOverlayEmpty('Top 10 is not available yet'); return; }
       hint.textContent = `Top 10 · ${payload.class_name} · Hold to speed up · Esc to close`;
       startTunnel();
