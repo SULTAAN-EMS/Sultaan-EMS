@@ -4128,6 +4128,7 @@ def results_settings():
                 "enrollment": enrollment,
                 "student": enrollment.student,
                 "record": record,
+                "photo_url": stored_asset_url(enrollment.student.photo_path),
                 "status_label": code_status_label(record),
                 "shift_label": shift_label(enrollment.academic_year_class.school_shift if enrollment.academic_year_class else None),
             })
