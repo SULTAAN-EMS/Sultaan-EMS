@@ -4250,7 +4250,7 @@ def print_student_portal_access_codes():
     if access_shift:
         scope_label += f" · {shift_label(access_shift)}"
 
-    page_size = 15
+    page_size = 20
     pages = [
         {
             "rows": rows[index:index + page_size],
