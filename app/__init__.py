@@ -335,6 +335,17 @@ def create_app(config_class=Config):
     # transaction. Run the explicit migration/init process separately.
     if not app.config.get("AUTO_INIT_DB", True):
         app.logger.info("Automatic database bootstrap is disabled for production startup.")
+        # The student portal access-code tables are small feature tables. Keep
+        # them available even when a hosting provider starts Gunicorn directly
+        # and bypasses the migration command in Procfile.
+        try:
+            from .models import StudentPortalAccessCode, StudentPortalAccessPolicy
+
+            with app.app_context():
+                StudentPortalAccessCode.__table__.create(bind=db.engine, checkfirst=True)
+                StudentPortalAccessPolicy.__table__.create(bind=db.engine, checkfirst=True)
+        except Exception:
+            app.logger.exception("Student portal access-code schema check failed during production startup.")
         return app
 
     # =========================
