@@ -134,7 +134,13 @@ def access_code_required(student, settings, academic_year_id=None):
     if enabled not in {"on", "true", "1", "yes"}:
         return False
     policy, _scope = applicable_policy(student, academic_year_id)
-    return policy.is_enabled if policy is not None else True
+    if policy is not None and not policy.is_enabled:
+        return False
+
+    # Generating a code is only a preparation step. The portal must not show
+    # or enforce the second step until an administrator approves an active code.
+    record = access_code_record(student)
+    return bool(record and record.is_active and record.status == "approved")
 
 
 def access_code_record(student):

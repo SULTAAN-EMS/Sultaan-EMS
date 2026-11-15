@@ -4092,6 +4092,9 @@ def results_settings():
         if access_level_id:
             class_query = class_query.filter(AcademicYearClass.academic_year_level_id == access_level_id)
         access_classes = class_query.order_by(
+            AcademicYearLevel.sort_order,
+            AcademicYearLevel.name,
+            AcademicYearLevel.id,
             AcademicYearClass.sort_order,
             AcademicYearClass.name,
             AcademicYearClass.id,
@@ -4104,6 +4107,7 @@ def results_settings():
             StudentEnrollment.query
             .join(Student, Student.id == StudentEnrollment.student_id)
             .join(AcademicYearClass, AcademicYearClass.id == StudentEnrollment.academic_year_class_id)
+            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
             .filter(
                 StudentEnrollment.academic_year_id == access_year_id,
                 StudentEnrollment.status.in_(("active", "completed")),
@@ -4116,7 +4120,14 @@ def results_settings():
             roster_query = roster_query.filter(StudentEnrollment.academic_year_class_id == access_class_id)
         if access_shift:
             roster_query = roster_query.filter(AcademicYearClass.school_shift == access_shift)
-        enrollments = roster_query.order_by(Student.full_name, Student.id).limit(500).all()
+        enrollments = roster_query.order_by(
+            AcademicYearLevel.sort_order,
+            AcademicYearLevel.name,
+            AcademicYearClass.sort_order,
+            AcademicYearClass.name,
+            Student.full_name,
+            Student.id,
+        ).limit(500).all()
         student_ids = [enrollment.student_id for enrollment in enrollments]
         records = {
             record.student_id: record
@@ -4197,6 +4208,7 @@ def print_student_portal_access_codes():
         StudentEnrollment.query
         .join(Student, Student.id == StudentEnrollment.student_id)
         .join(AcademicYearClass, AcademicYearClass.id == StudentEnrollment.academic_year_class_id)
+        .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
         .filter(
             StudentEnrollment.academic_year_id == selected_year.id,
             StudentEnrollment.status.in_(("active", "completed")),
@@ -4210,7 +4222,15 @@ def print_student_portal_access_codes():
     if access_shift:
         roster_query = roster_query.filter(AcademicYearClass.school_shift == access_shift)
 
-    enrollments = roster_query.order_by(Student.full_name, Student.student_code, Student.id).all()
+    enrollments = roster_query.order_by(
+        AcademicYearLevel.sort_order,
+        AcademicYearLevel.name,
+        AcademicYearClass.sort_order,
+        AcademicYearClass.name,
+        Student.full_name,
+        Student.student_code,
+        Student.id,
+    ).all()
     student_ids = [enrollment.student_id for enrollment in enrollments]
     records = {
         record.student_id: record
@@ -4385,10 +4405,54 @@ def delete_student_portal_access_policy(policy_id):
     if not policy:
         flash("Xeerka lama helin.", "warning")
         return _student_access_settings_redirect()
-    db.session.delete(policy)
-    audit("Settings Changes", f"Student portal access scope policy {policy_id} deleted")
-    db.session.commit()
-    flash("Xeerka lambarka sireed waa la tirtiray; dejinta guud ayaa mar kale shaqaynaysa.", "success")
+    try:
+        enrollment_query = (
+            StudentEnrollment.query
+            .join(AcademicYearClass, AcademicYearClass.id == StudentEnrollment.academic_year_class_id)
+            .filter(
+                StudentEnrollment.academic_year_id == policy.academic_year_id,
+                StudentEnrollment.status.in_(("active", "completed")),
+            )
+        )
+        if policy.academic_year_level_id:
+            enrollment_query = enrollment_query.filter(
+                StudentEnrollment.academic_year_level_id == policy.academic_year_level_id
+            )
+        if policy.academic_year_class_id:
+            enrollment_query = enrollment_query.filter(
+                StudentEnrollment.academic_year_class_id == policy.academic_year_class_id
+            )
+        if policy.school_shift:
+            enrollment_query = enrollment_query.filter(AcademicYearClass.school_shift == policy.school_shift)
+
+        student_ids = [enrollment.student_id for enrollment in enrollment_query.all()]
+        revoked_count = 0
+        if student_ids:
+            records = StudentPortalAccessCode.query.filter(
+                StudentPortalAccessCode.student_id.in_(student_ids),
+                StudentPortalAccessCode.status == "approved",
+                StudentPortalAccessCode.is_active.is_(True),
+            ).all()
+            for record in records:
+                record.status = "revoked"
+                record.is_active = False
+                record.updated_by_id = current_user.id
+                revoked_count += 1
+
+        db.session.delete(policy)
+        audit(
+            "Settings Changes",
+            f"Student portal access policy {policy_id} deleted and {revoked_count} active codes revoked",
+        )
+        db.session.commit()
+        flash(
+            f"Xeerka waa la tirtiray; {revoked_count} lambar sireed oo ku xirnaa xeerka waa la joojiyey.",
+            "success",
+        )
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception("Student portal access policy deletion failed for policy_id=%s", policy_id)
+        flash(f"Xeerka lama tirtirin: {exc}", "danger")
     return _student_access_settings_redirect()
 
 
