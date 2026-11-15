@@ -365,6 +365,38 @@
       })();
     </script>
     {% endif %}
+  {% elif access_code_challenge %}
+    <style>
+      .student-access-gate{width:min(620px,calc(100% - 28px));margin:34px auto;padding:24px;border:1px solid #c8d9ec;border-radius:24px;background:linear-gradient(145deg,#f8fbff,#eef7ff);box-shadow:0 22px 55px rgba(19,57,102,.16);animation:student-access-enter .42s ease both}
+      @keyframes student-access-enter{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
+      .student-access-head{display:flex;align-items:flex-start;gap:14px}.student-access-icon{display:grid;place-items:center;width:52px;height:52px;flex:0 0 52px;border-radius:16px;color:#fff;background:linear-gradient(145deg,#2563eb,#06b6d4);font-size:21px;box-shadow:0 9px 20px rgba(37,99,235,.25)}
+      .student-access-copy{min-width:0}.student-access-kicker{margin:0 0 5px;color:#2563a8;font-size:.7rem;font-weight:900;letter-spacing:.08em}.student-access-copy h2{margin:0;color:#113458;font-size:1.3rem;line-height:1.25}.student-access-copy p{margin:7px 0 0;color:#60758d;line-height:1.5}
+      .student-access-student{display:flex;align-items:center;gap:10px;margin:20px 0;padding:12px 14px;border:1px solid #d7e5f4;border-radius:14px;color:#24445f;background:#fff}.student-access-student i{color:#2563eb}.student-access-student strong{display:block}.student-access-student small{display:block;margin-top:2px;color:#71859a}
+      .student-access-field{display:grid;gap:7px;margin-top:16px;color:#24445f;font-size:.8rem;font-weight:850}.student-access-input{width:100%;box-sizing:border-box;padding:13px 14px;border:1px solid #b9cde2;border-radius:12px;color:#102f50;background:#fff;font:inherit;font-size:1.25rem;letter-spacing:.24em;text-align:center;text-transform:uppercase}.student-access-input:focus{outline:3px solid #b9ddff;border-color:#2563eb}.student-access-help{margin:7px 0 0;color:#71859a;font-size:.76rem;font-weight:500;line-height:1.45}.student-access-error{display:flex;align-items:flex-start;gap:9px;margin-top:16px;padding:11px 12px;border:1px solid #efc0c5;border-radius:11px;color:#9b2735;background:#fff1f2;font-size:.82rem;line-height:1.4}.student-access-submit{display:inline-flex;align-items:center;justify-content:center;gap:9px;width:100%;margin-top:19px;padding:13px 16px;border:0;border-radius:12px;color:#fff;background:linear-gradient(100deg,#2563eb,#06a6d4);font:inherit;font-weight:900;cursor:pointer;box-shadow:0 10px 22px rgba(37,99,235,.22);transition:transform .18s ease,box-shadow .18s ease}.student-access-submit:hover{transform:translateY(-1px);box-shadow:0 14px 28px rgba(37,99,235,.28)}
+      @media(max-width:560px){.student-access-gate{margin:20px 14px;padding:19px;border-radius:19px}.student-access-copy h2{font-size:1.1rem}.student-access-input{font-size:1.1rem}}
+      @media(prefers-reduced-motion:reduce){.student-access-gate,.student-access-submit{animation:none;transition:none}}
+    </style>
+    <section class="student-access-gate" aria-labelledby="studentAccessGateTitle">
+      <div class="student-access-head">
+        <span class="student-access-icon" aria-hidden="true"><i class="fa-solid fa-shield-halved"></i></span>
+        <div class="student-access-copy">
+          <h2 id="studentAccessGateTitle">Tallaabada-labaad ee Xaqiijinta</h2>
+        </div>
+      </div>
+      <div class="student-access-student"><i class="fa-solid fa-id-card" aria-hidden="true"></i><span><strong>{{ access_code_challenge.student.full_name if access_code_challenge.student else 'Ardayga la xaqiijinayo' }}</strong><small>{{ access_code_challenge.student_id }}</small></span></div>
+      {% if access_code_error %}<div class="student-access-error" role="alert"><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i><span>{{ access_code_error }}</span></div>{% endif %}
+      <form method="post" action="{{ url_for('public.result') }}" data-result-submit>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="access_code_form" value="1">
+        <input type="hidden" name="student_id" value="{{ access_code_challenge.student_id }}">
+        <input type="hidden" name="phone" value="{{ access_code_challenge.phone or '' }}">
+        {% if access_code_challenge.year_id %}<input type="hidden" name="year_id" value="{{ access_code_challenge.year_id }}">{% endif %}
+        {% if access_code_challenge.exam_id %}<input type="hidden" name="exam_id" value="{{ access_code_challenge.exam_id }}">{% endif %}
+        <label class="student-access-field" for="studentAccessCode">Lambar sireed <input id="studentAccessCode" class="student-access-input" name="access_code" minlength="4" maxlength="4" pattern="[A-Za-z2-9]{4}" autocomplete="one-time-code" autocapitalize="characters" required oninvalid="this.setCustomValidity('Fadlan Buuxi Halakan')" oninput="this.setCustomValidity('')" placeholder="K7M4"></label>
+        <button type="submit" class="student-access-submit" data-loading-label="Waa la xaqiijinayaa..."><i class="fa-solid fa-unlock-keyhole" aria-hidden="true"></i><span>Xaqiiji oo arag natiijada</span></button>
+      </form>
+    </section>
+    <script>document.getElementById('studentAccessCode')?.focus({preventScroll:true});</script>
   {% elif not result %}
     <section class="premium-search-shell glass-card">
       <form method="get" action="{{ url_for('public.result') }}" class="premium-search-form {% if settings.enable_phone_verification == 'on' %}has-phone{% endif %}" data-result-submit>

@@ -1704,6 +1704,84 @@ class Student(TimestampMixin, db.Model):
         return self.student_code
 
 
+class StudentPortalAccessCode(TimestampMixin, db.Model):
+    """Private four-character code used with the public student portal ID."""
+
+    __tablename__ = "student_portal_access_codes"
+
+    STATUS_VALUES = ("draft", "pending", "approved", "revoked")
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(
+        db.Integer,
+        db.ForeignKey("students.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    code_value = db.Column(db.String(4), nullable=False, unique=True, index=True)
+    code_hash = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="draft", index=True)
+    source = db.Column(db.String(20), nullable=False, default="generated")
+    is_active = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    approved_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    generated_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    last_used_at = db.Column(db.DateTime, nullable=True)
+    failed_attempts = db.Column(db.Integer, nullable=False, default=0)
+    notes = db.Column(db.String(300), nullable=True)
+
+    student = db.relationship("Student", backref=db.backref("portal_access_code", uselist=False), passive_deletes=True)
+    approved_by = db.relationship("User", foreign_keys=[approved_by_id])
+    generated_by = db.relationship("User", foreign_keys=[generated_by_id])
+    updated_by = db.relationship("User", foreign_keys=[updated_by_id])
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "status IN ('draft', 'pending', 'approved', 'revoked')",
+            name="ck_student_portal_access_code_status",
+        ),
+        db.CheckConstraint("length(code_value) = 4", name="ck_student_portal_access_code_length"),
+    )
+
+
+class StudentPortalAccessPolicy(TimestampMixin, db.Model):
+    """Optional scope override for the global student portal code policy."""
+
+    __tablename__ = "student_portal_access_policies"
+
+    id = db.Column(db.Integer, primary_key=True)
+    academic_year_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_years.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    academic_year_level_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_levels.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    academic_year_class_id = db.Column(
+        db.Integer,
+        db.ForeignKey("academic_year_classes.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    school_shift = db.Column(db.String(20), nullable=True, index=True)
+    is_enabled = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    academic_year = db.relationship("AcademicYear")
+    academic_year_level = db.relationship("AcademicYearLevel")
+    academic_year_class = db.relationship("AcademicYearClass")
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
+    updated_by = db.relationship("User", foreign_keys=[updated_by_id])
+
+
 class StudentCodeAlias(TimestampMixin, db.Model):
     """Historical student IDs that should continue resolving to one identity.
 

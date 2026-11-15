@@ -18,7 +18,7 @@ from . import db
 from .audit import audit
 from .cloudinary_service import upload_image
 from .import_wizard import normalize_student_phone, process_result_import, process_student_import, result_entry_import_template, student_template
-from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, ExamMarkingConfiguration, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentCodeAlias, StudentEnrollment, StudentEnrollmentMovement, Subject, Teacher, LabelTranslation
+from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, ExamMarkingConfiguration, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentCodeAlias, StudentEnrollment, StudentEnrollmentMovement, StudentPortalAccessCode, StudentPortalAccessPolicy, Subject, Teacher, LabelTranslation
 from .academic_hierarchy import (
     students_for_year_scope_query,
     year_classes,
@@ -50,6 +50,12 @@ from .attendance_rules import counts_as_exam_sitting
 from .behavior_reporting import get_behavior_report_data
 from .deletion_service import PurgeValidationError, purge_student
 from .student_identity import student_code_taken
+from .student_portal_access import (
+    code_status_label,
+    generate_access_code,
+    set_code_value,
+    shift_label,
+)
 
 advanced_results_bp = Blueprint("admin_advanced_results", __name__)
 
@@ -4058,6 +4064,79 @@ def results_settings():
                 'id': translation.id if translation else None
             }
     
+    access_year_id = request.args.get("access_year_id", type=int)
+    access_level_id = request.args.get("access_level_id", type=int)
+    access_class_id = request.args.get("access_class_id", type=int)
+    access_shift = (request.args.get("access_shift") or "").strip() or None
+    access_years = AcademicYear.query.order_by(AcademicYear.is_current.desc(), AcademicYear.name.desc()).all()
+    access_levels = (
+        AcademicYearLevel.query.filter_by(academic_year_id=access_year_id, is_active=True)
+        .order_by(AcademicYearLevel.sort_order, AcademicYearLevel.name, AcademicYearLevel.id).all()
+        if access_year_id else []
+    )
+    if not access_year_id:
+        access_level_id = None
+        access_class_id = None
+    elif access_level_id not in {level.id for level in access_levels}:
+        access_level_id = None
+    access_classes = []
+    if access_year_id:
+        class_query = (
+            AcademicYearClass.query
+            .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
+            .filter(
+                AcademicYearLevel.academic_year_id == access_year_id,
+                AcademicYearClass.is_active.is_(True),
+            )
+        )
+        if access_level_id:
+            class_query = class_query.filter(AcademicYearClass.academic_year_level_id == access_level_id)
+        access_classes = class_query.order_by(
+            AcademicYearClass.sort_order,
+            AcademicYearClass.name,
+            AcademicYearClass.id,
+        ).all()
+    if access_class_id and access_class_id not in {item.id for item in access_classes}:
+        access_class_id = None
+    access_roster = []
+    if access_year_id:
+        roster_query = (
+            StudentEnrollment.query
+            .join(Student, Student.id == StudentEnrollment.student_id)
+            .join(AcademicYearClass, AcademicYearClass.id == StudentEnrollment.academic_year_class_id)
+            .filter(
+                StudentEnrollment.academic_year_id == access_year_id,
+                StudentEnrollment.status.in_(("active", "completed")),
+                Student.is_active.is_(True),
+            )
+        )
+        if access_level_id:
+            roster_query = roster_query.filter(StudentEnrollment.academic_year_level_id == access_level_id)
+        if access_class_id:
+            roster_query = roster_query.filter(StudentEnrollment.academic_year_class_id == access_class_id)
+        if access_shift:
+            roster_query = roster_query.filter(AcademicYearClass.school_shift == access_shift)
+        enrollments = roster_query.order_by(Student.full_name, Student.id).limit(500).all()
+        student_ids = [enrollment.student_id for enrollment in enrollments]
+        records = {
+            record.student_id: record
+            for record in StudentPortalAccessCode.query.filter(StudentPortalAccessCode.student_id.in_(student_ids)).all()
+        } if student_ids else {}
+        for enrollment in enrollments:
+            record = records.get(enrollment.student_id)
+            access_roster.append({
+                "enrollment": enrollment,
+                "student": enrollment.student,
+                "record": record,
+                "status_label": code_status_label(record),
+                "shift_label": shift_label(enrollment.academic_year_class.school_shift if enrollment.academic_year_class else None),
+            })
+    access_policies = (
+        StudentPortalAccessPolicy.query
+        .order_by(StudentPortalAccessPolicy.academic_year_id.desc(), StudentPortalAccessPolicy.id.desc())
+        .limit(100).all()
+    )
+
     return render_template(
         "admin/results_settings.html",
         label_keys=label_keys,
@@ -4073,7 +4152,241 @@ def results_settings():
         student_results_announcement_input=announcement_datetime_local_input(
             settings.get("student_results_announcement_at_eat")
         ),
+        access_years=access_years,
+        access_levels=access_levels,
+        access_classes=access_classes,
+        access_roster=access_roster,
+        access_policies=access_policies,
+        access_year_id=access_year_id,
+        access_level_id=access_level_id,
+        access_class_id=access_class_id,
+        access_shift=access_shift,
     )
+
+
+def _student_access_settings_redirect():
+    values = {}
+    for field in ("access_year_id", "access_level_id", "access_class_id", "access_shift"):
+        value = request.form.get(field)
+        if value:
+            values[field] = value
+    # Row-level save/approve buttons submit the student ID but the surrounding
+    # table deliberately has no nested form. Recover its current scope so the
+    # administrator returns to the same roster after the action.
+    if "access_year_id" not in values:
+        raw_student_id = request.form.get("student_id") or (request.form.getlist("student_ids") or [None])[0]
+        if raw_student_id and str(raw_student_id).isdigit():
+            enrollment = (
+                StudentEnrollment.query
+                .filter_by(student_id=int(raw_student_id))
+                .filter(StudentEnrollment.status.in_(("active", "completed")))
+                .order_by(StudentEnrollment.id.desc())
+                .first()
+            )
+            if enrollment:
+                values.update({
+                    "access_year_id": enrollment.academic_year_id,
+                    "access_level_id": enrollment.academic_year_level_id,
+                    "access_class_id": enrollment.academic_year_class_id,
+                })
+                if enrollment.academic_year_class and enrollment.academic_year_class.school_shift:
+                    values["access_shift"] = enrollment.academic_year_class.school_shift
+    return redirect(url_for("admin_advanced_results.results_settings", **values))
+
+
+def _student_access_scope_from_form():
+    year_id = request.form.get("access_year_id", type=int)
+    level_id = request.form.get("access_level_id", type=int)
+    class_id = request.form.get("access_class_id", type=int)
+    shift = (request.form.get("access_shift") or "").strip() or None
+    year = db.session.get(AcademicYear, year_id) if year_id else None
+    level = db.session.get(AcademicYearLevel, level_id) if level_id else None
+    year_class = db.session.get(AcademicYearClass, class_id) if class_id else None
+    if not year:
+        raise ValueError("Xulo sannad-dugsiyeedka.")
+    if level and level.academic_year_id != year.id:
+        raise ValueError("Heerka la doortay sannadkan kuma jiro.")
+    if year_class:
+        if not level:
+            level = year_class.academic_year_level
+            level_id = level.id if level else None
+        if year_class.academic_year_level_id != level.id or not level or level.academic_year_id != year.id:
+            raise ValueError("Fasalka la doortay heerka ama sannadka kuma jiro.")
+    if shift not in {None, "morning", "afternoon"}:
+        raise ValueError("Gelin sax ah dooro.")
+    return year, level, year_class, shift
+
+
+@advanced_results_bp.route("/settings/student-portal-access/global", methods=["POST"])
+def update_student_portal_access_global():
+    value = "on" if request.form.get("student_portal_access_codes_enabled") == "on" else "off"
+    setting = db.session.get(Setting, "student_portal_access_codes_enabled") or Setting(
+        key="student_portal_access_codes_enabled"
+    )
+    setting.value = value
+    db.session.add(setting)
+    audit("Settings Changes", f"Student portal access code policy set to {value}")
+    db.session.commit()
+    flash("Dejinta lambarka sireed ee portalka ardayda waa la cusboonaysiiyey.", "success")
+    return _student_access_settings_redirect()
+
+
+@advanced_results_bp.route("/settings/student-portal-access/policy", methods=["POST"])
+def save_student_portal_access_policy():
+    try:
+        year, level, year_class, shift = _student_access_scope_from_form()
+        policy_value = request.form.get("policy_enabled")
+        enabled = True if policy_value is None else policy_value == "on"
+        query = StudentPortalAccessPolicy.query.filter_by(
+            academic_year_id=year.id,
+            academic_year_level_id=level.id if level else None,
+            academic_year_class_id=year_class.id if year_class else None,
+            school_shift=shift,
+        )
+        policy = query.first()
+        if not policy:
+            policy = StudentPortalAccessPolicy(
+                academic_year_id=year.id,
+                academic_year_level_id=level.id if level else None,
+                academic_year_class_id=year_class.id if year_class else None,
+                school_shift=shift,
+                created_by_id=current_user.id,
+            )
+        policy.is_enabled = enabled
+        policy.updated_by_id = current_user.id
+        db.session.add(policy)
+        audit("Settings Changes", f"Student portal access scope policy updated for year {year.id}")
+        db.session.commit()
+        flash("Xeerka lambarka sireed waa la kaydiyey.", "success")
+    except Exception as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    return _student_access_settings_redirect()
+
+
+@advanced_results_bp.route("/settings/student-portal-access/policy/<int:policy_id>/delete", methods=["POST"])
+def delete_student_portal_access_policy(policy_id):
+    policy = db.session.get(StudentPortalAccessPolicy, policy_id)
+    if not policy:
+        flash("Xeerka lama helin.", "warning")
+        return _student_access_settings_redirect()
+    db.session.delete(policy)
+    audit("Settings Changes", f"Student portal access scope policy {policy_id} deleted")
+    db.session.commit()
+    flash("Xeerka lambarka sireed waa la tirtiray; dejinta guud ayaa mar kale shaqaynaysa.", "success")
+    return _student_access_settings_redirect()
+
+
+@advanced_results_bp.route("/settings/student-portal-access/generate", methods=["POST"])
+def generate_student_portal_access_codes():
+    try:
+        year, level, year_class, shift = _student_access_scope_from_form()
+        query = (
+            StudentEnrollment.query
+            .join(Student, Student.id == StudentEnrollment.student_id)
+            .join(AcademicYearClass, AcademicYearClass.id == StudentEnrollment.academic_year_class_id)
+            .filter(
+                StudentEnrollment.academic_year_id == year.id,
+                StudentEnrollment.status.in_(("active", "completed")),
+                Student.is_active.is_(True),
+            )
+        )
+        if level:
+            query = query.filter(StudentEnrollment.academic_year_level_id == level.id)
+        if year_class:
+            query = query.filter(StudentEnrollment.academic_year_class_id == year_class.id)
+        if shift:
+            query = query.filter(AcademicYearClass.school_shift == shift)
+        enrollments = query.all()
+        used = {record.code_value for record in StudentPortalAccessCode.query.with_entities(StudentPortalAccessCode.code_value).all()}
+        created = 0
+        kept = 0
+        for enrollment in enrollments:
+            record = StudentPortalAccessCode.query.filter_by(student_id=enrollment.student_id).first()
+            if record and record.status == "approved" and record.is_active:
+                kept += 1
+                continue
+            if not record:
+                record = StudentPortalAccessCode(student_id=enrollment.student_id, generated_by_id=current_user.id)
+            code = generate_access_code(used)
+            used.add(code)
+            set_code_value(record, code)
+            record.status = "pending"
+            record.is_active = False
+            record.source = "generated"
+            record.updated_by_id = current_user.id
+            db.session.add(record)
+            created += 1
+        audit("Settings Changes", f"Generated {created} student portal access codes for year {year.id}")
+        db.session.commit()
+        flash(f"{created} lambar sireed ayaa la sameeyey; {kept} lambar oo ansax ah lama beddelin.", "success")
+    except Exception as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    return _student_access_settings_redirect()
+
+
+@advanced_results_bp.route("/settings/student-portal-access/code", methods=["POST"])
+def save_student_portal_access_code():
+    student = db.session.get(Student, request.form.get("student_id", type=int))
+    if not student:
+        flash("Ardayga lama helin.", "danger")
+        return _student_access_settings_redirect()
+    try:
+        code = request.form.get(f"code_value_{student.id}") or request.form.get("code_value")
+        record = StudentPortalAccessCode.query.filter_by(student_id=student.id).first()
+        if not record:
+            record = StudentPortalAccessCode(student_id=student.id, source="manual", generated_by_id=current_user.id)
+        set_code_value(record, code)
+        record.status = "pending"
+        record.is_active = False
+        record.source = "manual"
+        record.updated_by_id = current_user.id
+        db.session.add(record)
+        db.session.commit()
+        flash("Lambarka sireed waa la kaydiyey, wuxuuna sugayaa ansixinta maamulka.", "success")
+    except Exception as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    return _student_access_settings_redirect()
+
+
+@advanced_results_bp.route("/settings/student-portal-access/approve", methods=["POST"])
+def approve_student_portal_access_codes():
+    try:
+        ids = [value for value in request.form.getlist("student_ids") if value.isdigit()]
+        if request.form.get("approve_scope") == "1":
+            year, level, year_class, shift = _student_access_scope_from_form()
+            query = (
+                StudentEnrollment.query
+                .join(AcademicYearClass, AcademicYearClass.id == StudentEnrollment.academic_year_class_id)
+                .filter(
+                    StudentEnrollment.academic_year_id == year.id,
+                    StudentEnrollment.status.in_(("active", "completed")),
+                )
+            )
+            if level:
+                query = query.filter(StudentEnrollment.academic_year_level_id == level.id)
+            if year_class:
+                query = query.filter(StudentEnrollment.academic_year_class_id == year_class.id)
+            if shift:
+                query = query.filter(AcademicYearClass.school_shift == shift)
+            ids = [str(item.student_id) for item in query.all()]
+        records = StudentPortalAccessCode.query.filter(StudentPortalAccessCode.student_id.in_([int(value) for value in ids])).all() if ids else []
+        now = datetime.utcnow()
+        for record in records:
+            record.status = "approved"
+            record.is_active = True
+            record.approved_at = now
+            record.approved_by_id = current_user.id
+            record.updated_by_id = current_user.id
+        audit("Settings Changes", f"Approved {len(records)} student portal access codes")
+        db.session.commit()
+        flash(f"{len(records)} lambar sireed ayaa la ansixiyey oo portalka loogu fasaxay.", "success")
+    except Exception as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    return _student_access_settings_redirect()
 
 
 @advanced_results_bp.route("/settings/top10-teacher-walls", methods=["POST"])

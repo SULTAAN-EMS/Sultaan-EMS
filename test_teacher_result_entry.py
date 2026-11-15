@@ -378,6 +378,30 @@ class TestTeacherResultEntry(unittest.TestCase):
         with self.client.session_transaction() as session:
             self.assertNotIn("admin_last_activity", session)
 
+    def test_teacher_session_expires_after_thirty_minutes_of_inactivity(self):
+        self._teacher_login()
+        with self.client.session_transaction() as session:
+            session["teacher_last_activity"] = (datetime.utcnow() - timedelta(minutes=31)).isoformat()
+
+        response = self.client.get("/teacher/result-entry")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/teacher/login", response.headers["Location"])
+        self.assertNotIn("/admin/login", response.headers["Location"])
+
+    def test_admin_session_expires_after_fifteen_minutes_of_inactivity(self):
+        response = self.client.post("/admin/login", data={
+            "username": "result-admin", "password": "AdminPass123"
+        })
+        self.assertEqual(response.status_code, 302)
+        with self.client.session_transaction() as session:
+            session["admin_last_activity"] = (datetime.utcnow() - timedelta(minutes=16)).isoformat()
+
+        response = self.client.get("/admin/dashboard")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/admin/login", response.headers["Location"])
+
     def test_admin_user_entering_teacher_route_is_sent_to_teacher_login(self):
         self.client.post("/admin/login", data={
             "username": "result-admin", "password": "AdminPass123"

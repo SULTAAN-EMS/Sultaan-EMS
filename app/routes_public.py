@@ -26,6 +26,14 @@ from .enrollment_service import (
 from .verification import verification_payload
 from .import_wizard import normalize_student_phone
 from .student_identity import find_student_by_code
+from .student_portal_access import (
+    access_code_record,
+    access_code_required,
+    is_verified,
+    mark_verified,
+    normalize_access_code,
+    verify_code,
+)
 from .seat_mixer_layout import seat_row_placement
 from .pdf_rendering import html_report_to_pdf
 from .routes_invigilator import current_invigilator, invigilator_login_required
@@ -351,6 +359,37 @@ def result():
             "student_id": request.form.get("student_id", "").strip(),
             "phone": request.form.get("phone", "").strip(),
         }
+        if request.form.get("access_code_form") == "1":
+            student_id = redirect_values["student_id"]
+            student = find_student_by_code(student_id)
+            settings = get_settings()
+            record = access_code_record(student) if student else None
+            if student and verify_code(record, request.form.get("access_code")):
+                mark_verified(student)
+                if record:
+                    record.last_used_at = datetime.utcnow()
+                    record.failed_attempts = 0
+                    db.session.commit()
+                for field in ("year_id", "exam_id"):
+                    value = request.form.get(field, type=int)
+                    if value is not None:
+                        redirect_values[field] = value
+                return redirect(url_for("public.result", **redirect_values))
+            if record:
+                record.failed_attempts = (record.failed_attempts or 0) + 1
+                db.session.commit()
+            return render_template(
+                "portal.html",
+                settings=settings,
+                access_code_challenge={
+                    "student_id": student_id,
+                    "phone": redirect_values["phone"],
+                    "year_id": request.form.get("year_id", type=int),
+                    "exam_id": request.form.get("exam_id", type=int),
+                    "student": student,
+                },
+                access_code_error="Tira-taxanaha ama lambarka sireedku waa khaldan yahay. Hubi xogta oo mar kale isku day.",
+            )
         for field in ("year_id", "exam_id"):
             value = request.form.get(field, type=int)
             if value is not None:
@@ -381,6 +420,24 @@ def result():
                 settings=settings,
                 error="Phone number verification failed."
             )
+
+    required_year_id = selected_year_id
+    if selected_exam_id:
+        requested_exam = db.session.get(Exam, selected_exam_id)
+        if requested_exam:
+            required_year_id = requested_exam.academic_year_id
+    if access_code_required(student, settings, required_year_id) and not is_verified(student):
+        return render_template(
+            "portal.html",
+            settings=settings,
+            access_code_challenge={
+                "student_id": student.student_code,
+                "phone": phone,
+                "year_id": selected_year_id,
+                "exam_id": selected_exam_id,
+                "student": student,
+            },
+        )
 
     if student.is_result_locked:
         return render_template(
@@ -487,6 +544,18 @@ def result_view(student_code, exam_id):
         ), 403
 
     exam = _published_exam_for_student(student, exam_id) or abort(404)
+    if access_code_required(student, settings, exam.academic_year_id) and not is_verified(student):
+        return render_template(
+            "portal.html",
+            settings=settings,
+            access_code_challenge={
+                "student_id": student.student_code,
+                "phone": "",
+                "year_id": exam.academic_year_id,
+                "exam_id": exam.id,
+                "student": student,
+            },
+        ), 403
     payload = result_payload(student, exam=exam, public_only=True)
     if not payload or not (payload.get("subjects") or payload.get("behavior_reports")):
         abort(404)
@@ -592,6 +661,8 @@ def _render_portal_behavior_report(
     if student.is_result_locked:
         abort(403)
     exam = _published_exam_for_student(student, exam_id) or abort(404)
+    if access_code_required(student, get_settings(), exam.academic_year_id) and not is_verified(student):
+        abort(403)
     enrollment, report = _portal_behavior_report_scope(student, exam, config_id, session_id)
 
     back_url = url_for("public.result_view", student_code=student.student_code, exam_id=exam.id)
@@ -749,6 +820,12 @@ def print_report(student_code):
         ), 403
 
     exam = _published_exam_for_student(student, requested_exam_id) or abort(404)
+    if access_code_required(student, settings, exam.academic_year_id) and not is_verified(student):
+        return render_template(
+            "portal.html",
+            settings=settings,
+            access_code_challenge={"student_id": student.student_code, "phone": "", "year_id": exam.academic_year_id, "exam_id": exam.id, "student": student},
+        ), 403
 
     payload = result_payload(student, exam=exam, public_only=True)
     payload["verification"] = verification_payload(student, exam)
@@ -829,6 +906,12 @@ def download_report(student_code):
         ), 403
 
     exam = _published_exam_for_student(student, requested_exam_id) or abort(404)
+    if access_code_required(student, settings, exam.academic_year_id) and not is_verified(student):
+        return render_template(
+            "portal.html",
+            settings=settings,
+            access_code_challenge={"student_id": student.student_code, "phone": "", "year_id": exam.academic_year_id, "exam_id": exam.id, "student": student},
+        ), 403
     payload = result_payload(student, exam=exam, public_only=True)
     result_scope = public_result_scope(student, exam)
     payload["verification"] = verification_payload(student, exam)
@@ -873,6 +956,10 @@ def api_result(student_code):
 
     if not exam:
         return jsonify({"ok": False, "message": "No published result."}), 404
+
+    settings = get_settings()
+    if access_code_required(student, settings, exam.academic_year_id) and not is_verified(student):
+        return jsonify({"ok": False, "message": "Student access verification is required."}), 403
 
     payload = result_payload(student, exam=exam, public_only=True)
     from .behavior_reporting import serialize_behavior_reports
@@ -982,6 +1069,8 @@ def _feedback_context_from_request():
     # still required; only an authenticated admin may inspect that context.
     if not has_published_result and not current_user.is_authenticated:
         return None, None, (jsonify(ok=False, message="Natiijadan looma heli karo Falcelin."), 404)
+    if student and exam and access_code_required(student, get_settings(), exam.academic_year_id) and not is_verified(student):
+        return None, None, (jsonify(ok=False, message="Marka hore xaqiiji lambarka sireed ee ardayga."), 403)
     return student, exam, None
 
 
@@ -1428,11 +1517,14 @@ def api_top_students(student_code):
     if not exam:
         return jsonify(ok=False, message="Published examination not found."), 404
 
+    settings = get_settings()
+    if access_code_required(student, settings, exam.academic_year_id) and not is_verified(student):
+        return jsonify(ok=False, message="Student access verification is required."), 403
+
     placement = resolve_student_academic_context(student, exam.academic_year_id)
     if not placement:
         return jsonify(ok=False, message="Ardaygani kuma jiro sanadkan natiijada."), 404
 
-    settings = get_settings()
     students = top_students_for_class(student, exam)
     for entry in students:
         entry["photo"] = _public_asset_url(entry.pop("photo_path", "")) or _public_asset_url(settings.get("result_dashboard_default_avatar"))

@@ -441,6 +441,7 @@ def login():
             login_user(user)
             session.pop("admin_last_activity", None)
             session.pop("admin_session_timeout_minutes", None)
+            session["teacher_last_activity"] = datetime.utcnow().isoformat()
             record_teacher_login(teacher)
             db.session.commit()
             return redirect(safe_teacher_next_url(request.args.get("next")))
@@ -456,6 +457,7 @@ def logout():
         session["teacher_login_username"] = teacher.user.username
     record_teacher_logout(teacher)
     db.session.commit()
+    session.pop("teacher_last_activity", None)
     logout_user()
     flash("You have been logged out.", "success")
     return redirect(url_for("teacher_portal.login"))

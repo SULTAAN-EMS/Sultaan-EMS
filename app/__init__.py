@@ -203,23 +203,31 @@ def create_app(config_class=Config):
 
     @app.before_request
     def enforce_admin_session_timeout():
-        """Enforce the owner-configured idle timeout for authenticated admin sessions."""
+        """Enforce separate idle timeouts for administrator and teacher sessions."""
         if request.endpoint in {"static", "auth.login", "auth.logout"} or not current_user.is_authenticated:
             return None
-        # Teacher portal sessions must not inherit stale administrator activity timestamps.
-        if getattr(current_user, "teacher_profile", None) is not None:
+        is_teacher = getattr(current_user, "teacher_profile", None) is not None
+        if is_teacher:
+            # Teacher portal sessions must not inherit stale administrator activity timestamps.
             session.pop("admin_last_activity", None)
             session.pop("admin_session_timeout_minutes", None)
-            return None
-        # Reuse the request-local settings snapshot instead of issuing a
-        # second settings query on every authenticated admin request.
-        timeout_value = get_settings().get("admin_session_timeout_minutes", "60")
-        try:
-            timeout_minutes = max(5, min(1440, int(timeout_value)))
-        except (TypeError, ValueError):
-            timeout_minutes = 60
+            timeout_minutes = 30
+            activity_key = "teacher_last_activity"
+            login_endpoint = "teacher_portal.login"
+            expired_message = "Fadhiga macallinka wuu dhacay. Fadlan mar kale gal."
+        else:
+            # Reuse the request-local settings snapshot instead of issuing a
+            # second settings query on every authenticated admin request.
+            timeout_value = get_settings().get("admin_session_timeout_minutes", "15")
+            try:
+                timeout_minutes = max(5, min(1440, int(timeout_value)))
+            except (TypeError, ValueError):
+                timeout_minutes = 15
+            activity_key = "admin_last_activity"
+            login_endpoint = "auth.login"
+            expired_message = "Your security session expired. Please sign in again."
         now = datetime.utcnow()
-        previous = session.get("admin_last_activity")
+        previous = session.get(activity_key)
         try:
             last_activity = datetime.fromisoformat(previous) if previous else now
         except (TypeError, ValueError):
@@ -228,15 +236,11 @@ def create_app(config_class=Config):
             username = current_user.username
             logout_user()
             session.clear()
-            flash("Your security session expired. Please sign in again.", "warning")
-            app.logger.info("Admin session expired for %s", username)
-            login_endpoint = (
-                "teacher_portal.login"
-                if request.blueprint == "teacher_portal" or request.path.startswith("/teacher/")
-                else "auth.login"
-            )
+            flash(expired_message, "warning")
+            account_type = "teacher" if is_teacher else "admin"
+            app.logger.info("%s session expired for %s", account_type, username)
             return redirect(url_for(login_endpoint, next=request.url))
-        session["admin_last_activity"] = now.isoformat()
+        session[activity_key] = now.isoformat()
         return None
 
     if app.config.get("AUTO_INIT_DB", True):

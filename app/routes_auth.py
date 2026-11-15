@@ -34,11 +34,12 @@ def login():
                 flash("Teachers must use the dedicated Teacher Portal login.", "warning")
                 return redirect(url_for("teacher_portal.login"))
             login_user(user, remember=remember)
-            session_timeout = get_settings().get("admin_session_timeout_minutes", "60")
+            session_timeout = get_settings().get("admin_session_timeout_minutes", "15")
             try:
                 session_timeout = max(5, min(1440, int(session_timeout)))
             except (TypeError, ValueError):
-                session_timeout = 60
+                session_timeout = 15
+            session.pop("teacher_last_activity", None)
             session["admin_last_activity"] = datetime.utcnow().isoformat()
             session["admin_session_timeout_minutes"] = session_timeout
             audit("Login", f"User {username} logged in")
@@ -106,7 +107,7 @@ def save_security_settings():
         return jsonify({"success": False, "message": "Choose a valid password composition rule."}), 400
     try:
         minimum = max(6, min(32, int(payload.get("admin_password_min_length", 8))))
-        timeout = max(5, min(1440, int(payload.get("admin_session_timeout_minutes", 60))))
+        timeout = max(5, min(1440, int(payload.get("admin_session_timeout_minutes", 15))))
     except (TypeError, ValueError):
         return jsonify({"success": False, "message": "Enter valid security limits."}), 400
     values = {
