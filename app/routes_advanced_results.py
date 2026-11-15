@@ -4044,25 +4044,39 @@ def results_settings():
     except (TypeError, ValueError, json.JSONDecodeError):
         excluded_tunnel_teacher_ids = set()
     
-    # Get all unique label keys
-    label_keys = db.session.query(LabelTranslation.label_key).distinct().order_by(LabelTranslation.label_key).all()
-    label_keys = [k[0] for k in label_keys]
-    
-    # Get all unique language codes
-    language_codes = db.session.query(LabelTranslation.language_code).distinct().order_by(LabelTranslation.language_code).all()
-    language_codes = [k[0] for k in language_codes]
-    
-    # Build label translations matrix
-    label_matrix = {}
-    for key in label_keys:
-        label_matrix[key] = {}
-        for lang in language_codes:
-            translation = LabelTranslation.query.filter_by(label_key=key, language_code=lang).first()
-            label_matrix[key][lang] = {
-                'text_value': translation.text_value if translation else '',
-                'context': translation.context if translation else '',
-                'id': translation.id if translation else None
+    # Load translations once. The previous key/language loop issued one query
+    # for every cell in the matrix, which made this already large settings page
+    # noticeably slow on every filter change and refresh.
+    translations = LabelTranslation.query.order_by(
+        LabelTranslation.label_key,
+        LabelTranslation.language_code,
+    ).all()
+    label_keys = sorted({translation.label_key for translation in translations})
+    language_codes = sorted({translation.language_code for translation in translations})
+    translation_map = {
+        (translation.label_key, translation.language_code): translation
+        for translation in translations
+    }
+    label_matrix = {
+        key: {
+            lang: {
+                'text_value': (
+                    translation_map[(key, lang)].text_value
+                    if (key, lang) in translation_map else ''
+                ),
+                'context': (
+                    translation_map[(key, lang)].context
+                    if (key, lang) in translation_map else ''
+                ),
+                'id': (
+                    translation_map[(key, lang)].id
+                    if (key, lang) in translation_map else None
+                ),
             }
+            for lang in language_codes
+        }
+        for key in label_keys
+    }
     
     access_year_id = request.args.get("access_year_id", type=int)
     access_level_id = request.args.get("access_level_id", type=int)
@@ -4083,6 +4097,7 @@ def results_settings():
     if access_year_id:
         class_query = (
             AcademicYearClass.query
+            .options(joinedload(AcademicYearClass.academic_year_level))
             .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
             .filter(
                 AcademicYearLevel.academic_year_id == access_year_id,
@@ -4105,6 +4120,13 @@ def results_settings():
     if access_year_id:
         roster_query = (
             StudentEnrollment.query
+            .options(
+                joinedload(StudentEnrollment.student),
+                joinedload(StudentEnrollment.academic_year_level),
+                joinedload(StudentEnrollment.academic_year_class).joinedload(
+                    AcademicYearClass.academic_year_level
+                ),
+            )
             .join(Student, Student.id == StudentEnrollment.student_id)
             .join(AcademicYearClass, AcademicYearClass.id == StudentEnrollment.academic_year_class_id)
             .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)
@@ -4145,6 +4167,11 @@ def results_settings():
             })
     access_policies = (
         StudentPortalAccessPolicy.query
+        .options(
+            joinedload(StudentPortalAccessPolicy.academic_year),
+            joinedload(StudentPortalAccessPolicy.academic_year_level),
+            joinedload(StudentPortalAccessPolicy.academic_year_class),
+        )
         .order_by(StudentPortalAccessPolicy.academic_year_id.desc(), StudentPortalAccessPolicy.id.desc())
         .limit(100).all()
     )
@@ -4206,6 +4233,13 @@ def print_student_portal_access_codes():
 
     roster_query = (
         StudentEnrollment.query
+        .options(
+            joinedload(StudentEnrollment.student),
+            joinedload(StudentEnrollment.academic_year_level),
+            joinedload(StudentEnrollment.academic_year_class).joinedload(
+                AcademicYearClass.academic_year_level
+            ),
+        )
         .join(Student, Student.id == StudentEnrollment.student_id)
         .join(AcademicYearClass, AcademicYearClass.id == StudentEnrollment.academic_year_class_id)
         .join(AcademicYearLevel, AcademicYearLevel.id == AcademicYearClass.academic_year_level_id)

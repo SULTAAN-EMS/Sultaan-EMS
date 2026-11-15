@@ -493,4 +493,43 @@
     <p style="margin:0 0 20px;"><a class="rh-btn" href="{{ url_for('admin.result_success_overlay_settings') }}"><i class="fa-solid fa-wand-magic-sparkles"></i> Result Success Overlay</a></p>
   </main>
 </div>
+<script>
+  (() => {
+    const storageKey = 'admin-results-settings-scroll:' + window.location.pathname;
+    let restored = false;
+
+    const saveScroll = () => {
+      try {
+        window.sessionStorage.setItem(storageKey, String(window.scrollY || 0));
+      } catch (_) {
+        // Scroll restoration is an enhancement; storage restrictions should not
+        // affect the settings page itself.
+      }
+    };
+
+    const restoreScroll = () => {
+      if (restored) return;
+      restored = true;
+      try {
+        const saved = Number(window.sessionStorage.getItem(storageKey));
+        if (!Number.isFinite(saved) || saved <= 0) return;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          window.scrollTo({ top: saved, left: 0, behavior: 'auto' });
+        }));
+      } catch (_) {
+        // Ignore browsers that block sessionStorage.
+      }
+    };
+
+    window.addEventListener('pagehide', saveScroll, { capture: true });
+    window.addEventListener('beforeunload', saveScroll);
+    document.addEventListener('submit', saveScroll, true);
+    window.addEventListener('pageshow', restoreScroll, { once: true });
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', restoreScroll, { once: true });
+    } else {
+      restoreScroll();
+    }
+  })();
+</script>
 {% endblock %}
