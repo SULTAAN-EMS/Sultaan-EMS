@@ -33,6 +33,8 @@
     .photo-frame{width:13mm;height:14mm;display:grid;place-items:center;overflow:hidden;border:1px solid #b7c8db;border-radius:2px;background:#eef3f8;color:#7990a6;font-size:12px}
     .photo-frame img{width:100%;height:100%;display:block;object-fit:cover}
     .cell-main{display:block;max-height:2.35em;overflow:hidden;font-size:8.7px;font-weight:700;color:var(--ink)}
+    .name-cell .cell-main{font-size:10px;line-height:1.12}
+    .mother-cell .cell-main{font-size:9.5px;line-height:1.14}
     .cell-sub{display:block;margin-top:1px;max-height:2.25em;overflow:hidden;color:var(--muted);font-size:7.3px}
     .student-id{color:var(--blue);font-size:8.4px;font-weight:800;letter-spacing:.04em;word-break:break-all}
     .access-code{display:inline-flex;align-items:center;justify-content:center;min-width:15mm;min-height:7mm;padding:1mm 1.5mm;border:1px solid #d4b35c;border-radius:3px;color:#704c08;background:#fff8df;font-size:10px;font-weight:900;letter-spacing:.16em}
@@ -80,8 +82,8 @@
           <td class="num">{{ page.start_index + loop.index }}</td>
           <td><div class="photo-frame">{% if row.photo_url %}<img src="{{ row.photo_url }}" alt="Sawirka {{ row.full_name }}">{% else %}—{% endif %}</div></td>
           <td><span class="student-id">{{ row.student_code }}</span></td>
-          <td><span class="cell-main">{{ row.full_name }}</span></td>
-          <td><span class="cell-main">{{ row.mother_name }}</span></td>
+          <td class="name-cell"><span class="cell-main">{{ row.full_name }}</span></td>
+          <td class="mother-cell"><span class="cell-main">{{ row.mother_name }}</span></td>
           <td><span class="cell-main">{{ row.level_name }}</span><span class="cell-sub">{{ row.class_name }}</span></td>
           <td>{{ row.shift_label }}</td>
           <td><span class="access-code{% if row.access_code == '—' %} empty-code{% endif %}">{{ row.access_code }}</span></td>
