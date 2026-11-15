@@ -96,5 +96,27 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="{{ url_for('static', filename='js/app.js', v='result-rotation-button-20261106') }}"></script>
   <script src="{{ url_for('static', filename='js/center-notify.js') }}"></script>
+  {% if current_user.is_authenticated %}
+  <script>
+    (() => {
+      const timeoutMinutes = {{ (30 if session.get('teacher_last_activity') else (session.get('admin_session_timeout_minutes', 15) | int)) | tojson }};
+      const logoutForm = document.querySelector('.teacher-logout, .sidebar-logout');
+      if (!logoutForm || !Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0) return;
+
+      let idleTimer;
+      const armIdleTimer = () => {
+        window.clearTimeout(idleTimer);
+        idleTimer = window.setTimeout(() => {
+          logoutForm.submit();
+        }, timeoutMinutes * 60 * 1000);
+      };
+
+      ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach((eventName) => {
+        window.addEventListener(eventName, armIdleTimer, { passive: true });
+      });
+      armIdleTimer();
+    })();
+  </script>
+  {% endif %}
 </body>
 </html>
