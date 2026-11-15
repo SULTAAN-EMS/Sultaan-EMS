@@ -4164,6 +4164,120 @@ def results_settings():
     )
 
 
+@advanced_results_bp.route("/settings/student-portal-access/print")
+def print_student_portal_access_codes():
+    """Render an A4 portrait, 15-student-per-page access-code register."""
+    access_year_id = request.args.get("access_year_id", type=int)
+    access_level_id = request.args.get("access_level_id", type=int)
+    access_class_id = request.args.get("access_class_id", type=int)
+    access_shift = (request.args.get("access_shift") or "").strip() or None
+
+    if not access_year_id:
+        flash("Marka hore xulo sannad-dugsiyeedka si liiska loo daabaco.", "warning")
+        return redirect(url_for("admin_advanced_results.results_settings"))
+
+    selected_year = db.session.get(AcademicYear, access_year_id)
+    if not selected_year:
+        abort(404)
+
+    selected_level = db.session.get(AcademicYearLevel, access_level_id) if access_level_id else None
+    selected_class = db.session.get(AcademicYearClass, access_class_id) if access_class_id else None
+    if selected_level and selected_level.academic_year_id != selected_year.id:
+        abort(400, description="Heerka la doortay sannadkan kuma jiro.")
+    if selected_class:
+        if not selected_class.academic_year_level or selected_class.academic_year_level.academic_year_id != selected_year.id:
+            abort(400, description="Fasalka la doortay sannadkan kuma jiro.")
+        if selected_level and selected_class.academic_year_level_id != selected_level.id:
+            abort(400, description="Fasalka la doortay heerkaas kuma jiro.")
+    if access_shift not in {None, "morning", "afternoon"}:
+        abort(400, description="Gelinka la doortay sax ma aha.")
+
+    roster_query = (
+        StudentEnrollment.query
+        .join(Student, Student.id == StudentEnrollment.student_id)
+        .join(AcademicYearClass, AcademicYearClass.id == StudentEnrollment.academic_year_class_id)
+        .filter(
+            StudentEnrollment.academic_year_id == selected_year.id,
+            StudentEnrollment.status.in_(("active", "completed")),
+            Student.is_active.is_(True),
+        )
+    )
+    if selected_level:
+        roster_query = roster_query.filter(StudentEnrollment.academic_year_level_id == selected_level.id)
+    if selected_class:
+        roster_query = roster_query.filter(StudentEnrollment.academic_year_class_id == selected_class.id)
+    if access_shift:
+        roster_query = roster_query.filter(AcademicYearClass.school_shift == access_shift)
+
+    enrollments = roster_query.order_by(Student.full_name, Student.student_code, Student.id).all()
+    student_ids = [enrollment.student_id for enrollment in enrollments]
+    records = {
+        record.student_id: record
+        for record in StudentPortalAccessCode.query.filter(
+            StudentPortalAccessCode.student_id.in_(student_ids)
+        ).all()
+    } if student_ids else {}
+
+    rows = []
+    for enrollment in enrollments:
+        student = enrollment.student
+        record = records.get(student.id)
+        year_class = enrollment.academic_year_class
+        rows.append({
+            "photo_url": stored_asset_url(student.photo_path),
+            "student_code": student.student_code or "—",
+            "full_name": student.full_name or "—",
+            "mother_name": student.mother_name or "—",
+            "level_name": enrollment.academic_year_level.name if enrollment.academic_year_level else "—",
+            "class_name": year_class.name if year_class else "—",
+            "shift_label": shift_label(year_class.school_shift if year_class else None),
+            "access_code": record.code_value if record else "—",
+        })
+
+    settings = get_settings()
+    school_name = (
+        settings.get("school_name_so")
+        or settings.get("school_name")
+        or settings.get("dashboard_title")
+        or "DUGSIYADA CAALAMIGA AH EE TAYSIIR"
+    )
+    school_logo_url = stored_asset_url(settings.get("logo_path"))
+    scope_label = "Dhammaan ardayda"
+    if selected_class:
+        scope_label = selected_class.name
+    elif selected_level:
+        scope_label = selected_level.name
+    if access_shift:
+        scope_label += f" · {shift_label(access_shift)}"
+
+    page_size = 15
+    pages = [
+        {
+            "rows": rows[index:index + page_size],
+            "start_index": index,
+        }
+        for index in range(0, len(rows), page_size)
+    ] or [{"rows": [], "start_index": 0}]
+    return render_template(
+        "admin/student_portal_access_print.html",
+        pages=pages,
+        total_pages=len(pages),
+        school_name=school_name,
+        school_logo_url=school_logo_url,
+        academic_year=selected_year,
+        scope_label=scope_label,
+        level_label=selected_level.name if selected_level else "Dhammaan heerarka",
+        class_label=selected_class.name if selected_class else "Dhammaan fasallada",
+        shift_label=shift_label(access_shift) if access_shift else "Dhammaan gelinnada",
+        generated_date=datetime.now().strftime("%d/%m/%Y"),
+        student_count=len(rows),
+        selected_year_id=selected_year.id,
+        selected_level_id=selected_level.id if selected_level else None,
+        selected_class_id=selected_class.id if selected_class else None,
+        selected_shift=access_shift,
+    )
+
+
 def _student_access_settings_redirect():
     values = {}
     for field in ("access_year_id", "access_level_id", "access_class_id", "access_shift"):

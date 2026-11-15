@@ -245,7 +245,7 @@
                 <select name="access_shift"><option value="">Dhammaan gelinnada</option><option value="morning"{% if access_shift == 'morning' %} selected{% endif %}>Gelin Hore</option><option value="afternoon"{% if access_shift == 'afternoon' %} selected{% endif %}>Gelin Dambe</option></select>
               </label>
             </div>
-            <div class="spac-actions"><button class="spac-button primary" type="submit"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Samee koodhadhka</button></div>
+            <div class="spac-actions"><button class="spac-button primary" type="submit"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Samee koodhadhka</button>{% if access_year_id %}<a class="spac-button" target="_blank" rel="noopener" href="{{ url_for('admin_advanced_results.print_student_portal_access_codes', access_year_id=access_year_id, access_level_id=access_level_id or '', access_class_id=access_class_id or '', access_shift=access_shift or '') }}"><i class="fa-solid fa-print" aria-hidden="true"></i> Daabac liiska A4</a>{% endif %}</div>
           </form>
           {% if access_roster %}
             <form method="post" action="{{ url_for('admin_advanced_results.approve_student_portal_access_codes') }}">
