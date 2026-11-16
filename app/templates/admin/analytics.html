@@ -391,7 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.location.href = url.toString();
   };
   year?.addEventListener('change', () => redirectWith({year_id: year.value, exam_id: '', level_id: '', class_id: '', section_id: '', subject_id: ''}));
-  exam?.addEventListener('change', () => redirectWith({exam_id: exam.value, level_id: '', class_id: '', section_id: '', subject_id: ''}));
+  exam?.addEventListener('change', () => redirectWith({year_id: year?.value || '', exam_id: exam.value, level_id: '', class_id: '', section_id: '', subject_id: ''}));
   level?.addEventListener('change', () => redirectWith({level_id: level.value, class_id: '', section_id: '', subject_id: ''}));
   cls?.addEventListener('change', () => redirectWith({class_id: cls.value, section_id: '', subject_id: ''}));
   section?.addEventListener('change', () => redirectWith({section_id: section.value, subject_id: ''}));

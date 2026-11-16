@@ -2519,14 +2519,20 @@ def analytics():
         flash("Please select an academic year.", "warning")
         return redirect(url_for("admin_advanced_results.new_dashboard"))
     
-    # Get selected exam from parameter or auto-select most recent. A stale
-    # exam ID from another year is never accepted into this scope.
+    # A requested exam is strict: never silently replace it with another exam
+    # when a stale/legacy year or exam id is submitted by a selector link.
+    # Silent fallback made the user click one exam while analytics displayed a
+    # different exam, especially when legacy and year-aware records coexisted.
+    exam_selection_warning = None
     selected_exam = db.session.get(Exam, exam_id) if exam_id else None
-    if selected_exam and selected_exam.academic_year_id != selected_year.id:
-        selected_exam = None
-    if not selected_exam:
+    if exam_id and not selected_exam:
+        exam_selection_warning = "Imtixaanka aad dooratay lama helin. Fadlan imtixaan sax ah xulo."
+    elif exam_id and selected_exam.academic_year_id != selected_year.id:
+        exam_selection_warning = "Imtixaanka aad dooratay kuma jiro sannad-dugsiyeedka la doortay. Fadlan sannadka saxda ah xulo."
+    elif not exam_id:
         selected_exam = Exam.query.filter_by(academic_year_id=selected_year.id).order_by(Exam.id.desc()).first()
-    exam_scope_ready, exam_scope_warning = validate_exam_year_scope(selected_exam)
+    exam_scope_ready, scope_warning = validate_exam_year_scope(selected_exam)
+    exam_scope_warning = exam_selection_warning or scope_warning
     
     # Get filter data for selectors
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
@@ -2729,7 +2735,7 @@ def analytics():
         selected_subject_id=subject_id,
         top_limit=top_limit,
         bottom_limit=bottom_limit,
-        exam_scope_warning=None,
+        exam_scope_warning=exam_scope_warning,
         settings=get_settings(),
     )
 

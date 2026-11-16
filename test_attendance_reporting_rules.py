@@ -125,6 +125,32 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         )
         self.assertEqual(report.status_code, 302)
 
+    def test_exam_from_another_year_does_not_silently_fallback(self):
+        """Selecting an exam outside the year must not display a different exam."""
+        other_year = AcademicYear(name="2029-2030", is_current=False)
+        db.session.add(other_year)
+        db.session.flush()
+        other_exam = Exam(
+            name="Imtixaan Bileedka 1aad",
+            academic_year_id=other_year.id,
+            is_active=True,
+        )
+        db.session.add(other_exam)
+        db.session.commit()
+
+        with self.client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+
+        response = self.client.get(
+            f"/admin/advanced-results/analytics?year_id={self.year.id}&exam_id={other_exam.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("kuma jiro sannad-dugsiyeedka", body)
+        exam_selector = body.split('id="exam-selector"', 1)[1].split('</select>', 1)[0]
+        self.assertNotIn('value="%s" selected' % self.exam.id, exam_selector)
+
     def test_student_excel_import_requires_and_persists_gender(self):
         workbook = Workbook()
         sheet = workbook.active
