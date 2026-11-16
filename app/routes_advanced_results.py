@@ -3556,6 +3556,11 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
         if year_subject.legacy_subject_id:
             year_subject_candidates[year_subject.legacy_subject_id].append(year_subject)
 
+    # The analytics page reuses the same maximum-mark lookup for many result
+    # rows.  Cache it per exam/scope/subject so a full-year dashboard does not
+    # issue one configuration query per mark.
+    max_score_cache = {}
+
     def display_subject_for(result, placement=None):
         candidates = year_subject_candidates.get(result.subject_id, [])
         placement_level_id = placement.get("academic_year_level_id") if placement else academic_year_level_id
@@ -3578,14 +3583,24 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
             placements_by_student[placement_key] = resolve_student_academic_context(student, context_exam.academic_year_id)
         placement = placements_by_student.get(placement_key) if placement_key else None
         display_subject = display_subject_for(result, placement)
-        return resolve_subject_max_score(
-            display_subject,
-            exam=context_exam,
-            academic_year_level_id=(
-                placement.get("academic_year_level_id") if placement else academic_year_level_id
-            ),
-            academic_level_id=placement.get("academic_level_id") if placement else None,
+        scoped_year_level_id = (
+            placement.get("academic_year_level_id") if placement else academic_year_level_id
         )
+        scoped_legacy_level_id = placement.get("academic_level_id") if placement else None
+        cache_key = (
+            context_exam.id if context_exam else None,
+            scoped_year_level_id,
+            scoped_legacy_level_id,
+            display_subject.id if display_subject else None,
+        )
+        if cache_key not in max_score_cache:
+            max_score_cache[cache_key] = resolve_subject_max_score(
+                display_subject,
+                exam=context_exam,
+                academic_year_level_id=scoped_year_level_id,
+                academic_level_id=scoped_legacy_level_id,
+            )
+        return max_score_cache[cache_key]
     
     # Calculate percentages for each result
     percentages = []
@@ -3724,7 +3739,7 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
     for student_id, avg in student_avg_list[:top_limit]:
         student = students_by_id.get(student_id)
         if student:
-            placement = enrollment_placement_for_student(student, exam.academic_year_id) or {}
+            placement = placements_by_student.get((student.id, exam.academic_year_id)) or {}
             top_performers.append({
                 "name": student.full_name,
                 "mother_name": student.mother_name,
@@ -3738,7 +3753,7 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
     for student_id, avg in student_avg_list[-bottom_limit:]:
         student = students_by_id.get(student_id)
         if student:
-            placement = enrollment_placement_for_student(student, exam.academic_year_id) or {}
+            placement = placements_by_student.get((student.id, exam.academic_year_id)) or {}
             bottom_performers.append({
                 "name": student.full_name,
                 "mother_name": student.mother_name,
