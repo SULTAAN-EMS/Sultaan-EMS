@@ -3157,20 +3157,31 @@ def build_analytics_results_report_data(academic_year, exam):
             class_rows.append(row)
 
         subject_rows = []
-        level_subjects = {
-            subject.id: subject
-            for subject in (
-                Subject.query.filter_by(academic_level_id=level.id, is_active=True).all()
-                if legacy_report_mode
-                else subjects_for_scope(exam, level_id=level.id)
-            )
-        }
         offered_subject_ids = subject_ids_by_level.get(level.id, set())
-        if not legacy_report_mode:
+        if legacy_report_mode:
+            level_subjects = {
+                subject.id: subject
+                for subject in Subject.query.filter_by(
+                    academic_level_id=level.id,
+                    is_active=True,
+                ).all()
+            }
+        else:
+            # A year-aware level can have class-specific subject exclusions.
+            # ``subjects_for_scope`` intentionally returns nothing when a
+            # level has classes, so it cannot build the report's level-wide
+            # subject header.  Use the union already resolved per class while
+            # keeping each student's result rows class-scoped above.
+            level_subjects = dict(scoped_subjects_by_level.get(level.id, {}))
+            for subject_id in offered_subject_ids:
+                if subject_id not in level_subjects:
+                    subject = db.session.get(Subject, subject_id)
+                    if subject and subject.is_active:
+                        level_subjects[subject_id] = subject
             level_subjects = {
                 subject_id: subject
                 for subject_id, subject in level_subjects.items()
-                if subject_id in offered_subject_ids
+                if subject_id in offered_subject_ids and subject
             }
         for subject in sorted(level_subjects.values(), key=lambda item: (item.sort_order, item.name)):
             scores = [score for _subject, score in results_by_level_subject[level.id].get(subject.id, [])]
