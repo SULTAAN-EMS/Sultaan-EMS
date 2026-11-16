@@ -11,7 +11,7 @@ from openpyxl import Workbook, load_workbook
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from app import create_app, db
-from app.models import AcademicClass, AcademicLevel, AcademicYear, AttendanceRecord, Exam, ExamSession, ExamSessionSubject, ExamType, GradeScale, Result, Student, Subject, User
+from app.models import AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamSession, ExamSessionSubject, ExamType, GradeScale, Result, Student, StudentEnrollment, Subject, User
 from app.routes_advanced_results import resolve_exam_for_year
 from app.routes_advanced_results import build_analytics_results_report_data, validate_exam_year_scope
 from app.attendance_rules import counts_as_exam_sitting
@@ -95,6 +95,50 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         # server-rendered page carries the actual, attendance-filtered payload.
         self.assertIn(b"const LEVELS =", response.data)
         self.assertIn(b'"appeared": 1', response.data)
+
+    def test_report_uses_year_class_mapping_when_legacy_class_has_wrong_level(self):
+        """A stale legacy class link must not make a valid year report empty."""
+        wrong_level = AcademicLevel(name="Wrong Legacy Level", sort_order=2)
+        wrong_class = AcademicClass(
+            academic_level=wrong_level,
+            name=self.academic_class.name,
+            sort_order=self.academic_class.sort_order,
+        )
+        year_level = AcademicYearLevel(
+            academic_year=self.year,
+            legacy_level=self.level,
+            name="Secondary",
+            sort_order=1,
+        )
+        year_class = AcademicYearClass(
+            academic_year_level=year_level,
+            legacy_class=wrong_class,
+            name=self.academic_class.name,
+            sort_order=1,
+        )
+        year_subject = AcademicYearSubject(
+            academic_year=self.year,
+            academic_year_level=year_level,
+            legacy_subject=self.subject,
+            name=self.subject.name,
+            max_score=self.subject.max_score,
+            subject_kind="exam",
+        )
+        db.session.add_all([wrong_level, wrong_class, year_level, year_class, year_subject])
+        db.session.flush()
+        db.session.add(StudentEnrollment(
+            student_id=self.present_student.id,
+            academic_year_id=self.year.id,
+            academic_year_level_id=year_level.id,
+            academic_year_class_id=year_class.id,
+        ))
+        db.session.commit()
+
+        levels = build_analytics_results_report_data(self.year, self.exam)
+
+        self.assertEqual(len(levels), 1)
+        self.assertEqual(levels[0]["classes"][0]["name"], self.academic_class.name)
+        self.assertEqual(levels[0]["subjects"][0]["name"], self.subject.name)
 
     def test_bad_class_only_exam_scope_is_reported_without_server_error(self):
         """A legacy class-only exam must not crash dashboard or analytics filters."""

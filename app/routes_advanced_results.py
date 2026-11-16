@@ -5,6 +5,7 @@ import json
 import re
 from tempfile import NamedTemporaryFile
 from datetime import date, datetime
+from types import SimpleNamespace
 
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
@@ -2882,10 +2883,21 @@ def build_analytics_results_report_data(academic_year, exam):
     else:
         levels = year_level_options(academic_year.id)
         classes = [
-            year_class.legacy_class
+            # The year-scoped mapping is authoritative.  A legacy class can
+            # retain an old level link after the school restructures its
+            # hierarchy; using ``year_class.legacy_class.academic_level_id``
+            # here would make valid students disappear from the report.
+            SimpleNamespace(
+                id=year_class.legacy_class_id,
+                name=year_class.name,
+                academic_level_id=scope.legacy_level_id,
+                sort_order=year_class.sort_order,
+                is_active=year_class.is_active,
+                year_class=year_class,
+            )
             for scope in year_level_scopes
             for year_class in year_classes(scope.id)
-            if year_class.legacy_class and year_class.legacy_class.is_active
+            if year_class.legacy_class_id and year_class.is_active
         ]
     classes_by_id = {academic_class.id: academic_class for academic_class in classes}
     levels_by_name = {level.name.strip().lower(): level.id for level in levels if level.name}
