@@ -276,10 +276,12 @@ def get_latest_exam_for_year(academic_year):
 def resolve_exam_for_year(exam_id, academic_year):
     """Resolve canonical or legacy exam IDs inside one academic year.
 
-    Older Results Hub links sometimes carried ``ExamType.id`` while the
-    current analytics routes use ``Exam.id``.  The two tables have separate
-    sequences, so an old first-exam link can otherwise be treated as missing
-    (or, before the strict check, silently replaced by another exam).
+    Older Results Hub links sometimes carried an ``ExamType.id`` or an
+    ``Exam.id`` from a row that was later moved to another year. The two
+    tables have separate sequences, so an old first-exam link can otherwise
+    be treated as missing (or, before the strict check, silently replaced by
+    another exam). Resolve by the same-year exam name only after the direct
+    ID check has failed; this keeps the year boundary strict.
     """
     if not academic_year:
         return None
@@ -290,16 +292,29 @@ def resolve_exam_for_year(exam_id, academic_year):
     if selected_exam and selected_exam.academic_year_id == academic_year.id:
         return selected_exam
 
-    legacy_exam_type = db.session.get(ExamType, exam_id)
-    if legacy_exam_type and legacy_exam_type.academic_year_id == academic_year.id:
-        return (
+    legacy_name = None
+    if selected_exam:
+        legacy_name = selected_exam.name
+    else:
+        legacy_exam_type = db.session.get(ExamType, exam_id)
+        if legacy_exam_type and legacy_exam_type.academic_year_id == academic_year.id:
+            legacy_name = legacy_exam_type.name
+
+    if legacy_name:
+        normalized_name = " ".join(legacy_name.casefold().split())
+        candidates = (
             Exam.query
-            .filter_by(
-                academic_year_id=academic_year.id,
-                name=legacy_exam_type.name,
-            )
+            .filter_by(academic_year_id=academic_year.id)
             .order_by(Exam.id.desc())
-            .first()
+            .all()
+        )
+        return next(
+            (
+                exam
+                for exam in candidates
+                if " ".join((exam.name or "").casefold().split()) == normalized_name
+            ),
+            None,
         )
 
     return None

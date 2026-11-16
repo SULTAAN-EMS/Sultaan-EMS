@@ -172,6 +172,26 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         resolved = resolve_exam_for_year(legacy_type.id, self.year)
         self.assertEqual(resolved.id, canonical_exam.id)
 
+    def test_moved_exam_id_resolves_by_name_inside_selected_year(self):
+        """Moved canonical exam links resolve without crossing the year boundary."""
+        moved_exam = Exam(
+            id=79,
+            name="  Imtixaan   Bileedka 1aad ",
+            academic_year_id=self.year.id,
+            is_active=True,
+        )
+        stale_exam = Exam(
+            id=80,
+            name="Imtixaan Bileedka 1aad",
+            academic_year_id=self.year.id + 1,
+            is_active=True,
+        )
+        db.session.add_all([moved_exam, stale_exam])
+        db.session.commit()
+
+        resolved = resolve_exam_for_year(stale_exam.id, self.year)
+        self.assertEqual(resolved.id, moved_exam.id)
+
     def test_student_excel_import_requires_and_persists_gender(self):
         workbook = Workbook()
         sheet = workbook.active
