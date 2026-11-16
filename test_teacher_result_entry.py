@@ -1647,7 +1647,7 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertIn("Showing 1 of 1 saved assignment.", body)
         self.assertIn(f'<option value="{self.teacher.id}" selected>', body)
         self.assertIn(
-            f'href="/admin/teachers/result-entry?status=draft&amp;teacher_id={self.teacher.id}&amp;sort=newest"',
+            f'href="/admin/teachers/result-entry?status=draft&amp;teacher_id={self.teacher.id}&amp;sort=newest&amp;academic_year_id={self.year.id}&amp;exam_id={self.exam.id}"',
             body,
         )
 

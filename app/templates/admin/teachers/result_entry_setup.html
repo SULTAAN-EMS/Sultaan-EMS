@@ -2,7 +2,7 @@
 {% block title %}WAAXDA MAAMULKA SOO GUDBINTA NATIIJOOYINKA{% endblock %}
 {% block page_title %}WAAXDA MAAMULKA SOO GUDBINTA NATIIJOOYINKA{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-admin.css', v='teacher-assignment-overview-20261030-1') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-result-admin.css', v='teacher-assignment-scope-filters-20261116-1') }}">
 {% macro score_history(item, settings) %}
   <details class="tra-score-history">
     <summary><span class="tra-change-count {{ 'has-changes' if item.edit_count else '' }}"><i class="fa-solid fa-pen-ruler" aria-hidden="true"></i>{{ item.edit_count }} isbeddel</span><i class="fa-solid fa-chevron-down tra-history-chevron" aria-hidden="true"></i></summary>
@@ -31,6 +31,8 @@
   <input type="hidden" name="return_teacher_id" value="{{ teacher_filter or '' }}">
   <input type="hidden" name="return_sort" value="{{ sort_filter }}">
   <input type="hidden" name="return_page" value="{{ pagination.page }}">
+  <input type="hidden" name="return_academic_year_id" value="{{ selected_filter_year_id or '' }}">
+  <input type="hidden" name="return_exam_id" value="{{ selected_filter_exam_id or '' }}">
 {%- endmacro %}
 <main class="teacher-result-admin">
   <header class="tra-header tra-header-card" aria-labelledby="tra-page-title">
@@ -43,14 +45,28 @@
     <div class="tra-header-actions"><a class="tra-back tra-history-link" href="{{ url_for('admin_teachers.result_entry_history') }}"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> History &amp; reports</a><a class="tra-back" href="{{ url_for('admin_teachers.teacher_list') }}"><i class="fa-solid fa-chalkboard-user" aria-hidden="true"></i> Teacher accounts</a></div>
   </header>
 
+  <section class="tra-scope-toolbar" aria-label="Kala-soocidda sannadka iyo imtixaanka">
+    <div class="tra-scope-toolbar-copy">
+      <span class="tra-scope-toolbar-icon" aria-hidden="true"><i class="fa-solid fa-filter"></i></span>
+      <div><strong>Scope-ka xilsaarista</strong><span>Tirooyinka iyo liiska hoose waxay ku salaysan yihiin sannadka iyo imtixaanka aad doorato.</span></div>
+    </div>
+    <form method="get" class="tra-scope-form">
+      <input type="hidden" name="status" value="{{ status_filter }}">
+      <input type="hidden" name="teacher_id" value="{{ teacher_filter or '' }}">
+      <input type="hidden" name="sort" value="{{ sort_filter }}">
+      <label><span>Sannad-dugsiyeedka</span><select name="academic_year_id" onchange="this.form.submit()">{% for item in filter_years %}<option value="{{ item.id }}" {{ 'selected' if selected_filter_year_id == item.id else '' }}>{{ item.name }}{% if item.is_current %} · Hadda{% endif %}</option>{% endfor %}</select></label>
+      <label><span>Nooca imtixaanka</span><select name="exam_id" onchange="this.form.submit()" {% if not filter_exams %}disabled{% endif %}>{% for item in filter_exams %}<option value="{{ item.id }}" {{ 'selected' if selected_filter_exam_id == item.id else '' }}>{{ item.name }}</option>{% else %}<option value="">Imtixaan lama helin</option>{% endfor %}</select></label>
+    </form>
+  </section>
+
   <section class="tra-summary" aria-label="Assignment overview">
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='all', teacher_id=teacher_filter, sort=sort_filter) }}" class="tra-metric"><span>Dhammaan xilsaarisyada</span><strong>{{ summary.total }}</strong><i class="fa-solid fa-layer-group"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='review', teacher_id=teacher_filter, sort=sort_filter) }}" class="tra-metric review"><span>Dib-u-eegis sugaya</span><strong>{{ summary.review }}</strong><i class="fa-solid fa-inbox"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='draft', teacher_id=teacher_filter, sort=sort_filter) }}" class="tra-metric draft"><span>Qabyo / sixitaan</span><strong>{{ summary.draft }}</strong><i class="fa-solid fa-pen-to-square"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='approved', teacher_id=teacher_filter, sort=sort_filter) }}" class="tra-metric approved"><span>La ansixiyey</span><strong>{{ summary.approved }}</strong><i class="fa-solid fa-circle-check"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='paused', teacher_id=teacher_filter, sort=sort_filter) }}" class="tra-metric paused"><span>La hakiyey</span><strong>{{ summary.paused }}</strong><i class="fa-solid fa-pause"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='missing-reports', teacher_id=teacher_filter, sort=sort_filter) }}" class="tra-metric missing-reports"><span>Sababaha dhibcaha maqan</span><strong>{{ summary.missing_reports }}</strong><i class="fa-solid fa-clipboard-question"></i></a>
-    <a href="{{ url_for('admin_teachers.result_entry_setup', status='deleted', teacher_id=teacher_filter, sort=sort_filter) }}" class="tra-metric deleted"><span>La tirtiray</span><strong>{{ summary.deleted }}</strong><i class="fa-solid fa-trash-can"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='all', teacher_id=teacher_filter, sort=sort_filter, academic_year_id=selected_filter_year_id, exam_id=selected_filter_exam_id) }}" class="tra-metric"><span>Dhammaan xilsaarisyada</span><strong>{{ summary.total }}</strong><i class="fa-solid fa-layer-group"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='review', teacher_id=teacher_filter, sort=sort_filter, academic_year_id=selected_filter_year_id, exam_id=selected_filter_exam_id) }}" class="tra-metric review"><span>Dib-u-eegis sugaya</span><strong>{{ summary.review }}</strong><i class="fa-solid fa-inbox"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='draft', teacher_id=teacher_filter, sort=sort_filter, academic_year_id=selected_filter_year_id, exam_id=selected_filter_exam_id) }}" class="tra-metric draft"><span>Qabyo / sixitaan</span><strong>{{ summary.draft }}</strong><i class="fa-solid fa-pen-to-square"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='approved', teacher_id=teacher_filter, sort=sort_filter, academic_year_id=selected_filter_year_id, exam_id=selected_filter_exam_id) }}" class="tra-metric approved"><span>La ansixiyey</span><strong>{{ summary.approved }}</strong><i class="fa-solid fa-circle-check"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='paused', teacher_id=teacher_filter, sort=sort_filter, academic_year_id=selected_filter_year_id, exam_id=selected_filter_exam_id) }}" class="tra-metric paused"><span>La hakiyey</span><strong>{{ summary.paused }}</strong><i class="fa-solid fa-pause"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='missing-reports', teacher_id=teacher_filter, sort=sort_filter, academic_year_id=selected_filter_year_id, exam_id=selected_filter_exam_id) }}" class="tra-metric missing-reports"><span>Sababaha dhibcaha maqan</span><strong>{{ summary.missing_reports }}</strong><i class="fa-solid fa-clipboard-question"></i></a>
+    <a href="{{ url_for('admin_teachers.result_entry_setup', status='deleted', teacher_id=teacher_filter, sort=sort_filter, academic_year_id=selected_filter_year_id, exam_id=selected_filter_exam_id) }}" class="tra-metric deleted"><span>La tirtiray</span><strong>{{ summary.deleted }}</strong><i class="fa-solid fa-trash-can"></i></a>
   </section>
 
   <section class="tra-panel tra-setup">
@@ -68,10 +84,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="create">
       <input type="hidden" name="assignment_id" value="">
-      <input type="hidden" name="return_status" value="{{ status_filter }}">
-      <input type="hidden" name="return_teacher_id" value="{{ teacher_filter or '' }}">
-      <input type="hidden" name="return_sort" value="{{ sort_filter }}">
-      <input type="hidden" name="return_page" value="{{ pagination.page }}">
+      {{ assignment_return_filters() }}
       <label class="tra-teacher-field">Macallinka<select id="tra-setup-teacher" name="teacher_id" required><option value="">Xulo macallin firfircoon</option>{% for item in teachers %}<option value="{{ item.id }}">{{ item.full_name }} · {{ item.teacher_code }}</option>{% endfor %}</select></label>
       <div class="tra-scope-list" id="tra-scope-list" aria-label="Xilsaarisyada macallinka">
         <div class="tra-scope-row" data-scope-row>
@@ -130,22 +143,22 @@
           <option value="deadline" {{ 'selected' if sort_filter == 'deadline' else '' }}>Waqtiga kama dambaysta ah · ugu dhow</option>
         </select>
         <button type="submit" class="tra-filter-button"><i class="fa-solid fa-filter"></i> Filter</button>
-        {% if status_filter != 'all' or teacher_filter %}<a class="tra-reset" href="{{ url_for('admin_teachers.result_entry_setup', sort=sort_filter) }}" title="Clear filters"><i class="fa-solid fa-xmark"></i></a>{% endif %}
+        {% if status_filter != 'all' or teacher_filter %}<a class="tra-reset" href="{{ url_for('admin_teachers.result_entry_setup', sort=sort_filter, academic_year_id=selected_filter_year_id, exam_id=selected_filter_exam_id) }}" title="Clear status and teacher filters"><i class="fa-solid fa-xmark"></i></a>{% endif %}
       </form>
     </div>
 
     <nav class="tra-workflow-overview" aria-label="Xaaladda xilsaarisyada macallimiinta">
-      <a class="tra-workflow-card is-complete" href="{{ url_for('admin_teachers.result_entry_setup', status='completed', teacher_id=teacher_filter, sort=sort_filter) }}">
+      <a class="tra-workflow-card is-complete" href="{{ url_for('admin_teachers.result_entry_setup', status='completed', teacher_id=teacher_filter, sort=sort_filter, academic_year_id=selected_filter_year_id, exam_id=selected_filter_exam_id) }}">
         <span class="tra-workflow-icon"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></span>
         <span class="tra-workflow-copy"><small>La gudbiyey</small><strong>{{ summary.completed }}</strong><span>Macallinku gudbiyey; sugaya dib-u-eegis ama la ansixiyey</span></span>
         <i class="fa-solid fa-arrow-up-right-from-square tra-workflow-link" aria-hidden="true"></i>
       </a>
-      <a class="tra-workflow-card is-due" href="{{ url_for('admin_teachers.result_entry_setup', status='due-soon', teacher_id=teacher_filter, sort=sort_filter) }}">
+      <a class="tra-workflow-card is-due" href="{{ url_for('admin_teachers.result_entry_setup', status='due-soon', teacher_id=teacher_filter, sort=sort_filter, academic_year_id=selected_filter_year_id, exam_id=selected_filter_exam_id) }}">
         <span class="tra-workflow-icon"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i></span>
         <span class="tra-workflow-copy"><small>Waqtigu dhow yahay · 48 saac</small><strong>{{ summary.due_soon }}</strong><span>Xilsaaris firfircoon oo aan weli la gudbin</span></span>
         <i class="fa-solid fa-arrow-up-right-from-square tra-workflow-link" aria-hidden="true"></i>
       </a>
-      <a class="tra-workflow-card is-idle" href="{{ url_for('admin_teachers.result_entry_setup', status='not-started', teacher_id=teacher_filter, sort=sort_filter) }}">
+      <a class="tra-workflow-card is-idle" href="{{ url_for('admin_teachers.result_entry_setup', status='not-started', teacher_id=teacher_filter, sort=sort_filter, academic_year_id=selected_filter_year_id, exam_id=selected_filter_exam_id) }}">
         <span class="tra-workflow-icon"><i class="fa-regular fa-file-lines" aria-hidden="true"></i></span>
         <span class="tra-workflow-copy"><small>Weli waxba lagama gelin</small><strong>{{ summary.not_started }}</strong><span>Dhibco, ficil dhibco ama sabab maqan lama diiwaangelin</span></span>
         <i class="fa-solid fa-arrow-up-right-from-square tra-workflow-link" aria-hidden="true"></i>
@@ -259,11 +272,11 @@
           {% endif %}
           <div class="tra-assignment-actions">
             {% if assignment.deleted_at %}
-              <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><button name="action" value="restore" class="tra-restore-assignment"><i class="fa-solid fa-trash-arrow-up"></i> Dib u soo celi</button></form>
+              <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}">{{ assignment_return_filters() }}<button name="action" value="restore" class="tra-restore-assignment"><i class="fa-solid fa-trash-arrow-up"></i> Dib u soo celi</button></form>
             {% else %}
               <a class="tra-print-trigger" href="{{ url_for('admin_teachers.print_result_entry_assignment', assignment_id=assignment.id) }}" target="_blank" rel="noopener" title="Daabac xaashida dhibcaha ee fasalkan"><i class="fa-solid fa-print" aria-hidden="true"></i> Daabac</a>
               {% if scope.editable and not (submission and submission.status == 'approved') %}<button type="button" class="tra-edit-trigger" data-assignment-id="{{ assignment.id }}" data-teacher-id="{{ assignment.teacher_id }}" data-year-id="{{ assignment.academic_year_id }}" data-level-id="{{ scope.academic_year_level_id }}" data-class-id="{{ scope.academic_year_class_id }}" data-subject-id="{{ scope.academic_year_subject_id }}" data-exam-id="{{ assignment.exam_id }}" data-deadline="{{ deadline_labels[assignment.id].strftime('%Y-%m-%dT%H:%M') if assignment.deadline_at else '' }}" data-max-submissions="{{ assignment.max_submissions }}" data-has-submission="{{ 'true' if submission else 'false' }}"><i class="fa-solid fa-pen-to-square"></i> Edit assignment</button>{% endif %}
-              <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}"><button name="action" value="toggle" class="quiet"><i class="fa-solid fa-{{ 'pause' if assignment.is_active else 'play' }}"></i> {{ 'Pause assignment' if assignment.is_active else 'Activate assignment' }}</button></form>
+              <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}">{{ assignment_return_filters() }}<button name="action" value="toggle" class="quiet"><i class="fa-solid fa-{{ 'pause' if assignment.is_active else 'play' }}"></i> {{ 'Pause assignment' if assignment.is_active else 'Activate assignment' }}</button></form>
               <button type="button" class="tra-delete-trigger" data-assignment-id="{{ assignment.id }}" data-assignment-label="{{ scope.level_name }} · {{ scope.class_name }} · {{ scope.subject_name }} · {{ assignment.teacher.full_name }}"><i class="fa-solid fa-trash-can"></i> Tirtir</button>
             {% endif %}
           </div>
@@ -272,9 +285,9 @@
     </div>
     {% if pagination.pages > 1 %}
       <nav class="trh-pagination" aria-label="Bogagga xilsaarista natiijooyinka">
-        {% if pagination.has_prev %}<a href="{{ url_for('admin_teachers.result_entry_setup', status=status_filter, teacher_id=teacher_filter, sort=sort_filter, page=pagination.prev_num) }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Hore</a>{% else %}<span class="disabled"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Hore</span>{% endif %}
+        {% if pagination.has_prev %}<a href="{{ url_for('admin_teachers.result_entry_setup', status=status_filter, teacher_id=teacher_filter, sort=sort_filter, page=pagination.prev_num, academic_year_id=selected_filter_year_id, exam_id=selected_filter_exam_id) }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Hore</a>{% else %}<span class="disabled"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Hore</span>{% endif %}
         <strong>Bog {{ pagination.page }} / {{ pagination.pages }}</strong>
-        {% if pagination.has_next %}<a href="{{ url_for('admin_teachers.result_entry_setup', status=status_filter, teacher_id=teacher_filter, sort=sort_filter, page=pagination.next_num) }}">Xiga <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>{% else %}<span class="disabled">Xiga <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></span>{% endif %}
+        {% if pagination.has_next %}<a href="{{ url_for('admin_teachers.result_entry_setup', status=status_filter, teacher_id=teacher_filter, sort=sort_filter, page=pagination.next_num, academic_year_id=selected_filter_year_id, exam_id=selected_filter_exam_id) }}">Xiga <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>{% else %}<span class="disabled">Xiga <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></span>{% endif %}
       </nav>
     {% endif %}
   </section>
@@ -284,6 +297,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="delete">
     <input type="hidden" name="assignment_id" value="">
+    {{ assignment_return_filters() }}
     <span class="tra-delete-icon"><i class="fa-solid fa-box-archive"></i></span>
     <h2 id="tra-delete-title">Xilsaarista ka saar shaqada firfircoon?</h2>
     <p>Lagama tirtirayo database-ka: xaashida, dhibcaha iyo history-ga waa la ilaalinayaa. Macallinku mar dambe kama geli doono ilaa dib loo soo celiyo.</p>

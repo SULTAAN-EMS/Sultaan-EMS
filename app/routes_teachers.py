@@ -391,11 +391,67 @@ def dashboard():
 @teachers_bp.route("/result-entry", methods=["GET", "POST"])
 def result_entry_setup():
     """Assign exam/class/subject scopes, set deadlines, and review submissions."""
+    filter_years = AcademicYear.query.order_by(
+        AcademicYear.is_current.desc(), AcademicYear.name.desc()
+    ).all()
+    requested_filter_year_id = _safe_int(
+        request.form.get("return_academic_year_id")
+        or request.args.get("academic_year_id")
+    )
+    filter_year_ids = {item.id for item in filter_years}
+    selected_filter_year_id = (
+        requested_filter_year_id
+        if requested_filter_year_id in filter_year_ids
+        else next(
+            (item.id for item in filter_years if item.is_current),
+            filter_years[0].id if filter_years else None,
+        )
+    )
+    filter_exams = (
+        Exam.query
+        .options(joinedload(Exam.academic_year))
+        .filter(
+            Exam.academic_year_id == selected_filter_year_id,
+        )
+        .order_by(Exam.id.desc(), Exam.sort_order, Exam.name)
+        .all()
+        if selected_filter_year_id
+        else []
+    )
+    requested_filter_exam_id = _safe_int(
+        request.form.get("return_exam_id") or request.args.get("exam_id")
+    )
+    filter_exam_ids = {item.id for item in filter_exams}
+    selected_filter_exam_id = (
+        requested_filter_exam_id
+        if requested_filter_exam_id in filter_exam_ids
+        else (filter_exams[0].id if filter_exams else None)
+    )
+    selected_filter_year = next(
+        (item for item in filter_years if item.id == selected_filter_year_id),
+        None,
+    )
+    selected_filter_exam = next(
+        (item for item in filter_exams if item.id == selected_filter_exam_id),
+        None,
+    )
+    filter_scope_ready = bool(selected_filter_year_id and selected_filter_exam_id)
+
+    def apply_filter_scope(query):
+        if not filter_scope_ready:
+            return query.filter(TeacherResultAssignment.id == -1)
+        return query.filter(
+            TeacherResultAssignment.academic_year_id == selected_filter_year_id,
+            TeacherResultAssignment.exam_id == selected_filter_exam_id,
+        )
+
     def redirect_to_assignment_list(**overrides):
         status_value = request.form.get("return_status", request.args.get("status", "all"))
         sort_value = request.form.get("return_sort", request.args.get("sort", "newest"))
         teacher_value = request.form.get("return_teacher_id", request.args.get("teacher_id", ""))
         page_value = request.form.get("return_page", request.args.get("page", 1))
+        year_value = request.form.get("return_academic_year_id") or request.args.get("academic_year_id")
+        exam_value = request.form.get("return_exam_id") or request.args.get("exam_id")
         allowed_statuses = {
             "all", "review", "approved", "draft", "paused", "missing-reports",
             "deleted", "completed", "due-soon", "not-started",
@@ -408,6 +464,12 @@ def result_entry_setup():
         teacher_id = _safe_int(teacher_value)
         if teacher_id:
             params["teacher_id"] = teacher_id
+        year_id = _safe_int(year_value)
+        exam_id = _safe_int(exam_value)
+        if year_id:
+            params["academic_year_id"] = year_id
+        if exam_id:
+            params["exam_id"] = exam_id
         params.update(overrides)
         return redirect(url_for("admin_teachers.result_entry_setup", **params))
 
@@ -897,25 +959,25 @@ def result_entry_setup():
             flash("Isbeddelka xilsaarista/submission-ka waa la kaydiyey.", "success")
         return redirect_to_assignment_list()
 
-    summary_rows = (
-        db.session.query(
-            TeacherResultAssignment.deleted_at.isnot(None),
-            TeacherResultAssignment.is_active,
-            TeacherResultSubmission.status,
-            func.count(TeacherResultAssignment.id),
-        )
-        .outerjoin(
-            TeacherResultSubmission,
-            TeacherResultSubmission.assignment_id == TeacherResultAssignment.id,
-        )
-        .group_by(
-            TeacherResultAssignment.deleted_at.isnot(None),
-            TeacherResultAssignment.is_active,
-            TeacherResultSubmission.status,
-        )
-        .all()
-    )
     teacher_filter = request.args.get("teacher_id", type=int)
+    summary_query = db.session.query(
+        TeacherResultAssignment.deleted_at.isnot(None),
+        TeacherResultAssignment.is_active,
+        TeacherResultSubmission.status,
+        func.count(TeacherResultAssignment.id),
+    ).outerjoin(
+        TeacherResultSubmission,
+        TeacherResultSubmission.assignment_id == TeacherResultAssignment.id,
+    )
+    if teacher_filter:
+        summary_query = summary_query.filter(
+            TeacherResultAssignment.teacher_id == teacher_filter
+        )
+    summary_rows = apply_filter_scope(summary_query).group_by(
+        TeacherResultAssignment.deleted_at.isnot(None),
+        TeacherResultAssignment.is_active,
+        TeacherResultSubmission.status,
+    ).all()
     sort_filter = request.args.get("sort", "newest")
     if sort_filter not in {"newest", "teacher", "class", "subject", "deadline"}:
         sort_filter = "newest"
@@ -943,12 +1005,14 @@ def result_entry_setup():
         open_report_count_query = open_report_count_query.filter(
             TeacherResultAssignment.teacher_id == teacher_filter
         )
+    open_report_count_query = apply_filter_scope(open_report_count_query)
     summary["missing_reports"] = open_report_count_query.count()
 
     def operational_assignments_query():
         query = TeacherResultAssignment.query.filter(
             TeacherResultAssignment.deleted_at.is_(None)
         )
+        query = apply_filter_scope(query)
         if teacher_filter:
             query = query.filter(TeacherResultAssignment.teacher_id == teacher_filter)
         return query
@@ -1012,6 +1076,7 @@ def result_entry_setup():
         assignment_query = assignment_query.filter(TeacherResultAssignment.deleted_at.isnot(None))
     else:
         assignment_query = assignment_query.filter(TeacherResultAssignment.deleted_at.is_(None))
+    assignment_query = apply_filter_scope(assignment_query)
     if teacher_filter:
         assignment_query = assignment_query.filter(TeacherResultAssignment.teacher_id == teacher_filter)
     if status_filter == "review":
@@ -1299,7 +1364,7 @@ def result_entry_setup():
         .order_by(User.full_name, User.username)
         .all()
     )
-    years = AcademicYear.query.order_by(AcademicYear.is_current.desc(), AcademicYear.name.desc()).all()
+    years = filter_years
     year_levels = (
         AcademicYearLevel.query
         .join(AcademicYear, AcademicYear.id == AcademicYearLevel.academic_year_id)
@@ -1499,6 +1564,12 @@ def result_entry_setup():
         assignments_with_existing_results=assignments_with_existing_results,
         summary=summary, status_filter=status_filter, teacher_filter=teacher_filter,
         sort_filter=sort_filter,
+        filter_years=filter_years,
+        filter_exams=filter_exams,
+        selected_filter_year=selected_filter_year,
+        selected_filter_exam=selected_filter_exam,
+        selected_filter_year_id=selected_filter_year_id,
+        selected_filter_exam_id=selected_filter_exam_id,
     )
 
 
