@@ -223,10 +223,12 @@ function scopedExportUrl(baseUrl) {
 }
 
 function exportExcel() {
+  window.AdminLoader?.show?.();
   window.location.href = scopedExportUrl(`{{ url_for('admin_advanced_results.export_class_excel') }}`);
 }
 
 function exportPDF() {
+  window.AdminLoader?.show?.();
   window.location.href = scopedExportUrl(`{{ url_for('admin_advanced_results.export_class_pdf') }}`);
 }
 </script>

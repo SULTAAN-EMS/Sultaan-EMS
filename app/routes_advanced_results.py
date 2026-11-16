@@ -1028,6 +1028,7 @@ def class_roster():
 
         # Build results data for each student
         from .routes_public import feedback_access_token
+        behavior_placements = _year_placement_cache(students, selected_year.id)
         roster_data = []
         for student in students:
             results = results_by_student.get(student.id, [])
@@ -1072,7 +1073,11 @@ def class_roster():
             overall_grade = cached_grade_for(overall_percentage)
             overall_tier = performance_tier_for(overall_percentage, weak_config, fail_config)
 
-            behavior_reports = get_behavior_report_data(student, selected_exam)
+            behavior_reports = get_behavior_report_data(
+                student,
+                selected_exam,
+                placement=behavior_placements.get((student.id, selected_year.id)),
+            )
             behavior_score = sum(
                 float(item.get("session_score") or 0)
                 for item in behavior_reports
@@ -1587,24 +1592,24 @@ def export_class_pdf():
         [student.id for student in students],
         [subject.id for subject in subjects],
     )
+    results_by_student = defaultdict(dict)
+    if students:
+        published_results = Result.query.filter(
+            Result.student_id.in_([student.id for student in students]),
+            Result.exam_id == selected_exam.id,
+            Result.is_published.is_(True),
+        ).all()
+        for result in published_results:
+            results_by_student[result.student_id][result.subject_id] = result
+    behavior_placements = _year_placement_cache(students, selected_year.id)
     behavior_reports_by_student = {
-        student.id: get_behavior_report_data(student, selected_exam)
+        student.id: get_behavior_report_data(
+            student,
+            selected_exam,
+            placement=behavior_placements.get((student.id, selected_year.id)),
+        )
         for student in students
     }
-    behavior_definitions = []
-    seen_behavior_configurations = set()
-    for reports in behavior_reports_by_student.values():
-        for behavior in reports:
-            if (
-                not behavior.get("available")
-                or behavior.get("configuration_id") in seen_behavior_configurations
-            ):
-                continue
-            seen_behavior_configurations.add(behavior["configuration_id"])
-            behavior_definitions.append({
-                "configuration_id": behavior["configuration_id"],
-                "subject_name": behavior["subject_name"],
-            })
     critical_badges = critical_subject_badges(
         selected_exam,
         year_level_scope.id if year_level_scope else None,
@@ -1624,8 +1629,7 @@ def export_class_pdf():
     roster_data = []
     from .routes_public import feedback_access_token
     for student in students:
-        results = Result.query.filter_by(student_id=student.id, exam_id=exam_id, is_published=True).all()
-        results_dict = {r.subject_id: r for r in results}
+        results_dict = results_by_student.get(student.id, {})
         
         total_score = 0
         total_max = 0
@@ -1668,7 +1672,7 @@ def export_class_pdf():
         overall_tier = performance_tier_for(overall_percentage, weak_config, fail_config)
         overall_fail = overall_tier["is_fail"]
         overall_weak = overall_tier["is_weak"]
-        behavior_reports = get_behavior_report_data(student, selected_exam)
+        behavior_reports = behavior_reports_by_student.get(student.id, [])
         behavior_score = sum(
             float(item.get("session_score") or 0)
             for item in behavior_reports
@@ -1849,8 +1853,22 @@ def export_class_excel():
         [student.id for student in students],
         [subject.id for subject in subjects],
     )
+    results_by_student = defaultdict(dict)
+    if students:
+        published_results = Result.query.filter(
+            Result.student_id.in_([student.id for student in students]),
+            Result.exam_id == selected_exam.id,
+            Result.is_published.is_(True),
+        ).all()
+        for result in published_results:
+            results_by_student[result.student_id][result.subject_id] = result
+    behavior_placements = _year_placement_cache(students, selected_year.id)
     behavior_reports_by_student = {
-        student.id: get_behavior_report_data(student, selected_exam)
+        student.id: get_behavior_report_data(
+            student,
+            selected_exam,
+            placement=behavior_placements.get((student.id, selected_year.id)),
+        )
         for student in students
     }
     behavior_definitions = []
@@ -1907,8 +1925,7 @@ def export_class_excel():
     # Data rows
     row_num = 2
     for student in students:
-        results = Result.query.filter_by(student_id=student.id, exam_id=exam_id, is_published=True).all()
-        results_dict = {r.subject_id: r for r in results}
+        results_dict = results_by_student.get(student.id, {})
         
         total_score = 0
         total_max = 0

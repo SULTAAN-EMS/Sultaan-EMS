@@ -9,6 +9,7 @@ import json
 from collections import defaultdict
 from decimal import Decimal
 
+from flask import g
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import contains_eager, joinedload, selectinload
 
@@ -84,6 +85,18 @@ def _session_matches_exam(session, exam):
         and legacy_exam.academic_year_id == exam.academic_year_id
         and (legacy_exam.name or "").strip().casefold() == (exam.name or "").strip().casefold()
     )
+
+
+def _request_cache(name):
+    """Return a small request-local cache without requiring an app context."""
+    try:
+        cache = getattr(g, name, None)
+    except RuntimeError:
+        return None
+    if cache is None:
+        cache = {}
+        setattr(g, name, cache)
+    return cache
 
 
 def _selected_session_for_exam(configuration, exam):
@@ -478,7 +491,7 @@ def serialize_behavior_reports(reports):
     return serialized
 
 
-def get_behavior_report_data(student, exam):
+def get_behavior_report_data(student, exam, *, placement=None):
     """Return normalized Behavior reports for one student and selected exam.
 
     The function returns one item per active Behavior configuration in the
@@ -490,7 +503,12 @@ def get_behavior_report_data(student, exam):
     if not student or not exam or not exam.academic_year_id:
         return []
 
-    placement = resolve_student_academic_context(student, exam.academic_year_id)
+    report_cache = _request_cache("_behavior_report_cache")
+    cache_key = (student.id, exam.id) if report_cache is not None else None
+    if report_cache is not None and cache_key in report_cache:
+        return report_cache[cache_key]
+
+    placement = placement or resolve_student_academic_context(student, exam.academic_year_id)
     if not placement:
         return []
     year_level_id = placement.get("academic_year_level_id")
@@ -500,48 +518,64 @@ def get_behavior_report_data(student, exam):
     if enrollment.status not in {"active", "completed"}:
         return []
 
-    configurations = (
-        BehaviorConfiguration.query
-        .options(
-            joinedload(BehaviorConfiguration.academic_year_level),
-            contains_eager(BehaviorConfiguration.behavior_subject),
-            selectinload(BehaviorConfiguration.sessions).joinedload(BehaviorSession.exam),
-            selectinload(BehaviorConfiguration.sessions).joinedload(BehaviorSession.exam_type),
-        )
-        .join(
-            AcademicYearSubject,
-            AcademicYearSubject.id == BehaviorConfiguration.academic_year_subject_id,
-        )
-        .filter(
-            BehaviorConfiguration.academic_year_id == exam.academic_year_id,
-            or_(
-                BehaviorConfiguration.academic_year_levels.any(
-                    BehaviorConfigurationLevel.academic_year_level_id == year_level_id
+    configuration_cache = _request_cache("_behavior_configuration_cache")
+    configuration_key = (exam.academic_year_id, year_level_id) if configuration_cache is not None else None
+
+    if configuration_cache is not None and configuration_key in configuration_cache:
+        configurations = configuration_cache[configuration_key]
+    else:
+        configurations = (
+            BehaviorConfiguration.query
+            .options(
+                joinedload(BehaviorConfiguration.academic_year_level),
+                contains_eager(BehaviorConfiguration.behavior_subject),
+                selectinload(BehaviorConfiguration.sessions).joinedload(BehaviorSession.exam),
+                selectinload(BehaviorConfiguration.sessions).joinedload(BehaviorSession.exam_type),
+            )
+            .join(
+                AcademicYearSubject,
+                AcademicYearSubject.id == BehaviorConfiguration.academic_year_subject_id,
+            )
+            .filter(
+                BehaviorConfiguration.academic_year_id == exam.academic_year_id,
+                or_(
+                    BehaviorConfiguration.academic_year_levels.any(
+                        BehaviorConfigurationLevel.academic_year_level_id == year_level_id
+                    ),
+                    and_(
+                        ~BehaviorConfiguration.academic_year_levels.any(),
+                        BehaviorConfiguration.academic_year_level_id == year_level_id,
+                    ),
                 ),
-                and_(
-                    ~BehaviorConfiguration.academic_year_levels.any(),
-                    BehaviorConfiguration.academic_year_level_id == year_level_id,
-                ),
-            ),
-            AcademicYearSubject.subject_kind == "behavior",
-            AcademicYearSubject.is_active.is_(True),
+                AcademicYearSubject.subject_kind == "behavior",
+                AcademicYearSubject.is_active.is_(True),
+            )
+            .order_by(BehaviorConfiguration.id.asc())
+            .all()
         )
-        .order_by(BehaviorConfiguration.id.asc())
-        .all()
-    )
+        if configuration_cache is not None:
+            configuration_cache[configuration_key] = configurations
 
     # Critical status is resolved through the same exact Year + Level + Exam
     # rule used by ordinary result rows. Behavior uses a namespaced key because
     # its AcademicYearSubject ID is not a legacy Subject ID.
     from .services import critical_subject_badges
 
-    try:
-        critical_badges = critical_subject_badges(exam, year_level_id)
-    except PromotionValidationError:
-        # Legacy ExamType-backed Behavior sessions do not have a Results Exam
-        # scope. Their report remains valid; only the optional critical badge
-        # lookup is unavailable for that compatibility path.
-        critical_badges = {}
+    critical_cache = _request_cache("_behavior_critical_badges_cache")
+    critical_key = (exam.id, year_level_id) if critical_cache is not None else None
+
+    if critical_cache is not None and critical_key in critical_cache:
+        critical_badges = critical_cache[critical_key]
+    else:
+        try:
+            critical_badges = critical_subject_badges(exam, year_level_id)
+        except PromotionValidationError:
+            # Legacy ExamType-backed Behavior sessions do not have a Results Exam
+            # scope. Their report remains valid; only the optional critical badge
+            # lookup is unavailable for that compatibility path.
+            critical_badges = {}
+        if critical_cache is not None:
+            critical_cache[critical_key] = critical_badges
 
     reports = []
     for configuration in configurations:
@@ -780,4 +814,6 @@ def get_behavior_report_data(student, exam):
             }
         )
         reports.append(base_report)
+    if report_cache is not None and cache_key is not None:
+        report_cache[cache_key] = reports
     return reports
