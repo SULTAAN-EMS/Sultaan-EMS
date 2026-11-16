@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from app import create_app, db
 from app.models import AcademicClass, AcademicLevel, AcademicYear, AttendanceRecord, Exam, ExamSession, ExamSessionSubject, ExamType, GradeScale, Result, Student, Subject, User
+from app.routes_advanced_results import resolve_exam_for_year
 from app.routes_advanced_results import build_analytics_results_report_data, validate_exam_year_scope
 from app.attendance_rules import counts_as_exam_sitting
 from app.import_wizard import process_student_import
@@ -147,9 +148,29 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
-        self.assertIn("kuma jiro sannad-dugsiyeedka", body)
+        self.assertIn("lama helin", body)
         exam_selector = body.split('id="exam-selector"', 1)[1].split('</select>', 1)[0]
         self.assertNotIn('value="%s" selected' % self.exam.id, exam_selector)
+
+    def test_legacy_exam_type_id_resolves_to_current_exam(self):
+        """Old ExamType links still resolve to the canonical exam in that year."""
+        legacy_type = ExamType(
+            id=77,
+            academic_year_id=self.year.id,
+            name="Imtixaan Bileedka 1aad",
+            is_active=True,
+        )
+        canonical_exam = Exam(
+            id=78,
+            name=legacy_type.name,
+            academic_year_id=self.year.id,
+            is_active=True,
+        )
+        db.session.add_all([legacy_type, canonical_exam])
+        db.session.commit()
+
+        resolved = resolve_exam_for_year(legacy_type.id, self.year)
+        self.assertEqual(resolved.id, canonical_exam.id)
 
     def test_student_excel_import_requires_and_persists_gender(self):
         workbook = Workbook()

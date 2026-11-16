@@ -273,6 +273,38 @@ def get_latest_exam_for_year(academic_year):
     )
 
 
+def resolve_exam_for_year(exam_id, academic_year):
+    """Resolve canonical or legacy exam IDs inside one academic year.
+
+    Older Results Hub links sometimes carried ``ExamType.id`` while the
+    current analytics routes use ``Exam.id``.  The two tables have separate
+    sequences, so an old first-exam link can otherwise be treated as missing
+    (or, before the strict check, silently replaced by another exam).
+    """
+    if not academic_year:
+        return None
+    if not exam_id:
+        return get_latest_exam_for_year(academic_year)
+
+    selected_exam = db.session.get(Exam, exam_id)
+    if selected_exam and selected_exam.academic_year_id == academic_year.id:
+        return selected_exam
+
+    legacy_exam_type = db.session.get(ExamType, exam_id)
+    if legacy_exam_type and legacy_exam_type.academic_year_id == academic_year.id:
+        return (
+            Exam.query
+            .filter_by(
+                academic_year_id=academic_year.id,
+                name=legacy_exam_type.name,
+            )
+            .order_by(Exam.id.desc())
+            .first()
+        )
+
+    return None
+
+
 def validate_exam_year_scope(exam):
     """Validate an exam's optional level/class/section against its school year.
 
@@ -2524,13 +2556,9 @@ def analytics():
     # Silent fallback made the user click one exam while analytics displayed a
     # different exam, especially when legacy and year-aware records coexisted.
     exam_selection_warning = None
-    selected_exam = db.session.get(Exam, exam_id) if exam_id else None
+    selected_exam = resolve_exam_for_year(exam_id, selected_year)
     if exam_id and not selected_exam:
         exam_selection_warning = "Imtixaanka aad dooratay lama helin. Fadlan imtixaan sax ah xulo."
-    elif exam_id and selected_exam.academic_year_id != selected_year.id:
-        exam_selection_warning = "Imtixaanka aad dooratay kuma jiro sannad-dugsiyeedka la doortay. Fadlan sannadka saxda ah xulo."
-    elif not exam_id:
-        selected_exam = Exam.query.filter_by(academic_year_id=selected_year.id).order_by(Exam.id.desc()).first()
     exam_scope_ready, scope_warning = validate_exam_year_scope(selected_exam)
     exam_scope_warning = exam_selection_warning or scope_warning
     
@@ -3253,7 +3281,7 @@ def analytics_results_report():
         flash("Please select an academic year before opening the results report.", "warning")
         return redirect(url_for("admin_advanced_results.analytics"))
 
-    selected_exam = db.session.get(Exam, exam_id) if exam_id else get_latest_exam_for_year(selected_year)
+    selected_exam = resolve_exam_for_year(exam_id, selected_year)
     if not selected_exam or selected_exam.academic_year_id != selected_year.id:
         flash("Please select a valid exam for the selected academic year.", "warning")
         return redirect(url_for("admin_advanced_results.analytics", year_id=selected_year.id))
