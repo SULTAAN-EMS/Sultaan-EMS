@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from app import create_app, db
 from app.models import AcademicClass, AcademicLevel, AcademicYear, AttendanceRecord, Exam, ExamSession, ExamSessionSubject, ExamType, GradeScale, Result, Student, Subject, User
-from app.routes_advanced_results import build_analytics_results_report_data
+from app.routes_advanced_results import build_analytics_results_report_data, validate_exam_year_scope
 from app.attendance_rules import counts_as_exam_sitting
 from app.import_wizard import process_student_import
 from config import Config
@@ -94,6 +94,36 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         # server-rendered page carries the actual, attendance-filtered payload.
         self.assertIn(b"const LEVELS =", response.data)
         self.assertIn(b'"appeared": 1', response.data)
+
+    def test_bad_class_only_exam_scope_is_reported_without_server_error(self):
+        """A legacy class-only exam must not crash dashboard or analytics filters."""
+        self.exam.academic_class_id = self.academic_class.id
+        db.session.commit()
+
+        ready, warning = validate_exam_year_scope(self.exam)
+        self.assertFalse(ready)
+        self.assertIn("fasalkiisu", warning)
+
+        with self.client.session_transaction() as session:
+            session["_user_id"] = str(self.admin.id)
+            session["_fresh"] = True
+
+        dashboard = self.client.get(
+            f"/admin/advanced-results/new-dashboard?year_id={self.year.id}&exam_id={self.exam.id}"
+        )
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertIn("kuma xirna", dashboard.get_data(as_text=True))
+
+        analytics = self.client.get(
+            f"/admin/advanced-results/analytics?year_id={self.year.id}&exam_id={self.exam.id}"
+        )
+        self.assertEqual(analytics.status_code, 200)
+        self.assertIn("kuma xirna", analytics.get_data(as_text=True))
+
+        report = self.client.get(
+            f"/admin/advanced-results/analytics/results-report?year_id={self.year.id}&exam_id={self.exam.id}"
+        )
+        self.assertEqual(report.status_code, 302)
 
     def test_student_excel_import_requires_and_persists_gender(self):
         workbook = Workbook()

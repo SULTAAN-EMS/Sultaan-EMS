@@ -273,6 +273,73 @@ def get_latest_exam_for_year(academic_year):
     )
 
 
+def validate_exam_year_scope(exam):
+    """Validate an exam's optional level/class/section against its school year.
+
+    Exam rows predate the year-aware hierarchy and may contain only a class or
+    section, or may point at a legacy row that was later moved. Every Results
+    Hub entry point must reject that incomplete scope before a broad enrollment
+    query is attempted; otherwise selecting one exam can raise a server error.
+    """
+    if not exam:
+        return True, None
+
+    requested_level_id = exam.academic_level_id
+    requested_class_id = exam.academic_class_id
+    requested_section_id = exam.academic_section_id
+    if not any((requested_level_id, requested_class_id, requested_section_id)):
+        return True, None
+
+    scopes = year_levels(exam.academic_year_id)
+    mapped_level = next(
+        (scope for scope in scopes if scope.legacy_level_id == requested_level_id),
+        None,
+    ) if requested_level_id else None
+    if requested_level_id and not mapped_level:
+        return False, "Imtixaankan heerkiisu kuma xirna sannad-dugsiyeedka la doortay."
+
+    class_candidates = []
+    if requested_class_id:
+        class_candidates = [
+            year_class
+            for scope in scopes
+            if not mapped_level or scope.id == mapped_level.id
+            for year_class in year_classes(scope.id)
+            if year_class.legacy_class_id == requested_class_id
+            and year_class.is_active
+        ]
+        if not class_candidates:
+            return False, "Imtixaankan fasalkiisu kuma xirna sannad-dugsiyeedka la doortay."
+
+    selected_year_class = class_candidates[0] if len(class_candidates) == 1 else None
+    if requested_section_id:
+        selected_section = db.session.get(AcademicSection, requested_section_id)
+        if not selected_section or not selected_section.is_active:
+            return False, "Section-ka imtixaankan ku xiran lama helin ama ma aha mid firfircoon."
+
+        if requested_class_id:
+            if selected_section.academic_class_id != requested_class_id:
+                return False, "Section-ka imtixaanku kuma jiro fasalka imtixaanka ku xiran."
+        else:
+            section_candidates = [
+                year_class
+                for scope in scopes
+                if not mapped_level or scope.id == mapped_level.id
+                for year_class in year_classes(scope.id)
+                if year_class.legacy_class_id == selected_section.academic_class_id
+                and year_class.is_active
+            ]
+            if len(section_candidates) != 1:
+                return False, "Section-ka imtixaanku kuma xirna fasal si cad oo sannad-dugsiyeedka ah."
+            selected_year_class = section_candidates[0]
+
+    if mapped_level and selected_year_class:
+        if selected_year_class.academic_year_level_id != mapped_level.id:
+            return False, "Fasalka imtixaanku kuma jiro heerka imtixaanka ku xiran."
+
+    return True, None
+
+
 def subjects_for_scope(exam, level_id=None, class_id=None):
     """Return subjects assigned to the selected year-aware level."""
     # An explicitly requested level must win over an exam's optional default
@@ -821,28 +888,7 @@ def new_dashboard():
     valid_level_ids = {level.id for level in levels}
     selected_level = next((level for level in levels if level.id == level_id), None)
 
-    exam_scope_ready = True
-    if selected_exam and selected_exam.academic_level_id:
-        exam_year_level = next(
-            (scope for scope in year_level_scopes if scope.legacy_level_id == selected_exam.academic_level_id),
-            None,
-        )
-        exam_scope_ready = exam_year_level is not None
-        if exam_scope_ready and selected_exam.academic_class_id:
-            exam_year_class = next((
-                item for item in year_classes(exam_year_level.id)
-                if item.legacy_class_id == selected_exam.academic_class_id
-            ), None)
-            exam_scope_ready = exam_year_class is not None
-            if exam_scope_ready and selected_exam.academic_section_id:
-                exam_section = db.session.get(AcademicSection, selected_exam.academic_section_id)
-                exam_scope_ready = bool(
-                    exam_section
-                    and exam_year_class.legacy_class_id == exam_section.academic_class_id
-                )
-        elif exam_scope_ready and selected_exam.academic_section_id:
-            exam_section = db.session.get(AcademicSection, selected_exam.academic_section_id)
-            exam_scope_ready = bool(exam_section)
+    exam_scope_ready, exam_scope_warning = validate_exam_year_scope(selected_exam)
     
     stats = {
         "total_students": 0,
@@ -865,6 +911,7 @@ def new_dashboard():
         selected_exam=selected_exam,
         selected_level=selected_level,
         exam_scope_ready=exam_scope_ready,
+        exam_scope_warning=exam_scope_warning,
         stats=stats,
         class_cards=class_cards,
         settings=get_settings(),
@@ -2479,6 +2526,7 @@ def analytics():
         selected_exam = None
     if not selected_exam:
         selected_exam = Exam.query.filter_by(academic_year_id=selected_year.id).order_by(Exam.id.desc()).first()
+    exam_scope_ready, exam_scope_warning = validate_exam_year_scope(selected_exam)
     
     # Get filter data for selectors
     years = AcademicYear.query.order_by(AcademicYear.name.desc()).all()
@@ -2552,7 +2600,7 @@ def analytics():
     subjects = year_scoped_subjects
     
     # If still no exam available, show empty analytics
-    if not selected_exam:
+    if not selected_exam or not exam_scope_ready:
         # Provide empty analytics structure to prevent template errors
         empty_analytics = {
             "grade_distribution": {"labels": [], "counts": [], "colors": [], "total": 0},
@@ -2571,7 +2619,7 @@ def analytics():
         return render_template(
             "admin/analytics.html",
             selected_year=selected_year,
-            selected_exam=None,
+            selected_exam=selected_exam,
             scope_info={},
             analytics=empty_analytics,
             years=years,
@@ -2586,6 +2634,7 @@ def analytics():
             selected_subject_id=subject_id,
             top_limit=top_limit,
             bottom_limit=bottom_limit,
+            exam_scope_warning=exam_scope_warning,
             settings=get_settings(),
         )
     
@@ -2680,6 +2729,7 @@ def analytics():
         selected_subject_id=subject_id,
         top_limit=top_limit,
         bottom_limit=bottom_limit,
+        exam_scope_warning=None,
         settings=get_settings(),
     )
 
@@ -2896,6 +2946,9 @@ def build_analytics_results_report_data(academic_year, exam):
             student_class_lookup[student.id] = _class_id
     subject_ids_by_level = defaultdict(set)
     subject_ids_by_student = defaultdict(set)
+    # Legacy-only years do not have AcademicYearLevel bridge IDs. Keep an
+    # empty mapping so shared score-resolution code can safely pass None.
+    year_level_by_legacy = {}
     if legacy_report_mode:
         for level in levels:
             subject_ids_by_level[level.id].update(
@@ -3198,6 +3251,14 @@ def analytics_results_report():
     if not selected_exam or selected_exam.academic_year_id != selected_year.id:
         flash("Please select a valid exam for the selected academic year.", "warning")
         return redirect(url_for("admin_advanced_results.analytics", year_id=selected_year.id))
+    exam_scope_ready, exam_scope_warning = validate_exam_year_scope(selected_exam)
+    if not exam_scope_ready:
+        flash(exam_scope_warning, "warning")
+        return redirect(url_for(
+            "admin_advanced_results.analytics",
+            year_id=selected_year.id,
+            exam_id=selected_exam.id,
+        ))
 
     settings = get_settings()
     return render_template(
