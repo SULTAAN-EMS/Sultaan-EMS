@@ -1,29 +1,24 @@
 (function () {
   "use strict";
 
-  // Keep protected photos out of a literal <img> element. Mobile browsers can
-  // offer "Download image" for <img> even when contextmenu is cancelled.
+  // Keep the real <img> so every browser renders the photo consistently.
+  // The image itself does not receive pointer events, so mobile Chrome does
+  // not treat a long press as an image-download action.
   const selector = "[data-protected-student-photo]";
+  const hostSelector = `${selector}, [data-protected-photo-host]`;
   const style = document.createElement("style");
   style.textContent = `
-    ${selector}, .protected-photo-surface {
+    ${selector} {
       -webkit-user-drag: none;
       -webkit-touch-callout: none;
       user-select: none;
+      pointer-events: none;
     }
-    .protected-photo-surface {
-      display: block;
-      width: 100%;
-      height: 100%;
-      background-repeat: no-repeat;
-      background-position: center;
-      background-size: cover;
-      pointer-events: auto;
-    }
+    [data-protected-photo-host] { -webkit-touch-callout: none; user-select: none; }
   `;
   document.head.appendChild(style);
 
-  const protectedTarget = (target) => target && target.closest && target.closest(selector);
+  const protectedTarget = (target) => target && target.closest && target.closest(hostSelector);
   const blockImageAction = (event) => {
     if (!protectedTarget(event.target)) return;
     event.preventDefault();
@@ -41,18 +36,11 @@
   }, true);
 
   const protectImage = (image) => {
-    if (!(image instanceof HTMLImageElement) || image.dataset.protectedSurface === "1") return;
-    const source = image.currentSrc || image.getAttribute("src");
-    if (!source) return;
-
-    const surface = document.createElement("span");
-    surface.className = `${image.className || ""} protected-photo-surface`.trim();
-    surface.setAttribute("data-protected-student-photo", "");
-    surface.setAttribute("role", "img");
-    if (image.alt) surface.setAttribute("aria-label", image.alt);
-    surface.style.backgroundImage = `url("${String(source).replace(/(["\\])/g, "\\$1")}")`;
-    image.dataset.protectedSurface = "1";
-    image.replaceWith(surface);
+    if (!(image instanceof HTMLImageElement) || image.dataset.protectedReady === "1") return;
+    image.draggable = false;
+    image.dataset.protectedReady = "1";
+    image.setAttribute("aria-hidden", "false");
+    if (image.parentElement) image.parentElement.setAttribute("data-protected-photo-host", "");
   };
 
   const protectPhotos = (root = document) => {
