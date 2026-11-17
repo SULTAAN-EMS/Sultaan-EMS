@@ -21,6 +21,7 @@
 .cn-code-preview b{font:900 21px/1.05 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.2em;text-indent:.2em}
 .cn-item{display:flex;align-items:center;gap:11px;margin-bottom:16px;padding:10px 12px;border:1px solid var(--cn-bd);border-radius:16px;background:var(--cn-sf2);text-align:left}
 .cn-item-icon{display:grid;flex:none;width:38px;height:38px;place-items:center;border-radius:12px;background:linear-gradient(135deg,var(--a),var(--b));color:#fff}
+.cn-item-icon i{font-size:19px}
 .cn-item-icon svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .cn-item-copy{min-width:0}
 .cn-item-copy small{display:block;color:var(--cn-mu);font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}

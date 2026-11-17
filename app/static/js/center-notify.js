@@ -16,6 +16,9 @@
     off: { a: '#B8400A', b: '#F59A4A', icon: 'power', title: 'Waa la xiray' },
     del: { a: '#B91C1C', b: '#F87171', icon: 'trash', title: 'Waa la tirtiray', message: () => 'Si buuxda ayaa looga saaray nidaamka.' },
     error: { a: '#B42318', b: '#F87171', icon: 'alert', title: 'Hawshu way fashilantay' },
+    'id-card-success': { a: '#0E7C66', b: '#1FB090', icon: 'check', title: 'Kaadhka waa la diyaariyey' },
+    'id-card-warning': { a: '#A96808', b: '#F2B84B', icon: 'alert', title: 'Generate-ka qayb ahaan ayuu u dhacay' },
+    'id-card-error': { a: '#B42318', b: '#F87171', icon: 'alert', title: 'Kaadhka lama diyaarin' },
   };
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -28,15 +31,21 @@
 
   function notify(type, kind, name, customMessage = '', customTitle = '', customCode = '') {
     const notice = notices[type];
-    if (!notice || !['c', 'p', 'code'].includes(kind)) return;
+    if (!notice || !['c', 'p', 'code', 'id-card'].includes(kind)) return;
+    const isIdCard = kind === 'id-card';
+    const isCodeError = type === 'error';
     const itemName = escapeHtml(name);
     const message = customMessage || notice.message?.(kind);
-    const itemKind = type === 'error' ? 'Soo jeedin' : kind === 'c' ? 'Xarun dugsi' : 'Madbacad';
+    const itemKind = isIdCard
+      ? 'Kaadhadhka aqoonsiga'
+      : isCodeError ? 'Soo jeedin' : kind === 'c' ? 'Xarun dugsi' : 'Madbacad';
     const itemSymbol = kind === 'c' ? 'building' : 'printer';
-    const itemIcon = type === 'error'
+    const itemIcon = isIdCard
+      ? '<i class="fa-solid fa-id-card" aria-hidden="true"></i>'
+      : isCodeError
       ? '<i class="fa-solid fa-key" aria-hidden="true"></i>'
       : `<svg aria-hidden="true"><use href="#cn-i-${itemSymbol}"></use></svg>`;
-    const codePreview = type === 'error' && customCode
+    const codePreview = isCodeError && customCode
       ? `<div class="cn-code-preview"><small>Code-ka la geliyey</small><b>${escapeHtml(customCode)}</b></div>`
       : '';
     const confetti = type === 'add' ? Array.from({ length: 16 }, (_, index) => {

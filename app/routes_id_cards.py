@@ -1,5 +1,6 @@
 import secrets
 import calendar
+import json
 import re
 from datetime import date, datetime, timezone
 from io import BytesIO
@@ -348,11 +349,21 @@ def generate(student_id):
         issue = get_or_create_issue(student, academic_year_id=academic_year_id, exam_id=exam_id)
     except EnrollmentValidationError as exc:
         db.session.rollback()
-        flash(str(exc), "warning")
+        _flash_id_card_center_notice(
+            "id-card-error",
+            "Kaadhka lama diyaarin",
+            str(exc),
+            f"Ardayga · {student.student_code}",
+        )
         return redirect(url_for("admin_id_cards.dashboard"))
     audit("ID Card Operations", f"Generated ID card for {student.student_code}")
     db.session.commit()
-    flash("ID card generated.", "success")
+    _flash_id_card_center_notice(
+        "id-card-success",
+        "Kaadhka waa la diyaariyey",
+        "Kaadhka ardayga si guul leh ayaa loo sameeyey. Hadda waad daabacan kartaa ama waad hubin kartaa.",
+        f"Ardayga · {student.student_code}",
+    )
     return redirect(url_for("admin_id_cards.print_cards", issue_ids=issue.id))
 
 
@@ -367,7 +378,12 @@ def bulk_generate():
     exam_id = int_or_none(request.form.get("exam_id"))
     exam = db.session.get(Exam, exam_id) if exam_id else None
     if not exam or not exam.is_active or exam.academic_year_id != academic_year_id:
-        flash("Dooro Exam Type firfircoon oo sannadkiisa la jaanqaadaya.", "warning")
+        _flash_id_card_center_notice(
+            "id-card-error",
+            "Kaadhadh lama diyaarin",
+            "Dooro nooca imtixaanka firfircoon oo sannad-dugsiyeedkiisa la jaanqaadaya.",
+            "Exam Type iyo sannad-dugsiyeed",
+        )
         return _redirect_to_posted_id_card_filters()
 
     scope_filters = {
@@ -395,7 +411,12 @@ def bulk_generate():
         ids = [student_id for student_id in requested_ids if student_id in eligible_ids]
 
     if not ids:
-        flash("Arday ku habboon ma helin. Hubi filters-ka ama dooro ardayda.", "warning")
+        _flash_id_card_center_notice(
+            "id-card-error",
+            "Arday lama helin",
+            "Hubi filters-ka ama dooro ardayda ka hor intaadan Generate taaban.",
+            "Liiska ardayda",
+        )
         return _redirect_to_posted_id_card_filters()
 
     students_by_id = {
@@ -413,16 +434,31 @@ def bulk_generate():
 
     if not issue_ids:
         db.session.rollback()
-        flash(_id_card_generation_skip_message(0, skipped_reasons), "warning")
+        _flash_id_card_center_notice(
+            "id-card-error",
+            "Kaadh lama hawlgelin",
+            "; ".join(dict.fromkeys(skipped_reasons)) or "Xogta kaadhka lama diyaarin.",
+            "Muddada ama xogta kaadhka",
+        )
         return _redirect_to_posted_id_card_filters()
 
     operation = "Generated ID card" if single_student_id else f"Bulk generated {len(issue_ids)} ID cards"
     audit("ID Card Operations", f"{operation} for {len(issue_ids)} student(s) using exam {exam.id}")
     db.session.commit()
     if skipped_reasons:
-        flash(_id_card_generation_skip_message(len(issue_ids), skipped_reasons), "warning")
+        _flash_id_card_center_notice(
+            "id-card-warning",
+            "Qaar ka mid ah kaadhadhka waa la booday",
+            _id_card_generation_skip_message(len(issue_ids), skipped_reasons),
+            f"{len(issue_ids)} kaadh ayaa la diyaariyey",
+        )
     else:
-        flash(f"Waxaa la diyaariyey {len(issue_ids)} kaadh.", "success")
+        _flash_id_card_center_notice(
+            "id-card-success",
+            "Kaadhadhka waa la diyaariyey",
+            f"Waxaa si guul leh loo sameeyey {len(issue_ids)} kaadh. Hadda waad daabacan kartaa.",
+            f"{len(issue_ids)} kaadh",
+        )
     return_filters = {
         "back_q": request.form.get("q", "").strip(),
         "back_year_id": request.form.get("return_year_id", ""),
@@ -465,6 +501,23 @@ def _id_card_generation_skip_message(generated_count, reasons):
     if generated_count:
         return f"Waxaa la diyaariyey {generated_count} kaadh. {len(reasons)} arday waa laga booday: {detail_text}."
     return f"Kaadh lama hawlgelin. {len(reasons)} arday waa laga booday: {detail_text}. Filters-ka waa la ilaaliyey."
+
+
+def _flash_id_card_center_notice(notice_type, title, message, name="Kaadhadhka aqoonsiga"):
+    """Show ID-card generation status in the centered notification modal."""
+    flash(
+        json.dumps(
+            {
+                "type": notice_type,
+                "kind": "id-card",
+                "name": name,
+                "title": title,
+                "message": message,
+            },
+            ensure_ascii=False,
+        ),
+        "center-popup",
+    )
 
 
 @id_cards_bp.route("/print")

@@ -9,6 +9,7 @@ from sqlalchemy import inspect, text
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app import create_app, db
+from app.models import IdCardIssue
 
 
 VERSION = "phase_9_exam_scoped_id_cards_v1"
@@ -42,7 +43,11 @@ def upgrade():
     with app.app_context():
         inspector = inspect(db.engine)
         if not inspector.has_table("id_card_issues"):
-            raise RuntimeError("id_card_issues table does not exist")
+            # A few older production databases were created before ID cards
+            # became a mapped table. Create the complete table here so the
+            # admin page does not fail before the additive column migration.
+            IdCardIssue.__table__.create(bind=db.engine, checkfirst=True)
+            inspector = inspect(db.engine)
 
         existing_migration = None
         if inspector.has_table("schema_migrations"):
