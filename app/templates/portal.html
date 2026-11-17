@@ -2,6 +2,7 @@
 {% block title %}{{ settings.school_name }} Result Portal{% endblock %}
 {% block body_class %}public-body premium-public-body{% endblock %}
 {% block extra_head %}
+<script src="{{ url_for('static', filename='js/student-photo-protection.js', v='student-photo-protection-20261117-2') }}" defer></script>
 <meta name="description" content="Ka hel natiijooyinka imtixaannada, xaadirka iyo adeegyada ardayda ee Dugsiyada Caalamiga ah ee Taysiir.">
 <link rel="canonical" href="https://www.sultaan-ems.com/">
 <meta property="og:type" content="website">
@@ -264,7 +265,7 @@
       <section class="selection-bottom-sheet" role="dialog" aria-modal="true" aria-labelledby="selectionSheetTitle">
         <div class="selection-sheet-handle" aria-hidden="true"></div>
         <div class="selection-profile-card">
-          <span class="result-options-photo">{% if result_options.student.photo_path %}<img src="{{ asset_url(result_options.student.photo_path) }}" alt="{{ result_options.student.full_name }} photo">{% elif settings.result_dashboard_default_avatar %}<img src="{{ asset_url(settings.result_dashboard_default_avatar) }}" alt="Default student avatar">{% else %}<i class="fa-solid fa-user-graduate"></i>{% endif %}</span>
+          <span class="result-options-photo">{% if result_options.student.photo_path and student_photo_url %}<img src="{{ student_photo_url }}" alt="{{ result_options.student.full_name }} photo" data-protected-student-photo draggable="false">{% elif settings.result_dashboard_default_avatar %}<img src="{{ asset_url(settings.result_dashboard_default_avatar) }}" alt="Default student avatar">{% else %}<i class="fa-solid fa-user-graduate"></i>{% endif %}</span>
           <div class="selection-profile-copy"><h2 id="selectionSheetTitle">{{ result_options.student.full_name }}{{ verified_name_badge(label='Verified', variant='white') }}</h2><p>{{ result_options.student.student_code }}</p></div>
         </div>
         <form method="get" action="{{ url_for('public.result') }}" class="selection-wizard-form" id="selectionWizardForm" data-result-submit>
@@ -309,7 +310,7 @@
       <div class="result-options-heading">
         <span class="result-options-photo">
           {% if result_options.student.photo_path %}
-            <img src="{{ asset_url(result_options.student.photo_path) }}" alt="{{ result_options.student.full_name }} photo">
+            <img src="{{ student_photo_url }}" alt="{{ result_options.student.full_name }} photo" data-protected-student-photo draggable="false">
           {% elif settings.result_dashboard_default_avatar %}
             <img src="{{ asset_url(settings.result_dashboard_default_avatar) }}" alt="Default student avatar">
           {% else %}
@@ -545,7 +546,7 @@
       </div>
       <aside class="reference-student-panel sidebar-theme-{{ settings.result_sidebar_theme }}">
         <div class="reference-photo-wrap">
-          {% if result.student.photo_path %}<img src="{{ asset_url(result.student.photo_path) }}" alt="{{ result.student.full_name }} photo">{% elif settings.result_dashboard_default_avatar %}<img src="{{ asset_url(settings.result_dashboard_default_avatar) }}" alt="Default student avatar">{% else %}<i class="fa-solid fa-user-graduate"></i>{% endif %}
+          {% if result.student.photo_path and student_photo_url %}<img src="{{ student_photo_url }}" alt="{{ result.student.full_name }} photo" data-protected-student-photo draggable="false">{% elif settings.result_dashboard_default_avatar %}<img src="{{ asset_url(settings.result_dashboard_default_avatar) }}" alt="Default student avatar">{% else %}<i class="fa-solid fa-user-graduate"></i>{% endif %}
           <span class="reference-photo-logo">{% if settings.logo_path %}<img src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">{% else %}<i class="fa-solid fa-school"></i>{% endif %}</span>
         </div>
         <h2>{{ result.student.full_name }}{{ verified_name_badge(label='Verified', variant='white') }}</h2>
