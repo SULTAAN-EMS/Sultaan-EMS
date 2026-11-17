@@ -5,6 +5,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="{{ url_for('static', filename='js/student-photo-protection.js', v='student-photo-protection-20261118-1') }}" defer></script>
 <style>
   .locked-result-page{--lr-bg:#F3F6FF;--lr-card:#FFFFFF;--lr-ink:#2A3560;--lr-muted:#6C77A0;--lr-line:#E8ECFA;--lr-coral:#FF5E67;--lr-gold:#FFA61A;--lr-gold-soft:#FFF3D6;--lr-blue:#4C7DFF;--lr-blue-soft:#E8EFFF;--lr-violet:#8B6CFF;--lr-violet-soft:#EFEAFF;--lr-mint:#22C08A;--lr-mint-soft:#DFF8EE;--lr-pink-soft:#FFE8EE}
   .locked-result-page,.locked-result-page *,.locked-result-page *::before,.locked-result-page *::after{box-sizing:border-box}
@@ -50,6 +51,6 @@
   if (student.adminMessage && student.adminMessage.text) { $("adminMsg").textContent = student.adminMessage.text; $("adminMeta").textContent = student.adminMessage.from || ""; if (student.adminMessage.date) $("adminDate").textContent = student.adminMessage.date; else $("adminStamp").style.display = "none"; } else { $("adminBox").style.display = "none"; }
   (function(){ const avatar=$("avatar"); const fallback=()=>{ avatar.innerHTML=""; const span=document.createElement("span"); span.className="fb"; span.textContent=(student.schoolName||"S").split(/\s+/).slice(0,2).map(word=>word[0]).join("").toUpperCase(); avatar.appendChild(span); }; if(student.schoolLogo){ const img=new Image(); img.alt=student.schoolName||""; img.onerror=fallback; img.src=student.schoolLogo; avatar.appendChild(img); } else fallback(); })();
   (function(){ const text="SULTAAN EMS | 2026",el=$("tw"); if(window.matchMedia("(prefers-reduced-motion: reduce)").matches){el.textContent=text;return;} let i=0,direction=1; function tick(){i+=direction;el.textContent=text.slice(0,i);let delay=direction===1?110:55;if(i===text.length){direction=-1;delay=1800}else if(i===0){direction=1;delay=500}setTimeout(tick,delay)} tick(); })();
-  const photo=$("photo"),initials=(student.name||"S").split(/\s+/).slice(0,2).map(word=>word[0]).join("").toUpperCase(),previewPhoto=new URLSearchParams(window.location.search).get("preview_photo")==="1"; if(student.photo||previewPhoto){const img=new Image();img.alt=student.name||"Sawirka ardayga";img.src=student.photo||"{{ url_for('static', filename='images/student-photo-sample.svg') }}";img.onerror=()=>{img.remove();photo.textContent=initials};photo.appendChild(img)}else photo.textContent=initials;
+  const photo=$("photo"),initials=(student.name||"S").split(/\s+/).slice(0,2).map(word=>word[0]).join("").toUpperCase(),previewPhoto=new URLSearchParams(window.location.search).get("preview_photo")==="1"; if(student.photo||previewPhoto){const img=new Image();img.alt=student.name||"Sawirka ardayga";img.draggable=false;img.setAttribute("data-protected-student-photo","");img.src=student.photo||"{{ url_for('static', filename='images/student-photo-sample.svg') }}";img.onerror=()=>{img.remove();photo.textContent=initials};photo.appendChild(img)}else photo.textContent=initials;
 </script>
 {% endblock %}

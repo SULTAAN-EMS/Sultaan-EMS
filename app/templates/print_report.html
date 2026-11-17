@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <title>Report Card - {{ result.student.student_code }}</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <script src="{{ url_for('static', filename='js/student-photo-protection.js', v='student-photo-protection-20261118-1') }}" defer></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/print.css') }}">
   {% if not download_mode|default(false) %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/mg-detail-card.css', v='mg-loading-20260821') }}">
@@ -117,7 +118,7 @@
       <h2><i class="fa-solid fa-user"></i> {{ result.settings.print_student_heading }}</h2>
       <div class="tis-student-body">
         <div class="tis-student-photo">
-          {% if result.student.photo_path %}<img src="{{ asset_url(result.student.photo_path) }}" alt="{{ result.student.full_name }} photo">{% else %}<i class="fa-solid fa-user-graduate"></i>{% endif %}
+          {% if result.student.photo_path and student_photo_url %}<img src="{{ student_photo_url }}" alt="{{ result.student.full_name }} photo" data-protected-student-photo draggable="false">{% else %}<i class="fa-solid fa-user-graduate"></i>{% endif %}
         </div>
         <div class="tis-student-lines">
           <div class="student-line--name"><span><i class="fa-solid fa-user"></i></span><small>Magaca Ardeyga</small><strong>{{ result.student.full_name }}</strong></div>
