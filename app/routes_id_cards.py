@@ -275,6 +275,7 @@ def dashboard():
             roster_classes,
             roster_sections,
         )
+    settings = get_settings()
     issues = (
         IdCardIssue.query
         .options(joinedload(IdCardIssue.student), joinedload(IdCardIssue.exam))
@@ -282,9 +283,21 @@ def dashboard():
         .limit(200)
         .all()
     )
-    issue_dates_changed = sync_issue_dates(issues, settings=get_settings())
+    issue_dates_changed = sync_issue_dates(issues, settings=settings)
     if issue_dates_changed:
         db.session.commit()
+    try:
+        validity = configured_issue_validity(settings)
+    except EnrollmentValidationError:
+        validity = None
+    if validity and validity["mode"] == "range" and validity["until"] <= school_now():
+        _flash_id_card_center_notice(
+            "id-card-expired",
+            "Muddada kaadhadhku way dhammaatay",
+            "Muddada gaarka ah ee kaadhadhka aqoonsigu way dhammaatay. Cusboonaysii taariikhda iyo saacadda ka hor intaadan hawlgelin kaadhadh cusub.",
+            name="Dejinta kaadhadhka aqoonsiga",
+            notice_key=f"admin-id-card-validity-expired:{validity['until'].isoformat()}",
+        )
     issue_placements_by_scope = resolve_student_placements(
         (issue.student, issue.academic_year_id)
         for issue in issues
@@ -304,7 +317,7 @@ def dashboard():
     }
     return render_template(
         "admin/id_cards.html",
-        settings=get_settings(),
+        settings=settings,
         students=students,
         student_placements=student_placements,
         issues=issues,
@@ -460,7 +473,7 @@ def bulk_generate():
         _flash_id_card_center_notice(
             "id-card-success",
             "Kaadhadhka waa la diyaariyey",
-            f"Waxaa si guul leh loo sameeyey {len(issue_ids)} kaadh. Hadda waad daabacan kartaa.",
+            f"Waxaa si guul leh loo sameeyey {len(issue_ids)} kaadh. Hadda waad daabacan kadhaa!.",
             f"{len(issue_ids)} kaadh",
         )
     return_filters = {
@@ -507,7 +520,13 @@ def _id_card_generation_skip_message(generated_count, reasons):
     return f"Kaadh lama hawlgelin. {len(reasons)} arday waa laga booday: {detail_text}. Filters-ka waa la ilaaliyey."
 
 
-def _flash_id_card_center_notice(notice_type, title, message, name="Kaadhadhka aqoonsiga"):
+def _flash_id_card_center_notice(
+    notice_type,
+    title,
+    message,
+    name="Kaadhadhka aqoonsiga",
+    notice_key=None,
+):
     """Show ID-card generation status in the centered notification modal."""
     flash(
         json.dumps(
@@ -517,6 +536,7 @@ def _flash_id_card_center_notice(notice_type, title, message, name="Kaadhadhka a
                 "name": name,
                 "title": title,
                 "message": message,
+                **({"notice_key": notice_key} if notice_key else {}),
             },
             ensure_ascii=False,
         ),

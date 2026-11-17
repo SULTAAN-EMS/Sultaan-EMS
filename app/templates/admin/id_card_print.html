@@ -6,7 +6,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/center-notify.css', v='id-card-center-20261117-1') }}">
   <style>
-    @page { size: A4 landscape; margin: {{ settings.id_card_print_margin or 8 }}mm; }
+    @page { size: A4 portrait; margin: {{ settings.id_card_print_margin or 8 }}mm; }
     * { box-sizing: border-box; }
     :root {
       --student-photo-size: {{ '25mm' if settings.student_photo_size == 'small' else '33mm' if settings.student_photo_size == 'large' else '29mm' }};
@@ -30,6 +30,7 @@
       display: flex;
       justify-content: center;
       padding: 12px 16px;
+      gap: 10px;
       background: rgba(248, 250, 252, .94);
       border-bottom: 1px solid #dbe4ee;
       box-shadow: 0 6px 20px rgba(15, 23, 42, .08);
@@ -59,6 +60,30 @@
       outline: 3px solid #99f6e4;
       outline-offset: 3px;
     }
+    .print-icon-button {
+      width: 44px;
+      height: 44px;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid #0f766e;
+      border-radius: 10px;
+      background: #fff;
+      color: #0f766e;
+      font-size: 18px;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(15, 118, 110, .12);
+      transition: transform .18s ease, background .18s ease, color .18s ease, box-shadow .18s ease;
+    }
+    .print-icon-button:hover {
+      transform: translateY(-1px);
+      background: #0f766e;
+      color: #fff;
+      box-shadow: 0 11px 22px rgba(15, 118, 110, .22);
+    }
+    .print-icon-button:focus-visible {
+      outline: 3px solid #99f6e4;
+      outline-offset: 3px;
+    }
     .generation-notices {
       width: min(100% - 32px, 900px);
       margin: 14px auto;
@@ -79,12 +104,13 @@
       color: #92400e;
     }
     .card-page {
-      width: calc(297mm - ({{ settings.id_card_print_margin or 8 }}mm * 2));
-      height: calc(210mm - ({{ settings.id_card_print_margin or 8 }}mm * 2));
+      width: calc(210mm - ({{ settings.id_card_print_margin or 8 }}mm * 2));
+      height: calc(297mm - ({{ settings.id_card_print_margin or 8 }}mm * 2));
+      margin-inline: auto;
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      grid-template-rows: repeat(2, 1fr);
-      gap: 5mm;
+      grid-template-rows: repeat(4, 1fr);
+      gap: 4mm;
       page-break-after: always;
     }
     .card-page:last-child { page-break-after: auto; }
@@ -106,7 +132,7 @@
       overflow: hidden;
       position: relative;
       display: grid;
-      grid-template-rows: 22mm 8mm minmax(0, 1fr) 12mm;
+      grid-template-rows: 14mm 5.5mm minmax(0, 1fr) 7mm;
       background:
         radial-gradient(circle at 84% 34%, rgba(0, 59, 120, .06), transparent 30mm),
         repeating-radial-gradient(circle at 86% 35%, rgba(0, 59, 120, .045) 0 1px, transparent 1px 4mm),
@@ -136,15 +162,15 @@
       position: relative;
       z-index: 1;
       display: grid;
-      grid-template-columns: 27mm minmax(0, 1fr) 36mm;
+      grid-template-columns: 20mm minmax(0, 1fr) 27mm;
       align-items: center;
       background: linear-gradient(90deg, var(--id-primary) 0 22%, #ffffff 22% 100%);
       border-bottom: 1px solid #dfe7f2;
     }
     .logo-box {
-      width: 19mm;
-      height: 19mm;
-      margin-left: 4mm;
+      width: 12mm;
+      height: 12mm;
+      margin-left: 3mm;
       border-radius: 50%;
       background: #fff;
       display: grid;
@@ -156,13 +182,13 @@
     .logo-box img { width: 100%; height: 100%; object-fit: cover; }
     .logo-box i { color: var(--id-primary); font-size: 9mm; }
     .school-block {
-      padding: 2mm 4mm 0 4mm;
+      padding: 1.2mm 2.5mm 0 2.5mm;
       min-width: 0;
     }
     .school-block h1 {
       margin: 0;
       color: var(--id-primary);
-      font-size: 11.8pt;
+      font-size: 8pt;
       line-height: 1.05;
       font-weight: 950;
       letter-spacing: 1.5px;
@@ -171,9 +197,9 @@
     }
     .school-block strong {
       display: block;
-      margin-top: 1.5mm;
+      margin-top: .8mm;
       color: var(--id-deep);
-      font-size: 7.8pt;
+      font-size: 5.7pt;
       font-weight: 900;
       text-transform: uppercase;
       letter-spacing: .3px;
@@ -182,16 +208,16 @@
     }
     .year-block {
       display: grid;
-      gap: 1.4mm;
+      gap: .7mm;
       justify-items: stretch;
-      padding: 0 4mm 0 3mm;
+      padding: 0 2.2mm 0 1.8mm;
       border-left: 1.2px solid var(--id-primary);
       min-width: 0;
       overflow: hidden;
     }
     .year-block span {
       color: var(--id-deep);
-      font-size: 6.3pt;
+      font-size: 4.7pt;
       font-weight: 900;
       text-transform: uppercase;
       text-align: center;
@@ -200,13 +226,13 @@
     .year-block b {
       display: block;
       width: 100%;
-      max-width: 28mm;
+      max-width: 22mm;
       justify-self: center;
-      padding: 1.25mm 2.4mm;
+      padding: .7mm 1.5mm;
       border-radius: 2mm;
       background: linear-gradient(135deg, var(--id-primary), #00549d);
       color: #fff;
-      font-size: 9.6pt;
+      font-size: 6.5pt;
       letter-spacing: .45px;
       box-shadow: 0 .8mm 2mm rgba(0, 52, 100, .22);
       white-space: nowrap;
@@ -221,29 +247,29 @@
       color: #fff;
       display: grid;
       place-items: center;
-      font-size: 10pt;
+      font-size: 6.5pt;
       font-weight: 950;
       letter-spacing: .5px;
       text-transform: uppercase;
       clip-path: polygon(0 0, 98% 0, 100% 100%, 2% 100%);
-      border-left: 2mm solid var(--id-accent);
-      border-right: 2mm solid var(--id-accent);
+      border-left: 1mm solid var(--id-accent);
+      border-right: 1mm solid var(--id-accent);
       text-align: center;
     }
     .card-body {
       position: relative;
       z-index: 1;
       display: grid;
-      grid-template-columns: 32mm minmax(0, 1fr) 30mm;
-      gap: 2.6mm;
-      padding: 2.4mm 3.8mm 2mm;
+      grid-template-columns: 23mm minmax(0, 1fr) 22mm;
+      gap: 1.4mm;
+      padding: 1.4mm 2.2mm 1.2mm;
       min-height: 0;
       overflow: hidden;
     }
     .photo-column {
       display: grid;
       grid-template-rows: minmax(0, auto) auto;
-      gap: 1.1mm;
+      gap: .6mm;
       align-content: center;
       min-height: 0;
       overflow: hidden;
@@ -260,26 +286,26 @@
       font-size: 15mm;
       min-height: 0;
       aspect-ratio: 1 / 1;
-      width: var(--student-photo-size);
-      max-height: 38mm;
+      width: min(var(--student-photo-size), 21mm);
+      max-height: 21mm;
       align-self: center;
       justify-self: center;
       box-shadow: var(--student-photo-shadow);
     }
     .photo-frame img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
     .phone-tag {
-      min-height: 5.6mm;
+      min-height: 4.4mm;
       border-radius: 2mm;
       background: linear-gradient(135deg, var(--id-primary), var(--id-deep));
       color: #fff;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 1.4mm;
-      font-size: 7.2pt;
+      gap: .8mm;
+      font-size: 5.2pt;
       font-weight: 900;
       letter-spacing: .3px;
-      padding: 1mm 1.5mm;
+      padding: .5mm .8mm;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -288,48 +314,48 @@
       min-width: 0;
       display: grid;
       align-content: start;
-      gap: 1.05mm;
+      gap: .5mm;
       overflow: hidden;
     }
     .info-row {
       display: grid;
-      grid-template-columns: 9mm minmax(0, 1fr);
-      gap: 1.4mm;
+      grid-template-columns: 5mm minmax(0, 1fr);
+      gap: .8mm;
       align-items: center;
-      padding-bottom: .85mm;
+      padding-bottom: .4mm;
       border-bottom: 1px solid #cfd8e5;
     }
     .info-row.compact {
-      grid-template-columns: 7.8mm minmax(0, 1fr) 7.8mm minmax(0, 1fr);
-      gap: 1.2mm;
+      grid-template-columns: 4.5mm minmax(0, 1fr) 4.5mm minmax(0, 1fr);
+      gap: .6mm;
       align-items: start;
     }
     .info-icon {
-      width: 6.8mm;
-      height: 6.8mm;
+      width: 4.2mm;
+      height: 4.2mm;
       border-radius: 50%;
       display: grid;
       place-items: center;
       background: linear-gradient(135deg, var(--id-primary), #00559f);
       color: #fff;
-      font-size: 3.7mm;
+      font-size: 2.3mm;
       box-shadow: 0 .6mm 1.4mm rgba(0, 52, 100, .22);
     }
     .info-row span {
       display: block;
       color: var(--id-primary);
-      font-size: 5.55pt;
+      font-size: 3.8pt;
       line-height: 1;
       font-weight: 900;
       text-transform: uppercase;
       letter-spacing: .25px;
-      margin-bottom: .4mm;
+      margin-bottom: .2mm;
       white-space: nowrap;
     }
     .info-row strong {
       display: block;
       color: #020817;
-      font-size: 7.4pt;
+      font-size: 5.5pt;
       font-weight: 950;
       line-height: 1.12;
       white-space: normal;
@@ -339,37 +365,37 @@
     }
     .info-row.name {
       align-items: start;
-      padding-bottom: .95mm;
+      padding-bottom: .45mm;
     }
     .info-row.name strong {
-      font-size: 8.1pt;
+      font-size: 6pt;
       line-height: 1.12;
       white-space: normal;
       overflow: visible;
       overflow-wrap: anywhere;
       text-overflow: clip;
-      max-height: 20mm;
+      max-height: 8mm;
     }
     .qr-column {
       display: grid;
       place-items: center;
     }
     .qr-frame {
-      width: 28mm;
-      min-height: 35mm;
-      border-radius: 4mm;
-      border: .7mm solid var(--id-primary);
+      width: 20mm;
+      min-height: 25mm;
+      border-radius: 2.2mm;
+      border: .5mm solid var(--id-primary);
       background: #fff;
       display: grid;
       align-content: center;
       justify-items: center;
-      gap: 1.2mm;
-      padding: 2mm 1.5mm;
+      gap: .6mm;
+      padding: 1mm .8mm;
       box-shadow: 0 1mm 3mm rgba(0, 31, 82, .12);
     }
     .qr-frame img {
-      width: 20mm;
-      height: 20mm;
+      width: 14.5mm;
+      height: 14.5mm;
       object-fit: contain;
     }
     .qr-frame-link {
@@ -402,10 +428,10 @@
       background: linear-gradient(135deg, var(--id-primary), var(--id-deep));
       color: #fff;
       text-align: center;
-      font-size: 5.9pt;
+      font-size: 4pt;
       font-weight: 950;
       line-height: 1;
-      padding: 1.5mm .8mm;
+      padding: .8mm .5mm;
       text-transform: uppercase;
     }
     .footer-band {
@@ -414,8 +440,8 @@
       display: grid;
       grid-template-columns: 1fr auto 1fr;
       align-items: center;
-      gap: 2.2mm;
-      padding: 1.2mm 4mm;
+      gap: 1.2mm;
+      padding: .6mm 2mm;
       background: linear-gradient(135deg, var(--id-primary), var(--id-deep));
       color: #fff;
       border-top: 1mm solid var(--id-accent);
@@ -427,30 +453,30 @@
       gap: 1.6mm;
       min-width: 0;
       font-weight: 900;
-      font-size: 6.7pt;
+      font-size: 4.7pt;
       line-height: 1.08;
     }
     .footer-band .footer-phone {
       justify-content: flex-start;
-      font-size: 8.1pt;
+      font-size: 5.5pt;
       letter-spacing: .6px;
       white-space: normal;
       overflow-wrap: anywhere;
     }
     .footer-band i {
-      width: 6.3mm;
-      height: 6.3mm;
+      width: 4.5mm;
+      height: 4.5mm;
       border-radius: 50%;
       flex: 0 0 auto;
       display: grid;
       place-items: center;
       color: var(--id-primary);
       background: #fff;
-      font-size: 3.1mm;
+      font-size: 2.3mm;
     }
     .footer-separator {
       width: .5mm;
-      height: 7mm;
+      height: 4.5mm;
       background: rgba(255,255,255,.72);
       border-radius: 99px;
     }
@@ -461,9 +487,10 @@
     }
   </style>
 </head>
-<body onload="window.print()">
+<body>
   <nav class="print-screen-actions" aria-label="Ku noqoshada bogga kaadhadhka">
     <a href="{{ return_url }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>Dib-u-noqo</span></a>
+    <button class="print-icon-button" id="printCardsButton" type="button" aria-label="Daabac kaadhadhka" title="Daabac kaadhadhka"><i class="fa-solid fa-print" aria-hidden="true"></i></button>
   </nav>
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -478,7 +505,7 @@
       </div>
     {% endif %}
   {% endwith %}
-  {% for page in cards|batch(4, none) %}
+  {% for page in cards|batch(8, none) %}
     <main class="card-page">
       {% for item in page %}
         {% if item %}
@@ -562,6 +589,9 @@
     <symbol id="cn-i-printer" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><path d="M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2"/><rect x="6" y="14" width="12" height="7"/></symbol>
   </defs></svg>
   <div class="cn-pop" id="center-notify" role="alertdialog" aria-modal="true" aria-live="assertive" aria-hidden="true"></div>
+  <script>
+    document.getElementById('printCardsButton')?.addEventListener('click', () => window.print());
+  </script>
   <script src="{{ url_for('static', filename='js/center-notify.js', v='id-card-center-20261117-1') }}"></script>
 </body>
 </html>

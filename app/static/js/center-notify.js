@@ -19,7 +19,9 @@
     'id-card-success': { a: '#0E7C66', b: '#1FB090', icon: 'check', title: 'Kaadhka waa la diyaariyey' },
     'id-card-warning': { a: '#A96808', b: '#F2B84B', icon: 'alert', title: 'Generate-ka qayb ahaan ayuu u dhacay' },
     'id-card-error': { a: '#B42318', b: '#F87171', icon: 'alert', title: 'Kaadhka lama diyaarin' },
+    'id-card-expired': { a: '#A96808', b: '#DC4B3E', icon: 'alert', title: 'Kaadhka aqoonsiga wuu dhacay' },
   };
+  const limitedNoticeCounts = new Map();
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   })[char]);
@@ -67,6 +69,22 @@
     window.setTimeout(() => pop.querySelector('[data-center-notify-close]')?.focus(), 60);
   }
 
+  function consumeLimitedNotice(noticeKey, limit = 3) {
+    const key = String(noticeKey || 'default');
+    const storageKey = `sultaan:center-notice:${key}`;
+    try {
+      const count = Number.parseInt(window.localStorage.getItem(storageKey) || '0', 10) || 0;
+      if (count >= limit) return false;
+      window.localStorage.setItem(storageKey, String(count + 1));
+      return true;
+    } catch (error) {
+      const count = limitedNoticeCounts.get(key) || 0;
+      if (count >= limit) return false;
+      limitedNoticeCounts.set(key, count + 1);
+      return true;
+    }
+  }
+
   window.notify = notify;
   window.SultaanCenterNotify = { notify, close };
 
@@ -80,6 +98,10 @@
   document.querySelectorAll('[data-center-notify]').forEach(node => {
     try {
       const payload = JSON.parse(node.dataset.centerNotify);
+      if (payload.type === 'id-card-expired' && !consumeLimitedNotice(payload.notice_key, 3)) {
+        node.remove();
+        return;
+      }
       notify(payload.type, payload.kind, payload.name, payload.message, payload.title, payload.code_value);
     } catch (error) {
       console.error('Invalid center popup payload', error);
