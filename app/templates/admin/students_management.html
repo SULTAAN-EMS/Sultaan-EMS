@@ -186,6 +186,10 @@
         <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>
         Xaqiijin Xogta
       </a>
+      <a href="{{ url_for('admin_advanced_results.student_verification', year_id=selected_year.id if selected_year else '', view='class-list', return_to=request.full_path) }}" class="btn btn-outline">
+        <i class="fa-solid fa-table-list" aria-hidden="true"></i>
+        Liiska Fasalka A4
+      </a>
     </div>
 
     {% set import_summary = session.pop('import_summary', None) %}
@@ -1497,17 +1501,27 @@ document.addEventListener('DOMContentLoaded', function() {
   gap: 12px;
   margin-bottom: 24px;
   align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.sm-toolbar > a,
+.sm-toolbar > form {
+  flex: 0 0 auto;
 }
 
 .sm-toolbar .btn {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 20px;
+  padding: 10px 16px;
   border-radius: 8px;
   font-family: var(--font-sans);
   font-size: 0.9rem;
   font-weight: 600;
+  white-space: nowrap;
   transition: all 0.2s ease;
   box-shadow: 0 1px 3px rgba(27, 42, 74, 0.04);
 }
@@ -1542,9 +1556,6 @@ document.addEventListener('DOMContentLoaded', function() {
     width: 100%;
   }
   
-  .sm-toolbar {
-    flex-wrap: wrap;
-  }
 }
 
 @media (max-width: 768px) {

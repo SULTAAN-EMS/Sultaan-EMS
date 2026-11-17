@@ -5597,6 +5597,8 @@ def student_code_status():
 @login_required
 def student_verification():
     """Render live student self-check slips for one year/level/class scope."""
+    normal_mode = request.args.get("view") == "normal-list"
+    list_mode = request.args.get("view") in {"class-list", "normal-list"}
     default_return_to = url_for("admin_advanced_results.students_management")
     requested_return_to = (request.args.get("return_to") or "").strip()
     students_management_return_url = (
@@ -5635,17 +5637,7 @@ def student_verification():
             .order_by(Student.full_name, Student.student_code, Student.id)
             .all()
         )
-        student_ids = [student.id for student in students]
-        enrollments = {
-            enrollment.student_id: enrollment
-            for enrollment in StudentEnrollment.query.filter(
-                StudentEnrollment.student_id.in_(student_ids),
-                StudentEnrollment.academic_year_id == selected_year.id,
-            ).all()
-        } if student_ids else {}
-
         for student in students:
-            enrollment = enrollments.get(student.id)
             gender_key = (student.gender or "").strip().lower()
             gender_label = {"male": "Lab", "female": "Dhedig"}.get(
                 gender_key,
@@ -5655,24 +5647,33 @@ def student_verification():
                 "name": student.full_name or "—",
                 "mother_name": student.mother_name or "—",
                 "gender": gender_label,
-                "class_name": enrollment.academic_year_class.name if enrollment and enrollment.academic_year_class else selected_class.name,
+                "class_name": selected_class.name,
                 "phone": student.phone or "—",
                 "photo_url": stored_asset_url(student.photo_path),
                 "student_code": student.student_code or "—",
             })
 
-    page_size = 5
+    page_size = 40 if normal_mode else 15 if list_mode else 5
     pages = [student_rows[index:index + page_size] for index in range(0, len(student_rows), page_size)]
+    male_count = sum(1 for row in student_rows if row["gender"] == "Lab")
+    female_count = sum(1 for row in student_rows if row["gender"] == "Dhedig")
+    shift_label = {
+        "morning": "Gelin Hore",
+        "afternoon": "Gelin Dambe",
+    }.get((selected_class.school_shift or "").strip().lower(), "Lama cayimin") if selected_class else "Lama cayimin"
     settings = get_settings()
     school_name = settings.get("school_name") or settings.get("dashboard_title") or "Taysir International School"
     school_logo_url = stored_asset_url(settings.get("logo_path"))
     verification_filename = f"{_school_initials_for_download()} - Foomka Hubinta Xogta Ardeyga"
+    if normal_mode:
+        verification_filename = f"{_school_initials_for_download()} - Liiska Caadiga ah ee Ardayda"
     if selected_class:
         verification_filename += f" - {_safe_download_name_part(selected_class.name, 'Fasal')}"
     verification_filename += ".pdf"
 
+    template_name = "admin/student_verification_class_list.html" if list_mode else "admin/student_verification.html"
     return render_template(
-        "admin/student_verification.html",
+        template_name,
         years=years,
         levels=levels,
         classes=classes,
@@ -5684,10 +5685,16 @@ def student_verification():
         selected_class_id=selected_class.id if selected_class else None,
         selection_complete=selection_complete,
         generate_requested=generate_requested,
+        list_mode=list_mode,
+        normal_mode=normal_mode,
+        page_size=page_size,
         student_count=len(student_rows),
         verification_filename=verification_filename,
         pages=pages,
         total_pages=len(pages),
+        male_count=male_count,
+        female_count=female_count,
+        shift_label=shift_label,
         school_name=school_name,
         school_logo_url=school_logo_url,
         students_management_return_url=students_management_return_url,

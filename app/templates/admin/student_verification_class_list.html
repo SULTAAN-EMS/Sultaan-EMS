@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="so">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ verification_filename[:-4] if verification_filename is defined else 'Liiska Hubinta Xogta Ardayda' }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --forest: #047857; --forest-deep: #064e3b; --forest-dark: #065f46;
+      --gold: #f59e0b; --gold-deep: #d97706; --cream: #fffdf5;
+      --soft: #fef9e7; --soft-green: #ecfdf5; --ink: #064e3b;
+      --muted: #64748b; --line: #d8d2bf; --page-width: 210mm;
+    }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { margin: 0; padding: 18px 12px 34px; background: #e8edf6; color: var(--ink); font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .page-tools { width: min(var(--page-width), 100%); margin: 0 auto 14px; display: grid; gap: 12px; }
+    .back-link { width: max-content; display: inline-flex; align-items: center; gap: 8px; padding: 8px 13px 8px 10px; border: 1px solid rgba(4, 120, 87, .24); border-radius: 999px; background: #fff; color: var(--forest-deep); font-size: 12px; font-weight: 800; text-decoration: none; box-shadow: 0 5px 16px rgba(15, 23, 42, .10); transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+    .back-link:hover { color: var(--forest-deep); border-color: var(--gold); transform: translateY(-2px); box-shadow: 0 9px 22px rgba(4, 120, 87, .18); }
+    .back-link svg { width: 16px; height: 16px; }
+    .selector-card { padding: 16px; border: 1px solid rgba(4, 120, 87, .18); border-top: 5px solid var(--forest); border-radius: 10px; background: #fff; box-shadow: 0 10px 28px rgba(15, 23, 42, .12); }
+    .selector-heading { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 14px; }
+    .selector-heading__icon { width: 36px; height: 36px; display: grid; place-items: center; flex: none; border-radius: 10px; background: var(--soft-green); color: var(--forest); }
+    .selector-heading__icon svg { width: 20px; height: 20px; }
+    .selector-heading h1 { margin: 0; color: var(--forest-deep); font: 700 20px/1.15 Fraunces, Georgia, serif; }
+    .selector-heading p { margin: 3px 0 0; color: #647064; font-size: 12px; line-height: 1.45; }
+    .selector-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 10px; align-items: end; }
+    .selector-field { display: grid; gap: 5px; min-width: 0; }
+    .selector-field label { color: var(--forest-deep); font-size: 10px; font-weight: 900; }
+    .selector-field select { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); font: 600 12px Inter, sans-serif; }
+    .selector-field select:focus { outline: 2px solid rgba(4, 120, 87, .22); outline-offset: 2px; border-color: var(--forest); }
+    .selector-actions { display: flex; gap: 8px; align-items: center; }
+    .action-button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 8px 13px; border: 0; border-radius: 6px; cursor: pointer; font: 800 12px Inter, sans-serif; text-decoration: none; white-space: nowrap; transition: transform .18s ease, box-shadow .18s ease, opacity .18s ease; }
+    .action-button:hover:not(:disabled) { transform: translateY(-2px); }
+    .action-button svg { width: 16px; height: 16px; flex: none; }
+    .action-button--generate { background: linear-gradient(135deg, var(--forest-dark), var(--forest)); color: #fff; box-shadow: 0 5px 12px rgba(4, 120, 87, .18); }
+    .action-button--download { background: linear-gradient(135deg, var(--gold), var(--gold-deep)); color: #422006; box-shadow: 0 5px 12px rgba(217, 119, 6, .16); }
+    .action-button--download .pdf-icon { color: #b91c1c; }
+    .action-button:disabled, .action-button.is-disabled { cursor: not-allowed; opacity: .44; transform: none; pointer-events: none; }
+    .empty-state { width: min(var(--page-width), 100%); margin: 14px auto; padding: 22px; border: 1px solid #f0c98a; border-radius: 9px; background: var(--soft); color: #7c4a03; text-align: center; font-size: 13px; font-weight: 700; }
+    .verification-pages { display: grid; gap: 24px; }
+    .sheet { width: var(--page-width); min-height: 297mm; position: relative; overflow: hidden; margin: 0 auto; background: var(--cream); color: var(--ink); box-shadow: 0 14px 40px rgba(15, 23, 42, .24); }
+    .sheet::before { content: ""; position: absolute; right: -62px; bottom: 82px; width: 220px; height: 220px; border: 30px solid var(--forest); border-radius: 50%; opacity: .07; pointer-events: none; }
+    .sheet-header { height: 34mm; position: relative; display: flex; align-items: center; gap: 4mm; padding: 5mm 10mm 0; border-bottom: 1.2mm solid var(--gold); background: var(--cream); color: var(--forest-deep); overflow: hidden; }
+    .sheet-header::before { content: ""; position: absolute; inset: 0 0 auto; height: 5mm; background: linear-gradient(120deg, var(--forest-dark), var(--forest), #10b981); }
+    .sheet-header::after { content: ""; position: absolute; right: -40px; bottom: -60px; width: 170px; height: 170px; border-radius: 50%; background: var(--gold); opacity: .20; }
+    .school-logo { width: 21mm; height: 21mm; position: relative; z-index: 1; display: grid; place-items: center; flex: none; padding: 1mm; border: .8mm solid var(--gold); border-radius: 12px; background: #fff; box-shadow: 0 6px 14px rgba(15, 23, 42, .24); overflow: hidden; }
+    .school-logo img { width: 100%; height: 100%; object-fit: contain; }
+    .school-title { position: relative; z-index: 1; }
+    .school-title h2 { margin: 0; color: var(--forest); font: 700 19px/1.15 Fraunces, Georgia, serif; letter-spacing: .3px; }
+    .school-title p { margin: 3px 0 0; color: #52665e; font-size: 10px; font-weight: 700; letter-spacing: .7px; }
+    .report-badge { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 1.6mm 5mm 1.6mm 2mm; border-radius: 999px; background: linear-gradient(135deg, var(--gold), var(--gold-deep)); color: #422006; box-shadow: 0 5px 12px rgba(15, 23, 42, .20), inset 0 2px 3px rgba(255, 255, 255, .55); font-size: 10px; font-weight: 900; letter-spacing: 1.2px; white-space: nowrap; }
+    .report-badge__icon { width: 5.4mm; height: 5.4mm; display: grid; place-items: center; border-radius: 50%; background: rgba(255, 255, 255, .48); }
+    .report-badge svg { width: 3.4mm; height: 3.4mm; }
+    .summary-strip { display: grid; grid-template-columns: 1fr .85fr .95fr .9fr 1.25fr; gap: 1.8mm; padding: 2.5mm 8mm 0; }
+    .summary-card { min-width: 0; display: flex; align-items: center; gap: 6px; padding: 1.3mm 2.4mm 1.3mm 1.4mm; border: 1px solid rgba(4, 120, 87, .20); border-radius: 999px; background: var(--soft); }
+    .summary-card__icon { width: 8mm; height: 8mm; display: grid; place-items: center; flex: none; border-radius: 50%; background: linear-gradient(135deg, var(--forest-dark), var(--forest)); color: #fff; box-shadow: 0 2px 5px rgba(15, 23, 42, .18); }
+    .summary-card__icon--male { background: var(--forest); }
+    .summary-card__icon--female { background: var(--gold-deep); }
+    .summary-card__icon svg { width: 4.6mm; height: 4.6mm; }
+    .summary-card--shift { gap: 5px; }
+    .summary-card--shift .summary-card__icon { width: 7.5mm; height: 7.5mm; background: var(--forest-deep); }
+    .summary-card--shift .summary-card__icon svg { width: 4.2mm; height: 4.2mm; stroke-width: 2.25; }
+    .summary-card--shift .summary-card__value { font-size: 13px; line-height: 1.05; }
+    .summary-card__label { display: block; color: var(--muted); font-size: 8.5px; font-weight: 700; line-height: 1.1; }
+    .summary-card__value { display: block; color: var(--forest-deep); font-size: 16px; font-weight: 900; line-height: 1.1; white-space: nowrap; }
+    .student-table { width: calc(100% - 16mm); margin: 2mm 8mm 0; border-collapse: separate; border-spacing: 0 1mm; table-layout: fixed; font-size: 8.5px; }
+    .student-table th { padding: 5px 3px; background: linear-gradient(120deg, var(--forest-dark), var(--forest), #10b981); color: #fff; font-size: 8px; letter-spacing: .35px; text-transform: uppercase; }
+    .student-table th:first-child { border-radius: 10px 0 0 10px; width: 6%; }
+    .student-table th:nth-child(2) { width: 10%; }
+    .student-table th:nth-child(3) { width: 8%; }
+    .student-table th:nth-child(4) { width: 26%; }
+    .student-table th:nth-child(5) { width: 25%; }
+    .student-table th:nth-child(6) { width: 9%; }
+    .student-table th:nth-child(7) { width: 7%; }
+    .student-table th:nth-child(8) { width: 11%; border-radius: 0 10px 10px 0; }
+    .student-table td { height: 14mm; padding: 2px 3px; background: var(--soft); text-align: center; vertical-align: middle; border-bottom: 1px solid rgba(6, 78, 59, .08); }
+    .student-table tbody tr:nth-child(even) td { background: var(--soft-green); }
+    .student-table td:first-child { border-radius: 10px 0 0 10px; }
+    .student-table td:last-child { border-radius: 0 10px 10px 0; }
+    .row-number { width: 18px; height: 18px; display: inline-grid; place-items: center; border-radius: 50%; background: var(--forest); color: #fff; font-size: 9px; font-weight: 900; }
+    .student-photo { width: 14mm; height: 14mm; display: block; margin: auto; padding: 0; border: .9mm solid var(--gold-deep); border-radius: 8px; background: #d7e9dd; object-fit: cover; cursor: zoom-in; box-shadow: 0 3px 6px rgba(15, 23, 42, .20); }
+    .student-photo img { width: 100%; height: 100%; display: block; border-radius: inherit; object-fit: cover; }
+    .student-photo--missing { display: grid; place-items: center; cursor: default; color: var(--forest); }
+    .student-photo--missing svg { width: 6mm; height: 6mm; }
+    .student-code { display: inline-block; max-width: 100%; padding: 3px 4px; border-radius: 7px; background: var(--forest-deep); color: #fcd34d; font: 800 8.5px/1 ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; }
+    .student-name { display: block; color: var(--forest-deep); font-size: 12px; font-weight: 900; line-height: 1.18; text-align: left; overflow-wrap: anywhere; }
+    .student-mother { display: block; color: #35534a; font-size: 10.5px; font-weight: 700; line-height: 1.2; text-align: left; overflow-wrap: anywhere; }
+    .gender-pill { display: inline-block; padding: 3px 7px; border-radius: 999px; font-size: 8.5px; font-weight: 900; white-space: nowrap; }
+    .gender-pill--male { background: var(--forest); color: #fff; }
+    .gender-pill--female { background: var(--gold-deep); color: #fff; }
+    .class-cell { color: var(--forest-deep); font-size: 9px; font-weight: 800; line-height: 1.2; }
+    .footer-signatures { display: flex; justify-content: space-around; gap: 12mm; padding: 3mm 12mm 2mm; color: var(--muted); font-size: 9px; font-weight: 700; }
+    .footer-signatures span { width: 44mm; padding-top: 4px; border-top: 1.5px dashed var(--forest); text-align: center; }
+    .sheet-footer { display: flex; justify-content: space-between; align-items: center; padding: 2.2mm 12mm; background: linear-gradient(120deg, var(--forest-dark), var(--forest), #10b981); color: #fff; font-size: 8.5px; letter-spacing: .45px; }
+    .normal-meta { display: flex; justify-content: space-between; gap: 8mm; margin: 3mm 8mm 1mm; padding: 2.2mm 3mm; border: 1px solid rgba(4, 120, 87, .22); border-radius: 7px; background: var(--soft-green); color: var(--forest-deep); font-size: 9.5px; font-weight: 700; }
+    .normal-meta strong { font-weight: 900; }
+    .normal-table { width: calc(100% - 16mm); margin: 2mm 8mm 0; border-collapse: collapse; table-layout: fixed; font-size: 9.5px; }
+    .normal-table th { padding: 2.3mm 2.5mm; border: 1px solid #b8cbbb; background: var(--forest-deep); color: #fff; font-size: 9px; font-weight: 900; text-align: left; }
+    .normal-table th:first-child, .normal-table td:first-child { width: 6%; text-align: center; }
+    .normal-table th:nth-child(2), .normal-table td:nth-child(2) { width: 13%; }
+    .normal-table th:nth-child(3), .normal-table td:nth-child(3) { width: 31%; }
+    .normal-table th:nth-child(4), .normal-table td:nth-child(4) { width: 30%; }
+    .normal-table th:nth-child(5), .normal-table td:nth-child(5) { width: 10%; }
+    .normal-table th:nth-child(6), .normal-table td:nth-child(6) { width: 10%; }
+    .normal-table td { height: 5.7mm; padding: 1.15mm 2.5mm; border: 1px solid #c8d6c8; color: #173b2f; vertical-align: middle; overflow-wrap: anywhere; }
+    .normal-table tbody tr:nth-child(even) td { background: #f3f8ef; }
+    .normal-table tbody tr:nth-child(odd) td { background: #fffdf5; }
+    .normal-table .normal-number { font-weight: 900; color: var(--forest); }
+    .normal-table .normal-code { color: var(--forest-deep); font: 800 9px/1 ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; }
+    .normal-table .normal-name { font-weight: 850; }
+    .normal-table .normal-mother { color: #35534a; }
+    .normal-table .normal-gender { color: var(--forest-deep); font-weight: 800; }
+    .normal-table .normal-class { font-weight: 800; }
+    .action-button--normal { background: #eef7ef; color: var(--forest-deep); border: 1px solid rgba(4, 120, 87, .30); box-shadow: 0 5px 12px rgba(4, 120, 87, .10); }
+    .action-button--normal:hover:not(:disabled) { background: #e1f2e5; }
+    .action-button--secondary { background: #f5f1df; color: #735006; border: 1px solid rgba(217, 119, 6, .28); box-shadow: 0 5px 12px rgba(217, 119, 6, .10); }
+    .action-button--secondary:hover:not(:disabled) { background: #fff7d8; }
+    .normal-mode .sheet-header { height: 29mm; }
+    .normal-mode .sheet-header .school-title h2 { font-size: 18px; }
+    .normal-mode .footer-signatures { padding-top: 2mm; }
+    .photo-preview { position: fixed; inset: 0; z-index: 100; display: none; place-items: center; padding: 24px; background: rgba(6, 78, 59, .80); }
+    .photo-preview.is-open { display: grid; }
+    .photo-preview__card { position: relative; max-width: min(86vw, 520px); max-height: 88vh; padding: 8px; border: 1px solid rgba(255, 255, 255, .65); border-radius: 10px; background: #fff; box-shadow: 0 18px 55px rgba(0, 0, 0, .38); }
+    .photo-preview__card img { display: block; max-width: 100%; max-height: calc(88vh - 70px); object-fit: contain; border-radius: 5px; }
+    .photo-preview__meta { display: grid; gap: 3px; margin-top: 9px; padding: 9px 12px 2px; border-top: 1px solid #e7d9af; text-align: center; }
+    .photo-preview__name { color: var(--forest-deep); font: 600 14px/1.25 Fraunces, Georgia, serif; }
+    .photo-preview__id { color: var(--muted); font-size: 11px; font-weight: 800; }
+    .photo-preview__close { position: absolute; top: -13px; right: -13px; width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid rgba(255, 255, 255, .75); border-radius: 50%; background: #9c4630; color: #fff; font-size: 20px; line-height: 1; cursor: pointer; }
+    body.photo-preview-open { overflow: hidden; }
+    @media (max-width: 800px) {
+      body { padding: 12px 8px 26px; }
+      .selector-form { grid-template-columns: 1fr 1fr; }
+      .selector-actions { grid-column: 1 / -1; }
+      .verification-pages { overflow-x: auto; padding-bottom: 8px; }
+      .sheet { margin-left: 0; }
+    }
+    @media print {
+      body { padding: 0; background: #fff; }
+      .page-tools, .photo-preview { display: none !important; }
+      .verification-pages { display: block; }
+      .sheet { margin: 0; box-shadow: none; page-break-after: always; }
+      .sheet:last-child { page-break-after: auto; }
+      @page { size: A4 portrait; margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-tools">
+    <a class="back-link" href="{{ students_management_return_url }}" aria-label="Dib ugu noqo maamulka ardayda">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m11 18-6-6 6-6"/></svg>
+      Dib ugu noqo Maamulka Ardayda
+    </a>
+    <section class="selector-card" aria-label="Doorashada fasalka">
+      <div class="selector-heading">
+        <span class="selector-heading__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5M8 17h8"/></svg></span>
+        <div><h1>Liiska Ardayda Fasalka</h1><p>Doro sannad-dugsiyeedka, heerka iyo fasalka si aad u hesho liiska fasalka oo dhan, una daabacdo A4.</p></div>
+      </div>
+      <form class="selector-form" method="get" action="{{ url_for('admin_advanced_results.student_verification') }}">
+        <input type="hidden" name="return_to" value="{{ students_management_return_url }}">
+        <input type="hidden" name="view" value="{{ 'normal-list' if normal_mode else 'class-list' }}">
+        <div class="selector-field">
+          <label for="verification-year">1. Sannad-dugsiyeedka</label>
+          <select id="verification-year" name="year_id" onchange="this.form.submit()" required>
+            <option value="">Doro sannad</option>
+            {% for year in years %}<option value="{{ year.id }}" {% if selected_year_id == year.id %}selected{% endif %}>{{ year.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="selector-field">
+          <label for="verification-level">2. Heerka</label>
+          <select id="verification-level" name="level_id" onchange="this.form.submit()" {% if not selected_year_id %}disabled{% endif %} required>
+            <option value="">Doro heer</option>
+            {% for level in levels %}<option value="{{ level.id }}" {% if selected_level_id == level.id %}selected{% endif %}>{{ level.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="selector-field">
+          <label for="verification-class">3. Fasalka</label>
+          <select id="verification-class" name="class_id" onchange="this.form.submit()" {% if not selected_level_id %}disabled{% endif %} required>
+            <option value="">Doro fasal</option>
+            {% for academic_class in classes %}<option value="{{ academic_class.id }}" {% if selected_class_id == academic_class.id %}selected{% endif %}>{{ academic_class.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="selector-actions">
+          {% if selection_complete %}
+            <a class="action-button action-button--generate" href="{{ url_for('admin_advanced_results.student_verification', year_id=selected_year_id, level_id=selected_level_id, class_id=selected_class_id, generate=1, view='normal-list' if normal_mode else 'class-list', return_to=students_management_return_url) }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v5h5M10 14h6M10 18h6M10 10h2"/></svg>Abuur Liiska</a>
+          {% else %}
+            <button class="action-button action-button--generate is-disabled" type="button" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v5h5M10 14h6M10 18h6M10 10h2"/></svg>Abuur Liiska</button>
+          {% endif %}
+          <button class="action-button action-button--download" id="verification-download" type="button" {% if not student_count %}disabled{% endif %}><svg class="pdf-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.75h9l5 5v13.5H5z"/><path d="M14 2.75v5h5"/><path d="M8 11.25h2.1a1.4 1.4 0 0 1 0 2.8H8v2.7M13 11.25h2a1.9 1.9 0 0 1 0 3.8h-2v1.7M8 16.75v-5.5"/></svg>PDF</button>
+          {% if normal_mode %}
+            <a class="action-button action-button--secondary" href="{{ url_for('admin_advanced_results.student_verification', year_id=selected_year_id, level_id=selected_level_id, class_id=selected_class_id, generate=1, view='class-list', return_to=students_management_return_url) }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9" y="8h6M9" y="12h6M9" y="16h4"/></svg>Liiska Sawirrada A4</a>
+          {% else %}
+            <a class="action-button action-button--normal" href="{{ url_for('admin_advanced_results.student_verification', year_id=selected_year_id, level_id=selected_level_id, class_id=selected_class_id, generate=1, view='normal-list', return_to=students_management_return_url) }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14M5 10h14M5 15h14M5 20h14"/><path d="M2.5 5h.01M2.5 10h.01M2.5 15h.01M2.5 20h.01"/></svg>Liis Caadi ah (40)</a>
+          {% endif %}
+        </div>
+      </form>
+    </section>
+  </div>
+
+  {% if generate_requested and not student_count %}<div class="empty-state">Arday lagama helin fasalka la doortay.</div>{% endif %}
+
+  <div class="verification-pages" data-download-filename="{{ verification_filename }}">
+    {% for page_rows in pages %}
+      {% set page_loop = loop %}
+      <section class="sheet{% if normal_mode %} normal-mode{% endif %}" aria-label="Liiska ardayda bogga {{ page_loop.index }}">
+        <header class="sheet-header">
+          <div class="school-logo">
+            {% if school_logo_url %}<img src="{{ school_logo_url }}" alt="{{ school_name }} logo">
+            {% else %}<svg viewBox="0 0 24 24" fill="none" stroke="var(--forest)" stroke-width="1.6" aria-hidden="true"><path d="M12 2 3 6v6c0 5 3.8 9 9 10 5.2-1 9-5 9-10V6Z"/><path d="m9 12 2 2 4-4"/></svg>{% endif %}
+          </div>
+          <div class="school-title"><h2>{{ school_name }}</h2><p>WAAXDA DIIWAANKA ARDAYDA</p></div>
+          <div class="report-badge"><span class="report-badge__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2.5"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/></svg></span>LIISKA ARDAYDA</div>
+        </header>
+
+        {% if normal_mode %}
+        <div class="normal-meta" aria-label="Macluumaadka liiska"><span><strong>Sannad:</strong> {{ selected_year.name }}</span><span><strong>Heer:</strong> {{ selected_level.name }}</span><span><strong>Fasal:</strong> {{ selected_class.name }}</span><span><strong>Lab:</strong> {{ male_count }}</span><span><strong>Dhedig:</strong> {{ female_count }}</span><span><strong>Wadar:</strong> {{ student_count }}</span></div>
+        {% else %}
+        <div class="summary-strip" aria-label="Tirokoobka fasalka">
+          <div class="summary-card"><span class="summary-card__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M18 14.5c2.5.3 4 2 4 4.5"/></svg></span><span><span class="summary-card__label">Tirada ardayda</span><b class="summary-card__value">{{ student_count }}</b></span></div>
+          <div class="summary-card"><span class="summary-card__icon summary-card__icon--male"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="14" r="5"/><path d="m14 10 6-6M15 4h5v5"/></svg></span><span><span class="summary-card__label">Tirada lab</span><b class="summary-card__value">{{ male_count }}</b></span></div>
+          <div class="summary-card"><span class="summary-card__icon summary-card__icon--female"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="5"/><path d="M12 14v8M9 18h6"/></svg></span><span><span class="summary-card__label">Tirada dhedig</span><b class="summary-card__value">{{ female_count }}</b></span></div>
+          <div class="summary-card summary-card--shift"><span class="summary-card__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.25"/><path d="M12 2.25v2.1M12 19.65v2.1M2.25 12h2.1M19.65 12h2.1M5.1 5.1l1.5 1.5M17.4 17.4l1.5 1.5M18.9 5.1l-1.5 1.5M6.6 17.4l-1.5 1.5"/></svg></span><span><span class="summary-card__label">Gelinka</span><b class="summary-card__value">{{ shift_label }}</b></span></div>
+          <div class="summary-card"><span class="summary-card__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span><span><span class="summary-card__label">Sannad-dugsiyeedka</span><b class="summary-card__value">{{ selected_year.name }}</b></span></div>
+        </div>
+        {% endif %}
+
+        {% if normal_mode %}
+        <table class="normal-table">
+          <thead><tr><th>#</th><th>ID-ga ardayga</th><th>Magaca ardayga</th><th>Magaca hooyada</th><th>Jinsi</th><th>Fasalka</th></tr></thead>
+          <tbody>
+            {% for student in page_rows %}
+              <tr>
+                <td class="normal-number">{{ page_loop.index0 * page_size + loop.index }}</td>
+                <td class="normal-code">{{ student.student_code }}</td>
+                <td class="normal-name">{{ student.name }}</td>
+                <td class="normal-mother">{{ student.mother_name }}</td>
+                <td class="normal-gender">{{ student.gender }}</td>
+                <td class="normal-class">{{ student.class_name }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <table class="student-table">
+          <thead><tr><th>#</th><th>Sawir</th><th>ID</th><th>Magaca ardayga</th><th>Magaca hooyada</th><th>Jinsi</th><th>Heerka</th><th>Fasalka</th></tr></thead>
+          <tbody>
+            {% for student in page_rows %}
+              <tr>
+                <td><span class="row-number">{{ page_loop.index0 * page_size + loop.index }}</span></td>
+                <td>
+                  {% if student.photo_url %}
+                    <button class="student-photo" type="button" data-photo-preview="{{ student.photo_url|e }}" data-photo-name="{{ student.name|e }}" data-photo-id="{{ student.student_code|e }}" aria-label="Eeg sawirka {{ student.name|e }}"><img src="{{ student.photo_url }}" alt="Sawirka {{ student.name }}"></button>
+                  {% else %}
+                    <span class="student-photo student-photo--missing" aria-label="Sawir lama hayo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg></span>
+                  {% endif %}
+                </td>
+                <td><span class="student-code">{{ student.student_code }}</span></td>
+                <td><span class="student-name">{{ student.name }}</span></td>
+                <td><span class="student-mother">{{ student.mother_name }}</span></td>
+                <td><span class="gender-pill gender-pill--{{ 'female' if student.gender == 'Dhedig' else 'male' }}">{{ student.gender }}</span></td>
+                <td class="class-cell">{{ selected_level.name }}</td>
+                <td class="class-cell">{{ student.class_name }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+
+        <div class="footer-signatures"><span>Fasalka: {{ selected_class.name }}</span></div>
+        <footer class="sheet-footer"><span>{{ school_name }} · Liiska Ardayda</span><span>Bogga {{ page_loop.index }} / {{ total_pages }}</span></footer>
+      </section>
+    {% endfor %}
+  </div>
+
+  <div class="photo-preview" id="photoPreview" role="dialog" aria-modal="true" aria-label="Eeg sawirka ardayga" hidden>
+    <div class="photo-preview__card">
+      <button class="photo-preview__close" type="button" id="photoPreviewClose" aria-label="Xir">&times;</button>
+      <img id="photoPreviewImage" src="" alt="">
+      <div class="photo-preview__meta"><strong class="photo-preview__name" id="photoPreviewName"></strong><span class="photo-preview__id" id="photoPreviewId"></span></div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const downloadButton = document.getElementById('verification-download');
+      const source = document.querySelector('.verification-pages');
+      const filename = source?.dataset.downloadFilename || {{ (verification_filename|default('Liiska Ardayda.pdf', true))|tojson }};
+      function loadScript(src, ready) {
+        if (ready()) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = () => reject(new Error('PDF dependency failed to load: ' + src));
+          document.head.appendChild(script);
+        });
+      }
+      async function downloadPdf() {
+        if (!downloadButton || downloadButton.disabled || !source) return;
+        downloadButton.disabled = true;
+        try {
+          await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', () => typeof window.html2canvas === 'function');
+          await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', () => Boolean(window.jspdf?.jsPDF || window.jsPDF));
+          const JsPDF = window.jspdf?.jsPDF || window.jsPDF;
+          if (!JsPDF) throw new Error('jsPDF is not available');
+          if (document.fonts?.ready) await document.fonts.ready;
+          const pages = [...source.querySelectorAll('.sheet')];
+          const pdf = new JsPDF({unit: 'mm', format: 'a4', orientation: 'portrait', compress: true});
+          for (let index = 0; index < pages.length; index += 1) {
+            const page = pages[index];
+            const rect = page.getBoundingClientRect();
+            const canvas = await window.html2canvas(page, {scale: 2, useCORS: true, allowTaint: false, backgroundColor: '#fffdf5', logging: false, width: Math.ceil(rect.width), height: Math.ceil(rect.height), windowWidth: Math.ceil(rect.width), windowHeight: Math.ceil(rect.height)});
+            const imageData = canvas.toDataURL('image/png');
+            const properties = pdf.getImageProperties(imageData);
+            const fit = Math.min(210 / properties.width, 297 / properties.height);
+            const width = properties.width * fit;
+            const height = properties.height * fit;
+            if (index > 0) pdf.addPage();
+            pdf.addImage(imageData, 'PNG', (210 - width) / 2, (297 - height) / 2, width, height, undefined, 'FAST');
+          }
+          pdf.save(filename);
+        } catch (error) {
+          console.error('Liiska ardayda PDF lama samayn:', error);
+          downloadButton.title = 'PDF-ga lama samayn. Fadlan mar kale isku day.';
+        } finally {
+          downloadButton.disabled = false;
+        }
+      }
+      downloadButton?.addEventListener('click', downloadPdf);
+    })();
+
+    (() => {
+      const modal = document.getElementById('photoPreview');
+      const image = document.getElementById('photoPreviewImage');
+      const close = document.getElementById('photoPreviewClose');
+      const name = document.getElementById('photoPreviewName');
+      const id = document.getElementById('photoPreviewId');
+      if (!modal || !image || !close || !name || !id) return;
+      function closePreview() {
+        modal.classList.remove('is-open');
+        modal.hidden = true;
+        image.removeAttribute('src');
+        document.body.classList.remove('photo-preview-open');
+      }
+      document.querySelectorAll('[data-photo-preview]').forEach((button) => {
+        button.addEventListener('click', () => {
+          image.src = button.dataset.photoPreview;
+          image.alt = 'Sawirka ' + (button.dataset.photoName || 'ardayga');
+          name.textContent = button.dataset.photoName || '';
+          id.textContent = button.dataset.photoId ? 'ID: ' + button.dataset.photoId : '';
+          modal.hidden = false;
+          modal.classList.add('is-open');
+          document.body.classList.add('photo-preview-open');
+          close.focus();
+        });
+      });
+      close.addEventListener('click', closePreview);
+      modal.addEventListener('click', (event) => { if (event.target === modal) closePreview(); });
+      document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && modal.classList.contains('is-open')) closePreview(); });
+    })();
+  </script>
+</body>
+</html>
