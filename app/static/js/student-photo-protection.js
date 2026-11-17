@@ -1,8 +1,8 @@
 (function () {
   "use strict";
 
-  // Do not replace, resize, hide, or re-parent the image. Mobile rendering
-  // must remain identical to the normal result page.
+  // This is intentionally non-invasive: protected photos must render exactly
+  // like normal images on every browser and device.
   const selector = "[data-protected-student-photo]";
   const protectedTarget = (target) => target && target.closest && target.closest(selector);
   const blockImageAction = (event) => {
