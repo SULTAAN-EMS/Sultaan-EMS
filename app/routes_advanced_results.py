@@ -54,8 +54,10 @@ from .student_identity import student_code_taken
 from .student_portal_access import (
     code_status_label,
     generate_access_code,
+    normalize_access_code,
     set_code_value,
     shift_label,
+    valid_access_code,
 )
 
 advanced_results_bp = Blueprint("admin_advanced_results", __name__)
@@ -4864,14 +4866,41 @@ def generate_student_portal_access_codes():
     return _student_access_settings_redirect()
 
 
+def _suggest_student_portal_access_code():
+    used_codes = {
+        value
+        for (value,) in StudentPortalAccessCode.query.with_entities(
+            StudentPortalAccessCode.code_value
+        ).all()
+    }
+    return generate_access_code(used_codes)
+
+
 @advanced_results_bp.route("/settings/student-portal-access/code", methods=["POST"])
 def save_student_portal_access_code():
     student = db.session.get(Student, request.form.get("student_id", type=int))
     if not student:
         flash("Ardayga lama helin.", "danger")
         return _student_access_settings_redirect()
+    code = ""
+    suggested_code = None
     try:
-        code = request.form.get(f"code_value_{student.id}") or request.form.get("code_value")
+        code = normalize_access_code(
+            request.form.get(f"code_value_{student.id}") or request.form.get("code_value")
+        )
+        if not valid_access_code(code):
+            raise ValueError("Lambarka sireedku waa inuu ka koobnaadaa 4 xaraf ama lambar oo sax ah.")
+        duplicate = (
+            StudentPortalAccessCode.query
+            .filter(
+                func.upper(StudentPortalAccessCode.code_value) == code,
+                StudentPortalAccessCode.student_id != student.id,
+            )
+            .first()
+        )
+        if duplicate:
+            suggested_code = _suggest_student_portal_access_code()
+            raise ValueError("Code-kani hore ayaa ardey kale loogu adeegsaday. Fadlan adeegso mid cusub.")
         record = StudentPortalAccessCode.query.filter_by(student_id=student.id).first()
         if not record:
             record = StudentPortalAccessCode(student_id=student.id, source="manual", generated_by_id=current_user.id)
@@ -4883,10 +4912,70 @@ def save_student_portal_access_code():
         db.session.add(record)
         db.session.commit()
         flash("Lambarka sireed waa la kaydiyey, wuxuuna sugayaa ansixinta maamulka.", "success")
+    except ValueError as exc:
+        db.session.rollback()
+        flash(
+            json.dumps(
+                {
+                    "type": "error",
+                    "kind": "code",
+                    "name": suggested_code or "Lambar sireed",
+                    "title": "Lambarka sireed lama kaydin",
+                    "message": str(exc),
+                    "code_value": code,
+                    "suggested_code": suggested_code,
+                },
+                ensure_ascii=False,
+            ),
+            "center-popup",
+        )
+    except IntegrityError:
+        db.session.rollback()
+        suggested_code = _suggest_student_portal_access_code()
+        flash(
+            json.dumps(
+                {
+                    "type": "error",
+                    "kind": "code",
+                    "name": suggested_code,
+                    "title": "Lambarka sireed lama kaydin",
+                    "message": "Code-kani hore ayaa ardey kale loogu adeegsaday. Fadlan adeegso mid cusub.",
+                    "code_value": code,
+                    "suggested_code": suggested_code,
+                },
+                ensure_ascii=False,
+            ),
+            "center-popup",
+        )
     except Exception as exc:
         db.session.rollback()
         flash(str(exc), "danger")
     return _student_access_settings_redirect()
+
+
+@advanced_results_bp.get("/settings/student-portal-access/check-code")
+def student_portal_access_code_status():
+    """Return live availability for the admin's manually edited access code."""
+    code = normalize_access_code(request.args.get("code", ""))
+    if not code:
+        return jsonify({"status": "empty", "label": "Geli lambar sireed"})
+    if not valid_access_code(code):
+        return jsonify({"status": "invalid", "label": "4 xaraf ama lambar sax ah geli"})
+
+    current_student_id = int_or_none(request.args.get("student_id"))
+    existing = (
+        StudentPortalAccessCode.query
+        .filter(func.upper(StudentPortalAccessCode.code_value) == code)
+        .first()
+    )
+    used_by_other = existing is not None and existing.student_id != current_student_id
+    payload = {
+        "status": "used" if used_by_other else "available",
+        "label": "La Adeegsaday" if used_by_other else "La heli karo",
+    }
+    if used_by_other:
+        payload["suggested_code"] = _suggest_student_portal_access_code()
+    return jsonify(payload)
 
 
 @advanced_results_bp.route("/settings/student-portal-access/approve", methods=["POST"])
@@ -4921,9 +5010,21 @@ def approve_student_portal_access_codes():
         audit("Settings Changes", f"Approved {len(records)} student portal access codes")
         db.session.commit()
         flash(f"{len(records)} lambar sireed ayaa la ansixiyey oo portalka loogu fasaxay.", "success")
-    except Exception as exc:
+    except Exception:
         db.session.rollback()
-        flash(str(exc), "danger")
+        flash(
+            json.dumps(
+                {
+                    "type": "error",
+                    "kind": "code",
+                    "name": "Ansixinta lambarrada sireed",
+                    "title": "Ansixintu way fashilantay",
+                    "message": "Fadlan dib u eeg lambarrada sireed oo isku day mar kale.",
+                },
+                ensure_ascii=False,
+            ),
+            "center-popup",
+        )
     return _student_access_settings_redirect()
 
 

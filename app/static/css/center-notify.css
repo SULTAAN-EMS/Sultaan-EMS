@@ -16,6 +16,9 @@
 .cn-body{position:relative;z-index:3;margin-top:-26px;padding:24px 22px 0;border-radius:26px 26px 0 0;background:var(--cn-sf)}
 .cn-body h2{margin:0 0 6px;color:var(--cn-tx);font:800 23px/1.15 'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;letter-spacing:-.01em}
 .cn-body p{margin:0 0 14px;color:var(--cn-mu);font-size:14.5px}
+.cn-code-preview{display:inline-grid;gap:4px;min-width:112px;margin:0 auto 15px;padding:8px 16px;border:1px solid #efb6b6;border-radius:12px;background:#fff4f4;color:#b42318;box-shadow:0 5px 14px rgba(180,35,24,.08);text-align:center}
+.cn-code-preview small{color:#8d4d4d;font-size:10.5px;font-weight:700;letter-spacing:.04em}
+.cn-code-preview b{font:900 21px/1.05 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.2em;text-indent:.2em}
 .cn-item{display:flex;align-items:center;gap:11px;margin-bottom:16px;padding:10px 12px;border:1px solid var(--cn-bd);border-radius:16px;background:var(--cn-sf2);text-align:left}
 .cn-item-icon{display:grid;flex:none;width:38px;height:38px;place-items:center;border-radius:12px;background:linear-gradient(135deg,var(--a),var(--b));color:#fff}
 .cn-item-icon svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -24,8 +27,6 @@
 .cn-item-copy b{display:block;overflow-wrap:anywhere;color:var(--cn-tx);font-size:14px;line-height:1.25}
 .cn-go{display:block;width:100%;height:48px;margin:0 0 20px;padding:0;border:0;border-radius:14px;background:linear-gradient(135deg,var(--a),var(--b));box-shadow:0 8px 20px color-mix(in srgb,var(--a) 35%,transparent);color:#fff;font:800 15px 'Figtree','Segoe UI',system-ui,sans-serif;cursor:pointer;transition:none}
 .cn-go:hover{transform:none;box-shadow:0 8px 20px color-mix(in srgb,var(--a) 35%,transparent)}
-.cn-timer{height:5px;background:var(--cn-sf2)}
-.cn-timer i{display:block;width:100%;height:100%;transform-origin:left;background:linear-gradient(90deg,var(--a),var(--b));animation:cn-time 3.6s linear forwards}
 html body #center-notify .cn-card:focus-within{box-shadow:0 40px 90px rgba(0,0,0,.45)!important;outline:none!important}
 html body #center-notify .cn-go:focus{box-shadow:0 8px 20px color-mix(in srgb,var(--a) 35%,transparent)!important;outline:none!important}
 body.theme-dark .cn-pop{--cn-bg:#08110f;--cn-sf:#10201d;--cn-sf2:#162a26;--cn-tx:#e7f2ef;--cn-mu:#94aaa4;--cn-bd:#223833}
@@ -35,6 +36,5 @@ body.theme-dark .cn-pop{--cn-bg:#08110f;--cn-sf:#10201d;--cn-sf2:#162a26;--cn-tx
 @keyframes cn-ring{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(1.55)}}
 @keyframes cn-icon-in{from{transform:scale(0)}}
 @keyframes cn-draw{to{stroke-dashoffset:0}}
-@keyframes cn-time{to{transform:scaleX(0)}}
 @keyframes cn-confetti{0%{opacity:1;transform:translate(-50%,-50%) scale(.6)}100%{opacity:0;transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) rotate(var(--r)) scale(1)}}
 @media(prefers-reduced-motion:reduce){.cn-pop *{animation-duration:.01ms!important;animation-delay:0s!important}}
