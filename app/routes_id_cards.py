@@ -437,7 +437,11 @@ def bulk_generate():
         _flash_id_card_center_notice(
             "id-card-error",
             "Kaadh lama hawlgelin",
-            "; ".join(dict.fromkeys(skipped_reasons)) or "Xogta kaadhka lama diyaarin.",
+            (
+                f"{_id_card_generation_skip_message(0, skipped_reasons)} "
+                f"Sababta: {'; '.join(dict.fromkeys(skipped_reasons))}."
+                if skipped_reasons else "Xogta kaadhka lama diyaarin."
+            ),
             "Muddada ama xogta kaadhka",
         )
         return _redirect_to_posted_id_card_filters()
