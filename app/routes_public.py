@@ -1,10 +1,15 @@
+import base64
 import json
 import secrets
 from datetime import date, datetime
 from io import BytesIO
+from mimetypes import guess_type
+from pathlib import Path
 import re
 from time import perf_counter
 from urllib.parse import parse_qs, urlparse
+from urllib.error import HTTPError, URLError
+from urllib.request import Request as UrlRequest, urlopen
 
 from flask import Blueprint, abort, current_app, flash, g, get_flashed_messages, jsonify, make_response, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
@@ -38,6 +43,7 @@ from .seat_mixer_layout import seat_row_placement
 from .pdf_rendering import html_report_to_pdf
 from .routes_invigilator import current_invigilator, invigilator_login_required
 from .student_results_portal import announcement_datetime_payload
+from .cloudinary_service import cloudinary_thumbnail_url
 
 public_bp = Blueprint("public", __name__)
 
@@ -76,6 +82,151 @@ def _no_store(response):
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return response
+
+
+STUDENT_PHOTO_TOKEN_SALT = "student-photo-protection-v1"
+STUDENT_PHOTO_TOKEN_MAX_AGE = 60 * 60
+
+
+def _student_photo_serializer():
+    secret_key = current_app.secret_key
+    if not secret_key:
+        raise RuntimeError("A secret key is required for protected student photos")
+    return URLSafeTimedSerializer(secret_key, salt=STUDENT_PHOTO_TOKEN_SALT)
+
+
+def _protected_student_photo_url(student, context="portal", access_token=None, variant=None):
+    """Create a short-lived, signed same-origin URL for a student photo."""
+    if not student or not student.photo_path:
+        return ""
+    payload = {
+        "student_id": int(student.id),
+        "context": str(context or "portal"),
+    }
+    if context == "portal":
+        session_nonce = session.get("student_photo_session_nonce")
+        if not session_nonce:
+            session_nonce = secrets.token_urlsafe(24)
+            session["student_photo_session_nonce"] = session_nonce
+        payload["session_nonce"] = session_nonce
+    if access_token:
+        payload["access_token"] = str(access_token)
+    if variant:
+        payload["variant"] = str(variant)
+    signed_token = _student_photo_serializer().dumps(payload)
+    return url_for("public.student_photo", token=signed_token)
+
+
+def _protected_local_photo_path(value):
+    """Resolve only files below the application's static uploads directory."""
+    normalized = str(value or "").strip().replace("\\", "/")
+    static_root = (Path(current_app.root_path) / "static").resolve()
+    uploads_root = (static_root / "uploads").resolve()
+    if normalized.startswith("/static/"):
+        relative = normalized[len("/static/"):]
+        candidate = (static_root / relative).resolve()
+    elif normalized.startswith("/uploads/"):
+        candidate = (static_root / normalized.lstrip("/")).resolve()
+    elif normalized.startswith("static/"):
+        candidate = (static_root / normalized[len("static/"):]).resolve()
+    elif normalized.startswith("uploads/"):
+        candidate = (static_root / normalized).resolve()
+    else:
+        candidate = (uploads_root / normalized.lstrip("/")).resolve()
+    if candidate != static_root and static_root not in candidate.parents:
+        return None
+    return candidate
+
+
+def _read_protected_photo(source):
+    """Read a local upload or approved Cloudinary URL without exposing it."""
+    value = str(source or "").strip()
+    if not value:
+        return None, None
+
+    if value.startswith("data:"):
+        header, encoded = value.split(",", 1)
+        content_type = header[5:].split(";", 1)[0] or "image/jpeg"
+        if ";base64" in header.lower():
+            data = base64.b64decode(encoded, validate=True)
+        else:
+            from urllib.parse import unquote_to_bytes
+            data = unquote_to_bytes(encoded)
+        return data, content_type
+
+    parsed = urlparse(value)
+    if parsed.scheme in {"http", "https"}:
+        hostname = (parsed.hostname or "").lower().rstrip(".")
+        if hostname not in {"res.cloudinary.com", "cloudinary.com"}:
+            return None, None
+        try:
+            request = UrlRequest(value, headers={"User-Agent": "SULTAAN-EMS protected photo"})
+            with urlopen(request, timeout=8) as upstream:
+                data = upstream.read(10 * 1024 * 1024 + 1)
+                if len(data) > 10 * 1024 * 1024:
+                    return None, None
+                content_type = upstream.headers.get_content_type() or guess_type(value)[0] or "image/jpeg"
+                return data, content_type
+        except (HTTPError, URLError, TimeoutError, OSError):
+            current_app.logger.warning("Protected student photo could not be fetched", exc_info=True)
+            return None, None
+
+    path = _protected_local_photo_path(value)
+    if not path or not path.is_file():
+        return None, None
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None, None
+    return data, guess_type(path.name)[0] or "image/jpeg"
+
+
+@public_bp.get("/protected/student-photo/<token>")
+def student_photo(token):
+    """Serve a short-lived student photo without exposing its storage URL."""
+    try:
+        payload = _student_photo_serializer().loads(token, max_age=STUDENT_PHOTO_TOKEN_MAX_AGE)
+        student_id = int(payload.get("student_id"))
+    except (BadSignature, SignatureExpired, TypeError, ValueError, RuntimeError):
+        abort(404)
+
+    student = db.session.get(Student, student_id)
+    if not student or not student.photo_path:
+        abort(404)
+
+    context = payload.get("context")
+    access_token = payload.get("access_token")
+    if context == "id_card":
+        issue = IdCardIssue.query.filter_by(token=access_token, student_id=student.id).first()
+        if not issue:
+            abort(404)
+    elif context == "report":
+        record = ReportVerification.query.filter_by(token=access_token, student_id=student.id, is_valid=True).first()
+        if not record:
+            abort(404)
+    elif context == "portal":
+        expected_nonce = session.get("student_photo_session_nonce")
+        if not expected_nonce or not secrets.compare_digest(
+            str(payload.get("session_nonce") or ""),
+            str(expected_nonce),
+        ):
+            abort(404)
+    elif context not in {"portal", "scan"}:
+        abort(404)
+
+    source = student.photo_path
+    if payload.get("variant") == "thumbnail":
+        from .cloudinary_service import cloudinary_thumbnail_url
+        source = cloudinary_thumbnail_url(student.photo_path)
+    data, content_type = _read_protected_photo(source)
+    if not data:
+        abort(404)
+    response = make_response(data)
+    response.headers["Content-Type"] = content_type
+    response.headers["Content-Disposition"] = "inline"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    return _no_store(response)
 
 
 @public_bp.before_request
@@ -122,8 +273,13 @@ def prevent_student_result_portal_caching(response):
 
     if _student_result_portal_endpoint(request.endpoint) or request.endpoint in {
         "public.qr_landing",
+        "public.verify_report",
         "public.verify_id_card",
+        "public.scan_landing",
+        "public.scan_entry",
+        "public.scan_student_entry",
         "public.incident_report_form",
+        "public.student_photo",
     }:
         return _no_store(response)
     return response
@@ -338,7 +494,7 @@ def locked_result_context(student, settings, requested_exam_id=None):
         "id": student.student_code or "-",
         "level": level_name,
         "klass": class_name,
-        "photo": _public_asset_url(student.photo_path),
+        "photo": _protected_student_photo_url(student, context="portal"),
         "reason": guidance,
         "adminMessage": admin_message,
         "schoolName": settings.get("school_name") or "SULTAAN EMS",
@@ -486,7 +642,8 @@ def result():
                 "exams": available_exams,
                 "selected_year_id": selected_year_id or (years[0].id if years else None),
                 "phone": phone,
-            }
+            },
+            student_photo_url=_protected_student_photo_url(student, context="portal"),
         )
 
     exam = next(
@@ -514,6 +671,7 @@ def result():
         "portal.html",
         settings=get_settings(),
         result=payload,
+        student_photo_url=_protected_student_photo_url(student, context="portal"),
         result_scope=result_scope,
         result_back_url=url_for("public.portal", student_id=student.student_code),
         generated_at=datetime.now(),
@@ -564,6 +722,7 @@ def result_view(student_code, exam_id):
         "portal.html",
         settings=settings,
         result=payload,
+        student_photo_url=_protected_student_photo_url(student, context="portal"),
         result_scope=result_scope,
         result_back_url=url_for("public.portal", student_id=student.student_code),
         generated_at=datetime.now(),
@@ -836,6 +995,7 @@ def print_report(student_code):
     return render_template(
         "print_report.html",
         result=payload,
+        student_photo_url=_protected_student_photo_url(student, context="portal"),
         result_scope=result_scope,
         settings=settings,
         feedback_token=feedback_access_token(student, exam),
@@ -924,6 +1084,7 @@ def download_report(student_code):
     return render_template(
         "print_report.html",
         result=payload,
+        student_photo_url=_protected_student_photo_url(student, context="portal"),
         result_scope=result_scope,
         settings=settings,
         feedback_token=feedback_access_token(student, exam),
@@ -1527,7 +1688,13 @@ def api_top_students(student_code):
 
     students = top_students_for_class(student, exam)
     for entry in students:
-        entry["photo"] = _public_asset_url(entry.pop("photo_path", "")) or _public_asset_url(settings.get("result_dashboard_default_avatar"))
+        photo_path = entry.pop("photo_path", "")
+        top_student = find_student_by_code(entry.get("student_id")) if photo_path else None
+        entry["photo"] = (
+            _protected_student_photo_url(top_student, context="portal")
+            if top_student
+            else _public_asset_url(settings.get("result_dashboard_default_avatar"))
+        )
     teacher_photos = _top10_teacher_wall_photos(exam, placement, settings)
     class_name = students[0]["class_name"] if students else (
         placement.get("class_name") or placement.get("level_name") or "Class"
@@ -1552,7 +1719,14 @@ def verify_report(token):
     if not record:
         return render_template("verify.html", settings=settings, verified=False), 404
     payload = result_payload(record.student, exam=record.exam, public_only=True)
-    return render_template("verify.html", settings=settings, verified=True, result=payload, verification=record)
+    return render_template(
+        "verify.html",
+        settings=settings,
+        verified=True,
+        result=payload,
+        verification=record,
+        student_photo_url=_protected_student_photo_url(record.student, context="report", access_token=token),
+    )
 
 
 @public_bp.route("/verify-id/<token>")
@@ -1688,6 +1862,7 @@ def verify_id_card(token):
         id_card_valid_until_label=format_issue_validity(issue, "until") if issue.expires_at else None,
         exam=exam,
         seating=seating,
+        student_photo_url=_protected_student_photo_url(issue.student, context="id_card", access_token=issue.token),
         scan_return_url=(
             url_for("public.scan_student_entry", new=1)
             if request.args.get("from_scan") == "student"
@@ -1714,7 +1889,7 @@ def qr_landing(token):
         Exam.query.filter_by(id=requested_exam_id, academic_year_id=issue.academic_year_id).first()
         if (issue.exam_id or requested_exam_id) else None
     )
-    student_photo_url = _public_asset_url(issue.student.photo_path) if issue.student and issue.student.photo_path else ""
+    student_photo_url = _protected_student_photo_url(issue.student, context="id_card", access_token=issue.token)
     return render_template(
         "qr_landing.html",
         settings=settings,
@@ -2072,7 +2247,17 @@ def scan_entry():
         verify_url = url_for("public.verify_id_card", **verify_args)
         incident_url = url_for("public.incident_report_form", **incident_args)
 
-    student_photo_url = _public_asset_url(student.photo_path) if student and student.photo_path else ""
+    student_photo_url = (
+        _protected_student_photo_url(
+            student,
+            context="id_card",
+            access_token=selected_issue.token,
+        )
+        if student and selected_issue and student.photo_path
+        else _protected_student_photo_url(student, context="scan")
+        if student and student.photo_path
+        else ""
+    )
     return render_template(
         "invigilator/scan.html",
         settings=get_settings(),
@@ -2146,9 +2331,12 @@ def incident_report_form(token):
         )
 
     student = issue.student
-    from .cloudinary_service import cloudinary_thumbnail_url
-
-    student_photo_url = cloudinary_thumbnail_url(student.photo_path)
+    student_photo_url = _protected_student_photo_url(
+        student,
+        context="id_card",
+        access_token=token,
+        variant="thumbnail",
+    )
     invigilator_photo_url = cloudinary_thumbnail_url(invigilator.photo_path)
     subject_is_shown = settings_dict.get("show_subject") == "true"
     subject_is_required = incident_bool_setting(settings_dict, "require_subject", False)
