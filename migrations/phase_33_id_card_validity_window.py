@@ -9,6 +9,11 @@ from app import create_app, db
 
 VERSION = "phase_33_id_card_validity_window_v1"
 COLUMNS = {
+    # Repair older production databases that recorded the earlier ID-card
+    # migration before all ORM columns were present.
+    "exam_id": "INTEGER NULL",
+    "created_at": "TIMESTAMP NULL",
+    "updated_at": "TIMESTAMP NULL",
     "valid_from_at": "TIMESTAMP NULL",
     "expires_at": "TIMESTAMP NULL",
 }
