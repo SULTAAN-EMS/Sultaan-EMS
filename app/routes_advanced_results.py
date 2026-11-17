@@ -5653,7 +5653,7 @@ def student_verification():
                 "student_code": student.student_code or "—",
             })
 
-    page_size = 40 if normal_mode else 15 if list_mode else 5
+    page_size = 40 if normal_mode else 16 if list_mode else 5
     pages = [student_rows[index:index + page_size] for index in range(0, len(student_rows), page_size)]
     male_count = sum(1 for row in student_rows if row["gender"] == "Lab")
     female_count = sum(1 for row in student_rows if row["gender"] == "Dhedig")
