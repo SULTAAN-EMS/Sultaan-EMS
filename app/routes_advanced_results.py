@@ -4524,7 +4524,7 @@ def results_settings():
 
 @advanced_results_bp.route("/settings/student-portal-access/print")
 def print_student_portal_access_codes():
-    """Render an A4 portrait, 15-student-per-page access-code register."""
+    """Render the student access-code print view, including the 40-sticker layout."""
     access_year_id = request.args.get("access_year_id", type=int)
     access_level_id = request.args.get("access_level_id", type=int)
     access_class_id = request.args.get("access_class_id", type=int)
@@ -4624,7 +4624,8 @@ def print_student_portal_access_codes():
     if access_shift:
         scope_label += f" · {shift_label(access_shift)}"
 
-    page_size = 20
+    sticker_mode = request.args.get("format") == "stickers"
+    page_size = 40 if sticker_mode else 20
     pages = [
         {
             "rows": rows[index:index + page_size],
@@ -4632,8 +4633,13 @@ def print_student_portal_access_codes():
         }
         for index in range(0, len(rows), page_size)
     ] or [{"rows": [], "start_index": 0}]
+    template_name = (
+        "admin/student_portal_access_stickers_print.html"
+        if sticker_mode
+        else "admin/student_portal_access_print.html"
+    )
     return render_template(
-        "admin/student_portal_access_print.html",
+        template_name,
         pages=pages,
         total_pages=len(pages),
         school_name=school_name,

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="so">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lambarrada Sireed - {{ school_name }}</title>
+  <style>
+    @page { size: A4 portrait; margin: 0; }
+    :root { --blue: #1565c0; --cyan: #00acc1; --green: #2e9e44; --gold: #f9a825; --red: #e53935; --ink: #102a43; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    html, body { margin: 0; padding: 0; background: #e5e7eb; font-family: Arial, Helvetica, sans-serif; }
+    .print-toolbar { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 16px; background: #0d2440; }
+    .print-toolbar a, .print-toolbar button { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #9db7d3; border-radius: 6px; padding: 8px 13px; color: #fff; background: #1565c0; font: 700 13px Arial, sans-serif; text-decoration: none; cursor: pointer; }
+    .print-toolbar a { background: transparent; }
+    .print-toolbar svg { width: 16px; height: 16px; flex: none; }
+    .page { width: 210mm; height: 297mm; margin: 10px auto; padding: 6mm 5mm; display: grid; grid-template-columns: repeat(4, 50mm); grid-template-rows: repeat(10, 28.5mm); background: #fff; overflow: hidden; page-break-after: always; break-after: page; }
+    .page:last-child { page-break-after: auto; break-after: auto; }
+    .card { width: 50mm; height: 28.5mm; padding: .5mm; border: .25mm dashed #888; }
+    .frame { width: 100%; height: 100%; position: relative; display: flex; flex-direction: column; gap: .4mm; padding: .4mm .6mm; overflow: hidden; border: .5mm solid transparent; border-radius: 2mm; background: linear-gradient(135deg, #f3f8ff 0%, #fff 45%, #effaf1 100%) padding-box, linear-gradient(135deg, var(--blue) 0%, var(--cyan) 25%, var(--green) 50%, var(--gold) 75%, var(--red) 100%) border-box; }
+    .watermark { position: absolute; top: 5mm; right: -3mm; width: 24mm; height: 24mm; opacity: .07; object-fit: contain; pointer-events: none; }
+    .dot { position: absolute; width: 1.3mm; height: 1.3mm; border-radius: 50%; }
+    .dot--gold { left: .4mm; bottom: 5.6mm; background: var(--gold); }
+    .dot--red { top: 5mm; right: .4mm; background: var(--red); }
+    .card-head { position: relative; display: flex; align-items: center; gap: 1mm; height: 4.2mm; padding: 0 1mm; border-radius: 1.2mm; color: #fff; background: linear-gradient(90deg, var(--blue), #0d8bd1 60%, var(--green)); }
+    .card-head img { width: 3.4mm; height: 3.4mm; padding: .15mm; object-fit: contain; border-radius: 50%; background: #fff; }
+    .card-head span { overflow: hidden; font-size: 4.5pt; font-weight: 700; line-height: 1.05; letter-spacing: .1pt; white-space: nowrap; text-overflow: ellipsis; }
+    .card-body { position: relative; display: flex; gap: 1mm; height: 16mm; }
+    .student-photo { width: 13.8mm; height: 16mm; display: flex; align-items: center; justify-content: center; flex: none; overflow: hidden; border: .35mm solid transparent; border-radius: 1.2mm; color: #6b86a8; background: linear-gradient(#eef3fb, #eef3fb) padding-box, linear-gradient(135deg, var(--gold), var(--red), #7b1fa2, var(--blue)) border-box; font-size: 4.6pt; line-height: 1.2; text-align: center; }
+    .student-photo img { width: 100%; height: 100%; display: block; object-fit: cover; }
+    .card-info { display: flex; min-width: 0; flex: 1; flex-direction: column; justify-content: center; gap: .9mm; overflow: hidden; }
+    .card-info b { display: block; color: var(--blue); font-size: 4.2pt; line-height: 1; letter-spacing: .2pt; text-transform: uppercase; }
+    .student-name-wrap { height: 8.5mm; min-height: 8.5mm; overflow: hidden; padding-top: .7mm; }
+    .student-name-wrap b { margin-bottom: .3mm; }
+    .student-name { display: block; height: 5.3mm; max-height: 5.3mm; overflow: hidden; padding-bottom: .4mm; border-bottom: .15mm dotted #9bb; color: var(--ink); font-size: 6.5pt; font-weight: 700; line-height: 1.05; overflow-wrap: anywhere; }
+    .student-meta { display: flex; gap: 1mm; }
+    .chip { display: flex; min-width: 0; height: 6.6mm; flex: 1 1 0; align-items: center; gap: .8mm; padding: 0 .8mm 0 .6mm; border: .2mm solid; border-radius: 1.4mm; }
+    .chip--id { border-color: #f2a8a4; background: linear-gradient(135deg, #fff1f0, #fde0de); }
+    .chip--class { border-color: #9fd3ad; background: linear-gradient(135deg, #effaf1, #d9f1df); }
+    .chip-icon { display: flex; width: 4.6mm; height: 4.6mm; flex: none; align-items: center; justify-content: center; border-radius: 50%; box-shadow: 0 .2mm .4mm rgba(0, 0, 0, .25); }
+    .chip--id .chip-icon { background: linear-gradient(135deg, #ef5350, #c62828); }
+    .chip--class .chip-icon { background: linear-gradient(135deg, #43b05c, #1b7f37); }
+    .chip-icon svg { width: 2.9mm; height: 2.9mm; }
+    .chip-copy { display: flex; min-width: 0; flex-direction: column; gap: .35mm; }
+    .chip-copy b { font-size: 4pt; letter-spacing: .25pt; }
+    .chip--id .chip-copy b { color: #c62828; }
+    .chip--class .chip-copy b { color: #1b7f37; }
+    .chip-copy span { overflow: hidden; color: var(--ink); font-size: 6.6pt; font-weight: 700; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
+    .secret-code { position: relative; display: flex; align-items: center; gap: 1mm; height: 5.4mm; padding: 0 1.2mm; border-radius: 1.2mm; color: #fff; background: linear-gradient(90deg, var(--green), #1b7f37 55%, var(--gold) 140%); }
+    .secret-code svg { width: 3.4mm; height: 3.4mm; flex: none; }
+    .secret-code small { font-size: 4.1pt; font-weight: 700; line-height: 1.05; letter-spacing: .05pt; }
+    .secret-code strong { min-width: 10mm; margin-left: auto; padding: .3mm 1mm; border-radius: .8mm; color: #1b5e20; background: #fff; font-family: "Courier New", monospace; font-size: 10pt; font-weight: 900; line-height: 1; letter-spacing: .5pt; text-align: center; }
+    @media print {
+      html, body { background: #fff; }
+      .print-toolbar { display: none; }
+      .page { margin: 0; }
+    }
+    @media screen {
+      .page { box-shadow: 0 3px 18px rgba(13, 36, 64, .18); }
+    }
+  </style>
+</head>
+<body>
+  <nav class="print-toolbar" aria-label="Qalabka daabacaadda">
+    <a href="{{ url_for('admin_advanced_results.results_settings', access_year_id=selected_year_id, access_level_id=selected_level_id or '', access_class_id=selected_class_id or '', access_shift=selected_shift or '') }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m11 18-6-6 6-6"/></svg>
+      Dib-u-noqo
+    </a>
+    <button type="button" onclick="window.print()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></svg>
+      Daabac A4 - 40 stickers
+    </button>
+  </nav>
+
+  {% for page in pages %}
+  <section class="page" aria-label="Bogga {{ loop.index }} ee lambarrada sireed">
+    {% for row in page.rows %}
+    <article class="card">
+      <div class="frame">
+        {% if school_logo_url %}<img class="watermark" src="{{ school_logo_url }}" alt="">{% endif %}
+        <span class="dot dot--gold" aria-hidden="true"></span><span class="dot dot--red" aria-hidden="true"></span>
+        <header class="card-head">
+          {% if school_logo_url %}<img src="{{ school_logo_url }}" alt="Logo-ga dugsiga">{% endif %}
+          <span>{{ school_name }}</span>
+        </header>
+        <div class="card-body">
+          <div class="student-photo">
+            {% if row.photo_url %}<img src="{{ row.photo_url }}" alt="Sawirka {{ row.full_name }}">{% else %}📷<br>SAWIR{% endif %}
+          </div>
+          <div class="card-info">
+            <div class="student-name-wrap"><b>MAGACA ARDAYGA</b><span class="student-name">{{ row.full_name }}</span></div>
+            <div class="student-meta">
+              <div class="chip chip--id">
+                <span class="chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><circle cx="8.5" cy="11" r="2"/><path d="M5.5 16.2c.6-2.2 5.4-2.2 6 0M14.5 10h4M14.5 13.5h3"/></svg></span>
+                <span class="chip-copy"><b>ID</b><span>{{ row.student_code }}</span></span>
+              </div>
+              <div class="chip chip--class">
+                <span class="chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11.5V16c0 1.6 2.7 3 6 3s6-1.4 6-3v-4.5"/><path d="M22 9v6"/></svg></span>
+                <span class="chip-copy"><b>FASALKA</b><span>{{ row.class_name }}</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="secret-code">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4.5" fill="#f9a825"/><path d="M11.5 12 21 3M17 7l3 3M14.5 9.5l2.5 2.5"/></svg>
+          <small>LAMBAR<br>SIREED</small>
+          <strong>{{ row.access_code }}</strong>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </section>
+  {% endfor %}
+</body>
+</html>
