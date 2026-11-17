@@ -73,6 +73,7 @@
   .badge.lo{ background:var(--risk-lo-soft); color:var(--risk-lo); }
 
   .subject-cols{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .report-note{ margin:5px 0 0; padding:5px 8px; border:1px solid var(--line); border-radius:6px; background:#F7F8FC; color:var(--ink-soft); font-size:8.4px; line-height:1.35; }
 
   .grades{ display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:4px; margin-bottom:4px; }
   .gcard{ border-radius:7px; padding:5px 3px 4px; text-align:center; color:#fff; min-width:0; }
@@ -122,7 +123,12 @@ function gradeDist(level){
     return {...b, count, pct:pct(count,total)};
   });
 }
-function riskOf(pass){ if(pass<60) return {cls:"hi",label:"Khatar Sare"}; if(pass<75) return {cls:"mid",label:"Khatar Dhexe"}; return {cls:"lo",label:"Fiican"}; }
+function riskOf(pass, denominator=null){
+  if(denominator !== null && Number(denominator || 0) <= 0) return {cls:"mid",label:"Xog Maqan"};
+  if(pass<60) return {cls:"hi",label:"Khatar Sare"};
+  if(pass<75) return {cls:"mid",label:"Khatar Dhexe"};
+  return {cls:"lo",label:"Fiican"};
+}
 function pctValue(n,d){ return d ? (Number(n || 0) / Number(d || 0)) * 100 : 0; }
 function pct(n,d){ return pctValue(n,d).toFixed(2); }
 function percent(value){ return Number(value || 0).toFixed(2); }
@@ -150,7 +156,8 @@ function enrich(level){
   level.classes.forEach(c=>{
     c.total = c.m+c.f; c.appTotal = c.mApp+c.fApp;
     c.passedTotal = c.mPassed+c.fPassed; c.failedTotal = c.fFailed+c.mFailed;
-    c.classPass = pctValue(c.passedTotal, c.appTotal);
+    c.scoredTotal = Math.max(c.appTotal - c.mMissing - c.fMissing, 0);
+    c.classPass = pctValue(c.passedTotal, c.scoredTotal);
   });
   level.totalStudents = level.classes.reduce((s,c)=>s+c.total,0);
   level.totalM = level.classes.reduce((s,c)=>s+c.m,0);
@@ -158,20 +165,21 @@ function enrich(level){
   level.appTotal = level.classes.reduce((s,c)=>s+c.appTotal,0);
   level.passedTotal = level.classes.reduce((s,c)=>s+c.passedTotal,0);
   level.failedTotal = level.classes.reduce((s,c)=>s+c.failedTotal,0);
-  level.overallPass = pctValue(level.passedTotal, level.appTotal);
+  level.scoredTotal = level.classes.reduce((s,c)=>s+c.scoredTotal,0);
+  level.overallPass = pctValue(level.passedTotal, level.scoredTotal);
   level.overallAvg = Number(level.overall_avg || 0);
   level.mPassedT = level.classes.reduce((s,c)=>s+c.mPassed,0);
   level.mAppT = level.classes.reduce((s,c)=>s+c.mApp,0);
   level.fPassedT = level.classes.reduce((s,c)=>s+c.fPassed,0);
   level.fAppT = level.classes.reduce((s,c)=>s+c.fApp,0);
-  level.mPassRate = pctValue(level.mPassedT, level.mAppT);
-  level.fPassRate = pctValue(level.fPassedT, level.fAppT);
+  level.mPassRate = pctValue(level.mPassedT, level.mAppT-level.classes.reduce((s,c)=>s+c.mMissing,0));
+  level.fPassRate = pctValue(level.fPassedT, level.fAppT-level.classes.reduce((s,c)=>s+c.fMissing,0));
 
   const worstClass = [...level.classes].sort((a,b)=>a.classPass-b.classPass)[0];
   const worstSubj = [...level.subjects].sort((a,b)=>a.pass-b.pass)[0];
   level.worstClass = worstClass; level.worstSubj = worstSubj;
-  level.hiRiskClasses = level.classes.filter(c=>riskOf(c.classPass).cls==="hi").length;
-  level.hiRiskSubjects = level.subjects.filter(s=>riskOf(s.pass).cls==="hi").length;
+  level.hiRiskClasses = level.classes.filter(c=>riskOf(c.classPass,c.scoredTotal).cls==="hi").length;
+  level.hiRiskSubjects = level.subjects.filter(s=>riskOf(s.pass,s.scored).cls==="hi").length;
 }
 LEVELS.forEach(enrich);
 
@@ -229,18 +237,18 @@ function compareBarsSVG(mPct,fPct){
 /* ===================== PAGE BUILDER ===================== */
 function classRowsHTML(level){
   return level.classes.map(c=>{
-    const r = riskOf(c.classPass);
+    const r = riskOf(c.classPass, c.scoredTotal);
     return `<tr>
       <td class="name">${c.name}</td>
       <td>${c.total}</td>
       <td class="mcell">${c.m} <small>(${pct(c.m,c.total)}%)</small></td>
       <td class="mcell">${c.mApp}</td>
       <td class="mcell">${c.mPassed} <small>(${percent(c.mPass)}%)</small></td>
-      <td class="mcell">${c.mFailed} <small>(${percent(100-c.mPass)}%)</small></td>
+      <td class="mcell">${c.mFailed} <small>(${percent((c.mApp-c.mMissing) ? c.mFailed/(c.mApp-c.mMissing)*100 : 0)}%)</small></td><td class="mcell">${c.mMissing}</td>
       <td class="fcell">${c.f} <small>(${pct(c.f,c.total)}%)</small></td>
       <td class="fcell">${c.fApp}</td>
       <td class="fcell">${c.fPassed} <small>(${percent(c.fPass)}%)</small></td>
-      <td class="fcell">${c.fFailed} <small>(${percent(100-c.fPass)}%)</small></td>
+      <td class="fcell">${c.fFailed} <small>(${percent((c.fApp-c.fMissing) ? c.fFailed/(c.fApp-c.fMissing)*100 : 0)}%)</small></td><td class="fcell">${c.fMissing}</td>
       <td><b>${n1(c.avg)}</b></td>
       <td><span class="badge ${r.cls}">${r.label}</span></td>
     </tr>`;
@@ -250,24 +258,36 @@ function classRowsHTML(level){
       <td class="mcell">${level.totalM}</td>
       <td class="mcell">${level.mAppT}</td>
       <td class="mcell">${level.mPassedT} <small>(${percent(level.mPassRate)}%)</small></td>
-      <td class="mcell">${level.mAppT-level.mPassedT}</td>
+      <td class="mcell">${level.mAppT-level.mPassedT-level.classes.reduce((s,c)=>s+c.mMissing,0)}</td><td class="mcell">${level.classes.reduce((s,c)=>s+c.mMissing,0)}</td>
       <td class="fcell">${level.totalF}</td>
       <td class="fcell">${level.fAppT}</td>
       <td class="fcell">${level.fPassedT} <small>(${percent(level.fPassRate)}%)</small></td>
-      <td class="fcell">${level.fAppT-level.fPassedT}</td>
+      <td class="fcell">${level.fAppT-level.fPassedT-level.classes.reduce((s,c)=>s+c.fMissing,0)}</td><td class="fcell">${level.classes.reduce((s,c)=>s+c.fMissing,0)}</td>
       <td><b>${n1(level.overallAvg)}</b></td>
-      <td><span class="badge ${riskOf(level.overallPass).cls}">${riskOf(level.overallPass).label}</span></td>
+      <td><span class="badge ${riskOf(level.overallPass, level.scoredTotal).cls}">${riskOf(level.overallPass, level.scoredTotal).label}</span></td>
     </tr>`;
 }
 
 function subjectTableHTML(arr){
   return `<div class="tblwrap"><table>
-    <thead><tr><th style="text-align:start">Maadada</th><th>Fadhiistay</th><th>Gudbay</th><th>Fail</th><th>Celcelis</th><th>Khatar</th></tr></thead>
-    <tbody>${arr.map(s=>{ const r=riskOf(s.pass);
+    <thead><tr><th style="text-align:start">Maadada</th><th>Fadhiistay</th><th>Gudbay</th><th>Fail</th><th>Dhibic Maqan</th><th>Celcelis</th><th>Khatar</th></tr></thead>
+    <tbody>${arr.map(s=>{ const r=riskOf(s.pass,s.scored);
       return `<tr><td class="name">${s.name}</td><td>${s.appeared}</td>
         <td>${s.passed} <small>(${percent(s.pass)}%)</small></td>
-        <td>${s.failed} <small>(${percent(100-s.pass)}%)</small></td>
+        <td>${s.failed} <small>(${percent(s.scored ? s.failed/s.scored*100 : 0)}%)</small></td><td>${s.missing}</td>
         <td><b>${s.avg}</b></td>
+        <td><span class="badge ${r.cls}">${r.label}</span></td></tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
+function behaviorTableHTML(arr){
+  return `<div class="tblwrap"><table>
+    <thead><tr><th style="text-align:start">Qaybta</th><th>La qiimeeyey</th><th>Gudbay</th><th>Fail</th><th>Qabyo</th><th>Celcelis</th><th>Khatar</th></tr></thead>
+    <tbody>${arr.map(s=>{ const r=riskOf(s.pass,s.appeared);
+      return `<tr><td class="name">${s.name}</td><td>${s.appeared}</td>
+        <td>${s.passed} <small>(${percent(s.pass)}%)</small></td>
+        <td>${s.failed}</td><td>${s.incomplete || 0}</td>
+        <td><b>${percent(s.avg)}</b></td>
         <td><span class="badge ${r.cls}">${r.label}</span></td></tr>`;
     }).join("")}</tbody></table></div>`;
 }
@@ -291,6 +311,7 @@ function buildPage(level){
       <div class="head-right">
         Sanad Waxbarasho: <b>${level.year}</b><br>
         Nooca Imtixaanka: <b>${level.exam}</b><br>
+        Gelin: <b>${level.selected_shift === 'morning' ? 'Gelin Hore' : level.selected_shift === 'afternoon' ? 'Gelin Dambe' : 'Dhammaan gelinnada'}</b><br>
         Taariikhda: <b id="today-${level.key}"></b>
       </div>
     </div>
@@ -328,12 +349,12 @@ function buildPage(level){
       <thead>
         <tr class="grp">
           <th rowspan="2" style="text-align:start">Fasalka</th><th rowspan="2">Wadarta</th>
-          <th colspan="4" class="gm">WIILAL</th><th colspan="4" class="gf">GABDHO</th>
+          <th colspan="5" class="gm">WIILAL</th><th colspan="5" class="gf">GABDHO</th>
           <th rowspan="2">Celcelis</th><th rowspan="2">Khatarta</th>
         </tr>
         <tr class="sub">
-          <th>Diiwaan</th><th>Fadhiistay</th><th>Gudbay</th><th>Fail</th>
-          <th>Diiwaan</th><th>Fadhiistay</th><th>Gudbay</th><th>Fail</th>
+          <th>Diiwaan</th><th>Fadhiistay</th><th>Gudbay</th><th>Fail</th><th>Dhibic Maqan</th>
+          <th>Diiwaan</th><th>Fadhiistay</th><th>Gudbay</th><th>Fail</th><th>Dhibic Maqan</th>
         </tr>
       </thead>
       <tbody>${classRowsHTML(level)}</tbody>
@@ -345,6 +366,13 @@ function buildPage(level){
       ${subjectTableHTML(level.subjects.slice(0,half))}
       ${subjectTableHTML(level.subjects.slice(half))}
     </div>
+    <div class="report-note"><b>Fiiro:</b> “Khatarta” waxaa lagu saleeyey heerka gudbidda ardayda dhibcahooda la hayo, ma aha celceliska dhibcaha. “Dhibic Maqan” waa arday fadhiistay laakiin score-kiisu uusan weli jirin, mana aha Fail. Joogid iyo Soo Daahid oo keliya ayaa loo tiriyey “Fadhiistay”; Maqan, Cudur-daar, La Fasaxay, Xaalad Deg-deg ah iyo xog aan la calaamadin looma tirin fadhiisasho.</div>
+
+    ${level.behavior && level.behavior.length ? `
+      <div class="stitle"><span class="num">${sectionIcon("overview")}</span><h2>Anshax iyo Xaadir (Dhibco)</h2><span class="rule"></span></div>
+      ${behaviorTableHTML(level.behavior)}
+      <div class="report-note">Dhibcahan waxaa laga soo qaatay fadhiga anshax/xaadirka ee ku xiran imtixaankan. “Qabyo” waxay ka dhigan tahay in diiwaanka anshax ama xaadir uusan weli dhammaan, sidaas darteed looma darin gudbay ama fail.</div>
+    ` : ``}
 
     <div class="stitle"><span class="num">${sectionIcon("grades")}</span><h2>Qaybinta Darajooyinka (Grades)</h2><span class="rule"></span></div>
     <div class="grades">

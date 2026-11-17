@@ -96,6 +96,57 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         self.assertIn(b"const LEVELS =", response.data)
         self.assertIn(b'"appeared": 1', response.data)
 
+    def test_overall_average_uses_subject_maximums(self):
+        """The overall percentage must be weighted by each subject's max score."""
+        physics = Subject(name="Physics", academic_level_id=self.level.id, max_score=200)
+        db.session.add(physics)
+        db.session.flush()
+        db.session.add_all([
+            Result(
+                student_id=self.present_student.id,
+                exam_id=self.exam.id,
+                subject_id=physics.id,
+                score=100,
+                is_published=True,
+            ),
+            AttendanceRecord(
+                student_id=self.present_student.id,
+                academic_year_id=self.year.id,
+                exam_id=self.exam.id,
+                subject_id=physics.id,
+                status="present",
+            ),
+        ])
+        db.session.commit()
+
+        levels = build_analytics_results_report_data(self.year, self.exam)
+
+        self.assertEqual(levels[0]["classes"][0]["avg"], 60.0)
+        self.assertEqual(levels[0]["overall_avg"], 60.0)
+
+    def test_missing_score_is_not_reported_as_a_fail(self):
+        """A sitter without a published score is tracked separately from failure."""
+        missing_sitting = AttendanceRecord.query.filter_by(
+            student_id=self.sick_student.id,
+            subject_id=self.subject.id,
+        ).first()
+        missing_sitting.status = "present"
+        Result.query.filter_by(
+            student_id=self.sick_student.id,
+            exam_id=self.exam.id,
+            subject_id=self.subject.id,
+        ).delete(synchronize_session=False)
+        db.session.commit()
+
+        levels = build_analytics_results_report_data(self.year, self.exam)
+
+        class_row = levels[0]["classes"][0]
+        subject_row = levels[0]["subjects"][0]
+        self.assertEqual(class_row["fMissing"], 1)
+        self.assertEqual(class_row["fFailed"], 0)
+        self.assertEqual(subject_row["missing"], 1)
+        self.assertEqual(subject_row["failed"], 0)
+
     def test_report_uses_year_class_mapping_when_legacy_class_has_wrong_level(self):
         """A stale legacy class link must not make a valid year report empty."""
         wrong_level = AcademicLevel(name="Wrong Legacy Level", sort_order=2)
@@ -115,6 +166,7 @@ class AttendanceReportingRuleTests(unittest.TestCase):
             legacy_class=wrong_class,
             name=self.academic_class.name,
             sort_order=1,
+            school_shift="morning",
         )
         year_subject = AcademicYearSubject(
             academic_year=self.year,
@@ -139,6 +191,19 @@ class AttendanceReportingRuleTests(unittest.TestCase):
         self.assertEqual(len(levels), 1)
         self.assertEqual(levels[0]["classes"][0]["name"], self.academic_class.name)
         self.assertEqual(levels[0]["subjects"][0]["name"], self.subject.name)
+
+        morning_levels = build_analytics_results_report_data(
+            self.year,
+            self.exam,
+            selected_shift="morning",
+        )
+        afternoon_levels = build_analytics_results_report_data(
+            self.year,
+            self.exam,
+            selected_shift="afternoon",
+        )
+        self.assertEqual(len(morning_levels), 1)
+        self.assertEqual(afternoon_levels, [])
 
     def test_bad_class_only_exam_scope_is_reported_without_server_error(self):
         """A legacy class-only exam must not crash dashboard or analytics filters."""

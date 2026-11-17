@@ -48,7 +48,7 @@ from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
 from .services import DEFAULT_GRADE_SCALES, ScopedSubjectView, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, critical_subject_badges, get_exam_marking_configuration, get_label, get_settings, grade_for, grade_for_from_cache, grade_scale_input_bounds, load_grade_scale_cache, performance_tier_for, resolved_subject_maxima, result_payload, resolve_subject_max_score, scoped_legacy_subjects, subject_display_name
 from .student_results_portal import announcement_datetime_local_input
 from .attendance_rules import counts_as_exam_sitting
-from .behavior_reporting import get_behavior_report_data
+from .behavior_reporting import get_behavior_report_data, get_behavior_scores_for_students
 from .deletion_service import PurgeValidationError, purge_student
 from .student_identity import student_code_taken
 from .student_portal_access import (
@@ -2549,6 +2549,9 @@ def analytics():
     class_id = int_or_none(request.args.get("class_id"))
     section_id = int_or_none(request.args.get("section_id"))
     subject_id = int_or_none(request.args.get("subject_id"))
+    selected_shift = (request.args.get("shift") or "").strip().lower() or None
+    if selected_shift not in (None, "morning", "afternoon"):
+        selected_shift = None
     top_limit = int_or_none(request.args.get("top_limit")) or 5
     bottom_limit = int_or_none(request.args.get("bottom_limit")) or 5
     
@@ -2633,6 +2636,22 @@ def analytics():
         else selected_year_class.academic_year_level_id if selected_year_class else None
     )
     classes = year_classes(selected_year_level.id) if selected_year_level else [item for level in levels for item in year_classes(level.id)]
+    if selected_shift:
+        if selected_year_class and getattr(selected_year_class, "school_shift", None) != selected_shift:
+            selected_year_class = None
+            class_id = None
+            effective_year_level_id = selected_year_level.id if selected_year_level else None
+        classes = [
+            item for item in classes
+            if getattr(item, "school_shift", None) == selected_shift
+        ]
+        levels = [
+            level for level in levels
+            if any(
+                getattr(item, "school_shift", None) == selected_shift
+                for item in year_classes(level.id)
+            )
+        ]
     sections = (
         AcademicSection.query.filter_by(academic_class_id=selected_year_class.legacy_class_id, is_active=True).order_by(AcademicSection.name).all()
         if selected_year_class and selected_year_class.legacy_class_id
@@ -2682,6 +2701,8 @@ def analytics():
             selected_class_id=class_id,
             selected_section_id=section_id,
             selected_subject_id=subject_id,
+            selected_shift=selected_shift,
+            shift_options=("morning", "afternoon"),
             top_limit=top_limit,
             bottom_limit=bottom_limit,
             exam_scope_warning=exam_scope_warning,
@@ -2718,6 +2739,20 @@ def analytics():
         .order_by(Student.full_name)
         .all()
     )
+    if selected_shift:
+        shift_by_year_class_id = {
+            year_class.id: getattr(year_class, "school_shift", None)
+            for level in year_levels(selected_year.id)
+            for year_class in year_classes(level.id)
+        }
+        students = [
+            student
+            for student in students
+            if (
+                (placement := resolve_student_academic_context(student, selected_year.id))
+                and shift_by_year_class_id.get(placement.get("academic_year_class_id")) == selected_shift
+            )
+        ]
     student_ids = [s.id for s in students]
     
     # Get results for this exam
@@ -2777,6 +2812,8 @@ def analytics():
         selected_class_id=class_id,
         selected_section_id=section_id,
         selected_subject_id=subject_id,
+        selected_shift=selected_shift,
+        shift_options=("morning", "afternoon"),
         top_limit=top_limit,
         bottom_limit=bottom_limit,
         exam_scope_warning=exam_scope_warning,
@@ -2847,7 +2884,7 @@ def _attendance_rows_for_exam_scope(academic_year, exam, student_ids):
     )
 
 
-def build_analytics_results_report_data(academic_year, exam):
+def build_analytics_results_report_data(academic_year, exam, selected_shift=None):
     """Build the reference report's LEVELS payload using published Results Hub data only."""
     year_level_scopes = year_levels(academic_year.id)
     legacy_report_mode = not year_level_scopes
@@ -2893,6 +2930,7 @@ def build_analytics_results_report_data(academic_year, exam):
                 academic_level_id=scope.legacy_level_id,
                 sort_order=year_class.sort_order,
                 is_active=year_class.is_active,
+                school_shift=getattr(year_class, "school_shift", None),
                 year_class=year_class,
             )
             for scope in year_level_scopes
@@ -2957,6 +2995,10 @@ def build_analytics_results_report_data(academic_year, exam):
             level_id in classes_by_level
             and class_id in classes_by_id
             and classes_by_id[class_id].academic_level_id == level_id
+            and (
+                not selected_shift
+                or getattr(classes_by_id[class_id], "school_shift", None) == selected_shift
+            )
         ):
             students_by_level_class[(level_id, class_id)].append(student)
             scoped_students.append(student)
@@ -2988,7 +3030,7 @@ def build_analytics_results_report_data(academic_year, exam):
             continue
         latest_attendance.setdefault((record.student_id, record.subject_id), record)
 
-    results_by_student = defaultdict(list)
+    ordinary_totals_by_student = defaultdict(lambda: {"score": 0.0, "maximum": 0.0})
     results_by_level_subject = defaultdict(lambda: defaultdict(list))
     grade_cache = load_grade_scale_cache(exam.id)
 
@@ -3102,13 +3144,52 @@ def build_analytics_results_report_data(academic_year, exam):
         if resolved_max <= 0:
             continue
         result_pct = round(float(result.score or 0) / float(resolved_max) * 100, 4)
-        results_by_student[result.student_id].append(result_pct)
-        results_by_level_subject[level_id][result.subject_id].append((display_subject, result_pct))
+        ordinary_totals_by_student[result.student_id]["score"] += float(result.score or 0)
+        ordinary_totals_by_student[result.student_id]["maximum"] += float(resolved_max)
+        results_by_level_subject[level_id][result.subject_id].append(
+            (result.student_id, display_subject, result_pct)
+        )
+
+    # Behavior scoring is the same source used by the student roster: the
+    # selected exam's behavior session contributes its natural score and
+    # maximum to the overall percentage. Keep it batched per level so the PDF
+    # does not issue one ledger query per student.
+    behavior_scores_by_student = {}
+    if not legacy_report_mode:
+        for level_id in {level.id for level in levels}:
+            level_students = [
+                student
+                for academic_class in classes_by_level[level_id]
+                for student in students_by_level_class.get((level_id, academic_class.id), [])
+            ]
+            academic_year_level_id = year_level_by_legacy.get(level_id)
+            if level_students and academic_year_level_id:
+                behavior_scores_by_student.update(
+                    get_behavior_scores_for_students(
+                        level_students,
+                        exam,
+                        academic_year_level_id,
+                    )
+                )
 
     student_averages = {
-        student_id: round(sum(scores) / len(scores), 4)
-        for student_id, scores in results_by_student.items()
-        if scores
+        student.id: round(
+            (
+                ordinary_totals_by_student[student.id]["score"]
+                + float((behavior_scores_by_student.get(student.id) or {}).get("report_session_score") or 0)
+            )
+            / (
+                ordinary_totals_by_student[student.id]["maximum"]
+                + float((behavior_scores_by_student.get(student.id) or {}).get("report_session_maximum") or 0)
+            )
+            * 100,
+            4,
+        )
+        for student in scoped_students
+        if (
+            ordinary_totals_by_student[student.id]["maximum"]
+            + float((behavior_scores_by_student.get(student.id) or {}).get("report_session_maximum") or 0)
+        ) > 0
     }
 
     level_styles = ("sec", "up", "low")
@@ -3132,12 +3213,14 @@ def build_analytics_results_report_data(academic_year, exam):
                 "mApp": 0,
                 "mPassed": 0,
                 "mFailed": 0,
+                "mMissing": 0,
                 "mPass": 0,
                 "f": 0,
                 "fAbsent": 0,
                 "fApp": 0,
                 "fPassed": 0,
                 "fFailed": 0,
+                "fMissing": 0,
                 "fPass": 0,
                 "avg": 0,
             }
@@ -3153,18 +3236,22 @@ def build_analytics_results_report_data(academic_year, exam):
                 bucket_sitting_counts[bucket] += 1
                 student_average = student_averages.get(student.id)
                 if student_average is not None:
-                    class_scores.extend(results_by_student.get(student.id, []))
+                    class_scores.append(student_average)
                     if is_pass(student_average):
                         bucket_pass_counts[bucket] += 1
+                else:
+                    row[f"{bucket}Missing"] += 1
 
             row["mApp"] = bucket_sitting_counts["m"]
             row["mPassed"] = bucket_pass_counts["m"]
-            row["mFailed"] = row["mApp"] - row["mPassed"]
-            row["mPass"] = round(row["mPassed"] / row["mApp"] * 100, 2) if row["mApp"] else 0
+            row["mFailed"] = max(row["mApp"] - row["mPassed"] - row["mMissing"], 0)
+            m_scored = row["mApp"] - row["mMissing"]
+            row["mPass"] = round(row["mPassed"] / m_scored * 100, 2) if m_scored else 0
             row["fApp"] = bucket_sitting_counts["f"]
             row["fPassed"] = bucket_pass_counts["f"]
-            row["fFailed"] = row["fApp"] - row["fPassed"]
-            row["fPass"] = round(row["fPassed"] / row["fApp"] * 100, 2) if row["fApp"] else 0
+            row["fFailed"] = max(row["fApp"] - row["fPassed"] - row["fMissing"], 0)
+            f_scored = row["fApp"] - row["fMissing"]
+            row["fPass"] = round(row["fPassed"] / f_scored * 100, 2) if f_scored else 0
             row["avg"] = round(sum(class_scores) / len(class_scores), 1) if class_scores else 0
             class_rows.append(row)
 
@@ -3196,16 +3283,73 @@ def build_analytics_results_report_data(academic_year, exam):
                 if subject_id in offered_subject_ids and subject
             }
         for subject in sorted(level_subjects.values(), key=lambda item: (item.sort_order, item.name)):
-            scores = [score for _subject, score in results_by_level_subject[level.id].get(subject.id, [])]
+            records = results_by_level_subject[level.id].get(subject.id, [])
+            scores = [score for _student_id, _subject, score in records]
             sat_count = len(subject_sitting_student_ids.get(subject.id, set()))
             passed_count = sum(1 for score in scores if is_pass(score))
+            scored_student_ids = {student_id for student_id, _subject, _score in records}
+            scored_count = len(scored_student_ids)
             subject_rows.append({
                 "name": subject_display_name(subject),
                 "avg": round(sum(scores) / len(scores), 1) if scores else 0,
                 "appeared": sat_count,
+                "scored": scored_count,
                 "passed": passed_count,
-                "failed": max(sat_count - passed_count, 0),
-                "pass": round(passed_count / sat_count * 100, 2) if sat_count else 0,
+                "failed": max(scored_count - passed_count, 0),
+                "missing": max(sat_count - scored_count, 0),
+                "pass": round(passed_count / scored_count * 100, 2) if scored_count else 0,
+            })
+
+        behavior_rows = []
+        behavior_aggregates = defaultdict(
+            lambda: {
+                "subject_name": "Anshax iyo Xaadir",
+                "appeared": 0,
+                "passed": 0,
+                "failed": 0,
+                "incomplete": 0,
+                "score": 0.0,
+                "maximum": 0.0,
+            }
+        )
+        level_students = [
+            student
+            for academic_class in classes_by_level[level.id]
+            for student in students_by_level_class.get((level.id, academic_class.id), [])
+        ]
+        for student in level_students:
+            summary = behavior_scores_by_student.get(student.id) or {}
+            for config_id, detail in (summary.get("by_configuration") or {}).items():
+                aggregate = behavior_aggregates[config_id]
+                aggregate["subject_name"] = detail.get("subject_name") or aggregate["subject_name"]
+                if detail.get("incomplete") and not detail.get("scored"):
+                    aggregate["incomplete"] += 1
+                if not detail.get("scored"):
+                    continue
+                aggregate["appeared"] += 1
+                aggregate["score"] += float(detail.get("score") or 0)
+                aggregate["maximum"] += float(detail.get("maximum") or 0)
+                if detail.get("passed"):
+                    aggregate["passed"] += 1
+                else:
+                    aggregate["failed"] += 1
+        for aggregate in behavior_aggregates.values():
+            if not aggregate["appeared"] and not aggregate["incomplete"]:
+                continue
+            behavior_rows.append({
+                "name": aggregate["subject_name"],
+                "appeared": aggregate["appeared"],
+                "passed": aggregate["passed"],
+                "failed": aggregate["failed"],
+                "incomplete": aggregate["incomplete"],
+                "avg": round(
+                    aggregate["score"] / aggregate["maximum"] * 100,
+                    1,
+                ) if aggregate["maximum"] else 0,
+                "pass": round(
+                    aggregate["passed"] / aggregate["appeared"] * 100,
+                    2,
+                ) if aggregate["appeared"] else 0,
             })
 
         if not class_rows or not subject_rows:
@@ -3225,9 +3369,9 @@ def build_analytics_results_report_data(academic_year, exam):
             if student_average is not None:
                 grade_counts[grade_for_from_cache(student_average, grade_cache).get("grade", "-")] += 1
         level_scores = [
-            score
-            for subject_records in results_by_level_subject[level.id].values()
-            for _subject, score in subject_records
+            student_averages[student.id]
+            for student in level_students
+            if student.id in exam_sitting_student_ids and student.id in student_averages
         ]
         levels_data.append({
             "key": f"level-{level.id}",
@@ -3240,9 +3384,11 @@ def build_analytics_results_report_data(academic_year, exam):
             "exam": exam.name,
             "classes": class_rows,
             "subjects": subject_rows,
+            "behavior": behavior_rows,
             "overall_avg": round(sum(level_scores) / len(level_scores), 1) if level_scores else 0,
             "grade_counts": dict(grade_counts),
             "grade_total": sum(grade_counts.values()),
+            "selected_shift": selected_shift,
         })
     return levels_data
 
@@ -3314,6 +3460,9 @@ def analytics_results_report():
     """Render the printable, per-level exam analytics report from live Results Hub data."""
     year_id = int_or_none(request.args.get("year_id"))
     exam_id = int_or_none(request.args.get("exam_id"))
+    selected_shift = (request.args.get("shift") or "").strip().lower() or None
+    if selected_shift not in (None, "morning", "afternoon"):
+        selected_shift = None
     selected_year = get_default_academic_year(year_id)
     if not selected_year:
         flash("Please select an academic year before opening the results report.", "warning")
@@ -3330,12 +3479,17 @@ def analytics_results_report():
             "admin_advanced_results.analytics",
             year_id=selected_year.id,
             exam_id=selected_exam.id,
+            shift=selected_shift,
         ))
 
     settings = get_settings()
     return render_template(
         "admin/analytics_results_report.html",
-        levels_data=build_analytics_results_report_data(selected_year, selected_exam),
+        levels_data=build_analytics_results_report_data(
+            selected_year,
+            selected_exam,
+            selected_shift=selected_shift,
+        ),
         grade_bands=analytics_report_grade_bands(selected_exam),
         report_school={
             "name": settings.get("school_name") or "",

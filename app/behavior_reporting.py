@@ -149,6 +149,9 @@ def get_behavior_scores_for_students(students, exam, academic_year_level_id):
             "has_reports": False,
             "session_score": Decimal("0"),
             "session_maximum": Decimal("0"),
+            "report_session_score": Decimal("0"),
+            "report_session_maximum": Decimal("0"),
+            "by_configuration": {},
         }
         for student in students
     }
@@ -248,6 +251,20 @@ def get_behavior_scores_for_students(students, exam, academic_year_level_id):
 
         for enrollment in enrollments:
             student_summary = summary_by_student[enrollment.student_id]
+            configuration_summary = student_summary["by_configuration"].setdefault(
+                configuration.id,
+                {
+                    "configuration_id": configuration.id,
+                    "subject_name": getattr(configuration.behavior_subject, "name", "Anshax iyo Xaadir")
+                    or "Anshax iyo Xaadir",
+                    "has_reports": False,
+                    "scored": False,
+                    "incomplete": False,
+                    "score": Decimal("0"),
+                    "maximum": Decimal("0"),
+                    "passed": False,
+                },
+            )
             student_events = {
                 session.id: events_by_enrollment[enrollment.id].get(session.id, [])
                 for session in configuration.sessions
@@ -276,8 +293,26 @@ def get_behavior_scores_for_students(students, exam, academic_year_level_id):
             except BehaviorValidationError:
                 continue
             student_summary["has_reports"] = True
-            student_summary["session_score"] += Decimal(str(score.get("final_score") or 0))
-            student_summary["session_maximum"] += Decimal(str(score.get("maximum_score") or 0))
+            configuration_summary["has_reports"] = True
+            final_score = score.get("final_score")
+            maximum_score = Decimal(str(score.get("maximum_score") or 0))
+            # Keep the historical summary fields unchanged for existing roster
+            # consumers. The report-specific fields exclude incomplete scores
+            # so an unfinished behavior/attendance record is not treated as a
+            # zero-score denominator in the analytics PDF.
+            student_summary["session_score"] += Decimal(str(final_score or 0))
+            student_summary["session_maximum"] += maximum_score
+            if final_score is None:
+                configuration_summary["incomplete"] = True
+            else:
+                final_score = Decimal(str(final_score))
+                configuration_summary["scored"] = True
+                configuration_summary["score"] += final_score
+                configuration_summary["maximum"] += maximum_score
+                grade = behavior_grade_for_score(selected_session, final_score)
+                configuration_summary["passed"] = bool(grade.get("is_pass"))
+                student_summary["report_session_score"] += final_score
+                student_summary["report_session_maximum"] += maximum_score
 
     return summary_by_student
 

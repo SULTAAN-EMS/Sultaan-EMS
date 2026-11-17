@@ -30,7 +30,7 @@
           {% endfor %}
         </select>
         {% if selected_year and selected_exam and not exam_scope_warning %}
-        <a href="{{ url_for('admin_advanced_results.analytics_results_report', year_id=selected_year.id, exam_id=selected_exam.id) }}" target="_blank" rel="noopener" class="rh-btn primary" style="height: 36px; white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; text-decoration: none;">
+        <a href="{{ url_for('admin_advanced_results.analytics_results_report', year_id=selected_year.id, exam_id=selected_exam.id, shift=selected_shift) }}" target="_blank" rel="noopener" class="rh-btn primary" style="height: 36px; white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; text-decoration: none;">
           <i class="fa-solid fa-file-pdf"></i> Warbixinta Natiijooyinka (PDF)
         </a>
         {% endif %}
@@ -83,6 +83,15 @@
           {% for subject in subjects %}
             <option value="{{ subject.id }}" {% if selected_subject_id and selected_subject_id == subject.id %}selected{% endif %}>{{ subject.name }}</option>
           {% endfor %}
+        </select>
+      </div>
+      <div class="rh-filter-card context-shift">
+        <div class="rh-filter-icon"><i class="fa-solid fa-sun"></i></div>
+        <label>Gelin</label>
+        <select id="shift-selector">
+          <option value="" {% if not selected_shift %}selected{% endif %}>Dhammaan gelinnada</option>
+          <option value="morning" {% if selected_shift == 'morning' %}selected{% endif %}>Gelin Hore</option>
+          <option value="afternoon" {% if selected_shift == 'afternoon' %}selected{% endif %}>Gelin Dambe</option>
         </select>
       </div>
       <div class="rh-filter-card context-apply" style="display: flex; align-items: flex-end;">
@@ -362,6 +371,7 @@ function applyAnalyticsFilters() {
   const classId = document.getElementById('class-selector')?.value || '';
   const sectionId = document.getElementById('section-selector')?.value || '';
   const subjectId = document.getElementById('subject-selector')?.value || '';
+  const shift = document.getElementById('shift-selector')?.value || '';
 
   const params = new URLSearchParams();
   if (yearId) params.set('year_id', yearId);
@@ -370,6 +380,7 @@ function applyAnalyticsFilters() {
   if (classId) params.set('class_id', classId);
   if (sectionId) params.set('section_id', sectionId);
   if (subjectId) params.set('subject_id', subjectId);
+  if (shift) params.set('shift', shift);
 
   if (window.AdminLoader) window.AdminLoader.show();
   window.location.href = `{{ url_for('admin_advanced_results.analytics') }}?${params.toString()}`;
