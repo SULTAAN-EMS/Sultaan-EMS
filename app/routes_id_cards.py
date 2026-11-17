@@ -2,6 +2,7 @@ import secrets
 import calendar
 import json
 import re
+import threading
 from datetime import date, datetime, timezone
 from io import BytesIO
 from tempfile import NamedTemporaryFile
@@ -11,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, send_file, url_for
 from flask_login import login_required
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, inspect, or_, text
 from sqlalchemy.orm import joinedload
 
 from . import db
@@ -24,6 +25,60 @@ from .verification import id_card_qr_payload
 
 id_cards_bp = Blueprint("admin_id_cards", __name__)
 SCHOOL_TIMEZONE = ZoneInfo("Africa/Mogadishu")
+_ID_CARD_SCHEMA_LOCK = threading.Lock()
+_ID_CARD_SCHEMA_READY = False
+
+
+def _ensure_id_card_schema():
+    """Repair additive ID-card columns before any admin query uses the model.
+
+    Some older production databases recorded the ID-card migrations while the
+    table was still missing columns added later.  A normal migration on startup
+    should repair that state, but this request-time guard keeps the admin page
+    recoverable even when a deployment runs with a different start command.
+    All additions are nullable and additive; no existing rows are rewritten.
+    """
+    global _ID_CARD_SCHEMA_READY
+    if _ID_CARD_SCHEMA_READY:
+        return
+
+    with _ID_CARD_SCHEMA_LOCK:
+        if _ID_CARD_SCHEMA_READY:
+            return
+        with db.engine.begin() as connection:
+            inspector = inspect(connection)
+            if not inspector.has_table(IdCardIssue.__tablename__):
+                IdCardIssue.__table__.create(bind=connection, checkfirst=True)
+                inspector = inspect(connection)
+
+            existing = {
+                column["name"]
+                for column in inspector.get_columns(IdCardIssue.__tablename__)
+            }
+            # These are deliberately nullable for legacy rows.  The ORM still
+            # validates new ID-card records, while old records remain readable.
+            missing_columns = {
+                "token": "VARCHAR(120)",
+                "student_id": "INTEGER",
+                "academic_year_id": "INTEGER",
+                "exam_id": "INTEGER",
+                "issue_date": "DATE",
+                "expiry_date": "DATE",
+                "created_at": "TIMESTAMP",
+                "updated_at": "TIMESTAMP",
+                "valid_from_at": "TIMESTAMP",
+                "expires_at": "TIMESTAMP",
+                "status": "VARCHAR(20)",
+                "template_name": "VARCHAR(80)",
+            }
+            table_name = IdCardIssue.__tablename__
+            for name, sql_type in missing_columns.items():
+                if name not in existing:
+                    connection.execute(text(
+                        f"ALTER TABLE {table_name} ADD COLUMN {name} {sql_type}"
+                    ))
+                    existing.add(name)
+        _ID_CARD_SCHEMA_READY = True
 
 
 def school_today():
@@ -138,6 +193,7 @@ def _sort_id_card_roster(students, placements, sort_order, levels, classes, sect
 @login_required
 def require_login():
     enforce_endpoint_permission()
+    _ensure_id_card_schema()
 
 
 @id_cards_bp.route("/", methods=["GET", "POST"])
