@@ -100,14 +100,16 @@
   <script>
     (() => {
       const timeoutMinutes = {{ (30 if session.get('teacher_last_activity') else (session.get('admin_session_timeout_minutes', 15) | int)) | tojson }};
-      const logoutForm = document.querySelector('.teacher-logout, .sidebar-logout');
-      if (!logoutForm || !Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0) return;
+      const timeoutUrl = {{ (url_for('teacher_portal.session_expired') if session.get('teacher_last_activity') else url_for('auth.session_expired')) | tojson }};
+      if (!Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0 || !timeoutUrl) return;
 
       let idleTimer;
       const armIdleTimer = () => {
         window.clearTimeout(idleTimer);
         idleTimer = window.setTimeout(() => {
-          logoutForm.submit();
+          // Never post the normal logout form after the session may already
+          // have expired. A dedicated GET endpoint always lands on login.
+          window.location.replace(timeoutUrl);
         }, timeoutMinutes * 60 * 1000);
       };
 

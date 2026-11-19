@@ -450,8 +450,9 @@ def login():
 
 
 @teacher_portal_bp.route("/logout", methods=["POST"])
-@teacher_login_required
 def logout():
+    if not current_user.is_authenticated or not is_teacher_account():
+        return redirect(url_for("teacher_portal.login"))
     teacher = get_current_teacher()
     if teacher and teacher.user:
         session["teacher_login_username"] = teacher.user.username
@@ -460,6 +461,16 @@ def logout():
     session.pop("teacher_last_activity", None)
     logout_user()
     flash("You have been logged out.", "success")
+    return redirect(url_for("teacher_portal.login"))
+
+
+@teacher_portal_bp.route("/session-expired", methods=["GET"])
+def session_expired():
+    """End an expired browser session without posting to the logout route."""
+    if current_user.is_authenticated:
+        logout_user()
+        session.clear()
+    flash("Fadhiga macallinka wuu dhammaaday. Fadlan mar kale gal.", "warning")
     return redirect(url_for("teacher_portal.login"))
 
 

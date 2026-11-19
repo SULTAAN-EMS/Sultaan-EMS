@@ -204,7 +204,15 @@ def create_app(config_class=Config):
     @app.before_request
     def enforce_admin_session_timeout():
         """Enforce separate idle timeouts for administrator and teacher sessions."""
-        if request.endpoint in {"static", "auth.login", "auth.logout"} or not current_user.is_authenticated:
+        if request.endpoint in {
+            "static",
+            "auth.login",
+            "auth.logout",
+            "auth.session_expired",
+            "teacher_portal.login",
+            "teacher_portal.logout",
+            "teacher_portal.session_expired",
+        } or not current_user.is_authenticated:
             return None
         is_teacher = getattr(current_user, "teacher_profile", None) is not None
         if is_teacher:

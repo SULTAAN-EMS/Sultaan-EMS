@@ -52,10 +52,11 @@ def login():
 
 
 @auth_bp.route("/admin/logout", methods=["POST"])
-@login_required
 def logout():
     from .teacher_portal import is_teacher_account
 
+    if not current_user.is_authenticated:
+        return redirect(url_for("auth.login"))
     was_teacher = is_teacher_account()
     audit("Logout", f"User {current_user.username} logged out")
     db.session.commit()
@@ -63,6 +64,16 @@ def logout():
     flash("You have been logged out.", "success")
     if was_teacher:
         return redirect(url_for("teacher_portal.login"))
+    return redirect(url_for("auth.login"))
+
+
+@auth_bp.route("/admin/session-expired", methods=["GET"])
+def session_expired():
+    """End an expired browser session without posting to the logout route."""
+    if current_user.is_authenticated:
+        logout_user()
+        session.clear()
+    flash("Fadhiga maamulka wuu dhammaaday. Fadlan mar kale gal.", "warning")
     return redirect(url_for("auth.login"))
 
 
