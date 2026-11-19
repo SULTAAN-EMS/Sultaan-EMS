@@ -1,26 +1,40 @@
 {% extends "base.html" %}
-{% block title %}{{ settings.school_name }} Result Portal{% endblock %}
+{% set portal_school_name = settings.get('school_name_so') or 'Dugsiyada Caalamiga ah ee Taysiir' %}
+{% set portal_origin = 'https://sultaan-ems.com' %}
+{% set portal_canonical = portal_origin ~ '/' %}
+{% block title %}{{ portal_school_name }} | Taysiir, Teysiir, Taysir, Teysir, TIS | Sultaan EMS{% endblock %}
 {% block body_class %}public-body premium-public-body{% endblock %}
 {% block extra_head %}
-<meta name="description" content="Ka hel natiijooyinka imtixaannada, xaadirka iyo adeegyada ardayda ee Dugsiyada Caalamiga ah ee Taysiir.">
-<link rel="canonical" href="https://www.sultaan-ems.com/">
+<meta name="description" content="Portalka rasmiga ah ee {{ portal_school_name }} (Taysiir, Teysiir, Taysir, Teysir, TIS) iyo Sultaan EMS. Ka hel natiijooyinka imtixaannada, xaadirka iyo adeegyada ardayda.">
+<meta name="keywords" content="Taysiir, Teysiir, Taysir, Teysir, TIS, Sultaan EMS, natiijooyinka imtixaannada, portalka ardayga">
+<link rel="canonical" href="{{ portal_canonical }}">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="so_SO">
-<meta property="og:site_name" content="SULTAAN EMS">
-<meta property="og:title" content="WAAXDA ADEEGGA ARDEYGA | Dugsiyada Caalamiga ah ee Taysiir">
-<meta property="og:description" content="Ka hel natiijooyinka imtixaannada, xaadirka iyo adeegyada ardayda hal meel.">
-<meta property="og:url" content="https://www.sultaan-ems.com/">
-<meta property="og:image" content="https://www.sultaan-ems.com{{ url_for('static', filename='images/student-services-share.jpg') }}?v=fd81476">
-<meta property="og:image:secure_url" content="https://www.sultaan-ems.com{{ url_for('static', filename='images/student-services-share.jpg') }}?v=fd81476">
+<meta property="og:site_name" content="{{ portal_school_name }}">
+<meta property="og:title" content="{{ portal_school_name }} | Waaxda Arrimaha Ardeyda">
+<meta property="og:description" content="Natiijooyinka imtixaannada, xaadirka iyo adeegyada ardayda ee {{ portal_school_name }}.">
+<meta property="og:url" content="{{ portal_canonical }}">
+<meta property="og:image" content="{{ portal_origin }}{{ url_for('static', filename='images/student-services-share.jpg') }}?v=fd81476">
+<meta property="og:image:secure_url" content="{{ portal_origin }}{{ url_for('static', filename='images/student-services-share.jpg') }}?v=fd81476">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Waaxda Adeegga Ardeyga ee Dugsiyada Caalamiga ah ee Taysiir">
+<meta property="og:image:alt" content="{{ portal_school_name }} - Waaxda Arrimaha Ardeyda">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="WAAXDA ADEEGGA ARDEYGA | Dugsiyada Caalamiga ah ee Taysiir">
+<meta name="twitter:title" content="{{ portal_school_name }} | Waaxda Arrimaha Ardeyda">
 <meta name="twitter:description" content="Natiijooyinka imtixaannada, xaadirka iyo adeegyada ardayda hal meel.">
-<meta name="twitter:image" content="https://www.sultaan-ems.com{{ url_for('static', filename='images/student-services-share.jpg') }}?v=fd81476">
-<meta name="twitter:image:alt" content="Waaxda Adeegga Ardeyga ee Dugsiyada Caalamiga ah ee Taysiir">
+<meta name="twitter:image" content="{{ portal_origin }}{{ url_for('static', filename='images/student-services-share.jpg') }}?v=fd81476">
+<meta name="twitter:image:alt" content="{{ portal_school_name }} - Waaxda Arrimaha Ardeyda">
+<script type="application/ld+json">
+{{ {
+  '@context': 'https://schema.org',
+  '@type': 'EducationalOrganization',
+  'name': portal_school_name,
+  'alternateName': ['Taysiir', 'Teysiir', 'Taysir', 'Teysir', 'TIS', 'Sultaan EMS'],
+  'url': portal_canonical,
+  'logo': portal_origin ~ url_for('static', filename='images/taysiir-school-icon-512.png')
+} | tojson }}
+</script>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/result-success-overlay.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/top10-tunnel.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/verified-name-badge.css') }}">
@@ -243,10 +257,10 @@
     <div class="premium-school-logo">
       {% if settings.logo_path %}<img src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">{% else %}<i class="fa-solid fa-school"></i>{% endif %}
     </div>
-    <h1>{{ settings.school_name|upper }}</h1>
+    <h1>{{ portal_school_name|upper }}</h1>
     <div class="premium-motto"><span></span><strong>{{ settings.school_motto|capitalize }}</strong><span></span></div>
     <div class="premium-exam-title glass-card">
-      <h2>WAAXDA ADEEGYADA ARDEYGA</h2>
+      <h2>WAAXDA ARRIMAHA ARDEYDA</h2>
       <div class="premium-portal-services">
         <p class="premium-portal-services__intro">Halakan waxaad ka heli doontaa:</p>
         <div class="premium-portal-services__list">
