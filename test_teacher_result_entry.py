@@ -4,7 +4,7 @@ import unittest
 import html
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from io import BytesIO
 from decimal import Decimal
 from types import SimpleNamespace
@@ -17,7 +17,7 @@ from app import create_app, db
 from app.routes_public import _top10_teacher_wall_photos
 from app.models import (
     AcademicClass, AcademicLevel, AcademicYear, AcademicYearClass, AcademicYearLevel,
-    AcademicSection, AcademicYearClassSubjectExclusion, AcademicYearSubject, Exam, ExamMarkingConfiguration, GradeScale, Result, Student, StudentEnrollment, Subject, Teacher,
+    AcademicSection, AcademicYearClassSubjectExclusion, AcademicYearSubject, AttendanceRecord, Exam, ExamMarkingConfiguration, ExamSession, GradeScale, Result, Student, StudentEnrollment, Subject, Teacher,
     AuditLog, TeacherActivity, TeacherResultAssignment, TeacherResultEvent, TeacherResultMarkRevision, TeacherResultSubmission, User,
     TeacherResultMark, TeacherResultMissingMarkReport, Setting,
 )
@@ -721,6 +721,62 @@ class TestTeacherResultEntry(unittest.TestCase):
         self.assertEqual(mark.student_id, self.students[0].id)
         self.assertEqual(float(mark.score), 41.5)
         self.assertEqual(response.json["score"], "41.50")
+
+    def test_exam_attendance_blocks_non_sitting_scores_and_preserves_existing_score(self):
+        session = ExamSession(
+            academic_year=self.year,
+            exam=self.exam,
+            session_date=date(2026, 10, 1),
+            sitting_label="Fadhiga 1aad",
+        )
+        db.session.add(session)
+        db.session.flush()
+        db.session.add(AttendanceRecord(
+            academic_year=self.year,
+            student=self.students[0],
+            subject=self.subject,
+            exam=self.exam,
+            exam_session=session,
+            status="absent",
+        ))
+        db.session.add(Result(
+            student=self.students[0], exam=self.exam, subject=self.subject,
+            score=Decimal("18"), is_published=True,
+        ))
+        db.session.commit()
+
+        self._teacher_login()
+        page = self.client.get(f"/teacher/result-entry?assignment_id={self.assignment.id}")
+        self.assertEqual(page.status_code, 200)
+        body = page.get_data(as_text=True)
+        self.assertIn("Maqan", body)
+        self.assertIn("Dhibco lama gelin karo: ardaygu waa Maqan.", body)
+        self.assertIn("Dhibco hore ayaa jira; dib-u-eegis ayaa loo baahan yahay.", body)
+        self.assertRegex(body, rf'id="score-{self.students[0].id}"[^>]*disabled')
+        self.assertRegex(body, rf'id="score-{self.students[1].id}"[^>]*data-score-input(?![^>]*disabled)')
+
+        autosave = self.client.post("/teacher/result-entry/autosave", json={
+            "assignment_id": self.assignment.id,
+            "student_id": self.students[0].id,
+            "score": "22",
+        })
+        self.assertEqual(autosave.status_code, 409)
+        self.assertIn("Maqan", autosave.json["message"])
+        self.assertEqual(TeacherResultMark.query.count(), 0)
+        self.assertEqual(Result.query.one().score, Decimal("18.000"))
+
+        save = self.client.post(
+            "/teacher/result-entry/save",
+            data={
+                "assignment_id": str(self.assignment.id),
+                "action": "save",
+                f"score_{self.students[0].id}": "22",
+            },
+            headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(save.status_code, 409)
+        self.assertIn("Maqan", save.json["message"])
+        self.assertEqual(TeacherResultMark.query.count(), 0)
 
     def test_teacher_can_report_missing_mark_and_admin_can_review_it(self):
         self._teacher_login()

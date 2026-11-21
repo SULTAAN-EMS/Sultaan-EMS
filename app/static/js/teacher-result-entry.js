@@ -341,6 +341,7 @@
   function inspect(card) {
     const input = card.querySelector("[data-score-input]");
     const parsed = scoreValue(input);
+    parsed.attendanceBlocked = card.dataset.attendanceBlocksScore === "true";
     const oldScore = card.dataset.previous === "" ? null : Number(card.dataset.previous);
     if (parsed.valid && oldScore !== null && Number.isFinite(oldScore) && Math.abs(parsed.value - oldScore) >= 25) {
       parsed.state = "warn";
@@ -348,8 +349,8 @@
     }
     const saved = normalized(card.dataset.saved || "");
     const current = normalized(input.value);
-    parsed.changed = !parsed.empty && current !== saved;
-    if (parsed.empty && saved !== "") parsed.changed = true;
+    parsed.changed = !parsed.attendanceBlocked && !parsed.empty && current !== saved;
+    if (!parsed.attendanceBlocked && parsed.empty && saved !== "") parsed.changed = true;
     return parsed;
   }
 
@@ -436,6 +437,9 @@
       renderCard(card, true);
       const current = inspect(card);
       record.result = current;
+      if (current.attendanceBlocked) {
+        continue;
+      }
       if (current.empty) {
         todo += 1;
         flagged += 1;
@@ -465,15 +469,17 @@
     }
     if (statuses.all) statuses.all.textContent = records.length;
     if (statuses.todo) statuses.todo.textContent = todo;
-    if (statuses.flag) statuses.flag.textContent = records.filter(({ card }) => ["warn", "bad"].some((state) => card.classList.contains(state))).length;
+    if (statuses.flag) statuses.flag.textContent = records.filter(({ card, result }) => !result.attendanceBlocked && ["warn", "bad"].some((state) => card.classList.contains(state))).length;
     for (const record of records) {
       const { card, input } = record;
       const matchesSearch = !searchValue || card.dataset.search.includes(searchValue);
       const state = inspect(card);
       const matchesFilter = activeFilter === "all"
         || (activeFilter === "todo" && state.empty)
-        || (activeFilter === "flag" && (state.state === "warn" || state.state === "bad"));
+        || (activeFilter === "flag" && !state.attendanceBlocked && (state.state === "warn" || state.state === "bad"));
+      const visibleForTodo = activeFilter !== "todo" || !state.attendanceBlocked;
       card.hidden = !(matchesSearch && matchesFilter);
+      if (!visibleForTodo) card.hidden = true;
       syncMissingReportControl(card);
       input.setAttribute("aria-label", `Dhibcaha ${card.querySelector(".re-student-info h2").textContent}`);
     }
@@ -786,8 +792,10 @@
   function renderReview() {
     const summary = updateView();
     const allRows = summary.records;
-    const invalidCount = allRows.filter(({ result }) => !result.empty && !result.valid).length;
+    const invalidCount = allRows.filter(({ result }) => !result.attendanceBlocked && !result.empty && !result.valid).length;
     const pendingCount = allRows.filter(({ result, card }) => (
+      !result.attendanceBlocked
+      &&
       result.valid
       && card.dataset.locked !== "true"
       && ((card.dataset.markStatus === "draft" && card.dataset.hasDraft === "true") || result.changed)
@@ -811,7 +819,7 @@
     averageNode.textContent = `${summary.average.toFixed(2)}%`;
     block.hidden = invalidCount === 0;
     partialNote.hidden = invalidCount > 0 || page.dataset.locked === "true";
-    const flagged = allRows.filter(({ result }) => result.empty || !result.valid || result.state === "warn");
+    const flagged = allRows.filter(({ result }) => !result.attendanceBlocked && (result.empty || !result.valid || result.state === "warn"));
     flagSection.hidden = flagged.length === 0;
     flagTitle.textContent = "U baahan in la hubiyo";
     flagCount.textContent = String(flagged.length);

@@ -37,6 +37,7 @@ from .routes_advanced_results import students_for_scope_query, _year_scope_ids_f
 from .academic_hierarchy import is_year_subject_available_for_class
 from .services import resolve_subject_max_score
 from .teacher_result_history import record_teacher_result_event
+from .exam_attendance_guard import exam_attendance_for_students
 
 teachers_bp = Blueprint("admin_teachers", __name__)
 
@@ -877,6 +878,26 @@ def result_entry_setup():
                 flash("Xogta ardayda ama fasalka/sanadku sax ma aha; lama ansixin.", "danger")
                 return redirect_to_assignment_list()
             pending_students = [student for student in students if student.id in marks]
+            attendance_by_student = exam_attendance_for_students(
+                assignment, [student.id for student in pending_students]
+            )
+            blocked_attendance = [
+                (student, attendance_by_student[student.id])
+                for student in pending_students
+                if student.id in attendance_by_student
+                and attendance_by_student[student.id].get("blocks_score")
+            ]
+            if blocked_attendance:
+                details = ", ".join(
+                    f"{student.full_name} ({attendance['label']})"
+                    for student, attendance in blocked_attendance[:6]
+                )
+                flash(
+                    "Ansixinta waa la joojiyey: dhibco looma daabici karo arday "
+                    "aan imtixaanka u fariisan. Marka hore hubi xaadirinta: " + details,
+                    "danger",
+                )
+                return redirect_to_assignment_list()
             if any(student.is_result_locked for student in pending_students):
                 flash("Fasalka waxaa ku jira arday natiijadoodu xiran tahay. Furitaanka natiijooyinkaas ayaa loo baahan yahay ka hor ansixinta.", "danger")
                 return redirect_to_assignment_list()

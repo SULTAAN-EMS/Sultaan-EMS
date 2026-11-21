@@ -67,6 +67,7 @@ from .teacher_services import (
 )
 from .services import load_grade_scale_cache, resolve_subject_max_score
 from .routes_advanced_results import students_for_scope_query, _year_scope_ids_from_legacy
+from .exam_attendance_guard import attendance_score_block_message, exam_attendance_for_students
 
 teacher_portal_bp = Blueprint("teacher_portal", __name__)
 
@@ -589,12 +590,17 @@ def result_entry():
             for result in Result.query.filter_by(exam_id=assignment.exam_id, subject_id=assignment.subject_id)
             .filter(Result.student_id.in_([student.id for student in students])).all()
         } if students else {}
+        attendance_by_student = exam_attendance_for_students(
+            assignment, [student.id for student in students]
+        )
         for student in students:
             draft = saved_marks.get(student.id)
             existing = official_marks.get(student.id)
+            current_score = draft.score if draft else (existing.score if existing else None)
+            attendance = attendance_by_student.get(student.id)
             rows.append({
                 "student": student,
-                "score": draft.score if draft else (existing.score if existing else None),
+                "score": current_score,
                 "previous_score": draft.score if draft and draft.score is not None else (existing.score if existing else None),
                 "is_existing": bool(existing),
                 "has_draft_mark": bool(draft),
@@ -603,9 +609,17 @@ def result_entry():
                     (draft and draft.status == "approved")
                     or attempts_exhausted
                 ),
+                "attendance": attendance,
+                "attendance_status_key": attendance.get("key") if attendance else None,
+                "attendance_status_label": attendance.get("label") if attendance else None,
+                "attendance_status_icon": attendance.get("icon") if attendance else None,
+                "attendance_blocks_score": bool(attendance and attendance.get("blocks_score")),
+                "attendance_review_required": bool(
+                    attendance and attendance.get("blocks_score") and current_score is not None
+                ),
                 "missing_report": missing_reports.get(student.id),
                 "action_type": (draft.last_action if draft and draft.last_action else None)
-                or ("legacy" if (draft.score if draft else (existing.score if existing else None)) is not None else None),
+                or ("legacy" if current_score is not None else None),
             })
         max_score = resolve_subject_max_score(
             assignment.subject,
@@ -841,8 +855,15 @@ def result_entry_autosave():
     if mark and mark.status == "submitted" and remaining_submissions <= 0:
         return failure("Isku-dayadii gudbinta way dhammaadeen. La xiriir maamulka.", 409)
 
+    attendance = exam_attendance_for_students(assignment, [student.id]).get(student.id)
+    official = Result.query.filter_by(
+        exam_id=assignment.exam_id, subject_id=assignment.subject_id, student_id=student.id
+    ).first()
+
     raw_score = payload.get("score", "")
     raw_score = "" if raw_score is None else str(raw_score).strip()
+    if attendance and attendance.get("blocks_score") and raw_score:
+        return failure(attendance_score_block_message(attendance), 409)
     score = None
     if raw_score:
         configured_maximum = resolve_subject_max_score(
@@ -862,10 +883,20 @@ def result_entry_autosave():
         if score > maximum:
             return failure("Darajadu waxay dhaaftay %s. Hubi nambarka." % maximum, 422)
 
-    official = Result.query.filter_by(
-        exam_id=assignment.exam_id, subject_id=assignment.subject_id, student_id=student.id
-    ).first()
     if not raw_score:
+        if attendance and attendance.get("blocks_score"):
+            display_score = mark.score if mark else (official.score if official else None)
+            return jsonify(
+                success=True,
+                student_id=student.id,
+                score=str(display_score) if display_score is not None else None,
+                mark_status=mark.status if mark else "draft",
+                has_draft=bool(mark),
+                attendance_status=attendance.get("key"),
+                attendance_status_label=attendance.get("label"),
+                attendance_blocks_score=True,
+                saved_at=now.isoformat(),
+            )
         if mark and mark.status in {"draft", "submitted"}:
             previous_score = mark.score
             had_previous_action = bool(mark.last_action)
@@ -1012,6 +1043,9 @@ def result_entry_save():
             TeacherResultMissingMarkReport.student_id.in_([student.id for student in students]),
         ).all()
     } if students else {}
+    attendance_by_student = exam_attendance_for_students(
+        assignment, [student.id for student in students]
+    )
     previous_submission_status = submission.status if submission else None
     remaining_submissions = max(
         0,
@@ -1019,11 +1053,21 @@ def result_entry_save():
     )
     revision_changes = []
     score_by_student = {}
+    attendance_errors = []
     for student in students:
         mark = existing_marks.get(student.id)
         if mark and mark.status == "approved":
             continue
         raw = (request.form.get(f"score_{student.id}") or "").strip()
+        attendance = attendance_by_student.get(student.id)
+        if attendance and attendance.get("blocks_score"):
+            if raw:
+                attendance_errors.append(
+                    f"{student.full_name} ({attendance.get('label')})"
+                )
+            # Keep any previous score untouched until the attendance record is
+            # corrected or explicitly reviewed by the school.
+            continue
         if not raw:
             if mark and mark.status == "submitted":
                 if remaining_submissions <= 0:
@@ -1055,6 +1099,15 @@ def result_entry_save():
             if remaining_submissions <= 0:
                 return failure("Isku-dayadii gudbinta way dhammaadeen. La xiriir maamulka.", "danger", 409)
         score_by_student[student.id] = score
+    if attendance_errors:
+        db.session.rollback()
+        return failure(
+            "Dhibco lama gelin karo ardaydan maadaama xaadirintoodu tahay "
+            "Maqan, Cudur-daar, La fasaxay ama Xaalad deg-deg ah: %s."
+            % ", ".join(attendance_errors[:6]),
+            "warning",
+            409,
+        )
     if precision_errors:
         return failure("Geli ugu badnaan laba meelood oo jajab ah: %s" % ", ".join(precision_errors[:6]))
     if errors:
@@ -1067,6 +1120,9 @@ def result_entry_save():
     mark_by_student = {mark.student_id: mark for mark in submission.marks}
     if not submit_now:
         for student in students:
+            attendance = attendance_by_student.get(student.id)
+            if attendance and attendance.get("blocks_score"):
+                continue
             existing_mark = mark_by_student.get(student.id)
             if existing_mark and existing_mark.status in {"draft", "submitted"} and not (request.form.get(f"score_{student.id}") or "").strip():
                 if existing_mark.status == "submitted" and remaining_submissions <= 0:

@@ -272,6 +272,15 @@ body.teacher-results-body .teacher-main.teacher-main-results { display: block; p
 .re-mark-action.is-cleared { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
 .re-mark-action.is-legacy { border-color: var(--re-line); background: var(--re-bg); color: var(--re-muted); }
 .re-mark-action i { flex: none; }
+.re-attendance-status { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; margin-top: 7px; padding: 5px 9px; border: 1px solid; border-radius: 11px; font-size: 10px; font-weight: 800; line-height: 1.25; }
+.re-attendance-status > i { flex: none; }
+.re-attendance-status-copy { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 7px; min-width: 0; }
+.re-attendance-status-copy b, .re-attendance-status-copy small { overflow-wrap: anywhere; }
+.re-attendance-status-copy small { font-size: 9px; font-weight: 700; opacity: .82; }
+.re-attendance-status.is-sitting { border-color: #b7e5d1; background: var(--re-ok-bg); color: var(--re-ok); }
+.re-attendance-status.is-blocked { border-color: #f4c5c5; background: var(--re-bad-bg); color: var(--re-bad); }
+.re-attendance-review { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; margin-top: 6px; color: var(--re-warn); font-size: 10px; font-weight: 800; line-height: 1.3; }
+.re-attendance-review i { flex: none; }
 .re-active-label { display: none; color: var(--re-primary); font-size: 10px; font-weight: 800; }
 .re-score-area { display: grid; grid-template-columns: 42px minmax(44px, 1fr) minmax(98px, auto) 40px; align-items: center; gap: 8px; min-width: 0; padding: 8px; border-radius: 17px; background: var(--re-bg); }
 .re-grade { display: grid; place-items: center; flex: none; min-width: 42px; height: 42px; padding: 0 6px; border-radius: 12px; background: var(--re-line); color: var(--re-muted); font-size: 14px; font-weight: 800; transition: transform .2s; }
@@ -291,6 +300,8 @@ body.teacher-results-body .teacher-main.teacher-main-results { display: block; p
 .re-score-box input { width: 66px; min-width: 38px; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: var(--re-ink); text-align: right; font-size: 21px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .result-entry-page .re-score-box input:focus-visible { outline: none; }
 .re-score-box input:disabled { opacity: .65; }
+.re-score-box.attendance-blocked { border-color: #f1c5c5; background: var(--re-bad-bg); }
+.re-score-box.attendance-blocked input { color: var(--re-muted); cursor: not-allowed; }
 body.teacher-results-body .re-score-box input { background-color: transparent; color: var(--re-ink); }
 .re-score-box > span { flex: none; color: var(--re-muted); font-size: 10px; font-weight: 800; }
 .re-performance { min-width: 0; color: var(--re-muted); }
