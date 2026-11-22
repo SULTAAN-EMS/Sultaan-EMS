@@ -59,6 +59,7 @@ from .promotion_service import (
     verify_committed_evaluation_scope,
     verify_promotion_rule_persistence,
 )
+from .student_results_portal import result_portal_shift_states
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -1431,34 +1432,53 @@ def settings():
 @admin_bp.route("/settings/student-results-portal", methods=["POST"])
 @permission_required("system_settings")
 def update_student_results_portal_visibility():
-    """Show or hide published results in the student-facing portal only."""
+    """Show or hide published results for one or both school shifts."""
     enabled = (request.form.get("enabled") or "").strip().lower()
     if enabled not in {"on", "off"}:
         abort(400)
 
-    setting_key = "student_results_portal_enabled"
-    setting = db.session.get(Setting, setting_key)
-    current_value = (setting.value if setting else "on") or "on"
-    current_value = current_value.strip().lower()
-    if current_value not in {"on", "off"}:
-        current_value = "on"
-    if enabled == current_value:
-        flash("Xaaladda natiijooyinka hore ayay sidaas ahayd.", "info")
-        return redirect(url_for("admin_advanced_results.results_settings"))
+    shift_scope = (request.form.get("shift_scope") or "both").strip().lower()
+    if shift_scope not in {"morning", "afternoon", "both"}:
+        abort(400)
 
-    setting = setting or Setting(key=setting_key)
-    setting.value = enabled
-    db.session.add(setting)
+    settings = get_settings()
+    current_states = result_portal_shift_states(settings)
+    selected_shifts = ("morning", "afternoon") if shift_scope == "both" else (shift_scope,)
+    next_states = dict(current_states)
+    for shift in selected_shifts:
+        next_states[shift] = enabled == "on"
+
+    # Persist both effective states whenever a scoped change is made. This
+    # prevents the legacy global fallback from reopening the unselected shift.
+    for shift, is_open in next_states.items():
+        setting_key = f"student_results_portal_enabled_{shift}"
+        setting = db.session.get(Setting, setting_key) or Setting(key=setting_key)
+        setting.value = "on" if is_open else "off"
+        db.session.add(setting)
+
+    global_setting = db.session.get(Setting, "student_results_portal_enabled") or Setting(
+        key="student_results_portal_enabled"
+    )
+    global_setting.value = "on" if any(next_states.values()) else "off"
+    db.session.add(global_setting)
     audit(
         "Student Results Portal Visibility",
-        f"Student-facing results changed from {current_value} to {enabled}.",
+        f"Student-facing results scope={shift_scope} changed to {enabled}; states={next_states}.",
     )
     db.session.commit()
     cached_settings = getattr(g, "_sultaan_settings", None)
     if cached_settings is not None:
-        cached_settings[setting_key] = enabled
+        cached_settings["student_results_portal_enabled"] = global_setting.value
+        for shift, is_open in next_states.items():
+            cached_settings[f"student_results_portal_enabled_{shift}"] = "on" if is_open else "off"
+    scope_label = {
+        "morning": "Gelinka Hore",
+        "afternoon": "Gelinka Dambe",
+        "both": "Labada gelin",
+    }[shift_scope]
     flash(
-        "Natiijooyinka ardayda waa la fasaxay." if enabled == "on" else "Natiijooyinka ardayda waa la xidhay.",
+        f"Natiijooyinka {scope_label} waa la fasaxay." if enabled == "on"
+        else f"Natiijooyinka {scope_label} waa la xidhay.",
         "success",
     )
     return redirect(url_for("admin_advanced_results.results_settings"))

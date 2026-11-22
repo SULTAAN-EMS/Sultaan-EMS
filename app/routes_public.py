@@ -42,7 +42,11 @@ from .student_portal_access import (
 from .seat_mixer_layout import seat_row_placement
 from .pdf_rendering import html_report_to_pdf
 from .routes_invigilator import current_invigilator, invigilator_login_required
-from .student_results_portal import announcement_datetime_payload
+from .student_results_portal import (
+    announcement_datetime_payload,
+    normalize_result_visibility_shift,
+    result_portal_shift_enabled,
+)
 from .cloudinary_service import cloudinary_thumbnail_url
 
 public_bp = Blueprint("public", __name__)
@@ -67,10 +71,45 @@ STUDENT_RESULTS_CLOSED_MESSAGE = (
 )
 
 
-def _student_result_portal_is_enabled(settings=None):
+def _student_result_portal_is_enabled(student=None, exam=None, settings=None):
     settings = settings or get_settings()
-    value = str(settings.get("student_results_portal_enabled", "on") or "on").strip().lower()
-    return value not in {"off", "false", "0", "no"}
+    if student is None:
+        value = str(settings.get("student_results_portal_enabled", "on") or "on").strip().lower()
+        return value not in {"off", "false", "0", "no"}
+
+    year_id = exam.academic_year_id if exam else None
+    if year_id is None:
+        year_id = request.args.get("year_id", type=int) or request.form.get("year_id", type=int)
+    if year_id is None:
+        enrollment = (
+            StudentEnrollment.query
+            .filter_by(student_id=student.id)
+            .order_by(StudentEnrollment.academic_year_id.desc(), StudentEnrollment.id.desc())
+            .first()
+        )
+    else:
+        enrollment = get_enrollment_for_student_year(student.id, year_id)
+    shift = None
+    if enrollment and enrollment.academic_year_class:
+        shift = normalize_result_visibility_shift(enrollment.academic_year_class.school_shift)
+    return result_portal_shift_enabled(settings, shift)
+
+
+def _student_result_visibility_context():
+    """Resolve the student/exam needed by the shift-aware portal guard."""
+    view_args = request.view_args or {}
+    student_code = (
+        request.args.get("student_id")
+        or request.form.get("student_id")
+        or view_args.get("student_code")
+        or ""
+    ).strip()
+    student = find_student_by_code(student_code) if student_code else None
+    exam_id = request.args.get("exam_id", type=int) or request.form.get("exam_id", type=int)
+    exam = db.session.get(Exam, exam_id) if exam_id else None
+    if student is not None and exam is None:
+        exam = _published_exam_for_student(student)
+    return student, exam
 
 
 def _student_result_portal_endpoint(endpoint):
@@ -238,7 +277,8 @@ def enforce_student_results_portal_visibility():
         return None
 
     settings = get_settings()
-    if _student_result_portal_is_enabled(settings):
+    student, exam = _student_result_visibility_context()
+    if _student_result_portal_is_enabled(student, exam, settings):
         return None
 
     if request.path.startswith("/api/"):

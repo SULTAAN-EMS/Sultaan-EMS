@@ -118,6 +118,10 @@ DEFAULT_SETTINGS = {
     "admin_password_min_length": "8",
     "admin_session_timeout_minutes": "15",
     "student_results_portal_enabled": "on",
+    # Empty shift values inherit the global switch until the administrator
+    # explicitly chooses a Gelin Hore/Gelin Dambe scope.
+    "student_results_portal_enabled_morning": "",
+    "student_results_portal_enabled_afternoon": "",
     "student_results_announcement_at_eat": "",
     # Student portal can require a private four-character code in addition to
     # the public student ID. Scope overrides live in their own table.

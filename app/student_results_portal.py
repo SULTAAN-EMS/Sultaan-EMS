@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 
 EAT = ZoneInfo("Africa/Mogadishu")
+RESULT_VISIBILITY_SHIFTS = ("morning", "afternoon")
 SOMALI_WEEKDAYS = (
     "Isniin",
     "Talaada",
@@ -43,4 +44,30 @@ def announcement_datetime_payload(value):
             f"{parsed.strftime('%B %d, %Y')} · {parsed.strftime('%I:%M %p')} EAT"
         ),
         "timestamp_ms": int(parsed.timestamp() * 1000),
+    }
+
+
+def normalize_result_visibility_shift(value):
+    """Return the canonical shift key used by the student-results lock."""
+    value = str(value or "").strip().lower()
+    return value if value in RESULT_VISIBILITY_SHIFTS else None
+
+
+def result_portal_shift_enabled(settings, shift):
+    """Resolve one shift's visibility without breaking the legacy global key."""
+    shift = normalize_result_visibility_shift(shift)
+    if not shift:
+        value = settings.get("student_results_portal_enabled", "on")
+    else:
+        value = settings.get(f"student_results_portal_enabled_{shift}")
+        if str(value or "").strip().lower() not in {"on", "off"}:
+            value = settings.get("student_results_portal_enabled", "on")
+    return str(value or "on").strip().lower() not in {"off", "false", "0", "no"}
+
+
+def result_portal_shift_states(settings):
+    """Return the effective open/closed state for both school shifts."""
+    return {
+        shift: result_portal_shift_enabled(settings, shift)
+        for shift in RESULT_VISIBILITY_SHIFTS
     }

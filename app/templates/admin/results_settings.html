@@ -9,7 +9,7 @@
   {% include "admin/_results_hub_header.html" %}
 
   <main class="rh-screen">
-    {% set student_results_open = settings.get('student_results_portal_enabled', 'on')|lower not in ['off', 'false', '0', 'no'] %}
+    {% set student_results_open = student_results_shift_states.morning or student_results_shift_states.afternoon %}
     {% if can_manage_student_results_visibility %}
     <section class="rh-card student-results-visibility" aria-labelledby="studentResultsVisibilityTitle">
       <style>
@@ -44,6 +44,18 @@
         .srv-toggle.is-closed{background:#12825d}
         .srv-toggle:focus-visible{outline:3px solid #edbd56;outline-offset:3px}
         .srv-note{margin:0;color:#64748b;font-size:.82rem}
+        .srv-shifts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:18px 0}
+        .srv-shift{display:flex;align-items:center;gap:11px;padding:12px 14px;border:1px solid #dce5eb;border-radius:11px;background:#fbfdff}
+        .srv-shift__icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;color:#2869a5;background:#e9f3fb}
+        .srv-shift__copy{min-width:0;flex:1}.srv-shift__copy strong{display:block;color:#254254;font-size:.86rem}.srv-shift__copy small{display:block;margin-top:2px;color:#667987;font-size:.76rem}
+        .srv-shift__state{font-size:.74rem;font-weight:850;white-space:nowrap}.srv-shift__state.is-open{color:#08764f}.srv-shift__state.is-closed{color:#a12d38}
+        .srv-scope-picker{display:grid;gap:7px;margin:18px 0;padding:14px;border:1px solid #dce8f1;border-radius:11px;background:#f8fbfd}
+        .srv-scope-picker strong{color:#254254;font-size:.9rem}.srv-scope-picker p{margin:0;color:#667987;font-size:.78rem}
+        .srv-scope-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:4px}
+        .srv-scope-option{display:flex;align-items:center;justify-content:flex-start;gap:8px;min-height:52px;padding:9px 14px;border:1px solid #ccd9df;border-radius:9px;color:#405466;background:#fff;font-size:.78rem;font-weight:800;line-height:1.2;text-align:left;cursor:pointer}
+        .srv-scope-option input{width:16px;height:16px;flex:0 0 16px;margin:0}
+        .srv-scope-option i{width:18px;flex:0 0 18px;text-align:center}
+        .srv-scope-option:has(input:checked){border-color:#168477;color:#087f72;background:#edf8f5;box-shadow:0 0 0 2px #c9e4df inset}.srv-scope-option input{accent-color:#168477}
         .srv-confirm{width:min(440px,calc(100% - 28px));padding:0;border:1px solid #d7e1e8;border-radius:16px;color:#203446;background:#fff;box-shadow:0 24px 80px rgba(12,35,55,.28)}
         .srv-confirm::backdrop{background:rgba(11,27,44,.58);backdrop-filter:blur(3px)}
         .srv-confirm__content{padding:22px}
@@ -63,7 +75,7 @@
         .srv-confirm.is-open .srv-confirm__button--commit{background:#12825d}
         .srv-confirm__button--commit:hover{filter:brightness(.94)}
         .srv-confirm__button:focus-visible{outline:3px solid #edbd56;outline-offset:2px}
-        @media(max-width:640px){.student-results-visibility{padding:18px}.srv-head{flex-wrap:wrap}.srv-status{margin-left:68px}.srv-copy h2{font-size:1.12rem}.srv-schedule__field{align-items:stretch;flex-direction:column}.srv-schedule__save{width:100%}.srv-actions{align-items:stretch;flex-direction:column}.srv-toggle{width:100%}}
+        @media(max-width:640px){.student-results-visibility{padding:18px}.srv-head{flex-wrap:wrap}.srv-status{margin-left:68px}.srv-copy h2{font-size:1.12rem}.srv-schedule__field{align-items:stretch;flex-direction:column}.srv-schedule__save{width:100%}.srv-actions{align-items:stretch;flex-direction:column}.srv-toggle{width:100%}.srv-shifts{grid-template-columns:1fr}.srv-scope-options{grid-template-columns:1fr}}
       </style>
       <div class="srv-head">
         <span class="srv-icon" aria-hidden="true"><i class="fa-solid fa-eye-slash"></i></span>
@@ -80,6 +92,24 @@
       <div class="srv-impact">
         <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
         <span>{% if student_results_open %}Ardaydu waxay arki karaan natiijooyinka la daabacay. Xiritaanku wuxuu qarinayaa bogagga natiijada ardayga oo keliya.{% else %}Natiijooyinka ardayda way qarsoon yihiin ilaa dib loo fasaxo. Dhibcaha, gudbinta macallinka, dib-u-eegista iyo ansixintu sidii hore ayay u shaqaynayaan; wax xog ah lama tirtirayo.{% endif %}</span>
+      </div>
+      <div class="srv-shifts" aria-label="Xaaladda gelinnada">
+        {% for shift_key, shift_name, icon in [('morning', 'Gelin Hore', 'fa-sun'), ('afternoon', 'Gelin Dambe', 'fa-cloud-sun')] %}
+        <div class="srv-shift">
+          <span class="srv-shift__icon" aria-hidden="true"><i class="fa-solid {{ icon }}"></i></span>
+          <div class="srv-shift__copy"><strong>{{ shift_name }}</strong><small>Fasallada gelinkan</small></div>
+          <span class="srv-shift__state {{ 'is-open' if student_results_shift_states[shift_key] else 'is-closed' }}" data-shift-state="{{ shift_key }}">{{ 'WUU SHIDAN YAHAY' if student_results_shift_states[shift_key] else 'WUU DAMSAN YAHAY' }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="srv-scope-picker">
+        <strong>Baaxadda xidhitaanka</strong>
+        <p>Dooro gelinka uu badaluhu khuseeyo ka hor intaadan fasaxin ama xidhin natiijooyinka.</p>
+        <div class="srv-scope-options" role="radiogroup" aria-label="Baaxadda xidhitaanka natiijada">
+          <label class="srv-scope-option"><input type="radio" name="shift_scope" value="morning" form="studentResultsVisibilityToggleForm"> <i class="fa-solid fa-sun" aria-hidden="true"></i> Gelin Hore</label>
+          <label class="srv-scope-option"><input type="radio" name="shift_scope" value="afternoon" form="studentResultsVisibilityToggleForm"> <i class="fa-solid fa-cloud-sun" aria-hidden="true"></i> Gelin Dambe</label>
+          <label class="srv-scope-option"><input type="radio" name="shift_scope" value="both" form="studentResultsVisibilityToggleForm" checked> <i class="fa-solid fa-layer-group" aria-hidden="true"></i> Labada gelin</label>
+        </div>
       </div>
       <form class="srv-schedule" method="post" action="{{ url_for('admin.update_student_results_announcement') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -98,12 +128,12 @@
         </div>
       </form>
       <div class="srv-actions">
-        <form method="post" action="{{ url_for('admin.update_student_results_portal_visibility') }}" data-student-results-toggle>
+        <form id="studentResultsVisibilityToggleForm" method="post" action="{{ url_for('admin.update_student_results_portal_visibility') }}" data-student-results-toggle>
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="enabled" value="{{ 'off' if student_results_open else 'on' }}">
-          <button class="srv-toggle {{ 'is-open' if student_results_open else 'is-closed' }}" type="submit">
-            <i class="fa-solid {{ 'fa-lock' if student_results_open else 'fa-lock-open' }}" aria-hidden="true"></i>
-            {{ 'XIDH NATIIJADA IMTIXAANKA' if student_results_open else 'FASAX NATIIJADA IMTIXAANKA' }}
+          <input type="hidden" name="enabled" value="off">
+          <button class="srv-toggle {{ 'is-open' if student_results_open else 'is-closed' }}" type="submit" data-visibility-toggle-button>
+            <i class="fa-solid fa-lock" aria-hidden="true"></i>
+            <span data-visibility-toggle-label>XIDH NATIIJADA IMTIXAANKA</span>
           </button>
         </form>
         <p class="srv-note">Isbeddelkan waxaa loo diiwaangeliyaa raadraaca maamulka.</p>
@@ -133,24 +163,52 @@
           const message = document.getElementById('studentResultsConfirmMessage');
           const icon = dialog?.querySelector('[data-confirm-icon] i');
           const commitButton = dialog?.querySelector('[data-confirm-commit]');
+          const scopeInputs = [...document.querySelectorAll('input[name="shift_scope"]')];
+          const shiftStates = {{ student_results_shift_states|tojson }};
+          const toggleForm = document.getElementById('studentResultsVisibilityToggleForm');
+          const toggleButton = toggleForm?.querySelector('[data-visibility-toggle-button]');
+          const toggleLabel = toggleForm?.querySelector('[data-visibility-toggle-label]');
+          const enabledInput = toggleForm?.querySelector('[name="enabled"]');
           let pendingForm = null;
 
           if (!dialog || typeof dialog.showModal !== 'function') return;
+
+          function selectedScope() {
+            return scopeInputs.find((input) => input.checked)?.value || 'both';
+          }
+          function scopeLabel(scope) {
+            return {morning: 'Gelinka Hore', afternoon: 'Gelinka Dambe', both: 'Labada gelin'}[scope] || 'Labada gelin';
+          }
+          function currentScopeOpen(scope) {
+            return scope === 'both' ? shiftStates.morning || shiftStates.afternoon : !!shiftStates[scope];
+          }
+          function refreshScopeButton() {
+            if (!toggleButton || !toggleLabel || !enabledInput) return;
+            const open = currentScopeOpen(selectedScope());
+            enabledInput.value = open ? 'off' : 'on';
+            toggleButton.classList.toggle('is-open', open);
+            toggleButton.classList.toggle('is-closed', !open);
+            toggleButton.querySelector('i').className = `fa-solid ${open ? 'fa-lock' : 'fa-lock-open'}`;
+            toggleLabel.textContent = `${open ? 'XIDH' : 'FASAX'} NATIIJADA ${scopeLabel(selectedScope()).toUpperCase()}`;
+          }
+          scopeInputs.forEach((input) => input.addEventListener('change', refreshScopeButton));
+          refreshScopeButton();
 
           document.querySelectorAll('[data-student-results-toggle]').forEach((form) => {
             form.addEventListener('submit', (event) => {
               event.preventDefault();
               const isClosing = form.querySelector('[name="enabled"]')?.value === 'off';
+              const selectedScopeValue = selectedScope();
               pendingForm = form;
               dialog.classList.toggle('is-close', isClosing);
               dialog.classList.toggle('is-open', !isClosing);
               icon.className = `fa-solid ${isClosing ? 'fa-lock' : 'fa-lock-open'}`;
               title.textContent = isClosing
-                ? 'Xidh natiijooyinka ardayda?'
-                : 'Fasax natiijooyinka ardayda?';
+                ? `Xidh natiijooyinka ${scopeLabel(selectedScopeValue)}?`
+                : `Fasax natiijooyinka ${scopeLabel(selectedScopeValue)}?`;
               message.textContent = isClosing
-                ? 'Ardaydu ma arki doonaan natiijooyinka ilaa dib loo fasaxo. Dhibcaha, gudbinta iyo ansixinta nidaamka waxba iskama beddelayaan.'
-                : 'Natiijooyinka la daabacay waxay mar kale uga muuqan doonaan portalka ardayda.';
+                ? `Ardayda ${scopeLabel(selectedScopeValue)} ma arki doonaan natiijooyinka ilaa dib loo fasaxo. Dhibcaha, gudbinta iyo ansixintu waxba iskama beddelayaan.`
+                : `Natiijooyinka la daabacay ee ${scopeLabel(selectedScopeValue)} waxay mar kale uga muuqan doonaan portalka ardayda.`;
               commitButton.classList.toggle('is-close', isClosing);
               commitButton.querySelector('i').className = `fa-solid ${isClosing ? 'fa-lock' : 'fa-lock-open'}`;
               commitButton.querySelector('span').textContent = isClosing
