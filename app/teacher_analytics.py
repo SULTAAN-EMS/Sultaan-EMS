@@ -1110,12 +1110,18 @@ def fallanqeyn_data(teacher, filters):
     scores = [_pct(result) for result in results]
     result_by_student = defaultdict(list)
     result_by_subject = defaultdict(list)
-    result_by_class = defaultdict(list)
     result_by_exam = defaultdict(list)
     for result in results:
         result_by_student[result.student_id].append(result)
         result_by_subject[result.subject_id].append(result)
-        result_by_class[(result.student.academic_class_id or result.student.class_id)].append(result)
+
+    # The trend card must compare the selected exam with the other exams in
+    # the same year and scope.  ``results`` is intentionally limited to the
+    # selected exam for the KPIs, so load a second, scoped set for the trend.
+    trend_filters = dict(filters)
+    trend_filters["exam_id"] = None
+    trend_results = scoped_results(teacher, trend_filters, students)
+    for result in trend_results:
         result_by_exam[result.exam_id].append(result)
 
     exam_for_scale = filters.get("exam_id") or (results[0].exam_id if results else None)
@@ -1125,7 +1131,20 @@ def fallanqeyn_data(teacher, filters):
             pass_mark = candidate
             break
 
+    placement_cache = {}
+
+    def selected_year_placement(student):
+        year_id = filters.get("academic_year_id")
+        if not year_id:
+            return None
+        if student.id not in placement_cache:
+            placement_cache[student.id] = enrollment_placement_for_student(student, year_id)
+        return placement_cache[student.id]
+
     def class_name(student):
+        placement = selected_year_placement(student)
+        if placement and placement.get("class_name"):
+            return placement["class_name"]
         return (
             getattr(getattr(student, "academic_class", None), "name", None)
             or getattr(getattr(student, "school_class", None), "name", None)
@@ -1323,6 +1342,29 @@ def fallanqeyn_data(teacher, filters):
     if not insights:
         insights.append({"code": "best_subject", "tone": "good", "importance": "low", "v": {"name": "Xogtu way dhammaystiran tahay", "avg": _safe_mean(scores)}})
 
+    gender_buckets = defaultdict(list)
+    for student in students:
+        gender = (student.gender or "").strip().lower()
+        gender_label = {
+            "male": "Wiilal",
+            "female": "Gabdho",
+        }.get(gender, "Kale / lama cayimin")
+        gender_buckets[gender_label].extend(result_by_student.get(student.id, []))
+    gender_payload = []
+    for name, items in sorted(gender_buckets.items()):
+        if not items:
+            continue
+        gender_scores = [_pct(result) for result in items]
+        gender_passed = sum(1 for score in gender_scores if score >= pass_mark)
+        gender_payload.append(
+            {
+                "name": name,
+                "n": len(gender_scores),
+                "avg": _safe_mean(gender_scores),
+                "pass": round(gender_passed / len(gender_scores) * 100, 2) if gender_scores else None,
+            }
+        )
+
     return {
         "config": {"pass_mark": pass_mark, "prev_exam": previous_exam.name if previous_exam else "imtixaankii hore"},
         "counts": {
@@ -1343,7 +1385,7 @@ def fallanqeyn_data(teacher, filters):
         "hist": histogram,
         "subjects": subjects_payload,
         "classes": class_payload,
-        "gender": [],
+        "gender": gender_payload,
         "trend": trend,
         "support": support[:20],
         "support_total": len(support),

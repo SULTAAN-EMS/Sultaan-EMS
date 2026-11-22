@@ -287,6 +287,7 @@ function sampleData(q){const l=q.get('level');if(!LV[l]||!q.get('year'))return{e
 async function api(p){
  if(SAMPLE){await new Promise(r=>setTimeout(r,450));return p.startsWith('/filters')?sampleFilters():sampleData(new URLSearchParams(p.split('?')[1]||''))}
  let r;try{r=await fetch(API+p,{headers:{Accept:'application/json'},credentials:'same-origin'})}catch(e){const x=new Error('Ma xirmi karo server-ka. Hubi internet-kaaga, kadibna mar kale isku day.');x.k='net';throw x}
+ if(r.redirected&&/\/teacher\/login(?:$|\/)/.test(new URL(r.url,location.href).pathname)){const x=new Error('Fadhigaagii wuu dhammaaday. Fadlan mar kale gal.');x.k=401;throw x}
  if(!r.ok){const m={401:'Fadhigaagii wuu dhammaaday. Fadlan mar kale gal.',403:'Ma haysatid fasax aad ku aragto xogtan.',404:`Endpoint-ka lama helin (404): ${API+p.split('?')[0]}. Hubi in blueprint-ka la diiwaan geliyay (app.register_blueprint) iyo in boggan laga furay route-ka Flask (render_template), ee aan laga furin faylka static.`}[r.status]||`Server-ku wuxuu soo celiyay khalad (${r.status}).`;const x=new Error(m);x.k=r.status;throw x}
  try{return await r.json()}catch(e){const x=new Error('Jawaabta server-ka ma saxna.');x.k='bad';throw x}
 }
@@ -369,8 +370,17 @@ document.addEventListener('click',e=>{const r=e.target.closest('[data-sid]');if(
 $('#dlg').addEventListener('click',e=>{if(e.target===$('#dlg'))$('#dlg').close()});
 $$('#nav button').forEach(b=>b.addEventListener('click',()=>{$$('#nav button').forEach(x=>x.setAttribute('aria-selected',x===b));$$('.pane').forEach(p=>p.classList.toggle('on',p.id==='p-'+b.dataset.t));scrollTo({top:0,behavior:'smooth'})}));
 (async()=>{if(SAMPLE)$('#dev').hidden=false;setState('load');
- try{A=await api('/filters');if(!Array.isArray(A)||!A.length){setState('empty');return}}catch(e){setState('err',{msg:e.message,k:e.k});return}
- fill(0);load()})();
+ try{A=await api('/filters');if(!Array.isArray(A)||!A.length){setState('empty');return}}
+ catch(e){setState('err',{msg:e.message,k:e.k});return}
+ /* Select the first valid real scope so the page is useful immediately. */
+ fill(0);
+ KEYS.forEach((k,i)=>{
+  const el=$('#'+k),wanted=QS.get(k),values=[...el.options].map(o=>o.value);
+  if(wanted&&values.includes(wanted))el.value=wanted;
+  else if(!el.value&&i<3)el.value=values[0]||'';
+  if(i<KEYS.length-1)fill(i+1);
+ });
+ load()})();
 </script>
 </body>
 </html>
