@@ -174,6 +174,7 @@ html[data-theme=dark]{color-scheme:dark;--bg:#09131f;--card:#0f1f35;--card2:#182
    <div><label for="year">Sannad waxbarasho</label><select id="year"></select></div>
    <div><label for="exam">Nooca imtixaanka</label><select id="exam"></select></div>
    <div><label for="level">Heerka</label><select id="level"></select></div>
+   <div><label for="shift">Gelinta</label><select id="shift"></select></div>
    <div><label for="cls">Fasalka</label><select id="cls"></select></div>
    <div><label for="subject">Maadada</label><select id="subject"></select></div>
    <button class="btn" id="go"><svg class="ic"><use href="#target"/></svg>Fallanqee</button>
@@ -217,7 +218,7 @@ const SCHOOL=cv(document.body.dataset.school,'Taysiir International Schools'),LO
 const API=(RAW&&!RAW.includes('{'+ '{')?RAW:location.pathname.replace(/\.html?$/,'')).replace(/\/+$/,'');
 const SAMPLE_DEFAULT=false; /* true = xog sample ah (API la'aan). Marka API-ga dhabta ah la xiro, ka dhig false (ama ?sample=0) */
 const QS=new URLSearchParams(location.search),SAMPLE=QS.get('sample')==='0'?false:(QS.get('sample')==='1'||SAMPLE_DEFAULT);
-const KEYS=['year','exam','level','cls','subject'],OPT=['cls','subject'];
+const KEYS=['year','exam','level','shift','cls','subject'],OPT=['shift','cls','subject'];
 let A=[],D=null,S={};
 /* ---------- helpers (dhammaan xogta API-ga waa la escape-gareeyaa) ---------- */
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -229,7 +230,7 @@ const chip=(t,x,i)=>`<span class="chip ${t}">${i?IC(i):''}${x}</span>`;
 const ini=n=>String(n||'?').split(/\s+/).map(x=>x[0]).slice(0,2).join('').toUpperCase();
 const PR={high:['bad','Sare'],medium:['warn','Dhexe'],low:['info','Hoose']};
 const RK={high:['bad','Khatar sare','alert'],medium:['warn','Khatar dhexe','alert'],none:['ok','Caadi','check']};
-const RS={low_n:v=>`Dhibco hoose (${f1(v.n)} maado)`,low_score:v=>`Dhibco hoose${v.subject?': '+esc(v.subject):''} (${pc(v.pct)})`,missing:v=>`Maado maqan${v.subjects?': '+v.subjects.map(esc).join(', '):''}`,absent:v=>`Maqnaansho${v.n>1?' ×'+f1(v.n):''}`,declined:v=>`Hoos-u-dhac ${f1(v.pts)} dhibcood`,incomplete:v=>`Natiijo aan dhammaystirnayn (${f1(v.n)})`,low_avg:v=>`Celcelis hoose (${pc(v.avg)})`,low_pass:v=>`Gudbitaan hoose (${pc(v.pass)})`,missing_many:v=>`Natiijooyin badan oo maqan (${pc(v.pct)})`};
+const RS={low_n:v=>`Dhibco hoose (${f1(v.n)} maado)`,low_score:v=>`Dhibco hoose${v.subject?': '+esc(v.subject):''} (${pc(v.pct)})`,missing:v=>`Maado maqan${v.subjects?': '+v.subjects.map(esc).join(', '):''}`,absent:v=>`Maqnaansho${v.subjects?': '+v.subjects.map(esc).join(', '):''}`,declined:v=>`Hoos-u-dhac ${f1(v.pts)} dhibcood`,incomplete:v=>`Natiijo aan dhammaystirnayn (${f1(v.n)})`,low_avg:v=>`Celcelis hoose (${pc(v.avg)})`,low_pass:v=>`Gudbitaan hoose (${pc(v.pass)})`,missing_many:v=>`Natiijooyin badan oo maqan (${pc(v.pct)})`};
 const rsn=(a,compact)=>{if(compact&&a){const ls=a.filter(x=>x.code==='low_score');if(ls.length>1)a=[{code:'low_n',v:{n:ls.length}},...a.filter(x=>x.code!=='low_score')]}return rsn0(a)};
 const rsn0=a=>(a&&a.length)?`<div class="rsw">${a.map(r=>`<span class="chip neu rs">${RS[r.code]?RS[r.code](r.v||{}):esc(r.code)}</span>`).join('')}</div>`:'';
 const BD={top:['warn','Ugu sarreeya','trophy'],improved:['ok','Horumar','up'],consistent:['info','Joogto','check']};
@@ -300,31 +301,36 @@ function setState(k,o={}){
 }
 /* ---------- filters ---------- */
 function fill(i){const k=KEYS[i],el=$('#'+k),prev=el.value,pool=A.filter(a=>KEYS.slice(0,i).every(x=>!$('#'+x).value||a[x]===$('#'+x).value)),vals=[...new Set(pool.map(a=>a[k]))];
- el.innerHTML=(OPT.includes(k)?'<option value="">Dhammaan</option>':'')+vals.map(v=>`<option>${esc(v)}</option>`).join('');if(vals.includes(prev))el.value=prev;if(i<4)fill(i+1)}
-KEYS.slice(0,4).forEach((k,i)=>$('#'+k).addEventListener('change',()=>fill(i+1)));
+ el.innerHTML=(OPT.includes(k)?'<option value="">Dhammaan</option>':'')+vals.map(v=>`<option>${esc(v)}</option>`).join('');if(vals.includes(prev))el.value=prev;if(i<KEYS.length-1)fill(i+1)}
+KEYS.slice(0,-1).forEach((k,i)=>$('#'+k).addEventListener('change',()=>fill(i+1)));
 
 /* ---------- render ---------- */
 const cnt=v=>{const m=/^(\d+(?:\.\d+)?)(%?)$/.exec(String(v));return m?` data-to="${m[1]}" data-s="${m[2]}"`:''};
 const kpi=(i,t,l,v,x='')=>`<div class="kpi ${t}">${ib(i,t)}<div><small>${l}</small><b${cnt(v)}>${v}</b>${x}</div></div>`;
 const cols=(items,tone)=>`<div class="cols" role="img" aria-label="Jaantus tiirar ah">${items.map(([l,v,t,tt],j)=>`<div class="c" title="${esc(tt||l)}"><b>${f1(v)}</b><i class="${t||tone}" style="height:${Math.max(v/Math.max(...items.map(x=>x[1]),1)*100,0)*0.78}%;animation-delay:${j*50}ms"></i><small>${esc(l)}</small></div>`).join('')}</div>`;
+const safeColor=v=>/^#[\da-f]{3,8}$/i.test(String(v||''))?String(v):'';
+const gradeCols=items=>{const max=Math.max(...items.map(x=>x.n),1);return `<div class="cols" role="img" aria-label="Qaybinta darajooyinka">${items.map((g,j)=>`<div class="c" title="${esc(g.grade)}: ${f1(g.n)}"><b>${f1(g.n)}</b><i style="height:${Math.max(g.n/max*78,2)}%;background:${safeColor(g.color)||'var(--info)'};animation-delay:${j*50}ms"></i><small>${esc(g.grade)}</small></div>`).join('')}</div>`};
 const bars=(items)=>`<div class="bars">${items.map(([l,v,t,x])=>`<div class="br ${t}"><div class="l"><span>${esc(l)}</span><b>${x||pc(v)}</b></div><div class="tr"><i style="width:${Math.min(v||0,100)}%;background:var(--c)"></i></div></div>`).join('')}</div>`;
 const stack=(parts)=>{const T=parts.reduce((a,p)=>a+p[1],0)||1;return `<div class="stk" role="img" aria-label="${parts.map(p=>p[0]+' '+p[1]).join(', ')}">${parts.map(p=>`<i class="${p[2]}" style="width:${p[1]/T*100}%;background:var(--c)"></i>`).join('')}</div><div class="lg">${parts.map(p=>`<span class="${p[2]}">${p[0]}: <b>${f1(p[1])}</b></span>`).join('')}</div>`};
 function trendSvg(t){if(!t.length)return'';const W=320,H=170,x=i=>t.length>1?52+i*(W-100)/(t.length-1):W/2,y=v=>140-(v||0)*1.2;
  const line=k=>`<polyline class="tl ${k}" fill="none" stroke-width="2.5" stroke-linejoin="round" points="${t.map((p,i)=>x(i)+','+y(p[k])).join(' ')}"/>${t.map((p,i)=>`<circle class="tp ${k}" cx="${x(i)}" cy="${y(p[k])}" r="4.5" stroke-width="2.5"/><text class="tt ${k}" x="${x(i)}" y="${y(p[k])+(k==='avg'?20:-10)}" text-anchor="middle">${f1(p[k])}</text>`).join('')}`;
  return `<svg class="trend" viewBox="0 0 ${W} ${H}" role="img" aria-label="Isbeddelka imtixaannada">${[0,50,100].map(g=>`<line class="tg" x1="22" x2="${W-8}" y1="${y(g)}" y2="${y(g)}"/><text x="0" y="${y(g)+4}">${g}</text>`).join('')}${line('avg')}${line('pass')}${t.map((p,i)=>`<text x="${x(i)}" y="162" text-anchor="middle">${esc(p.label)}</text>`).join('')}</svg><div class="lg"><span class="lavg">Celcelis</span><span class="lpass">Gudbitaan</span></div>`}
-function ov(d){const c=d.counts,k=d.kpi,P=d.config.pass_mark,pr=k.pass_rate;
+function ov(d){const c=d.counts,k=d.kpi,P=d.config.pass_mark,pr=k.pass_rate,avgLabel=k.max_points!=null?`${f1(k.avg_points)} / ${f1(k.max_points)} · ${pc(k.avg)}`:pc(k.avg);
+ const gradeRows=d.grades.map(g=>[esc(g.grade),g.max==null?'—':f1(g.max),g.min==null?'—':f1(g.min),f1(g.n),pc(g.pct)]);
+ const histRows=d.hist.map(g=>[esc(g.label),f1(g.n),pc(c.entered?g.n/c.entered*100:0)]);
+ const genderRows=d.gender.map(g=>[esc(g.name),f1(g.students||g.n),`${f1(g.passed)} (${pc(g.pass)})`,`${f1(g.failed)} (${pc(g.fail)})`,g.avg_points==null?'—':g.max_points!=null?`${f1(g.avg_points)} / ${f1(g.max_points)} · ${pc(g.avg)}`:`${f1(g.avg_points)} dhibcood · ${pc(g.avg)}`]);
  return `<div class="grid"><div class="card hero"><svg class="tw" style="right:44px;top:10px" aria-hidden="true"><use href="#star"/></svg><svg class="tw" style="right:12px;top:36px;animation-delay:-1s" aria-hidden="true"><use href="#star"/></svg><svg class="tw" style="right:70px;top:30px;animation-delay:-.6s;width:12px;height:12px" aria-hidden="true"><use href="#star"/></svg><div class="ring"><svg viewBox="0 0 120 120" width="112" height="112"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe29a"/><stop offset="1" stop-color="#e0961c"/></linearGradient></defs><circle class="bg" cx="60" cy="60" r="50"/><circle class="fg2" cx="60" cy="60" r="50" data-v="${pr||0}"/></svg><b${cnt(pc(pr))}>${pc(pr)}</b></div>
- <div><h2>Heerka gudbitaanka</h2><p class="sub" style="margin:0 0 8px">Dhibco ≥ ${f1(P)}% = gudbay. Natiijooyinka la geliyey: ${f1(c.entered)} / ${f1(c.expected)}.</p>${stack([['Gudbay',c.passed,'ok'],['Dhacay',c.failed,'bad'],['Aan la qiimeyn',c.not_assessed,'neu']])}</div></div></div>
- <div class="kg">${kpi('users','info','Ardayda',f1(c.students))}${kpi('target','info','Celcelis',pc(k.avg))}${kpi('chart','info','Median',pc(k.median))}${kpi('check','ok','Gudbay',f1(c.passed),`<small>${pc(pr)}</small>`)}${kpi('up','ok','Ugu sarreeya',pc(k.high))}${kpi('down','bad','Ugu hooseeya',pc(k.low))}${kpi('xc','bad','Dhacay',f1(c.failed))}${kpi('list','neu','La geliyey',f1(c.entered),`<small>ka mid ah ${f1(c.expected)}</small>`)}</div>
- <div class="grid g2"><div class="card"><h2>${IC('list')}Xaaladda xogta</h2><p class="sub">Maan-gelin, eber iyo maqnaansho waa saddex shay oo kala duwan.</p>
+  <div><h2>Heerka gudbitaanka</h2><p class="sub" style="margin:0 0 8px">${f1(c.passed)} arday ayaa gudbay, ${f1(c.failed)} arday ayaa hadhay. Xadka gudbintu waa ${f1(P)}%.</p>${stack([['Gudbay',c.passed,'ok'],['Hadhay',c.failed,'bad'],['Aan la qiimeyn',c.not_assessed,'neu']])}</div></div></div>
+  <div class="kg">${kpi('users','info','Tirada ardayda ee guud',f1(c.students))}${kpi('check','ok','Ardayda gudubtay',f1(c.passed),`<small>${pc(pr)}</small>`)}${kpi('xc','bad','Ardayda hadhay',f1(c.failed))}${kpi('target','info','Celcelis',avgLabel)}${kpi('chart','info','Median (bar-dhace)',pc(k.median))}${kpi('list','neu','Natiijo dhammaystiran',f1(c.complete_students),`<small>arday</small>`)}${kpi('clock','warn','Natiijo qayb ahaan ah',f1(c.partial_students),`<small>arday</small>`)}${kpi('inbox','warn','Natiijo aan jirin',f1(c.no_result_students),`<small>arday</small>`)}</div>
+  <div class="grid g2"><div class="card"><h2>${IC('list')}Xaaladda xogta</h2><p class="sub">Tirooyinku waxay ku salaysan yihiin arday-maaddooyinka ku jira filter-ka.</p>
   <div class="sp">${ib('clock','warn')}<div><small>Maan-gelin (weli lama gelin)</small><b>${f1(c.missing)}</b></div></div>
-  <div class="sp">${ib('zero','neu')}<div><small>Eber (la geliyey, 0 dhibcood)</small><b>${f1(c.zero)}</b></div></div>
-  <div class="sp">${ib('userx','info')}<div><small>Maqnaansho (imtixaanka ma qaadan)</small><b>${f1(c.absent)}</b></div></div>
+   <div class="sp">${ib('zero','neu')}<div><small>Eber (si dhab ah loo geliyey)</small><b>${f1(c.zero)}</b></div></div>
+   <div class="sp">${ib('userx','info')}<div><small>Maqnaansho (xaadirka imtixaanka)</small><b>${f1(c.absent)}</b></div></div>
   <p class="sub" style="margin:12px 0 0">Heerka ansixinta</p>${stack([['Qabyo',c.states.draft,'warn'],['Dib-u-eegis',c.states.review,'info'],['La ansixiyey',c.states.approved,'ok']])}</div>
- <div class="card"><h2>${IC('star')}Qaybinta darajooyinka</h2><p class="sub">Tirada natiijooyinka darajo kasta</p>${cols(d.grades.map(g=>[g.grade,g.n,g.min>=P?'ok':'bad',`${g.grade}: ≥ ${g.min}%`]))}${alt(['Darajo','Ugu yar','Tiro'],d.grades.map(g=>[esc(g.grade),f1(g.min)+'%',f1(g.n)]))}</div>
- <div class="card"><h2>${IC('chart')}Qaybinta dhibcaha</h2><p class="sub">Natiijooyin loo kala qaaday 10-10 (tiirka = bilowga kooxda)</p>${cols(d.hist.map((n,i)=>[String(i*10),n,i*10>=P?'info':'bad',`${i*10}–${i*10+9}`]))}${alt(['Kooxda','Tiro'],d.hist.map((n,i)=>[`${i*10}–${i===9?100:i*10+9}`,f1(n)]))}</div>
+  <div class="card"><h2>${IC('star')}Qaybinta darajooyinka</h2><p class="sub">Darajooyinka maamulka · Ugu badan/yar waa dhibco raw ah</p>${gradeCols(d.grades)}${alt(['Darajo','Ugu badan','Ugu yar','Tiro','Boqolley'],gradeRows.concat([['Wadarta','—','—',f1(c.entered),pc(100)]]))}</div>
+  <div class="card"><h2>${IC('chart')}Qaybinta dhibcaha</h2><p class="sub">Kooxo ku salaysan max-score-ka dhabta ah ee imtixaanka</p>${cols(d.hist.map(g=>[g.label,g.n,g.tone,`${g.label}: ${g.n}`]))}${alt(['Kooxda dhibcaha','Tiro','Boqolley'],histRows.concat([['Wadarta',f1(c.entered),pc(100)]]))}</div>
  <div class="card"><h2>${IC('up')}Isbeddelka imtixaannada</h2><p class="sub">Celcelis iyo gudbitaan (%)</p>${trendSvg(d.trend)}${alt(['Imtixaan','Celcelis','Gudbitaan','Tiro'],d.trend.map(t=>[esc(t.label),pc(t.avg),pc(t.pass),f1(t.n)]))}</div>
- ${d.gender.length?`<div class="card"><h2>${IC('users')}Wiilal iyo gabdho</h2><p class="sub">Celcelis (%)</p>${bars(d.gender.map(g=>[g.name,g.avg,'info']))}${alt(['Kooxda','Celcelis','Gudbitaan','Tiro'],d.gender.map(g=>[esc(g.name),pc(g.avg),pc(g.pass),f1(g.n)]))}</div>`:''}</div>`}
+   ${d.gender.length?`<div class="card"><h2>${IC('users')}Wiilal iyo gabdho</h2><p class="sub">Tiro, gudbid, hadhid iyo celceliska dhibcaha</p>${bars(d.gender.map(g=>[g.name,g.avg,'info',pc(g.avg)]))}${alt(['Kooxda','Tirada','Gudbay','Hadhay','Celcelis dhibco'],genderRows.concat([['Wadarta',f1(c.students),`${f1(c.passed)} (${pc(c.passed+c.failed?c.passed/(c.passed+c.failed)*100:0)})`,`${f1(c.failed)} (${pc(c.passed+c.failed?c.failed/(c.passed+c.failed)*100:0)})`,avgLabel]]))}</div>`:''}</div>`}
 const grp=(g,icon)=>{const r=RK[g.risk.level]||RK.none;return `<div class="item ${r[0]}"><div class="ih">${ib(icon,r[0])}<div class="t"><b>${esc(g.name)}</b><small>${g.students!=null?f1(g.students)+' arday · ':''}${f1(g.n)} natiijo la geliyey</small></div>${chip(r[0],r[1],r[2])}</div>
  ${bars([['Celcelis',g.avg,ptone(g.avg)]])}<div class="st"><span>Gudbitaan <b>${pc(g.pass)}</b></span><span>Maqan <b>${f1(g.missing)}</b> (${pc(g.missing_pct)})</span><span>Natiijooyin la filayay <b>${f1(g.expected)}</b></span></div>${rsn(g.risk.reasons)}</div>`};
 function sb(d){const rs=g=>[esc(g.name),pc(g.avg),pc(g.pass),f1(g.expected),(RK[g.risk.level]||RK.none)[1]],hd=['Magac','Celcelis','Gudbitaan','Tiro','Xaalad'];

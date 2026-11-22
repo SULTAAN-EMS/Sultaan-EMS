@@ -35,6 +35,8 @@ from .teacher_analytics import (
     performance_trends_data,
     report_summary,
     results_list_data,
+    _year_class_for_assignment,
+    scoped_teacher_result_assignments,
     student_analysis_data,
     students_list_data,
     subject_analysis_data,
@@ -1374,6 +1376,7 @@ def _analytics_filter_rows(teacher):
         .filter(
             TeacherResultAssignment.teacher_id == teacher.id,
             TeacherResultAssignment.deleted_at.is_(None),
+            TeacherResultAssignment.is_active.is_(True),
         )
         .all()
     )
@@ -1389,7 +1392,13 @@ def _analytics_filter_rows(teacher):
             continue
         if exam.academic_year_id != year.id:
             continue
-        key = (year.id, exam.id, level.id, school_class.id, subject.id)
+        year_class = _year_class_for_assignment(assignment)
+        shift_key = getattr(year_class, "school_shift", None) if year_class else None
+        shift_label = {
+            "morning": "Gelin Hore",
+            "afternoon": "Gelin Dambe",
+        }.get(str(shift_key or "").strip().lower(), "Gelin aan la cayimin")
+        key = (year.id, exam.id, level.id, shift_label, school_class.id, subject.id)
         if key in seen:
             continue
         seen.add(key)
@@ -1398,6 +1407,7 @@ def _analytics_filter_rows(teacher):
                 "year": year.name,
                 "exam": exam.name,
                 "level": level.name,
+                "shift": shift_label,
                 "cls": school_class.name,
                 "subject": subject.name,
             }
@@ -1426,30 +1436,61 @@ def analytics_api_filters():
 @teacher_permission_required("future_analysis_features")
 def analytics_api_data():
     teacher = get_current_teacher()
-    options = filter_options(teacher, {})
-    year = _analytics_find(options["academic_years"], request.args.get("year"))
-    exam = _analytics_find(options["exams"], request.args.get("exam"), year_id=year.id if year else None)
-    level = _analytics_find(options["levels"], request.args.get("level"))
-    if not year or not exam or not level:
-        return jsonify({"empty": True})
-
-    class_label = (request.args.get("cls") or "").strip()
-    subject_label = (request.args.get("subject") or "").strip()
-    school_class = None
-    subject = None
-    if class_label and class_label != "Dhammaan":
-        school_class = _analytics_find(
-            [item for item in options["classes"] if getattr(item, "academic_level_id", None) == level.id],
-            class_label,
+    labels = {
+        "year": (request.args.get("year") or "").strip(),
+        "exam": (request.args.get("exam") or "").strip(),
+        "level": (request.args.get("level") or "").strip(),
+        "shift": (request.args.get("shift") or "").strip(),
+        "cls": (request.args.get("cls") or "").strip(),
+        "subject": (request.args.get("subject") or "").strip(),
+    }
+    assignments = (
+        TeacherResultAssignment.query
+        .filter(
+            TeacherResultAssignment.teacher_id == teacher.id,
+            TeacherResultAssignment.deleted_at.is_(None),
+            TeacherResultAssignment.is_active.is_(True),
         )
-    if subject_label and subject_label != "Dhammaan":
-        subject = _analytics_find(options["subjects"], subject_label)
+        .all()
+    )
+    matching = []
+    for item in assignments:
+        year = item.academic_year
+        exam = item.exam
+        school_class = item.school_class
+        level = getattr(school_class, "academic_level", None) if school_class else None
+        year_class = _year_class_for_assignment(item)
+        shift_label = {"morning": "Gelin Hore", "afternoon": "Gelin Dambe"}.get(
+            str(getattr(year_class, "school_shift", None) or "").strip().lower(),
+            "Gelin aan la cayimin",
+        )
+        if (
+            not year or not exam or not school_class or not level
+            or exam.academic_year_id != year.id
+            or year.name != labels["year"]
+            or exam.name != labels["exam"]
+            or level.name != labels["level"]
+            or (labels["shift"] and labels["shift"] != shift_label)
+            or (labels["cls"] and labels["cls"] != "Dhammaan" and school_class.name != labels["cls"])
+            or (labels["subject"] and labels["subject"] != "Dhammaan" and item.subject.name != labels["subject"])
+        ):
+            continue
+        matching.append(item)
+
+    if not matching:
+        return jsonify({"empty": True})
+    year = matching[0].academic_year
+    exam = matching[0].exam
+    level = matching[0].school_class.academic_level
+    selected_class_ids = {item.class_id for item in matching}
+    selected_subject_ids = {item.subject_id for item in matching}
     filters = {
         "academic_year_id": year.id,
         "exam_id": exam.id,
         "academic_level_id": level.id,
-        "class_id": school_class.id if school_class else None,
-        "subject_id": subject.id if subject else None,
+        "class_id": next(iter(selected_class_ids)) if labels["cls"] and labels["cls"] != "Dhammaan" else None,
+        "subject_id": next(iter(selected_subject_ids)) if labels["subject"] and labels["subject"] != "Dhammaan" else None,
+        "shift": labels["shift"],
     }
     return jsonify(fallanqeyn_data(teacher, filters))
 
