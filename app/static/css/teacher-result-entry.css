@@ -89,6 +89,7 @@ body.teacher-results-body .teacher-main.teacher-main-results { display: block; p
 .re-stat:nth-child(3) { --stat-accent: #a65b08; --stat-tint: #fff4df; --stat-line: #f2dcad; animation-delay: .1s; }
 .re-stat:nth-child(4) { --stat-accent: #146da5; --stat-tint: #e8f5fd; --stat-line: #c7e3f3; animation-delay: .15s; }
 .re-stat:hover { transform: translateY(-2px); box-shadow: 0 9px 22px rgba(36, 47, 89, .13); }
+.re-stat-average { color: inherit; text-decoration: none; }
 .re-stat-icon { display: grid; place-items: center; flex: 0 0 42px; width: 42px; height: 42px; border: 1px solid rgba(255,255,255,.9); border-radius: 13px; background: color-mix(in srgb, var(--stat-tint), white 18%); color: var(--stat-accent); font-size: 17px; box-shadow: 0 3px 10px rgba(25, 43, 75, .09); transition: transform .18s ease; }
 .re-stat:hover .re-stat-icon { transform: scale(1.06) rotate(-3deg); }
 .re-stat-copy { display: block; min-width: 0; }

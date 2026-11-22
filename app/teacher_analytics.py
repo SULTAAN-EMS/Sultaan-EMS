@@ -124,8 +124,10 @@ def teacher_assignments(teacher):
 
 
 def validate_filter_ids(teacher, filters):
-    _, _, _, _, _, class_ids, _, subject_ids = teacher_assignments(teacher)
+    academic_levels, _, _, _, academic_level_ids, class_ids, _, subject_ids = teacher_assignments(teacher)
     validated = dict(filters)
+    if validated.get("academic_level_id") and validated["academic_level_id"] not in academic_level_ids:
+        validated["academic_level_id"] = None
     if validated.get("class_id") and validated["class_id"] not in class_ids:
         validated["class_id"] = None
     if validated.get("subject_id") and validated["subject_id"] not in subject_ids:
@@ -145,13 +147,27 @@ def scoped_students(teacher, filters):
         return cache[cache_key]
 
     _, academic_classes, sections, _, _, class_ids, section_ids, _ = teacher_assignments(teacher)
+    scoped_class_ids = set(class_ids)
+    if filters.get("academic_level_id"):
+        scoped_class_ids = {
+            school_class.id
+            for school_class in academic_classes
+            if getattr(school_class, "academic_level_id", None) == filters["academic_level_id"]
+        }
     
     # Build the selected-year scope from StudentEnrollment first. Legacy
     # placement fields remain a compatibility fallback inside the service.
     selected_year_id = filters.get("academic_year_id")
-    if selected_year_id:
+    invalid_class_level_scope = bool(
+        filters.get("class_id")
+        and filters.get("academic_level_id")
+        and filters["class_id"] not in scoped_class_ids
+    )
+    if invalid_class_level_scope:
+        query = Student.query.filter(Student.id == -1)
+    elif selected_year_id:
         scoped_ids = set()
-        requested_class_ids = [filters["class_id"]] if filters.get("class_id") else list(class_ids)
+        requested_class_ids = [filters["class_id"]] if filters.get("class_id") else list(scoped_class_ids)
         if requested_class_ids:
             for class_id in requested_class_ids:
                 try:
@@ -171,8 +187,8 @@ def scoped_students(teacher, filters):
         query = Student.query.filter(Student.is_active.is_(True))
     
     # Filter by new academic hierarchy
-    if class_ids and not selected_year_id:
-        query = query.filter(Student.academic_class_id.in_(class_ids))
+    if scoped_class_ids and not selected_year_id:
+        query = query.filter(Student.academic_class_id.in_(scoped_class_ids))
     if section_ids and not selected_year_id:
         query = query.filter(Student.academic_section_id.in_(section_ids))
     
@@ -260,7 +276,7 @@ def student_overall_averages(results):
 
 def filter_options(teacher, filters):
     """Get filter options for teacher portal using new academic hierarchy with legacy fallback"""
-    _, academic_classes, sections, subjects, _, class_ids, _, subject_ids = teacher_assignments(teacher)
+    academic_levels, academic_classes, sections, subjects, _, class_ids, _, subject_ids = teacher_assignments(teacher)
     students = scoped_students(teacher, {})
     year_ids = sorted(
         {
@@ -279,6 +295,7 @@ def filter_options(teacher, filters):
     return {
         "academic_years": years,
         "exams": exams,
+        "levels": academic_levels,
         "subjects": subjects,
         "classes": academic_classes,
         "sections": sections_list,
@@ -1069,6 +1086,271 @@ def report_summary(teacher, filters):
         "grades": grade_distribution_data(teacher, filters),
         "pass_fail": pass_fail_analysis_data(teacher, filters),
         "insights": generate_ai_insights(teacher, filters),
+    }
+
+
+def fallanqeyn_data(teacher, filters):
+    """Build the real, assignment-scoped payload for the teacher analytics view.
+
+    The payload deliberately starts from ``scoped_results`` so unpublished or
+    out-of-assignment records cannot leak into the teacher portal. Missing
+    subjects are calculated against the teacher's assigned subjects and the
+    selected student scope, rather than being mistaken for zero scores.
+    """
+    filters = validate_filter_ids(teacher, filters)
+    students = scoped_students(teacher, filters)
+    results = scoped_results(teacher, filters, students)
+    student_map = {student.id: student for student in students}
+    subject_pool = [
+        subject for subject in teacher.subjects
+        if not filters.get("subject_id") or subject.id == filters["subject_id"]
+    ]
+    expected = len(students) * len(subject_pool) if subject_pool else len(results)
+    expected = max(expected, len(results))
+    scores = [_pct(result) for result in results]
+    result_by_student = defaultdict(list)
+    result_by_subject = defaultdict(list)
+    result_by_class = defaultdict(list)
+    result_by_exam = defaultdict(list)
+    for result in results:
+        result_by_student[result.student_id].append(result)
+        result_by_subject[result.subject_id].append(result)
+        result_by_class[(result.student.academic_class_id or result.student.class_id)].append(result)
+        result_by_exam[result.exam_id].append(result)
+
+    exam_for_scale = filters.get("exam_id") or (results[0].exam_id if results else None)
+    pass_mark = 50
+    for candidate in range(101):
+        if grade_for(candidate, exam_id=exam_for_scale).get("is_pass"):
+            pass_mark = candidate
+            break
+
+    def class_name(student):
+        return (
+            getattr(getattr(student, "academic_class", None), "name", None)
+            or getattr(getattr(student, "school_class", None), "name", None)
+            or "Fasal aan la cayimin"
+        )
+
+    def detail(result):
+        pct = _pct(result)
+        return {
+            "subject": result.subject.name if result.subject else "Maaddo aan la cayimin",
+            "status": "scored",
+            "state": "approved" if result.is_published else "draft",
+            "pct": pct,
+            "grade": grade_for(pct, exam_id=result.exam_id).get("grade", "-"),
+        }
+
+    # Student movement is compared with the immediately previous exam in the
+    # same academic year and the same teacher-selected student scope. If no
+    # exam is selected, we leave movement empty rather than inventing a trend
+    # from an unbounded collection of exams.
+    previous_exam = None
+    previous_averages = {}
+    current_exam = Exam.query.get(filters["exam_id"]) if filters.get("exam_id") else None
+    if current_exam and current_exam.created_at is not None:
+        previous_exam = (
+            Exam.query.filter(
+                Exam.academic_year_id == current_exam.academic_year_id,
+                Exam.created_at < current_exam.created_at,
+            )
+            .order_by(Exam.created_at.desc(), Exam.id.desc())
+            .first()
+        )
+        if previous_exam:
+            previous_filters = dict(filters)
+            previous_filters["exam_id"] = previous_exam.id
+            previous_results = scoped_results(teacher, previous_filters, students)
+            previous_averages = student_overall_averages(previous_results)
+
+    current_scores_by_student = {
+        student.id: [_pct(result) for result in result_by_student.get(student.id, [])]
+        for student in students
+    }
+
+    # These thresholds mirror the visual language in the V3 sample: a visible
+    # movement badge starts at five percentage points, while a low spread over
+    # at least two subjects earns the consistency badge.
+    improvement_threshold = 5
+    decline_threshold = 5
+    consistency_limit = 7
+
+    students_payload = []
+    for student in students:
+        student_results = result_by_student.get(student.id, [])
+        subject_ids = {result.subject_id for result in student_results}
+        missing_subjects = [subject.name for subject in subject_pool if subject.id not in subject_ids]
+        student_scores = [_pct(result) for result in student_results]
+        average = _safe_mean(student_scores) if student_scores else None
+        reasons = []
+        weight = 0
+        low_scores = [score for score in student_scores if score < pass_mark]
+        if low_scores:
+            reasons.append({"code": "low_score", "v": {"pct": round(min(low_scores), 1)}})
+            weight += 2
+        if missing_subjects:
+            reasons.append({"code": "missing", "v": {"subjects": missing_subjects}})
+            weight += 1
+        if average is not None and average < pass_mark:
+            reasons.append({"code": "low_avg", "v": {"avg": average}})
+            weight += 2
+        previous_average = previous_averages.get(student.id)
+        delta = round(average - previous_average, 2) if average is not None and previous_average is not None else None
+        if delta is not None and delta <= -decline_threshold:
+            reasons.append({"code": "declined", "v": {"pts": abs(delta)}})
+            weight += 2
+        priority = "high" if weight >= 4 else "medium" if weight >= 2 else "low"
+        students_payload.append(
+            {
+                "id": str(student.id),
+                "name": student.full_name,
+                "cls": class_name(student),
+                "gender": student.gender or "Aan la cayimin",
+                "avg": average,
+                "delta": delta,
+                "priority": priority,
+                "badges": [],
+                "reasons": reasons,
+                "results": [detail(result) for result in student_results],
+            }
+        )
+
+    scored_students = [row for row in students_payload if row["avg"] is not None]
+    scored_students.sort(key=lambda row: row["avg"], reverse=True)
+    for index, row in enumerate(scored_students[:5]):
+        badges = ["top"] if index < 3 else []
+        if row["delta"] is not None and row["delta"] >= improvement_threshold:
+            badges.append("improved")
+        student_scores = current_scores_by_student.get(int(row["id"]), [])
+        if len(student_scores) >= 2 and _safe_stdev(student_scores) <= consistency_limit:
+            badges.append("consistent")
+        row["badges"] = badges
+
+    improving = sorted(
+        (row for row in scored_students if row["delta"] is not None and row["delta"] >= improvement_threshold),
+        key=lambda row: row["delta"],
+        reverse=True,
+    )[:5]
+    declining = sorted(
+        (row for row in scored_students if row["delta"] is not None and row["delta"] <= -decline_threshold),
+        key=lambda row: row["delta"],
+    )[:5]
+
+    support = [row for row in students_payload if row["reasons"]]
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    support.sort(key=lambda row: (priority_order[row["priority"]], row["avg"] is None, row["avg"] or 0))
+
+    def risk_payload(name, items, student_count=None):
+        item_scores = [_pct(result) for result in items]
+        item_expected = (student_count or len(students)) * len(subject_pool) if student_count is not None else len(items)
+        missing_count = max(item_expected - len(items), 0)
+        avg = _safe_mean(item_scores)
+        passed = sum(1 for score in item_scores if score >= pass_mark)
+        pass_rate = round(passed / len(item_scores) * 100, 2) if item_scores else None
+        missing_pct = round(missing_count / item_expected * 100, 2) if item_expected else 0
+        reasons = []
+        if item_scores and avg < 55:
+            reasons.append({"code": "low_avg", "v": {"avg": avg}})
+        if item_scores and pass_rate < 65:
+            reasons.append({"code": "low_pass", "v": {"pass": pass_rate}})
+        if missing_pct > 8:
+            reasons.append({"code": "missing_many", "v": {"pct": missing_pct}})
+        return {
+            "name": name,
+            "n": len(items),
+            "expected": item_expected,
+            "students": student_count,
+            "avg": avg if item_scores else None,
+            "pass": pass_rate,
+            "missing": missing_count,
+            "missing_pct": missing_pct,
+            "risk": {"level": "high" if len(reasons) >= 2 else "medium" if reasons else "none", "reasons": reasons},
+        }
+
+    subjects_payload = []
+    for subject in subject_pool:
+        subjects_payload.append(risk_payload(subject.name, result_by_subject.get(subject.id, [])))
+
+    class_buckets = defaultdict(list)
+    for result in results:
+        class_buckets[class_name(result.student)].append(result)
+    class_payload = [
+        risk_payload(name, items, len({result.student_id for result in items}))
+        for name, items in sorted(class_buckets.items())
+    ]
+
+    grades = defaultdict(lambda: {"n": 0, "min": 101})
+    histogram = [0] * 10
+    for result, score in zip(results, scores):
+        grade = grade_for(score, exam_id=result.exam_id).get("grade", "-")
+        grades[grade]["n"] += 1
+        grades[grade]["min"] = min(grades[grade]["min"], score)
+        histogram[min(int(score // 10), 9)] += 1
+    grades_payload = [
+        {"grade": grade, "min": value["min"] if value["min"] <= 100 else 0, "n": value["n"]}
+        for grade, value in sorted(grades.items(), key=lambda item: item[1]["min"], reverse=True)
+    ]
+
+    trend = []
+    for exam_id, items in sorted(result_by_exam.items(), key=lambda item: item[1][0].exam.created_at):
+        exam_scores = [_pct(result) for result in items]
+        trend.append(
+            {
+                "label": items[0].exam.name,
+                "avg": _safe_mean(exam_scores),
+                "pass": round(sum(1 for score in exam_scores if score >= pass_mark) / len(exam_scores) * 100, 2) if exam_scores else 0,
+                "n": len(exam_scores),
+            }
+        )
+
+    passed_students = sum(1 for row in students_payload if row["avg"] is not None and row["avg"] >= pass_mark)
+    assessed_students = len(scored_students)
+    missing = max(expected - len(results), 0)
+    insights = []
+    risky_subjects = [item for item in subjects_payload if item["risk"]["level"] != "none"]
+    if risky_subjects:
+        weakest = min(risky_subjects, key=lambda item: item["avg"] if item["avg"] is not None else 101)
+        insights.append({"code": "weak_subject", "tone": "bad", "importance": "high", "v": {"name": weakest["name"], "avg": weakest["avg"], "pass": weakest["pass"]}})
+    if support:
+        insights.append({"code": "support_students", "tone": "warn", "importance": "high" if any(row["priority"] == "high" for row in support) else "medium", "v": {"n": len(support), "high": sum(row["priority"] == "high" for row in support)}})
+    if improving:
+        insights.append({"code": "improving", "tone": "good", "importance": "medium", "v": {"n": len(improving), "pts": improving[0]["delta"]}})
+    if declining:
+        insights.append({"code": "declining", "tone": "bad", "importance": "high", "v": {"n": len(declining), "pts": abs(declining[0]["delta"])}})
+    if missing:
+        insights.append({"code": "missing_results", "tone": "warn", "importance": "high", "v": {"n": missing, "pct": round(missing / expected * 100, 2) if expected else 0}})
+    if not insights:
+        insights.append({"code": "best_subject", "tone": "good", "importance": "low", "v": {"name": "Xogtu way dhammaystiran tahay", "avg": _safe_mean(scores)}})
+
+    return {
+        "config": {"pass_mark": pass_mark, "prev_exam": previous_exam.name if previous_exam else "imtixaankii hore"},
+        "counts": {
+            "students": len(students), "expected": expected, "entered": len(results),
+            "missing": missing, "absent": 0, "zero": sum(score == 0 for score in scores),
+            "passed": passed_students, "failed": max(assessed_students - passed_students, 0),
+            "not_assessed": len(students) - assessed_students,
+            "states": {"draft": 0, "review": 0, "approved": len(results)},
+        },
+        "kpi": {
+            "avg": _safe_mean(scores),
+            "median": _safe_median(scores),
+            "high": max(scores) if scores else None,
+            "low": min(scores) if scores else None,
+            "pass_rate": round(passed_students / assessed_students * 100, 2) if assessed_students else None,
+        },
+        "grades": grades_payload,
+        "hist": histogram,
+        "subjects": subjects_payload,
+        "classes": class_payload,
+        "gender": [],
+        "trend": trend,
+        "support": support[:20],
+        "support_total": len(support),
+        "top": scored_students[:5],
+        "up": improving,
+        "down": declining,
+        "insights": insights,
     }
 
 

@@ -27,6 +27,7 @@ from .teacher_analytics import (
     comparison_data,
     examinations_list_data,
     exam_analysis_data,
+    fallanqeyn_data,
     filter_options,
     generate_ai_insights,
     grade_distribution_data,
@@ -1349,6 +1350,104 @@ def exam_analysis():
     ctx["analysis"] = exam_analysis_data(teacher, filters)
     db.session.commit()
     return render_template("teacher/exam_analysis.html", **ctx)
+
+
+@teacher_portal_bp.route("/analytics")
+@teacher_login_required
+@teacher_permission_required("future_analysis_features")
+def analytics():
+    teacher = get_current_teacher()
+    filters = validate_filter_ids(teacher, parse_teacher_filters(request.args))
+    record_teacher_visit(teacher, "Fallanqeyn")
+    ctx = _ctx(teacher, filters, "Fallanqeyn", "teacher_portal.analytics")
+    # The supplied analytics template loads its real scoped payload after the
+    # filter choices are ready. This avoids calculating the same report twice.
+    ctx["api"] = url_for("teacher_portal.analytics_api_filters").rsplit("/", 1)[0]
+    db.session.commit()
+    return render_template("teacher/analytics.html", **ctx)
+
+
+def _analytics_filter_rows(teacher):
+    """Return label-based combinations consumed by the supplied HTML template."""
+    options = filter_options(teacher, {})
+    years = options["academic_years"]
+    exams = options["exams"]
+    levels = options["levels"]
+    classes = options["classes"]
+    subjects = options["subjects"]
+    rows = []
+    for year in years:
+        year_exams = [exam for exam in exams if exam.academic_year_id == year.id]
+        for exam in year_exams:
+            for level in levels:
+                level_classes = [
+                    school_class for school_class in classes
+                    if getattr(school_class, "academic_level_id", None) == level.id
+                ]
+                # Keep the level selectable even where a teacher has no mapped
+                # class yet; the data endpoint will then return an empty report.
+                class_choices = level_classes or [None]
+                for school_class in class_choices:
+                    for subject in subjects:
+                        rows.append(
+                            {
+                                "year": year.name,
+                                "exam": exam.name,
+                                "level": level.name,
+                                "cls": school_class.name if school_class else "",
+                                "subject": subject.name,
+                            }
+                        )
+    return rows
+
+
+def _analytics_find(items, label, *, year_id=None):
+    label = (label or "").strip()
+    for item in items:
+        if item.name == label and (year_id is None or getattr(item, "academic_year_id", None) == year_id):
+            return item
+    return None
+
+
+@teacher_portal_bp.route("/api/analytics/filters")
+@teacher_login_required
+@teacher_permission_required("future_analysis_features")
+def analytics_api_filters():
+    teacher = get_current_teacher()
+    return jsonify(_analytics_filter_rows(teacher))
+
+
+@teacher_portal_bp.route("/api/analytics/data")
+@teacher_login_required
+@teacher_permission_required("future_analysis_features")
+def analytics_api_data():
+    teacher = get_current_teacher()
+    options = filter_options(teacher, {})
+    year = _analytics_find(options["academic_years"], request.args.get("year"))
+    exam = _analytics_find(options["exams"], request.args.get("exam"), year_id=year.id if year else None)
+    level = _analytics_find(options["levels"], request.args.get("level"))
+    if not year or not exam or not level:
+        return jsonify({"empty": True})
+
+    class_label = (request.args.get("cls") or "").strip()
+    subject_label = (request.args.get("subject") or "").strip()
+    school_class = None
+    subject = None
+    if class_label and class_label != "Dhammaan":
+        school_class = _analytics_find(
+            [item for item in options["classes"] if getattr(item, "academic_level_id", None) == level.id],
+            class_label,
+        )
+    if subject_label and subject_label != "Dhammaan":
+        subject = _analytics_find(options["subjects"], subject_label)
+    filters = {
+        "academic_year_id": year.id,
+        "exam_id": exam.id,
+        "academic_level_id": level.id,
+        "class_id": school_class.id if school_class else None,
+        "subject_id": subject.id if subject else None,
+    }
+    return jsonify(fallanqeyn_data(teacher, filters))
 
 
 @teacher_portal_bp.route("/subject-analysis")
