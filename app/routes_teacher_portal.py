@@ -1368,36 +1368,40 @@ def analytics():
 
 
 def _analytics_filter_rows(teacher):
-    """Return label-based combinations consumed by the supplied HTML template."""
-    options = filter_options(teacher, {})
-    years = options["academic_years"]
-    exams = options["exams"]
-    levels = options["levels"]
-    classes = options["classes"]
-    subjects = options["subjects"]
+    """Return only real teacher-assignment combinations for the HTML template."""
+    assignments = (
+        TeacherResultAssignment.query
+        .filter(
+            TeacherResultAssignment.teacher_id == teacher.id,
+            TeacherResultAssignment.deleted_at.is_(None),
+        )
+        .all()
+    )
     rows = []
-    for year in years:
-        year_exams = [exam for exam in exams if exam.academic_year_id == year.id]
-        for exam in year_exams:
-            for level in levels:
-                level_classes = [
-                    school_class for school_class in classes
-                    if getattr(school_class, "academic_level_id", None) == level.id
-                ]
-                # Keep the level selectable even where a teacher has no mapped
-                # class yet; the data endpoint will then return an empty report.
-                class_choices = level_classes or [None]
-                for school_class in class_choices:
-                    for subject in subjects:
-                        rows.append(
-                            {
-                                "year": year.name,
-                                "exam": exam.name,
-                                "level": level.name,
-                                "cls": school_class.name if school_class else "",
-                                "subject": subject.name,
-                            }
-                        )
+    seen = set()
+    for assignment in assignments:
+        year = assignment.academic_year
+        exam = assignment.exam
+        school_class = assignment.school_class
+        subject = assignment.subject
+        level = getattr(school_class, "academic_level", None) if school_class else None
+        if not year or not exam or not school_class or not subject or not level:
+            continue
+        if exam.academic_year_id != year.id:
+            continue
+        key = (year.id, exam.id, level.id, school_class.id, subject.id)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(
+            {
+                "year": year.name,
+                "exam": exam.name,
+                "level": level.name,
+                "cls": school_class.name,
+                "subject": subject.name,
+            }
+        )
     return rows
 
 

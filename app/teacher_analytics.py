@@ -6,7 +6,7 @@ from decimal import Decimal
 from flask import g, has_request_context
 
 from . import db
-from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AttendanceRecord, Exam, Result, SchoolClass, Student, Subject
+from .models import AcademicClass, AcademicLevel, AcademicSection, AcademicYear, AttendanceRecord, Exam, Result, SchoolClass, Student, Subject, TeacherResultAssignment
 from .services import grade_for, resolve_subject_max_score
 from .enrollment_service import EnrollmentValidationError, enrollment_placement_for_student, student_enrollment_legacy_scope_query, student_enrollment_scope_query
 
@@ -103,11 +103,43 @@ def teacher_assignments(teacher):
     if cache is not None and cache_key in cache:
         return cache[cache_key]
 
-    # New academic hierarchy
-    academic_levels = list(teacher.academic_levels)
-    academic_classes = list(teacher.classes)  # Now references AcademicClass
-    sections = list(teacher.sections)
-    subjects = list(teacher.subjects)
+    # TeacherResultAssignment is the authoritative scope used by the teacher
+    # result-entry workflow. The older many-to-many relations are retained as
+    # a fallback for teachers who have not yet been migrated to assignments.
+    result_assignments = (
+        TeacherResultAssignment.query
+        .filter(
+            TeacherResultAssignment.teacher_id == teacher.id,
+            TeacherResultAssignment.deleted_at.is_(None),
+        )
+        .all()
+    )
+    if result_assignments:
+        academic_levels = []
+        academic_classes = []
+        sections = list(teacher.sections)
+        subjects = []
+        seen_levels = set()
+        seen_classes = set()
+        seen_subjects = set()
+        for assignment in result_assignments:
+            school_class = assignment.school_class
+            subject = assignment.subject
+            level = getattr(school_class, "academic_level", None) if school_class else None
+            if level and level.id not in seen_levels:
+                academic_levels.append(level)
+                seen_levels.add(level.id)
+            if school_class and school_class.id not in seen_classes:
+                academic_classes.append(school_class)
+                seen_classes.add(school_class.id)
+            if subject and subject.id not in seen_subjects:
+                subjects.append(subject)
+                seen_subjects.add(subject.id)
+    else:
+        academic_levels = list(teacher.academic_levels)
+        academic_classes = list(teacher.classes)
+        sections = list(teacher.sections)
+        subjects = list(teacher.subjects)
     
     # Legacy fallback for SchoolClass
     legacy_classes = [cls for cls in academic_classes if hasattr(cls, 'name')]
@@ -277,17 +309,28 @@ def student_overall_averages(results):
 def filter_options(teacher, filters):
     """Get filter options for teacher portal using new academic hierarchy with legacy fallback"""
     academic_levels, academic_classes, sections, subjects, _, class_ids, _, subject_ids = teacher_assignments(teacher)
-    students = scoped_students(teacher, {})
-    year_ids = sorted(
-        {
-            student.academic_year_id
-            for student in students
-            if student.academic_year_id is not None
-        }
+    result_assignments = (
+        TeacherResultAssignment.query
+        .filter(
+            TeacherResultAssignment.teacher_id == teacher.id,
+            TeacherResultAssignment.deleted_at.is_(None),
+        )
+        .all()
     )
+    students = scoped_students(teacher, {})
+    year_ids = sorted({assignment.academic_year_id for assignment in result_assignments})
+    if not year_ids:
+        year_ids = sorted(
+            {
+                student.academic_year_id
+                for student in students
+                if student.academic_year_id is not None
+            }
+        )
     years = AcademicYear.query.filter(AcademicYear.id.in_(year_ids)).order_by(AcademicYear.name.desc()).all() if year_ids else []
-    exam_query = Exam.query
-    if year_ids:
+    assignment_exam_ids = {assignment.exam_id for assignment in result_assignments}
+    exam_query = Exam.query.filter(Exam.id.in_(assignment_exam_ids)) if assignment_exam_ids else Exam.query
+    if year_ids and not assignment_exam_ids:
         exam_query = exam_query.filter(Exam.academic_year_id.in_(year_ids))
     exams = exam_query.order_by(Exam.created_at.desc()).all()
     sections_list = sorted({student.section for student in students if student.section})
