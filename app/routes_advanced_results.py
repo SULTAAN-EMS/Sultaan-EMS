@@ -495,6 +495,7 @@ def _year_placement_cache(students, academic_year_id):
             placements[(enrollment.student_id, academic_year_id)] = {
                 "source": "enrollment",
                 "context_status": "enrollment",
+                "enrollment": enrollment,
                 "academic_year_id": academic_year_id,
                 "academic_year_level_id": year_level.id,
                 "academic_year_class_id": year_class.id,
