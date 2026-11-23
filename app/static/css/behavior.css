@@ -445,6 +445,9 @@ body.behavior-drawer-open { overflow:hidden; }
 .behavior-page .behavior-alert { border:1.14px solid var(--amber-line); border-radius:10px; background:var(--amber-tint); color:var(--amber); }
 .behavior-page .behavior-alert--success { border-color:#BCD6B9; background:var(--merit-tint); color:var(--merit); }
 .behavior-page .behavior-alert--danger { border-color:#E3C3C0; background:var(--flag-tint); color:var(--flag); }
+.behavior-feedback-stack { display:grid; gap:10px; margin:0 0 14px; }
+.behavior-feedback-stack .behavior-alert { display:flex; align-items:flex-start; gap:10px; margin:0; box-shadow:0 8px 18px rgba(27, 44, 38, .06); }
+.behavior-feedback-stack .behavior-alert i { flex:0 0 auto; margin-top:2px; font-size:1rem; }
 .behavior-page .behavior-choice-builder { border:1.14px dashed #CBBF9E; border-radius:12px; background:var(--paper-deep); }
 .behavior-page .behavior-choice-row { border-color:var(--line); border-radius:8px; background:var(--card); }
 .behavior-page .behavior-list__item { box-shadow:none; }

@@ -1,10 +1,23 @@
 {% extends "admin/base.html" %}
 {% block page_title %}Actions{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='action-response-check-20260920a') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/behavior.css', v='action-feedback-20261123') }}">
 <div class="behavior-page view">
   {% include "admin/behavior/_nav.html" %}
   {% include "admin/behavior/_taxonomy_nav.html" %}
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="behavior-feedback-stack" aria-live="polite">
+      {% for category, message in messages %}
+      <div class="behavior-alert behavior-alert--{{ 'danger' if category in ['danger', 'error'] else 'success' }}" role="{{ 'alert' if category in ['danger', 'error'] else 'status' }}">
+        <i class="fa-solid {{ 'fa-circle-xmark' if category in ['danger', 'error'] else 'fa-circle-check' }}" aria-hidden="true"></i>
+        <span>{{ message }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endwith %}
 
   <form class="behavior-card card behavior-form config-bar" method="get" action="{{ url_for('behavior.actions') }}">
     <div class="behavior-field">

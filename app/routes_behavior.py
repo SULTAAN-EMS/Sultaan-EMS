@@ -17,7 +17,7 @@ import html5lib
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import func, literal, or_
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import joinedload, selectinload
 
 from . import db
@@ -2844,6 +2844,7 @@ def actions():
                 decimal_value(item.points, "Action points", minimum="0.001")
                 if item else None
             )
+            is_update = bool(item and item.id)
             item = item or BehaviorAction(behavior_category_id=category.id)
             submitted_type = (request.form.get("behavior_type") or "short_answer").strip().lower()
             legacy_types = {"direct_action", "choice", "selection", "dropdown", "linear_scale"}
@@ -2981,15 +2982,39 @@ def actions():
                 f"Saved action {item.name} level {item.level_number} for category {category.name}",
             )
             db.session.commit()
-            flash("Behavior action saved.", "success")
+            flash(
+                f'Ficilka "{item.name}" waa la cusboonaysiiyey.'
+                if is_update
+                else f'Ficilka "{item.name}" si guul leh ayaa loo kaydiyey.',
+                "success",
+            )
             return redirect(url_for("behavior.actions", config_id=config.id))
         except (BehaviorValidationError, ValueError) as exc:
             db.session.rollback()
-            flash(str(exc), "danger")
+            flash(f"Kaydintu way fashilantay: {exc}", "danger")
         except IntegrityError:
             db.session.rollback()
             flash(
-                "An action with this name and level already exists in the selected category.",
+                "Kaydintu way fashilantay: magaca iyo heerka ficilkan hore ayaa qaybta loogu isticmaalay.",
+                "danger",
+            )
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Behavior action save failed for configuration %s", config_id
+            )
+            flash(
+                "Kaydintu way fashilantay: kaydka xogtu wuu diiday isbeddelka. "
+                "Fadlan mar kale isku day.",
+                "danger",
+            )
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Unexpected behavior action save failure for configuration %s", config_id
+            )
+            flash(
+                "Kaydintu way fashilantay: cilad farsamo ayaa dhacday. Fadlan mar kale isku day.",
                 "danger",
             )
     years, selected_year, configurations, _ = _config_choices(
