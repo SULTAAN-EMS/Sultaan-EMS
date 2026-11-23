@@ -55,6 +55,7 @@
   <form class="behavior-card card behavior-bulk-card" id="behaviorBulkForm" data-duplicate-check-url="{{ url_for('behavior.bulk_duplicate_check') }}" method="post" action="{{ url_for('behavior.bulk_events') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="year_id" value="{{ selected_year.id }}">
+    {% if selected_level %}<input type="hidden" name="level_id" value="{{ selected_level.id }}">{% endif %}
     <input type="hidden" name="config_id" value="{{ config.id }}">
     <input type="hidden" name="behavior_session_id" value="{{ selected_session.id }}">
     <input type="hidden" name="idempotency_key" value="{{ form_values.get('idempotency_key') or idempotency_key }}">
@@ -106,7 +107,7 @@
     </section>
     <section class="rf-section">
       <div class="rf-head"><div class="rf-ic c3"><i class="fa-solid fa-calendar-check"></i></div><div><h2>3. Waqtiga iyo faallada guud</h2><div class="d">Taariikhda iyo faalladani waxay wada khuseeyaan ardayda batch-kan.</div></div></div>
-      <div class="behavior-bulk-field"><label for="bulkOccurredAt">Taariikhda iyo waqtiga</label><input id="bulkOccurredAt" name="occurred_at" type="datetime-local" value="{{ form_values.get('occurred_at') or current_time.strftime('%Y-%m-%dT%H:%M') }}" required></div>
+      <div class="behavior-bulk-field"><label for="bulkOccurredAt">Taariikhda iyo waqtiga</label><input id="bulkOccurredAt" name="occurred_at" type="datetime-local" value="{{ form_values.get('occurred_at') or default_occurred_at }}"{% if selected_session.period_start_date %} min="{{ selected_session.period_start_date.isoformat() }}T00:00"{% endif %}{% if selected_session.period_end_date %} max="{{ selected_session.period_end_date.isoformat() }}T23:59"{% endif %} required><small class="behavior-bulk-footnote">Waqtigu waa inuu ku jiraa muddada xilliga la doortay.</small></div>
       <div class="behavior-bulk-field" style="margin-top:12px"><label for="bulkNotes">Faallo guud (ikhtiyaari)</label><textarea id="bulkNotes" name="notes" maxlength="2000" placeholder="Faahfaahin isku mid ah oo ku saabsan dhacdada">{{ form_values.get('notes', '') }}</textarea></div>
     </section>
     <div class="behavior-bulk-submit"><span class="behavior-bulk-count"><i class="fa-solid fa-circle-info"></i> Hubi tirada ardayda ka hor kaydinta.</span><button class="behavior-btn behavior-btn--primary" type="submit" id="bulkSubmit" disabled><i class="fa-solid fa-floppy-disk"></i> Diiwaangeli dhacdada</button></div>

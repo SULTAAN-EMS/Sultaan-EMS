@@ -3433,6 +3433,19 @@ def bulk_duplicate_check():
             })
         except (BehaviorValidationError, ValueError) as exc:
             return jsonify({"success": False, "message": str(exc)}), 400
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception("Behavior bulk duplicate check database failure")
+            return jsonify({
+                "success": False,
+                "message": "Hubinta diiwaannada way fashilantay sababo la xiriira kaydka xogta.",
+            }), 500
+        except Exception:
+            current_app.logger.exception("Unexpected behavior bulk duplicate check failure")
+            return jsonify({
+                "success": False,
+                "message": "Hubinta diiwaannada way fashilantay. Fadlan mar kale isku day.",
+            }), 500
 
     config = _selected_config(request.args.get("config_id"), request.args.get("year_id"))
     session = next((
@@ -3487,6 +3500,19 @@ def bulk_duplicate_check():
         })
     except (BehaviorValidationError, ValueError) as exc:
         return jsonify({"success": False, "message": str(exc)}), 400
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Behavior bulk duplicate check database failure")
+        return jsonify({
+            "success": False,
+            "message": "Hubinta diiwaannada way fashilantay sababo la xiriira kaydka xogta.",
+        }), 500
+    except Exception:
+        current_app.logger.exception("Unexpected behavior bulk duplicate check failure")
+        return jsonify({
+            "success": False,
+            "message": "Hubinta diiwaannada way fashilantay. Fadlan mar kale isku day.",
+        }), 500
 
 
 @behavior_bp.route("/events/bulk", methods=["GET", "POST"])
@@ -3494,6 +3520,7 @@ def bulk_events():
     """Record one scored Behavior event for a class or a selected roster."""
     config_id = request.args.get("config_id") or request.form.get("config_id")
     requested_config = _behavior_configuration(_int(config_id)) if config_id else None
+    level_id = request.args.get("level_id") or request.form.get("level_id")
     year_id = (
         request.args.get("year_id")
         or request.form.get("year_id")
@@ -3502,7 +3529,7 @@ def bulk_events():
     session_id = request.args.get("session_id") or request.form.get("behavior_session_id")
     context = _behavior_context(
         year_id,
-        None,
+        level_id,
         config_id,
         None,
         session_id,
@@ -3510,12 +3537,21 @@ def bulk_events():
     )
     config = context["config"]
     selected_session = context["selected_session"]
+    selected_level_id = context["selected_level"].id if context["selected_level"] else None
     enrollments = (
-        _behavior_enrollments(config, session=selected_session)
+        _behavior_enrollments(
+            config,
+            academic_year_level_id=selected_level_id,
+            session=selected_session,
+        )
         if config and selected_session and not context["scope_invalid"]
         else []
     )
-    level_ids = configuration_level_ids(config) if config else set()
+    level_ids = (
+        {selected_level_id}
+        if selected_level_id
+        else configuration_level_ids(config) if config else set()
+    )
     roster_levels = (
         AcademicYearLevel.query
         .filter(AcademicYearLevel.id.in_(level_ids))
@@ -3838,6 +3874,18 @@ def bulk_events():
         except (BehaviorValidationError, ValueError, IntegrityError) as exc:
             db.session.rollback()
             bulk_error = str(exc) if not isinstance(exc, IntegrityError) else "Kaydintu way fashilantay; wax dhacdo ah lama kaydin. Dib u hubi xogta oo mar kale isku day."
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Behavior bulk event save database failure for configuration %s", config.id if config else None
+            )
+            bulk_error = "Kaydintu way fashilantay sababo la xiriira kaydka xogta. Fadlan mar kale isku day."
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Unexpected behavior bulk event save failure for configuration %s", config.id if config else None
+            )
+            bulk_error = "Diiwaangelintu way fashilantay sababo farsamo awgood. Fadlan mar kale isku day."
 
     return render_template(
         "admin/behavior/bulk_events.html",
@@ -3848,6 +3896,7 @@ def bulk_events():
         roster_by_class=roster_by_class,
         recorded_roster_ids=recorded_roster_ids,
         current_time=datetime.utcnow(),
+        default_occurred_at=_bulk_default_occurred_at(selected_session),
         idempotency_key=token_urlsafe(24),
         bulk_error=bulk_error,
         bulk_notice=bulk_notice,
@@ -4018,6 +4067,21 @@ def _parse_event_datetime(value, fallback=None):
         return datetime.fromisoformat(value)
     except ValueError as exc:
         raise BehaviorValidationError("Event date and time is invalid") from exc
+
+
+def _bulk_default_occurred_at(session):
+    """Choose a valid default event time inside the selected session window."""
+    now = datetime.utcnow().replace(second=0, microsecond=0)
+    if not session:
+        return now.strftime("%Y-%m-%dT%H:%M")
+    start_date = getattr(session, "period_start_date", None)
+    end_date = getattr(session, "period_end_date", None)
+    target_date = now.date()
+    if start_date and target_date < start_date:
+        target_date = start_date
+    elif end_date and target_date > end_date:
+        target_date = end_date
+    return datetime.combine(target_date, now.time()).strftime("%Y-%m-%dT%H:%M")
 
 
 @behavior_bp.route("/events/<int:event_id>/edit", methods=["GET", "POST"])
