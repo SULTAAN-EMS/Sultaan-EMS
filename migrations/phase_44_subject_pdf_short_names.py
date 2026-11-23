@@ -43,6 +43,11 @@ def upgrade():
                     "INSERT OR IGNORE INTO schema_migrations (version, applied_at) "
                     "VALUES (:version, CURRENT_TIMESTAMP)"
                 ), {"version": VERSION})
+            elif dialect in {"mysql", "mariadb"}:
+                connection.execute(text(
+                    "INSERT IGNORE INTO schema_migrations (version, applied_at) "
+                    "VALUES (:version, CURRENT_TIMESTAMP)"
+                ), {"version": VERSION})
             else:
                 connection.execute(text(
                     "INSERT INTO schema_migrations (version, applied_at) "
