@@ -244,6 +244,9 @@ class AcademicYearSubject(TimestampMixin, db.Model):
         index=True,
     )
     name = db.Column(db.String(120), nullable=False)
+    # Optional compact label used only by the Whole Class Results PDF.
+    # The full subject name remains the canonical label everywhere else.
+    pdf_short_name = db.Column(db.String(40), nullable=True)
     subject_kind = db.Column(
         db.String(20),
         nullable=False,

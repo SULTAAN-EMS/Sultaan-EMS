@@ -4927,6 +4927,7 @@ def config_create_subject():
 
     data = request.get_json(silent=True) or {}
     name = data.get('name', '').strip()
+    pdf_short_name = str(data.get('pdf_short_name') or '').strip()
     academic_year_id = _parse_int(data.get('academic_year_id'))
     year_level_id = _parse_int(data.get('academic_year_level_id'))
     subject_kind = str(data.get('subject_kind') or 'exam').strip().lower()
@@ -4935,6 +4936,8 @@ def config_create_subject():
 
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'})
+    if len(pdf_short_name) > 40:
+        return jsonify({'success': False, 'message': 'Magaca gaaban ee PDF-ku kama badnaan karo 40 xaraf.'})
     if subject_kind not in ('exam', 'behavior'):
         return jsonify({'success': False, 'message': 'Subject kind must be exam or behavior'})
     year_level = validate_year_level(academic_year_id, year_level_id)
@@ -4962,6 +4965,7 @@ def config_create_subject():
                 year_level.legacy_level_id,
                 max_score,
                 sort_order if sort_order is not None else max_sort + 1,
+            pdf_short_name=pdf_short_name or None,
             )
         subject = AcademicYearSubject(
             name=name,
@@ -4979,7 +4983,7 @@ def config_create_subject():
         db.session.commit()
 
         audit("Configuration Center", f"Created subject: {name}; available classes: {sorted(available_class_ids) if subject_kind == 'exam' else 'not applicable'}")
-        return jsonify({'success': True, 'message': 'Subject created successfully', 'data': {'id': subject.id, 'name': subject.name, 'subject_kind': subject.subject_kind}})
+        return jsonify({'success': True, 'message': 'Subject created successfully', 'data': {'id': subject.id, 'name': subject.name, 'pdf_short_name': subject.pdf_short_name, 'subject_kind': subject.subject_kind}})
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)})
@@ -4991,10 +4995,13 @@ def config_update_subject(subject_id):
     """Update subject"""
     from flask import jsonify
 
+    pdf_short_name = str(data.get('pdf_short_name', getattr(subject, 'pdf_short_name', None)) or '').strip()
     data = request.get_json(silent=True) or {}
     subject = AcademicYearSubject.query.get_or_404(subject_id)
 
     name = str(data.get('name', subject.name) or '').strip()
+    if len(pdf_short_name) > 40:
+        return jsonify({'success': False, 'message': 'Magaca gaaban ee PDF-ku kama badnaan karo 40 xaraf.'})
     academic_year_id = _parse_int(data.get('academic_year_id'), subject.academic_year_id)
     year_level_id = _parse_int(data.get('academic_year_level_id'), subject.academic_year_level_id)
     if not name:
@@ -5020,10 +5027,12 @@ def config_update_subject(subject_id):
         row.academic_year_class_id
         for row in AcademicYearClassSubjectExclusion.query.filter_by(
             academic_year_subject_id=subject.id
+        'pdf_short_name': getattr(subject, 'pdf_short_name', None),
         ).all()
     }
     old_value = {
         'name': subject.name,
+    subject.pdf_short_name = pdf_short_name or None
         'academic_year_id': subject.academic_year_id,
         'academic_year_level_id': old_year_level_id,
         'subject_kind': old_subject_kind,
@@ -5095,8 +5104,9 @@ def config_update_subject(subject_id):
         else:
             new_available_class_ids = None
 
+                'pdf_short_name': subject.pdf_short_name,
         db.session.commit()
-        _audit_config_change("Configuration Center Updated", "subjects", subject, old_value=old_value, new_value={'name': subject.name, 'academic_year_id': subject.academic_year_id, 'academic_year_level_id': subject.academic_year_level_id, 'subject_kind': subject.subject_kind, 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order, 'available_class_ids': new_available_class_ids})
+        _audit_config_change("Configuration Center Updated", "subjects", subject, old_value=old_value, new_value={'name': subject.name, 'pdf_short_name': subject.pdf_short_name, 'academic_year_id': subject.academic_year_id, 'academic_year_level_id': subject.academic_year_level_id, 'subject_kind': subject.subject_kind, 'max_score': float(subject.max_score or 0), 'sort_order': subject.sort_order, 'available_class_ids': new_available_class_ids})
         return jsonify({
             'success': True,
             'message': 'Subject updated successfully',

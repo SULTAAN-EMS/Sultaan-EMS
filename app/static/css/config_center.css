@@ -1208,6 +1208,19 @@ body:has(.config-dashboard) .admin-top-compact {
   gap: 12px;
 }
 
+.config-subject-pdf-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 2px;
+  color: var(--text-secondary);
+  font-size: .72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.config-subject-pdf-label i { color: #dc2626; }
+
 .config-class-availability {
   display: grid;
   justify-items: start;

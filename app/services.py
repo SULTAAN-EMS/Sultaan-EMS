@@ -46,6 +46,7 @@ class ScopedSubjectView:
         self._subject = subject
         self.id = subject.id
         self.name = year_subject.name
+        self.pdf_short_name = getattr(year_subject, "pdf_short_name", None)
         self.max_score = year_subject.max_score
         self.sort_order = year_subject.sort_order
         self.is_active = subject.is_active

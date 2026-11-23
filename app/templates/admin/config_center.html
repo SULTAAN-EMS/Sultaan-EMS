@@ -3,7 +3,7 @@
 {% block title %}Dejinta Nidaamka{% endblock %}
 {% block page_title %}Dejinta Nidaamka{% endblock %}
 {% block admin_content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/config_center.css', v='subject-classes-in-form-20261102') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/config_center.css', v='subject-pdf-label-20261123') }}">
 
 {% set mutable_sections = ["academic-years", "exam-types", "levels", "subjects"] %}
 {% set section_item_type = {"academic-years": "academic-years", "exam-types": "exam-types", "levels": "levels", "subjects": "subjects"} %}
@@ -218,7 +218,7 @@
             {% set assigned_classes = subject_class_map.get(item.id, []) %}
             {% set excluded_classes = subject_class_exclusion_map.get(item.id, []) %}
             {% set icon = subject_icons.get(item.id, {"type": "fa", "value": "fa-book"}) %}
-            <tr data-id="{{ item.id }}" data-item-type="subjects" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-subject-kind="{{ item.subject_kind or 'exam' }}" data-academic-year-id="{{ item.academic_year_id }}" data-academic-year-level-id="{{ item.academic_year_level_id }}" data-sort-order="{{ item.sort_order }}" data-excluded-class-ids="{{ excluded_classes|join(',') }}">
+            <tr data-id="{{ item.id }}" data-item-type="subjects" data-status="{{ 'active' if item.is_active else 'archived' }}" data-name="{{ item.name }}" data-pdf-short-name="{{ item.pdf_short_name or '' }}" data-subject-kind="{{ item.subject_kind or 'exam' }}" data-academic-year-id="{{ item.academic_year_id }}" data-academic-year-level-id="{{ item.academic_year_level_id }}" data-sort-order="{{ item.sort_order }}" data-excluded-class-ids="{{ excluded_classes|join(',') }}">
               <td>
                 <div class="config-subject-cell subject-theme-{{ item.name|lower|replace(' ', '-')|replace('/', '-') }}">
                   <span class="config-subject-icon">
@@ -229,6 +229,7 @@
                     {% endif %}
                   </span>
                   <strong>{{ item.name }}</strong>
+                  <small class="config-subject-pdf-label"><i class="fas fa-file-pdf"></i> PDF: {{ item.pdf_short_name or 'Magaca buuxa' }}</small>
                   {% if item.subject_kind == 'behavior' %}<span class="config-badge config-badge-behavior">Behavior</span>{% endif %}
                   {% if not item.is_active %}<span class="config-badge config-badge-neutral" style="margin-left:6px;font-size:0.75rem;">Archived</span>{% endif %}
                 </div>
@@ -358,6 +359,11 @@
             <option value="behavior">Behavior Subject</option>
           </select>
           <small class="config-form-help">Behavior scores are configured through Behavior Sessions.</small>
+        </div>
+        <div class="config-form-group js-subject-pdf-label-group">
+          <label class="config-form-label" for="itemPdfShortName">Magac gaaban oo Whole Class Results PDF-ka ah (ikhtiyaari)</label>
+          <input type="text" class="config-form-input" id="itemPdfShortName" maxlength="40" placeholder="Tusaale: MAT, PHY, AF-SOM">
+          <small class="config-form-help">Haddii la buuxiyo, kaliya PDF-ka Whole Class Results ayaa isticmaali doona. Haddii uu bannaan yahay, magaca buuxa ayaa la adeegsanayaa. Pages-ka kale waxba kama beddelmaan.</small>
         </div>
         <section class="config-form-group js-subject-class-group" aria-labelledby="itemAvailableClassesTitle">
           <div class="config-subject-class-heading">
@@ -522,6 +528,7 @@ function configureForm() {
   setGroup('.js-level-group', apiType === 'subjects' || apiType === 'classes');
   setGroup('.js-shift-group', apiType === 'classes');
   setGroup('.js-subject-kind-group', apiType === 'subjects');
+  setGroup('.js-subject-pdf-label-group', apiType === 'subjects');
   setGroup('.js-subject-class-group', isExamSubject);
   setGroup('.js-code-group', apiType === 'exam-types');
   setGroup('.js-weight-group', apiType === 'exam-types');
@@ -577,6 +584,7 @@ function editItem(itemType, itemId) {
   document.getElementById('modalTitle').textContent = 'Edit ' + (row.dataset.name || 'Item');
   document.getElementById('itemRecordKind').value = itemType === 'classes' ? 'class' : 'level';
   document.getElementById('itemName').value = row.dataset.name || '';
+  document.getElementById('itemPdfShortName').value = row.dataset.pdfShortName || '';
   document.getElementById('itemShortCode').value = row.dataset.shortCode || '';
   document.getElementById('itemWeightPercentage').value = row.dataset.weightPercentage || '';
   document.getElementById('itemFinalEvaluation').checked = row.dataset.finalEvaluation === 'true';
@@ -924,6 +932,7 @@ function payloadFor(apiType) {
   if (apiType === 'subjects') {
     payload.academic_year_id = document.getElementById('itemAcademicYearId').value;
     payload.academic_year_level_id = document.getElementById('itemAcademicLevelId').value;
+    payload.pdf_short_name = document.getElementById('itemPdfShortName').value.trim();
     payload.sort_order = document.getElementById('itemSortOrder').value;
     payload.subject_kind = document.getElementById('itemSubjectKind').value;
     if (payload.subject_kind === 'exam') {
