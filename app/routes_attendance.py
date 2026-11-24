@@ -2,6 +2,7 @@ from datetime import date, datetime, time
 from io import BytesIO
 from tempfile import NamedTemporaryFile
 from types import SimpleNamespace
+from time import perf_counter
 
 from flask import Blueprint, abort, current_app, jsonify, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
@@ -1050,7 +1051,7 @@ def timetable_level_scope(year_id, exam=None):
     return level_data, allowed_pairs
 
 
-def sessions_in_scope(year_id, exam, legacy_exam_type):
+def sessions_in_scope(year_id, exam, legacy_exam_type, *, start_date=None, end_date=None):
     query = ExamSession.query.filter_by(academic_year_id=year_id)
     if exam:
         filters = [ExamSession.exam_id == exam.id]
@@ -1067,6 +1068,10 @@ def sessions_in_scope(year_id, exam, legacy_exam_type):
             ExamSession.exam_id.is_(None),
             ExamSession.exam_type_id == legacy_exam_type.id,
         )
+    if start_date is not None:
+        query = query.filter(ExamSession.session_date >= start_date)
+    if end_date is not None:
+        query = query.filter(ExamSession.session_date <= end_date)
     return (
         query.options(
             selectinload(ExamSession.subject_assignments).joinedload(ExamSessionSubject.subject)
@@ -1505,10 +1510,22 @@ def summary_report_preview():
 
 @attendance_bp.route("/summary-report.pdf")
 def summary_report_pdf():
+    started_at = perf_counter()
     context = _attendance_summary_page_context(request.args, force_generate=True)
     if context["filter_errors"] or not context["report"]:
         abort(400, description="Buuxi filtarrada warbixinta ka hor dhoofinta PDF-ka.")
     pdf = build_attendance_summary_pdf(context)
+    elapsed_ms = (perf_counter() - started_at) * 1000
+    if elapsed_ms >= 1500:
+        current_app.logger.warning(
+            "attendance_summary_pdf_slow elapsed_ms=%.0f year_id=%s exam_scope=%s halls=%d sessions=%d students=%d",
+            elapsed_ms,
+            context.get("selected_year_id"),
+            context.get("selected_exam_scope"),
+            len(context.get("selected_hall_ids") or ()),
+            (context.get("report") or {}).get("session_count", 0),
+            (context.get("report") or {}).get("totals", {}).get("students", 0),
+        )
     return send_file(
         BytesIO(pdf),
         mimetype="application/pdf",
@@ -1641,10 +1658,16 @@ def _attendance_summary_page_context(args, force_generate=False, build_report=Tr
 
 
 def _attendance_summary_report_data(*, year_id, exam, legacy_exam_type, halls, start_date, end_date):
-    sessions = [
-        session for session in sessions_in_scope(year_id, exam, legacy_exam_type)
-        if start_date <= session.session_date <= end_date
-    ]
+    # Apply the selected date window in SQL. Loading every sitting for the
+    # year and filtering in Python made long-range reports needlessly heavy,
+    # especially when an exam had many halls and scheduled days.
+    sessions = sessions_in_scope(
+        year_id,
+        exam,
+        legacy_exam_type,
+        start_date=start_date,
+        end_date=end_date,
+    )
     _, allowed_pairs = timetable_level_scope(year_id, exam=exam)
     class_subject_scope = year_class_exam_subject_scope(year_id)
     prefetched = _attendance_summary_prefetch(year_id, sessions, halls, allowed_pairs)
@@ -1671,10 +1694,13 @@ def _attendance_summary_report_data(*, year_id, exam, legacy_exam_type, halls, s
     }
     day_totals = {}
 
+    halls_by_session = {}
+    for hall in halls:
+        for session_id in hall_session_ids.get(hall.id, set()):
+            halls_by_session.setdefault(session_id, []).append(hall)
+
     for session in sessions:
-        for hall in halls:
-            if session.id not in hall_session_ids[hall.id]:
-                continue
+        for hall in halls_by_session.get(session.id, ()):
             groups, tallies = session_attendance_payload(
                 hall, session, allowed_pairs, class_subject_scope, prefetched=prefetched
             )

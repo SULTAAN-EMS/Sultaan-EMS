@@ -170,6 +170,34 @@ def ensure_schema_compatibility():
         "idx_attendance_records_session_hall_subject",
         ["exam_session_id", "exam_hall_id", "subject_id"],
     )
+    # The summary PDF reads all records for a selected set of sittings and
+    # halls in one bounded query. Keep the two filter columns together so a
+    # production database does not scan the entire attendance ledger.
+    add_index_if_missing(
+        "attendance_records",
+        "idx_attendance_records_hall_session_student_subject",
+        ["exam_hall_id", "exam_session_id", "student_id", "subject_id"],
+    )
+    add_index_if_missing(
+        "exam_hall_enrollments",
+        "idx_exam_hall_enrollments_hall_student",
+        ["exam_hall_id", "student_id"],
+    )
+    add_index_if_missing(
+        "exam_session_subjects",
+        "idx_exam_session_subjects_session_level",
+        ["exam_session_id", "academic_level_id"],
+    )
+    add_index_if_missing(
+        "exam_sessions",
+        "idx_exam_sessions_year_exam_date",
+        ["academic_year_id", "exam_id", "date"],
+    )
+    add_index_if_missing(
+        "exam_sessions",
+        "idx_exam_sessions_year_type_date",
+        ["academic_year_id", "exam_type_id", "date"],
+    )
     add_foreign_key_if_missing(
         "attendance_records",
         "fk_attendance_records_exam_session_id",
