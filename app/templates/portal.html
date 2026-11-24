@@ -97,6 +97,12 @@
   .behavior-choice-card--attendance:hover, .behavior-choice-card--attendance:focus-visible { border-color: #2563eb; box-shadow: 0 16px 30px -16px rgba(37, 99, 235, .72), inset 0 1px 0 rgba(255, 255, 255, .92); }
   .behavior-choice-card__symbol { display: grid; place-items: center; width: 42px; height: 42px; flex: 0 0 42px; border-radius: 13px; color: #fff; background: linear-gradient(145deg, #14b89a, #087f5b); box-shadow: 0 8px 16px -8px rgba(8, 127, 91, .9), inset 0 1px 0 rgba(255, 255, 255, .45); animation: behaviorIconPulse 3.2s ease-in-out infinite; }
   .behavior-choice-card--attendance .behavior-choice-card__symbol { color: #fff; background: linear-gradient(145deg, #5b8ff5, #2563eb); box-shadow: 0 8px 16px -8px rgba(37, 99, 235, .9), inset 0 1px 0 rgba(255, 255, 255, .45); animation-delay: -1s; }
+  .reference-one-result .reference-result-header > div:first-child { position: relative; width: 100%; box-sizing: border-box; padding: 9px 12px 8px; border: 1px solid rgba(37, 99, 235, .22); border-radius: 14px; background: linear-gradient(135deg, rgba(239, 247, 255, .96), rgba(255, 255, 255, .98) 58%, rgba(232, 246, 255, .92)); box-shadow: 0 9px 18px -17px rgba(7, 57, 134, .7), inset 0 1px 0 rgba(255, 255, 255, .9); overflow: hidden; }
+  .reference-one-result .reference-result-header > div:first-child::after { content: ""; position: absolute; right: 12px; bottom: 0; width: 68px; height: 2px; border-radius: 999px 999px 0 0; background: linear-gradient(90deg, #2563eb, #14b8a6); }
+  .reference-one-result .reference-result-header h2 { display: flex; align-items: center; gap: 7px; font-size: clamp(1.05rem, 2.3vw, 1.9rem); line-height: 1.05; letter-spacing: .01em; }
+  .reference-one-result .reference-result-header h2::before { content: "\f15c"; display: inline-grid; place-items: center; width: 28px; height: 28px; flex: 0 0 28px; color: #fff; border-radius: 9px; background: linear-gradient(145deg, #3b82f6, #123b8f); box-shadow: 0 5px 10px -7px rgba(18, 59, 143, .9); font: 900 12px/1 "Font Awesome 6 Free"; }
+  .reference-one-result .reference-result-header p { display: inline-flex; align-items: center; gap: 5px; margin: 5px 0 0; padding: 4px 8px; color: #315477; border: 1px solid rgba(49, 84, 119, .18); border-radius: 999px; background: rgba(255, 255, 255, .76); font-size: clamp(.62rem, 1vw, .78rem); font-weight: 800; letter-spacing: .02em; text-transform: none; }
+  .reference-one-result .reference-result-header p::before { content: "\f073"; color: #d39b19; font: 900 .7rem/1 "Font Awesome 6 Free"; }
   .behavior-choice-card strong, .behavior-choice-card small { display: block; }
   .behavior-choice-card strong { font-size: .88rem; }
   .behavior-choice-card small { margin-top: 3px; color: rgba(18, 53, 47, .72); font-size: .72rem; line-height: 1.35; }
@@ -195,7 +201,7 @@
   .behavior-result-breakdown b { color: #334155; }
   .behavior-result-breakdown__grand { color: #087f5b; font-weight: 800; }
   @media (max-width: 560px) { .behavior-reading-context { grid-template-columns: repeat(2, minmax(0, 1fr)); } .behavior-reading-ledger__values { grid-template-columns: 1fr; } .behavior-reading-record { grid-template-columns: 1fr auto; } .behavior-reading-record__body { grid-column: 1 / -1; grid-row: 2; } .behavior-result-breakdown { grid-template-columns: 1fr; } }
-  @media (max-width: 560px) { .behavior-choice-dialog__content { padding: 20px 16px; } .behavior-choice-dialog__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .behavior-choice-dialog__content { padding: 20px 16px; } .behavior-choice-dialog__grid { grid-template-columns: 1fr; gap: 10px; } .behavior-choice-card { width: 100%; min-height: 78px; box-sizing: border-box; } }
 </style>
 <main class="public-hero student-homepage premium-homepage {% if result %}has-result{% endif %}" {% if result %}data-mg-token="{{ feedback_access_token|e }}" style="
   --sis-primary: {{ settings.result_dashboard_primary_color }};

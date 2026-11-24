@@ -584,7 +584,7 @@ def result():
                     "exam_id": request.form.get("exam_id", type=int),
                     "student": student,
                 },
-                access_code_error="Tira-taxanaha ama lambarka sireedku waa khaldan yahay. Hubi xogta oo mar kale isku day.",
+                access_code_error="Lambar-sireedku ma'aha mid sax ah ee fadlan isku day mar kale.",
             )
         for field in ("year_id", "exam_id"):
             value = request.form.get(field, type=int)
