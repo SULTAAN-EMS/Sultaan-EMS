@@ -401,6 +401,22 @@
             box-shadow: none;
         }
 
+        .grade-badge {
+            gap: 2mm;
+            padding: 0 1.4mm;
+        }
+
+        .grade-badge b {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 7mm;
+            height: 3.4mm;
+            padding: 0 1.4mm;
+            border-radius: 3px;
+            line-height: 1;
+        }
+
         .percent-badge {
             min-width: 14.8mm;
         }
@@ -747,17 +763,11 @@
                                         {% elif row.is_weak %}
                                             <span class="badge" style="background-color: {{ weak_config.bg_color if weak_config and weak_config.bg_color else '#f59e0b' }}; color: {{ weak_config.text_color if weak_config and weak_config.text_color else '#ffffff' }} !important;">{{ row.percentage|academic_number(settings) }}%</span>
                                         {% else %}
-                                            <span class="badge percent-badge" style="background-color: {{ row.grade.background_color }}; color: {{ row.grade.text_color }} !important; border: 1px solid {{ row.grade.border_color }};">{{ row.percentage|academic_number(settings) }}%</span>
+                                            <span class="badge percent-badge grade-badge" style="background-color: {{ row.grade.background_color }}; color: {{ row.grade.badge_color }}; border: 1px solid {{ row.grade.border_color }};"><b style="background-color: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ row.percentage|academic_number(settings) }}%</b></span>
                                         {% endif %}
                                     </td>
                                     <td>
-                                        {% if row.is_fail %}
-                                            <span class="badge" style="background-color: {{ fail_config.bg_color if fail_config and fail_config.bg_color else 'var(--red)' }}; color: {{ fail_config.text_color if fail_config and fail_config.text_color else '#ffffff' }} !important;">{{ grade_text }}</span>
-                                        {% elif row.is_weak %}
-                                            <span class="badge" style="background-color: {{ weak_config.bg_color if weak_config and weak_config.bg_color else '#f59e0b' }}; color: {{ weak_config.text_color if weak_config and weak_config.text_color else '#ffffff' }} !important;">{{ grade_text }}</span>
-                                        {% else %}
-                                            <span class="badge" style="background-color: {{ row.grade.background_color }}; color: {{ row.grade.text_color }} !important; border: 1px solid {{ row.grade.border_color }};">{{ grade_text }}</span>
-                                        {% endif %}
+                                        <span class="badge grade-badge" style="background-color: {{ row.grade.background_color }}; color: {{ row.grade.badge_color }}; border: 1px solid {{ row.grade.border_color }};"><b style="background-color: {{ row.grade.badge_color }}; color: {{ row.grade.text_color }};">{{ grade_text }}</b></span>
                                     </td>
                                     <td>
                                         <span class="badge rank-badge rank-{{ row.rank }}">

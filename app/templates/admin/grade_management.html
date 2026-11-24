@@ -155,8 +155,9 @@
                 </div>
               </td>
               <td>
-                <span class="rh-grade-preview" style="background: {{ grade.background_color }}; color: {{ grade.text_color }}; border: 1px solid {{ grade.border_color }};">
-                  {{ grade.grade }} {{ grade.comment }}
+                <span class="rh-grade-preview" style="background: {{ grade.background_color }}; color: {{ grade.badge_color }}; border: 1px solid {{ grade.border_color }};">
+                  <b style="background: {{ grade.badge_color }}; color: {{ grade.text_color }};">{{ grade.grade }}</b>
+                  <span>{{ grade.comment }}</span>
                 </span>
               </td>
             </tr>

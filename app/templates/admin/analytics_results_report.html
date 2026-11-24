@@ -376,8 +376,8 @@ function buildPage(level){
 
     <div class="stitle"><span class="num">${sectionIcon("grades")}</span><h2>Qaybinta Darajooyinka (Grades)</h2><span class="rule"></span></div>
     <div class="grades">
-      ${dist.map(b=>`<div class="gcard" style="background:${b.color}">
-        <div class="gcard-top"><div class="letter">${b.g}</div><div class="n">${b.count}</div></div>
+      ${dist.map(b=>`<div class="gcard" style="background:${b.background_color};color:${b.color};border:1px solid ${b.border_color}">
+        <div class="gcard-top"><div class="letter" style="background:${b.color};color:${b.text_color}">${b.g}</div><div class="n">${b.count}</div></div>
         <div class="p">${b.pct}%</div>
       </div>`).join("")}
     </div>

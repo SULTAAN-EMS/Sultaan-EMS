@@ -3445,6 +3445,9 @@ def analytics_report_grade_bands(exam):
                 "lo": float(normalized["min_score"] if normalized else scale.min_score),
                 "hi": float(normalized["max_score"] if normalized else scale.max_score),
                 "color": scale.badge_color or default["badge_color"],
+                "text_color": scale.text_color or default["text_color"],
+                "background_color": scale.background_color or default["background_color"],
+                "border_color": scale.border_color or default["border_color"],
                 "configured": True,
             })
         else:
@@ -3453,6 +3456,9 @@ def analytics_report_grade_bands(exam):
                 "lo": None,
                 "hi": None,
                 "color": default["badge_color"],
+                "text_color": default["text_color"],
+                "background_color": default["background_color"],
+                "border_color": default["border_color"],
                 "configured": False,
             })
     return bands
