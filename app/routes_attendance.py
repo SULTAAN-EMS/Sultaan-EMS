@@ -23,7 +23,8 @@ from .models import (
 from .permissions import enforce_endpoint_permission
 from .services import get_settings
 from .pdf_rendering import html_report_to_pdf
-from .report_theme import build_attendance_summary_pdf
+from .attendance_summary_pdf import build_attendance_summary_pdf as build_compact_attendance_summary_pdf
+from .report_theme import build_attendance_summary_pdf as build_premium_attendance_summary_pdf
 from .attendance_rules import NON_SAT_STATUSES, SAT_STATUSES, normalize_attendance_status, scheduled_subject_scope_key
 from .academic_hierarchy import year_classes, year_levels
 from .enrollment_service import (
@@ -1514,12 +1515,35 @@ def summary_report_pdf():
     context = _attendance_summary_page_context(request.args, force_generate=True)
     if context["filter_errors"] or not context["report"]:
         abort(400, description="Buuxi filtarrada warbixinta ka hor dhoofinta PDF-ka.")
-    pdf = build_attendance_summary_pdf(context)
+    report = context["report"]
+    if _attendance_summary_needs_compact_pdf(report):
+        renderer = build_compact_attendance_summary_pdf
+        renderer_name = "compact"
+    else:
+        renderer = build_premium_attendance_summary_pdf
+        renderer_name = "premium"
+    try:
+        pdf = renderer(context)
+    except (ValueError, MemoryError) as exc:
+        # ReportLab's deeply nested premium layout can run out of available
+        # width or memory on very large multi-hall reports.  The compact
+        # renderer preserves the same report data and statuses without making
+        # the user retry a request that is already close to the gateway limit.
+        if renderer is not build_premium_attendance_summary_pdf:
+            raise
+        current_app.logger.warning(
+            "attendance_summary_pdf_premium_failed fallback=compact error=%s",
+            type(exc).__name__,
+            exc_info=True,
+        )
+        pdf = build_compact_attendance_summary_pdf(context)
+        renderer_name = "compact-fallback"
     elapsed_ms = (perf_counter() - started_at) * 1000
     if elapsed_ms >= 1500:
         current_app.logger.warning(
-            "attendance_summary_pdf_slow elapsed_ms=%.0f year_id=%s exam_scope=%s halls=%d sessions=%d students=%d",
+            "attendance_summary_pdf_slow elapsed_ms=%.0f renderer=%s year_id=%s exam_scope=%s halls=%d sessions=%d students=%d",
             elapsed_ms,
+            renderer_name,
             context.get("selected_year_id"),
             context.get("selected_exam_scope"),
             len(context.get("selected_hall_ids") or ()),
@@ -1531,6 +1555,33 @@ def summary_report_pdf():
         mimetype="application/pdf",
         as_attachment=request.args.get("download") == "1",
         download_name="Warbixinta-Guud-Xaadirinta.pdf",
+    )
+
+
+def _attendance_summary_needs_compact_pdf(report):
+    """Keep large attendance PDFs away from ReportLab's nested-table layout.
+
+    The premium layout is useful for small previews, but its per-student,
+    per-event nested tables become increasingly expensive as halls and dates
+    are selected together.  These thresholds are deliberately based on the
+    already-built report, so the decision adds no database work and the
+    compact renderer receives exactly the same filtered data.
+    """
+    report = report or {}
+    totals = report.get("totals") or {}
+    detail_rows = sum(
+        len(report.get(key) or [])
+        for key in ("routine_students", "exception_students", "unmarked_students")
+    )
+    detail_events = sum(
+        int(report.get(key) or 0)
+        for key in ("routine_event_count", "exception_event_count", "unmarked_event_count")
+    )
+    return (
+        detail_rows > 18
+        or detail_events > 42
+        or int(totals.get("slots") or 0) > 240
+        or int(totals.get("students") or 0) > 120
     )
 
 
