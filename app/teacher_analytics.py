@@ -96,6 +96,29 @@ def _safe_mean(values):
     return round(sum(values) / len(values), 2) if values else 0
 
 
+def _weighted_percentage(results, max_resolver=None):
+    """Return a weighted percentage from entered raw points, never percentages.
+
+    Missing and non-sitting attendance rows are intentionally excluded here;
+    they remain visible in the separate data-quality/attendance counts instead
+    of being silently converted into zero scores.
+    """
+    total_score = Decimal("0")
+    total_max = Decimal("0")
+    for result in results or []:
+        maximum = max_resolver(result) if max_resolver else _result_max_score(result)
+        try:
+            maximum = Decimal(str(maximum or 0))
+            score = Decimal(str(result.score or 0))
+        except (TypeError, ValueError):
+            continue
+        if maximum <= 0:
+            continue
+        total_score += score
+        total_max += maximum
+    return round(float(total_score / total_max * 100), 2) if total_max else 0
+
+
 def _safe_median(values):
     return round(statistics.median(values), 2) if values else 0
 
@@ -529,18 +552,15 @@ def scoped_results(teacher, filters, students=None):
 def student_exam_averages(results):
     grouped = defaultdict(list)
     for result in results:
-        grouped[(result.student_id, result.exam_id)].append(_pct(result))
-    averages = {}
-    for key, values in grouped.items():
-        averages[key] = _safe_mean(values)
-    return averages
+        grouped[(result.student_id, result.exam_id)].append(result)
+    return {key: _weighted_percentage(items) for key, items in grouped.items()}
 
 
 def student_overall_averages(results):
     grouped = defaultdict(list)
     for result in results:
-        grouped[result.student_id].append(_pct(result))
-    return {student_id: _safe_mean(values) for student_id, values in grouped.items()}
+        grouped[result.student_id].append(result)
+    return {student_id: _weighted_percentage(items) for student_id, items in grouped.items()}
 
 
 def filter_options(teacher, filters):
@@ -1449,9 +1469,53 @@ def fallanqeyn_data(teacher, filters):
         if result.subject_id in student_subject_ids.get(result.student_id, set()):
             result_by_exam[result.exam_id].append(result)
 
+    placement_cache = {}
+
+    def selected_year_placement(student):
+        year_id = filters.get("academic_year_id")
+        if not year_id:
+            return None
+        if student.id not in placement_cache:
+            placement_cache[student.id] = enrollment_placement_for_student(student, year_id)
+        return placement_cache[student.id]
+
     exam_for_scale = filters.get("exam_id") or (results[0].exam_id if results else None)
-    result_maxima = [_result_max_score(result) for result in results]
+    selected_exam = Exam.query.get(exam_for_scale) if exam_for_scale else None
+    expected_maxima = {}
+    subject_max_cache = {}
+
+    def expected_max(student, subject):
+        key = (student.id, subject.id)
+        if key in subject_max_cache:
+            return subject_max_cache[key]
+        placement = selected_year_placement(student) or {}
+        maximum = resolve_subject_max_score(
+            subject,
+            exam=selected_exam,
+            academic_year_level_id=placement.get("academic_year_level_id"),
+            academic_level_id=placement.get("academic_level_id")
+            or getattr(selected_exam, "academic_level_id", None),
+        )
+        try:
+            maximum = Decimal(str(maximum or 0))
+        except (TypeError, ValueError):
+            maximum = Decimal("0")
+        subject_max_cache[key] = maximum
+        return maximum
+
+    for student in students:
+        for subject_id in student_subject_ids.get(student.id, set()):
+            subject = assigned_subjects.get(subject_id)
+            if subject:
+                expected_maxima[(student.id, subject_id)] = expected_max(student, subject)
+
+    result_maxima = [
+        expected_maxima.get((result.student_id, result.subject_id), _result_max_score(result))
+        for result in results
+    ]
     distinct_maxima = {Decimal(str(value)) for value in result_maxima if value}
+    if not distinct_maxima:
+        distinct_maxima = {Decimal(str(value)) for value in expected_maxima.values() if value}
     common_max = next(iter(distinct_maxima)) if len(distinct_maxima) == 1 else None
     grade_metadata = _grade_metadata(exam_for_scale, common_max)
     pass_marks = [
@@ -1476,15 +1540,24 @@ def fallanqeyn_data(teacher, filters):
     def is_pass_percentage(value, exam_id=None):
         return bool(grade_info_for_percentage(value, exam_id or exam_for_scale).get("is_pass"))
 
-    placement_cache = {}
+    total_possible_points = sum((Decimal(str(value)) for value in result_maxima), Decimal("0"))
+    total_scored_points = sum((Decimal(str(result.score or 0)) for result in results), Decimal("0"))
+    expected_slots = len(results)
+    average_points = (
+        round(float(total_scored_points / expected_slots), 2)
+        if expected_slots else 0
+    )
+    average_max_points = (
+        round(float(total_possible_points / expected_slots), 2)
+        if expected_slots else None
+    )
+    average_percentage = (
+        round(float(total_scored_points / total_possible_points * 100), 2)
+        if total_possible_points else 0
+    )
 
-    def selected_year_placement(student):
-        year_id = filters.get("academic_year_id")
-        if not year_id:
-            return None
-        if student.id not in placement_cache:
-            placement_cache[student.id] = enrollment_placement_for_student(student, year_id)
-        return placement_cache[student.id]
+    def current_max(result):
+        return expected_maxima.get((result.student_id, result.subject_id)) or _result_max_score(result)
 
     def class_name(student):
         placement = selected_year_placement(student)
@@ -1557,7 +1630,7 @@ def fallanqeyn_data(teacher, filters):
             and subject_id in assigned_subjects
         ]
         student_scores = [_pct(result) for result in student_results]
-        average = _safe_mean(student_scores) if student_scores else None
+        average = _weighted_percentage(student_results, current_max) if student_results else None
         reasons = []
         weight = 0
         low_scores = [
@@ -1637,7 +1710,7 @@ def fallanqeyn_data(teacher, filters):
             else len(items)
         )
         missing_count = max(item_expected - len(items), 0)
-        avg = _safe_mean(item_scores)
+        avg = _weighted_percentage(items, current_max)
         passed = sum(
             1
             for result in items
@@ -1747,29 +1820,61 @@ def fallanqeyn_data(teacher, filters):
         )
 
     histogram = []
-    if common_max is not None and common_max > 0:
-        common_max_float = float(common_max)
-        if common_max_float <= 20 and common_max_float.is_integer():
-            edges = [(float(index), float(index)) for index in range(int(common_max_float) + 1)]
+    if results:
+        # Use raw points only when every selected result has the same natural
+        # maximum. With mixed maxima, percentages are the only fair common
+        # scale, otherwise a 7/9 result would be compared to 7/100.
+        histogram_is_percentage = common_max is None or common_max <= 0
+        if histogram_is_percentage:
+            edges = [(float(index * 10), float((index + 1) * 10)) for index in range(10)]
         else:
-            width = common_max_float / 10
-            edges = [
-                (round(index * width, 2), round(common_max_float if index == 9 else (index + 1) * width, 2))
-                for index in range(10)
-            ]
-        for low, high in edges:
+            common_max_float = float(common_max)
+            if common_max_float <= 20 and common_max_float.is_integer():
+                # Score values can be decimals; ranges prevent 8.5/9 from
+                # disappearing simply because it is not an integer.
+                edges = [
+                    (float(index), float(index + 1))
+                    for index in range(int(common_max_float))
+                ]
+            else:
+                width = common_max_float / 10
+                edges = [
+                    (
+                        round(index * width, 2),
+                        round(common_max_float if index == 9 else (index + 1) * width, 2),
+                    )
+                    for index in range(10)
+                ]
+
+        for index, (low, high) in enumerate(edges):
+            last_bin = index == len(edges) - 1
+            if histogram_is_percentage:
+                values = [_pct(result) for result in results]
+                label = f"{low:g}-{high:g}%"
+                scale_max = 100.0
+            else:
+                values = [float(result.score) for result in results]
+                label = f"{low:g}-{high:g}"
+                scale_max = float(common_max)
             number = sum(
-                1 for result in results
-                if low <= float(result.score)
-                and (float(result.score) <= high if high == common_max_float else float(result.score) < high)
+                1 for value in values
+                if low <= value and (value <= high if last_bin else value < high)
             )
+            low_pct = low / scale_max * 100
+            high_pct = high / scale_max * 100
+            if high_pct < pass_mark:
+                tone = "bad"
+            elif low_pct >= pass_mark:
+                tone = "ok"
+            else:
+                tone = "warn"
             histogram.append(
                 {
-                    "label": str(int(low)) if low == high and low.is_integer() else f"{low:g}-{high:g}",
+                    "label": label,
                     "n": number,
                     "low": low,
                     "high": high,
-                    "tone": "ok" if is_pass_percentage(high / common_max_float * 100) else "bad",
+                    "tone": tone,
                 }
             )
 
@@ -1779,7 +1884,7 @@ def fallanqeyn_data(teacher, filters):
         trend.append(
             {
                 "label": items[0].exam.name,
-                "avg": _safe_mean(exam_scores),
+                "avg": _weighted_percentage(items),
                 "pass": round(
                     sum(
                         1
@@ -1808,10 +1913,6 @@ def fallanqeyn_data(teacher, filters):
     no_result_students = sum(1 for row in students_payload if row["avg"] is None)
     missing = missing_pairs
     approval_states = _approval_counts(teacher, filters, assignments, students, results)
-    average_points = (
-        round(sum(float(result.score) for result in results) / len(results), 2)
-        if results else 0
-    )
     insights = []
     risky_subjects = [item for item in subjects_payload if item["risk"]["level"] != "none"]
     if risky_subjects:
@@ -1826,7 +1927,7 @@ def fallanqeyn_data(teacher, filters):
     if missing:
         insights.append({"code": "missing_results", "tone": "warn", "importance": "high", "v": {"n": missing, "pct": round(missing / expected * 100, 2) if expected else 0}})
     if not insights:
-        insights.append({"code": "best_subject", "tone": "good", "importance": "low", "v": {"name": "Xogtu way dhammaystiran tahay", "avg": _safe_mean(scores)}})
+        insights.append({"code": "best_subject", "tone": "good", "importance": "low", "v": {"name": "Xogtu way dhammaystiran tahay", "avg": average_percentage}})
 
     gender_buckets = defaultdict(list)
     for student in students:
@@ -1843,8 +1944,8 @@ def fallanqeyn_data(teacher, filters):
             continue
         gender_rows = [payload_by_student.get(str(student.id)) for student in gender_students]
         gender_rows = [row for row in gender_rows if row]
-        gender_scores = [
-            _pct(result)
+        gender_results = [
+            result
             for row in gender_rows
             for result in result_by_student.get(int(row["id"]), [])
         ]
@@ -1855,24 +1956,29 @@ def fallanqeyn_data(teacher, filters):
             if is_pass_percentage(row["avg"])
         )
         gender_failed = len(gender_assessed) - gender_passed
-        gender_maxima = {
-            Decimal(str(_result_max_score(result)))
-            for row in gender_rows
-            for result in result_by_student.get(int(row["id"]), [])
-            if _result_max_score(result)
-        }
-        gender_max = float(next(iter(gender_maxima))) if len(gender_maxima) == 1 else None
+        gender_maxima = [current_max(result) for result in gender_results if current_max(result)]
+        gender_max = (
+            round(float(sum(Decimal(str(value)) for value in gender_maxima) / len(gender_maxima)), 2)
+            if gender_maxima else None
+        )
+        gender_total_score = sum(
+            (Decimal(str(result.score or 0)) for result in gender_results),
+            Decimal("0"),
+        )
+        gender_total_max = sum(
+            (Decimal(str(current_max(result))) for result in gender_results),
+            Decimal("0"),
+        )
         gender_payload.append(
             {
                 "name": name,
                 "n": len(gender_students),
                 "students": len(gender_students),
-                "avg": _safe_mean(gender_scores),
+                "avg": round(float(gender_total_score / gender_total_max * 100), 2) if gender_total_max else 0,
                 "avg_points": round(
-                    sum(float(result.score) for row in gender_rows for result in result_by_student.get(int(row["id"]), []))
-                    / len(gender_scores),
+                    float(gender_total_score / len(gender_results)),
                     2,
-                ) if gender_scores else None,
+                ) if gender_results else None,
                 "max_points": gender_max,
                 "passed": gender_passed,
                 "failed": gender_failed,
@@ -1900,9 +2006,9 @@ def fallanqeyn_data(teacher, filters):
             "states": approval_states,
         },
         "kpi": {
-            "avg": _safe_mean(scores),
+            "avg": average_percentage,
             "avg_points": average_points,
-            "max_points": float(common_max) if common_max is not None else None,
+            "max_points": average_max_points,
             "median": _safe_median(scores),
             "high": max(scores) if scores else None,
             "low": min(scores) if scores else None,
