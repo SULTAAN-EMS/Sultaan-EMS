@@ -4,6 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from flask import g, has_request_context
+from sqlalchemy.orm import joinedload, selectinload
 
 from . import db
 from .models import (
@@ -20,10 +21,17 @@ from .models import (
     Student,
     Subject,
     TeacherResultAssignment,
+    TeacherResultSubmission,
 )
 from .attendance_rules import NON_SAT_STATUSES, normalize_attendance_status
 from .services import grade_for, load_grade_scale_cache, resolve_subject_max_score
-from .enrollment_service import EnrollmentValidationError, enrollment_placement_for_student, student_enrollment_legacy_scope_query, student_enrollment_scope_query
+from .enrollment_service import (
+    EnrollmentValidationError,
+    enrollment_placement_for_student,
+    resolve_student_placements,
+    student_enrollment_legacy_scope_query,
+    student_enrollment_scope_query,
+)
 
 
 def _request_cache(name):
@@ -35,6 +43,40 @@ def _request_cache(name):
         cache = {}
         setattr(g, name, cache)
     return cache
+
+
+def _student_placement(student, academic_year_id):
+    """Resolve a student's year placement once during one analytics request."""
+    if not student or academic_year_id in (None, ""):
+        return None
+    cache = _request_cache("_teacher_student_placement_cache")
+    key = (student.id, int(academic_year_id))
+    if cache is not None and key in cache:
+        return cache[key]
+    value = enrollment_placement_for_student(student, academic_year_id)
+    if cache is not None:
+        cache[key] = value
+    return value
+
+
+def _prime_student_placements(students, academic_year_id):
+    """Warm the request cache with one bounded placement lookup."""
+    if not students or academic_year_id in (None, ""):
+        return
+    cache = _request_cache("_teacher_student_placement_cache")
+    if cache is None:
+        return
+    missing = [
+        student for student in students
+        if (student.id, int(academic_year_id)) not in cache
+    ]
+    if not missing:
+        return
+    cache.update(
+        resolve_student_placements(
+            [(student, academic_year_id) for student in missing]
+        )
+    )
 
 
 def _filter_cache_key(filters):
@@ -63,7 +105,7 @@ def _result_max_score(result):
     else:
         student = result.student
         if student:
-            placement = enrollment_placement_for_student(student, exam.academic_year_id)
+            placement = _student_placement(student, exam.academic_year_id)
         if placement_cache is not None:
             placement_cache[placement_key] = placement
 
@@ -241,7 +283,7 @@ def _year_class_for_assignment(assignment):
 
 
 def _student_shift(student, academic_year_id):
-    placement = enrollment_placement_for_student(student, academic_year_id)
+    placement = _student_placement(student, academic_year_id)
     year_class_id = (placement or {}).get("academic_year_class_id")
     if not year_class_id:
         return None
@@ -258,10 +300,22 @@ def _student_shift(student, academic_year_id):
 def scoped_teacher_result_assignments(teacher, filters=None):
     """Return the exact assignment pairs allowed by the selected analytics scope."""
     filters = filters or {}
+    cache = _request_cache("_teacher_result_assignments_cache")
+    cache_key = (teacher.id, _filter_cache_key(filters))
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
     query = TeacherResultAssignment.query.filter(
         TeacherResultAssignment.teacher_id == teacher.id,
         TeacherResultAssignment.deleted_at.is_(None),
         TeacherResultAssignment.is_active.is_(True),
+    ).options(
+        joinedload(TeacherResultAssignment.academic_year),
+        joinedload(TeacherResultAssignment.exam),
+        joinedload(TeacherResultAssignment.school_class).joinedload(AcademicClass.academic_level),
+        joinedload(TeacherResultAssignment.subject),
+        selectinload(TeacherResultAssignment.submissions).selectinload(
+            TeacherResultSubmission.marks
+        ),
     )
     for field in ("academic_year_id", "exam_id", "class_id", "subject_id"):
         value = filters.get(field)
@@ -279,6 +333,8 @@ def scoped_teacher_result_assignments(teacher, filters=None):
         if shift and _shift_key(getattr(year_class, "school_shift", None)) != shift:
             continue
         assignments.append(assignment)
+    if cache is not None:
+        cache[cache_key] = assignments
     return assignments
 
 
@@ -457,6 +513,7 @@ def scoped_students(teacher, filters):
         query = query.filter(db.or_(Student.full_name.like(q), Student.student_code.like(q)))
     
     students = query.order_by(Student.full_name.asc()).all()
+    _prime_student_placements(students, filters.get("academic_year_id"))
     if exact_assignments:
         exact_class_ids = {assignment.class_id for assignment in exact_assignments}
         exact_level_ids = {
@@ -467,7 +524,7 @@ def scoped_students(teacher, filters):
         shift = _shift_key(filters.get("shift"))
         filtered_students = []
         for student in students:
-            placement = enrollment_placement_for_student(student, filters["academic_year_id"])
+            placement = _student_placement(student, filters["academic_year_id"])
             if not placement or placement.get("academic_class_id") not in exact_class_ids:
                 continue
             if exact_level_ids and placement.get("academic_level_id") not in exact_level_ids:
@@ -526,6 +583,11 @@ def scoped_results(teacher, filters, students=None):
             Result.subject_id.in_(subject_ids),
             Result.is_published.is_(True),
         )
+        .options(
+            joinedload(Result.student),
+            joinedload(Result.exam),
+            joinedload(Result.subject),
+        )
         .join(Result.exam)
         .join(Result.subject)
     )
@@ -539,7 +601,7 @@ def scoped_results(teacher, filters, students=None):
     if exact_assignments:
         allowed_results = []
         for result in results:
-            placement = enrollment_placement_for_student(result.student, filters["academic_year_id"])
+            placement = _student_placement(result.student, filters["academic_year_id"])
             allowed_subjects = class_subjects.get((placement or {}).get("academic_class_id"), set())
             if result.subject_id in allowed_subjects:
                 allowed_results.append(result)
@@ -768,7 +830,7 @@ def _get_class_performance(results, academic_classes):
     """Group classes by performance level"""
     class_averages = {}
     for result in results:
-        placement = enrollment_placement_for_student(result.student, result.exam.academic_year_id) or {}
+        placement = _student_placement(result.student, result.exam.academic_year_id) or {}
         class_id = placement.get("academic_class_id") or result.student.academic_class_id
         if class_id:
             if class_id not in class_averages:
@@ -849,7 +911,7 @@ def _get_class_averages(results, academic_classes):
     """Get average scores for each class for progress bars"""
     class_averages = {}
     for result in results:
-        placement = enrollment_placement_for_student(result.student, result.exam.academic_year_id) or {}
+        placement = _student_placement(result.student, result.exam.academic_year_id) or {}
         class_id = placement.get("academic_class_id") or result.student.academic_class_id
         if class_id:
             if class_id not in class_averages:
@@ -1417,7 +1479,7 @@ def fallanqeyn_data(teacher, filters):
 
     student_subject_ids = {}
     for student in students:
-        placement = enrollment_placement_for_student(student, filters.get("academic_year_id"))
+        placement = _student_placement(student, filters.get("academic_year_id"))
         class_id = (placement or {}).get("academic_class_id")
         allowed = set(assigned_subjects_by_class.get(class_id, set()))
         if filters.get("subject_id"):
@@ -1476,7 +1538,7 @@ def fallanqeyn_data(teacher, filters):
         if not year_id:
             return None
         if student.id not in placement_cache:
-            placement_cache[student.id] = enrollment_placement_for_student(student, year_id)
+            placement_cache[student.id] = _student_placement(student, year_id)
         return placement_cache[student.id]
 
     exam_for_scale = filters.get("exam_id") or (results[0].exam_id if results else None)
@@ -1485,16 +1547,21 @@ def fallanqeyn_data(teacher, filters):
     subject_max_cache = {}
 
     def expected_max(student, subject):
-        key = (student.id, subject.id)
+        placement = selected_year_placement(student) or {}
+        academic_level_id = placement.get("academic_level_id") or getattr(selected_exam, "academic_level_id", None)
+        key = (
+            placement.get("academic_year_level_id"),
+            academic_level_id,
+            subject.id,
+            getattr(selected_exam, "id", None),
+        )
         if key in subject_max_cache:
             return subject_max_cache[key]
-        placement = selected_year_placement(student) or {}
         maximum = resolve_subject_max_score(
             subject,
             exam=selected_exam,
             academic_year_level_id=placement.get("academic_year_level_id"),
-            academic_level_id=placement.get("academic_level_id")
-            or getattr(selected_exam, "academic_level_id", None),
+            academic_level_id=academic_level_id,
         )
         try:
             maximum = Decimal(str(maximum or 0))

@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-from flask import Blueprint, abort, flash, jsonify, make_response, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, flash, g, jsonify, make_response, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_user, logout_user
 from openpyxl import Workbook
 from reportlab.lib import colors
@@ -12,7 +12,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from . import db
 from .models import (
@@ -36,6 +36,7 @@ from .teacher_analytics import (
     report_summary,
     results_list_data,
     _year_class_for_assignment,
+    _filter_cache_key,
     scoped_teacher_result_assignments,
     student_analysis_data,
     students_list_data,
@@ -1359,14 +1360,13 @@ def exam_analysis():
 @teacher_permission_required("future_analysis_features")
 def analytics():
     teacher = get_current_teacher()
-    filters = validate_filter_ids(teacher, parse_teacher_filters(request.args))
     record_teacher_visit(teacher, "Fallanqeyn")
-    ctx = _ctx(teacher, filters, "Fallanqeyn", "teacher_portal.analytics")
-    # The supplied analytics template loads its real scoped payload after the
-    # filter choices are ready. This avoids calculating the same report twice.
-    ctx["api"] = url_for("teacher_portal.analytics_api_filters").rsplit("/", 1)[0]
+    # This page loads its filter choices and report payload through the two
+    # analytics APIs below. Building the generic portal context here would
+    # query assignments and students a second time before the page is shown.
+    api = url_for("teacher_portal.analytics_api_filters").rsplit("/", 1)[0]
     db.session.commit()
-    return render_template("teacher/analytics.html", **ctx)
+    return render_template("teacher/analytics.html", api=api)
 
 
 def _analytics_filter_rows(teacher):
@@ -1377,6 +1377,12 @@ def _analytics_filter_rows(teacher):
             TeacherResultAssignment.teacher_id == teacher.id,
             TeacherResultAssignment.deleted_at.is_(None),
             TeacherResultAssignment.is_active.is_(True),
+        )
+        .options(
+            joinedload(TeacherResultAssignment.academic_year),
+            joinedload(TeacherResultAssignment.exam),
+            joinedload(TeacherResultAssignment.school_class).joinedload(AcademicClass.academic_level),
+            joinedload(TeacherResultAssignment.subject),
         )
         .all()
     )
@@ -1451,6 +1457,15 @@ def analytics_api_data():
             TeacherResultAssignment.deleted_at.is_(None),
             TeacherResultAssignment.is_active.is_(True),
         )
+        .options(
+            joinedload(TeacherResultAssignment.academic_year),
+            joinedload(TeacherResultAssignment.exam),
+            joinedload(TeacherResultAssignment.school_class).joinedload(AcademicClass.academic_level),
+            joinedload(TeacherResultAssignment.subject),
+            selectinload(TeacherResultAssignment.submissions).selectinload(
+                TeacherResultSubmission.marks
+            ),
+        )
         .all()
     )
     matching = []
@@ -1492,6 +1507,11 @@ def analytics_api_data():
         "subject_id": next(iter(selected_subject_ids)) if labels["subject"] and labels["subject"] != "Dhammaan" else None,
         "shift": labels["shift"],
     }
+    request_cache = getattr(g, "_teacher_result_assignments_cache", None)
+    if request_cache is None:
+        request_cache = {}
+        g._teacher_result_assignments_cache = request_cache
+    request_cache[(teacher.id, _filter_cache_key(filters))] = matching
     return jsonify(fallanqeyn_data(teacher, filters))
 
 
