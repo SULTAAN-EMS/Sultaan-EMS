@@ -1975,6 +1975,8 @@ def fallanqeyn_data(teacher, filters):
                 "n": len(gender_students),
                 "students": len(gender_students),
                 "avg": round(float(gender_total_score / gender_total_max * 100), 2) if gender_total_max else 0,
+                "score_total": round(float(gender_total_score), 2),
+                "max_total": round(float(gender_total_max), 2),
                 "avg_points": round(
                     float(gender_total_score / len(gender_results)),
                     2,
