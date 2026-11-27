@@ -1,0 +1,1059 @@
+{% macro percentage_band_color(value) -%}
+    {%- set percentage = value|float -%}
+    {%- if percentage < 11 -%}#dc2626
+    {%- elif percentage < 21 -%}#ea580c
+    {%- elif percentage < 31 -%}#f97316
+    {%- elif percentage < 41 -%}#eab308
+    {%- elif percentage < 51 -%}#84cc16
+    {%- elif percentage < 61 -%}#22c55e
+    {%- elif percentage < 71 -%}#10b981
+    {%- elif percentage < 81 -%}#14b8a6
+    {%- elif percentage < 91 -%}#3b82f6
+    {%- else -%}#7c3aed
+    {%- endif -%}
+{%- endmacro %}
+
+<style>
+    .ref-analytics-page {
+        padding: 8mm 10mm 7mm;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        background: #ffffff;
+        color: #0f1f4a;
+    }
+
+    .ref-analytics-sheet {
+        position: relative;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .ref-analytics-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-bottom: 2px solid #c8962b;
+        padding-bottom: 5px;
+        margin-bottom: 6px;
+    }
+
+    .ref-analytics-brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .ref-analytics-logo {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        box-sizing: border-box;
+        overflow: hidden;
+        border-radius: 8px;
+        border: 1px solid #c8962b;
+        background: #ffffff;
+        box-shadow: 0 1px 3px rgba(15, 31, 74, .16);
+        color: #0f1f4a;
+        font-size: 14px;
+        font-weight: 900;
+    }
+
+    .ref-analytics-logo img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        padding: 2px;
+        box-sizing: border-box;
+        object-fit: contain;
+        image-rendering: auto;
+    }
+
+    .ref-analytics-brand b {
+        display: block;
+        color: #0f1f4a;
+        font-size: 14px;
+        line-height: 1.05;
+    }
+
+    .ref-analytics-brand small {
+        display: block;
+        color: #b45309;
+        font-size: 9px;
+        font-weight: 700;
+        margin-top: 2px;
+    }
+
+    .ref-analytics-header h1 {
+        margin: 0 0 0 auto;
+        color: #0f1f4a;
+        font-size: 17px;
+        line-height: 1.05;
+        text-align: right;
+    }
+
+    .ref-analytics-header h1 small {
+        display: block;
+        margin-top: 3px;
+        color: #64748b;
+        font-size: 9px;
+        font-weight: 600;
+    }
+
+    .ref-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+        gap: 5px;
+        margin-bottom: 6px;
+    }
+
+    .ref-kpi {
+        min-width: 0;
+        border: 1px solid #e2e8f0;
+        border-left: 4px solid var(--ref-color);
+        border-radius: 6px;
+        padding: 3px 6px;
+        color: #64748b;
+        font-size: 8px;
+        line-height: 1.2;
+    }
+
+    .ref-kpi-label {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        min-height: 13px;
+    }
+
+    .ref-kpi-icon {
+        display: inline-grid;
+        width: 13px;
+        height: 13px;
+        flex: 0 0 13px;
+        place-items: center;
+        color: var(--ref-color);
+    }
+
+    .ref-kpi-icon svg {
+        width: 13px;
+        height: 13px;
+        fill: none;
+        stroke: currentColor;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 2;
+    }
+
+    .ref-kpi strong {
+        display: block;
+        color: #0f1f4a;
+        font-size: 13px;
+        line-height: 1.05;
+    }
+
+    .ref-analytics-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 7px;
+    }
+
+    .ref-analytics-box {
+        min-width: 0;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #ffffff;
+    }
+
+    .ref-analytics-box h2 {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin: 0;
+        padding: 4px 8px;
+        color: #ffffff;
+        background: var(--ref-color);
+        font-size: 10.5px;
+        line-height: 1.1;
+    }
+
+    .ref-analytics-box h2 svg {
+        width: 14px;
+        height: 14px;
+        flex: 0 0 auto;
+    }
+
+    .ref-analytics-table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: auto;
+        color: #0f1f4a;
+        font-size: 8.7px;
+    }
+
+    .ref-analytics-table--subjects th:first-child,
+    .ref-analytics-table--subjects td:first-child,
+    .ref-analytics-table--students th:first-child,
+    .ref-analytics-table--students td:first-child {
+        width: 4%;
+        min-width: 13px;
+        max-width: 20px;
+        padding-left: 2px;
+        padding-right: 2px;
+        white-space: nowrap;
+    }
+
+    .ref-analytics-table--subjects th:nth-child(2),
+    .ref-analytics-table--subjects td:nth-child(2) {
+        width: 32%;
+    }
+
+    .ref-analytics-table--students th:nth-child(2),
+    .ref-analytics-table--students td:nth-child(2) {
+        width: 36%;
+        min-width: 0;
+    }
+
+    .ref-analytics-table--students td:nth-child(2) {
+        overflow-wrap: anywhere;
+    }
+
+    .ref-analytics-table th {
+        padding: 3px 4px;
+        color: #64748b;
+        background: #f1f5f9;
+        font-size: 7.8px;
+        text-align: left;
+        text-transform: uppercase;
+    }
+
+    .ref-analytics-table th:not(:first-child),
+    .ref-analytics-table td:not(:first-child) {
+        border-left: 1px solid #cbd5e1;
+    }
+
+    .ref-analytics-table td {
+        padding: 3.3px 4px;
+        border-top: 1px solid #cbd5e1;
+        vertical-align: middle;
+    }
+
+    .ref-analytics-table .center {
+        text-align: center;
+    }
+
+    .ref-analytics-table .strong {
+        font-weight: 800;
+    }
+
+    .ref-progress {
+        height: 5px;
+        min-width: 36px;
+        overflow: hidden;
+        border-radius: 4px;
+        background: #e2e8f0;
+    }
+
+    .ref-progress i {
+        display: block;
+        height: 100%;
+        border-radius: 4px;
+    }
+
+    .ref-grade-tag {
+        display: inline-block;
+        min-width: 18px;
+        padding: 1px 5px;
+        border-radius: 9px;
+        color: #ffffff;
+        font-weight: 800;
+        font-size: 8px;
+    }
+
+    .ref-analytics-note {
+        margin: 5px;
+        padding: 4px 6px;
+        border: 1px dashed #f59e0b;
+        border-radius: 6px;
+        color: #92400e;
+        background: #fffbeb;
+        font-size: 8px;
+    }
+
+    .ref-chart-layout {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 8px;
+    }
+
+    .ref-chart-box {
+        min-width: 0;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 6px;
+        background: #ffffff;
+    }
+
+    .ref-chart-box--subject-performance {
+        position: relative;
+        overflow: visible;
+    }
+
+    .ref-chart-box--radar {
+        position: relative;
+        overflow: visible;
+    }
+
+    .ref-chart-box--grades,
+    .ref-chart-box--percentage-bands {
+        position: relative;
+        overflow: visible;
+    }
+
+    .ref-chart-tooltip {
+        position: absolute;
+        z-index: 3;
+        top: 0;
+        left: 0;
+        display: none;
+        min-width: 42mm;
+        max-width: 62mm;
+        padding: 6px 8px;
+        transform: translate(-50%, -100%);
+        border: 1px solid #dbe4f0;
+        border-left: 3px solid var(--tooltip-color, #2563eb);
+        border-radius: 7px;
+        background: rgba(255, 255, 255, .98);
+        box-shadow: 0 5px 16px rgba(15, 31, 74, .16);
+        color: #0f1f4a;
+        pointer-events: none;
+    }
+
+    .ref-chart-tooltip.is-visible {
+        display: block;
+    }
+
+    .ref-chart-tooltip[data-kind="average"] {
+        --tooltip-color: #2563eb;
+    }
+
+    .ref-chart-tooltip[data-kind="pass-rate"] {
+        --tooltip-color: #c8962b;
+    }
+
+    .ref-chart-tooltip[data-kind="grade"],
+    .ref-chart-tooltip[data-kind="grade-chart"] {
+        --tooltip-color: #b45309;
+    }
+
+    .ref-chart-tooltip[data-kind="percentage-band"] {
+        --tooltip-color: #7c3aed;
+    }
+
+    .ref-chart-tooltip-kicker {
+        display: block;
+        color: var(--tooltip-color, #2563eb);
+        font-size: 7px;
+        font-weight: 800;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+    }
+
+    .ref-chart-tooltip-subject {
+        display: block;
+        margin-top: 1px;
+        overflow: hidden;
+        font-size: 8.5px;
+        font-weight: 800;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ref-chart-tooltip-value {
+        display: block;
+        margin-top: 2px;
+        font-size: 12px;
+        font-weight: 900;
+    }
+
+    .ref-chart-tooltip-band {
+        display: block;
+        margin-top: 2px;
+        color: #64748b;
+        font-size: 7px;
+        font-weight: 700;
+    }
+
+    .ref-chart-box h3 {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin: 0 0 4px;
+        color: #0f1f4a;
+        font-size: 10px;
+        line-height: 1.1;
+    }
+
+    .ref-chart-box h3 svg {
+        width: 11px;
+        height: 11px;
+        flex: 0 0 11px;
+        padding: 2px;
+        box-sizing: content-box;
+        border: 1px solid currentColor;
+        border-radius: 5px;
+        background: #ffffff;
+    }
+
+    .ref-chart-box--subject-performance h3 {
+        color: #2563eb;
+    }
+
+    .ref-chart-box--subject-performance h3 svg {
+        background: #dbeafe;
+    }
+
+    .ref-chart-box--radar h3 {
+        color: #0f766e;
+    }
+
+    .ref-chart-box--radar h3 svg {
+        background: #ccfbf1;
+    }
+
+    .ref-chart-box--completeness h3 {
+        color: #059669;
+    }
+
+    .ref-chart-box--completeness h3 svg {
+        background: #d1fae5;
+    }
+
+    .ref-chart-box--grades h3 {
+        color: #b45309;
+    }
+
+    .ref-chart-box--grades h3 svg {
+        background: #fef3c7;
+    }
+
+    .ref-chart-box--percentage-bands h3 {
+        color: #7c3aed;
+    }
+
+    .ref-chart-box--percentage-bands h3 svg {
+        background: #ede9fe;
+    }
+
+    .ref-chart-legend {
+        display: flex;
+        gap: 10px;
+        margin: 0 0 4px;
+        color: #64748b;
+        font-size: 7.8px;
+    }
+
+    .ref-chart-legend span::before {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        margin-right: 3px;
+        border-radius: 2px;
+        content: "";
+        background: var(--legend-color);
+    }
+
+    .ref-svg-chart {
+        display: block;
+        width: 100%;
+        height: 78mm;
+    }
+
+    .ref-svg-chart--short {
+        height: 60mm;
+    }
+
+    .ref-svg-chart text {
+        fill: #64748b;
+        font-family: Inter, Arial, sans-serif;
+        font-size: 8px;
+    }
+
+    .ref-svg-chart .axis-label {
+        font-size: 7px;
+        text-anchor: middle;
+    }
+
+    .ref-svg-chart .value-label {
+        fill: #334155;
+        font-size: 7px;
+        font-weight: 800;
+        text-anchor: middle;
+    }
+
+    .ref-svg-chart .completeness-value {
+        font-size: 7px;
+        font-weight: 900;
+        text-anchor: middle;
+    }
+
+    .ref-svg-chart .completeness-value--entered {
+        fill: #047857;
+    }
+
+    .ref-svg-chart .completeness-value--inside {
+        fill: #ffffff;
+        paint-order: stroke;
+        stroke: rgba(4, 120, 87, .55);
+        stroke-width: .55px;
+    }
+
+    .ref-svg-chart .completeness-value--inside-small {
+        fill: #ffffff;
+        paint-order: stroke;
+        stroke: #047857;
+        stroke-width: 1.25px;
+    }
+
+    .ref-svg-chart .completeness-value--missing {
+        fill: #b91c1c;
+    }
+
+    .ref-svg-chart .grid-line {
+        stroke: #e2e8f0;
+        stroke-width: 1;
+    }
+
+    .ref-svg-chart .axis-line {
+        stroke: #94a3b8;
+        stroke-width: 1;
+    }
+
+    .ref-svg-chart [data-tooltip-kind] {
+        cursor: pointer;
+        pointer-events: all;
+        transition: filter .18s ease, opacity .18s ease, transform .18s ease;
+        transform-box: fill-box;
+        transform-origin: center;
+    }
+
+    .ref-svg-chart rect[data-tooltip-kind="average"]:hover,
+    .ref-svg-chart rect[data-tooltip-kind="average"]:focus {
+        filter: drop-shadow(0 2px 3px rgba(37, 99, 235, .42));
+        opacity: .92;
+        outline: none;
+        transform: scaleY(1.04);
+        transform-origin: center bottom;
+    }
+
+    .ref-svg-chart circle[data-tooltip-kind="pass-rate"]:hover,
+    .ref-svg-chart circle[data-tooltip-kind="pass-rate"]:focus {
+        filter: drop-shadow(0 1px 3px rgba(200, 150, 43, .62));
+        outline: none;
+        transform: scale(1.65);
+    }
+
+    .ref-subject-chart-row {
+        display: grid;
+        grid-template-columns: 24mm 1fr 12mm;
+        gap: 4px;
+        align-items: center;
+        min-height: 5mm;
+        color: #475569;
+        font-size: 8px;
+    }
+
+    .ref-subject-chart-row b {
+        overflow: hidden;
+        color: #0f1f4a;
+        font-size: 8px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ref-dual-bars {
+        display: grid;
+        gap: 1px;
+    }
+
+    .ref-mini-bar {
+        height: 3px;
+        overflow: hidden;
+        border-radius: 2px;
+        background: #e2e8f0;
+    }
+
+    .ref-mini-bar i {
+        display: block;
+        height: 100%;
+        border-radius: 2px;
+    }
+
+    .ref-radar {
+        display: grid;
+        place-items: center;
+        height: 78mm;
+    }
+
+    .ref-radar svg {
+        width: 100%;
+        height: 100%;
+    }
+
+    .ref-radar text {
+        fill: #475569;
+        font-family: Inter, Arial, sans-serif;
+        font-size: 6px;
+        font-weight: 700;
+    }
+
+    .ref-radar .radar-tick {
+        fill: #475569;
+        font-size: 5.5px;
+        font-weight: 800;
+        paint-order: stroke;
+        stroke: #ffffff;
+        stroke-linejoin: round;
+        stroke-width: 1.5px;
+    }
+
+    .ref-radar g[data-tooltip-kind] {
+        cursor: pointer;
+        pointer-events: all;
+    }
+
+    .ref-radar g[data-tooltip-kind] .radar-point {
+        transition: filter .18s ease, transform .18s ease;
+        transform-box: fill-box;
+        transform-origin: center;
+    }
+
+    .ref-radar g[data-tooltip-kind]:hover .radar-point,
+    .ref-radar g[data-tooltip-kind]:focus .radar-point {
+        filter: drop-shadow(0 1px 3px rgba(37, 99, 235, .52));
+        transform: scale(1.5);
+    }
+
+    .ref-bottom-charts {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .ref-completeness-row {
+        display: grid;
+        grid-template-columns: 24mm 1fr 11mm;
+        gap: 4px;
+        align-items: center;
+        min-height: 5mm;
+        color: #475569;
+        font-size: 8px;
+    }
+
+    .ref-stacked-bar {
+        display: flex;
+        height: 5px;
+        overflow: hidden;
+        border-radius: 3px;
+        background: #e2e8f0;
+    }
+
+    .ref-stacked-bar i:first-child {
+        background: #059669;
+    }
+
+    .ref-stacked-bar i:last-child {
+        background: #dc2626;
+    }
+
+    .ref-grade-layout {
+        display: grid;
+        grid-template-columns: 38mm 1fr;
+        gap: 7px;
+        align-items: center;
+        height: 60mm;
+    }
+
+    .ref-donut {
+        width: 36mm;
+        height: 36mm;
+        position: relative;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+    }
+
+    .ref-donut::after {
+        display: none;
+    }
+
+    .ref-donut-svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+    }
+
+    .ref-donut-segment {
+        cursor: pointer;
+        transition: filter .18s ease, stroke-width .18s ease;
+    }
+
+    .ref-donut-segment:hover,
+    .ref-donut-segment:focus {
+        filter: drop-shadow(0 2px 3px rgba(15, 31, 74, .28));
+        outline: none;
+        stroke-width: 26;
+    }
+
+    .ref-grade-list {
+        display: grid;
+        gap: 3px;
+        max-height: 56mm;
+        overflow: hidden;
+    }
+
+    .ref-grade-line {
+        display: grid;
+        grid-template-columns: 10mm 1fr 8mm;
+        gap: 4px;
+        align-items: center;
+        color: #475569;
+        font-size: 8px;
+    }
+
+    .ref-grade-line[data-tooltip-kind],
+    .ref-grade-line[data-tooltip-kind]:hover,
+    .ref-grade-line[data-tooltip-kind]:focus {
+        border-radius: 4px;
+        background: #fff7ed;
+        outline: none;
+    }
+
+    .ref-grade-dot {
+        width: 7px;
+        height: 7px;
+        display: inline-block;
+        border-radius: 50%;
+        background: var(--grade-color);
+    }
+
+    .ref-band-list {
+        display: grid;
+        gap: 7px;
+        height: 60mm;
+        align-content: center;
+    }
+
+    .ref-band-line {
+        display: grid;
+        grid-template-columns: 14mm 1fr 8mm;
+        gap: 5px;
+        align-items: center;
+        color: #475569;
+        font-size: 8px;
+    }
+
+    .ref-analytics-footer {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 3px;
+        color: #64748b;
+        font-size: 8px;
+    }
+</style>
+
+{% for analytics_page in analytics_list_pages %}
+<div class="page ref-analytics-page">
+    <div class="ref-analytics-sheet">
+        <header class="ref-analytics-header">
+            <div class="ref-analytics-brand">
+                <div class="ref-analytics-logo">
+                    {% if settings.logo_path %}<img src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">{% else %}S{% endif %}
+                </div>
+                <div>
+                    <b>{{ settings.school_name }}</b>
+                    <small>{{ settings.school_motto }}</small>
+                </div>
+            </div>
+            <h1>FALLANQEYN NATIIJADA<small>{{ selected_year.name }} · {{ selected_exam.name }} · {{ scope_info.class.name if scope_info.class else "All Classes" }}</small></h1>
+        </header>
+
+        <div class="ref-kpi-grid">
+            <div class="ref-kpi" style="--ref-color:#2563eb"><span class="ref-kpi-label"><span class="ref-kpi-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 21c0-3.5-2.5-6-6-6"/><path d="M16 3.13a5 5 0 0 1 0 9.75"/></svg></span>Arday</span><strong>{{ students|length }}</strong></div>
+            <div class="ref-kpi" style="--ref-color:#059669"><span class="ref-kpi-label"><span class="ref-kpi-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>Celceliska fasalka</span><strong>{{ class_average|academic_number(settings) }}%</strong></div>
+            <div class="ref-kpi" style="--ref-color:#059669"><span class="ref-kpi-label"><span class="ref-kpi-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg></span>Pass rate ({{ passed_count }}/{{ students|length }})</span><strong>{{ pass_rate|academic_number(settings) }}%</strong></div>
+            <div class="ref-kpi" style="--ref-color:#f59e0b"><span class="ref-kpi-label"><span class="ref-kpi-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>Support flagged</span><strong>{{ support_students|length }}</strong></div>
+            <div class="ref-kpi" style="--ref-color:#c8962b"><span class="ref-kpi-label"><span class="ref-kpi-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10"/><path d="M5 4h14"/><path d="M6 4v4a6 6 0 0 0 12 0V4"/><path d="M4 4v2a4 4 0 0 0 4 4"/><path d="M20 4v2a4 4 0 0 1-4 4"/></svg></span>Ugu sarreeya</span><strong>{{ highest_score|academic_number(settings) }}%</strong></div>
+            <div class="ref-kpi" style="--ref-color:#dc2626"><span class="ref-kpi-label"><span class="ref-kpi-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg></span>Ugu hooseeya</span><strong>{{ lowest_score|academic_number(settings) }}%</strong></div>
+            <div class="ref-kpi" style="--ref-color:#2563eb"><span class="ref-kpi-label"><span class="ref-kpi-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg></span>Results entered</span><strong>{{ subject_coverage_rate|academic_number(settings) }}%</strong></div>
+            <div class="ref-kpi" style="--ref-color:#059669"><span class="ref-kpi-label"><span class="ref-kpi-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"/><path d="M3.22 12H9l1-2 2 4 2-4 1 2h5.78"/></svg></span>Hab-dhaqan avg</span><strong>{{ behavior_average|academic_number(settings) }}</strong></div>
+        </div>
+
+        <div class="ref-analytics-grid">
+            <section class="ref-analytics-box" style="--ref-color:#059669">
+                <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>Maadooyinka Ugu Xooggan</h2>
+                <table class="ref-analytics-table ref-analytics-table--subjects">
+                    <thead><tr><th class="center">#</th><th>Maaddo</th><th class="center">Boqolley</th><th class="center">Heerka Gudbidda</th><th>Heer</th></tr></thead>
+                    <tbody>
+                        {% for stat in analytics_page.strongest_subjects %}
+                            <tr><td class="center">{{ analytics_page.offset + loop.index }}</td><td class="strong">{{ stat.subject.name }}</td><td class="center strong">{{ stat.average_percentage|academic_number(settings) }}%</td><td class="center">{{ stat.pass_rate|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [stat.average_percentage, 100]|min }}%;background:{{ percentage_band_color(stat.average_percentage) }}"></i></div></td></tr>
+                        {% else %}<tr><td colspan="5" class="center">No subject is above 60%.</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+            </section>
+
+            <section class="ref-analytics-box" style="--ref-color:#b45309">
+                <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>Maadooyinka U Baahan Taageero</h2>
+                <table class="ref-analytics-table ref-analytics-table--subjects">
+                    <thead><tr><th class="center">#</th><th>Maaddo</th><th class="center">Boqolley</th><th class="center">Heerka Gudbidda</th><th>Heer</th></tr></thead>
+                    <tbody>
+                        {% for stat in analytics_page.support_subjects %}
+                            <tr><td class="center">{{ analytics_page.offset + loop.index }}</td><td class="strong">{{ stat.subject.name }}</td><td class="center strong">{{ stat.average_percentage|academic_number(settings) }}%</td><td class="center">{{ stat.pass_rate|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [stat.average_percentage, 100]|min }}%;background:{{ percentage_band_color(stat.average_percentage) }}"></i></div></td></tr>
+                        {% else %}<tr><td colspan="5" class="center">No subject is at or below 60%.</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+            </section>
+
+            <section class="ref-analytics-box" style="--ref-color:#1d4ed8">
+                <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Ardeyda U Baahan Taageero</h2>
+                <table class="ref-analytics-table ref-analytics-table--students">
+                    <thead><tr><th class="center">#</th><th>Ardey</th><th class="center">Kaalin</th><th class="center">Wadar</th><th class="center">Darajo</th><th class="center">Boqolley</th><th>Heer</th></tr></thead>
+                    <tbody>
+                        {% for row in analytics_page.support_students %}
+                            <tr><td class="center">{{ analytics_page.offset + loop.index }}</td><td class="strong">{{ row.student.full_name }}</td><td class="center">{{ row.rank }}</td><td class="center">{{ row.total_score|academic_number(settings) }}</td><td class="center"><span class="ref-grade-tag" style="background:{{ row.grade.badge_color }}">{{ row.grade.grade }}</span></td><td class="center strong">{{ row.percentage|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [row.percentage, 100]|min }}%;background:{{ percentage_band_color(row.percentage) }}"></i></div></td></tr>
+                        {% else %}<tr><td colspan="7" class="center">No students are at or below 60%.</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+            </section>
+
+            <section class="ref-analytics-box" style="--ref-color:#7c3aed">
+                <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.12"/></svg>Ardeyda Ugu Xooggan</h2>
+                <table class="ref-analytics-table ref-analytics-table--students">
+                    <thead><tr><th class="center">#</th><th>Ardey</th><th class="center">Kaalin</th><th class="center">Wadar</th><th class="center">Darajo</th><th class="center">Boqolley</th><th>Heer</th></tr></thead>
+                    <tbody>
+                        {% for row in analytics_page.strongest_students %}
+                            <tr><td class="center">{{ analytics_page.offset + loop.index }}</td><td class="strong">{{ row.student.full_name }}</td><td class="center">{{ row.rank }}</td><td class="center">{{ row.total_score|academic_number(settings) }}</td><td class="center"><span class="ref-grade-tag" style="background:{{ row.grade.badge_color }}">{{ row.grade.grade }}</span></td><td class="center strong">{{ row.percentage|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [row.percentage, 100]|min }}%;background:{{ percentage_band_color(row.percentage) }}"></i></div></td></tr>
+                        {% else %}<tr><td colspan="7" class="center">No students are above 60%.</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+            </section>
+        </div>
+
+        <footer class="ref-analytics-footer"><span>{{ settings.school_name }} | {{ date.strftime('%Y') }} · Generated {{ date.strftime('%d %B %Y') }}</span><span>Principal __________ · Exam Officer __________ · Class Teacher __________</span><span>Page {{ total_pages + analytics_page.page_number }} of {{ document_total_pages }}</span></footer>
+    </div>
+</div>
+{% endfor %}
+
+<div class="page ref-analytics-page">
+    <div class="ref-analytics-sheet">
+        <header class="ref-analytics-header">
+            <div class="ref-analytics-brand">
+                <div class="ref-analytics-logo">
+                    {% if settings.logo_path %}<img src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">{% else %}S{% endif %}
+                </div>
+                <div><b>{{ settings.school_name }}</b><small>{{ settings.school_motto }}</small></div>
+            </div>
+            <h1>Subject &amp; Grade Charts<small>{{ selected_year.name }} · {{ selected_exam.name }} · {{ scope_info.class.name if scope_info.class else "All Classes" }}</small></h1>
+        </header>
+
+        <div class="ref-chart-layout">
+            <section class="ref-chart-box ref-chart-box--subject-performance">
+                <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>Celceliska maadooyinka iyo Heerka Gudbidda</h3>
+                <div class="ref-chart-legend"><span style="--legend-color:linear-gradient(90deg,#dc2626,#f59e0b,#22c55e,#14b8a6,#2563eb)">Celcelis %</span><span style="--legend-color:#c8962b">Pass rate %</span></div>
+                <div class="ref-chart-tooltip" role="status" aria-live="polite" aria-hidden="true">
+                    <span class="ref-chart-tooltip-kicker"></span>
+                    <span class="ref-chart-tooltip-subject"></span>
+                    <span class="ref-chart-tooltip-value"></span>
+                        <span class="ref-chart-tooltip-band"></span>
+                </div>
+                <svg class="ref-svg-chart" viewBox="0 0 552 230" role="img" aria-label="Celceliska maadooyinka iyo Heerka Gudbidda">
+                    {% for tick in [0, 25, 50, 75, 100] %}
+                        <line class="grid-line" x1="42" x2="510" y1="{{ 195 - (tick / 100 * 177) }}" y2="{{ 195 - (tick / 100 * 177) }}"/>
+                        <text x="36" y="{{ 198 - (tick / 100 * 177) }}" text-anchor="end">{{ tick }}</text>
+                    {% endfor %}
+                    <line class="axis-line" x1="42" y1="18" x2="42" y2="195"/><line class="axis-line" x1="42" y1="195" x2="510" y2="195"/>
+                    {% for point in subject_chart_points %}
+                        <rect x="{{ point.x - point.bar_width / 2 }}" y="{{ point.bar_y }}" width="{{ point.bar_width }}" height="{{ point.bar_height }}" rx="4" fill="{{ point.average_band_color }}" data-tooltip-kind="average" data-tooltip-label="{{ point.label }}" data-tooltip-value="{{ point.average|academic_number(settings) }}" data-tooltip-band="{{ point.average_band_label }}" tabindex="0" aria-label="{{ point.label }} celcelis {{ point.average|academic_number(settings) }} boqolkiiba, {{ point.average_band_label }}"></rect>
+                        <text class="value-label" x="{{ point.x }}" y="{{ point.bar_y - 4 }}">{{ point.average|academic_number(settings) }}</text>
+                        <text class="axis-label" x="{{ point.x }}" y="211" transform="rotate(-32 {{ point.x }} 211)">{{ point.short_label }}</text>
+                    {% endfor %}
+                    <polyline points="{{ subject_line_points }}" fill="none" stroke="#c8962b" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+                    {% for point in subject_chart_points %}<circle cx="{{ point.x }}" cy="{{ point.line_y }}" r="3" fill="#c8962b" data-tooltip-kind="pass-rate" data-tooltip-label="{{ point.label }}" data-tooltip-value="{{ point.pass_rate|academic_number(settings) }}" tabindex="0" aria-label="{{ point.label }} heerka gudubka {{ point.pass_rate|academic_number(settings) }} boqolkiiba"></circle>{% endfor %}
+                </svg>
+            </section>
+
+            <section class="ref-chart-box ref-chart-box--radar">
+                <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg>Raadaar: Quwadda Maadooyinka</h3>
+                <div class="ref-chart-tooltip" role="status" aria-live="polite" aria-hidden="true">
+                    <span class="ref-chart-tooltip-kicker"></span>
+                    <span class="ref-chart-tooltip-subject"></span>
+                    <span class="ref-chart-tooltip-value"></span>
+                    <span class="ref-chart-tooltip-band"></span>
+                </div>
+                <div class="ref-radar">
+                    <svg viewBox="0 0 220 156" role="img" aria-label="Raadaar: Quwadda Maadooyinka">
+                        {% for polygon in radar_grid_polygons %}<polygon points="{{ polygon }}" fill="none" stroke="#e2e8f0" stroke-width="1"/>{% endfor %}
+                        {% for axis in radar_axis_points %}<line x1="110" y1="78" x2="{{ axis.x }}" y2="{{ axis.y }}" stroke="#e2e8f0" stroke-width="1"/>{% endfor %}
+                        {% for tick in radar_tick_labels %}<text class="radar-tick" x="110" y="{{ tick.y }}" text-anchor="middle">{{ tick.value }}</text>{% endfor %}
+                        {% for label in radar_labels %}<text x="{{ label.x }}" y="{{ label.y }}" text-anchor="middle">{{ label.label[:11] }}</text>{% endfor %}
+                        <polygon points="{{ radar_polygon }}" fill="rgba(37,99,235,.25)" stroke="#2563eb" stroke-width="1.25"/>
+                        {% for point in radar_chart_points %}<g data-tooltip-kind="average" data-tooltip-label="{{ point.label }}" data-tooltip-value="{{ point.average_percentage|academic_number(settings) }}" tabindex="0" aria-label="{{ point.label }} celcelis {{ point.average_percentage|academic_number(settings) }} boqolkiiba"><circle class="radar-point" cx="{{ point.x }}" cy="{{ point.y }}" r="1.5" fill="#2563eb"></circle><circle cx="{{ point.x }}" cy="{{ point.y }}" r="8" fill="transparent" stroke="none" aria-hidden="true"></circle></g>{% endfor %}
+                    </svg>
+                </div>
+            </section>
+        </div>
+
+        <div class="ref-bottom-charts">
+            <section class="ref-chart-box ref-chart-box--completeness">
+                <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>Dhammeystirka Maaddooyinka</h3>
+                <div class="ref-chart-legend"><span style="--legend-color:#059669">La geliyey</span><span style="--legend-color:#dc2626">Maqan</span></div>
+                <svg class="ref-svg-chart ref-svg-chart--short" viewBox="0 0 552 190" role="img" aria-label="Dhammeystirka Maaddooyinka">
+                    {% for tick in completeness_chart_ticks %}
+                        <line class="grid-line" x1="42" x2="510" y1="{{ 165 - (tick / completeness_chart_max * 147) }}" y2="{{ 165 - (tick / completeness_chart_max * 147) }}"/>
+                        <text x="36" y="{{ 168 - (tick / completeness_chart_max * 147) }}" text-anchor="end">{{ tick }}</text>
+                    {% endfor %}
+                    <line class="axis-line" x1="42" y1="18" x2="42" y2="165"/><line class="axis-line" x1="42" y1="165" x2="510" y2="165"/>
+                    {% for point in completeness_chart_points %}
+                        <rect x="{{ point.x - point.bar_width / 2 }}" y="{{ 165 - point.entered_height }}" width="{{ point.bar_width }}" height="{{ point.entered_height }}" fill="#059669"/>
+                        <rect x="{{ point.x - point.bar_width / 2 }}" y="{{ 165 - point.entered_height - point.missing_height }}" width="{{ point.bar_width }}" height="{{ point.missing_height }}" fill="#dc2626"/>
+                        {% if point.entered_count > 0 %}{% if point.missing_count > 0 %}{% if point.entered_height >= 14 %}<text class="completeness-value completeness-value--inside" x="{{ point.x }}" y="{{ 165 - point.entered_height + 10 }}">{{ point.entered_count }}</text>{% else %}<text class="completeness-value completeness-value--inside-small" x="{{ point.x }}" y="{{ 165 - point.entered_height - 3 }}">{{ point.entered_count }}</text>{% endif %}{% else %}<text class="completeness-value completeness-value--entered" x="{{ point.x }}" y="{{ 165 - point.entered_height - 3 }}">{{ point.entered_count }}</text>{% endif %}{% endif %}
+                        {% if point.missing_count > 0 %}<text class="completeness-value completeness-value--missing" x="{{ point.x }}" y="{{ 165 - point.entered_height - point.missing_height - 3 }}">{{ point.missing_count }}</text>{% endif %}
+                        <text class="axis-label" x="{{ point.x }}" y="181" transform="rotate(-32 {{ point.x }} 181)">{{ point.short_label }}</text>
+                    {% endfor %}
+                </svg>
+            </section>
+
+            <div class="ref-bottom-charts" style="grid-template-columns:1fr 1fr;margin-top:0">
+                <section class="ref-chart-box ref-chart-box--grades">
+                    <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.12"/></svg>Darajooyinka</h3>
+                    <div class="ref-chart-tooltip" role="status" aria-live="polite" aria-hidden="true">
+                        <span class="ref-chart-tooltip-kicker"></span>
+                        <span class="ref-chart-tooltip-subject"></span>
+                        <span class="ref-chart-tooltip-value"></span>
+                        <span class="ref-chart-tooltip-band"></span>
+                    </div>
+                    <div class="ref-grade-layout">
+                        <div class="ref-donut">
+                            <svg class="ref-donut-svg" viewBox="0 0 100 100" role="img" aria-label="Qaybinta darajooyinka">
+                                <circle cx="50" cy="50" r="38" fill="none" stroke="#e2e8f0" stroke-width="24"></circle>
+                                {% set donut = namespace(offset=0) %}
+                                {% set grade_total = students|length or 1 %}
+                                {% set donut_circumference = 238.7617 %}
+                                {% for item in grade_distribution %}
+                                    {% set item_percentage = item.count / grade_total * 100 %}
+                                    <circle class="ref-donut-segment" cx="50" cy="50" r="38" fill="none" stroke="{{ item.color }}" stroke-width="24" stroke-dasharray="{{ (item_percentage / 100 * donut_circumference)|round(4) }} {{ ((100 - item_percentage) / 100 * donut_circumference)|round(4) }}" stroke-dashoffset="-{{ (donut.offset / 100 * donut_circumference)|round(4) }}" stroke-linecap="butt" transform="rotate(-90 50 50)" data-tooltip-kind="grade-segment" data-tooltip-kicker="Darajo" data-tooltip-label="{{ item.label }}{% if item.range_label %} ({{ item.range_label }}){% endif %}" data-tooltip-value="{{ item.count }}" data-tooltip-value-suffix=" arday" data-tooltip-band="{{ item_percentage|round(2) }}% ee ardayda" data-tooltip-color="{{ item.color }}" tabindex="0"></circle>
+                                    {% set donut.offset = donut.offset + item_percentage %}
+                                {% endfor %}
+                                <circle cx="50" cy="50" r="25" fill="#ffffff" pointer-events="none"></circle>
+                            </svg>
+                        </div>
+                        <div class="ref-grade-list">
+                            {% for item in grade_distribution %}<div class="ref-grade-line" tabindex="0" data-tooltip-kind="grade" data-tooltip-kicker="Darajo" data-tooltip-label="{{ item.label }}{% if item.range_label %} ({{ item.range_label }}){% endif %}" data-tooltip-value="{{ item.count }}" data-tooltip-value-suffix=" arday" data-tooltip-band="{{ (item.count / (students|length or 1) * 100)|round(2) }}% ee ardayda" data-tooltip-color="{{ item.color }}"><span><i class="ref-grade-dot" style="--grade-color:{{ item.color }}"></i> {{ item.label }}</span><div class="ref-progress"><i style="width:{{ (item.count / (students|length or 1) * 100)|round(2) }}%;background:{{ item.color }}"></i></div><b>{{ item.count }}</b></div>{% endfor %}
+                        </div>
+                    </div>
+                </section>
+                <section class="ref-chart-box ref-chart-box--percentage-bands">
+                    <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16v-5"/><path d="M12 16V7"/><path d="M17 16v-8"/></svg>Kala duwanaanshaha Boqolleyda</h3>
+                    <div class="ref-chart-tooltip" role="status" aria-live="polite" aria-hidden="true">
+                        <span class="ref-chart-tooltip-kicker"></span>
+                        <span class="ref-chart-tooltip-subject"></span>
+                        <span class="ref-chart-tooltip-value"></span>
+                        <span class="ref-chart-tooltip-band"></span>
+                    </div>
+                    <svg class="ref-svg-chart ref-svg-chart--short" viewBox="0 0 270 190" role="img" aria-label="Kala duwanaanshaha Boqolleyda">
+                        {% for tick in percentage_chart_ticks %}
+                            <line class="grid-line" x1="32" x2="252" y1="{{ 165 - (tick / percentage_chart_max * 147) }}" y2="{{ 165 - (tick / percentage_chart_max * 147) }}"/>
+                            <text x="27" y="{{ 168 - (tick / percentage_chart_max * 147) }}" text-anchor="end">{{ tick }}</text>
+                        {% endfor %}
+                        <line class="axis-line" x1="32" y1="18" x2="32" y2="165"/><line class="axis-line" x1="32" y1="165" x2="252" y2="165"/>
+                        {% for point in percentage_chart_points %}
+                            <rect x="{{ point.x - point.bar_width / 2 }}" y="{{ point.bar_y }}" width="{{ point.bar_width }}" height="{{ point.bar_height }}" rx="4" fill="{{ point.color }}" data-tooltip-kind="percentage-band" data-tooltip-kicker="Boqolleyda" data-tooltip-label="{{ point.label }}" data-tooltip-value="{{ point.count }}" data-tooltip-value-suffix=" arday" data-tooltip-band="{{ (point.count / (students|length or 1) * 100)|round(2) }}% ee ardayda" data-tooltip-color="{{ point.color }}" tabindex="0"></rect>
+                            <text class="value-label" x="{{ point.x }}" y="{{ point.bar_y - 4 }}">{{ point.count }}</text>
+                            <text class="axis-label" x="{{ point.x }}" y="181">{{ point.label }}</text>
+                        {% endfor %}
+                    </svg>
+                </section>
+            </div>
+        </div>
+
+        <footer class="ref-analytics-footer"><span>{{ settings.school_name }} | {{ date.strftime('%Y') }} · Generated {{ date.strftime('%d %B %Y') }}</span><span>Principal __________ · Exam Officer __________ · Class Teacher __________</span><span>Page {{ total_pages + analytics_list_pages|length + 1 }} of {{ document_total_pages }}</span></footer>
+    </div>
+</div>
+
+<script>
+    (() => {
+        document.querySelectorAll('.ref-chart-box--subject-performance, .ref-chart-box--radar, .ref-chart-box--grades, .ref-chart-box--percentage-bands').forEach((chartBox) => {
+            const tooltip = chartBox.querySelector('.ref-chart-tooltip');
+            if (!tooltip) return;
+
+            const hideTooltip = () => {
+                tooltip.classList.remove('is-visible');
+                tooltip.setAttribute('aria-hidden', 'true');
+            };
+
+            chartBox.querySelectorAll('[data-tooltip-kind]').forEach((target) => {
+                const showTooltip = () => {
+                    const kind = target.dataset.tooltipKind;
+                    tooltip.dataset.kind = kind;
+                    const kickerLabels = {
+                        average: 'Celceliska maadada',
+                        'pass-rate': 'Heerka gudubka',
+                        grade: 'Darajo',
+                        'grade-chart': 'Darajooyinka',
+                        'grade-segment': 'Darajo',
+                        'percentage-band': 'Boqolleyda',
+                    };
+                    tooltip.querySelector('.ref-chart-tooltip-kicker').textContent = target.dataset.tooltipKicker || kickerLabels[kind] || '';
+                    tooltip.querySelector('.ref-chart-tooltip-subject').textContent = target.dataset.tooltipLabel || '';
+                    const value = target.dataset.tooltipValue || '0.00';
+                    const suffix = target.dataset.tooltipValueSuffix;
+                    tooltip.querySelector('.ref-chart-tooltip-value').textContent = suffix === undefined ? `${value}%` : `${value}${suffix}`;
+                    const band = tooltip.querySelector('.ref-chart-tooltip-band');
+                    const bandText = target.dataset.tooltipBand || '';
+                    band.textContent = kind === 'average' && bandText ? `Qaybta: ${bandText}` : bandText;
+                    band.style.display = bandText ? 'block' : 'none';
+                    if (target.dataset.tooltipColor) {
+                        tooltip.style.setProperty('--tooltip-color', target.dataset.tooltipColor);
+                    } else {
+                        tooltip.style.removeProperty('--tooltip-color');
+                    }
+                    tooltip.classList.add('is-visible');
+                    tooltip.setAttribute('aria-hidden', 'false');
+                };
+
+                target.addEventListener('mouseenter', showTooltip);
+                target.addEventListener('focus', showTooltip);
+                target.addEventListener('mouseleave', hideTooltip);
+                target.addEventListener('blur', hideTooltip);
+
+                const positionTooltip = () => {
+                    if (!tooltip.classList.contains('is-visible')) return;
+                    const targetRect = target.getBoundingClientRect();
+                    const boxRect = chartBox.getBoundingClientRect();
+                    const centerX = targetRect.left + (targetRect.width / 2) - boxRect.left;
+                    const aboveTop = targetRect.top - boxRect.top - 8;
+                    const tooltipHeight = tooltip.offsetHeight;
+                    const fitsAbove = aboveTop - tooltipHeight >= 4;
+                    tooltip.style.left = `${Math.max(tooltip.offsetWidth / 2 + 6, Math.min(boxRect.width - tooltip.offsetWidth / 2 - 6, centerX))}px`;
+                    tooltip.style.top = `${fitsAbove ? aboveTop : targetRect.bottom - boxRect.top + 8}px`;
+                    tooltip.style.transform = fitsAbove ? 'translate(-50%, -100%)' : 'translate(-50%, 0)';
+                };
+
+                target.addEventListener('mouseenter', positionTooltip);
+                target.addEventListener('mousemove', positionTooltip);
+                target.addEventListener('focus', positionTooltip);
+            });
+        });
+    })();
+</script>

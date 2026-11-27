@@ -141,16 +141,16 @@
             place-items: center;
             padding: 1.6mm;
             background: #ffffff;
-            border: 1.2mm solid var(--gold);
+            border: .55px solid var(--gold);
             border-radius: 8px 8px 13px 13px;
-            box-shadow: 0 3px 10px rgba(8, 28, 61, .15);
+            box-shadow: none;
         }
 
         .brand-emblem img {
             width: 100%;
             height: 100%;
             object-fit: contain;
-            filter: drop-shadow(0 1px 3px rgba(0,0,0,.12));
+            filter: none;
         }
 
         .brand-emblem span {
@@ -194,6 +194,26 @@
             grid-template-columns: repeat(3, 1fr);
             gap: 1.4mm 2.5mm;
             margin-top: 2.2mm;
+        }
+
+        .meta-grid--scope {
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 1.2mm;
+            margin-top: 1.4mm;
+        }
+
+        .meta-grid--scope .meta-card {
+            gap: 1.1mm;
+            padding: .85mm 1.1mm;
+            min-height: 7.4mm;
+        }
+
+        .meta-grid--scope .meta-card-label {
+            font-size: 4.5pt;
+        }
+
+        .meta-grid--scope .meta-card-value {
+            font-size: 6.4pt;
         }
 
         .meta-card {
@@ -244,6 +264,12 @@
         /* Card 6 – Section: violet */
         .mc-section      { background: #f5f3ff; border-color: #ddd6fe; }
         .mc-section .meta-card-icon { background: #ddd6fe; color: #6d28d9; }
+        /* Card 7 – Boys: blue */
+        .mc-boys         { background: #eff6ff; border-color: #bfdbfe; }
+        .mc-boys .meta-card-icon { background: #bfdbfe; color: #1d4ed8; }
+        /* Card 8 – Girls: rose */
+        .mc-girls        { background: #fff1f2; border-color: #fbcfe8; }
+        .mc-girls .meta-card-icon { background: #fbcfe8; color: #be185d; }
 
         .meta-card-body {
             display: flex;
@@ -481,18 +507,19 @@
         .summary-row td {
             background: #ffffff !important;
             border: 1px solid #d1d5db !important;
-            padding: .62mm .55mm;
-            font-size: 6.2pt;
+            padding: .48mm .45mm;
+            font-size: 5.9pt;
             text-align: center;
             vertical-align: middle;
             color: #1e293b !important;
             font-weight: 800 !important;
+            line-height: 1.05;
         }
 
         .summary-main-label {
             background: var(--navy) !important;
             color: #ffffff !important;
-            font-size: 7.2pt !important;
+            font-size: 6.8pt !important;
             font-weight: 900 !important;
             text-transform: uppercase;
             letter-spacing: .02em;
@@ -502,7 +529,7 @@
 
         .stat-row-label {
             color: #1e293b !important;
-            font-size: 6pt !important;
+            font-size: 5.8pt !important;
             font-weight: 800 !important;
             text-align: left !important;
             padding-left: 1.2mm !important;
@@ -510,9 +537,10 @@
             white-space: nowrap;
         }
 
-        .stat-row-label.srl-highest { background: #ecfdf5 !important; }
-        .stat-row-label.srl-lowest  { background: #fff1f2 !important; }
         .stat-row-label.srl-average { background: #eff6ff !important; }
+        .stat-row-label.srl-pass { background: #ecfdf5 !important; }
+        .stat-row-label.srl-entered { background: #fffbeb !important; }
+        .stat-row-label.srl-missing { background: #fff1f2 !important; }
 
         .stat-icon-wrap {
             display: inline-flex;
@@ -533,42 +561,406 @@
             stroke-linecap: round;
             stroke-linejoin: round;
         }
-        .stat-icon-wrap.si-highest { background: #a7f3d0; color: #047857; }
-        .stat-icon-wrap.si-lowest  { background: #fecdd3; color: #be123c; }
         .stat-icon-wrap.si-average { background: #bfdbfe; color: #1d4ed8; }
+        .stat-icon-wrap.si-pass { background: #a7f3d0; color: #047857; }
+        .stat-icon-wrap.si-entered { background: #fde68a; color: #a16207; }
+        .stat-icon-wrap.si-missing { background: #fecdd3; color: #be123c; }
 
-        .highest-cell { color: #047857 !important; background: #ecfdf5 !important; }
-        .lowest-cell  { color: #be123c !important; background: #fff1f2 !important; }
         .average-cell  { color: #1d4ed8 !important; background: #eff6ff !important; }
+        .pass-cell { color: #047857 !important; background: #ecfdf5 !important; }
+        .entered-cell { color: #a16207 !important; background: #fffbeb !important; }
+        .missing-cell { color: #be123c !important; background: #fff1f2 !important; }
+
+        .summary-note {
+            display: block;
+            margin-top: .35mm;
+            color: #475569;
+            font-size: 5.2pt;
+            font-weight: 700;
+            line-height: 1.15;
+        }
+
+        .summary-note strong { color: var(--navy); }
+
+        .summary-fraction {
+            display: block;
+            color: #1d4ed8;
+            font-size: 5.6pt;
+            font-weight: 900;
+            line-height: 1.05;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .summary-fraction span {
+            display: block;
+        }
+
+        .summary-insights-row td {
+            padding: .65mm .7mm !important;
+            background: #f8fafc !important;
+            border: 1px solid #d1d5db !important;
+        }
+
+        .summary-insights-row td {
+            padding: .45mm .65mm !important;
+            background: #f8fafc !important;
+            border: 1px solid #d1d5db !important;
+        }
+
+        .summary-insights-row {
+            display: none !important;
+        }
+
+        .insights-report-main {
+            padding: 0 2mm;
+            min-height: 0;
+        }
+
+        .insights-report-title {
+            margin: 0 0 1.6mm;
+            color: var(--navy-deep);
+            font-size: 11pt;
+            font-weight: 900;
+            letter-spacing: .02em;
+            text-transform: uppercase;
+        }
+
+        .insights-report-subtitle {
+            margin-bottom: 3mm;
+            color: var(--muted);
+            font-size: 7.2pt;
+            font-weight: 700;
+        }
+
+        .insights-report-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 4mm;
+            align-items: start;
+        }
+
+        .insight-report-card {
+            min-width: 0;
+            border: 1px solid #d1d5db;
+            border-radius: 2mm;
+            overflow: hidden;
+            background: #ffffff;
+        }
+
+        .insight-report-card__heading {
+            display: flex;
+            align-items: center;
+            gap: 1.2mm;
+            padding: 2.3mm 2.5mm;
+            color: #ffffff;
+            font-size: 9pt;
+            font-weight: 900;
+            line-height: 1.05;
+        }
+
+        .insight-report-card__heading svg {
+            width: 5mm;
+            height: 5mm;
+            flex: 0 0 auto;
+        }
+
+        .insight-report-card__heading small {
+            margin-left: auto;
+            color: rgba(255, 255, 255, .84);
+            font-size: 6.5pt;
+            font-weight: 800;
+        }
+
+        .insight-report-card--strongest .insight-report-card__heading { background: #047857; }
+        .insight-report-card--support-subjects .insight-report-card__heading { background: #b45309; }
+        .insight-report-card--support-students .insight-report-card__heading { background: #1d4ed8; }
+        .insight-report-card--strongest-students .insight-report-card__heading { background: #7c3aed; }
+
+        .insight-report-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        .insight-report-table th,
+        .insight-report-table td {
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1.9mm 2mm;
+            font-size: 8.4pt;
+            line-height: 1.18;
+        }
+
+        .insight-report-table th {
+            color: #475569;
+            background: #f8fafc;
+            font-size: 7.2pt;
+            font-weight: 900;
+            text-align: left;
+            text-transform: uppercase;
+        }
+
+        .insight-report-table th:first-child,
+        .insight-report-table td:first-child {
+            width: 12%;
+            text-align: center;
+        }
+
+        .insight-report-table th:last-child,
+        .insight-report-table td:last-child {
+            width: 25%;
+            text-align: right;
+        }
+
+        .insight-report-table td {
+            color: #1e293b;
+            font-weight: 700;
+        }
+
+        .insight-report-table td:first-child {
+            color: #64748b;
+            font-weight: 900;
+        }
+
+        .insight-report-table td:last-child {
+            color: var(--navy);
+            font-weight: 900;
+        }
+
+        .insight-report-table tr:last-child td { border-bottom: 0; }
+
+        .insight-report-empty {
+            padding: 5mm !important;
+            color: #94a3b8 !important;
+            font-style: italic;
+            text-align: center !important;
+        }
+
+        .insight-page-meta {
+            margin-top: 3mm;
+            color: var(--muted);
+            font-size: 7pt;
+            font-weight: 800;
+        }
+
+        .insights-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        .insights-table th,
+        .insights-table td {
+            border: 1px solid #dbe3ef;
+            padding: .55mm .8mm;
+            vertical-align: middle;
+        }
+
+        .insights-table th.insight-category {
+            width: 25%;
+            color: #ffffff;
+            font-size: 5.1pt;
+            font-weight: 900;
+            line-height: 1.05;
+            text-align: left;
+            text-transform: uppercase;
+        }
+
+        .insight-line--strongest .insight-category { background: #047857; }
+        .insight-line--support-subjects .insight-category { background: #b45309; }
+        .insight-line--support-students .insight-category { background: #1d4ed8; }
+        .insight-line--strongest-students .insight-category { background: #0f766e; }
+
+        .insights-table .insight-category svg {
+            width: 2.8mm;
+            height: 2.8mm;
+            margin-right: .55mm;
+            vertical-align: -0.7mm;
+        }
+
+        .insights-table td {
+            background: #ffffff;
+            color: #334155;
+            font-size: 5.05pt;
+            font-weight: 700;
+            line-height: 1.05;
+            text-align: center;
+        }
+
+        .insight-line--strongest td { background: #f0fdf4; }
+        .insight-line--support-subjects td { background: #fffbeb; }
+        .insight-line--support-students td { background: #eff6ff; }
+        .insight-line--strongest-students td { background: #f0fdfa; }
+
+        .insight-index {
+            display: inline-block;
+            margin-right: .35mm;
+            color: #64748b;
+            font-size: 4.5pt;
+            font-weight: 900;
+            vertical-align: middle;
+        }
+
+        .insight-name {
+            display: inline-block;
+            max-width: 78%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+
+        .insight-percent {
+            float: right;
+            color: var(--navy);
+            font-weight: 900;
+        }
+
+        .insight-category small {
+            display: block;
+            margin-top: .3mm;
+            color: rgba(255, 255, 255, .82);
+            font-size: 4.5pt;
+            font-weight: 700;
+            text-transform: none;
+        }
+
+        .insights-table .insight-empty {
+            color: #94a3b8;
+            font-style: italic;
+            font-weight: 700;
+        }
+
 
         .pass-card {
-            background: #fff !important;
-            border: 1px solid #b7c3d4 !important;
+            background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 72%) !important;
+            border: 1px solid #86efac !important;
             border-radius: 7px;
-            padding: .85mm .6mm !important;
+            padding: 1.05mm .8mm !important;
+            vertical-align: middle !important;
         }
 
         .pass-title {
-            display: block;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             color: var(--navy);
-            font-size: 5.5pt;
+            font-size: 5.35pt;
             font-weight: 900;
             text-transform: uppercase;
+            line-height: 1.05;
+        }
+
+        .pass-title-icon {
+            width: 3.2mm;
+            height: 3.2mm;
+            margin-right: .65mm;
+            color: var(--green);
+            flex: 0 0 auto;
         }
 
         .pass-value {
             display: block;
-            margin: .25mm 0;
+            margin: .75mm 0 .65mm;
             color: var(--green);
             font-size: 13pt;
             font-weight: 900;
             line-height: 1;
         }
 
-        .pass-sub {
-            color: var(--navy-deep);
-            font-size: 5.8pt;
-            font-weight: 600;
+        .pass-card .summary-note {
+            width: fit-content;
+            margin: .35mm auto 0;
+            padding: .25mm 1mm;
+            border: 1px solid #dbeafe;
+            border-radius: 999px;
+            background: #f8fafc;
+            color: #334155;
+            font-size: 5.15pt;
+            line-height: 1.1;
+        }
+
+        .pass-card .summary-note strong {
+            color: #047857;
+        }
+
+        .class-performance {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: .45mm;
+            width: 100%;
+            box-sizing: border-box;
+            margin: 1.25mm auto 2.2mm;
+            padding: 1.1mm .8mm;
+            border: 1px solid #bfdbfe;
+            border-radius: 6px;
+            background: #eff6ff;
+            text-align: center;
+        }
+
+        .class-performance-icon {
+            display: grid;
+            width: 3.4mm;
+            height: 3.4mm;
+            margin-bottom: .2mm;
+            place-items: center;
+            color: #2563eb;
+        }
+
+        .class-performance-icon svg {
+            width: 3.4mm;
+            height: 3.4mm;
+            fill: none;
+            stroke: currentColor;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            stroke-width: 2;
+        }
+
+        .class-performance-title {
+            display: block;
+            color: #1e3a8a;
+            font-size: 5.3pt;
+            font-weight: 900;
+            line-height: 1.15;
+            text-align: center;
+        }
+
+        .class-performance-value {
+            display: block;
+            margin-top: .2mm;
+            color: #334155;
+            font-size: 5.35pt;
+            font-weight: 800;
+            line-height: 1.2;
+            text-align: center;
+            overflow-wrap: anywhere;
+        }
+
+        .class-performance-fraction {
+            display: block;
+            color: #334155;
+            font-size: 5.35pt;
+            line-height: 1.2;
+        }
+
+        .class-performance-percent {
+            display: inline-block;
+            min-width: 20mm;
+            box-sizing: border-box;
+            margin-top: .65mm;
+            padding: .75mm 1.2mm;
+            border: 1px solid #60a5fa;
+            border-radius: 5px;
+            background: #dbeafe;
+            box-shadow: 0 .35mm .7mm rgba(37, 99, 235, .16);
+            color: #2563eb;
+            font-size: 14pt;
+            font-weight: 900;
+            line-height: 1.05;
+            text-align: center;
+            white-space: nowrap;
         }
 
         .footer {
@@ -693,31 +1085,51 @@
                                     <span class="meta-card-value">{{ selected_exam.name }}</span>
                                 </div>
                             </div>
-                            <div class="meta-card mc-students">
-                                <div class="meta-card-icon">
-                                    <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                                </div>
-                                <div class="meta-card-body">
-                                    <span class="meta-card-label">Total Students</span>
-                                    <span class="meta-card-value">{{ students|length }}</span>
-                                </div>
-                            </div>
+                        </div>
+                        <div class="meta-grid meta-grid--scope">
                             <div class="meta-card mc-class">
                                 <div class="meta-card-icon">
                                     <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
                                 </div>
                                 <div class="meta-card-body">
-                                    <span class="meta-card-label">Class</span>
+                                    <span class="meta-card-label">Fasalka</span>
                                     <span class="meta-card-value">{{ scope_info.class.name if scope_info.class else "-" }}</span>
                                 </div>
                             </div>
                             <div class="meta-card mc-section">
                                 <div class="meta-card-icon">
-                                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                                    <svg viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4Z"/><path d="m4 12 8 4 8-4"/><path d="m4 17 8 4 8-4"/></svg>
                                 </div>
                                 <div class="meta-card-body">
-                                    <span class="meta-card-label">Section</span>
-                                    <span class="meta-card-value">{{ scope_info.section.name if scope_info.section else "All" }}</span>
+                                    <span class="meta-card-label">Qeybta</span>
+                                    <span class="meta-card-value">{{ scope_info.section.name if scope_info.section else "Dhammaan" }}</span>
+                                </div>
+                            </div>
+                            <div class="meta-card mc-students">
+                                <div class="meta-card-icon">
+                                    <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                </div>
+                                <div class="meta-card-body">
+                                    <span class="meta-card-label">Ardeyda Guud</span>
+                                    <span class="meta-card-value">{{ students|length }}</span>
+                                </div>
+                            </div>
+                            <div class="meta-card mc-boys">
+                                <div class="meta-card-icon">
+                                    <svg viewBox="0 0 24 24"><circle cx="10" cy="8" r="4"/><path d="M3 21a7 7 0 0 1 14 0"/><path d="M19 8h4"/><path d="M21 6v4"/></svg>
+                                </div>
+                                <div class="meta-card-body">
+                                    <span class="meta-card-label">Wiilasha</span>
+                                    <span class="meta-card-value">{{ male_count }}</span>
+                                </div>
+                            </div>
+                            <div class="meta-card mc-girls">
+                                <div class="meta-card-icon">
+                                    <svg viewBox="0 0 24 24"><circle cx="10" cy="8" r="4"/><path d="M3 21a7 7 0 0 1 14 0"/><path d="M19 8h4"/><path d="M21 6v4"/></svg>
+                                </div>
+                                <div class="meta-card-body">
+                                    <span class="meta-card-label">Gabdhaha</span>
+                                    <span class="meta-card-value">{{ female_count }}</span>
                                 </div>
                             </div>
                         </div>
@@ -730,9 +1142,9 @@
                         <thead>
                             <tr>
                                 <th class="col-num">#</th>
-                                <th class="col-id">Student ID</th>
-                                <th class="col-name">Student Name<small>Mother's Name</small></th>
-                                <th class="col-class">Class</th>
+                                <th class="col-id">Tira-taxanaha</th>
+                                <th class="col-name">Magaca Ardeyga<small>Magaca Hooyada</small></th>
+                                <th class="col-class">Fasalka</th>
                                 {% for subject in subjects %}
                                     {% set pdf_subject_name = subject.pdf_short_name or subject.name %}
                                     <th class="col-subject" data-mg-subject-id="{{ subject.id }}" data-mg-subject="{{ pdf_subject_name|e }}"><span class="subj-cell"><span>{{ pdf_subject_name|upper }}</span>{{ critical_subject_badge(critical_badges.get(subject.id), interactive=false, subject_name=subject.name) }}</span><small>({{ subject_maxima.get(subject.id, subject.max_score)|academic_number(settings) }})</small></th>
@@ -740,10 +1152,10 @@
                                 {% for behavior in behavior_definitions|default([]) %}
                                     <th class="col-behavior"><span>{{ behavior.subject_name|upper }}</span>{{ critical_subject_badge(behavior.critical_badge, interactive=false, subject_name=behavior.subject_name) }}<small>(BEHAVIOR / {{ behavior.session_maximum|academic_number(settings) }})</small></th>
                                 {% endfor %}
-                                <th class="col-total">Total<small>({{ page_students[0].total_max|academic_number(settings) if page_students else 0 }})</small></th>
-                                <th class="col-percent">Percentage</th>
-                                <th class="col-grade">Grade<br>Letter</th>
-                                <th class="col-rank">Rank</th>
+                                <th class="col-total">Wadar<small>({{ page_students[0].total_max|academic_number(settings) if page_students else 0 }})</small></th>
+                                <th class="col-percent">Boqolley</th>
+                                <th class="col-grade">Darajo<br>Xarfeed</th>
+                                <th class="col-rank">Kaalin</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -807,44 +1219,86 @@
                             {% endfor %}
                             {% if page_num == total_pages %}
                                 <tr class="summary-row">
-                                    <td class="summary-main-label" colspan="2" rowspan="3"><span>CLASS SUMMARY</span></td>
-                                    <td class="stat-row-label srl-highest" colspan="2"><span class="stat-icon-wrap si-highest"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span><strong>Highest Score</strong></td>
+                                    <td class="summary-main-label" colspan="2" rowspan="4"><span>SOO KOOBIDDA NATIIJADA</span></td>
+                                    <td class="stat-row-label srl-average" colspan="2"><span class="stat-icon-wrap si-average"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg></span><strong>Celcelis Fasalka</strong></td>
                                     {% for stat in subject_stats %}
-                                        <td class="highest-cell">{{ stat.highest|academic_number(settings) }}</td>
-                                    {% endfor %}
-                                    {% for stat in behavior_stats|default([]) %}
-                                        <td class="highest-cell behavior-stat-cell">{{ stat.highest|academic_number(settings) }}</td>
-                                    {% endfor %}
-                                    <td class="highest-cell">{{ highest_total|academic_number(settings) }}</td>
-                                    <td class="highest-cell">{{ highest_score|academic_number(settings) }}%</td>
-                                    <td colspan="2" rowspan="3" class="pass-card">
-                                        <span class="pass-title">Class Pass Rate</span>
-                                        <span class="pass-value">{{ pass_rate|academic_number(settings) }}%</span>
-                                        <span class="pass-sub">{{ passed_count }} / {{ students|length }} Students Passed</span>
-                                    </td>
-                                </tr>
-                                <tr class="summary-row">
-                                    <td class="stat-row-label srl-lowest" colspan="2"><span class="stat-icon-wrap si-lowest"><svg viewBox="0 0 24 24"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg></span><strong>Lowest Score</strong></td>
-                                    {% for stat in subject_stats %}
-                                        <td class="lowest-cell">{{ stat.lowest|academic_number(settings) }}</td>
-                                    {% endfor %}
-                                    {% for stat in behavior_stats|default([]) %}
-                                        <td class="lowest-cell behavior-stat-cell">{{ stat.lowest|academic_number(settings) }}</td>
-                                    {% endfor %}
-                                    <td class="lowest-cell">{{ lowest_total|academic_number(settings) }}</td>
-                                    <td class="lowest-cell">{{ lowest_score|academic_number(settings) }}%</td>
-                                </tr>
-                                <tr class="summary-row">
-                                    <td class="stat-row-label srl-average" colspan="2"><span class="stat-icon-wrap si-average"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span><strong>Class Average</strong></td>
-                                    {% for stat in subject_stats %}
-                                        <td class="average-cell">{{ stat.average|academic_number(settings) }}</td>
+                                        <td class="average-cell"><span class="summary-fraction"><span>{{ stat.total_obtained|academic_number(settings) }}/</span><span>{{ stat.total_maximum|academic_number(settings) }}</span></span><small class="summary-note">{{ stat.average_percentage|academic_number(settings) }}%</small></td>
                                     {% endfor %}
                                     {% for stat in behavior_stats|default([]) %}
                                         <td class="average-cell behavior-stat-cell">{{ stat.average|academic_number(settings) }}</td>
                                     {% endfor %}
-                                    <td class="average-cell">{{ average_total|academic_number(settings) }}</td>
+                                    <td class="average-cell"><span class="summary-fraction"><span>{{ class_total_obtained|academic_number(settings) }}/</span><span>{{ class_total_maximum|academic_number(settings) }}</span></span><small class="summary-note">{{ class_average|academic_number(settings) }}%</small></td>
                                     <td class="average-cell">{{ class_average|academic_number(settings) }}%</td>
+                                        <td colspan="2" rowspan="4" class="pass-card">
+                                        <span class="class-performance">
+                                            <span class="class-performance-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16v-5"/><path d="M12 16V7"/><path d="M17 16v-8"/></svg></span>
+                                            <span><span class="class-performance-title">Waxqabadka Fasalka</span><span class="class-performance-value"><span class="class-performance-fraction">{{ class_total_obtained|academic_number(settings) }}/{{ class_total_maximum|academic_number(settings) }}</span><span class="class-performance-percent">{{ class_average|academic_number(settings) }}%</span></span></span>
+                                        </span>
+                                        <span class="pass-title"><svg class="pass-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.74 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.74Z"/><path d="m9 12 2 2 4-4"/></svg>Class Pass Rate</span>
+                                        <span class="pass-value">{{ pass_rate|academic_number(settings) }}%</span>
+                                        <span class="summary-note"><strong>Gudbay:</strong> {{ passed_count }} / {{ students|length }}</span>
+                                        <span class="summary-note"><strong>Taageero:</strong> {{ support_students|length }}</span>
+                                    </td>
                                 </tr>
+                                <tr class="summary-row">
+                                    <td class="stat-row-label srl-pass" colspan="2"><span class="stat-icon-wrap si-pass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg></span><strong>Heerka Gudbidda Maadada</strong></td>
+                                    {% for stat in subject_stats %}
+                                        <td class="pass-cell"><span>{{ stat.passed_count }}/{{ stat.total_count }}</span><small class="summary-note">{{ stat.pass_rate|academic_number(settings) }}%</small></td>
+                                    {% endfor %}
+                                    {% for stat in behavior_stats|default([]) %}
+                                        <td class="pass-cell behavior-stat-cell">-</td>
+                                    {% endfor %}
+                                    <td class="pass-cell">{{ passed_count }}</td>
+                                    <td class="pass-cell">{{ pass_rate|academic_number(settings) }}%</td>
+                                </tr>
+                                <tr class="summary-row">
+                                    <td class="stat-row-label srl-entered" colspan="2"><span class="stat-icon-wrap si-entered"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg></span><strong>Natiijooyinka La Geliyey</strong></td>
+                                    {% for stat in subject_stats %}
+                                        <td class="entered-cell"><span>{{ stat.entered_count }}/{{ stat.total_count }}</span><small class="summary-note">{{ stat.coverage_rate|academic_number(settings) }}%</small></td>
+                                    {% endfor %}
+                                    {% for stat in behavior_stats|default([]) %}
+                                        <td class="entered-cell behavior-stat-cell">-</td>
+                                    {% endfor %}
+                                    <td class="entered-cell">{{ entered_subject_count }}</td>
+                                    <td class="entered-cell">{{ subject_coverage_rate|academic_number(settings) }}%</td>
+                                </tr>
+                                <tr class="summary-row">
+                                    <td class="stat-row-label srl-missing" colspan="2"><span class="stat-icon-wrap si-missing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v6h6"/><path d="M12 12v4"/><path d="M12 20h.01"/></svg></span><strong>Natiijooyinka Maqan</strong></td>
+                                    {% for stat in subject_stats %}
+                                        <td class="missing-cell">{{ stat.missing_count }}</td>
+                                    {% endfor %}
+                                    {% for stat in behavior_stats|default([]) %}
+                                        <td class="missing-cell behavior-stat-cell">-</td>
+                                    {% endfor %}
+                                    <td class="missing-cell">{{ missing_subject_count }}</td>
+                                    <td class="missing-cell">{{ (100 - subject_coverage_rate)|academic_number(settings) }}%</td>
+                                </tr>
+                                {# Legacy top-five insight row intentionally omitted. Full paginated lists are rendered after the result pages.
+                                <tr class="summary-insights-row">
+                                    <td colspan="{{ summary_colspan }}">
+                                        <table class="insights-table">
+                                            <tbody>
+                                                <tr class="insight-line insight-line--strongest">
+                                                    <th class="insight-category"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10"/><path d="M5 4h14"/><path d="M6 4v4a6 6 0 0 0 12 0V4"/><path d="M4 4v2a4 4 0 0 0 4 4"/><path d="M20 4v2a4 4 0 0 1-4 4"/></svg>Strongest Subjects<small>&gt;60% · {{ strongest_subjects|length }} total</small></th>
+                                                    {% for stat in strongest_subjects[:5] %}<td><span class="insight-index">{{ loop.index }}.</span><span class="insight-name">{{ stat.subject.name }}</span><span class="insight-percent">{{ stat.average_percentage|academic_number(settings) }}%</span></td>{% else %}<td colspan="5" class="insight-empty">None above 60%</td>{% endfor %}
+                                                </tr>
+                                                <tr class="insight-line insight-line--support-subjects">
+                                                    <th class="insight-category"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>Support Subjects<small>&lt;=60% · {{ support_subjects|length }} total</small></th>
+                                                    {% for stat in support_subjects[:5] %}<td><span class="insight-index">{{ loop.index }}.</span><span class="insight-name">{{ stat.subject.name }}</span><span class="insight-percent">{{ stat.average_percentage|academic_number(settings) }}%</span></td>{% else %}<td colspan="5" class="insight-empty">None at or below 60%</td>{% endfor %}
+                                                </tr>
+                                                <tr class="insight-line insight-line--support-students">
+                                                    <th class="insight-category"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Support Students<small>&lt;=60% · {{ support_students|length }} total</small></th>
+                                                    {% for row in support_students[:5] %}<td><span class="insight-index">{{ loop.index }}.</span><span class="insight-name">{{ row.student.full_name }}</span><span class="insight-percent">{{ row.percentage|academic_number(settings) }}%</span></td>{% else %}<td colspan="5" class="insight-empty">No students flagged</td>{% endfor %}
+                                                </tr>
+                                                <tr class="insight-line insight-line--strongest-students">
+                                                    <th class="insight-category"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.12"/></svg>Strongest Students<small>&gt;60% · {{ strongest_students|length }} total</small></th>
+                                                    {% for row in strongest_students[:5] %}<td><span class="insight-index">{{ loop.index }}.</span><span class="insight-name">{{ row.student.full_name }}</span><span class="insight-percent">{{ row.percentage|academic_number(settings) }}%</span></td>{% else %}<td colspan="5" class="insight-empty">No students above 60%</td>{% endfor %}
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </td>
+                                </tr>
+                                #}
                             {% endif %}
                         </tbody>
                     </table>
@@ -887,12 +1341,151 @@
                         <div class="signature-line">Class Teacher</div>
                     </div>
                     <div class="footer-item page-number">
-                        Page {{ page_num }} of {{ total_pages }}
+                        Page {{ page_num }} of {{ document_total_pages|default(total_pages) }}
                     </div>
                 </footer>
             </div>
         </div>
     {% endfor %}
+    {% if false %}{% for insight_page in insight_pages|default([]) %}
+        <div class="page insights-report-page">
+            <div class="sheet">
+                <header class="top-header">
+                    <section class="brand-block">
+                        <div class="brand-emblem">
+                            {% if settings.logo_path %}
+                                <img src="{{ asset_url(settings.logo_path) }}" alt="{{ settings.school_name }} logo">
+                            {% else %}
+                                <span>{{ (settings.school_name or "S")[0] }}</span>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <h1 class="school-name">{{ settings.school_name }}</h1>
+                            <p class="school-motto">{{ settings.school_motto }}</p>
+                        </div>
+                    </section>
+                    <section class="title-block">
+                        <h2 class="main-title">Performance Insights</h2>
+                        <p class="insight-page-meta">{{ selected_year.name }} · {{ selected_exam.name }} · {{ scope_info.class.name if scope_info.class else "All Classes" }}</p>
+                    </section>
+                </header>
+
+                <main class="insights-report-main">
+                    <h2 class="insights-report-title">Detailed Performance Lists</h2>
+                    <p class="insights-report-subtitle">Strongest: above 60% · Support required: 60% or below · All matching records are shown.</p>
+                    <div class="insights-report-grid">
+                        {% if insight_page.kind == "subjects" %}
+                            <section class="insight-report-card insight-report-card--strongest">
+                                <div class="insight-report-card__heading">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10"/><path d="M5 4h14"/><path d="M6 4v4a6 6 0 0 0 12 0V4"/><path d="M4 4v2a4 4 0 0 0 4 4"/><path d="M20 4v2a4 4 0 0 1-4 4"/></svg>
+                                    <span>Strongest Subjects (&gt;60%)</span>
+                                    <small>{{ strongest_subjects|length }} total</small>
+                                </div>
+                                <table class="insight-report-table">
+                                    <thead><tr><th>#</th><th>Subject</th><th>Percentage</th></tr></thead>
+                                    <tbody>
+                                        {% for stat in insight_page.strongest_subjects %}
+                                            <tr><td>{{ insight_page.offset + loop.index }}</td><td>{{ stat.subject.name }}</td><td>{{ stat.average_percentage|academic_number(settings) }}%</td></tr>
+                                        {% else %}
+                                            <tr><td colspan="3" class="insight-report-empty">No subject is above 60%.</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </section>
+                            <section class="insight-report-card insight-report-card--support-subjects">
+                                <div class="insight-report-card__heading">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                                    <span>Subjects Needing Support (&lt;=60%)</span>
+                                    <small>{{ support_subjects|length }} total</small>
+                                </div>
+                                <table class="insight-report-table">
+                                    <thead><tr><th>#</th><th>Subject</th><th>Percentage</th></tr></thead>
+                                    <tbody>
+                                        {% for stat in insight_page.support_subjects %}
+                                            <tr><td>{{ insight_page.offset + loop.index }}</td><td>{{ stat.subject.name }}</td><td>{{ stat.average_percentage|academic_number(settings) }}%</td></tr>
+                                        {% else %}
+                                            <tr><td colspan="3" class="insight-report-empty">No subject is at or below 60%.</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </section>
+                        {% else %}
+                            <section class="insight-report-card insight-report-card--support-students">
+                                <div class="insight-report-card__heading">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                    <span>Students Needing Support (&lt;=60%)</span>
+                                    <small>{{ support_students|length }} total</small>
+                                </div>
+                                <table class="insight-report-table">
+                                    <thead><tr><th>#</th><th>Students</th><th>Percentage</th></tr></thead>
+                                    <tbody>
+                                        {% for row in insight_page.support_students %}
+                                            <tr><td>{{ insight_page.offset + loop.index }}</td><td>{{ row.student.full_name }}</td><td>{{ row.percentage|academic_number(settings) }}%</td></tr>
+                                        {% else %}
+                                            <tr><td colspan="3" class="insight-report-empty">No students are at or below 60%.</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </section>
+                            <section class="insight-report-card insight-report-card--strongest-students">
+                                <div class="insight-report-card__heading">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.12"/></svg>
+                                    <span>Strongest Students (&gt;60%)</span>
+                                    <small>{{ strongest_students|length }} total</small>
+                                </div>
+                                <table class="insight-report-table">
+                                    <thead><tr><th>#</th><th>Students</th><th>Percentage</th></tr></thead>
+                                    <tbody>
+                                        {% for row in insight_page.strongest_students %}
+                                            <tr><td>{{ insight_page.offset + loop.index }}</td><td>{{ row.student.full_name }}</td><td>{{ row.percentage|academic_number(settings) }}%</td></tr>
+                                        {% else %}
+                                            <tr><td colspan="3" class="insight-report-empty">No students are above 60%.</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </section>
+                        {% endif %}
+                    </div>
+                </main>
+
+                <footer class="footer">
+                    <div class="footer-item footer-left">
+                        <strong>{{ settings.school_name }}</strong> | {{ date.strftime('%Y') }}. All Rights Reserved.
+                    </div>
+                    <div class="footer-item">
+                        <strong>Generated By:</strong> {{ generated_by }}
+                        <br><strong>Date:</strong> {{ date.strftime('%d %B %Y') }}
+                    </div>
+                    <div class="footer-item">
+                        <div class="seal">
+                            {% if settings.school_stamp_path %}
+                                <img src="{{ asset_url(settings.school_stamp_path) }}" alt="Official school seal">
+                            {% else %}
+                                <span>SEAL</span>
+                            {% endif %}
+                        </div>
+                        Official School Seal
+                    </div>
+                    <div class="footer-item">
+                        {% if settings.principal_signature_path %}<img class="signature-img" src="{{ asset_url(settings.principal_signature_path) }}" alt="Principal signature">{% endif %}
+                        <div class="signature-line">Principal</div>
+                    </div>
+                    <div class="footer-item">
+                        {% if settings.exam_officer_signature_path %}<img class="signature-img" src="{{ asset_url(settings.exam_officer_signature_path) }}" alt="Examination officer signature">{% endif %}
+                        <div class="signature-line">Exam Officer</div>
+                    </div>
+                    <div class="footer-item">
+                        {% if settings.vice_principal_signature_path %}<img class="signature-img" src="{{ asset_url(settings.vice_principal_signature_path) }}" alt="Class teacher signature">{% endif %}
+                        <div class="signature-line">Class Teacher</div>
+                    </div>
+                    <div class="footer-item page-number">
+                        Page {{ total_pages + insight_page.page_number }} of {{ document_total_pages|default(total_pages) }}
+                    </div>
+                </footer>
+            </div>
+        </div>
+    {% endfor %}{% endif %}
+    {% include "admin/pdf/class_mark_sheet_analytics_pages.html" with context %}
     {% include "partials/mg_detail_modal.html" with context %}
     <script src="{{ url_for('static', filename='js/mg-detail-card.js') }}"></script>
 </body>

@@ -64,10 +64,7 @@ advanced_results_bp = Blueprint("admin_advanced_results", __name__)
 
 
 def ordinal(value):
-    suffix = "th"
-    if value % 100 not in (11, 12, 13):
-        suffix = {1: "st", 2: "nd", 3: "rd"}.get(value % 10, "th")
-    return f"{value}{suffix}"
+    return f"{value}aad"
 
 
 def stored_asset_url(path):
@@ -1899,24 +1896,161 @@ def export_class_pdf():
     roster_data = ranked_data
     
     # Calculate class stats
-    class_average = round(sum(r["percentage"] for r in roster_data) / len(roster_data), 2) if roster_data else 0
+    class_total_obtained = round(sum(row["total_score"] for row in roster_data), 2)
+    class_total_maximum = round(sum(row["total_max"] for row in roster_data), 2)
+    class_average = (
+        round(class_total_obtained / class_total_maximum * 100, 2)
+        if class_total_maximum > 0
+        else 0
+    )
     highest_total = round(max((row["total_score"] for row in roster_data), default=0), 2)
     lowest_total = round(min((row["total_score"] for row in roster_data), default=0), 2)
-    average_total = round(sum(row["total_score"] for row in roster_data) / len(roster_data), 2) if roster_data else 0
+    average_total = round(class_total_obtained / len(roster_data), 2) if roster_data else 0
     passed_count = sum(1 for row in roster_data if not row["is_fail"])
     failed_count = sum(1 for row in roster_data if row["is_fail"])
     pass_rate = round((passed_count / len(roster_data) * 100), 2) if roster_data else 0
     highest_score = round(max((row["percentage"] for row in roster_data), default=0), 2)
     lowest_score = round(min((row["percentage"] for row in roster_data), default=0), 2)
     subject_stats = []
+    total_students_for_stats = len(roster_data)
     for index, subject in enumerate(subjects):
-        scores = [float(row["subject_data"][index]["score"]) for row in roster_data if index < len(row["subject_data"])]
+        entries = [
+            row["subject_data"][index]
+            for row in roster_data
+            if index < len(row["subject_data"])
+        ]
+        scores = [float(entry["score"]) for entry in entries]
+        entered_count = sum(1 for entry in entries if not entry["is_missing"])
+        missing_count = sum(1 for entry in entries if entry["is_missing"])
+        passed_subject_count = sum(
+            1
+            for entry in entries
+            if not entry["is_missing"] and not entry["is_fail"]
+        )
+        subject_total_obtained = round(sum(scores), 2)
+        subject_maximum = float(subject_maxima.get(subject.id, subject.max_score))
+        subject_total_maximum = round(subject_maximum * total_students_for_stats, 2)
+        subject_average_percentage = (
+            round(subject_total_obtained / subject_total_maximum * 100, 2)
+            if subject_total_maximum > 0
+            else 0
+        )
         subject_stats.append({
             "subject": subject,
             "highest": round(max(scores), 2) if scores else 0,
             "lowest": round(min(scores), 2) if scores else 0,
-            "average": round(sum(scores) / len(scores), 2) if scores else 0,
+            "average": round(subject_total_obtained / len(entries), 2) if entries else 0,
+            "total_obtained": subject_total_obtained,
+            "total_maximum": subject_total_maximum,
+            "average_percentage": subject_average_percentage,
+            "entered_count": entered_count,
+            "missing_count": missing_count,
+            "passed_count": passed_subject_count,
+            "total_count": total_students_for_stats,
+            "pass_rate": round(
+                passed_subject_count / total_students_for_stats * 100, 2
+            )
+            if total_students_for_stats
+            else 0,
+            "coverage_rate": round(
+                entered_count / total_students_for_stats * 100, 2
+            )
+            if total_students_for_stats
+            else 0,
         })
+
+    entered_subject_count = sum(stat["entered_count"] for stat in subject_stats)
+    missing_subject_count = sum(stat["missing_count"] for stat in subject_stats)
+    subject_slot_count = len(subject_stats) * total_students_for_stats
+    subject_coverage_rate = (
+        round(entered_subject_count / subject_slot_count * 100, 2)
+        if subject_slot_count
+        else 0
+    )
+    scored_subjects = [stat for stat in subject_stats if stat["entered_count"]]
+    strongest_subjects = sorted(
+        [stat for stat in scored_subjects if stat["average_percentage"] > 60],
+        key=lambda stat: stat["average_percentage"],
+        reverse=True,
+    )
+    support_subjects = sorted(
+        [stat for stat in scored_subjects if stat["average_percentage"] <= 60],
+        key=lambda stat: stat["average_percentage"],
+    )
+    support_students = sorted(
+        [row for row in roster_data if row["percentage"] <= 60],
+        key=lambda row: (row["percentage"], row["student"].full_name),
+    )
+    strongest_students = sorted(
+        [row for row in roster_data if row["percentage"] > 60],
+        key=lambda row: (-row["percentage"], row["student"].full_name),
+    )
+    insight_page_size = 12
+    subject_insight_page_count = max(
+        1,
+        math.ceil(
+            max(len(strongest_subjects), len(support_subjects), 1)
+            / insight_page_size
+        ),
+    )
+    student_insight_page_count = max(
+        1,
+        math.ceil(
+            max(len(support_students), len(strongest_students), 1)
+            / insight_page_size
+        ),
+    )
+    insight_pages = []
+    for page_index in range(subject_insight_page_count):
+        start = page_index * insight_page_size
+        insight_pages.append(
+            {
+                "kind": "subjects",
+                "page_number": len(insight_pages) + 1,
+                "strongest_subjects": strongest_subjects[start : start + insight_page_size],
+                "support_subjects": support_subjects[start : start + insight_page_size],
+                "offset": start,
+            }
+        )
+    for page_index in range(student_insight_page_count):
+        start = page_index * insight_page_size
+        insight_pages.append(
+            {
+                "kind": "students",
+                "page_number": len(insight_pages) + 1,
+                "support_students": support_students[start : start + insight_page_size],
+                "strongest_students": strongest_students[start : start + insight_page_size],
+                "offset": start,
+            }
+        )
+    analytics_list_page_size = 10
+    analytics_list_page_count = max(
+        1,
+        math.ceil(
+            max(
+                len(strongest_subjects),
+                len(support_subjects),
+                len(support_students),
+                len(strongest_students),
+                1,
+            )
+            / analytics_list_page_size
+        ),
+    )
+    analytics_list_pages = []
+    for page_index in range(analytics_list_page_count):
+        start = page_index * analytics_list_page_size
+        analytics_list_pages.append(
+            {
+                "page_number": page_index + 1,
+                "offset": start,
+                "strongest_subjects": strongest_subjects[start : start + analytics_list_page_size],
+                "support_subjects": support_subjects[start : start + analytics_list_page_size],
+                "support_students": support_students[start : start + analytics_list_page_size],
+                "strongest_students": strongest_students[start : start + analytics_list_page_size],
+            }
+        )
+    summary_colspan = 8 + len(subjects) + len(behavior_definitions)
     behavior_stats = []
     for definition in behavior_definitions:
         scores = []
@@ -1932,8 +2066,350 @@ def export_class_pdf():
                 "average": round(float(sum(scores) / len(scores)), 2) if scores else 0,
             }
         )
+
+    # Keep the Grades chart tied to the exact active scale used by the report.
+    # The cache is ordered by Grade Management's sort_order and already applies
+    # exam-specific rows before the global fallback rows.  This prevents the
+    # chart from silently imposing a stale hardcoded A-F order when an admin has
+    # configured custom letters or a different official order.
+    configured_grade_order = []
+    configured_grade_labels = {}
+    configured_grade_colors = {}
+    configured_grade_ranges = {}
+    seen_grade_keys = set()
+    for bucket in ("exam", "global", "fallback"):
+        for cached_row in grade_cache.get(bucket, []):
+            payload = cached_row.get("payload") or {}
+            label = str(payload.get("grade") or "").strip()
+            if not label:
+                continue
+            grade_key = label.casefold()
+            if grade_key in seen_grade_keys:
+                continue
+            seen_grade_keys.add(grade_key)
+            configured_grade_order.append(grade_key)
+            configured_grade_labels[grade_key] = label
+            configured_grade_colors[grade_key] = payload.get("badge_color")
+            configured_grade_ranges[grade_key] = (
+                cached_row.get("min_score"),
+                cached_row.get("max_score"),
+            )
+
+    # Preserve the standard display order only when no active Grade Management
+    # scale exists at all; it is never used to override a configured scale.
+    default_grade_order = ["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D", "E", "F", "--"]
+    grade_order = configured_grade_order or [label.casefold() for label in default_grade_order]
+    fallback_grade_colors = {
+        "A+": "#059669",
+        "A": "#059669",
+        "A-": "#10b981",
+        "B+": "#2563eb",
+        "B": "#2563eb",
+        "B-": "#60a5fa",
+        "C+": "#f59e0b",
+        "C": "#f59e0b",
+        "C-": "#fbbf24",
+        "D": "#f97316",
+        "E": "#dc2626",
+        "F": "#991b1b",
+        "--": "#94a3b8",
+    }
+    fallback_grade_colors = {
+        key.casefold(): value for key, value in fallback_grade_colors.items()
+    }
+    fallback_grade_ranges = {
+        str(item["grade"]).casefold(): (item["min_score"], item["max_score"])
+        for item in DEFAULT_GRADE_SCALES
+    }
+
+    def grade_range_label(grade_key):
+        minimum, maximum = configured_grade_ranges.get(
+            grade_key,
+            fallback_grade_ranges.get(grade_key, (None, None)),
+        )
+        if minimum is None or maximum is None:
+            return ""
+        return f"{float(minimum):.2f} - {float(maximum):.2f}"
+
+    grade_counts = defaultdict(int)
+    grade_colors = {}
+    grade_labels = {}
+    for row in roster_data:
+        grade_data = row.get("grade") or {}
+        grade_label = str(grade_data.get("grade") or "--").strip()
+        grade_key = grade_label.casefold()
+        grade_counts[grade_key] += 1
+        grade_labels.setdefault(grade_key, grade_label)
+        grade_colors.setdefault(
+            grade_key,
+            configured_grade_colors.get(grade_key)
+            or grade_data.get("badge_color")
+            or fallback_grade_colors.get(grade_key, "#64748b"),
+        )
+    grade_distribution = [
+        {
+            "label": configured_grade_labels.get(grade_key, grade_labels.get(grade_key, grade_key)),
+            "count": grade_counts[grade_key],
+            "color": grade_colors.get(grade_key, fallback_grade_colors.get(grade_key, "#64748b")),
+            "range_label": grade_range_label(grade_key),
+        }
+        for grade_key in grade_order
+        if grade_counts.get(grade_key)
+        or (configured_grade_order and grade_key in configured_grade_order)
+    ]
+    extra_grade_labels = sorted(
+        (key for key in grade_counts if key not in grade_order),
+        key=lambda key: grade_labels.get(key, key),
+    )
+    grade_distribution.extend(
+        {
+            "label": grade_labels.get(grade_key, grade_key),
+            "count": grade_counts[grade_key],
+            "color": grade_colors.get(grade_key, "#64748b"),
+            "range_label": grade_range_label(grade_key),
+        }
+        for grade_key in extra_grade_labels
+    )
+    percentage_bands = [
+        {
+            "label": "100%-90%",
+            "count": sum(1 for row in roster_data if 90 <= row["percentage"] <= 100),
+            "color": "#2563eb",
+        },
+        {
+            "label": "80-89%",
+            "count": sum(1 for row in roster_data if 80 <= row["percentage"] < 90),
+            "color": "#0ea5e9",
+        },
+        {
+            "label": "70-79%",
+            "count": sum(1 for row in roster_data if 70 <= row["percentage"] < 80),
+            "color": "#14b8a6",
+        },
+        {
+            "label": "60-69%",
+            "count": sum(1 for row in roster_data if 60 <= row["percentage"] < 70),
+            "color": "#22c55e",
+        },
+        {
+            "label": "50-59%",
+            "count": sum(1 for row in roster_data if 50 <= row["percentage"] < 60),
+            "color": "#f59e0b",
+        },
+        {
+            "label": "<50%",
+            "count": sum(1 for row in roster_data if row["percentage"] < 50),
+            "color": "#dc2626",
+        },
+    ]
+    behavior_average_values = [
+        sum(float(item.get("session_score") or 0) for item in row["behavior_reports"])
+        for row in roster_data
+    ]
+    behavior_average = (
+        round(sum(behavior_average_values) / len(behavior_average_values), 2)
+        if behavior_average_values
+        else 0
+    )
+    chart_left = 42
+    chart_right = 510
+    chart_top = 18
+    chart_bottom = 195
+    chart_height = chart_bottom - chart_top
+    chart_width = chart_right - chart_left
+    subject_count = max(len(subject_stats), 1)
+    completeness_chart_max = max(5, math.ceil(max(len(roster_data), 1) / 5) * 5)
+    completeness_chart_ticks = list(range(0, completeness_chart_max + 1, 5))
+    completeness_chart_top = 18
+    completeness_chart_bottom = 165
+    completeness_chart_height = completeness_chart_bottom - completeness_chart_top
+    subject_chart_points = []
+    completeness_chart_points = []
+    subject_percentage_bands = (
+        (10.99, "0-10.99%", "#dc2626"),
+        (20.99, "11-20.99%", "#ea580c"),
+        (30.99, "21-30.99%", "#f97316"),
+        (40.99, "31-40.99%", "#f59e0b"),
+        (50.99, "41-50.99%", "#eab308"),
+        (60.99, "51-60.99%", "#84cc16"),
+        (70.99, "61-70.99%", "#22c55e"),
+        (80.99, "71-80.99%", "#14b8a6"),
+        (90.99, "81-90.99%", "#0ea5e9"),
+        (100.0, "91-100%", "#2563eb"),
+    )
+
+    def subject_percentage_band(value):
+        for upper_bound, label, color in subject_percentage_bands:
+            if value <= upper_bound:
+                return label, color
+        return subject_percentage_bands[-1][1:]
+
+    for index, stat in enumerate(subject_stats):
+        x = chart_left + chart_width * (index + 0.5) / subject_count
+        average = max(0, min(float(stat["average_percentage"]), 100))
+        pass_rate_value = max(0, min(float(stat["pass_rate"]), 100))
+        average_band_label, average_band_color = subject_percentage_band(round(average, 2))
+        subject_chart_points.append(
+            {
+                "label": stat["subject"].name,
+                "short_label": " ".join(str(stat["subject"].name).split()[:2]),
+                "x": round(x, 2),
+                "bar_y": round(chart_bottom - (average / 100 * chart_height), 2),
+                "bar_height": round(average / 100 * chart_height, 2),
+                "line_y": round(chart_bottom - (pass_rate_value / 100 * chart_height), 2),
+                "average": round(average, 2),
+                "pass_rate": round(pass_rate_value, 2),
+                "average_band_label": average_band_label,
+                "average_band_color": average_band_color,
+                "bar_width": round(min(28, max(12, chart_width / subject_count * 0.56)), 2),
+            }
+        )
+        total_count = max(int(stat["total_count"]), 1)
+        completeness_chart_points.append(
+            {
+                "label": stat["subject"].name,
+                "short_label": " ".join(str(stat["subject"].name).split()[:2]),
+                "x": round(x, 2),
+                "entered_height": round(
+                    stat["entered_count"] / completeness_chart_max * completeness_chart_height,
+                    2,
+                ),
+                "missing_height": round(
+                    stat["missing_count"] / completeness_chart_max * completeness_chart_height,
+                    2,
+                ),
+                "entered_count": stat["entered_count"],
+                "missing_count": stat["missing_count"],
+                "total_count": total_count,
+                "bar_width": round(min(28, max(12, chart_width / subject_count * 0.56)), 2),
+            }
+        )
+    subject_line_points = " ".join(
+        f"{point['x']},{point['line_y']}" for point in subject_chart_points
+    )
+    percentage_chart_max = max(max((item["count"] for item in percentage_bands), default=0), 1)
+    percentage_chart_ticks = list(range(0, percentage_chart_max + 1, 2))
+    if percentage_chart_max not in percentage_chart_ticks:
+        percentage_chart_ticks.append(percentage_chart_max)
+    percentage_chart_points = []
+    band_count = max(len(percentage_bands), 1)
+    percentage_chart_left = 32
+    percentage_chart_width = 220
+    percentage_chart_bottom = 165
+    percentage_chart_height = 147
+    for index, item in enumerate(percentage_bands):
+        x = percentage_chart_left + percentage_chart_width * (index + 0.5) / band_count
+        bar_height = item["count"] / percentage_chart_max * percentage_chart_height
+        percentage_chart_points.append(
+            {
+                **item,
+                "x": round(x, 2),
+                "bar_y": round(percentage_chart_bottom - bar_height, 2),
+                "bar_height": round(bar_height, 2),
+                "bar_width": round(min(46, max(24, percentage_chart_width / band_count * 0.5)), 2),
+            }
+        )
+    radar_subject_aliases = [
+        (("xisaab", "mathematics", "math"), "Xisaab"),
+        (("soomaali", "somali"), "Soomaali"),
+        (("english",), "English"),
+        (("العربية", "carabi", "arabic"), "اللغة العربية"),
+        (("tarbiyo", "tarbiya", "islamic"), "Tarbiyo"),
+        (("taariikh", "history"), "Taariikh"),
+        (("juqraafi", "geography", "geografi"), "Juqraafi"),
+        (("teknooloji", "technology", "technolog"), "Teknooloji"),
+    ]
+    radar_subjects = []
+    used_radar_subject_ids = set()
+    for aliases, display_label in radar_subject_aliases:
+        for stat in subject_stats:
+            subject_id = getattr(stat["subject"], "id", None) or id(stat["subject"])
+            normalized_name = str(stat["subject"].name or "").strip().lower()
+            if subject_id in used_radar_subject_ids:
+                continue
+            if any(alias in normalized_name for alias in aliases):
+                radar_subjects.append({"stat": stat, "label": display_label})
+                used_radar_subject_ids.add(subject_id)
+                break
+    if len(radar_subjects) < 8:
+        for stat in subject_stats:
+            subject_id = getattr(stat["subject"], "id", None) or id(stat["subject"])
+            if subject_id in used_radar_subject_ids:
+                continue
+            radar_subjects.append(
+                {"stat": stat, "label": stat["subject"].name}
+            )
+            used_radar_subject_ids.add(subject_id)
+            if len(radar_subjects) == 8:
+                break
+    # Keep the radar geometry fixed at eight compass positions.  The grid and
+    # axis spokes are always octagonal, so labels must use the same denominator
+    # even when a filtered scope has fewer than eight matching subjects.
+    radar_count = 8
+    radar_points = []
+    radar_labels = []
+    radar_chart_points = []
+    radar_tick_labels = []
+    radar_axis_points = []
+    radar_grid_polygons = []
+    for index in range(8):
+        angle = (-math.pi / 2) + (2 * math.pi * index / 8)
+        radar_axis_points.append(
+            {
+                "x": round(110 + 55 * math.cos(angle), 1),
+                "y": round(78 + 55 * math.sin(angle), 1),
+            }
+        )
+    for tick in (0, 20, 40, 60, 80, 100):
+        radius = 55 * (tick / 100)
+        points = []
+        for index in range(8):
+            angle = (-math.pi / 2) + (2 * math.pi * index / 8)
+            points.append(
+                f"{110 + radius * math.cos(angle):.1f},{78 + radius * math.sin(angle):.1f}"
+            )
+        radar_grid_polygons.append(" ".join(points))
+    for tick in (0, 20, 40, 60, 80, 100):
+        radar_tick_labels.append({"value": tick, "y": round(78 - (tick / 100 * 55), 1)})
+    for index, radar_subject in enumerate(radar_subjects):
+        stat = radar_subject["stat"]
+        angle = (-math.pi / 2) + (2 * math.pi * index / radar_count)
+        ratio = max(0, min(float(stat["average_percentage"]) / 100, 1))
+        point_x = 110 + 55 * ratio * math.cos(angle)
+        point_y = 78 + 55 * ratio * math.sin(angle)
+        radar_points.append(
+            f"{point_x:.1f},{point_y:.1f}"
+        )
+        radar_chart_points.append(
+            {
+                "label": radar_subject["label"],
+                "x": round(point_x, 1),
+                "y": round(point_y, 1),
+                "average_percentage": round(float(stat["average_percentage"]), 2),
+            }
+        )
+        radar_labels.append(
+            {
+                "label": radar_subject["label"],
+                "x": round(110 + 86 * math.cos(angle), 1),
+                "y": round(78 + 65 * math.sin(angle), 1),
+            }
+        )
+    radar_polygon = " ".join(radar_points)
+    grade_gradient_parts = []
+    grade_offset = 0
+    roster_count = max(len(roster_data), 1)
+    for item in grade_distribution:
+        next_offset = grade_offset + (item["count"] / roster_count * 100)
+        grade_gradient_parts.append(
+            f"{item['color']} {grade_offset:.2f}% {next_offset:.2f}%"
+        )
+        grade_offset = next_offset
+    grade_gradient = ", ".join(grade_gradient_parts) or "#e2e8f0 0 100%"
     students_per_page = 15
     total_pages = max(1, math.ceil(len(roster_data) / students_per_page))
+    analytics_page_count = len(analytics_list_pages) + 1
+    document_total_pages = total_pages + analytics_page_count
     
     # Get scope info
     scope_info = {}
@@ -1945,6 +2421,19 @@ def export_class_pdf():
         scope_info["section"] = db.session.get(AcademicSection, section_id)
     
     settings = get_settings()
+
+    # Keep the roster totals tied to the exact class/section filter used by
+    # the report so the gender cards never describe a different population.
+    male_count = sum(
+        1
+        for row in ranked_data
+        if str(getattr(row["student"], "gender", "") or "").strip().lower() == "male"
+    )
+    female_count = sum(
+        1
+        for row in ranked_data
+        if str(getattr(row["student"], "gender", "") or "").strip().lower() == "female"
+    )
     
     return render_template(
         "admin/pdf/class_mark_sheet_pdf.html",
@@ -1958,7 +2447,40 @@ def export_class_pdf():
         subject_maxima=subject_maxima,
         critical_badges=critical_badges,
         subject_stats=subject_stats,
+        entered_subject_count=entered_subject_count,
+        missing_subject_count=missing_subject_count,
+        subject_slot_count=subject_slot_count,
+        subject_coverage_rate=subject_coverage_rate,
+        strongest_subjects=strongest_subjects,
+        support_subjects=support_subjects,
+        support_students=support_students,
+        strongest_students=strongest_students,
+        insight_pages=insight_pages,
+        analytics_list_pages=analytics_list_pages,
+        grade_distribution=grade_distribution,
+        percentage_bands=percentage_bands,
+        behavior_average=behavior_average,
+        subject_chart_points=subject_chart_points,
+        subject_line_points=subject_line_points,
+        completeness_chart_points=completeness_chart_points,
+        completeness_chart_max=completeness_chart_max,
+        completeness_chart_ticks=completeness_chart_ticks,
+        percentage_chart_max=percentage_chart_max,
+        percentage_chart_ticks=percentage_chart_ticks,
+        percentage_chart_points=percentage_chart_points,
+        radar_polygon=radar_polygon,
+        radar_labels=radar_labels,
+        radar_chart_points=radar_chart_points,
+        radar_tick_labels=radar_tick_labels,
+        radar_axis_points=radar_axis_points,
+        radar_grid_polygons=radar_grid_polygons,
+        grade_gradient=grade_gradient,
+        analytics_page_count=analytics_page_count,
+        document_total_pages=document_total_pages,
+        summary_colspan=summary_colspan,
         class_average=class_average,
+        class_total_obtained=class_total_obtained,
+        class_total_maximum=class_total_maximum,
         highest_total=highest_total,
         lowest_total=lowest_total,
         average_total=average_total,
@@ -1968,6 +2490,8 @@ def export_class_pdf():
         highest_score=highest_score,
         lowest_score=lowest_score,
         completed_count=len(roster_data),
+        male_count=male_count,
+        female_count=female_count,
         students_per_page=students_per_page,
         total_pages=total_pages,
         settings=settings,
