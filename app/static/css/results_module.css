@@ -2182,6 +2182,104 @@
     border: 1px solid var(--paper-line);
 }
 
+.rh-export-btn {
+    position: relative;
+    isolation: isolate;
+    min-height: 46px;
+    padding: 12px 18px;
+    overflow: hidden;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    color: #fff;
+    font-size: .9rem;
+    letter-spacing: .01em;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, .13);
+    transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+}
+
+.rh-export-btn::before {
+    position: absolute;
+    inset: 0 auto 0 -40%;
+    z-index: 0;
+    width: 34%;
+    content: "";
+    background: rgba(255, 255, 255, .28);
+    pointer-events: none;
+    transform: skewX(-22deg);
+    transition: left .45s ease;
+}
+
+.rh-export-btn > i,
+.rh-export-btn > span {
+    position: relative;
+    z-index: 1;
+}
+
+.rh-export-btn i {
+    width: 1.1rem;
+    font-size: 1.05rem;
+    text-align: center;
+}
+
+.rh-export-btn--excel {
+    border-color: #087443;
+    background: linear-gradient(135deg, #087443 0%, #0f9f62 54%, #35c980 100%);
+}
+
+.rh-export-btn--print {
+    border-color: #1754b8;
+    background: linear-gradient(135deg, #17459b 0%, #2563eb 54%, #4f9cf9 100%);
+}
+
+.rh-export-btn:hover:not(:disabled),
+.rh-export-btn:focus-visible:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 24px rgba(15, 23, 42, .2);
+    filter: saturate(1.08);
+}
+
+.rh-export-btn:hover:not(:disabled)::before,
+.rh-export-btn:focus-visible:not(:disabled)::before {
+    left: 115%;
+}
+
+.rh-export-btn:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 6px 12px rgba(15, 23, 42, .16);
+}
+
+.rh-export-btn:focus-visible {
+    outline: 3px solid rgba(96, 165, 250, .4);
+    outline-offset: 2px;
+}
+
+.rh-export-btn:disabled {
+    cursor: not-allowed;
+    opacity: .55;
+    filter: grayscale(.25);
+    box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rh-export-btn,
+    .rh-export-btn::before {
+        transition: none;
+    }
+}
+
+@media (max-width: 720px) {
+    .rh-toolbar .rh-export-actions {
+        width: 100%;
+        margin-left: 0 !important;
+    }
+
+    .rh-export-btn {
+        flex: 1 1 0;
+        justify-content: center;
+        min-width: 0;
+    }
+}
+
 .rh-input {
     border: 1px solid var(--paper-line);
     border-radius: 8px;
