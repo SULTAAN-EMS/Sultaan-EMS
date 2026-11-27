@@ -2042,6 +2042,33 @@
     font-family: var(--font-mono);
 }
 
+.rh-missing {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    padding: 3px;
+    border: 1px dashed #f59e0b;
+    border-radius: 8px;
+    color: #9a3412;
+    background: #fff7ed;
+    font-family: var(--font-mono);
+    line-height: 1.05;
+    box-sizing: border-box;
+    vertical-align: middle;
+}
+
+.rh-missing .missing-result-icon {
+    display: block;
+    width: 16px;
+    max-width: 16px;
+    height: 16px;
+    max-height: 16px;
+}
+
 .rh-table-card {
     background: #fff;
     border: 1px solid var(--paper-line);
