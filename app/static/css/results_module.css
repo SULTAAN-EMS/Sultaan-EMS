@@ -2182,7 +2182,7 @@
     border: 1px solid var(--paper-line);
 }
 
-.rh-export-btn {
+.rh-btn.rh-export-btn {
     position: relative;
     isolation: isolate;
     min-height: 46px;
@@ -2221,12 +2221,12 @@
     text-align: center;
 }
 
-.rh-export-btn--excel {
+.rh-btn.rh-export-btn--excel {
     border-color: #087443;
     background: linear-gradient(135deg, #087443 0%, #0f9f62 54%, #35c980 100%);
 }
 
-.rh-export-btn--print {
+.rh-btn.rh-export-btn--print {
     border-color: #1754b8;
     background: linear-gradient(135deg, #17459b 0%, #2563eb 54%, #4f9cf9 100%);
 }
