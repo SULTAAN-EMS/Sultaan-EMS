@@ -17,7 +17,7 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from . import db
 from .audit import audit
-from .cloudinary_service import upload_image
+from .cloudinary_service import cloudinary_thumbnail_url, upload_image
 from .import_wizard import normalize_student_phone, process_result_import, process_student_import, result_entry_import_template, student_template
 from .models import AcademicYear, AcademicClass, AcademicLevel, AcademicSection, AcademicYearClass, AcademicYearLevel, AcademicYearSubject, AttendanceRecord, Exam, ExamType, ExamMarkingConfiguration, GradeScale, IncidentReport, Result, SchoolClass, Setting, Student, StudentCodeAlias, StudentEnrollment, StudentEnrollmentMovement, StudentPortalAccessCode, StudentPortalAccessPolicy, Subject, Teacher, LabelTranslation
 from .academic_hierarchy import (
@@ -2111,9 +2111,9 @@ def export_class_pdf():
         ("strongest_subjects", "support_students"),
         ("support_subjects", "strongest_students"),
     )
-    # This leaves room for the card headers while allowing the common
-    # one-short-card + full-student-list case to finish on one A4 page.
-    column_row_capacity = 21
+    # Keep the analytics columns together through the largest observed
+    # Form 4 roster while still staying inside the A4 footer boundary.
+    column_row_capacity = 25
     analytics_offsets = {key: 0 for key in analytics_lists}
     analytics_list_pages = []
 
@@ -2618,6 +2618,7 @@ def export_class_pdf():
         students_per_page=students_per_page,
         total_pages=total_pages,
         settings=settings,
+        cloudinary_thumbnail_url=cloudinary_thumbnail_url,
         weak_config=weak_config,
         fail_config=fail_config,
         report_tiers=report_tiers,
@@ -2681,15 +2682,39 @@ def export_class_excel():
         ).all()
         for result in published_results:
             results_by_student[result.student_id][result.subject_id] = result
-    behavior_placements = _year_placement_cache(students, selected_year.id)
-    behavior_reports_by_student = {
-        student.id: get_behavior_report_data(
-            student,
+    behavior_reports_by_student = {}
+    if year_level:
+        behavior_scores_by_student = get_behavior_scores_for_students(
+            students,
             selected_exam,
-            placement=behavior_placements.get((student.id, selected_year.id)),
+            year_level.id,
         )
-        for student in students
-    }
+        for student in students:
+            summary = behavior_scores_by_student.get(student.id) or {}
+            behavior_reports_by_student[student.id] = [
+                {
+                    "configuration_id": item["configuration_id"],
+                    "subject_name": item["subject_name"],
+                    "available": True,
+                    "session_score": item.get("session_score"),
+                    "session_maximum": item.get("session_maximum"),
+                    "annual_maximum": item.get("annual_maximum"),
+                    "grade_point": item.get("grade_point") or 0,
+                    "critical_badge": item.get("critical_badge"),
+                }
+                for item in (summary.get("by_configuration") or {}).values()
+                if item.get("has_reports")
+            ]
+    else:
+        behavior_placements = _year_placement_cache(students, selected_year.id)
+        behavior_reports_by_student = {
+            student.id: get_behavior_report_data(
+                student,
+                selected_exam,
+                placement=behavior_placements.get((student.id, selected_year.id)),
+            )
+            for student in students
+        }
     behavior_definitions = []
     seen_behavior_configurations = set()
     for reports in behavior_reports_by_student.values():

@@ -1167,7 +1167,7 @@
                                         <div class="id-with-photo">
                                             <div class="student-photo">
                                                 {% if row.student.photo_path %}
-                                                    <img src="{{ asset_url(row.student.photo_path) }}" alt="{{ row.student.full_name }} photo">
+                                                    <img src="{{ cloudinary_thumbnail_url(asset_url(row.student.photo_path), width=128, height=128) }}" alt="{{ row.student.full_name }} photo">
                                                 {% else %}
                                                     <span>{{ (row.student.full_name or "S")[0] }}</span>
                                                 {% endif %}

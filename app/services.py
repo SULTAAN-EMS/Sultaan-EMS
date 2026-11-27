@@ -28,6 +28,7 @@ from .models import (
     ExamHall,
     ExamHallEnrollment,
     ExamHallSubject,
+    ExamSession,
     ExamSessionSubject,
     StudentEnrollment,
     TeacherResultAssignment,
@@ -1728,17 +1729,82 @@ def attendance_uf_subject_keys(exam, student_ids, subject_ids=None):
     ).all():
         if record.subject_id is None:
             continue
-        if not _attendance_record_is_in_current_exam_scope(
-            record, exam, year_aware=year_aware
-        ):
-            continue
         latest_by_pair.setdefault((record.student_id, record.subject_id), record)
 
-    return {
-        pair
-        for pair, record in latest_by_pair.items()
+    if not latest_by_pair:
+        return set()
+    if not year_aware:
+        return {
+            pair
+            for pair, record in latest_by_pair.items()
+            if normalize_attendance_status(record.status) in NON_SAT_STATUSES
+        }
+
+    # Validate the selected exam hall/session in batches. The old
+    # record-by-record validation lazily loaded hall, roster, and subject
+    # relationships for every attendance row during roster/PDF/Excel loads.
+    candidate_records = [
+        record
+        for record in latest_by_pair.values()
         if normalize_attendance_status(record.status) in NON_SAT_STATUSES
-    }
+    ]
+    hall_ids = {record.exam_hall_id for record in candidate_records if record.exam_hall_id}
+    session_ids = {record.exam_session_id for record in candidate_records if record.exam_session_id}
+    subject_ids_for_scope = {record.subject_id for record in candidate_records if record.subject_id}
+    halls = {
+        hall.id: hall
+        for hall in ExamHall.query.filter(ExamHall.id.in_(hall_ids)).all()
+    } if hall_ids else {}
+    hall_student_pairs = {
+        (item.exam_hall_id, item.student_id)
+        for item in ExamHallEnrollment.query.filter(
+            ExamHallEnrollment.exam_hall_id.in_(hall_ids),
+            ExamHallEnrollment.student_id.in_(list(student_ids)),
+        ).all()
+    } if hall_ids else set()
+    sessions = {
+        session.id: session
+        for session in ExamSession.query.filter(ExamSession.id.in_(session_ids)).all()
+    } if session_ids else {}
+    hall_subject_pairs = {
+        (item.exam_hall_id, item.subject_id)
+        for item in ExamHallSubject.query.filter(
+            ExamHallSubject.exam_hall_id.in_(hall_ids),
+            ExamHallSubject.subject_id.in_(subject_ids_for_scope),
+        ).all()
+    } if hall_ids and subject_ids_for_scope else set()
+    session_subject_pairs = {
+        (item.exam_session_id, item.subject_id)
+        for item in ExamSessionSubject.query.filter(
+            ExamSessionSubject.exam_session_id.in_(session_ids),
+            ExamSessionSubject.subject_id.in_(subject_ids_for_scope),
+        ).all()
+    } if session_ids and subject_ids_for_scope else set()
+
+    valid_non_sitting_pairs = set()
+    for pair, record in latest_by_pair.items():
+        if normalize_attendance_status(record.status) not in NON_SAT_STATUSES:
+            continue
+        hall = halls.get(record.exam_hall_id)
+        if not hall or hall.exam_id not in (None, exam.id):
+            continue
+        if hall.academic_year_id not in (None, exam.academic_year_id):
+            continue
+        if (record.exam_hall_id, record.student_id) not in hall_student_pairs:
+            continue
+        if record.exam_session_id:
+            session = sessions.get(record.exam_session_id)
+            if (
+                not session
+                or session.exam_id not in (None, exam.id)
+                or (record.exam_session_id, record.subject_id) not in session_subject_pairs
+            ):
+                continue
+        elif (record.exam_hall_id, record.subject_id) not in hall_subject_pairs:
+            continue
+        valid_non_sitting_pairs.add(pair)
+
+    return valid_non_sitting_pairs
 
 
 def attendance_uf_record(exam, student_id, subject_id):
