@@ -21,7 +21,6 @@ from .models import (
     Result,
     Student,
     Setting,
-    SchoolSetting,
     LabelTranslation,
     AcademicYearSubject,
     AcademicYearLevel,
