@@ -1,5 +1,6 @@
 {% extends "admin/base.html" %}
 {% from 'partials/critical_subject_badge.html' import critical_subject_badge %}
+{% from 'partials/missing_result_icon.html' import missing_result_icon %}
 {% set active_tab = "roster" %}
 {% block body_class %}{{ super() }} admin-page-hero-layout{% endblock %}
 {% block title %}{{ rh_label("roster.title", default="Liiska Natiijada Fasalka") }}{% endblock %}
@@ -126,7 +127,9 @@
                   {% if student_data.student.mother_name %}<span class="mother-name">({{ student_data.student.mother_name }})</span>{% endif %}
                 </td>
                 {% for subject_data in student_data.subject_data %}
-                  {% if subject_data.is_uf %}
+                  {% if subject_data.is_missing %}
+                    <td class="rh-mono"><span class="rh-missing" title="Natiijo lama gelin">{{ missing_result_icon() }}</span></td>
+                  {% elif subject_data.is_uf %}
                     <td class="rh-mono"><span class="rh-uf" title="Ma Gelin — Examination not taken">⚠️ MG</span></td>
                   {% elif subject_data.is_fail %}
                     <td class="rh-mono" style="background: {{ fail_config.bg_color if fail_config else '#fee2e2' }}; color: {{ fail_config.text_color if fail_config else '#991b1b' }}; font-weight: 800;">{{ subject_data.score|academic_number(settings) }}</td>

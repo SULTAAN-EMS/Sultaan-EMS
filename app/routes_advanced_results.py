@@ -45,7 +45,7 @@ from .enrollment_service import (
 from .promotion_service import promotion_operational_status
 from .permissions import can, enforce_endpoint_permission
 from .security import ALLOWED_PHOTOS, ALLOWED_SHEETS, allowed_file
-from .services import DEFAULT_GRADE_SCALES, ScopedSubjectView, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, critical_subject_badges, get_exam_marking_configuration, get_label, get_settings, grade_for, grade_for_from_cache, grade_scale_input_bounds, load_grade_scale_cache, performance_tier_for, resolved_subject_maxima, result_payload, resolve_subject_max_score, scoped_legacy_subjects, subject_display_name
+from .services import DEFAULT_GRADE_SCALES, ScopedSubjectView, academic_decimal_precision, academic_round, attendance_uf_subject_keys, competition_rank_lookup, critical_subject_badges, get_exam_marking_configuration, get_label, get_settings, grade_for, grade_for_from_cache, grade_scale_input_bounds, historical_subjects_for_class_scope, load_grade_scale_cache, performance_tier_for, resolved_subject_maxima, result_payload, resolve_subject_max_score, scoped_legacy_subjects, subject_display_name
 from .student_results_portal import announcement_datetime_local_input, result_portal_shift_states
 from .attendance_rules import counts_as_exam_sitting
 from .behavior_reporting import get_behavior_report_data, get_behavior_scores_for_students
@@ -390,7 +390,7 @@ def validate_exam_year_scope(exam):
     return True, None
 
 
-def subjects_for_scope(exam, level_id=None, class_id=None):
+def subjects_for_scope(exam, level_id=None, class_id=None, student_ids=None):
     """Return subjects assigned to the selected year-aware level."""
     # An explicitly requested level must win over an exam's optional default
     # level.  Analytics iterates real levels one by one; using the exam default
@@ -417,8 +417,30 @@ def subjects_for_scope(exam, level_id=None, class_id=None):
             subject_kind="exam",
         )
         mapped_subjects = scoped_legacy_subjects(year_items)
-        if mapped_subjects:
-            return mapped_subjects
+        historical_subjects = historical_subjects_for_class_scope(
+            exam,
+            year_level.id,
+            year_class.id if year_class else None,
+            legacy_class_id=class_id,
+            student_ids=student_ids,
+        )
+        subjects_by_id = {subject.id: subject for subject in mapped_subjects}
+        subjects_by_id.update(
+            {
+                subject.id: subject
+                for subject in historical_subjects
+                if subject.id not in subjects_by_id
+            }
+        )
+        if subjects_by_id:
+            return sorted(
+                subjects_by_id.values(),
+                key=lambda subject: (
+                    getattr(subject, "sort_order", 0),
+                    str(getattr(subject, "name", "") or "").lower(),
+                    subject.id,
+                ),
+            )
         # A year-scoped exam must never fall back to the global Subject table.
         # An empty year-level subject mapping means the selected context has
         # no configured subjects yet; showing a legacy subject from another
@@ -444,7 +466,7 @@ def analytics_subject_bridge(academic_year_id, year_level_id=None):
     return year_items, legacy_items
 
 
-def subjects_for_year_level(exam, year_level_id, academic_year_class_id=None):
+def subjects_for_year_level(exam, year_level_id, academic_year_class_id=None, student_ids=None):
     """Resolve the subject bridge for one enrollment's exact year/class."""
     if not exam or not year_level_id:
         return []
@@ -458,6 +480,34 @@ def subjects_for_year_level(exam, year_level_id, academic_year_class_id=None):
         academic_year_class_id=academic_year_class_id,
     )
     subjects = scoped_legacy_subjects(year_items)
+    year_class = (
+        db.session.get(AcademicYearClass, academic_year_class_id)
+        if academic_year_class_id
+        else None
+    )
+    historical_subjects = historical_subjects_for_class_scope(
+        exam,
+        year_level.id,
+        academic_year_class_id,
+        legacy_class_id=getattr(year_class, "legacy_class_id", None),
+        student_ids=student_ids,
+    )
+    subjects_by_id = {subject.id: subject for subject in subjects}
+    subjects_by_id.update(
+        {
+            subject.id: subject
+            for subject in historical_subjects
+            if subject.id not in subjects_by_id
+        }
+    )
+    subjects = sorted(
+        subjects_by_id.values(),
+        key=lambda subject: (
+            getattr(subject, "sort_order", 0),
+            str(getattr(subject, "name", "") or "").lower(),
+            subject.id,
+        ),
+    )
     # A year-level without a subject bridge is incomplete setup.  Do not
     # widen the report/result view to the legacy global subject set.
     return subjects
@@ -543,6 +593,7 @@ def _student_exam_subject_ids(student, exam, *, scoped_subject_ids=None, placeme
                 exam,
                 placement["academic_year_level_id"],
                 placement.get("academic_year_class_id"),
+                student_ids=[student.id],
             )
         }
     available_ids = offering_cache[offering_key]
@@ -1097,7 +1148,12 @@ def class_roster():
         
         students = student_query.order_by(Student.full_name).all()
         
-        subjects = subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
+        subjects = subjects_for_scope(
+            selected_exam,
+            level_id=level_id,
+            class_id=class_id,
+            student_ids=[student.id for student in students],
+        )
         subject_maxima = resolved_subject_maxima(
             subjects,
             exam=selected_exam,
@@ -1165,6 +1221,8 @@ def class_roster():
                     "is_fail": tier["is_fail"],
                     "is_weak": tier["is_weak"],
                     "is_uf": (student.id, subject.id) in attendance_uf_keys,
+                    "is_missing": result is None,
+                    "status_label": "Natiijo lama gelin" if result is None else "",
                 })
             
             overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
@@ -1292,6 +1350,7 @@ def student_view():
             selected_exam,
             selected_enrollment.academic_year_level_id,
             selected_enrollment.academic_year_class_id,
+            student_ids=[student.id],
         )
         selected_level_id = selected_enrollment.academic_year_level.legacy_level_id
         selected_class_id = selected_enrollment.academic_year_class.legacy_class_id
@@ -1300,6 +1359,7 @@ def student_view():
             selected_exam,
             level_id=selected_level_id,
             class_id=selected_class_id,
+            student_ids=[student.id],
         )
 
     year_level_scope = None
@@ -1362,6 +1422,8 @@ def student_view():
             "percentage": round(percentage, 2),
             "grade": grade_info,
             "remark": grade_info.get("comment") or ("Pass" if grade_info.get("is_pass") else "Needs Improvement"),
+            "is_missing": result is None,
+            "status_label": "Natiijo lama gelin" if result is None else "",
         })
     
     overall_percentage = round((total_score / total_max * 100), 2) if total_max > 0 else 0
@@ -1673,7 +1735,12 @@ def export_class_pdf():
         .order_by(Student.full_name)
         .all()
     )
-    subjects = subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
+    subjects = subjects_for_scope(
+        selected_exam,
+        level_id=level_id,
+        class_id=class_id,
+        student_ids=[student.id for student in students],
+    )
     year_level_scope, _year_class_scope = _year_scope_ids_from_legacy(
         selected_year.id,
         level_id,
@@ -1761,6 +1828,8 @@ def export_class_pdf():
                 "is_fail": is_fail,
                 "is_weak": is_weak,
                 "is_uf": (student.id, subject.id) in attendance_uf_keys,
+                "is_missing": result is None,
+                "status_label": "Natiijo lama gelin" if result is None else "",
                 "is_critical": subject.id in critical_badges,
                 "critical_badge": critical_badges.get(subject.id),
             })
@@ -1938,7 +2007,12 @@ def export_class_excel():
         .order_by(Student.full_name)
         .all()
     )
-    subjects = subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
+    subjects = subjects_for_scope(
+        selected_exam,
+        level_id=level_id,
+        class_id=class_id,
+        student_ids=[student.id for student in students],
+    )
     year_level, _year_class = _year_scope_ids_from_legacy(year_id, level_id, class_id)
     subject_maxima = resolved_subject_maxima(
         subjects,
@@ -2047,7 +2121,11 @@ def export_class_excel():
             total_score += score
             total_max += max_score
             
-            row_data.append("⚠️ MG" if (student.id, subject.id) in attendance_uf_keys else score)
+            row_data.append(
+                "--"
+                if result is None
+                else ("⚠️ MG" if (student.id, subject.id) in attendance_uf_keys else score)
+            )
 
         behavior_points = 0.0
         behavior_components = 0
@@ -2235,13 +2313,6 @@ def result_entry():
         "section_id": section_id or "",
     }
     
-    subjects = subjects_for_scope(selected_exam, level_id=level_id, class_id=class_id)
-    subject_maxima = resolved_subject_maxima(
-        subjects,
-        exam=selected_exam,
-        academic_year_level_id=scope_for_level.id if scope_for_level else None,
-        academic_level_id=level_id,
-    )
     students = []
     if level_id and class_id:
         students = (
@@ -2254,6 +2325,18 @@ def result_entry():
             .order_by(Student.full_name)
             .all()
         )
+    subjects = subjects_for_scope(
+        selected_exam,
+        level_id=level_id,
+        class_id=class_id,
+        student_ids=[student.id for student in students],
+    )
+    subject_maxima = resolved_subject_maxima(
+        subjects,
+        exam=selected_exam,
+        academic_year_level_id=scope_for_level.id if scope_for_level else None,
+        academic_level_id=level_id,
+    )
     
     # Get existing results for these students and this exam
     student_ids = [s.id for s in students]
@@ -2323,7 +2406,10 @@ def autosave_result_entry():
 
     allowed_subject_ids = {
         item.id for item in subjects_for_scope(
-            selected_exam, level_id=scope["level_id"], class_id=class_id
+            selected_exam,
+            level_id=scope["level_id"],
+            class_id=class_id,
+            student_ids=[student.id],
         )
     }
     if subject.id not in allowed_subject_ids:
@@ -2419,14 +2505,6 @@ def save_result_entry():
         flash("Sannadka, imtixaanka, fasalka ama qaybta la doortay isma waafaqaan.", "danger")
         return redirect(url_for("admin_advanced_results.result_entry"))
     
-    subjects = subjects_for_scope(selected_exam, level_id=scope["level_id"], class_id=class_id)
-    year_level = scope["year_level"]
-    subject_maxima = resolved_subject_maxima(
-        subjects,
-        exam=selected_exam,
-        academic_year_level_id=year_level.id if year_level else None,
-        academic_level_id=scope["level_id"],
-    )
     students = students_for_scope_query(
         selected_year.id,
         level_id=scope["level_id"],
@@ -2435,6 +2513,19 @@ def save_result_entry():
     ).all()
     student_ids = [s.id for s in students]
     students_by_id = {student.id: student for student in students}
+    subjects = subjects_for_scope(
+        selected_exam,
+        level_id=scope["level_id"],
+        class_id=class_id,
+        student_ids=student_ids,
+    )
+    year_level = scope["year_level"]
+    subject_maxima = resolved_subject_maxima(
+        subjects,
+        exam=selected_exam,
+        academic_year_level_id=year_level.id if year_level else None,
+        academic_level_id=scope["level_id"],
+    )
     
     # Get existing results
     existing_results = Result.query.filter(Result.student_id.in_(student_ids), Result.exam_id == selected_exam.id).all()
@@ -3073,6 +3164,7 @@ def build_analytics_results_report_data(academic_year, exam, selected_shift=None
         }
         year_class_by_legacy_scope = {}
         subject_scope_cache = {}
+        historical_subject_scope_cache = {}
         for scope in year_level_scopes:
             if not scope.legacy_level_id:
                 continue
@@ -3096,16 +3188,66 @@ def build_analytics_results_report_data(academic_year, exam, selected_shift=None
                     )
                     if item.legacy_subject_id
                 } if scope_id else set()
-            subject_ids_by_student[student.id].update(subject_scope_cache[cache_key])
-            subject_ids_by_level[level_id].update(subject_scope_cache[cache_key])
+            history_cache_key = (scope_id, year_class_id)
+            if history_cache_key not in historical_subject_scope_cache:
+                class_students = students_by_level_class.get((level_id, legacy_class_id), [])
+                historical_subject_scope_cache[history_cache_key] = {
+                    subject.id
+                    for subject in historical_subjects_for_class_scope(
+                        exam,
+                        scope_id,
+                        year_class_id,
+                        legacy_class_id=legacy_class_id,
+                        student_ids=[item.id for item in class_students],
+                    )
+                } if scope_id else set()
+            historical_subject_ids = historical_subject_scope_cache[history_cache_key]
+            subject_ids_by_student[student.id].update(
+                subject_scope_cache[cache_key] | historical_subject_ids
+            )
+            subject_ids_by_level[level_id].update(
+                subject_scope_cache[cache_key] | historical_subject_ids
+            )
     scoped_subjects_by_level = {
         scope.legacy_level_id: {
             subject.id: subject
-            for subject in scoped_legacy_subjects(year_subjects(academic_year.id, scope.id, subject_kind="exam"))
+            for subject in scoped_legacy_subjects(
+                year_subjects(
+                    academic_year.id,
+                    scope.id,
+                    active_only=False,
+                    subject_kind="exam",
+                )
+            )
         }
         for scope in year_level_scopes
         if scope.legacy_level_id
     }
+
+    # The selected class scope can include subjects retained from older
+    # mappings.  Add those historical subjects to the display lookup too, so
+    # their maximum marks remain part of the denominator even when no Result
+    # row exists for a student.
+    report_subject_ids = set().union(*subject_ids_by_level.values()) if subject_ids_by_level else set()
+    report_subjects_by_id = {}
+    for subject_map in scoped_subjects_by_level.values():
+        report_subjects_by_id.update(subject_map)
+    unresolved_report_subject_ids = report_subject_ids - set(report_subjects_by_id)
+    if unresolved_report_subject_ids:
+        report_subjects_by_id.update(
+            {
+                subject.id: subject
+                for subject in Subject.query.filter(
+                    Subject.id.in_(unresolved_report_subject_ids)
+                ).all()
+            }
+        )
+    for level_id, subject_ids in subject_ids_by_level.items():
+        subject_map = scoped_subjects_by_level.setdefault(level_id, {})
+        for subject_id in subject_ids:
+            subject = report_subjects_by_id.get(subject_id)
+            if subject is not None:
+                subject_map.setdefault(subject_id, subject)
 
     # Attendance only counts toward this report when the recorded subject is
     # an official exam subject for the student's resolved year-level. A stale
@@ -3148,10 +3290,30 @@ def build_analytics_results_report_data(academic_year, exam, selected_shift=None
             continue
         result_pct = round(float(result.score or 0) / float(resolved_max) * 100, 4)
         ordinary_totals_by_student[result.student_id]["score"] += float(result.score or 0)
-        ordinary_totals_by_student[result.student_id]["maximum"] += float(resolved_max)
         results_by_level_subject[level_id][result.subject_id].append(
             (result.student_id, display_subject, result_pct)
         )
+
+    # Every subject in the selected class/exam contributes its maximum mark to
+    # the denominator.  A missing Result row therefore contributes zero points
+    # while remaining visible as "Natiijo lama gelin" in the detailed views.
+    for student in scoped_students:
+        level_id = student_level_lookup.get(student.id)
+        subject_map = scoped_subjects_by_level.get(level_id, {})
+        maximum_total = 0.0
+        for subject_id in subject_ids_by_student.get(student.id, set()):
+            display_subject = subject_map.get(subject_id) or report_subjects_by_id.get(subject_id)
+            if display_subject is None:
+                continue
+            resolved_max = resolve_subject_max_score(
+                display_subject,
+                exam=exam,
+                academic_year_level_id=year_level_by_legacy.get(level_id),
+                academic_level_id=level_id,
+            )
+            if resolved_max > 0:
+                maximum_total += float(resolved_max)
+        ordinary_totals_by_student[student.id]["maximum"] = maximum_total
 
     # Behavior scoring is the same source used by the student roster: the
     # selected exam's behavior session contributes its natural score and
@@ -3877,6 +4039,7 @@ def build_analytics_data(results, students, exam, top_limit=5, bottom_limit=5, s
                         trend_exam,
                         trend_placement["academic_year_level_id"],
                         trend_placement.get("academic_year_class_id"),
+                        student_ids=[trend_student.id],
                     )
                 }
             if result.subject_id not in offerings_by_class[trend_offering_key]:

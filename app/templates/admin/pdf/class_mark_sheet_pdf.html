@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 {% from 'partials/critical_subject_badge.html' import critical_subject_badge %}
+{% from 'partials/missing_result_icon.html' import missing_result_icon %}
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -57,6 +58,32 @@
             font-family: "Segoe UI Emoji", Arial, sans-serif;
             font-weight: 800;
             white-space: nowrap;
+        }
+
+        .missing-result-indicator {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1px;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            padding: 1mm 1.2mm;
+            border: .25mm dashed #f59e0b;
+            border-radius: 2mm;
+            color: #9a3412;
+            background: #fff7ed;
+            font-weight: 800;
+            line-height: 1.05;
+            white-space: normal;
+            box-sizing: border-box;
+        }
+
+        .missing-result-indicator .missing-result-icon {
+            display: block;
+            width: 4.5mm;
+            height: 4.5mm;
         }
 
         button.uf-result-indicator {
@@ -742,7 +769,9 @@
                                     </td>
                                     <td class="class-code">{{ scope_info.class.name if scope_info.class else "-" }}</td>
                                     {% for subject_data in row.subject_data %}
-                                        {% if subject_data.is_uf %}
+                                        {% if subject_data.is_missing %}
+                                            <td><span class="missing-result-indicator" title="Natiijo lama gelin">{{ missing_result_icon() }}</span></td>
+                                        {% elif subject_data.is_uf %}
                                             <td class="uf-result-indicator" title="Ma Gelin — Examination not taken">⚠️ MG</td>
                                         {% elif subject_data.is_fail %}
                                             <td style="background-color: {{ fail_config.bg_color if fail_config and fail_config.bg_color else '#fee2e2' }}; color: {{ fail_config.text_color if fail_config and fail_config.text_color else '#991b1b' }}; font-weight: 700;">{{ subject_data.score|academic_number(settings) }}</td>

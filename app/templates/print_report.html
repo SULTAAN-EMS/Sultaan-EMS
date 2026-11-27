@@ -52,6 +52,8 @@
       --student-photo-shadow: {{ '0 10px 22px rgba(0,45,120,.14)' if result.settings.student_photo_shadow == 'on' else 'none' }};
     }
     .uf-result-indicator { cursor: pointer; }
+    .missing-result-indicator { box-sizing:border-box; display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:.4mm; width:100%; max-width:100%; min-width:0; padding:.6mm 1mm; border: .25mm dashed #f59e0b; border-radius:2mm; color:#9a3412; background:#fff7ed; line-height:1.05; }
+    .missing-result-icon { display:block; width:4.5mm; height:4.5mm; }
     .behavior-print-partial { display:inline-flex; flex-direction:column; gap:2px; line-height:1.15; }
     .behavior-print-partial small { color:#64748b; font-size:8px; font-weight:700; }
     .behavior-print-pending { color:#8a5a00; font-size:8px; font-weight:700; line-height:1.2; }
@@ -80,6 +82,7 @@
 <body class="{% if download_mode|default(false) %}pdf-download{% else %}print-preview{% endif %}"{% if not download_mode|default(false) %} onload="prepareReportPrint()"{% endif %}>
   {% from 'partials/critical_subject_badge.html' import critical_subject_badge %}
   {% from 'partials/behavior_diamond_icon.html' import behavior_diamond_icon %}
+  {% from 'partials/missing_result_icon.html' import missing_result_icon %}
   <article class="sheet tis-print-report">
     {% set download_dt = result.generated_at if result.generated_at is defined else none %}
     {% if result.settings.download_datetime_format == 'day_month_year_12' %}
@@ -144,9 +147,9 @@
               <td>{{ loop.index }}</td>
               <td class="result-subject-cell"><span class="subj-cell"><span>{{ row.subject }}</span>{{ critical_subject_badge(row.critical_badge, interactive=false, subject_name=row.subject) }}</span>{% if not row.scope_applicable %}<small class="class-subject-excluded-note">Diiwaan hore · fasalkan hadda ma khusayso</small>{% endif %}</td>
               <td>{{ row.max_score|academic_number(settings) }}</td>
-              <td>{% if row.is_uf %}<strong class="print-grade-badge print-mark-badge uf-result-indicator" title="Ma Gelin — Examination not taken">⚠️ MG</strong>{% else %}<strong class="print-grade-badge print-mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.score|academic_number(settings) }}</strong>{% endif %}</td>
-              <td>{% if row.is_uf %}<strong class="print-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken">⚠️ MG</strong>{% elif row.grade.grade == 'NOT CONFIGURED' %}-{% else %}<strong class="print-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.grade.grade }}</strong>{% endif %}</td>
-              <td>{{ row.grade.comment }}</td>
+              <td>{% if row.is_missing %}<span class="missing-result-indicator" title="Natiijo lama gelin">{{ missing_result_icon() }}</span>{% elif row.is_uf %}<strong class="print-grade-badge print-mark-badge uf-result-indicator" title="Ma Gelin — Examination not taken">⚠️ MG</strong>{% else %}<strong class="print-grade-badge print-mark-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.score|academic_number(settings) }}</strong>{% endif %}</td>
+              <td>{% if row.is_missing %}<span class="missing-result-indicator" title="Natiijo lama gelin">{{ missing_result_icon() }}</span>{% elif row.is_uf %}<strong class="print-grade-badge uf-result-indicator" title="Ma Gelin — Examination not taken">⚠️ MG</strong>{% elif row.grade.grade == 'NOT CONFIGURED' %}-{% else %}<strong class="print-grade-badge" style="background: {{ row.grade.background_color }}; border-color: {{ row.grade.border_color }}; color: {{ row.grade.badge_color }};">{{ row.grade.grade }}</strong>{% endif %}</td>
+              <td>{{ '--' if row.is_missing else row.grade.comment }}</td>
             </tr>
           {% endfor %}
           {% for behavior in result.behavior_reports|default([]) %}

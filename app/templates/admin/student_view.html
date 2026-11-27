@@ -1,4 +1,5 @@
 {% extends "admin/base.html" %}
+{% from 'partials/missing_result_icon.html' import missing_result_icon %}
 {% set active_tab = "entry" %}
 {% block title %}Xareynta Natiijada Ardey Kaliya{% endblock %}
 {% block page_title %}Xareynta Natiijada Ardey Kaliya{% endblock %}
@@ -150,7 +151,7 @@
                       aria-label="{{ item.subject.name }} mark obtained"
                     >
                   </td>
-                  <td>{{ item.remark }}</td>
+                  <td>{% if item.is_missing %}<span class="rh-missing" title="Natiijo lama gelin">{{ missing_result_icon() }}</span>{% else %}{{ item.remark }}{% endif %}</td>
                 </tr>
               {% endfor %}
             </tbody>

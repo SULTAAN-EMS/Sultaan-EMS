@@ -3,7 +3,7 @@ import re
 from time import perf_counter
 
 from flask import current_app, g, has_request_context, request
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
@@ -21,6 +21,7 @@ from .models import (
     Result,
     Student,
     Setting,
+    SchoolSetting,
     LabelTranslation,
     AcademicYearSubject,
     AcademicYearLevel,
@@ -30,6 +31,7 @@ from .models import (
     ExamHallSubject,
     ExamSessionSubject,
     StudentEnrollment,
+    TeacherResultAssignment,
 )
 from .attendance_rules import NON_SAT_STATUSES, normalize_attendance_status
 from .enrollment_service import (
@@ -51,6 +53,7 @@ class ScopedSubjectView:
         self.sort_order = year_subject.sort_order
         self.is_active = subject.is_active
         self.academic_level_id = subject.academic_level_id
+        self.is_historical = False
 
     def __getattr__(self, name):
         return getattr(self._subject, name)
@@ -85,6 +88,130 @@ def scoped_legacy_subjects(year_subject_items):
         for item in exam_items
         if item.legacy_subject_id in legacy_by_id
     ]
+
+
+def historical_subjects_for_class_scope(
+    exam,
+    academic_year_level_id,
+    academic_year_class_id,
+    *,
+    legacy_class_id=None,
+    student_ids=None,
+    include_unpublished=True,
+):
+    """Return excluded/inactive subjects with evidence in the old record.
+
+    Setup changes are intentionally current-state only: a class may stop
+    offering a subject after an exam is made custom.  Results, attendance,
+    and teacher assignments are historical records, however, and must remain
+    readable for that exact class and exam.  This helper restores only
+    subjects that have such evidence; it never widens a class to every subject
+    in its level.
+    """
+    if not exam or not academic_year_level_id:
+        return []
+
+    all_year_items = year_subjects(
+        exam.academic_year_id,
+        academic_year_level_id,
+        active_only=False,
+        subject_kind="exam",
+    )
+    if not all_year_items:
+        return []
+
+    current_year_items = year_subjects_for_class_scope(
+        exam.academic_year_id,
+        academic_year_level_id,
+        academic_year_class_id,
+        subject_kind="exam",
+    )
+    all_item_by_subject_id = {
+        item.legacy_subject_id: item
+        for item in all_year_items
+        if item.legacy_subject_id
+    }
+    current_subject_ids = {
+        item.legacy_subject_id
+        for item in current_year_items
+        if item.legacy_subject_id
+    }
+    candidate_subject_ids = set(all_item_by_subject_id) - current_subject_ids
+    if not candidate_subject_ids:
+        return []
+
+    evidence_subject_ids = set()
+    student_ids = {student_id for student_id in (student_ids or []) if student_id}
+
+    if student_ids:
+        result_evidence_query = db.session.query(Result.subject_id).filter(
+            Result.exam_id == exam.id,
+            Result.student_id.in_(student_ids),
+            Result.subject_id.in_(candidate_subject_ids),
+        )
+        if not include_unpublished:
+            result_evidence_query = result_evidence_query.filter(
+                Result.is_published.is_(True)
+            )
+        evidence_subject_ids.update(
+            subject_id
+            for (subject_id,) in result_evidence_query.distinct().all()
+        )
+
+        attendance_scope_filters = [AttendanceRecord.exam_id == exam.id]
+        legacy_exam_type = ExamType.query.filter_by(
+            academic_year_id=exam.academic_year_id,
+            name=exam.name,
+        ).first()
+        if legacy_exam_type:
+            attendance_scope_filters.append(
+                and_(
+                    AttendanceRecord.exam_id.is_(None),
+                    AttendanceRecord.exam_type_id == legacy_exam_type.id,
+                )
+            )
+        attendance_query = AttendanceRecord.query.filter(
+            AttendanceRecord.academic_year_id == exam.academic_year_id,
+            or_(*attendance_scope_filters),
+            AttendanceRecord.student_id.in_(student_ids),
+            AttendanceRecord.subject_id.in_(candidate_subject_ids),
+        )
+        evidence_subject_ids.update(
+            subject_id
+            for (subject_id,) in attendance_query.with_entities(
+                AttendanceRecord.subject_id
+            ).distinct().all()
+            if subject_id
+        )
+
+    # Keep assignments as historical evidence even when an administrator
+    # later deactivated or deleted the assignment.  The assignment is scoped
+    # to the legacy academic class, which is the key needed to bridge old
+    # teacher-result data back to the year-aware class.
+    if legacy_class_id:
+        evidence_subject_ids.update(
+            subject_id
+            for (subject_id,) in TeacherResultAssignment.query.filter(
+                TeacherResultAssignment.academic_year_id == exam.academic_year_id,
+                TeacherResultAssignment.exam_id == exam.id,
+                TeacherResultAssignment.class_id == legacy_class_id,
+                TeacherResultAssignment.subject_id.in_(candidate_subject_ids),
+            )
+            .with_entities(TeacherResultAssignment.subject_id)
+            .distinct()
+            .all()
+            if subject_id
+        )
+
+    historical_items = [
+        all_item_by_subject_id[subject_id]
+        for subject_id in sorted(evidence_subject_ids)
+        if subject_id in all_item_by_subject_id
+    ]
+    historical_subjects = scoped_legacy_subjects(historical_items)
+    for subject in historical_subjects:
+        subject.is_historical = True
+    return historical_subjects
 
 
 DEFAULT_SETTINGS = {
@@ -1844,6 +1971,7 @@ def result_payload(student, exam=None, public_only=True):
         ]
         applicable_subject_ids = {
             row.legacy_subject_id
+            active_only=False,
             for row in applicable_year_subject_items
             if row.legacy_subject_id
         }
@@ -1860,6 +1988,21 @@ def result_payload(student, exam=None, public_only=True):
         # not permission to expose every legacy subject. This applies to both
         # enrolled and legacy-only students.
         subject_scope_filter = Subject.id.in_(selected_subject_ids) if selected_subject_ids else Subject.id == -1
+        historical_subjects = historical_subjects_for_class_scope(
+            exam,
+            selected_year_level_id,
+            selected_placement.get("academic_year_class_id"),
+            legacy_class_id=selected_placement.get("academic_class_id"),
+            student_ids=[student.id],
+            include_unpublished=not public_only,
+        )
+        historical_subject_ids = {
+            subject.id for subject in historical_subjects
+        }
+        selected_subject_ids = list(
+            dict.fromkeys(selected_subject_ids + sorted(historical_subject_ids))
+        )
+        applicable_subject_ids.update(historical_subject_ids)
     elif selected_placement:
         # Legacy-only records remain readable for their own stored year and
         # level.  They are never used for an unrelated historical year.
@@ -1885,17 +2028,31 @@ def result_payload(student, exam=None, public_only=True):
     ]
     total, max_total, average = calculate_score_totals(
         (
-            row.score,
+            score_by_subject_id.get(subject_id, 0),
             maxima.get(
-                row.subject_id,
-                Decimal(str(scoped_subject_by_id.get(row.subject_id, row.subject).max_score or 0)),
+                subject_id,
+                Decimal(str(subject_by_id.get(subject_id).max_score or 0))
+                if subject_by_id.get(subject_id)
+                else Decimal("0"),
             ),
         )
-        for row in applicable_rows
+        for subject_id in total_subject_ids
+    subject_by_id = dict(scoped_subject_by_id)
+    for row in rows:
+        if row.subject:
+            subject_by_id.setdefault(row.subject_id, row.subject)
+    total_subject_ids = (
+        set(applicable_subject_ids)
+        if selected_year_level_id
+        else {row.subject_id for row in rows}
+    )
     )
     settings = dict(get_settings())
     active_exam = exam or (rows[0].exam if rows else None)
     # Behavior is projected separately from ordinary Result rows.  The
+    score_by_subject_id = {
+        row.subject_id: row.score for row in applicable_rows
+    }
     # reporting adapter delegates session scoring to behavior_service and is
     # shared by the portal, official report card, and class report routes.
     from .behavior_reporting import get_behavior_report_data
@@ -1981,52 +2138,76 @@ def result_payload(student, exam=None, public_only=True):
             }
         )
 
-    # An absent student can legitimately have no Result row at all.  Surface
-    # that subject as MG without manufacturing a result, changing totals, or
-    # affecting grades/ranks.  Existing numerical rows remain authoritative.
-    missing_uf_subject_ids = {
-        subject_id
-        for student_id, subject_id in uf_subject_keys
-        if student_id == student.id and subject_id not in {row.subject_id for row in rows}
+    # A subject with no Result row is still part of the selected exam/class.
+    # Keep its maximum in the total above and surface an explicit label instead
+    # of presenting a misleading zero score.  A real stored score of zero is
+    # intentionally left on the normal numerical path.
+                "status_label": "",
+    existing_subject_ids = {
+        row.subject_id for row in applicable_rows
     }
-    if missing_uf_subject_ids and student_level_id:
-        missing_subject_query = Subject.query.filter(Subject.id.in_(missing_uf_subject_ids))
-        if selected_subject_ids:
-            missing_subject_query = missing_subject_query.filter(Subject.id.in_(selected_subject_ids))
-        elif selected_placement and student_level_id:
-            missing_subject_query = missing_subject_query.filter(Subject.academic_level_id == student_level_id)
-        else:
-            missing_subject_query = missing_subject_query.filter(Subject.id == -1)
-        for subject in (
-            missing_subject_query
-            .order_by(Subject.id.asc())
-            .all()
-        ):
-            subject = scoped_subject_by_id.get(subject.id, subject)
-            automatic_grade = grade_for_from_cache(Decimal("0"), grade_cache)
-            subject_rows.append(
-                {
-                    "id": None,
-                    "subject_id": subject.id,
-                    "subject": subject_display_name(subject, settings).strip(),
-                    "score": 0.0,
-                    "max_score": float(resolve_subject_max_score(
-                        subject,
-                        exam=active_exam,
-                        academic_year_level_id=selected_year_level_id,
-                        academic_level_id=student_level_id,
-                    )),
-                    "grade": automatic_grade,
-                    "automatic_grade": automatic_grade,
-                    "status": "Needs Support",
-                    "percentage": 0.0,
-                    "icon": subject_icon(subject.name, settings),
-                    "is_uf": True,
-                    "is_critical": subject.id in critical_badges,
-                    "critical_badge": critical_badges.get(subject.id),
-                    "scope_applicable": True,
-                }
-            )
+                "is_missing": False,
+    missing_subject_ids = total_subject_ids - existing_subject_ids
+    unresolved_subject_ids = missing_subject_ids - set(subject_by_id)
+    if unresolved_subject_ids:
+        subject_by_id.update(
+            {
+                subject.id: subject
+                for subject in Subject.query.filter(
+                    Subject.id.in_(unresolved_subject_ids)
+                ).all()
+            }
+        )
+    missing_automatic_grade = grade_for_from_cache(Decimal("0"), grade_cache)
+    missing_grade = dict(missing_automatic_grade)
+    missing_grade.update({
+        "grade": "-",
+        "grade_point": 0,
+        "comment": "Natiijo lama gelin",
+        "is_pass": False,
+    })
+    missing_subjects = [
+        subject_by_id[subject_id]
+        for subject_id in missing_subject_ids
+        if subject_id in subject_by_id
+    ]
+    missing_subjects.sort(
+        key=lambda subject: (
+            getattr(subject, "sort_order", 0),
+            str(getattr(subject, "name", "") or "").lower(),
+            subject.id,
+        )
+    )
+    for subject in missing_subjects:
+        max_score = maxima.get(
+            subject.id,
+            Decimal(str(resolve_subject_max_score(
+                subject,
+                exam=active_exam,
+                academic_year_level_id=selected_year_level_id,
+                academic_level_id=student_level_id,
+            ))),
+        )
+        subject_rows.append(
+            {
+                "id": None,
+                "subject_id": subject.id,
+                "subject": subject_display_name(subject, settings).strip(),
+                "score": 0.0,
+                "max_score": float(max_score),
+                "grade": missing_grade,
+                "automatic_grade": missing_automatic_grade,
+                "status": "Natiijo lama gelin",
+                "status_label": "Natiijo lama gelin",
+                "percentage": 0.0,
+                "icon": subject_icon(subject.name, settings),
+                "is_uf": (student.id, subject.id) in uf_subject_keys,
+                "is_missing": True,
+                "is_critical": subject.id in critical_badges,
+                "critical_badge": critical_badges.get(subject.id),
+                "scope_applicable": True,
+            }
+        )
 
     rank = None
     rank_started_at = perf_counter() if profile_public_result else None
