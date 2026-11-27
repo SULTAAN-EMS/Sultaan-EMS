@@ -2111,7 +2111,9 @@ def export_class_pdf():
         ("strongest_subjects", "support_students"),
         ("support_subjects", "strongest_students"),
     )
-    column_row_capacity = 18
+    # This leaves room for the card headers while allowing the common
+    # one-short-card + full-student-list case to finish on one A4 page.
+    column_row_capacity = 21
     analytics_offsets = {key: 0 for key in analytics_lists}
     analytics_list_pages = []
 
