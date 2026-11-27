@@ -1958,6 +1958,7 @@ def result_payload(student, exam=None, public_only=True):
         all_year_subject_items = year_subjects(
             exam.academic_year_id,
             selected_year_level_id,
+            active_only=False,
             subject_kind="exam",
         )
         applicable_year_subject_items = year_subjects_for_class_scope(
@@ -1971,23 +1972,9 @@ def result_payload(student, exam=None, public_only=True):
         ]
         applicable_subject_ids = {
             row.legacy_subject_id
-            active_only=False,
             for row in applicable_year_subject_items
             if row.legacy_subject_id
         }
-        scoped_subject_by_id = {
-            subject.id: subject for subject in scoped_legacy_subjects(all_year_subject_items)
-        }
-        scoped_subjects_for_max = list(scoped_subject_by_id.values())
-    else:
-        scoped_subject_by_id = {}
-        scoped_subjects_for_max = []
-        applicable_subject_ids = set(selected_subject_ids)
-    if selected_year_level_id:
-        # A configured year-level with no subject mappings is incomplete setup,
-        # not permission to expose every legacy subject. This applies to both
-        # enrolled and legacy-only students.
-        subject_scope_filter = Subject.id.in_(selected_subject_ids) if selected_subject_ids else Subject.id == -1
         historical_subjects = historical_subjects_for_class_scope(
             exam,
             selected_year_level_id,
@@ -2003,6 +1990,19 @@ def result_payload(student, exam=None, public_only=True):
             dict.fromkeys(selected_subject_ids + sorted(historical_subject_ids))
         )
         applicable_subject_ids.update(historical_subject_ids)
+        scoped_subject_by_id = {
+            subject.id: subject for subject in scoped_legacy_subjects(all_year_subject_items)
+        }
+        scoped_subjects_for_max = list(scoped_subject_by_id.values())
+    else:
+        scoped_subject_by_id = {}
+        scoped_subjects_for_max = []
+        applicable_subject_ids = set(selected_subject_ids)
+    if selected_year_level_id:
+        # A configured year-level with no subject mappings is incomplete setup,
+        # not permission to expose every legacy subject. This applies to both
+        # enrolled and legacy-only students.
+        subject_scope_filter = Subject.id.in_(selected_subject_ids) if selected_subject_ids else Subject.id == -1
     elif selected_placement:
         # Legacy-only records remain readable for their own stored year and
         # level.  They are never used for an unrelated historical year.
@@ -2022,10 +2022,22 @@ def result_payload(student, exam=None, public_only=True):
         academic_year_level_id=selected_year_level_id,
         academic_level_id=student_level_id,
     )
+    subject_by_id = dict(scoped_subject_by_id)
+    for row in rows:
+        if row.subject:
+            subject_by_id.setdefault(row.subject_id, row.subject)
+    total_subject_ids = (
+        set(applicable_subject_ids)
+        if selected_year_level_id
+        else {row.subject_id for row in rows}
+    )
     applicable_rows = [
         row for row in rows
         if not selected_year_level_id or row.subject_id in applicable_subject_ids
     ]
+    score_by_subject_id = {
+        row.subject_id: row.score for row in applicable_rows
+    }
     total, max_total, average = calculate_score_totals(
         (
             score_by_subject_id.get(subject_id, 0),
@@ -2037,22 +2049,10 @@ def result_payload(student, exam=None, public_only=True):
             ),
         )
         for subject_id in total_subject_ids
-    subject_by_id = dict(scoped_subject_by_id)
-    for row in rows:
-        if row.subject:
-            subject_by_id.setdefault(row.subject_id, row.subject)
-    total_subject_ids = (
-        set(applicable_subject_ids)
-        if selected_year_level_id
-        else {row.subject_id for row in rows}
-    )
     )
     settings = dict(get_settings())
     active_exam = exam or (rows[0].exam if rows else None)
     # Behavior is projected separately from ordinary Result rows.  The
-    score_by_subject_id = {
-        row.subject_id: row.score for row in applicable_rows
-    }
     # reporting adapter delegates session scoring to behavior_service and is
     # shared by the portal, official report card, and class report routes.
     from .behavior_reporting import get_behavior_report_data
@@ -2129,9 +2129,11 @@ def result_payload(student, exam=None, public_only=True):
                 "grade": displayed_grade,
                 "automatic_grade": automatic_grade,
                 "status": "Pass" if displayed_grade.get("is_pass", automatic_grade.get("is_pass")) else "Needs Support",
+                "status_label": "",
                 "percentage": percentage,
                 "icon": subject_icon(display_subject.name, settings),
                 "is_uf": (student.id, row.subject_id) in uf_subject_keys,
+                "is_missing": False,
                 "is_critical": row.subject_id in critical_badges,
                 "critical_badge": critical_badges.get(row.subject_id),
                 "scope_applicable": not selected_year_level_id or row.subject_id in applicable_subject_ids,
@@ -2142,11 +2144,9 @@ def result_payload(student, exam=None, public_only=True):
     # Keep its maximum in the total above and surface an explicit label instead
     # of presenting a misleading zero score.  A real stored score of zero is
     # intentionally left on the normal numerical path.
-                "status_label": "",
     existing_subject_ids = {
         row.subject_id for row in applicable_rows
     }
-                "is_missing": False,
     missing_subject_ids = total_subject_ids - existing_subject_ids
     unresolved_subject_ids = missing_subject_ids - set(subject_by_id)
     if unresolved_subject_ids:
