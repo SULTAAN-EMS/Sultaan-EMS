@@ -2098,18 +2098,49 @@ def export_class_pdf():
                 "offset": start,
             }
         )
-    # Keep the four-card layout, but let each page use the space left by empty
-    # or short lists. The capacity is intentionally conservative so long
-    # student names still fit without pushing the footer off the A4 page.
+    # Keep the four-card layout, but paginate by the two independent visual
+    # columns. A short card must not consume the vertical space of the card
+    # beside it, while the combined rows in each column must still fit A4.
     analytics_lists = {
         "strongest_subjects": strongest_subjects,
         "support_subjects": support_subjects,
         "support_students": support_students,
         "strongest_students": strongest_students,
     }
-    page_capacity_by_active_list = {1: 18, 2: 16, 3: 12, 4: 10}
+    analytics_columns = (
+        ("strongest_subjects", "support_students"),
+        ("support_subjects", "strongest_students"),
+    )
+    column_row_capacity = 18
     analytics_offsets = {key: 0 for key in analytics_lists}
     analytics_list_pages = []
+
+    def take_column_rows(keys):
+        """Take a balanced slice for one visual column without overflow."""
+        active = [
+            key
+            for key in keys
+            if analytics_offsets[key] < len(analytics_lists[key])
+        ]
+        if not active:
+            return
+
+        remaining_capacity = column_row_capacity
+        remaining_keys = active[:]
+        while remaining_capacity and remaining_keys:
+            share = max(1, remaining_capacity // len(remaining_keys))
+            next_keys = []
+            for key in remaining_keys:
+                available = len(analytics_lists[key]) - analytics_offsets[key]
+                take = min(share, available, remaining_capacity)
+                analytics_offsets[key] += take
+                remaining_capacity -= take
+                if analytics_offsets[key] < len(analytics_lists[key]):
+                    next_keys.append(key)
+                if not remaining_capacity:
+                    break
+            remaining_keys = next_keys
+
     while True:
         active_keys = [
             key
@@ -2127,18 +2158,20 @@ def export_class_pdf():
                 )
             break
 
-        page_capacity = page_capacity_by_active_list[len(active_keys)]
         page = {
             "page_number": len(analytics_list_pages) + 1,
             "offsets": analytics_offsets.copy(),
         }
-        for key, items in analytics_lists.items():
-            start = analytics_offsets[key]
-            if key in active_keys:
-                page[key] = items[start : start + page_capacity]
-                analytics_offsets[key] += len(page[key])
-            else:
-                page[key] = []
+        for key in analytics_lists:
+            page[key] = []
+        for column_keys in analytics_columns:
+            starts = {
+                key: analytics_offsets[key]
+                for key in column_keys
+            }
+            take_column_rows(column_keys)
+            for key in column_keys:
+                page[key] = analytics_lists[key][starts[key] : analytics_offsets[key]]
         analytics_list_pages.append(page)
     summary_colspan = 8 + len(subjects) + len(behavior_definitions)
     behavior_stats = []

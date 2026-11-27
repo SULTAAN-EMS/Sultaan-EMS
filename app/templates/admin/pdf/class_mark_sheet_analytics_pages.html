@@ -161,6 +161,14 @@
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 7px;
+        align-items: start;
+    }
+
+    .ref-analytics-column {
+        display: grid;
+        align-content: start;
+        gap: 7px;
+        min-width: 0;
     }
 
     .ref-analytics-box {
@@ -805,6 +813,7 @@
         </div>
 
         <div class="ref-analytics-grid">
+            <div class="ref-analytics-column">
             <section class="ref-analytics-box" style="--ref-color:#059669">
                 <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>Maadooyinka Ugu Xooggan</h2>
                 <table class="ref-analytics-table ref-analytics-table--subjects">
@@ -813,18 +822,6 @@
                         {% for stat in analytics_page.strongest_subjects %}
                             <tr><td class="center">{{ analytics_page.offsets["strongest_subjects"] + loop.index }}</td><td class="strong">{{ stat.subject.name }}</td><td class="center strong">{{ stat.average_percentage|academic_number(settings) }}%</td><td class="center">{{ stat.pass_rate|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [stat.average_percentage, 100]|min }}%;background:{{ percentage_band_color(stat.average_percentage) }}"></i></div></td></tr>
                         {% else %}<tr><td colspan="5" class="center">No subject is above 60%.</td></tr>{% endfor %}
-                    </tbody>
-                </table>
-            </section>
-
-            <section class="ref-analytics-box" style="--ref-color:#b45309">
-                <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>Maadooyinka U Baahan Taageero</h2>
-                <table class="ref-analytics-table ref-analytics-table--subjects">
-                    <thead><tr><th class="center">#</th><th>Maaddo</th><th class="center">Boqolley</th><th class="center">Heerka Gudbidda</th><th>Heer</th></tr></thead>
-                    <tbody>
-                        {% for stat in analytics_page.support_subjects %}
-                            <tr><td class="center">{{ analytics_page.offsets["support_subjects"] + loop.index }}</td><td class="strong">{{ stat.subject.name }}</td><td class="center strong">{{ stat.average_percentage|academic_number(settings) }}%</td><td class="center">{{ stat.pass_rate|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [stat.average_percentage, 100]|min }}%;background:{{ percentage_band_color(stat.average_percentage) }}"></i></div></td></tr>
-                        {% else %}<tr><td colspan="5" class="center">No subject is at or below 60%.</td></tr>{% endfor %}
                     </tbody>
                 </table>
             </section>
@@ -840,6 +837,20 @@
                     </tbody>
                 </table>
             </section>
+            </div>
+
+            <div class="ref-analytics-column">
+            <section class="ref-analytics-box" style="--ref-color:#b45309">
+                <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>Maadooyinka U Baahan Taageero</h2>
+                <table class="ref-analytics-table ref-analytics-table--subjects">
+                    <thead><tr><th class="center">#</th><th>Maaddo</th><th class="center">Boqolley</th><th class="center">Heerka Gudbidda</th><th>Heer</th></tr></thead>
+                    <tbody>
+                        {% for stat in analytics_page.support_subjects %}
+                            <tr><td class="center">{{ analytics_page.offsets["support_subjects"] + loop.index }}</td><td class="strong">{{ stat.subject.name }}</td><td class="center strong">{{ stat.average_percentage|academic_number(settings) }}%</td><td class="center">{{ stat.pass_rate|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [stat.average_percentage, 100]|min }}%;background:{{ percentage_band_color(stat.average_percentage) }}"></i></div></td></tr>
+                        {% else %}<tr><td colspan="5" class="center">No subject is at or below 60%.</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+            </section>
 
             <section class="ref-analytics-box" style="--ref-color:#7c3aed">
                 <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.12"/></svg>Ardeyda Ugu Xooggan</h2>
@@ -852,6 +863,7 @@
                     </tbody>
                 </table>
             </section>
+            </div>
         </div>
 
         <footer class="ref-analytics-footer"><span>{{ settings.school_name }} | {{ date.strftime('%Y') }} · Generated {{ date.strftime('%d %B %Y') }}</span><span>Principal __________ · Exam Officer __________ · Class Teacher __________</span><span>Page {{ total_pages + analytics_page.page_number }} of {{ document_total_pages }}</span></footer>
