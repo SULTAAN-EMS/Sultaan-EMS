@@ -1177,9 +1177,52 @@ def class_roster():
             for result in roster_results:
                 results_by_student[result.student_id].append(result)
 
-        # Build results data for each student
+        # Build the behavior/attendance projection once for the whole roster.
+        # The previous per-student report call issued ledger queries repeatedly
+        # during filter reloads and PDF generation.
         from .routes_public import feedback_access_token
-        behavior_placements = _year_placement_cache(students, selected_year.id)
+        behavior_scores_by_student = {}
+        legacy_behavior_reports_by_student = {}
+        if selected_year_level_scope:
+            behavior_scores_by_student = get_behavior_scores_for_students(
+                students,
+                selected_exam,
+                selected_year_level_scope.id,
+            )
+        else:
+            behavior_placements = _year_placement_cache(students, selected_year.id)
+            legacy_behavior_reports_by_student = {
+                student.id: get_behavior_report_data(
+                    student,
+                    selected_exam,
+                    placement=behavior_placements.get((student.id, selected_year.id)),
+                )
+                for student in students
+            }
+
+        def behavior_reports_for(student):
+            if not selected_year_level_scope:
+                return legacy_behavior_reports_by_student.get(student.id, [])
+            summary = behavior_scores_by_student.get(student.id) or {}
+            reports = []
+            for item in (summary.get("by_configuration") or {}).values():
+                if not item.get("has_reports"):
+                    continue
+                reports.append(
+                    {
+                        "configuration_id": item["configuration_id"],
+                        "subject_name": item["subject_name"],
+                        "available": True,
+                        "session_score": item.get("session_score"),
+                        "session_maximum": item.get("session_maximum"),
+                        "annual_maximum": item.get("annual_maximum"),
+                        "grade_point": item.get("grade_point") or 0,
+                        "critical_badge": item.get("critical_badge"),
+                    }
+                )
+            return reports
+
+        # Build results data for each student
         roster_data = []
         for student in students:
             results = results_by_student.get(student.id, [])
@@ -1226,11 +1269,7 @@ def class_roster():
             overall_grade = cached_grade_for(overall_percentage)
             overall_tier = performance_tier_for(overall_percentage, weak_config, fail_config)
 
-            behavior_reports = get_behavior_report_data(
-                student,
-                selected_exam,
-                placement=behavior_placements.get((student.id, selected_year.id)),
-            )
+            behavior_reports = behavior_reports_for(student)
             behavior_score = sum(
                 float(item.get("session_score") or 0)
                 for item in behavior_reports
@@ -1763,13 +1802,49 @@ def export_class_pdf():
         ).all()
         for result in published_results:
             results_by_student[result.student_id][result.subject_id] = result
-    behavior_placements = _year_placement_cache(students, selected_year.id)
-    behavior_reports_by_student = {
-        student.id: get_behavior_report_data(
-            student,
+    behavior_scores_by_student = {}
+    legacy_behavior_reports_by_student = {}
+    if year_level_scope:
+        behavior_scores_by_student = get_behavior_scores_for_students(
+            students,
             selected_exam,
-            placement=behavior_placements.get((student.id, selected_year.id)),
+            year_level_scope.id,
         )
+    else:
+        behavior_placements = _year_placement_cache(students, selected_year.id)
+        legacy_behavior_reports_by_student = {
+            student.id: get_behavior_report_data(
+                student,
+                selected_exam,
+                placement=behavior_placements.get((student.id, selected_year.id)),
+            )
+            for student in students
+        }
+
+    def behavior_reports_for(student):
+        if not year_level_scope:
+            return legacy_behavior_reports_by_student.get(student.id, [])
+        summary = behavior_scores_by_student.get(student.id) or {}
+        reports = []
+        for item in (summary.get("by_configuration") or {}).values():
+            if not item.get("has_reports"):
+                continue
+            reports.append(
+                {
+                    "configuration_id": item["configuration_id"],
+                    "subject_name": item["subject_name"],
+                    "available": True,
+                    "session_score": item.get("session_score"),
+                    "session_maximum": item.get("session_maximum"),
+                    "annual_maximum": item.get("annual_maximum"),
+                    "grade_point": item.get("grade_point") or 0,
+                    "critical_badge": item.get("critical_badge"),
+                }
+            )
+        return reports
+
+    behavior_reports_by_student = {
+        student.id: behavior_reports_for(student)
         for student in students
     }
     critical_badges = critical_subject_badges(
@@ -2023,33 +2098,48 @@ def export_class_pdf():
                 "offset": start,
             }
         )
-    analytics_list_page_size = 10
-    analytics_list_page_count = max(
-        1,
-        math.ceil(
-            max(
-                len(strongest_subjects),
-                len(support_subjects),
-                len(support_students),
-                len(strongest_students),
-                1,
-            )
-            / analytics_list_page_size
-        ),
-    )
+    # Keep the four-card layout, but let each page use the space left by empty
+    # or short lists. The capacity is intentionally conservative so long
+    # student names still fit without pushing the footer off the A4 page.
+    analytics_lists = {
+        "strongest_subjects": strongest_subjects,
+        "support_subjects": support_subjects,
+        "support_students": support_students,
+        "strongest_students": strongest_students,
+    }
+    page_capacity_by_active_list = {1: 18, 2: 16, 3: 12, 4: 10}
+    analytics_offsets = {key: 0 for key in analytics_lists}
     analytics_list_pages = []
-    for page_index in range(analytics_list_page_count):
-        start = page_index * analytics_list_page_size
-        analytics_list_pages.append(
-            {
-                "page_number": page_index + 1,
-                "offset": start,
-                "strongest_subjects": strongest_subjects[start : start + analytics_list_page_size],
-                "support_subjects": support_subjects[start : start + analytics_list_page_size],
-                "support_students": support_students[start : start + analytics_list_page_size],
-                "strongest_students": strongest_students[start : start + analytics_list_page_size],
-            }
-        )
+    while True:
+        active_keys = [
+            key
+            for key, items in analytics_lists.items()
+            if analytics_offsets[key] < len(items)
+        ]
+        if not active_keys:
+            if not analytics_list_pages:
+                analytics_list_pages.append(
+                    {
+                        "page_number": 1,
+                        "offsets": analytics_offsets.copy(),
+                        **{key: [] for key in analytics_lists},
+                    }
+                )
+            break
+
+        page_capacity = page_capacity_by_active_list[len(active_keys)]
+        page = {
+            "page_number": len(analytics_list_pages) + 1,
+            "offsets": analytics_offsets.copy(),
+        }
+        for key, items in analytics_lists.items():
+            start = analytics_offsets[key]
+            if key in active_keys:
+                page[key] = items[start : start + page_capacity]
+                analytics_offsets[key] += len(page[key])
+            else:
+                page[key] = []
+        analytics_list_pages.append(page)
     summary_colspan = 8 + len(subjects) + len(behavior_definitions)
     behavior_stats = []
     for definition in behavior_definitions:
@@ -2331,29 +2421,27 @@ def export_class_pdf():
                 radar_subjects.append({"stat": stat, "label": display_label})
                 used_radar_subject_ids.add(subject_id)
                 break
-    if len(radar_subjects) < 8:
-        for stat in subject_stats:
-            subject_id = getattr(stat["subject"], "id", None) or id(stat["subject"])
-            if subject_id in used_radar_subject_ids:
-                continue
-            radar_subjects.append(
-                {"stat": stat, "label": stat["subject"].name}
-            )
-            used_radar_subject_ids.add(subject_id)
-            if len(radar_subjects) == 8:
-                break
-    # Keep the radar geometry fixed at eight compass positions.  The grid and
-    # axis spokes are always octagonal, so labels must use the same denominator
-    # even when a filtered scope has fewer than eight matching subjects.
-    radar_count = 8
+    # Preserve the preferred labels/order above, then append every remaining
+    # subject. The radar must reflect the complete filtered subject scope, not
+    # an arbitrary eight-subject subset.
+    for stat in subject_stats:
+        subject_id = getattr(stat["subject"], "id", None) or id(stat["subject"])
+        if subject_id in used_radar_subject_ids:
+            continue
+        radar_subjects.append({"stat": stat, "label": stat["subject"].name})
+        used_radar_subject_ids.add(subject_id)
+
+    # Use one spoke per subject; retain a readable octagonal empty state when
+    # the filtered scope has no subjects at all.
+    radar_count = len(radar_subjects) or 8
     radar_points = []
     radar_labels = []
     radar_chart_points = []
     radar_tick_labels = []
     radar_axis_points = []
     radar_grid_polygons = []
-    for index in range(8):
-        angle = (-math.pi / 2) + (2 * math.pi * index / 8)
+    for index in range(radar_count):
+        angle = (-math.pi / 2) + (2 * math.pi * index / radar_count)
         radar_axis_points.append(
             {
                 "x": round(110 + 55 * math.cos(angle), 1),
@@ -2363,8 +2451,8 @@ def export_class_pdf():
     for tick in (0, 20, 40, 60, 80, 100):
         radius = 55 * (tick / 100)
         points = []
-        for index in range(8):
-            angle = (-math.pi / 2) + (2 * math.pi * index / 8)
+        for index in range(radar_count):
+            angle = (-math.pi / 2) + (2 * math.pi * index / radar_count)
             points.append(
                 f"{110 + radius * math.cos(angle):.1f},{78 + radius * math.sin(angle):.1f}"
             )

@@ -158,6 +158,15 @@ def get_behavior_scores_for_students(students, exam, academic_year_level_id):
     if not students or not exam or not exam.academic_year_id or not academic_year_level_id:
         return summary_by_student
 
+    # Resolve critical badges once for the whole roster instead of once per
+    # student when the class list or its PDF is generated.
+    from .services import critical_subject_badges
+
+    try:
+        critical_badges = critical_subject_badges(exam, academic_year_level_id)
+    except PromotionValidationError:
+        critical_badges = {}
+
     enrollments = (
         StudentEnrollment.query
         .options(
@@ -262,6 +271,13 @@ def get_behavior_scores_for_students(students, exam, academic_year_level_id):
                     "incomplete": False,
                     "score": Decimal("0"),
                     "maximum": Decimal("0"),
+                    "session_score": None,
+                    "session_maximum": None,
+                    "annual_maximum": None,
+                    "grade_point": 0.0,
+                    "critical_badge": critical_badges.get(
+                        f"behavior:{configuration.academic_year_subject_id}"
+                    ),
                     "passed": False,
                 },
             )
@@ -284,7 +300,7 @@ def get_behavior_scores_for_students(students, exam, academic_year_level_id):
                 # Preserve the individual report's validity behavior: it omits
                 # this configuration if an unrelated active session makes its
                 # annual projection invalid.
-                calculate_annual_behavior_score(
+                annual = calculate_annual_behavior_score(
                     configuration,
                     enrollment,
                     behavior_events_by_session=student_events,
@@ -302,6 +318,13 @@ def get_behavior_scores_for_students(students, exam, academic_year_level_id):
             # zero-score denominator in the analytics PDF.
             student_summary["session_score"] += Decimal(str(final_score or 0))
             student_summary["session_maximum"] += maximum_score
+            configuration_summary["session_score"] = (
+                float(final_score) if final_score is not None else None
+            )
+            configuration_summary["session_maximum"] = float(maximum_score)
+            configuration_summary["annual_maximum"] = float(
+                annual.get("total_maximum") or 0
+            )
             if final_score is None:
                 configuration_summary["incomplete"] = True
             else:
@@ -310,6 +333,9 @@ def get_behavior_scores_for_students(students, exam, academic_year_level_id):
                 configuration_summary["score"] += final_score
                 configuration_summary["maximum"] += maximum_score
                 grade = behavior_grade_for_score(selected_session, final_score)
+                configuration_summary["grade_point"] = float(
+                    grade.get("grade_point") or 0
+                )
                 configuration_summary["passed"] = bool(grade.get("is_pass"))
                 student_summary["report_session_score"] += final_score
                 student_summary["report_session_maximum"] += maximum_score

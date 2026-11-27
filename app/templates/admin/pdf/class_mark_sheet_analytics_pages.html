@@ -23,6 +23,10 @@
         color: #0f1f4a;
     }
 
+    .ref-analytics-page--last {
+        page-break-after: auto !important;
+    }
+
     .ref-analytics-sheet {
         position: relative;
         height: 100%;
@@ -807,7 +811,7 @@
                     <thead><tr><th class="center">#</th><th>Maaddo</th><th class="center">Boqolley</th><th class="center">Heerka Gudbidda</th><th>Heer</th></tr></thead>
                     <tbody>
                         {% for stat in analytics_page.strongest_subjects %}
-                            <tr><td class="center">{{ analytics_page.offset + loop.index }}</td><td class="strong">{{ stat.subject.name }}</td><td class="center strong">{{ stat.average_percentage|academic_number(settings) }}%</td><td class="center">{{ stat.pass_rate|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [stat.average_percentage, 100]|min }}%;background:{{ percentage_band_color(stat.average_percentage) }}"></i></div></td></tr>
+                            <tr><td class="center">{{ analytics_page.offsets["strongest_subjects"] + loop.index }}</td><td class="strong">{{ stat.subject.name }}</td><td class="center strong">{{ stat.average_percentage|academic_number(settings) }}%</td><td class="center">{{ stat.pass_rate|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [stat.average_percentage, 100]|min }}%;background:{{ percentage_band_color(stat.average_percentage) }}"></i></div></td></tr>
                         {% else %}<tr><td colspan="5" class="center">No subject is above 60%.</td></tr>{% endfor %}
                     </tbody>
                 </table>
@@ -819,7 +823,7 @@
                     <thead><tr><th class="center">#</th><th>Maaddo</th><th class="center">Boqolley</th><th class="center">Heerka Gudbidda</th><th>Heer</th></tr></thead>
                     <tbody>
                         {% for stat in analytics_page.support_subjects %}
-                            <tr><td class="center">{{ analytics_page.offset + loop.index }}</td><td class="strong">{{ stat.subject.name }}</td><td class="center strong">{{ stat.average_percentage|academic_number(settings) }}%</td><td class="center">{{ stat.pass_rate|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [stat.average_percentage, 100]|min }}%;background:{{ percentage_band_color(stat.average_percentage) }}"></i></div></td></tr>
+                            <tr><td class="center">{{ analytics_page.offsets["support_subjects"] + loop.index }}</td><td class="strong">{{ stat.subject.name }}</td><td class="center strong">{{ stat.average_percentage|academic_number(settings) }}%</td><td class="center">{{ stat.pass_rate|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [stat.average_percentage, 100]|min }}%;background:{{ percentage_band_color(stat.average_percentage) }}"></i></div></td></tr>
                         {% else %}<tr><td colspan="5" class="center">No subject is at or below 60%.</td></tr>{% endfor %}
                     </tbody>
                 </table>
@@ -831,7 +835,7 @@
                     <thead><tr><th class="center">#</th><th>Ardey</th><th class="center">Kaalin</th><th class="center">Wadar</th><th class="center">Darajo</th><th class="center">Boqolley</th><th>Heer</th></tr></thead>
                     <tbody>
                         {% for row in analytics_page.support_students %}
-                            <tr><td class="center">{{ analytics_page.offset + loop.index }}</td><td class="strong">{{ row.student.full_name }}</td><td class="center">{{ row.rank }}</td><td class="center">{{ row.total_score|academic_number(settings) }}</td><td class="center"><span class="ref-grade-tag" style="background:{{ row.grade.badge_color }}">{{ row.grade.grade }}</span></td><td class="center strong">{{ row.percentage|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [row.percentage, 100]|min }}%;background:{{ percentage_band_color(row.percentage) }}"></i></div></td></tr>
+                            <tr><td class="center">{{ analytics_page.offsets["support_students"] + loop.index }}</td><td class="strong">{{ row.student.full_name }}</td><td class="center">{{ row.rank }}</td><td class="center">{{ row.total_score|academic_number(settings) }}</td><td class="center"><span class="ref-grade-tag" style="background:{{ row.grade.badge_color }}">{{ row.grade.grade }}</span></td><td class="center strong">{{ row.percentage|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [row.percentage, 100]|min }}%;background:{{ percentage_band_color(row.percentage) }}"></i></div></td></tr>
                         {% else %}<tr><td colspan="7" class="center">No students are at or below 60%.</td></tr>{% endfor %}
                     </tbody>
                 </table>
@@ -843,7 +847,7 @@
                     <thead><tr><th class="center">#</th><th>Ardey</th><th class="center">Kaalin</th><th class="center">Wadar</th><th class="center">Darajo</th><th class="center">Boqolley</th><th>Heer</th></tr></thead>
                     <tbody>
                         {% for row in analytics_page.strongest_students %}
-                            <tr><td class="center">{{ analytics_page.offset + loop.index }}</td><td class="strong">{{ row.student.full_name }}</td><td class="center">{{ row.rank }}</td><td class="center">{{ row.total_score|academic_number(settings) }}</td><td class="center"><span class="ref-grade-tag" style="background:{{ row.grade.badge_color }}">{{ row.grade.grade }}</span></td><td class="center strong">{{ row.percentage|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [row.percentage, 100]|min }}%;background:{{ percentage_band_color(row.percentage) }}"></i></div></td></tr>
+                            <tr><td class="center">{{ analytics_page.offsets["strongest_students"] + loop.index }}</td><td class="strong">{{ row.student.full_name }}</td><td class="center">{{ row.rank }}</td><td class="center">{{ row.total_score|academic_number(settings) }}</td><td class="center"><span class="ref-grade-tag" style="background:{{ row.grade.badge_color }}">{{ row.grade.grade }}</span></td><td class="center strong">{{ row.percentage|academic_number(settings) }}%</td><td><div class="ref-progress"><i style="width:{{ [row.percentage, 100]|min }}%;background:{{ percentage_band_color(row.percentage) }}"></i></div></td></tr>
                         {% else %}<tr><td colspan="7" class="center">No students are above 60%.</td></tr>{% endfor %}
                     </tbody>
                 </table>
@@ -855,7 +859,7 @@
 </div>
 {% endfor %}
 
-<div class="page ref-analytics-page">
+<div class="page ref-analytics-page ref-analytics-page--last">
     <div class="ref-analytics-sheet">
         <header class="ref-analytics-header">
             <div class="ref-analytics-brand">
