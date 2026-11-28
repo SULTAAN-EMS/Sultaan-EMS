@@ -409,6 +409,104 @@ def apply_template(template_name):
         db.session.add(setting)
 
 
+@id_cards_bp.route("/appointment-letter/<int:student_id>", methods=["GET"])
+def appointment_letter(student_id):
+    """Render the A4 temporary exam-permission pledge from the ID-card area."""
+    student = db.session.get(Student, student_id) or abort(404)
+    school = getattr(g, "active_school", None) or student.school
+    if not school or (student.school_id and student.school_id != school.id):
+        abort(404)
+
+    year_id = int_or_none(request.args.get("year_id")) or student.academic_year_id
+    academic_year = db.session.get(AcademicYear, year_id) if year_id else None
+    if not academic_year:
+        academic_year = AcademicYear.query.filter_by(is_current=True).first()
+    if academic_year and academic_year.school_id and academic_year.school_id != school.id:
+        abort(404)
+
+    exams = []
+    selected_exam = None
+    if academic_year:
+        exams = Exam.query.filter(
+            Exam.academic_year_id == academic_year.id,
+            or_(Exam.school_id == school.id, Exam.school_id.is_(None)),
+            Exam.is_active.is_(True),
+        ).order_by(Exam.sort_order.asc(), Exam.name.asc(), Exam.id.asc()).all()
+        exam_id = int_or_none(request.args.get("exam_id"))
+        selected_exam = next((exam for exam in exams if exam.id == exam_id), None)
+
+    placement = {}
+    if academic_year:
+        placement = resolve_student_placements([(student, academic_year.id)]).get(
+            (student.id, academic_year.id), {}
+        )
+    finance_available = True
+    try:
+        from .finance_accounting import student_finance_statement
+        statement = student_finance_statement(school_id=school.id, student_id=student.id)
+    except (ImportError, ModuleNotFoundError):
+        # The letter remains usable while the separate finance module is still
+        # awaiting its own release; no financial write or fallback guess is made.
+        finance_available = False
+        statement = {
+            "invoices": [],
+            "total_billed": 0,
+            "total_received": 0,
+            "balance": 0,
+        }
+    outstanding_invoices = [row for row in statement["invoices"] if row["balance"] > 0]
+    invoice_numbers = ", ".join(
+        str(row["invoice"].invoice_number)
+        for row in statement.get("invoices", [])
+        if getattr(row.get("invoice"), "invoice_number", None)
+    )
+    receipt_numbers = ", ".join(
+        str(payment.receipt_number)
+        for payment in statement.get("payments", [])
+        if getattr(payment, "receipt_number", None)
+    )
+    due_date = next(
+        (
+            row["invoice"].due_date.isoformat()
+            for row in outstanding_invoices
+            if getattr(row.get("invoice"), "due_date", None)
+        ),
+        "",
+    )
+    class_level_label = " / ".join(
+        value for value in (placement.get("class_name"), placement.get("level_name")) if value
+    )
+    class_level_label = class_level_label or student.level or student.section or "-"
+    class_shift = getattr(getattr(placement.get("enrollment"), "academic_year_class", None), "school_shift", "")
+    shift_label = {"morning": "Gelin Hore", "afternoon": "Gelin Dambe"}.get(class_shift, "")
+    settings = get_settings()
+    return render_template(
+        "admin/id_card_appointment_letter.html",
+        school=school,
+        settings=settings,
+        student=student,
+        academic_year=academic_year,
+        exams=exams,
+        selected_exam=selected_exam,
+        placement=placement,
+        statement=statement,
+        outstanding_invoices=outstanding_invoices,
+        finance_available=finance_available,
+        today=request.args.get("appointment_date") or school_today().isoformat(),
+        promise_date=request.args.get("promise_date") or due_date,
+        exam_date=request.args.get("exam_date", ""),
+        invoice_numbers=invoice_numbers,
+        receipt_numbers=receipt_numbers or invoice_numbers,
+        currency=(statement.get("invoices") or [{}])[0].get("invoice").currency if statement.get("invoices") else "USD",
+        class_level_label=class_level_label,
+        shift_label=shift_label,
+        installment_amount=request.args.get("installment_amount", ""),
+        parent_name=request.args.get("parent_name") or student.mother_name or "",
+        parent_phone=request.args.get("parent_phone") or student.phone or "",
+        reason=request.args.get("reason") or "Arrin maaliyadeed",
+    )
+
+
 @id_cards_bp.route("/generate/<int:student_id>", methods=["POST"])
 def generate(student_id):
     student = db.session.get(Student, student_id) or abort(404)

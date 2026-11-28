@@ -232,6 +232,8 @@
 }
 .idc-row-generate:hover { border-color: #9bcdb9; background: #e2f2eb; }
 .idc-row-generate:disabled { opacity: .5; cursor: not-allowed; }
+.idc-row-pledge { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; margin-top: 6px; padding: 6px 9px; border: 1px solid #e6c575; border-radius: 6px; background: linear-gradient(135deg, #fff8df, #ffefbd); color: #8b5b06; font: inherit; font-size: .76rem; font-weight: 750; text-decoration: none; }
+.idc-row-pledge:hover { border-color: #c99b34; background: linear-gradient(135deg, #fff0b8, #ffe29a); color: #684300; }
 .idc-empty-state { display: grid; justify-items: center; padding: 44px 20px; border: 1px dashed #ccd9d6; border-radius: 9px; background: #fafcfb; text-align: center; }
 .idc-empty-state > span { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 12px; background: #eaf4f0; color: var(--idc-green); font-size: 20px; }
 .idc-empty-state h3 { margin: 12px 0 4px; color: var(--idc-ink); font-size: 1rem; }

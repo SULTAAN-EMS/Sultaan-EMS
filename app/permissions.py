@@ -104,6 +104,7 @@ ENDPOINT_PERMISSIONS = {
     "admin_id_cards.bulk_generate": "id_cards",
     "admin_id_cards.print_cards": ("id_cards", "print"),
     "admin_id_cards.export_pdf": ("id_cards", "export"),
+    "admin_id_cards.appointment_letter": "id_cards",
     "admin_advanced_results.dashboard": ("advanced_results", "results"),
     "admin_advanced_results.new_dashboard": ("advanced_results", "results"),
     "admin_advanced_results.result_entry": "results",
