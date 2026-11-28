@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, send_file, url_for
 from flask_login import login_required
 from sqlalchemy import and_, func, inspect, or_, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 
 from . import db
@@ -413,25 +414,31 @@ def apply_template(template_name):
 def appointment_letter(student_id):
     """Render the A4 temporary exam-permission pledge from the ID-card area."""
     student = db.session.get(Student, student_id) or abort(404)
-    school = getattr(g, "active_school", None) or student.school
-    if not school or (student.school_id and student.school_id != school.id):
+    school = getattr(g, "active_school", None)
+    school_id = getattr(school, "id", None)
+    student_school_id = getattr(student, "school_id", None)
+    if school_id and student_school_id and student_school_id != school_id:
         abort(404)
 
     year_id = int_or_none(request.args.get("year_id")) or student.academic_year_id
     academic_year = db.session.get(AcademicYear, year_id) if year_id else None
     if not academic_year:
         academic_year = AcademicYear.query.filter_by(is_current=True).first()
-    if academic_year and academic_year.school_id and academic_year.school_id != school.id:
+    academic_year_school_id = getattr(academic_year, "school_id", None)
+    if school_id and academic_year_school_id and academic_year_school_id != school_id:
         abort(404)
 
     exams = []
     selected_exam = None
     if academic_year:
-        exams = Exam.query.filter(
+        exam_query = Exam.query.filter(
             Exam.academic_year_id == academic_year.id,
-            or_(Exam.school_id == school.id, Exam.school_id.is_(None)),
             Exam.is_active.is_(True),
-        ).order_by(Exam.sort_order.asc(), Exam.name.asc(), Exam.id.asc()).all()
+        )
+        exam_school_column = getattr(Exam, "school_id", None)
+        if school_id and exam_school_column is not None:
+            exam_query = exam_query.filter(or_(exam_school_column == school_id, exam_school_column.is_(None)))
+        exams = exam_query.order_by(Exam.sort_order.asc(), Exam.name.asc(), Exam.id.asc()).all()
         exam_id = int_or_none(request.args.get("exam_id"))
         selected_exam = next((exam for exam in exams if exam.id == exam_id), None)
 
@@ -440,20 +447,23 @@ def appointment_letter(student_id):
         placement = resolve_student_placements([(student, academic_year.id)]).get(
             (student.id, academic_year.id), {}
         )
-    finance_available = True
+    finance_available = False
+    statement = {
+        "invoices": [],
+        "payments": [],
+        "total_billed": 0,
+        "total_received": 0,
+        "balance": 0,
+    }
     try:
-        from .finance_accounting import student_finance_statement
-        statement = student_finance_statement(school_id=school.id, student_id=student.id)
-    except (ImportError, ModuleNotFoundError):
+        if school_id:
+            from .finance_accounting import student_finance_statement
+            statement = student_finance_statement(school_id=school_id, student_id=student.id)
+            finance_available = True
+    except (ImportError, ModuleNotFoundError, AttributeError, SQLAlchemyError):
         # The letter remains usable while the separate finance module is still
         # awaiting its own release; no financial write or fallback guess is made.
         finance_available = False
-        statement = {
-            "invoices": [],
-            "total_billed": 0,
-            "total_received": 0,
-            "balance": 0,
-        }
     outstanding_invoices = [row for row in statement["invoices"] if row["balance"] > 0]
     invoice_numbers = ", ".join(
         str(row["invoice"].invoice_number)
