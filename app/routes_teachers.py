@@ -659,7 +659,7 @@ def result_entry_setup():
                 ).first()
                 if duplicate and duplicate.deleted_at:
                     flash("Xilsaaristan hore ayaa loo tirtiray. Ka soo celi liiska 'La tirtiray' ka hor intaadan dib u qoondayn.", "warning")
-                    return redirect(url_for("admin_teachers.result_entry_setup", status="deleted"))
+                    return redirect_to_assignment_list(status="deleted")
                 if duplicate:
                     previous_state = "active" if duplicate.is_active else "paused"
                     duplicate.deadline_at = deadline
@@ -681,7 +681,7 @@ def result_entry_setup():
                     ).first()
                     if assigned_scope:
                         flash("Maaddadan fasalkan iyo imtixaankan macallin kale ayaa hore loogu xilsaaray.", "warning")
-                        return redirect(url_for("admin_teachers.result_entry_setup"))
+                        return redirect_to_assignment_list()
                     assignment = TeacherResultAssignment(
                         teacher=teacher, academic_year=year, exam=exam,
                         school_class=school_class, subject=subject,
@@ -697,7 +697,7 @@ def result_entry_setup():
             audit("Teacher Result Assignment", f"Configured {teacher.full_name}: {', '.join(audit_scopes)}")
             db.session.commit()
             flash(f"{created_count} xilsaaris cusub iyo {updated_count} xilsaaris oo la cusboonaysiiyey ayaa la kaydiyey.", "success")
-            return redirect(url_for("admin_teachers.result_entry_setup"))
+            return redirect_to_assignment_list()
 
         assignment = db.session.get(TeacherResultAssignment, request.form.get("assignment_id", type=int))
         submission = TeacherResultSubmission.query.filter_by(assignment_id=assignment.id).first() if assignment else None
@@ -706,7 +706,7 @@ def result_entry_setup():
         if action == "delete":
             if assignment.deleted_at:
                 flash("Xilsaaristan hore ayaa loo tirtiray.", "warning")
-                return redirect(url_for("admin_teachers.result_entry_setup", status="deleted"))
+                return redirect_to_assignment_list(status="deleted")
             previous_state = "active" if assignment.is_active else "paused"
             assignment.deleted_previous_is_active = assignment.is_active
             assignment.deleted_at = datetime.utcnow()
@@ -720,11 +720,11 @@ def result_entry_setup():
             audit("Teacher Result Assignment Archived", f"Archived {assignment.teacher.full_name}: {assignment.exam.name} / {assignment.school_class.name} / {assignment.subject.name}")
             db.session.commit()
             flash("Xilsaarista waa laga saaray shaqada firfircoon; xaashida iyo dhibcihii hore waa la ilaaliyey. Tallaabada waxaa lagu daray history-ga.", "success")
-            return redirect(url_for("admin_teachers.result_entry_setup"))
+            return redirect_to_assignment_list()
         if action == "restore":
             if not assignment.deleted_at:
                 flash("Xilsaaristan kuma jirto diiwaanka tirtiridda.", "warning")
-                return redirect(url_for("admin_teachers.result_entry_setup"))
+                return redirect_to_assignment_list()
             assignment.is_active = bool(assignment.deleted_previous_is_active)
             restored_state = "active" if assignment.is_active else "paused"
             assignment.deleted_at = None
@@ -737,10 +737,10 @@ def result_entry_setup():
             audit("Teacher Result Assignment Restored", f"Restored {assignment.teacher.full_name}: {assignment.exam.name} / {assignment.school_class.name} / {assignment.subject.name}")
             db.session.commit()
             flash("Xilsaarista iyo xaashideedii waa la soo celiyey.", "success")
-            return redirect(url_for("admin_teachers.result_entry_setup"))
+            return redirect_to_assignment_list()
         if assignment.deleted_at:
             flash("Xilsaaristan waa la tirtiray. Marka hore dib uga soo celi diiwaanka tirtiridda.", "warning")
-            return redirect(url_for("admin_teachers.result_entry_setup", status="deleted"))
+            return redirect_to_assignment_list(status="deleted")
         if action == "toggle":
             previous_state = "active" if assignment.is_active else "paused"
             assignment.is_active = not assignment.is_active
