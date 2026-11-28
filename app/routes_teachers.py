@@ -1686,12 +1686,12 @@ def print_result_entry_assignment(assignment_id):
         str(student.gender or "").strip().casefold() in {"female", "f", "dhedig"}
         for student in students
     )
-    students_per_page = 18
+    students_per_page = 19
     student_pages = [
         students[index:index + students_per_page]
         for index in range(0, len(students), students_per_page)
     ] or [[]]
-    subject_groups = [subject_rows[index:index + 3] for index in range(0, len(subject_rows), 3)]
+    subject_groups = [subject_rows[index:index + 4] for index in range(0, len(subject_rows), 4)]
     pages = []
     total_pages = len(student_pages) * len(subject_groups)
     for subjects in subject_groups:
